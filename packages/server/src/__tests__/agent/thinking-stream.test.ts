@@ -72,7 +72,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 // The turn asks the conversation what it is called, so it can say so in the
@@ -163,7 +163,7 @@ describe("the model's thinking on the wire", () => {
 
     // Both on the wire and neither wearing the other's type. A turn that sent
     // reasoning as text would read as an assistant thinking out loud at the
-    // reader, with nothing to fold away.
+    // user, with nothing to fold away.
     expect(chunks.find((c) => c.type === "reasoning-delta")?.delta).toBe("working it out");
     expect(chunks.find((c) => c.type === "text-delta")?.delta).toBe("the answer");
   });

@@ -167,7 +167,7 @@ describe('ChatComposer', () => {
 
   it('hands the keyboard to the box when stop is pressed, too', () => {
     // Same element, same rule: what it does is about to change, so nobody is
-    // left standing on it. Stopping turns it back into Send, and a reader who
+    // left standing on it. Stopping turns it back into Send, and a user who
     // has typed their next message while waiting would send it with the very
     // next keypress.
     const props = { draft: 'my next question', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
@@ -183,7 +183,7 @@ describe('ChatComposer', () => {
   it('keeps the wait out of the tab order, because there is nothing to do with it', () => {
     // The slot the indicator stands in becomes the stop button a moment
     // later. Anything focusable there can be tabbed to and then changes into
-    // something else underneath the reader. It is not a control -- there is
+    // something else underneath the user. It is not a control -- there is
     // nothing to press -- so it does not belong in the tab order at all, and
     // what it has to say is said by the live region instead.
     render(
@@ -202,7 +202,7 @@ describe('ChatComposer', () => {
     expect(document.activeElement).not.toBe(waiting);
   });
 
-  it('says what the wait is about, for a reader who cannot see it spin', async () => {
+  it('says what the wait is about, for a user who cannot see it spin', async () => {
     // Said by the live region rather than by the spinner. A region that is
     // already on the page when its text arrives is one screen readers
     // announce; one that appears holding its text is one many of them never
@@ -244,7 +244,7 @@ describe('ChatComposer', () => {
     // the IME is offering — several times per sentence. The browser marks
     // that keystroke as part of the composition, and it is the only thing
     // separating it from the Enter that means "send". Without the check, the
-    // first message a CJK reader ever sends is their raw keystrokes.
+    // first message a CJK user ever sends is their raw keystrokes.
     fireEvent.keyDown(ta, { key: 'Enter', code: 'Enter', isComposing: true, keyCode: 229 });
     expect(onSubmit).not.toHaveBeenCalled();
   });

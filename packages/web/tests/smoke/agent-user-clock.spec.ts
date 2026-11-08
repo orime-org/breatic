@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Asked what time it is, the agent answers with the reader's own clock (#300).
+ * Asked what time it is, the agent answers with the user's own clock (#300).
  *
  * Unit tests settle what the note says and where it sits. What they cannot
- * settle is that a real model reads it as the reader's time, works from it to
- * "tomorrow", keeps answering in the reader's language, and does not take it
- * for something the reader wrote. Each browser here runs in a zone of its own,
+ * settle is that a real model reads it as the user's time, works from it to
+ * "tomorrow", keeps answering in the user's language, and does not take it
+ * for something the user wrote. Each browser here runs in a zone of its own,
  * which is what the composer reports with every message.
  */
 import { expect, type Browser, type Page } from 'playwright/test';
@@ -51,7 +51,7 @@ const DAY = 24 * 60;
 /**
  * Whether a reply states a time within the slack of the expected one.
  * @param text - The reply to a question that asked for `HH:MM`.
- * @param expected - Minutes since midnight on the reader's clock.
+ * @param expected - Minutes since midnight on the user's clock.
  * @returns True when some `HH:MM` in it is close enough.
  */
 function statesTimeNear(text: string, expected: number): boolean {
@@ -80,7 +80,7 @@ async function pageIn(browser: Browser, timeZone: string): Promise<Page> {
 /**
  * Send one message in the open conversation and wait for the whole reply.
  * @param p - The signed-in page.
- * @param question - What the reader types.
+ * @param question - What the user types.
  * @returns The reply's text.
  */
 async function askHere(p: Page, question: string): Promise<string> {
@@ -150,7 +150,7 @@ test('reads the clock again when the same conversation goes on elsewhere @needs-
   await losAngeles.context().close();
 });
 
-test('answers from the clock, not as words the reader said, with a file attached @needs-model', async ({
+test('answers from the clock, not as words the user said, with a file attached @needs-model', async ({
   browser,
 }) => {
   test.setTimeout(300_000);
@@ -171,7 +171,7 @@ test('answers from the clock, not as words the reader said, with a file attached
   expect(statesTimeNear(text, clockIn(asked, 'Asia/Shanghai').minutes), `the reply: ${text}`).toBe(
     true,
   );
-  expect(text, `the reply: ${text}`).not.toMatch(/local time when they sent|reader sent this message/i);
+  expect(text, `the reply: ${text}`).not.toMatch(/local time when they sent|(reader|user) sent this message/i);
   await page.context().close();
 });
 

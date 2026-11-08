@@ -17,7 +17,7 @@ interface AtLimitNotice {
  * A thing that happened rather than a state the box is in, so it is a toast
  * (inner#1530): said when the text first reaches the limit, and again for
  * every keystroke turned away after that -- the box's limit turns it away
- * without changing anything on screen, so a reader who kept typing past the
+ * without changing anything on screen, so a user who kept typing past the
  * first time would otherwise be typing into silence. A draft that was full
  * when the box opened says nothing: that did not just happen.
  * @param length - How long the draft is.

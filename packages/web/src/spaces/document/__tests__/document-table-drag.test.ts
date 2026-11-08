@@ -152,7 +152,7 @@ describe('moving a row or a column to a gap (A7)', () => {
     ]);
   });
 
-  it('carries the marks on the words and leaves the reader where they were', () => {
+  it('carries the marks on the words and leaves the user where they were', () => {
     const editor = open();
     const view = editor.prosemirrorView!;
     const b1 = cellOf(editor, 'b1') + 3;

@@ -4,7 +4,7 @@
 // emitted. The two can part ways without either noticing — a `manualChunks`
 // branch that swallows the page modules, a bundler default that changes, an
 // entry added to the table and then imported statically somewhere else — and
-// what a reader downloads is decided here, not there.
+// what a user downloads is decided here, not there.
 //
 //   node verify-chunks.mjs [dist-dir]
 //
@@ -21,7 +21,7 @@
 //     loader for a page, the entry for the loader — so a release re-downloads
 //     only what changed
 //   - English ships in the entry, and every other catalog in `locales/` is
-//     one `locale-<code>` chunk outside it, fetched only for a reader in that
+//     one `locale-<code>` chunk outside it, fetched only for a user in that
 //     language (#1374)
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -181,7 +181,7 @@ const FABRIC = { label: 'Fabric', holds: (src) => /node_modules\/fabric\//.test(
 /**
  * What no entry may download, and the page that is allowed to.
  *
- * A1, A12 and A13 are about what lands in a reader's download set, and the two
+ * A1, A12 and A13 are about what lands in a user's download set, and the two
  * invariants above only answer which chunk a page sits in — a space body
  * reaching an entry through a shared chunk satisfies both. Rollup writes a
  * sourcemap beside every chunk (`vite.config.mts` sets `sourcemap: true`), and
@@ -215,7 +215,7 @@ const HEAVY = [
   // because `@breatic/shared` depends on it and that package's main entry is
   // one bundled module: an export the browser calls that reaches Yjs is
   // emitted in the entry chunk, and lib0 comes along behind it. Measured once,
-  // at 88,224 bytes for every reader; the byte budget below caught that, and
+  // at 88,224 bytes for every user; the byte budget below caught that, and
   // this says which library arrived.
   //
   // Only `yjs` is matched. `lib0` arrives with it, so naming Yjs is enough to
@@ -233,7 +233,7 @@ const HEAVY = [
   // calls it today, so none of this is in the entry closure — the two callers
   // are a Node service and the ingest Worker. Naming it is what the byte
   // budget cannot do: importing `sniffMimeType` from `src/index.tsx` puts 21
-  // modules in front of every reader and carries the total past the budget,
+  // modules in front of every user and carries the total past the budget,
   // and without this entry the report is that number alone.
   //
   // The transitive dependencies are matched beside `file-type` because a
@@ -286,7 +286,7 @@ if (missing.length > 0) {
 }
 
 // The route split is exactly the entry's dynamic edges into page chunks: those
-// are fetched once an address matches, so they are not what every reader
+// are fetched once an address matches, so they are not what every user
 // downloads. Every other dynamic edge is eager — a module-scope `import(...)`
 // runs the moment its chunk is evaluated — and following those is what makes
 // a heavy module the entry pulls in on its own visible at all.
@@ -297,7 +297,7 @@ const { roots: entryRoots, entry: entryChunk } = entryFiles();
 
 // Each non-English catalog is its own `import()` chunk, named `locale-<code>`
 // in vite.config.mts: Vite's JSON modules leave no `sources` in the sourcemap
-// to recognise them by. A reader downloads at most one of them, so they stay
+// to recognise them by. A user downloads at most one of them, so they stay
 // out of the entry closure like the pages; a static import of one would put
 // it back in, and the budget below would count it twice.
 const LOCALES = path.join(import.meta.dirname, '..', '..', 'locales');
@@ -359,7 +359,7 @@ if (unreachable.length > 0) {
 
 // What each owner downloads. index.html's closure is the one computed above;
 // a page's walk follows every dynamic edge — a `React.lazy` inside a page
-// fires while that same screen renders, so the reader waits for it behind the
+// fires while that same screen renders, so the user waits for it behind the
 // same loading screen — and excludes the entry's own closure, because the
 // entry chunk holds the dynamic import for every route and would otherwise
 // reach the whole graph from anywhere.
@@ -427,8 +427,8 @@ if (projectChunk !== undefined) {
   }
 }
 
-// What every reader downloads, as a number rather than a list of names: the
-// entry closure plus the largest locale catalog, since a reader in that
+// What every user downloads, as a number rather than a list of names: the
+// entry closure plus the largest locale catalog, since a user in that
 // language fetches it before the first page. The predicates above cover the
 // heavy things known when they were written, and a number covers the ones
 // nobody has thought of: measured, `pdfjs-dist` landing in a file that gates
@@ -438,14 +438,14 @@ if (projectChunk !== undefined) {
 // build is the number this prints when it trips, so it is not repeated here to
 // drift. Raised from 1,200,000 to 1,800,000 on purpose, when the entry still
 // carried the strings of all five locales; every new feature's copy lands in
-// the English catalog and in each reader's own.
+// the English catalog and in each user's own.
 const ENTRY_BUDGET = 1_800_000;
 const sizeOf = (f) => statSync(path.join(ASSETS, f)).size;
 const entryBytes = [...entryDownloads].reduce((n, f) => n + sizeOf(f), 0)
   + Math.max(0, ...localeChunks.map(sizeOf));
 if (entryBytes > ENTRY_BUDGET) {
   problems.push(
-    `a reader downloads up to ${entryBytes} bytes of JS before the first page (the entry plus the largest catalog), over the ${ENTRY_BUDGET} budget`,
+    `a user downloads up to ${entryBytes} bytes of JS before the first page (the entry plus the largest catalog), over the ${ENTRY_BUDGET} budget`,
   );
 }
 
@@ -454,7 +454,7 @@ if (entryBytes > ENTRY_BUDGET) {
 // get renamed on a release: a page chunk, when its own code changes, and the
 // loader chunk, when any page is renamed. Each is meant to have exactly one
 // reader — the loader for a page, the entry for the loader — and that pair is
-// the whole residue a page-only release costs a returning reader, 76,292 bytes
+// the whole residue a page-only release costs a returning user, 76,292 bytes
 // measured. Nothing in the source forces it, so this reads the built output.
 //
 // Measured while it did not hold, one mutation each against its own baseline.

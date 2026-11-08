@@ -17,7 +17,7 @@
  * lookup answers both.
  *
  * An unpaid upgrade and an unpaid renewal both leave an open invoice, and the
- * two owe the reader different sentences.
+ * two owe the user different sentences.
  *
  * What Stripe charges is compared against what our own price list says. The
  * two are meant to be the same figure; a price id pasted into the wrong slot,

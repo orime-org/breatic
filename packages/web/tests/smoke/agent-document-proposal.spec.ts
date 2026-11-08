@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The Agent's comment, rewrite and insert for a document land when the reader
+ * The Agent's comment, rewrite and insert for a document land when the user
  * presses their card (inner#1509).
  *
  * The chat answer is served here, so no model is involved. It is built from
@@ -179,7 +179,7 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   const card = await askForTheCard();
   await card.getByRole('button', { name: 'Add comment' }).click();
 
-  // Shown the way a comment the reader wrote is: the panel opens on its card.
+  // Shown the way a comment the user wrote is: the panel opens on its card.
   await expect(card).toHaveAttribute('data-state', 'applied');
   const rail = visibleSpace(page).getByTestId('doc-comment-rail');
   await expect(rail).toBeVisible();
@@ -187,7 +187,7 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await expect(rail.getByTestId('doc-comment-from-agent')).toBeVisible();
   await expect(rail.getByText('Why is she leaving?')).toBeVisible();
 
-  // "View" opens it on the card again once the reader has closed it.
+  // "View" opens it on the card again once the user has closed it.
   await rail.getByTestId('doc-comment-rail-close').click();
   await expect(rail).toHaveCount(0);
   await card.getByRole('button').click();
@@ -293,7 +293,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await expect.poll(async () => (await commentInTable()).inside).toBe(true);
 
   // Settled marks remain a valid landing. Explicit View prepares All before
-  // membership cleanup, then a later manual filter remains the reader's.
+  // membership cleanup, then a later manual filter remains the user's.
   const selectedRail = visibleSpace(page).getByTestId('doc-comment-rail');
   await selectedRail.getByTestId('doc-comment-resolve').click();
   await selectedRail.getByTestId('doc-comment-rail-filter-open').click();

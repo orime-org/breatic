@@ -5,7 +5,7 @@
  * What a turn's searches leave on the reply.
  *
  * Two things, and they are numbered differently on purpose. The row at the
- * foot of the reply lists every page the turn found, deduplicated -- a reader
+ * foot of the reply lists every page the turn found, deduplicated -- a user
  * scanning it wants each publisher once. The markers inside the prose resolve
  * against the sources as the model was shown them, which is one number per
  * source per search, duplicates included: the model wrote `[4]` against the

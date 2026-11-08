@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The agent's request to read Spaces and the reader's answer to it
+ * The agent's request to read Spaces and the user's answer to it
  * (inner#1552). Whether an answer fits the request it answers is checked by
  * the server (`space-answer-mismatch.ts`).
  *
  * Shared because three places read one shape: the tool that takes the model's
  * call, the card that draws it in the browser, and the route that takes the
- * reader's answer. What only the turn can know -- whether an id is in this
+ * user's answer. What only the turn can know -- whether an id is in this
  * turn's Space list, whether `blocks` names a document and `node_ids` a canvas,
  * and the configured caps on how many Spaces and node ids -- is checked by the
  * tool in domain, not here (`request-space-content-contract.test.ts`).
@@ -200,7 +200,7 @@ describe("one Space as the browser read it", () => {
   });
 });
 
-describe("the reader's answer", () => {
+describe("the user's answer", () => {
   it("is the Spaces shared, or a refusal, for one call", () => {
     expect(spaceRequestAnswerSchema.safeParse({ toolCallId: "r1", decision: "shared", spaces: [READ_DOCUMENT] }).success).toBe(
       true,

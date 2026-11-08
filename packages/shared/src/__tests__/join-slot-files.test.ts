@@ -31,7 +31,7 @@ describe("joinSlotFiles", () => {
     );
   });
 
-  it("keeps a picture mentioned twice in the pool, so the reader's numbers still point where they did", () => {
+  it("keeps a picture mentioned twice in the pool, so the user's numbers still point where they did", () => {
     const out = joinSlotFiles(gptEdit, { images: ["a", "b", "a"], style_images: ["s"] }, "Put the hat from image 3 on image 2.");
     expect(out.params.images).toEqual(["a", "b", "a", "s"]);
     expect(out.prompt).toBe(

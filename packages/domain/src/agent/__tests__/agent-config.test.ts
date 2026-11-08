@@ -78,10 +78,10 @@ describe("buildAgentConfig", () => {
   });
 
   it("answers with the model the request names (#1363)", async () => {
-    // The reader picks the model in the chat panel, and the route hands the
+    // The user picks the model in the chat panel, and the route hands the
     // pick down. A value no config holds is what tells a read of the request
     // apart from a read of the config.
-    const sentinel = "sentinel/model-the-reader-picked";
+    const sentinel = "sentinel/model-the-user-picked";
     expect((await buildAgentConfig({ basePrompt: "base", modelId: sentinel })).modelId).toBe(sentinel);
   });
 

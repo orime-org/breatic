@@ -205,7 +205,7 @@ const PROJECT = {
 
 /**
  * Render the project page with the project already in the query cache, the
- * way it is when the reader comes back to a project opened earlier in the
+ * way it is when the user comes back to a project opened earlier in the
  * session: the page has the data on its very first render.
  */
 function setupCached(): void {

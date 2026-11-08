@@ -84,7 +84,7 @@ function selectAllText(editor: DocumentEditor): void {
   const view = editor.prosemirrorView!;
   const { doc } = view.state;
   // Both ends inside text. Endpoints that resolve into a `blockGroup` are what
-  // ProseMirror warns about, and no reader's selection has them.
+  // ProseMirror warns about, and no user's selection has them.
   view.dispatch(
     view.state.tr.setSelection(
       TextSelection.create(doc, 3, doc.content.size - 3),

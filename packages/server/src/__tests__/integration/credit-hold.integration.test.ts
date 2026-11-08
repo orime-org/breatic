@@ -295,7 +295,7 @@ describe("chargeForGeneration with a hold", () => {
     expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "30.000000", held: "0.000000", available: "30.000000" });
   });
 
-  it("tells the project's readers once the charge has committed", async () => {
+  it("tells the project's users once the charge has committed", async () => {
     const fx = await studioWith(100);
     const subscriber = createRedisClient(env.REDIS_STREAM_URL, { name: "credit-hold-test-sub" });
     try {

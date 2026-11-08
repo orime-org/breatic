@@ -119,7 +119,7 @@ describe('route table', () => {
 
   it('sends every production page through lazyRoute', () => {
     // A route written as a bare `lazy(() => import(...))` is lazy too, so the
-    // check above passes it while the reader loses the deploy recovery and the
+    // check above passes it while the user loses the deploy recovery and the
     // head start. What tells them apart is the `preload` only `lazyRoute`
     // attaches, which is a fact about the components the table actually built
     // — not about how its source happens to be spelled.
@@ -130,7 +130,7 @@ describe('route table', () => {
     expect(bare).toEqual([]);
   });
 
-  it('covers every entry a reader can land on', () => {
+  it('covers every entry a user can land on', () => {
     // Guards the check above against a route table that shrank: an empty list
     // of eager pages also describes a table with no pages at all.
     expect(collectPages(router.routes).map((entry) => entry.path).sort()).toEqual(
@@ -152,9 +152,9 @@ describe('route table', () => {
     );
   });
 
-  it('lets only the page the reader works in speak when a chunk is gone', () => {
+  it('lets only the page the user works in speak when a chunk is gone', () => {
     // Nothing reloads the tab on any route; the editing surface is the one
-    // entry that tells the reader why it cannot open (user 2026-09-18). Which
+    // entry that tells the user why it cannot open (user 2026-09-18). Which
     // entry that is is one option in `routes.tsx`, and nothing at runtime
     // reads it back — so this reads the table's source, the way
     // `verify-chunks.mjs` does, rather than putting a property on the
@@ -184,9 +184,9 @@ describe('route table', () => {
 
   it('puts every entry under the one loading boundary', () => {
     // The whole of "all thirteen entries wait behind the same screen" is one
-    // call in `routes.tsx`, and it is the only thing the reader's waiting
+    // call in `routes.tsx`, and it is the only thing the user's waiting
     // screen depends on. Removed, the table still builds, every page is still
-    // lazy, and the reader gets a blank page instead.
+    // lazy, and the user gets a blank page instead.
     expect(router.routes).toHaveLength(1);
     const [root] = router.routes;
     const element = root?.element as React.ReactElement | undefined;

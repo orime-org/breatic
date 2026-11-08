@@ -5,9 +5,9 @@
  * Asked how to use the product, the agent answers from the product (#260).
  *
  * Unit tests settle that the guide says the right things and that a turn
- * hands it the reader's language. What they cannot settle is that a real
+ * hands it the user's language. What they cannot settle is that a real
  * model, asked a real question, reaches for the guide rather than guessing,
- * and that what it writes names the control the reader's screen shows. The
+ * and that what it writes names the control the user's screen shows. The
  * label is read off the screen itself, so the assertion does not trust the
  * guide to be right about it.
  *
@@ -50,7 +50,7 @@ async function toolsUsed(p: Page): Promise<string[]> {
 /**
  * Ask one question in a fresh conversation and wait for the whole reply.
  * @param p - The signed-in page.
- * @param question - What the reader types.
+ * @param question - What the user types.
  * @returns The reply's bubble.
  */
 async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTestId']>> {
@@ -80,7 +80,7 @@ test('asked how to generate, names the menu item the screen shows @needs-model',
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'canvas', `guide-${String(Date.now())}`));
 
-  // The label as this reader's screen shows it, read off a real node's menu.
+  // The label as this user's screen shows it, read off a real node's menu.
   const pane = visibleSpace(page).locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
@@ -122,7 +122,7 @@ test('asked how to insert a table and add a row, names the controls the screen s
   await editor.click();
   await page.keyboard.type('lead');
 
-  // The labels as this reader's screen shows them: the insert submenu, the
+  // The labels as this user's screen shows them: the insert submenu, the
   // table row in it, and the row handle's "insert below".
   const row = await page.locator('[data-testid="document-space"] .bn-block-content').first().boundingBox();
   if (row === null) throw new Error('the line has no box');
@@ -167,7 +167,7 @@ test('writes a formula and HTML the way the reply renders them @needs-model', as
   // paragraph with no block around it.
   await expect(reply.locator('pre code').first()).toContainText('hello');
   // A formula left in single dollars, even one letter inside a sentence,
-  // reaches the reader as the dollars themselves.
+  // reaches the user as the dollars themselves.
   const prose = await reply.evaluate((el) => {
     const copy = el.cloneNode(true) as HTMLElement;
     copy.querySelectorAll('pre, .katex').forEach((n) => n.remove());
@@ -190,7 +190,7 @@ test('cites a search without listing source addresses @needs-model', async () =>
   expect(text, `the reply: ${text}`).not.toMatch(/https?:\/\//);
 });
 
-test('after a proposal, does not ask the reader to write the prompt it wrote @needs-model', async () => {
+test('after a proposal, does not ask the user to write the prompt it wrote @needs-model', async () => {
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'canvas', `steps-${String(Date.now())}`));
 
@@ -203,7 +203,7 @@ test('after a proposal, does not ask the reader to write the prompt it wrote @ne
   expect(used, `tools used: ${used.join(', ')}`).toContain('propose_canvas_action');
   expect(used, `tools used: ${used.join(', ')}`).toContain('get_product_guide');
   // Placing writes the prompt, its marks and its mentions; steps that start
-  // from an empty prompt box describe a panel the reader will not see.
+  // from an empty prompt box describe a panel the user will not see.
   const text = await reply.innerText();
   expect(text, `the reply: ${text}`).not.toMatch(
     /\b(write|type|enter)\s+(a|the|your)\s+(\w+\s+)?prompt\b/i,

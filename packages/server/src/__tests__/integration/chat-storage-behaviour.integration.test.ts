@@ -447,7 +447,7 @@ describe("what was sent to the model", () => {
 });
 
 describe("reading a conversation longer than one page", () => {
-  it("hands out every message exactly once as the reader walks back", async () => {
+  it("hands out every message exactly once as the user walks back", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
@@ -496,7 +496,7 @@ describe("the memory chain still sees the same messages", () => {
   it("does not move the conversation when it records what it consolidated", async () => {
     // `updated_at` orders the conversation list and decides which one an open
     // lands on, and what it means there is "last used". Consolidation is
-    // bookkeeping the reader never asked for and cannot see; moving the
+    // bookkeeping the user never asked for and cannot see; moving the
     // conversation for it would lift one they have not opened in weeks to
     // the top of their list.
     const { userId, projectId } = await seedProject();

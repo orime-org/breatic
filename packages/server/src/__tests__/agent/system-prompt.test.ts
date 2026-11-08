@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { READER_LANGUAGE_REMINDER } from "@server/agent/user-turn.js";
+import { USER_LANGUAGE_REMINDER } from "@server/agent/user-turn.js";
 import { TOOL_MAP, instructionsForAgentMemory, instructionsText } from "@breatic/domain";
 
 describe("the system prompt", () => {
@@ -36,7 +36,7 @@ describe("the system prompt", () => {
   it("names every product term that stays English in any language", () => {
     // The same vocabulary the interface keeps in English
     // (packages/web/AGENTS.md#product-terms-are-never-translated): a reply
-    // that calls a Space a translated word describes a screen the reader
+    // that calls a Space a translated word describes a screen the user
     // cannot find.
     const terms = [
       "Studio", "Project", "Collection", "Space", "Work", "Canvas", "Document", "Timeline",
@@ -49,10 +49,10 @@ describe("the system prompt", () => {
 
   it("repeats the product-term rule under every user message", () => {
     // From the system prompt alone the model still echoed the translated word
-    // a reader had just typed (a Chinese question about a Space got its
-    // translation back in the first clause); the line under the reader's own
+    // a user had just typed (a Chinese question about a Space got its
+    // translation back in the first clause); the line under the user's own
     // words is what it reads last.
-    expect(READER_LANGUAGE_REMINDER).toMatch(/product terms .*English/i);
+    expect(USER_LANGUAGE_REMINDER).toMatch(/product terms .*English/i);
   });
 
   it("tells the model to call tools rather than write out calls", () => {
@@ -120,12 +120,12 @@ describe("what the prompt says about the Agent's memory (#1363)", () => {
     expect(buildSystemPrompt()).toContain("## Memory");
   });
 
-  it("says to save what the reader asks to remember, replacing the entry on the same thing", () => {
+  it("says to save what the user asks to remember, replacing the entry on the same thing", () => {
     expect(wording()).toMatch(/asks you to remember something, save it with save_memory/);
     expect(wording()).toMatch(/pass its id to replace it/);
   });
 
-  it("says to delete what the reader asks to forget, or says is wrong", () => {
+  it("says to delete what the user asks to forget, or says is wrong", () => {
     expect(wording()).toMatch(/forget something, or says an entry is wrong, remove it with delete_memory/);
   });
 
@@ -165,19 +165,19 @@ describe("what the prompt says the model can do", () => {
 describe("what the prompt says the model's job is", () => {
   // Without a stated job the model answered as a general assistant: asked to
   // scale a canvas picture, it gave a command line, another app and a website,
-  // then wrote a web page for the reader to screenshot (#1366).
+  // then wrote a web page for the user to screenshot (#1366).
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 
-  it("says the job is to help the reader make what they set out to make, with what Breatic can do", () => {
-    expect(wording()).toMatch(/Your job is to help the reader make what they set out to make, with what Breatic can do/);
+  it("says the job is to help the user make what they set out to make, with what Breatic can do", () => {
+    expect(wording()).toMatch(/Your job is to help the user make what they set out to make, with what Breatic can do/);
   });
 
   it("keeps work Breatic does inside Breatic", () => {
     expect(wording()).toMatch(/Never send them to another program, a command line or a website for work Breatic does/);
   });
 
-  it("says the model does not write programs, scripts or web pages for the reader", () => {
-    expect(wording()).toMatch(/You do not write programs, scripts or web pages for the reader/);
+  it("says the model does not write programs, scripts or web pages for the user", () => {
+    expect(wording()).toMatch(/You do not write programs, scripts or web pages for the user/);
   });
 
   it("says to find out before answering, not to answer from memory", () => {
@@ -187,7 +187,7 @@ describe("what the prompt says the model's job is", () => {
 
   it("says to find the cause before suggesting a fix", () => {
     expect(wording()).toMatch(/find out why before you suggest a fix/);
-    expect(wording()).toMatch(/Do not guess a cause and have the reader try one thing after another/);
+    expect(wording()).toMatch(/Do not guess a cause and have the user try one thing after another/);
   });
 
   it("keeps what was checked apart from what was not", () => {
@@ -195,7 +195,7 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).toMatch(/never present something that might work as something that will/);
   });
 
-  it("asks for steps naming the node, menu row, button, value and what the reader will see", () => {
+  it("asks for steps naming the node, menu row, button, value and what the user will see", () => {
     expect(wording()).toMatch(/which node, which menu row, which button, what value, and what they will see when it worked/);
   });
 
@@ -204,8 +204,8 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).toMatch(/Where Breatic falls short of what they asked, say so plainly and give the nearest result it can give/);
   });
 
-  it("asks only for what only the reader can tell, and why", () => {
-    expect(wording()).toMatch(/Do not hand your own legwork to the reader/);
+  it("asks only for what only the user can tell, and why", () => {
+    expect(wording()).toMatch(/Do not hand your own legwork to the user/);
     expect(wording()).toMatch(/Ask only for what only they can tell you/);
   });
 
@@ -222,7 +222,7 @@ describe("how the prompt says to write a reply", () => {
     expect(wording()).toMatch(/every piece of text you hand a tool that ends up on the user's screen, such as a prompt/);
   });
 
-  it("names the two exceptions to the reader's language", () => {
+  it("names the two exceptions to the user's language", () => {
     expect(wording()).toMatch(/text whose language the work itself sets/);
     expect(wording()).toMatch(/a language the user asks for/);
   });
@@ -249,7 +249,7 @@ describe("how the prompt says to write a reply", () => {
   });
 
   it("shows a single letter inside a sentence written with double dollars", () => {
-    // A real turn wrote "where $a$ and $b$ are the legs" and the reader saw the
+    // A real turn wrote "where $a$ and $b$ are the legs" and the user saw the
     // dollars: the rule alone did not reach the one-letter case.
     expect(wording()).toContain("$$a$$");
     expect(wording()).toMatch(/not `\$a\$`/);

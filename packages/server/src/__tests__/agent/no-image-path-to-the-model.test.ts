@@ -81,7 +81,7 @@ describe("the turn's user message", () => {
       "utf8",
     );
     // `buildUserContent` existed to turn a list of URLs into image parts. A
-    // turn's message is the text the reader typed; there is no second thing
+    // turn's message is the text the user typed; there is no second thing
     // to assemble it with.
     expect(source).not.toContain("buildUserContent");
     expect(source).not.toContain("ImagePart");

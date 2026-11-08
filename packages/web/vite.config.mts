@@ -48,7 +48,7 @@ export default defineConfig(({ command, mode }) => {
         Boolean(env.VITE_AMPLITUDE_API_KEY?.trim() || env.VITE_GOOGLE_ADS_TAG_ID?.trim()),
       ),
       // The keys `tInEveryLocale` reads back in every language, which the
-      // entry carries beside the one catalog a reader downloads (#1374).
+      // entry carries beside the one catalog a user downloads (#1374).
       '__EVERY_LOCALE_MESSAGES__': JSON.stringify(
         everyLocaleMessages(LOCALES_DIR),
       ),
@@ -130,7 +130,7 @@ export default defineConfig(({ command, mode }) => {
       // worker is constructed — the first upload of the session. Vite then
       // finds a new dependency, re-bundles, and reloads the page ("optimized
       // dependencies changed. reloading"), which lands on the tab-close guard
-      // while that very upload is in flight and asks the reader whether to
+      // while that very upload is in flight and asks the user whether to
       // leave. Naming it here has it pre-bundled at server start instead.
       include: ['hash-wasm'],
     },
@@ -242,7 +242,7 @@ export default defineConfig(({ command, mode }) => {
               return 'xlsx';
             }
             // Split only what a page chunk alone reaches. A group that shared
-            // code also touches is pulled into every reader's first load:
+            // code also touches is pulled into every user's first load:
             // splitting @tiptap/prosemirror/@blocknote measured the login
             // page up from 1,066,370 to 2,191,307 bytes, and the AI SDK
             // pushed 68,940 of its own onto it. These three are reached from

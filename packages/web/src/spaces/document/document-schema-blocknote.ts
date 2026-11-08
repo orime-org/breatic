@@ -152,7 +152,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
     // The library's own `---` rule is dropped: its wrapper always ends by
     // putting the caret at the start of the new block, which for a block with
-    // no text is a node selection the reader cannot type into
+    // no text is a node selection the user cannot type into
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },

@@ -1424,7 +1424,7 @@ describe('VideoGeneratePanelContainer', () => {
       // string carries ("connected") — without it, a user on a fresh node types
       // `@`, gets no popup at all, and has nowhere to go. It says what this
       // node is still short of rather than what the mode requires (#2117):
-      // the reader may have just picked a motion clip, and a sentence about
+      // the user may have just picked a motion clip, and a sentence about
       // the mode's requirements reads as though that clip was turned down.
       expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
         'Still missing a reference image — connect one to this node and type @ in the prompt to use it',
@@ -2441,7 +2441,7 @@ describe('the multi-shot mode', () => {
     await waitFor(() => expect(caretIn(2)).toBe(true));
   });
 
-  it('opens the shot the reader adds and puts the caret in it (#1201)', async () => {
+  it('opens the shot the user adds and puts the caret in it (#1201)', async () => {
     await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     fireEvent.click(await screen.findByTestId('generate-storyboard-add'));
     await waitFor(() => expect(screen.getByTestId('generate-storyboard-shot-3-editor')).toBeVisible());
@@ -2462,7 +2462,7 @@ describe('the multi-shot mode', () => {
     expect(caretIn(2)).toBe(true);
   });
 
-  it('opens the shot after the open one the reader removes, or the one before when it was the last (#1201)', async () => {
+  it('opens the shot after the open one the user removes, or the one before when it was the last (#1201)', async () => {
     await openOn('multi_shot', threeShots);
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-2-toggle'));
     const third = readShots('p', 's', 'target')?.[2]?.id;
@@ -2477,7 +2477,7 @@ describe('the multi-shot mode', () => {
     expect(screen.getByTestId('generate-storyboard-shot-1-editor')).toBeVisible();
   });
 
-  it('keeps the open shot when the reader removes a collapsed one (#1201)', async () => {
+  it('keeps the open shot when the user removes a collapsed one (#1201)', async () => {
     await openOn('multi_shot', threeShots);
     const first = readShots('p', 's', 'target')?.[0]?.id;
     fireEvent.click(await screen.findByTestId('generate-storyboard-shot-3-remove'));
@@ -2805,7 +2805,7 @@ describe('camera commands', () => {
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
     for (const name of names) fireEvent.click(await screen.findByTestId(option(name)));
     fireEvent.click(await screen.findByTestId('generate-video-camera-insert'));
-    // The popover is closed before the next open, as a reader's next click would find it.
+    // The popover is closed before the next open, as a user's next click would find it.
     await waitFor(() => expect(screen.queryByTestId('generate-video-camera-insert')).toBeNull());
   }
 
@@ -2858,7 +2858,7 @@ describe('camera commands', () => {
     await waitFor(() => expect(readShots('p', 's', 'target')?.[0]?.prompt.toString()).toContain('[Pan left]'));
     // Focus lands in a box a frame after the insert or the click that sends it
     // there, and focus landing outside the open camera picker closes it; the
-    // reader moves on once the caret is in the box, and so does this test.
+    // user moves on once the caret is in the box, and so does this test.
     const focusIn = (n: number): Promise<void> => waitFor(() => expect(
       screen.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).contains(document.activeElement),
     ).toBe(true));
@@ -2916,7 +2916,7 @@ describe('camera commands', () => {
     expect(screen.queryByTestId('hover-preview-content')).toBeNull();
   });
 
-  it('opens with focus on the popover itself, so the hint stays until the reader moves to a command', async () => {
+  it('opens with focus on the popover itself, so the hint stays until the user moves to a command', async () => {
     await openOn('t2v', 'minimax-h3-text-to-video');
     fireEvent.click(screen.getByTestId('generate-video-camera-trigger'));
     const pane = await screen.findByTestId('generate-video-camera-preview');

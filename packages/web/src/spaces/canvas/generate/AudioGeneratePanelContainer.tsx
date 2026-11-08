@@ -450,7 +450,7 @@ function AudioGeneratePanelBody({
     setSeenLyrics(shownLyricsFragment);
     setExpanded('prompt');
   }
-  // Set by the reader's own click on a row, and spent once that box is shown.
+  // Set by the user's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
     focusOnOpen.current = true;

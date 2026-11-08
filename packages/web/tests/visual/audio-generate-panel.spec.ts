@@ -45,7 +45,7 @@ test('the stability tick labels are a pointer target the standard accepts', asyn
   for (let i = 0; i < count; i += 1) {
     // In CSS pixels, the unit the criterion is written in. A bounding box
     // would answer in screen pixels, and this panel lives on a canvas the
-    // reader zooms — at 96% every target measures under its own size, which
+    // user zooms — at 96% every target measures under its own size, which
     // says nothing about the design.
     const height = await ticks.nth(i).evaluate((el) => parseFloat(getComputedStyle(el).height));
     expect(height, `tick ${i} height`).toBeGreaterThanOrEqual(24);

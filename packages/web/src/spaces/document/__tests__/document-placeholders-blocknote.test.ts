@@ -4,9 +4,9 @@
 /**
  * #904 验收 A18 的占位符那半: the "start writing" hint, on the flat model.
  *
- * The hint shows while the document LOOKS empty — nothing a reader could see.
- * That judgement is what the reader sees rather than what the node count says
- * (user 2026-08-18), and the flat model moves two of the things a reader can
+ * The hint shows while the document LOOKS empty — nothing a user could see.
+ * That judgement is what the user sees rather than what the node count says
+ * (user 2026-08-18), and the flat model moves two of the things a user can
  * see out of the node name and into props: a quote is `quoted` on the block
  * rather than a wrapper, and a numbered heading is `numbered`. Both paint
  * something while holding no text — a border, a number — so both keep the hint

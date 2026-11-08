@@ -3,7 +3,7 @@
 
 /**
  * Only English ships in the entry; every other language is downloaded at
- * startup or when the reader picks it from the language menu (breatic#1374).
+ * startup or when the user picks it from the language menu (breatic#1374).
  * Measured in a browser because the questions are about what is painted and
  * what the network delivers: whether the first frame is already in the stored
  * language, what a failed download leaves on screen, and whether the menu item

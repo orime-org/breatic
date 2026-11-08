@@ -17,7 +17,7 @@ import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
  * `toastOnly` — say it, and keep the File where a Retry can re-send it when
  * re-sending could end differently. Whether a task row exists decides who ends
  * the task, which is the row's business rather than this side's: either way the
- * node stays, because a node that exists is the reader's to remove and only
+ * node stays, because a node that exists is the user's to remove and only
  * theirs (#2177).
  */
 export type UploadFailurePlan =
@@ -54,7 +54,7 @@ export type UploadFailurePlan =
 /**
  * How loudly the toast says it.
  *
- * The colour a toast carries is its severity, and the reader cannot see which
+ * The colour a toast carries is its severity, and the user cannot see which
  * gate caught their file: a format we do not take is the same refusal whether
  * the browser or the edge said so, and it reaches the screen under the same
  * sentence either way.
@@ -70,7 +70,7 @@ const REFUSALS: ReadonlySet<UploadFailure['reason']> = new Set([
 ]);
 
 /**
- * The sentence each reason needs, keyed by what the reader should do next.
+ * The sentence each reason needs, keyed by what the user should do next.
  *
  * `transfer` is absent, and the compiler holds it out: with a task row it
  * leaves through the reporting arm below, which carries no sentence; where it
@@ -86,7 +86,7 @@ const TOAST_KEY: Readonly<
   hash: 'canvas.upload.hashUnavailable',
   // The bytes are not a kind we keep, which re-sending them does not change.
   unsupportedType: 'canvas.upload.unsupportedType',
-  // The window passes; the reader retries after it.
+  // The window passes; the user retries after it.
   rateLimited: 'canvas.upload.rateLimited',
   // The same bytes are over the same cap the next time.
   tooLarge: 'canvas.upload.tooLarge',
@@ -126,7 +126,7 @@ export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
  * The sentence a failure is said in.
  *
  * A transfer reads as any failed upload: where no row exists to report it
- * against, that is all the reader can be told.
+ * against, that is all the user can be told.
  * @param reason - Why the upload ended.
  * @returns The message key.
  */

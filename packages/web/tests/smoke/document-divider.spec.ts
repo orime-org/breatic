@@ -285,7 +285,7 @@ test('a selected divider goes with Backspace and comes back with undo (A4)', asy
   await sandwich(page);
 
   // Yjs folds edits closer together than its capture timeout (500ms, the
-  // library default this Space keeps) into one undo step. A reader does not
+  // library default this Space keeps) into one undo step. A user does not
   // type a document and delete from it inside half a second; a script does.
   await page.waitForTimeout(UNDO_CAPTURE_MS + 100);
   await page.locator(`${DIVIDER} hr`).click();

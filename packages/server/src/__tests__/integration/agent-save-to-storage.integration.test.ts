@@ -340,7 +340,7 @@ describe("the agent's save — when the link does not land", () => {
       (e: unknown) => e,
     );
 
-    expect(err).toBeInstanceOf(backendUploadService.ReaderUrlTransferError);
+    expect(err).toBeInstanceOf(backendUploadService.UserUrlTransferError);
     expect(err).toMatchObject({ reason: "store_failed" });
     expect((await grantsOf(projectId))[0]!.voided_at).not.toBeNull();
   });

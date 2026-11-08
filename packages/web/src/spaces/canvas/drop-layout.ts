@@ -6,7 +6,7 @@
  *
  * A drop names one point and hands over several files, so the positions have
  * to be derived. They are derived here rather than at the drop so the one
- * thing that decides whether the reader can see what they just dropped is a
+ * thing that decides whether the user can see what they just dropped is a
  * function a test can walk.
  */
 
@@ -21,7 +21,7 @@ export interface DropPoint {
 /**
  * Space between neighbours, so the grid reads as separate nodes rather than a
  * wall. The canvas dot grid is 24px, so a gap of one dot keeps the seam on the
- * background the reader already sees.
+ * background the user already sees.
  */
 export const GAP_PX = 24;
 
@@ -31,13 +31,13 @@ export const GAP_PX = 24;
  * Four keeps a batch of the sizes people actually drop to one or two rows on a
  * desktop-width canvas. It is not a promise about fitting: the canvas floors at
  * 420px (`SPACE_MIN_WIDTH`), where a single 288px node already takes most of
- * the width, so at that end the reader pans whatever this says.
+ * the width, so at that end the user pans whatever this says.
  */
 const COLUMNS = 4;
 
 /**
  * What a node draws to the right of its own box: the task-count column
- * (`node-task-counts-anchor`, anchored `left-full`), which is what the reader
+ * (`node-task-counts-anchor`, anchored `left-full`), which is what the user
  * watches while an upload runs. Measured at zoom 1 — `pl-2` (8) plus one cell
  * (`p-1.5` on each side, a `size-3` mark and a 1px border, 26).
  *
@@ -68,7 +68,7 @@ export const NODE_STEP = {
  * Where the nodes of one batch go, centred on the point it came in at.
  *
  * One file puts its node's centre on that point, so a batch puts the centre of
- * what the batch adds up to there: the reader points at a place and the thing
+ * what the batch adds up to there: the user points at a place and the thing
  * they handed over appears around it, however many files it was. The whole
  * batch is laid out in one call because the centring needs the count, and a
  * per-index function would let a caller place a batch without it.

@@ -85,7 +85,7 @@ vi.mock("@domain/asset/ingest-report.service.js", async (importOriginal) => ({
   applyIngestReport,
 }));
 
-const { uploadBytesToStorage, transferUrlToStorage, transferReaderUrlToStorage, ReaderUrlTransferError } =
+const { uploadBytesToStorage, transferUrlToStorage, transferUserUrlToStorage, UserUrlTransferError } =
   await import("@domain/asset/backend-upload.service.js");
 const { DeadlinePassed, INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED, INGEST_TYPE_NOT_REPORTED, UploadHttpError } =
   await import("@breatic/shared");
@@ -486,7 +486,7 @@ describe("transferUrlToStorage — lane ③", () => {
   // upload itself; nothing here opens one beforehand.
   it("T46: opens nothing ahead of a link transfer, and still hands the Worker the ticket", async () => {
     await transferUrlToStorage("https://provider.example/tmp/out.png", CTX);
-    await transferReaderUrlToStorage("https://imgs.example/cat.jpg", { projectId: "p1", actingUserId: "u1" });
+    await transferUserUrlToStorage("https://imgs.example/cat.jpg", { projectId: "p1", actingUserId: "u1" });
 
     expect(openUploadAtIngest).not.toHaveBeenCalled();
     expect(fetchUrlToIngest).toHaveBeenCalledTimes(2);
@@ -572,12 +572,12 @@ describe("what lane ② asks the Worker for", () => {
 // A link somebody other than a provider handed over: the agent's save
 // (inner#1315). Nobody here knows what it holds, so the Worker reads the type
 // off the source, and a refusal is the link's, settled before it is reported.
-describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
+describe("transferUserUrlToStorage — a user's link (inner#1315)", () => {
   const LINK = "https://imgs.example/photos/cat.JPG?sig=abc";
   const WHO = { projectId: "p1", actingUserId: "u1" };
 
   it("opens an agent grant keyed by the link's extension and lets the Worker read the type", async () => {
-    await transferReaderUrlToStorage(LINK, WHO);
+    await transferUserUrlToStorage(LINK, WHO);
 
     expect(issueUploadGrant.mock.calls[0]?.[0]).toMatchObject({
       projectId: "p1",
@@ -596,7 +596,7 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   it("hands the stop signal to the transfer", async () => {
     const stop = new AbortController();
 
-    await transferReaderUrlToStorage(LINK, WHO, stop.signal);
+    await transferUserUrlToStorage(LINK, WHO, stop.signal);
 
     expect(fetchUrlToIngest.mock.calls[0]?.[4]).toBe(stop.signal);
   });
@@ -604,7 +604,7 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   // The grant it opens runs out two hours on, like any upload's, and the
   // transfer is held to that same moment.
   it("holds the transfer to the deadline its ticket carries", async () => {
-    await transferReaderUrlToStorage(LINK, WHO);
+    await transferUserUrlToStorage(LINK, WHO);
 
     const deadlineAt = signTicketDeadline();
     expect(deadlineAt).toBeGreaterThan(Date.now() + 7_190_000);
@@ -614,7 +614,7 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   it("registers the type the Worker judged, not the placeholder it was signed with", async () => {
     fetchUrlToIngest.mockResolvedValue({ ...MEASURED, contentType: "image/jpeg; charset=binary" });
 
-    const out = await transferReaderUrlToStorage(LINK, WHO);
+    const out = await transferUserUrlToStorage(LINK, WHO);
 
     expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ outcome: "completed", contentType: "image/jpeg" }),
@@ -625,10 +625,10 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   it("settles the grant and names the link's own refusal", async () => {
     fetchUrlToIngest.mockRejectedValue(new UploadHttpError(502, "source_unreachable"));
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
-    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe("source_unreachable");
+    expect(failed).toBeInstanceOf(UserUrlTransferError);
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reason).toBe("source_unreachable");
     expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
       storageKey: "image/2026-01-01/k.png",
       outcome: "aborted",
@@ -639,19 +639,19 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   it("settles the grant when nothing answered", async () => {
     fetchUrlToIngest.mockRejectedValue(new Error("socket hang up"));
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_NO_ANSWER);
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reason).toBe(INGEST_NO_ANSWER);
     expect(applyIngestReport).toHaveBeenCalledWith(expect.objectContaining({ outcome: "aborted" }));
   });
 
   it("T34: settles the grant as the unnamed refusal when the Worker answered without a name", async () => {
     fetchUrlToIngest.mockRejectedValue(new UploadHttpError(500, null));
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
-    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_REFUSED_UNNAMED);
+    expect(failed).toBeInstanceOf(UserUrlTransferError);
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reason).toBe(INGEST_REFUSED_UNNAMED);
     expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
       storageKey: "image/2026-01-01/k.png",
       outcome: "aborted",
@@ -662,10 +662,10 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
   it("settles the grant when the stored type is not one we take", async () => {
     fetchUrlToIngest.mockResolvedValue({ ...MEASURED, contentType: "application/octet-stream" });
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_TYPE_NOT_REPORTED);
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reported).toBe("application/octet-stream");
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reason).toBe(INGEST_TYPE_NOT_REPORTED);
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reported).toBe("application/octet-stream");
     expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED }),
     );
@@ -677,7 +677,7 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
     fetchUrlToIngest.mockRejectedValue(refused);
     applyIngestReport.mockRejectedValue(unsettled);
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
     expect(failed).toBeInstanceOf(AggregateError);
     expect((failed as AggregateError).errors).toEqual([refused, unsettled]);
@@ -689,9 +689,9 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
     // the same link gets the same answer again.
     applyIngestReport.mockResolvedValue({ status: "rejected", reason });
 
-    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+    const failed = await transferUserUrlToStorage(LINK, WHO).catch((err: unknown) => err);
 
-    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
-    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(reason);
+    expect(failed).toBeInstanceOf(UserUrlTransferError);
+    expect((failed as InstanceType<typeof UserUrlTransferError>).reason).toBe(reason);
   });
 });

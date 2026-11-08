@@ -1005,7 +1005,7 @@ test('selecting text leaves the document as long as it was', async ({ page }) =>
 // The bar's first painted frame. floating-ui needs the element in the document
 // before it can measure it, so the bar enters at whatever offsets the last
 // computation left behind and moves once the real ones land. Whether the
-// reader sees that is the question: only a browser paints, and only a browser
+// user sees that is the question: only a browser paints, and only a browser
 // runs the frames this counts.
 test('浮出条第一次画出来就在它最终的位置上', async ({ page }) => {
   await openFreshDocument(page);
@@ -1069,7 +1069,7 @@ test('浮出条第一次画出来就在它最终的位置上', async ({ page }) 
 
   const shown = frames.filter((f) => f.visible);
   expect(shown.length).toBeGreaterThan(0);
-  // Every frame the reader sees is the resting one. A bar that enters at a
+  // Every frame the user sees is the resting one. A bar that enters at a
   // stale offset and jumps has at least two distinct visible positions.
   const settled = shown.at(-1)!;
   expect(shown[0]).toMatchObject({ top: settled.top, left: settled.left });
@@ -1078,7 +1078,7 @@ test('浮出条第一次画出来就在它最终的位置上', async ({ page }) 
 // E3 says the bar picks its side as it comes up. D1 keeps it off screen for
 // the length of a drag-select, so "as it comes up" is the release — and a side
 // settled from an anchor passed through mid-drag is settled from a place the
-// reader never saw. Dragging upward is where the two differ: there is room
+// user never saw. Dragging upward is where the two differ: there is room
 // above the head where the drag starts and none where it ends.
 test('往上拖着选到正文区顶端，松手后条整个在正文区里', async ({ page }) => {
   await openFreshDocument(page);

@@ -101,14 +101,14 @@ interface ConversationHistorySheetProps {
   onDelete: (id: string) => Promise<void>;
   /** The project has conversations older than the ones listed. */
   hasMore: boolean;
-  /** Called when the reader reaches the end of what has been fetched. */
+  /** Called when the user reaches the end of what has been fetched. */
   onReachEnd: () => void;
   /** A request for the next page is out. */
   loadingMore: boolean;
   /**
    * The last attempt at the next page failed.
    *
-   * The reader is told in a toast as it happens (inner#1530); what this
+   * The user is told in a toast as it happens (inner#1530); what this
    * changes here is what is watched: the end of the list stops being
    * watched and a single scroll is watched instead -- a failure moves nothing,
    * so an end still in view would have the failure asking again on its own.
@@ -118,7 +118,7 @@ interface ConversationHistorySheetProps {
    * The first page is on its way.
    *
    * "Nothing here" and "not known yet" are different sentences, and the list
-   * holds nothing in both cases. Saying the wrong one has the reader close
+   * holds nothing in both cases. Saying the wrong one has the user close
    * this and believe they misremembered.
    */
   listLoading?: boolean;
@@ -214,7 +214,7 @@ function ConversationRowView({
   const chose = React.useRef<'rename' | 'delete' | null>(null);
   const rel = relativeTime(row.updatedAt);
 
-  // Focus is put in the box the moment it appears, because the reader asked
+  // Focus is put in the box the moment it appears, because the user asked
   // for it by choosing Rename -- there is nothing else they came here to do.
   // Done with a ref rather than `autoFocus`: that attribute also fires when a
   // page first loads, which is where its bad name comes from, and the rule
@@ -400,7 +400,7 @@ function ConversationRowView({
 }
 
 /**
- * Side sheet listing this reader's conversations in this project.
+ * Side sheet listing this user's conversations in this project.
  *
  * Rows are ordered most recently used first, which is the order the server
  * sends them in and the order that makes the top of the list the one they
@@ -412,9 +412,9 @@ function ConversationRowView({
  * @param root0.activeId - The id of the currently active conversation, if any.
  * @param root0.onPick - Called with a conversation id when a row is selected.
  * @param root0.onRename - Called with an id and the name that was typed.
- * @param root0.onDelete - Called with an id once the reader has confirmed.
+ * @param root0.onDelete - Called with an id once the user has confirmed.
  * @param root0.hasMore - The project has conversations older than the ones listed.
- * @param root0.onReachEnd - Called when the reader reaches the end of what has been fetched.
+ * @param root0.onReachEnd - Called when the user reaches the end of what has been fetched.
  * @param root0.loadingMore - A request for the next page is out.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
  * @param root0.listLoading - The first page of the list is on its way.
@@ -435,7 +435,7 @@ function ConversationHistorySheetInner({
   listLoading = false,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
-  // Which conversation the reader has asked to delete, while they are being
+  // Which conversation the user has asked to delete, while they are being
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
@@ -458,7 +458,7 @@ function ConversationHistorySheetInner({
       const id = deleting;
       if (id === null) return;
       void trackDelete(id, onDelete(id)).finally(() => {
-        // Only the question about this row: the reader may have walked away
+        // Only the question about this row: the user may have walked away
         // from it and asked about another while this one was out.
         setDeleting((d) => (d === id ? null : d));
       });
@@ -479,7 +479,7 @@ function ConversationHistorySheetInner({
     itemCount: conversations.length,
     // After a failure the end of the list is no longer what is watched: it is
     // still in view and nothing moved it, so watching it again would ask again
-    // by itself. A scroll is watched instead, which only the reader can do.
+    // by itself. A scroll is watched instead, which only the user can do.
     failed: nextPageFailed,
   });
 
@@ -491,7 +491,7 @@ function ConversationHistorySheetInner({
   return (
     // Modal, which is what makes the scrim below exist at all: Radix renders
     // the overlay only for a modal root (`sheet.tsx:29`), and the panel behind
-    // this list is not what the reader is working in while it is open.
+    // this list is not what the user is working in while it is open.
     <Sheet open={open} onOpenChange={onOpenChange} modal>
       <SheetContent
         onCloseAutoFocus={returnFocus}
@@ -509,7 +509,7 @@ function ConversationHistorySheetInner({
         }}
         side='left-floating'
         // The same scrim the Space drawer puts behind itself: while the list
-        // is open the panel behind it is not what the reader is working in,
+        // is open the panel behind it is not what the user is working in,
         // and leaving it live invites a press that lands somewhere they did
         // not mean.
         withOverlay
@@ -563,7 +563,7 @@ function ConversationHistorySheetInner({
                 ))
               )}
             </ul>
-            {/* After the last row, so coming into view means the reader has
+            {/* After the last row, so coming into view means the user has
                 got to the end of what has been fetched. */}
             <div ref={sentinelRef} data-testid='conversation-list-end' />
             {/* The foot of the list says what is happening there, and there is

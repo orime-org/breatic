@@ -5,7 +5,7 @@
  * A drop of outside content is a paste at the drop point (inner#1351 +
  * inner#1390 design §5.4.1, A5): read first, then put by the same rules a
  * paste there would follow, the placed content selected, one undo step back
- * to the reader's caret.
+ * to the user's caret.
  */
 
 import { act } from '@testing-library/react';
@@ -30,7 +30,7 @@ type Block = { type: string; props: Record<string, unknown>; content?: unknown; 
 const PIC = `${OURS}p.png`;
 
 /**
- * Lets initial view mutations finish before the reader selects or drops.
+ * Lets initial view mutations finish before the user selects or drops.
  * @param blocks - The initial document.
  * @returns The mounted body and its upload and undo controls.
  */
@@ -248,7 +248,7 @@ function selectedContent(editor: Editor): { oneCell: boolean; words: string; med
 }
 
 describe('a drop as an undo step', () => {
-  it('one undo takes all of it out and puts the caret back where the reader left it', async () => {
+  it('one undo takes all of it out and puts the caret back where the user left it', async () => {
     const { editor, manager } = await openReady([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'abcd' }]);
     caretIn(editor, 0);
     dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/html': `<p>w</p><img src="${PIC}">`, 'text/plain': 'w' });

@@ -17,7 +17,7 @@
  *
  * The last segment of the path, which for our own keys is
  * `{epoch}_{uuid}{ext}` — minted by `storageKey` and unique to this object.
- * Percent-escapes come off: an address carries the escaped form and a reader
+ * Percent-escapes come off: an address carries the escaped form and a user
  * is looking at a name.
  * @param url - The address the asset is stored at.
  * @returns The name, or null when the address has no path segment to read.

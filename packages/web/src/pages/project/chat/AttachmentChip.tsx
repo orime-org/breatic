@@ -19,7 +19,7 @@ interface AttachmentChipProps {
   id: string;
   /** What kind of thing it is. */
   type: ChatAttachedChip['type'];
-  /** What the reader sees it called; empty for several canvas nodes. */
+  /** What the user sees it called; empty for several canvas nodes. */
   name: string;
   /** What is sent for the item, once it has it: previewed on hover. */
   chip?: ChatAttachedChip;
@@ -39,7 +39,7 @@ interface AttachmentChipProps {
  * @param root0 - The component props.
  * @param root0.id - Which item this is.
  * @param root0.type - What kind of thing it is.
- * @param root0.name - What the reader sees it called.
+ * @param root0.name - What the user sees it called.
  * @param root0.chip - What is sent for the item, once it has it.
  * @param root0.status - Where it stands.
  * @param root0.failure - Why it failed, when it has.
@@ -135,7 +135,7 @@ export function AttachmentKindIcon({ type }: { type: ChatAttachedChip['type'] })
  * block that refers to it open the same preview.
  * @param root0 - The component props.
  * @param root0.chip - What is sent for the item, once it has it.
- * @param root0.name - What the reader sees it called.
+ * @param root0.name - What the user sees it called.
  * @param root0.children - What opens the preview.
  * @returns The hover target.
  */

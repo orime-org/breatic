@@ -27,7 +27,7 @@ afterEach(() => {
  * A body holding one media block shown at a given width.
  * @param type - The block's type.
  * @param width - Its width on screen: 80 puts a video's transport in the floating panel.
- * @param readOnly - Whether the reader may only view.
+ * @param readOnly - Whether the user may only view.
  * @returns The editor.
  */
 function open(type: 'image' | 'video' | 'audio', width: number, readOnly = false): ReturnType<typeof buildDocumentEditor> {

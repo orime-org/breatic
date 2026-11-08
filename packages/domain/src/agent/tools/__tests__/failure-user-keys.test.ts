@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's cause comes out of the same branch as the model's sentence
+ * The user's cause comes out of the same branch as the model's sentence
  * (inner#1620), so the two never tell different stories.
  */
 import { describe, it, expect } from "vitest";
-import { FAILURE_LINES } from "@breatic/shared";
+import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import {
   notOurPayloadReason,
   readFailedReason,
   refusalReason,
+  toolFailed,
   unreachableReason,
   type FailureVoice,
 } from "@domain/agent/tools/failure.js";
@@ -26,19 +27,19 @@ const VOICE: FailureVoice = {
 describe("a status the service refused with", () => {
   it.each([500, 503, 429, 408])("%i is their fault: busy, and the model stops", (status) => {
     const failure = refusalReason(VOICE, "q", status);
-    expect(failure.readerKey).toBe(FAILURE_LINES.busy);
+    expect(failure.userKey).toBe(FAILURE_LINES.busy);
     expect(failure.forModel).toMatch(/Do not repeat this search/);
   });
 
   it.each([401, 403, 422, 404, 301])("%i is our configuration: unavailable, and the model stops", (status) => {
     const failure = refusalReason(VOICE, "q", status);
-    expect(failure.readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(failure.userKey).toBe(FAILURE_LINES.unavailable);
     expect(failure.forModel).toMatch(/Do not repeat this search/);
   });
 
   it("402 is our account with the service: unavailable, and the model stops rather than rewording", () => {
     const failure = refusalReason(VOICE, "q", 402);
-    expect(failure.readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(failure.userKey).toBe(FAILURE_LINES.unavailable);
     expect(failure.forModel).toMatch(/account/);
     expect(failure.forModel).toMatch(/Do not repeat this search/);
     expect(failure.forModel).not.toMatch(/different wording/);
@@ -46,29 +47,39 @@ describe("a status the service refused with", () => {
 
   it("any other 4xx is this request: refused, and the model may reword once", () => {
     const failure = refusalReason(VOICE, "q", 400);
-    expect(failure.readerKey).toBe(FAILURE_LINES.refused);
+    expect(failure.userKey).toBe(FAILURE_LINES.refused);
     expect(failure.forModel).toMatch(/different wording at most once/);
   });
 
   it("a caller that knows the request is rewritable gets refused", () => {
-    expect(refusalReason(VOICE, "q", 422, "", true).readerKey).toBe(FAILURE_LINES.refused);
+    expect(refusalReason(VOICE, "q", 422, "", true).userKey).toBe(FAILURE_LINES.refused);
   });
 
   it("a caller that knows the service named our configuration gets unavailable", () => {
-    expect(refusalReason(VOICE, "q", 400, "", false).readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(refusalReason(VOICE, "q", 400, "", false).userKey).toBe(FAILURE_LINES.unavailable);
   });
 });
 
 describe("the other ways a service fails", () => {
   it("an answer that is not results is badAnswer", () => {
-    expect(notOurPayloadReason(VOICE, "q").readerKey).toBe(FAILURE_LINES.badAnswer);
+    expect(notOurPayloadReason(VOICE, "q").userKey).toBe(FAILURE_LINES.badAnswer);
   });
 
   it("an answer that stopped arriving is busy", () => {
-    expect(readFailedReason(VOICE, "q", "socket hang up").readerKey).toBe(FAILURE_LINES.busy);
+    expect(readFailedReason(VOICE, "q", "socket hang up").userKey).toBe(FAILURE_LINES.busy);
   });
 
   it("nothing answering is noConnection", () => {
-    expect(unreachableReason(VOICE, "q", "ECONNREFUSED").readerKey).toBe(FAILURE_LINES.noConnection);
+    expect(unreachableReason(VOICE, "q", "ECONNREFUSED").userKey).toBe(FAILURE_LINES.noConnection);
+  });
+});
+
+describe("an error a tool throws", () => {
+  it("carries the line under userKey", () => {
+    expect(toolFailureOf(toolFailed("the site answered 503", FAILURE_LINES.busy))).toEqual({
+      kind: "tool_failed",
+      forModel: "the site answered 503",
+      userKey: FAILURE_LINES.busy,
+    });
   });
 });

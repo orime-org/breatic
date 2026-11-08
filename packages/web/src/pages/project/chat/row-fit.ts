@@ -7,7 +7,7 @@ import * as React from 'react';
  * How many squares a row is divided into.
  *
  * The count is what stays fixed and the size is what follows from it, so the
- * pictures are as large as the column allows. A reader scanning a row of
+ * pictures are as large as the column allows. A user scanning a row of
  * photographs is deciding which one to open, and a crop too small to tell two
  * neon streets apart sends them through the dialog to find out.
  */
@@ -64,7 +64,7 @@ export function planRow(total: number, roomPx: number, gapPx: number): RowPlan {
  * there is. Measuring the strip of squares instead would feed the result back
  * in: it is a flex item, so its width is its content.
  *
- * Read in a layout effect, so the row the reader sees is already the one that
+ * Read in a layout effect, so the row the user sees is already the one that
  * fits.
  * @returns The ref to put on the container, and the room it has.
  */

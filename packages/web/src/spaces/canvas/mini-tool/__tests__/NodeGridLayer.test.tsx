@@ -4,7 +4,7 @@
 /**
  * The grid tool's layer on the node (inner#1303 §6.4, A15): the dividing lines
  * over the picture while the panel is open, following the rows and columns,
- * and a tile the reader picks or leaves out by clicking it.
+ * and a tile the user picks or leaves out by clicking it.
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';

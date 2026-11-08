@@ -7,10 +7,10 @@
  * A task's `error_message` is read by whoever opens the node's task list, in
  * whatever language they set. A sentence written at the point of failure is
  * frozen into one language at that moment — the server's, or whichever
- * requester happened to trigger it — and every other reader gets that one.
+ * requester happened to trigger it — and every other user gets that one.
  *
  * So the causes we know are stored as a code and turned into a sentence where
- * the reader is. A provider's own error text is not one of these: it is what
+ * the user is. A provider's own error text is not one of these: it is what
  * the provider said, and it travels as itself.
  */
 
@@ -109,15 +109,15 @@ export const TASK_FAILURE_REASONS = [
 export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
 
 /**
- * The cause each stored code is told to the reader as.
+ * The cause each stored code is told to the user as.
  *
  * There are more codes than causes on purpose. An operator has to tell R2
  * refusing the bytes from the parts refusing to assemble; a person reading
  * the node has the same thing to do either way, and a list of our internals
- * is not what they came for. So the log keeps the code and the reader gets
+ * is not what they came for. So the log keeps the code and the user gets
  * the cause.
  *
- * A code absent from here reaches the reader as itself, in every language —
+ * A code absent from here reaches the user as itself, in every language —
  * which is what `task-failure.test.ts` holds every lane's codes against.
  */
 const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
@@ -146,7 +146,7 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 /**
  * What a stored failure says about the file it was about.
  *
- * A cause on its own leaves the reader asking which of their files this
+ * A cause on its own leaves the user asking which of their files this
  * happened to and what it was that we would not take. Both are known where
  * the failure is raised — the run holds the address it was handed and the
  * type it judged, and the browser's own gate holds the same two — so they
@@ -156,13 +156,13 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 export interface TaskFailureDetail {
   /** What the file is called: its storage key's last segment. */
   file?: string;
-  /** The type it was judged as, as the word a reader uses for that format. */
+  /** The type it was judged as, as the word a user uses for that format. */
   type?: string;
   /** How many bytes it is, for a cause that refused it over a ceiling. */
   bytes?: number;
   /**
    * Which reading failed, when it was not an understanding: the sentence
-   * names the act the reader asked for, on the row and in the history alike.
+   * names the act the user asked for, on the row and in the history alike.
    */
   reading?: "transcribe";
 }

@@ -284,7 +284,7 @@ export async function startSignup(input: {
 /**
  * Mail a new code for the browser's pending sign-up; the old code stops
  * working and the count starts again. The mail is written in the language
- * this request is made in, which follows the reader if they switched it on
+ * this request is made in, which follows the user if they switched it on
  * the code step.
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @returns The ticket and the two timings the page shows.
@@ -331,7 +331,7 @@ return {0}
  * code step after the sign-up started, and the account keeps what they read
  * when it was made, the same as the other two ways an account is created.
  * @param ticket - The browser's ticket, or `null` when it has none.
- * @param code - The code the reader typed.
+ * @param code - The code the user typed.
  * @param attribution - Campaign source the browser recorded before sign-up.
  * @returns The new account, and what became of the referral code the sign-up carried.
  * @throws {AppError} 410 when there is no such pending sign-up.

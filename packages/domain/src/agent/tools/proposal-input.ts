@@ -16,7 +16,7 @@ import {
 
 import type { Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
-import { readerUrlSchema } from "@domain/asset/source-url.js";
+import { userUrlSchema } from "@domain/asset/source-url.js";
 
 /** Whether a proposal holds together, and which refusal it meets when it does not. */
 export type ProposalVerdict = { ok: true } | Refusal;
@@ -43,7 +43,7 @@ const promptSegment = z.union([
         .int()
         .nonnegative()
         .describe(
-          "An @ of the node at this index in nodes, written into the prompt for the reader: it lands as the " +
+          "An @ of the node at this index in nodes, written into the prompt for the user: it lands as the " +
             "same mention they would insert by hand. Use it for every node wired into this node's pool, " +
             "wherever the prompt speaks of it",
         ),
@@ -54,7 +54,7 @@ const promptSegment = z.union([
       slot: z.union([
         z
           .object({
-            kind: z.literal("tweak").describe("Words only the reader can write"),
+            kind: z.literal("tweak").describe("Words only the user can write"),
             label: z.string().trim().min(1).describe("What to write"),
             note: z
               .string()
@@ -85,17 +85,17 @@ const proposalNode = z
   .object({
     role: z
       .enum(["source", "generate", "written"])
-      .describe("written holds finished words; source holds material, or stands empty for the reader to fill"),
+      .describe("written holds finished words; source holds material, or stands empty for the user to fill"),
     type: z.enum([...NODE_TYPES, "text"]),
     name: z
       .string()
       .trim()
       .min(1)
       .max(MAX_NODE_NAME_LEN)
-      .describe("What the reader sees on the node"),
+      .describe("What the user sees on the node"),
     // The address save_image takes, so a picture found on the web and told
     // to be saved first can always be.
-    material: readerUrlSchema
+    material: userUrlSchema
       .optional()
       .describe(
         `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +
@@ -127,14 +127,14 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "What to generate, or a written node's words, in the language the reader " +
-          "writes in. Write it up from what the reader asked for; copy their words exactly only when they ask for that. " +
+        "What to generate, or a written node's words, in the language the user " +
+          "writes in. Write it up from what the user asked for; copy their words exactly only when they ask for that. " +
           "A ref or a mark is a segment of its own, never typed into a text segment. " +
           "Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too " +
           "when it lands empty; a node going into a slot by an edge takes a note of its own (a slot " +
           "filled through fills takes none, the lyrics box takes none), and so does " +
           "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
-          "takes nothing from it), for the reader to pick into a slot",
+          "takes nothing from it), for the user to pick into a slot",
       ),
     shots: z
       .array(
@@ -171,7 +171,7 @@ const proposalNode = z
  * What the tool accepts before any of the checks below run.
  *
  * Exported for the test that pins it: what the schema turns away never
- * reaches `checkProposal`, so the two halves of "a proposal the reader can
+ * reaches `checkProposal`, so the two halves of "a proposal the user can
  * press" are held by one file and read by one test.
  */
 export const inputSchema = z
@@ -192,9 +192,9 @@ export const inputSchema = z
               .optional()
               .describe(
                 "Where the node wired in goes: \"pool\" (a ref each where the prompt or a shot @s it), " +
-                  "the name of a slot the model has (an empty node the reader picks in the panel; a note each; " +
+                  "the name of a slot the model has (an empty node the user picks in the panel; a note each; " +
                   "material fills a slot through fills instead), " +
-                  `or "${PANEL_EDITOR_PARAM}" for words @'d into a song model's lyrics box for the reader. Needed ` +
+                  `or "${PANEL_EDITOR_PARAM}" for words @'d into a song model's lyrics box for the user. Needed ` +
                   "when the model takes that kind more than one way",
               ),
           })

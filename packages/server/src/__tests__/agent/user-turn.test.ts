@@ -96,7 +96,7 @@ describe("a reference to an attachment inside the typed words", () => {
   });
 });
 
-describe("the Spaces the reader is in (inner#1413)", () => {
+describe("the Spaces the user is in (inner#1413)", () => {
   const storyboard = { id: "s1", name: "Storyboard", kind: "document" as const };
   const cast = { id: "s2", name: "Cast", kind: "canvas" as const };
   const spaces = [storyboard, cast];
@@ -111,16 +111,16 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the reader has this one open\n- "Cast" (canvas, id: s2)',
+      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the user has this one open\n- "Cast" (canvas, id: s2)',
     );
   });
 
-  it("marks none as open when the reader turned the open Space off", () => {
+  it("marks none as open when the user turned the open Space off", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 2 });
 
     expect(turn).toContain('- "Storyboard" (document, id: s1)\n- "Cast" (canvas, id: s2)');
-    expect(turn).not.toContain("the reader has this one open");
-    expect(turn).not.toContain("## The Space the reader has open");
+    expect(turn).not.toContain("the user has this one open");
+    expect(turn).not.toContain("## The Space the user has open");
   });
 
   it("says how many Spaces were left off the list", () => {
@@ -129,7 +129,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     expect(turn).toContain('- "Cast" (canvas, id: s2)\n(3 more not listed)');
   });
 
-  it("puts the reader's words under their own heading after the Spaces", () => {
+  it("puts the user's words under their own heading after the Spaces", () => {
     const turn = userTurnForModel({ chips: [], message: "summarise this", spaces, spaces_total: 2 });
 
     expect(turn.endsWith("\n\n## User message\n\nsummarise this")).toBe(true);
@@ -145,7 +145,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...cast, state: "loaded", content: '{\n  "nodes": []\n}', total_chars: 16 },
     });
 
-    const open = turn.indexOf('## The Space the reader has open: "Cast" (canvas)');
+    const open = turn.indexOf('## The Space the user has open: "Cast" (canvas)');
     const attached = turn.indexOf(attachmentSection([image]));
     const words = turn.indexOf("## User message\n\nwhat is in this?");
     expect(turn.indexOf("## Spaces in this project")).toBe(0);
@@ -165,7 +165,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...storyboard, state: "loaded", content, total_chars: content.length },
     });
 
-    expect(turn).toContain(`## The Space the reader has open: "Storyboard" (document)\n\n${JSON.stringify(content)}`);
+    expect(turn).toContain(`## The Space the user has open: "Storyboard" (document)\n\n${JSON.stringify(content)}`);
     expect(turn).not.toContain("\n# Scene 1");
   });
 
@@ -179,7 +179,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...cast, state: "loaded", content, total_chars: content.length },
     });
 
-    expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${content}\n\n## User message`);
+    expect(turn).toContain(`## The Space the user has open: "Cast" (canvas)\n\n${content}\n\n## User message`);
   });
 
   it("says how much of a cut document it is shown", () => {
@@ -246,7 +246,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
 
     it("says only that nodes went slim, and that selecting them shows them whole", () => {
       expect(over({ slim: true })).toContain(
-        `${lead}${slimSentence} To see nodes in full, ask the reader to select them or add them to the Agent.)`,
+        `${lead}${slimSentence} To see nodes in full, ask the user to select them or add them to the Agent.)`,
       );
     });
 
@@ -264,27 +264,27 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       });
 
       expect(turn).toContain(
-        `${lead} The reader selected 5 nodes; 2 of them are complete here and 1 are complete in the attachments.` +
+        `${lead} The user selected 5 nodes; 2 of them are complete here and 1 are complete in the attachments.` +
           `${slimSentence}` +
           ' 7 texts are cut short; each ends with "…[+N]", N being the characters left out.' +
           " 4 nodes show only their id, type, name and group." +
           " 3 links are not listed." +
           " 2 nodes are not listed." +
           " 1 groups are not listed; nodes inside them still name them as parentId." +
-          " To see nodes in full, ask the reader to add them to the Agent.)",
+          " To see nodes in full, ask the user to add them to the Agent.)",
       );
     });
 
     it("leaves out the attachments clause when no selected node is attached", () => {
       expect(over({ selected_total: 2, selected_whole: 2, slim: true })).toContain(
-        `${lead} The reader selected 2 nodes; 2 of them are complete here.${slimSentence}` +
-          " To see nodes in full, ask the reader to select them or add them to the Agent.)",
+        `${lead} The user selected 2 nodes; 2 of them are complete here.${slimSentence}` +
+          " To see nodes in full, ask the user to select them or add them to the Agent.)",
       );
     });
 
     it("points only to adding when a selected node went slim, though nothing else was cut", () => {
       expect(over({ selected_total: 2, selected_whole: 1, slim: true })).toContain(
-        " To see nodes in full, ask the reader to add them to the Agent.)",
+        " To see nodes in full, ask the user to add them to the Agent.)",
       );
     });
   });
@@ -298,7 +298,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...cast, state: "loaded", content: "", total_chars: 0 },
     });
 
-    expect(turn).toContain('## The Space the reader has open: "Cast" (canvas)\n\nThis Space is empty.');
+    expect(turn).toContain('## The Space the user has open: "Cast" (canvas)\n\nThis Space is empty.');
   });
 
   it("says an open Space's content has not loaded yet", () => {
@@ -310,7 +310,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...storyboard, state: "loading" },
     });
 
-    expect(turn).toContain('## The Space the reader has open: "Storyboard" (document)\n\nIts content has not loaded yet.');
+    expect(turn).toContain('## The Space the user has open: "Storyboard" (document)\n\nIts content has not loaded yet.');
   });
 
   it("says a timeline Space's content cannot be read", () => {
@@ -323,7 +323,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       current_space: { ...timeline, state: "unreadable" },
     });
 
-    expect(turn).toContain('## The Space the reader has open: "Edit" (timeline)\n\nThe content of a timeline Space cannot be read.');
+    expect(turn).toContain('## The Space the user has open: "Edit" (timeline)\n\nThe content of a timeline Space cannot be read.');
   });
 
   it("is the bare words when the project has no Space and nothing is attached", () => {
@@ -332,9 +332,9 @@ describe("the Spaces the reader is in (inner#1413)", () => {
 });
 
 describe("userMessageForModel", () => {
-  it("opens with the reader's clock and closes with the reminder of the reader's language", () => {
-    expect(userMessageForModel("The reader's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
-      "The reader's clock reads 09:00.\n\n画一只猫\n\n" +
+  it("opens with the user's clock and closes with the reminder of the user's language", () => {
+    expect(userMessageForModel("The user's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
+      "The user's clock reads 09:00.\n\n画一只猫\n\n" +
         "(Reply and write every text the user will read or edit in the language this message is written in, " +
         "unless the user has asked for a specific language or the work itself sets one. " +
         "Keep the product terms the system prompt lists in English, even where this message translates them.)",
@@ -358,7 +358,7 @@ describe("an open Space unchanged since it was last sent in full", () => {
       true,
     );
 
-    expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${UNCHANGED_SPACE_NOTE}\n\n## User message`);
+    expect(turn).toContain(`## The Space the user has open: "Cast" (canvas)\n\n${UNCHANGED_SPACE_NOTE}\n\n## User message`);
     expect(turn).not.toContain(content);
   });
 

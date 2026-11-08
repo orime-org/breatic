@@ -13,7 +13,7 @@ import type { CanvasProposal, GenerationNodeType } from '@breatic/shared';
 
 import type { PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 
-/** What the canvas should put the reader's attention on. */
+/** What the canvas should put the user's attention on. */
 export interface Focus {
   /** The node ids to select. Empty when nothing should be. */
   select: string[];
@@ -33,7 +33,7 @@ export interface Focus {
  *
  * Anything else selects nothing. A flow with nothing that generates is turned
  * away before it reaches a card, so what is left here is a payload that took
- * some other route in, and pointing the reader at a guess is worse than
+ * some other route in, and pointing the user at a guess is worse than
  * leaving their selection alone.
  * @param proposal - What was proposed.
  * @param placed - What placing it left on the canvas.

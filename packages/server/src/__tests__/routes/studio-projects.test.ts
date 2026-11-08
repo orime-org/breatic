@@ -3,7 +3,7 @@
 
 /**
  * `GET /studio/:slug/projects` — reading the list, sort and page from the
- * query and the reader's language from the request.
+ * query and the user's language from the request.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 
 describe("GET /studio/:slug/projects", () => {
-  it("passes the sort, cursor, page size and the reader's language to the service", async () => {
+  it("passes the sort, cursor, page size and the user's language to the service", async () => {
     const res = await createApp().request(
       "/api/v1/studio/acme/projects?sort=name&cursor=abc&limit=20",
       { headers: { ...AUTH, "Accept-Language": "zh-CN" } },

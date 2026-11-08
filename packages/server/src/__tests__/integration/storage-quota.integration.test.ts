@@ -284,7 +284,7 @@ const PRO_STORAGE = getMembershipLimits("pro").storage_bytes;
 
 describe("assertStorageAllowance", () => {
   it("lets a write through while there is room", async () => {
-    // 它不回答「还剩多少」—— 那是另一个问题、另一批读者（#120 的属性页）。
+    // 它不回答「还剩多少」—— 那是另一个问题、另一批用户（#120 的属性页）。
     // 这里能观察到的只有「过了」和「没过」，而这正是调用方需要知道的全部。
     const { userId, personalStudioId } = await insertUser("base");
     const projectId = await insertProject(personalStudioId, userId);

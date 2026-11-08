@@ -18,7 +18,7 @@ import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnair
 import type { ChatQuestionnaire } from '@web/pages/project/chat/types';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
-/** What the reader has given on one question so far. */
+/** What the user has given on one question so far. */
 interface Given {
   /** The labels of the options picked. */
   selected: string[];
@@ -106,7 +106,7 @@ function QuestionHeading({
 }
 
 /**
- * A questionnaire the agent put to the reader (inner#1542): numbered
+ * A questionnaire the agent put to the user (inner#1542): numbered
  * questions answered by clicking or writing, one press to send them all.
  *
  * Answered, it reads as each question with its answer; replied to by a
@@ -475,7 +475,7 @@ function AnsweredSummary({
 }
 
 /**
- * The card once the reader wrote a message instead: one line, opening onto
+ * The card once the user wrote a message instead: one line, opening onto
  * the questions as they were asked, read-only.
  * @param root0 - The component props.
  * @param root0.questions - The questions.

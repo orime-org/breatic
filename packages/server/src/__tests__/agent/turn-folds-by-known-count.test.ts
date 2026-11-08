@@ -75,7 +75,7 @@ type Rows = Array<MessageData & { forModel: unknown }>;
  * @param options - How the stored rows or the conversation change in between.
  * @param options.edit - Change the rows the first turn left.
  * @param options.memory - The progress note the second turn reads.
- * @param options.stopDuringTool - The reader stops the first turn while its tool runs.
+ * @param options.stopDuringTool - The user stops the first turn while its tool runs.
  * @param options.window - The main model's window, when not {@link WINDOW}.
  * @returns How many folds the second turn ran, and what it sent first.
  */
@@ -224,7 +224,7 @@ describe("at the start of a turn", () => {
   it("reads the count of a newest row that stopped at a questionnaire", async () => {
     const turn = await nextTurnAfter([asks("ask-1", LINE, 10)], {
       edit: (rows) => {
-        // The reader wrote a message instead of answering; the repository
+        // The user wrote a message instead of answering; the repository
         // settles the card in the row that asked.
         const kept = replyKept(rows) as { messages: unknown[] };
         kept.messages.push(askResultForModel("ask-1", { repliedInChat: true }));
@@ -235,7 +235,7 @@ describe("at the start of a turn", () => {
     expect(turn.foldedBeforeFirstCall).toBe(true);
   });
 
-  it("reads the count of a newest row the reader stopped after its call reported", async () => {
+  it("reads the count of a newest row the user stopped after its call reported", async () => {
     const turn = await nextTurnAfter([callsFetch("c1", LINE, 10)], { stopDuringTool: true });
 
     expect(world.replies[0]?.message.parts).toContainEqual({ type: "interrupted" });

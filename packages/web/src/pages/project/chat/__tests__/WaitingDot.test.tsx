@@ -64,7 +64,7 @@ describe('the dot that waits', () => {
     expect(dot.className).toContain('chat-waiting-dot');
   });
 
-  it('keeps a name for a reader who cannot see it', () => {
+  it('keeps a name for a user who cannot see it', () => {
     render(<WaitingDot />);
     expect(screen.getByTestId('chat-waiting-dot')).toHaveAttribute('aria-label');
   });

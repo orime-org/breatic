@@ -4,7 +4,7 @@
 /**
  * Where each message the product's screens show is in the product guide.
  *
- * Every message the reader's screens can show is either quoted by the guide,
+ * Every message the user's screens can show is either quoted by the guide,
  * described by it, or left out for a stated reason. A message the guide
  * quotes needs no entry here; every other one does, so a new message on those
  * screens fails the coverage test until someone decides where it belongs.
@@ -17,14 +17,14 @@ export const REASONS = {
   OUTSIDERS_ONLY: "Only someone who is not a member of the project sees it, and they get no chat.",
   ARCHIVED_ONLY: "Only shown on an archived project, which is read-only for everyone and has no chat.",
   PASSING: "A loading or in-progress word that goes away by itself.",
-  ECHO: "It confirms what the reader has just done.",
-  SAYS_TRY_AGAIN: "A failure that already tells the reader to try again or reload; the guide has nothing to add.",
+  ECHO: "It confirms what the user has just done.",
+  SAYS_TRY_AGAIN: "A failure that already tells the user to try again or reload; the guide has nothing to add.",
   FILLS_A_VALUE: "A time, count, unit, label or name filled into a row; it reads as itself.",
   SAYS_WHAT_HAPPENED: "A message or list entry that says in its own words what happened.",
   SAYS_WHAT_TO_TYPE: "A box's placeholder or a suggestion, which says itself what to type.",
   MODEL_SETTING_NAME: "The name of one model's own setting on its row; the guide says such settings appear.",
   TOOL_NOTE: "A fixed line under one tool's settings that states what the tool holds to; it reads as itself.",
-  NOT_CREATABLE: "Belongs to a node type the reader cannot make.",
+  NOT_CREATABLE: "Belongs to a node type the user cannot make.",
   NOT_USED: "Reached only by a key built at run time, and nothing builds this one.",
   NOT_ON_THESE_SCREENS: "Shown on a page outside the project, which the guide does not cover.",
   NOT_OPEN: "A command in the document AI menu, which the guide says does nothing yet.",
@@ -500,7 +500,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.vertical-15s-quick-tip.shot.3": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.vertical-15s-quick-tip.shot.4": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.vertical-15s-quick-tip.shot.5": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
-  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/ },
+  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets, where a prompt carries one, asks the user to @ a node/ },
   "canvas.task.couldNotStart": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.task.countTip": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.dismissFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1158,7 +1158,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.threeD.taskList.removeFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "activity.type.assetUploadedModel": { described: /The project activity records each import whose file was uploaded, under the model's name/ },
   "spaces.threeD.invalidObject": { described: /Unreadable objects appear as rows naming their object id/ },
-  "spaces.threeD.peerSelection": { described: /each reader's name and selected-object count/ },
+  "spaces.threeD.peerSelection": { described: /each user's name and selected-object count/ },
   "spaces.threeD.selectedCount": { described: /For several objects the panel shows a selection count/ },
   "spaces.threeD.selectObject": { described: /Clearing the selection closes its properties panel/ },
   "studio.container.card.archiveFailed": { excluded: REASONS.NOT_ON_THESE_SCREENS },

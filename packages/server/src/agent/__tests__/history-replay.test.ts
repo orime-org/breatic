@@ -187,7 +187,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it("keeps the first and third replies' thinking after the system prompt goes A, B, A, A", () => {
-    const B: RequestPrefix = { ...PREFIX, instructions: { base: "The reader switched language." } };
+    const B: RequestPrefix = { ...PREFIX, instructions: { base: "The user switched language." } };
     const q1: ModelMessage = { role: "user", content: "one" };
     const q2: ModelMessage = { role: "user", content: "two" };
     const q3: ModelMessage = { role: "user", content: "three" };

@@ -5,7 +5,7 @@
  * The model picker in the composer (#1363).
  *
  * It shows the model of the conversation on screen and lists the models the
- * reader can pick, the current one checked. A pick is saved first: the button
+ * user can pick, the current one checked. A pick is saved first: the button
  * waits, still showing the saved model, and then shows the model the server
  * saved; a save that fails leaves the saved model, says so and asks for the
  * list again. While the list is loading,
@@ -97,7 +97,7 @@ describe('the model picker', () => {
     expect(trigger()).toHaveTextContent('Claude Opus 5.5');
   });
 
-  it('lists every model the reader can pick, the current one filled the way the language menu fills it', async () => {
+  it('lists every model the user can pick, the current one filled the way the language menu fills it', async () => {
     conversations({ 'c-1': SONNET });
     const user = userEvent.setup();
     renderPicker('c-1');

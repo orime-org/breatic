@@ -67,7 +67,7 @@ export interface SubscriptionActions {
  * tier moves the tier itself, which the top bar renders out of the session
  * payload, so that one reloads the page. Cancelling and resuming move no tier
  * at all — they only set a flag on the subscription — so they re-read this
- * panel's own query and leave the reader where they were.
+ * panel's own query and leave the user where they were.
  * @param subscription - The account's subscription, or null when this
  *   deployment sells none.
  * @returns The three actions, whether one is running, and which.
@@ -92,7 +92,7 @@ export function useSubscriptionActions(
   // Cancelling and resuming do not move the tier — `cancelling` still earns
   // the tier it was paid for, and the server sends nothing but
   // `cancel_at_period_end` — so there is nothing outside this panel to
-  // refresh. Reloading the whole page for them closed the panel the reader
+  // refresh. Reloading the whole page for them closed the panel the user
   // was standing in, threw away whatever page was underneath it, and left no
   // sign that anything had happened.
   const refreshPanel = React.useCallback(async () => {
@@ -102,7 +102,7 @@ export function useSubscriptionActions(
   // Every one of these can fail without anything being broken: two tabs open
   // on this panel and one of them subscribes first makes the other one's
   // click a 409. Without a message the click did nothing at all — the button
-  // simply came back — and the reader had no way to tell a refusal from a
+  // simply came back — and the user had no way to tell a refusal from a
   // dead app.
   const refused = React.useCallback(
     async (err: unknown): Promise<void> => {

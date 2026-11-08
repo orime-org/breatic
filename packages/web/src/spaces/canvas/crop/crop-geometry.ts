@@ -81,7 +81,7 @@ export const OUTSIDE_DIM = 'rgb(0 0 0 / 0.4)';
 
 /**
  * The factor that keeps a handle at its screen size inside the zoomed node
- * layer. A handle is a control the reader drags, so it holds its size at
+ * layer. A handle is a control the user drags, so it holds its size at
  * every zoom (user 2026-10-07), unlike the node's name, which stops growing
  * below half zoom.
  * @param zoom - The canvas zoom.

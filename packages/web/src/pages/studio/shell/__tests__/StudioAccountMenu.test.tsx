@@ -411,7 +411,7 @@ describe('StudioAccountMenu', () => {
       expect(confirmMock).not.toHaveBeenCalled();
     });
 
-    it('says nothing when the reader pressed back on Stripe', async () => {
+    it('says nothing when the user pressed back on Stripe', async () => {
       // Choosing not to buy is not an outcome to report. Telling somebody
       // they cancelled, right after they cancelled, is noise.
       useCurrentUserStore.getState().setUser(ALEX);
@@ -545,7 +545,7 @@ describe('StudioAccountMenu', () => {
     });
 
     it('says so when the read fails, rather than leaving the row blank', async () => {
-      // Whether the request lands is not ours to promise; whether the reader
+      // Whether the request lands is not ours to promise; whether the user
       // knows it did not is. A blank row here reads the same as the one a
       // deployment that does not bill shows.
       const user = userEvent.setup();
@@ -561,7 +561,7 @@ describe('StudioAccountMenu', () => {
 
     it('keeps one account’s figure away from the next one to sign in', async () => {
       // The query client is a module singleton that a sign-out never clears,
-      // so a key without the account would hand the second reader the first
+      // so a key without the account would hand the second user the first
       // one's figures out of cache.
       const user = userEvent.setup();
       // One client across both sign-ins, which is what the app has: it is
@@ -588,7 +588,7 @@ describe('StudioAccountMenu', () => {
 
       first.unmount();
       useCurrentUserStore.getState().setUser({ ...ALEX, id: 'u2', name: 'Bo' });
-      // Held open, so what the second reader sees is whatever the cache had
+      // Held open, so what the second user sees is whatever the cache had
       // for them — nothing, unless the key forgot whose money it is.
       let answer: (o: CreditOverview) => void = () => {};
       overviewMock.mockImplementationOnce(
@@ -639,11 +639,11 @@ describe('StudioAccountMenu', () => {
     });
 
     it('says nothing but the word when a later read fails, not the stale figure', async () => {
-      // The menu reads on open, so a reader who opens it twice can have a
+      // The menu reads on open, so a user who opens it twice can have a
       // figure in hand from the first time and a failed read the second. A
       // figure that has gone stale looks exactly like one that is current,
       // and the overlay reads the same query, so it would say the same thing
-      // the moment the reader opened it.
+      // the moment the user opened it.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockResolvedValueOnce(overview());

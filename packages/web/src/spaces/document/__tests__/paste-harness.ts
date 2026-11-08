@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Opening a body and pasting or dropping into it the way a reader does, for
+ * Opening a body and pasting or dropping into it the way a user does, for
  * the cases on web content with media (inner#1351 + inner#1390 design §5.4).
  */
 
@@ -122,7 +122,7 @@ export function positionOf(editor: Editor, words: string, offset: number): numbe
 }
 
 /**
- * Pastes a clipboard holding these formats, the way a reader's paste delivers it.
+ * Pastes a clipboard holding these formats, the way a user's paste delivers it.
  * @param editor - The editor.
  * @param formats - Each format the clipboard holds, with its data, in the order a browser lists them.
  */

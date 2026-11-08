@@ -294,8 +294,8 @@ function ourDefaults(model: RawModel): Record<string, unknown> {
  * into their pools with their notes naming files in neutral references, item lists completed, empty values dropped, a param a
  * filled one replaces dropped, and an application family's preparation applied.
  * @param model - The catalog entry.
- * @param given - The params the reader set.
- * @param written - The reader's prompt, its mentions already neutral references.
+ * @param given - The params the user set.
+ * @param written - The user's prompt, its mentions already neutral references.
  * @returns The prepared params and prompt.
  */
 async function prepare(model: RawModel, given: Record<string, unknown>, written: string): Promise<{ params: Record<string, unknown>; prompt: string }> {
@@ -320,8 +320,8 @@ async function prepare(model: RawModel, given: Record<string, unknown>, written:
 /**
  * The body today's worker sends for one catalog param set.
  * @param model - The catalog entry.
- * @param given - The params the reader set.
- * @param written - The reader's prompt.
+ * @param given - The params the user set.
+ * @param written - The user's prompt.
  * @returns The body.
  */
 async function todayBody(model: RawModel, given: Record<string, unknown>, written: string): Promise<Record<string, unknown>> {
@@ -432,7 +432,7 @@ const UNPICKED = "unpicked";
  * The input provider receives for one run, prepared the way shared's
  * `estimateCredits` prepares it before pricing.
  * @param model - The catalog entry.
- * @param raw - The reader's params, prompt and known clip lengths.
+ * @param raw - The user's params, prompt and known clip lengths.
  * @returns The prepared input.
  */
 function estimateInput(model: RawModel, raw: { params: Record<string, unknown>; prompt: string; durations: Record<string, number[]>; sources?: string[] }): EstimateCase["input"] {

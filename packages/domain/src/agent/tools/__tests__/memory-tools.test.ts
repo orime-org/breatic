@@ -3,7 +3,7 @@
 
 /**
  * The three memory tools (#1363): the Agent saves, deletes and reads its own
- * memory entries in the turn the reader asks.
+ * memory entries in the turn the user asks.
  *
  * The writes and reads are the server's, bound to the turn's user, Project
  * and conversation and handed in through the tool context as `AgentMemory`;
@@ -245,12 +245,12 @@ describe("read_memory", () => {
     expect(accepts(READ, input)).toBe(false);
   });
 
-  it("tells the reader they are no longer a member when the server says so", async () => {
+  it("tells the user they are no longer a member when the server says so", async () => {
     const mem = memory({ read: vi.fn().mockRejectedValue(new MemoryRefused("not_member")) });
 
     expect(await failureOf(call(READ, { ids: [ENTRY_ID] }, mem))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.notMember",
+      userKey: "chat.tool.failure.notMember",
     });
   });
 
@@ -259,7 +259,7 @@ describe("read_memory", () => {
 
     expect(await failureOf(call(READ, { ids: [ENTRY_ID] }, mem))).toMatchObject({
       kind: "tool_failed",
-      readerKey: "chat.tool.failure.ourFault",
+      userKey: "chat.tool.failure.ourFault",
     });
   });
 });

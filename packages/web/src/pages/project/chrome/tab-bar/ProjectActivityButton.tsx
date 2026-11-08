@@ -151,7 +151,7 @@ function entryMessage(entry: ProjectActivityEntry): {
         },
       };
     case 'asset:uploaded': {
-      // A browser tool's export arrives as an upload; what the reader did was
+      // A browser tool's export arrives as an upload; what the user did was
       // run the tool.
       const tool = toolNameOf(p);
       if (tool !== undefined) {

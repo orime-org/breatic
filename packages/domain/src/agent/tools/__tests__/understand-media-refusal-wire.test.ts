@@ -42,13 +42,13 @@ type Kind = keyof typeof FIXTURES;
  * are doubled. No understanding function or typed refusal is substituted.
  * @param kinds - The sources in their supplied order.
  * @param response - The service's actual status and error-envelope facts.
- * @returns The model-facing error, reader key and actual provider request body.
+ * @returns The model-facing error, user key and actual provider request body.
  * @throws {Error} when the tool unexpectedly succeeds or loses its failure metadata.
  */
 async function refusedBatch(kinds: Kind[], response: { status: number; message: string; code?: number }): Promise<{
   kind: string;
   forModel: string;
-  readerKey: string | undefined;
+  userKey: string | undefined;
   contentTypes: string[];
 }> {
   httpRequestMock.mockImplementation(async (address: string | URL, init?: RequestInit): Promise<Response> => {
@@ -87,7 +87,7 @@ async function refusedBatch(kinds: Kind[], response: { status: number; message: 
   return {
     kind: failure.kind,
     forModel: failure.forModel,
-    readerKey: "readerKey" in failure ? failure.readerKey : undefined,
+    userKey: "userKey" in failure ? failure.userKey : undefined,
     contentTypes: sent.messages[0]!.content.map((part) => part.type),
   };
 }
@@ -104,7 +104,7 @@ describe("provider media refusal facts survive through the tool without assignin
   ] satisfies Array<[string, Kind[]]>)("reports a neutral decoding refusal for %s", async (_label, kinds) => {
     const failure = await refusedBatch(kinds, { status: 400, code: 400, message: "Unable to decode audio" });
 
-    expect(failure).toMatchObject({ kind: "tool_failed", readerKey: FAILURE_LINES.refused });
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.refused });
     expect(failure.forModel).toContain("Unable to decode audio");
     expect(failure.forModel).not.toMatch(/fault on our side|fault in the file|our fault|server fault|not in the file/i);
     expect(failure.forModel).not.toMatch(/put the file somewhere|give another address|rehost|could not reach that address/i);
@@ -119,7 +119,7 @@ describe("provider media refusal facts survive through the tool without assignin
     const detail = "Cannot fetch content from URL";
     const failure = await refusedBatch(["image", "audio"], { status: 400, code: 400, message: detail });
 
-    expect(failure).toMatchObject({ kind: "tool_failed", readerKey: FAILURE_LINES.refused });
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.refused });
     expect(failure.forModel).toContain(detail);
     expect(failure.forModel).not.toMatch(/fault on our side|fault in the file|our fault|server fault|not in the file/i);
     expect(failure.forModel).not.toMatch(/put the file somewhere|give another address|rehost|could not reach that address/i);
@@ -130,7 +130,7 @@ describe("provider media refusal facts survive through the tool without assignin
   it("keeps an all-address 400 as a source the provider could not fetch", async () => {
     const failure = await refusedBatch(["image"], { status: 400, code: 400, message: "Cannot fetch content from URL" });
 
-    expect(failure).toMatchObject({ kind: "tool_failed", readerKey: FAILURE_LINES.linkUnreachable });
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.linkUnreachable });
     expect(failure.forModel).toContain("Cannot fetch content from URL");
     expect(failure.forModel).toMatch(/could not reach that address/i);
   });
@@ -141,10 +141,10 @@ describe("provider media refusal facts survive through the tool without assignin
     [200, undefined, "Provider content policy declined this request", FAILURE_LINES.declined],
     [429, 429, "Provider is busy", FAILURE_LINES.busy],
     [503, 503, "Provider is temporarily unavailable", FAILURE_LINES.busy],
-  ] as const)("preserves the known %i refusal branch for a mixed request", async (status, code, message, readerKey) => {
+  ] as const)("preserves the known %i refusal branch for a mixed request", async (status, code, message, userKey) => {
     const failure = await refusedBatch(["audio", "image"], { status, code, message });
 
-    expect(failure).toMatchObject({ kind: "tool_failed", readerKey });
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey });
     if (status === 413) {
       expect(failure.forModel).toContain("Request body exceeds the provider maximum size");
       expect(failure.forModel).toContain("do not send the same file again");

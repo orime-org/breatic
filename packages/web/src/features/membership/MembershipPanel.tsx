@@ -30,7 +30,7 @@ interface MembershipPanelProps {
 }
 
 /**
- * The account's membership, over whatever page the reader was on.
+ * The account's membership, over whatever page the user was on.
  *
  * A panel rather than a page, and it has no URL of its own. A person opening
  * this is checking something, not going somewhere: whatever they were doing —
@@ -91,9 +91,9 @@ export function MembershipPanel({
           // One line, the way the sibling studio pages report a failed read
           // (StudioContainerPage / StudioRecentPage). No retry button:
           // closing and reopening the panel refetches, and this read has
-          // nothing the reader would lose by doing that. Panels that DO
+          // nothing the user would lose by doing that. Panels that DO
           // offer one (node history, the decision landing page) are ones
-          // where the reader is mid-task and reopening costs them that.
+          // where the user is mid-task and reopening costs them that.
           <p role='alert' className='p-8 text-sm text-muted-foreground'>
             {t('membership.loadFailed')}
           </p>

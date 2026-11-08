@@ -289,10 +289,10 @@ describe("agent config — the model a run is sent to", () => {
   });
 });
 
-// breatic#1363: the reader picks the main model from `chat_models`, and a
+// breatic#1363: the user picks the main model from `chat_models`, and a
 // conversation with no pick of its own is answered by `default_model`, so the
 // default has to be one of the models the picker can show.
-describe("agent config — the models the reader can pick", () => {
+describe("agent config — the models the user can pick", () => {
   it("ships DeepSeek V4.1 Flash, Claude Sonnet 5.5 and Claude Opus 5.5 with DeepSeek as the default", async () => {
     const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
     const parsed = agentConfigSchemaForTests.parse({});

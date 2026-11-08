@@ -124,7 +124,7 @@ export function typeFromAddress(url: string): string | undefined {
 /**
  * How many hops one address may be redirected through.
  *
- * Measured against addresses a reader would actually paste: a tinyurl link to
+ * Measured against addresses a user would actually paste: a tinyurl link to
  * a Wikimedia image takes four, and Wikipedia's own `Special:FilePath` takes
  * three before any shortener is involved. Ten leaves room above both and stays
  * well under the twenty that Node's `fetch` and every browser allow, so a host
@@ -156,7 +156,7 @@ async function fetchGuarded(
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     // What is listening there stays unsaid — that is what this gate exists
     // for. That we declined to go is a different fact, and which address was
-    // declined is a third: on a later hop the reader's own address was fine
+    // declined is a third: on a later hop the user's own address was fine
     // and it is the place it points at that we will not follow, which is
     // something they can act on.
     if (!(await reachable(target))) {
@@ -269,7 +269,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // The size is judged the moment it is known, which for an address the peek
   // settled is right here. The ceiling is what this server will handle, so it
   // holds for all three kinds alike, and a refusal stated in bytes and a limit
-  // is one the reader can act on — where an endpoint's own refusal arrives in
+  // is one the user can act on — where an endpoint's own refusal arrives in
   // its words, after the wait.
   //
   // The kind has to be settled first: a length attached to a type nobody has
@@ -302,7 +302,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // the HEAD and an address whose name carries no extension.
   // Refusing takes the same evidence accepting does, and what the peek settles
   // is whether the address is there at all. Without that, a dead .m4a is
-  // refused for its format after a single request — measured — and the reader
+  // refused for its format after a single request — measured — and the user
   // is sent off to convert a file, to come back to the same dead link.
   if (settledPeek && declared && !settled) {
     throw new MediaUnavailable("unsupported-type", { declaredType: declared });

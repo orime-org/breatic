@@ -10,7 +10,7 @@ const BYTE_LIMITS: ReadonlySet<ModelImportLimit> = new Set(['input', 'expanded',
  * State an exceeded import limit with the measured value, sizes in megabytes to one decimal: the measured size rounded up and the allowed size rounded down.
  * @param t - The current translator.
  * @param budget - The exceeded limit and both values.
- * @param locale - The reader's locale, which formats the numbers.
+ * @param locale - The user's locale, which formats the numbers.
  * @returns The localized sentence.
  * @throws {never} Never.
  */

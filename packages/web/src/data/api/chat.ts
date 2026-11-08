@@ -50,10 +50,10 @@ export type ChatConversationOnTheWire = Omit<ConversationOnTheWire, 'agentModel'
   agentModel: AgentModelChoice;
 };
 
-/** The models the reader can pick, and the one a new conversation starts on (#1363). */
+/** The models the user can pick, and the one a new conversation starts on (#1363). */
 export interface ChatModels {
   models: AgentModelChoice[];
-  /** The id of the model a new conversation of the reader's starts on. */
+  /** The id of the model a new conversation of the user's starts on. */
   lastUsed: string;
 }
 
@@ -150,7 +150,7 @@ export const chatApi = {
    * @param projectId - Project to open chat in
    * @param signal - Raised when nobody is waiting for this answer any more.
    *   The answer replaces what is on screen, so one belonging to a visit the
-   *   reader has already left must not arrive at all.
+   *   user has already left must not arrive at all.
    * @returns The conversation list and the current conversation with its messages
    */
   openChat(projectId: string, signal?: AbortSignal): Promise<OpenChatResult> {
@@ -192,7 +192,7 @@ export const chatApi = {
    * @param after - The last row already held, or nothing for the first page.
    * @param after.updatedAt - When that row was last used.
    * @param after.id - Which row it is, for the rows that share an instant.
-   * @param signal - Raised when the reader leaves the project.
+   * @param signal - Raised when the user leaves the project.
    * @returns The page, and whether the list goes on past it.
    */
   listConversations(
@@ -257,7 +257,7 @@ export const chatApi = {
     );
   },
   /**
-   * The models the reader can pick in the chat panel, in order, and the one a
+   * The models the user can pick in the chat panel, in order, and the one a
    * new conversation of theirs starts on (#1363).
    * @returns The list and the starting model's id
    */
@@ -265,7 +265,7 @@ export const chatApi = {
     return apiGet<ChatModels>('/chat/models');
   },
   /**
-   * Pick the model a conversation is answered by; it becomes the reader's
+   * Pick the model a conversation is answered by; it becomes the user's
    * last pick too (#1363).
    * @param id - The conversation
    * @param projectId - Project it lives in; the server checks this before writing

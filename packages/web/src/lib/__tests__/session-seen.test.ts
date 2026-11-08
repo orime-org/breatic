@@ -31,7 +31,7 @@ describe('session-seen', () => {
 
   it('answers no when storage cannot be read', () => {
     // Design §6.2, the preload gate: unreadable storage is treated as `UNKNOWN`, which is the
-    // side that costs a round trip rather than a download the reader is about
+    // side that costs a round trip rather than a download the user is about
     // to be bounced away from.
     rememberSession(true);
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

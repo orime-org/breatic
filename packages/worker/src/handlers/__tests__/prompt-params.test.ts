@@ -224,7 +224,7 @@ describe("cleaning the lyrics a music model is handed (#1960)", () => {
 });
 
 /**
- * Each shot of a storyboard is a prompt the reader typed in its own editor
+ * Each shot of a storyboard is a prompt the user typed in its own editor
  * (#2218), and gets the same cleaning on its way upstream.
  */
 describe("cleaning the shots of a storyboard (#2218)", () => {

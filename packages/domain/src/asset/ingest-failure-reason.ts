@@ -4,7 +4,7 @@
 /**
  * The reason a failed call to the ingest Worker is settled with.
  *
- * Finishing an upload, pulling a reader's link and opening an upload all read
+ * Finishing an upload, pulling a user's link and opening an upload all read
  * a failure the same way; only the word for "nothing answered" differs, and
  * each caller passes its own.
  */

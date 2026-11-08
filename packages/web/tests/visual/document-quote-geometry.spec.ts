@@ -127,7 +127,7 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
       // itself carries padding, so measuring that instead reports the rule
       // as reaching exactly to a text it actually reaches past.
       // What the block draws: its text, or for a code block the panel that
-      // holds it — that panel IS the block as far as a reader is concerned,
+      // holds it — that panel IS the block as far as a user is concerned,
       // and the rule runs beside it.
       const text = element.querySelector('.bn-inline-content, pre');
       const textRect = text?.getBoundingClientRect();
@@ -276,7 +276,7 @@ interface MiddleGaps {
 /**
  * Measures the second of three blocks against its neighbours.
  *
- * Read off the content elements, which is where a reader's words are: the
+ * Read off the content elements, which is where a user's words are: the
  * wrapper's box carries the rule and the padding that clears it, and neither
  * of those is what "how far apart are these two lines" means.
  * @param p - The page.
@@ -368,7 +368,7 @@ test.describe('a run of quoted blocks', () => {
   test('draws one segment down each block, at one x whatever the indent (A8)', async () => {
     await openFreshDocument(page);
     // A quoted block at the top level and another indented under a list item:
-    // the rule is what tells a reader they belong to one quote, and it can
+    // the rule is what tells a user they belong to one quote, and it can
     // only do that from one x.
     await page.keyboard.type('1. one');
     await page.keyboard.press('Enter');
@@ -391,7 +391,7 @@ test.describe('a run of quoted blocks', () => {
       `indented block draws at ${indented.ruleX}, top-level at ${top.ruleX}`,
     ).toBeLessThan(1);
 
-    // Pulling the box back out must not cost it width: the line the reader
+    // Pulling the box back out must not cost it width: the line the user
     // writes on ends where every other line ends.
     expect(
       Math.abs(indented.boxRight - top.boxRight),
@@ -645,7 +645,7 @@ test.describe('a run of quoted blocks', () => {
   });
 
   test('holds the rule at one x when the run holds an empty line (A8)', async () => {
-    // Pressing Enter inside a quote is how a reader writes a second paragraph,
+    // Pressing Enter inside a quote is how a user writes a second paragraph,
     // and the block is empty for as long as it takes to start typing — longer,
     // when the blank line is meant to stay. The library styles an empty
     // block's `::after` (its placeholder rides there), so the rule now shares
@@ -693,7 +693,7 @@ test.describe('a run of quoted blocks', () => {
   });
 
   test('leaves a quoted list its own marker, rule and all (A8)', async () => {
-    // A list is what a reader quotes most often, and a list item already draws
+    // A list is what a user quotes most often, and a list item already draws
     // something in the space the rule wants. An element has ONE `::before`, so
     // the two have to be told apart by which pseudo-element each takes.
     await openFreshDocument(page);

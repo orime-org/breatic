@@ -56,7 +56,7 @@ describe("lightColorOf", () => {
     expect(lightColorOf("auto", "#123456")).toBeUndefined();
   });
 
-  it("reads Custom as the colour picked, written as the reader sees it", () => {
+  it("reads Custom as the colour picked, written as the user sees it", () => {
     expect(lightColorOf("custom", "#8fc0ff")).toEqual({ phrase: "#8FC0FF", swatch: "#8fc0ff" });
   });
 

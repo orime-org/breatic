@@ -632,7 +632,7 @@ export function extensionEnds(selection: Selection, dir: 1 | -1): { anchor: numb
   return null;
 }
 
-/** Splits a line into what a reader sees as single characters. */
+/** Splits a line into what a user sees as single characters. */
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
 /**
@@ -684,7 +684,7 @@ function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
 
 /**
  * Which end of a text selection a vertical Shift+arrow moves, as the page
- * moves it. A range the reader made with the mouse has no direction on macOS
+ * moves it. A range the user made with the mouse has no direction on macOS
  * (`Selection.direction` is `none`), and there Shift+Up moves its start and
  * Shift+Down its end, whichever end the drag began at (probe33, probe34); a
  * range with a direction moves its head.
@@ -761,7 +761,7 @@ function onKeyDown(view: EditorView, event: KeyboardEvent): boolean {
 }
 
 /**
- * The extension that lets the reader's selection reach past the first or last
+ * The extension that lets the user's selection reach past the first or last
  * block of the body.
  * @returns The extension, for the assembly to register.
  */

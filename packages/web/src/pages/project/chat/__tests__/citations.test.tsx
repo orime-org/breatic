@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the reader sees of where an answer came from.
+ * What the user sees of where an answer came from.
  *
  * Two places. A marker sits where the claim it supports is written, and the
  * line under the reply says how many pages the turn found -- including the
@@ -295,7 +295,7 @@ describe('the line at the foot of the reply', () => {
   });
 
   it('draws no publisher and no mark of the site anywhere', () => {
-    // 一个站点图形要显示就得去第三方取图，那次请求把读者交给了第三方；
+    // 一个站点图形要显示就得去第三方取图，那次请求把用户交给了第三方；
     // 圆圈里只有数字，所以这条路整条不存在。
     const many = [1, 2].map(source);
     render(
@@ -377,14 +377,14 @@ describe('the line at the foot of the reply', () => {
 
     const row = (await screen.findAllByTestId('source-box-row'))[0];
     const marks = row?.querySelector('[data-testid="source-box-marks"]');
-    // 一页的几个号是一组，跟标题是另一件事：并排摊在行里，读者看到的是
+    // 一页的几个号是一组，跟标题是另一件事：并排摊在行里，用户看到的是
     // 三个平权的东西。
     expect(marks?.textContent).toBe('15');
     expect(row?.children.length).toBe(2);
   });
 
   it('offers no copy on a turn that wrote nothing', () => {
-    // 那一行是为了留住「来源 N」才画的；把空字符串放进剪贴板会顶掉读者
+    // 那一行是为了留住「来源 N」才画的；把空字符串放进剪贴板会顶掉用户
     // 原来复制的东西，而界面还说复制成功了。
     render(
       <MessageBubble

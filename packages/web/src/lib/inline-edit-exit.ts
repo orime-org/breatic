@@ -86,7 +86,7 @@ function swallowRepeatsOf(key: string): () => void {
  * A key that belongs to an input method (accepting a candidate, closing the
  * candidate list) and an auto-repeat of Enter or Escape are consumed and end
  * nothing. Leaving the box ends the edit through the site's own blur, and the
- * focus stays where the reader took it.
+ * focus stays where the user took it.
  * @param root0 - What the box does and where the keyboard goes.
  * @param root0.editing - Whether the box is on screen.
  * @param root0.target - Where the keyboard goes after a key ends the edit.

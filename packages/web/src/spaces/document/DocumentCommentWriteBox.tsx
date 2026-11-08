@@ -81,13 +81,13 @@ export function DocumentCommentWriteBox({
   // around it is what stops at four lines.
   useAutosizeTextarea(box, value);
 
-  // A box that takes the focus as it arrives is one the reader goes on
+  // A box that takes the focus as it arrives is one the user goes on
   // writing in, so the caret goes after what is already there. Mounting
   // writes the words without moving the caret, which leaves it at the start.
-  // On arrival only: later, the caret is wherever the reader put it.
+  // On arrival only: later, the caret is wherever the user put it.
   // The focus does not scroll: the box arrives before its card is set level
   // with its words, and scrolling to it then carries the body away from the
-  // words the reader is looking at. The card lands beside those words.
+  // words the user is looking at. The card lands beside those words.
   const focusedOnArrival = React.useRef(autoFocus);
   React.useLayoutEffect(() => {
     const node = box.current;

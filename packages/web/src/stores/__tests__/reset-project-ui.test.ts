@@ -70,7 +70,7 @@ describe('resetProjectUiStores (#1771)', () => {
    * turn that may be running and a list of messages, neither of which is
    * panel state. It is torn down from the same place because leaving is the
    * same act -- and because this one line is the only thing that stops a turn
-   * for a project the reader has walked away from. What the runtime does when
+   * for a project the user has walked away from. What the runtime does when
    * it is told to is pinned in its own file; what is pinned here is that it
    * gets told at all.
    */

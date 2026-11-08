@@ -43,7 +43,7 @@ export const STORAGE_KEYS = {
    * whether the Agent panel is open. See `project-tabs-storage`.
    */
   projectTabs: 'breatic.projectTabs',
-  /** Per account, Project and Space: the reader's personal 3D observation view. */
+  /** Per account, Project and Space: the user's personal 3D observation view. */
   sceneViews: 'breatic.sceneViews',
   /**
    * Per account: the Agent column width, the Studio rail sections, the canvas

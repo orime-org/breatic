@@ -133,7 +133,7 @@ describe('pressing a highlight', () => {
 
   it('names both where two comments cover the same words', async () => {
     // A20: the library's handler takes the first mark it finds, so the second
-    // thread would be unreachable. Both are named and the reader picks.
+    // thread would be unreachable. Both are named and the user picks.
     const editor = open();
     const first = await comment(editor, 0, 11);
     const second = await comment(editor, 6, 19);
@@ -202,7 +202,7 @@ describe('pressing a comment that is already open', () => {
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
   });
 
-  it('answers again once the reader presses a different comment', async () => {
+  it('answers again once the user presses a different comment', async () => {
     const editor = open();
     await comment(editor, 0, 5);
     const second = await comment(editor, 6, 11);
@@ -224,7 +224,7 @@ describe('pressing a comment that is already open', () => {
     expect(librarySelection(editor)).toBe(threadId);
   });
 
-  it('tells the library the reader has looked away', async () => {
+  it('tells the library the user has looked away', async () => {
     const editor = open();
     await comment(editor, 0, 5);
     press(editor, 2);
@@ -242,7 +242,7 @@ describe('selecting from elsewhere', () => {
     // mark it nests inside — so naming a settled thread paints the words A8
     // promises read as prose. Its own handler passes settled marks by, so
     // there is nothing to ask it to stand aside from either. A9 sends the
-    // reader here: the "all" filter is where they open one.
+    // user here: the "all" filter is where they open one.
     const editor = open();
     const threadId = await comment(editor, 0, 5);
     const view = editor.prosemirrorView!;
@@ -346,7 +346,7 @@ describe('resting on a card in the panel', () => {
   });
 
   it('is not the same thing as having the comment open', async () => {
-    // Resting on a card says where a reader is looking; it does not open
+    // Resting on a card says where a user is looking; it does not open
     // anything, and letting it go leaves an open comment open.
     const editor = open();
     const first = await comment(editor, 0, 5);

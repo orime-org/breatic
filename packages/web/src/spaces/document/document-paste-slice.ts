@@ -8,7 +8,7 @@
  * A copy of the body is read back by ProseMirror's own clipboard read, which
  * restores the slice's open ends and context from `data-pm-slice`; it is read
  * through a stand-in view with no plugins, so no paste transform runs while
- * the selection is still where the reader left it, and against a context of
+ * the selection is still where the user left it, and against a context of
  * its own, so the read is the same wherever the content lands. The transforms
  * run once the content is on its target (`document-put.ts`).
  */

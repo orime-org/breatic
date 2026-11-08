@@ -4,7 +4,7 @@
 /**
  * The order a drag produced is the order a reload comes back to (#2165).
  *
- * The strip is painted from the meta document and stored per reader, so the
+ * The strip is painted from the meta document and stored per user, so the
  * question crosses a real drag, the collab document and browser storage, and
  * only a reload of a real page asks it.
  *

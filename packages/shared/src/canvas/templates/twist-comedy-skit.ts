@@ -16,10 +16,10 @@ export const TWIST_COMEDY_SKIT: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 15-second vertical comedy skit with the reader's character, shot completely straight, in six beats built back from the punchline: hook, setup, countdown, twist, reaction, button; the reader writes the punchline and the beats",
+    "a 15-second vertical comedy skit with the user's character, shot completely straight, in six beats built back from the punchline: hook, setup, countdown, twist, reaction, button; the user writes the punchline and the beats",
   goal: "social-hooks",
   triggers: {
     asks: ["a funny skit", "a twist ending joke", "a comedy short"],
-    offerWhen: ["the reader wants to make a meme or a joke video"],
+    offerWhen: ["the user wants to make a meme or a joke video"],
   },
 };

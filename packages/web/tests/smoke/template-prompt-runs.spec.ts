@@ -132,7 +132,7 @@ async function applyTemplate(id: string): Promise<void> {
 }
 
 /**
- * Replace each brace span in one editor of the open panel, in order, the way a reader selects and types.
+ * Replace each brace span in one editor of the open panel, in order, the way a user selects and types.
  * @param values - What each brace span becomes.
  * @param editorId - The editor's test id: the prompt, or one shot's.
  */
@@ -167,7 +167,7 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
 }
 
 /**
- * Open one shot of the open multi-shot panel through its row, the way a reader does, unless it is open already:
+ * Open one shot of the open multi-shot panel through its row, the way a user does, unless it is open already:
  * only one shot is open at a time, and a folded shot takes no typing.
  * @param n - The shot's number, from 1.
  */
@@ -181,7 +181,7 @@ async function openShot(n: number): Promise<void> {
 
 /**
  * Scroll the canvas up over an empty spot until a control of the open panel clears the viewport toolbar, the way
- * a reader does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
+ * a user does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
  * @param control - The control to reach.
  */
 async function bringIntoView(control: Locator): Promise<void> {
@@ -216,7 +216,7 @@ async function bringIntoView(control: Locator): Promise<void> {
 }
 
 /**
- * Pick the open panel's lowest resolution, the way a reader does. A run judges a template's words against its
+ * Pick the open panel's lowest resolution, the way a user does. A run judges a template's words against its
  * duration and ratio, which it keeps; resolution changes neither, so the run pays for the cheapest tier.
  */
 async function lowestResolution(): Promise<void> {
@@ -270,7 +270,7 @@ async function promptText(editorId = 'generate-prompt-editor'): Promise<string> 
 }
 
 /**
- * Pick a node into one frame of the open video panel, the way a reader does: the frame, then the
+ * Pick a node into one frame of the open video panel, the way a user does: the frame, then the
  * part of the node still showing, since a tall result next to it can cover its centre.
  * @param slot - The frame.
  * @param nodeId - The node.

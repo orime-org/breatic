@@ -37,7 +37,7 @@ const NOTICE_KEYS = [
   'canvas.generatePanel.catalogOffline',
   'canvas.generatePanel.catalogNoModels',
   // What a bare `@` shows when this mode can use none of the references
-  // (#1952). Missing in a locale, readers of it see the raw key.
+  // (#1952). Missing in a locale, users of it see the raw key.
   'canvas.generatePanel.mentionEmpty',
 ] as const;
 

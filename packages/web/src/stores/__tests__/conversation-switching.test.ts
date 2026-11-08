@@ -145,7 +145,7 @@ describe('two switches whose answers come back out of order', () => {
     _resetForTests();
   });
 
-  it('lands on the one the reader pressed last', async () => {
+  it('lands on the one the user pressed last', async () => {
     opens([
       { id: 'c-1', title: 'one' },
       { id: 'c-2', title: 'two' },
@@ -201,9 +201,9 @@ describe('a new conversation started while a switch is still out', () => {
     _resetForTests();
   });
 
-  it('leaves the reader in the one they just created', async () => {
-    // 按 + 是读者最后一次明示的导航。在途的那次切换比它早，落地却比它晚，
-    // 于是读者被从刚建的会话里拽回去，而新建的那条挂在列表顶上没人进去。
+  it('leaves the user in the one they just created', async () => {
+    // 按 + 是用户最后一次明示的导航。在途的那次切换比它早，落地却比它晚，
+    // 于是用户被从刚建的会话里拽回去，而新建的那条挂在列表顶上没人进去。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
 
@@ -243,9 +243,9 @@ describe('picking another row while a delete is in flight', () => {
     _resetForTests();
   });
 
-  it('leaves the reader on the row they picked', async () => {
+  it('leaves the user on the row they picked', async () => {
     // 删除的落点是「删完之后该显示哪条」，它在请求发出前就把答案定死了。
-    // 读者在这一趟往返里点了另一行，那才是他最后一次明示的选择。
+    // 用户在这一趟往返里点了另一行，那才是他最后一次明示的选择。
     opens([
       { id: 'c-1', title: 'one' },
       { id: 'c-2', title: 'two' },
@@ -282,7 +282,7 @@ describe('a conversation started while the project is still opening', () => {
     _resetForTests();
   });
 
-  it('stays in the list the reader can choose from', async () => {
+  it('stays in the list the user can choose from', async () => {
     // 开聊天那一页列表是「新建之前」查的，不含刚建的这条。它落地时如果原样
     // 覆写本地列表，这条会话就从抽屉里消失了 —— 人在里面，列表里却没有它。
     let releaseOpen: (() => void) | undefined;
@@ -442,14 +442,14 @@ describe('a conversation started before the project has finished opening', () =>
   });
 });
 
-describe('the landing after a delete, when the reader has moved on', () => {
+describe('the landing after a delete, when the user has moved on', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
   });
 
-  it('does not black out a conversation the reader picked themselves', async () => {
-    // 删除的落点失败了,说明「删完该显示哪条」这件事没办成。但读者这时已经
+  it('does not black out a conversation the user picked themselves', async () => {
+    // 删除的落点失败了,说明「删完该显示哪条」这件事没办成。但用户这时已经
     // 自己挑了一条、正看着它 —— 把整列打成不可读,是拿一件已经不作数的事
     // 去盖掉一件正好好的事。
     opens([
@@ -572,7 +572,7 @@ describe('a press that fails while an older answer is still on its way', () => {
   });
 
   it('lets that answer land, rather than leaving a skeleton turning', async () => {
-    // 「+」失败之后它就不再算数了,还在路上的那个打开请求重新成为读者等的
+    // 「+」失败之后它就不再算数了,还在路上的那个打开请求重新成为用户等的
     // 那一个。少了这一步,面板会永远停在骨架上:没有内容、没有蒙版,也就
     // 没有任何再问一次的出口。
     let releaseOpen: (() => void) | undefined;
@@ -645,9 +645,9 @@ describe('the landing after deleting the only conversation there was', () => {
     _resetForTests();
   });
 
-  it('does not black out the conversation the reader started meanwhile', async () => {
+  it('does not black out the conversation the user started meanwhile', async () => {
     // 跟上面那条「删完还有下一条可读」是同一件事,走的是另一条分支:一条不剩时
-    // 要开一条新的,而这一趟失败了。读者这时已经自己按了新建、正看着那一条,
+    // 要开一条新的,而这一趟失败了。用户这时已经自己按了新建、正看着那一条,
     // 拿一件不作数的事去盖掉一件正好好的事,两条分支上都不对。
     opens([{ id: 'c-1', title: 'one' }]);
     await conversationRuntime.ensureLoaded(P);
@@ -685,7 +685,7 @@ describe('an open that fails while a later press is still out', () => {
   });
 
   it('leaves the panel waiting rather than saying it cannot be read', async () => {
-    // 打开这一趟没成,但读者按下的新建还在路上。面板此刻的实情是「还在等」,
+    // 打开这一趟没成,但用户按下的新建还在路上。面板此刻的实情是「还在等」,
     // 不是「读不回来」—— 写成读不回来会闪一层蒙版,而它马上要被盖掉。
     let failOpen: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
@@ -714,7 +714,7 @@ describe('a conversation started when the first page never arrived', () => {
 
   it('leaves the list able to fetch what the failed open did not', async () => {
     // 打开没成,列表一行都没到;接着新建成功,列表里于是只有这一行。这一行之前
-    // 还有什么无人知道,而「不知道」不等于「没有」—— 说成没有,读者滑到底也
+    // 还有什么无人知道,而「不知道」不等于「没有」—— 说成没有,用户滑到底也
     // 再拉不回那些会话了。
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     await conversationRuntime.ensureLoaded(P);
@@ -750,7 +750,7 @@ describe('a visit that was abandoned while its request was still out', () => {
   });
 
   it('does not let the abandoned request settle the visit that replaced it', async () => {
-    // 读者嫌慢,退出去又进来。头一趟的答复终于回来时,它手里那个号必须还是
+    // 用户嫌慢,退出去又进来。头一趟的答复终于回来时,它手里那个号必须还是
     // 它自己的 —— 号要是从头发过,这趟离场的请求收尾时结算的就是新那趟,
     // 而新那趟的答复正在路上、服务器好好的,面板却已经黑了。
     let failFirst: (() => void) | undefined;
@@ -811,7 +811,7 @@ describe('pressing send while a switch is still on its way', () => {
   });
 
   it('does not write into the conversation being left', async () => {
-    // 读者点了另一条,屏幕上还没换过去。这时候按发送,他以为是在跟刚点的那条
+    // 用户点了另一条,屏幕上还没换过去。这时候按发送,他以为是在跟刚点的那条
     // 说话 —— 写进正在离开的那条,他的话连同回复会随切换落地一起消失,而那一
     // 轮还在后台按他的账跑。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
@@ -839,7 +839,7 @@ describe('pressing send while a switch is still on its way', () => {
     await switching;
   });
 
-  it('takes it once the reader has taken the switch back', async () => {
+  it('takes it once the user has taken the switch back', async () => {
     // 点当前这一行就是「算了,还待在这条」。输入框当场解冻(不变量 8),所以
     // 这一刻按发送,话必须真的发出去 —— 看着能用、按下去没反应,是这两轮
     // 一直在治的那件事。被追上的那次还在飞,但它换不动屏幕。
@@ -903,8 +903,8 @@ describe('while a switch is on its way', () => {
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
   });
 
-  it('leaves the reader in the conversation they were reading', async () => {
-    // 一条读不到,不等于读者手上这条也没了。盖住整列会拿走一条正常工作的
+  it('leaves the user in the conversation they were reading', async () => {
+    // 一条读不到,不等于用户手上这条也没了。盖住整列会拿走一条正常工作的
     // 会话 —— 连同它正在跑的那一轮的停止按钮。蒙版留给打开面板失败,那时候
     // 屏幕上本来就没有会话。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
@@ -918,7 +918,7 @@ describe('while a switch is on its way', () => {
   });
 
   it('says the conversation is gone when that is what the server said', async () => {
-    // 我们自己的服务器答 404,说的是「这条不在了」—— 多半是读者在另一个标签页
+    // 我们自己的服务器答 404,说的是「这条不在了」—— 多半是用户在另一个标签页
     // 里删掉的。这不是出错,不该走出错那条路:说一句它没了就够了。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
@@ -939,8 +939,8 @@ describe('while a switch is on its way', () => {
     expect(useConversationRuntime.getState().openStatus[P]).toBe('ready');
   });
 
-  it('keeps the row that is gone, because the reader is the one who decides', async () => {
-    // 那一行不动。读者刚点了它,行原地留着、旁边说一句它没了,比它在手底下
+  it('keeps the row that is gone, because the user is the one who decides', async () => {
+    // 那一行不动。用户刚点了它,行原地留着、旁边说一句它没了,比它在手底下
     // 消失清楚 —— 而且下一次打开列表本来就会重新取。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
@@ -968,7 +968,7 @@ describe('fetching the next page of the list', () => {
   });
 
   it('says while it is out, so the list can show it', async () => {
-    // 读者滑到底,下一页在路上 —— 底部要看得出正在加载,而不是什么都没有。
+    // 用户滑到底,下一页在路上 —— 底部要看得出正在加载,而不是什么都没有。
     vi.mocked(chatApi.openChat).mockResolvedValueOnce({
       conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
       hasMoreConversations: true,
@@ -996,7 +996,7 @@ describe('fetching the next page of the list', () => {
 
   it('drops the failure mark when the list is fetched afresh', async () => {
     // 翻页失败留下的那个标记,是说「上一次翻页没到」。整份列表重新拿过之后,
-    // 那句话说的已经不是手上这份列表了 —— 留着它,读者会看到一条不属于当前
+    // 那句话说的已经不是手上这份列表了 —— 留着它,用户会看到一条不属于当前
     // 列表的错误,而分页也再启动不起来。
     vi.mocked(chatApi.openChat).mockResolvedValueOnce({
       conversations: [{ id: 'c-1', title: 'one', updatedAt: '2026-08-16T00:00:00.000Z' }],
@@ -1030,7 +1030,7 @@ describe('what a conversation answer says about its name', () => {
   it('takes the name the answer carries, not the one the list was fetched with', async () => {
     // 另一个标签页给它改了名。这边的列表还是打开时拿的那份,而刚读回来的这条
     // 答复里带着现在的名字 —— 那是这一刻最新的一份,丢掉它,顶栏和列表会长期
-    // 显示一个已经不存在的名字,而读者没有任何办法纠正。
+    // 显示一个已经不存在的名字,而用户没有任何办法纠正。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'stale name' }]);
     await conversationRuntime.ensureLoaded(P);
 
@@ -1054,7 +1054,7 @@ describe('deleting a conversation the server no longer has', () => {
 
   it('takes the row out anyway', async () => {
     // 另一个标签页已经删过它了,服务器答 404。这跟网络故障不是一回事:那一条
-    // 确实不在了,而读者要的正是它从列表里消失。当成故障留着那一行,他会一直
+    // 确实不在了,而用户要的正是它从列表里消失。当成故障留着那一行,他会一直
     // 点、一直看到同一句提示,而这一行永远删不掉。
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
@@ -1076,7 +1076,7 @@ describe('pressing the row that is already on screen', () => {
   });
 
   it('cancels a switch that is still on its way', async () => {
-    // 读者点了 c-2、反悔、又点回带着当前标记的那一行 —— 那一下同样是他在说
+    // 用户点了 c-2、反悔、又点回带着当前标记的那一行 —— 那一下同样是他在说
     // 「我要留在这条」。它必须让 c-2 那趟作废,否则一两秒后面板会自己跳到他
     // 已经放弃的那条会话上,而那时抽屉早关了、他以为这件事结束了。
     opens([
@@ -1136,7 +1136,7 @@ describe('pressing the row that is already on screen', () => {
   });
 });
 
-describe('the composer after the reader changes their mind', () => {
+describe('the composer after the user changes their mind', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
@@ -1168,9 +1168,9 @@ describe('what a navigation that failed hands back', () => {
   });
 
   it('does not hand the claim back to something older than what has landed', async () => {
-    // 一趟慢的打开还在飞;读者按新建、建成了、屏幕换过去了;再按一次新建、这次
+    // 一趟慢的打开还在飞;用户按新建、建成了、屏幕换过去了;再按一次新建、这次
     // 失败了。失败的那次交还认领权,而还在飞的只剩最早那趟 —— 交给它就等于让
-    // 一份组装于读者建这条会话之前的答复,把读者刚建的会话顶掉。
+    // 一份组装于用户建这条会话之前的答复,把用户刚建的会话顶掉。
     let landOpen: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
       () =>
@@ -1205,7 +1205,7 @@ describe('what a navigation that failed hands back', () => {
     expect(
       (useConversationRuntime.getState().listByProject[P] ?? []).map((c) => c.id),
     ).toContain('c-new');
-    // And the box is the reader's again: nothing they are waiting for is out.
+    // And the box is the user's again: nothing they are waiting for is out.
     expect(useConversationRuntime.getState().navigatingByProject[P]).toBeUndefined();
   });
 });

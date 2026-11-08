@@ -92,7 +92,7 @@ describe('a failed step in a reply', () => {
     expect(view.failureLines).toEqual([{ step: { key: 'chat.tool.step.readTemplate' }, reason: FAILURE_LINES.busy, count: 1 }]);
   });
 
-  it('leaves the prose the reader copies as it was', () => {
+  it('leaves the prose the user copies as it was', () => {
     const view = toChatMessage(reply([text('Let me look.'), failedSearch('s1', 'poster'), text('Carrying on.')]));
 
     expect(view.content).toBe('Let me look.Carrying on.');
@@ -157,7 +157,7 @@ describe('a step that draws no line', () => {
     expect(toChatMessage(reply([left])).failureLines).toBeUndefined();
   });
 
-  it('is one the reader stopped', () => {
+  it('is one the user stopped', () => {
     const left = { type: 'tool-web_search', toolCallId: 's1', state: 'input-available', input: { query: 'q' } };
     expect(toChatMessage(reply([left, { type: 'data-interrupted', data: {} }])).failureLines).toBeUndefined();
   });

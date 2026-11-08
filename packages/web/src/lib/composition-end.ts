@@ -3,14 +3,14 @@
 
 /**
  * The key that ends an input method composition, told apart from a key the
- * reader presses afterwards.
+ * user presses afterwards.
  *
  * An input method accepts a candidate with Enter and dismisses its list with
  * Escape, and nothing in the keydown says so for certain: Chrome sends
  * `compositionend` first and then the key with `isComposing: false`, once as
  * 229 and again as 13 (measured in a browser, `document-enter.ts`). So the
  * end is marked, and the mark is released only after whatever the browser has
- * already queued for that keystroke has run. A press the reader makes later is
+ * already queued for that keystroke has run. A press the user makes later is
  * queued behind the release; a window of time instead would swallow it, and
  * pressing Enter right after accepting a candidate is how writing Chinese goes.
  */

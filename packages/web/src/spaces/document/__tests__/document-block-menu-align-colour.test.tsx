@@ -6,11 +6,11 @@
  *
  * Both open what the bubble bar opens — the same three alignment rows, the
  * same colour panel — and both act on the block the pointer is over rather
- * than on the reader's selection (A5). The handle is on screen only while the
- * reader holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection`
+ * than on the user's selection (A5). The handle is on screen only while the
+ * user holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection`
  * guard), so "reads the
  * hovered block" is not a refinement here: reading the state instead would
- * answer about the reader's caret every single time.
+ * answer about the user's caret every single time.
  *
  * A row that cannot act owes three things (`document-bubble-slots.tsx`), and
  * in a menu the first of them means the submenu does not open at all. Radix's
@@ -118,7 +118,7 @@ function blocks(editor: Editor): Seen[] {
 }
 
 /**
- * Puts the reader's caret in one block and leaves it there.
+ * Puts the user's caret in one block and leaves it there.
  * @param editor - The editor.
  * @param index - Which block.
  */
@@ -132,7 +132,7 @@ function caretIn(editor: Editor, index: number): void {
 }
 
 /**
- * Puts the reader's caret in the second block, where the block handle's own
+ * Puts the user's caret in the second block, where the block handle's own
  * condition says it cannot be — which is the point: every reading the rows do
  * has to ignore it.
  * @param editor - The editor.
@@ -215,7 +215,7 @@ describe('the two rows are there and open what the bubble bar opens', () => {
 });
 
 describe('both rows act on the hovered block', () => {
-  it('aligns the hovered block, leaving the reader’s caret block alone', () => {
+  it('aligns the hovered block, leaving the user’s caret block alone', () => {
     const editor = open();
     caretElsewhere(editor);
     const { close } = openMenuOver(editor, 0);
@@ -228,7 +228,7 @@ describe('both rows act on the hovered block', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('colours every run of the hovered block, not the reader’s', () => {
+  it('colours every run of the hovered block, not the user’s', () => {
     const editor = open();
     caretElsewhere(editor);
     const { close } = openMenuOver(editor, 0);
@@ -250,7 +250,7 @@ describe('both rows act on the hovered block', () => {
     const editor = open();
     // The caret sits in the FIRST block, which is left-aligned, while the
     // menu opens over the second, which is centred: a reading that answered
-    // about the reader would tick `left` here.
+    // about the user would tick `left` here.
     caretIn(editor, 0);
     openMenuOver(editor, 1);
 

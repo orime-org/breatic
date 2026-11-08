@@ -5,7 +5,7 @@
  * What a paste of web content reads, and that every medium it carries lands
  * or is told as left out (inner#1351 + inner#1390 design §5.4, A3, A5): the
  * format read is the one BlockNote would read, the media in it land where
- * they stand in the line, and none goes without the reader knowing.
+ * they stand in the line, and none goes without the user knowing.
  */
 
 import { act } from '@testing-library/react';
@@ -102,7 +102,7 @@ function mediaBlocks(editor: Editor): number {
 }
 
 /**
- * How many media the reader was told were left out.
+ * How many media the user was told were left out.
  * @param sink - The sink.
  * @returns The count.
  */

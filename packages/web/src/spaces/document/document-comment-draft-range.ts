@@ -6,18 +6,18 @@
  *
  * Between pressing the entry and posting, that range carries no mark — the
  * mark is what posting writes — so nothing in the body moves it while the
- * body keeps being edited underneath: the reader typing elsewhere, a peer
+ * body keeps being edited underneath: the user typing elsewhere, a peer
  * inserting a paragraph above, somebody pressing undo.
  *
  * The range lives only in this editor: it is never written to the shared
  * document, and closing the page ends it. That is how the editors with a
  * pending comment keep one (CKEditor 5's draft marker "is not managed using
- * operations"; BlockNote and Liveblocks use the reader's selection).
+ * operations"; BlockNote and Liveblocks use the user's selection).
  *
  * Two ways it is carried across a change, because changes arrive two ways:
  *
- * - The reader's own edits ride `tr.mapping`, which is how ProseMirror carries
- *   a position across a change. A line the reader moves is taken out and put
+ * - The user's own edits ride `tr.mapping`, which is how ProseMirror carries
+ *   a position across a change. A line the user moves is taken out and put
  *   back, which mapping reads as a deletion, so an end whose mapped position
  *   left its line is found again at the letter it named in the row with
  *   that line's id, while that line's words are the same — the way
@@ -29,7 +29,7 @@
  *   position to the end. Those are resolved from Yjs relative positions, the
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
  *   taken again after every change to the body, so each one names the body
- *   as the change before it left it. On an undo or redo of the reader's own,
+ *   as the change before it left it. On an undo or redo of the user's own,
  *   each end is resolved from the name taken before the edit it takes back
  *   (y-prosemirror's `restoreRelativeSelection`), kept on that edit's undo
  *   stack item the way y-prosemirror's undo plugin keeps the selection, so
@@ -43,7 +43,7 @@
  *
  * The binding writes a moved line, a line whose type changed, every line
  * between, and a line an undo splits or joins as new letters, so the letter an
- * end names being deleted says nothing about the reader's words. Such an end
+ * end names being deleted says nothing about the user's words. Such an end
  * is found again by its line while that line's words are the same, the same
  * way as a mapped one; an end whose letter was itself deleted stands where
  * that letter was. One whose whole row went with its letters goes to the
@@ -63,13 +63,13 @@
  *
  * A stretch is GONE once it covers no letters, or its end comes before its
  * start; the draft is gone with the last of its stretches.
- * Posting then would put the reader's words in a thread pointing at nothing,
+ * Posting then would put the user's words in a thread pointing at nothing,
  * which is what A21 is about — the draft card keeps its place in the panel
- * and says so instead, keeping what the reader wrote.
+ * and says so instead, keeping what the user wrote.
  *
  * ## One draft, one place
  *
- * Everything about the open draft that is not the reader's words lives here:
+ * Everything about the open draft that is not the user's words lives here:
  * where it is aimed, which opening it is, and — once it can no longer be
  * written — why (A21, A22). The editor outlives the panel, which a Space tab
  * switch mounts again, so a draft whose words went while its card was not on
@@ -162,7 +162,7 @@ let openings = 0;
 let entries = 0;
 
 /**
- * The draft's range as Yjs named it before one of the reader's edits, kept on
+ * The draft's range as Yjs named it before one of the user's edits, kept on
  * that edit's undo stack item, with the press on the entry it belongs to.
  */
 interface NamedBeforeEdit {
@@ -381,21 +381,21 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
 }
 
 /**
- * Carries one end across a change that came in through Yjs. On the reader's
+ * Carries one end across a change that came in through Yjs. On the user's
  * own undo or redo, the name from before the edit being taken back is used
  * first, the way y-prosemirror puts the selection back
  * (`restoreRelativeSelection`) — while the letter it holds is there: a range,
  * unlike a caret, collapses or lands on other words in the gap a gone letter
  * leaves. Otherwise a peer's editor writes a moved line, a line whose type
  * changed, and every line between as new letters, so a letter the end names
- * being gone says nothing about the reader's words: the end is found again by
+ * being gone says nothing about the user's words: the end is found again by
  * its line when the line is still there with the same words. When the line is
  * gone and the letter with it, the end goes to the edge of the nearest
  * surviving line; otherwise it stands where the letter is.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param end - The end as Yjs names it before this change.
- * @param handed - On the reader's undo or redo, the end as named before the
+ * @param handed - On the user's undo or redo, the end as named before the
  *   edit it takes back; null otherwise.
  * @param was - The end before the change.
  * @param side - Which end it is.
@@ -440,7 +440,7 @@ function endAcrossYjs(
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param link - The range as Yjs names it.
- * @param handed - On the reader's undo or redo, the range as named before the
+ * @param handed - On the user's undo or redo, the range as named before the
  *   edit it takes back, when that edit kept one; null otherwise.
  * @param range - The range before the change.
  * @returns Where the range is now, or null once an end is lost.
@@ -468,7 +468,7 @@ export interface DraftAim {
   readonly opening: DraftOpening;
   /**
    * Counts the presses on a comment entry in this page; a new one is the
-   * reader asking to write again, which the card answers by taking the focus.
+   * user asking to write again, which the card answers by taking the focus.
    */
   readonly entry: number;
 }
@@ -478,7 +478,7 @@ export type DraftDropReason = 'targetGone' | 'cannotWrite';
 
 /**
  * The draft as the panel shows it: aimed at words, or dropped and saying why
- * until the reader dismisses the notice.
+ * until the user dismisses the notice.
  */
 export type Draft =
   | ({ readonly kind: 'aimed' } & DraftAim)
@@ -502,10 +502,10 @@ export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
 );
 
 /**
- * Carries a draft's range across one of the reader's own changes, each end on
+ * Carries a draft's range across one of the user's own changes, each end on
  * its own: where ProseMirror maps it while that stays in the end's line,
  * otherwise found again by that line. A line moved is taken out and put back,
- * which mapping reads as a deletion; a line the reader deleted or changed is
+ * which mapping reads as a deletion; a line the user deleted or changed is
  * gone, and the mapped position — the range drawn in, or nothing left —
  * stands.
  * @param range - Where the draft was going before this change.
@@ -551,7 +551,7 @@ function changesText(tr: Transaction): boolean {
  * @param tracked - The range as Yjs names it, or null when it is not named.
  * @param handed - The range as named before the edit an undo or redo takes
  *   back, or null when that edit kept none for this draft; read only on the
- *   reader's own undo or redo.
+ *   user's own undo or redo.
  * @returns The draft after it: the same object when nothing moved, dropped
  *   once the text it covered is gone.
  */
@@ -733,7 +733,7 @@ export const documentCommentDraftRange = createExtension(() => {
               return { kind: 'aimed', segments, opening, entry: entries };
             }
             // A selection change carries no steps and the range comes back
-            // unchanged — which is what a reader clicking elsewhere before
+            // unchanged — which is what a user clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
             const kept = onUndoStack.handedFor(tr);
@@ -749,15 +749,15 @@ export const documentCommentDraftRange = createExtension(() => {
         /**
          * Broadcasts the draft, and names its range in Yjs terms again after
          * every change to the body or to the range. The sync plugin's view
-         * writes the reader's edit into Yjs before this one runs, so the names
+         * writes the user's edit into Yjs before this one runs, so the names
          * are taken against the body as it now stands — which is when
-         * y-prosemirror's cursor plugin takes the reader's cursor.
+         * y-prosemirror's cursor plugin takes the user's cursor.
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
         view: (view) => {
           const watching = watch.view(view);
-          // Keeps the range as named before the reader's edit on the stack
+          // Keeps the range as named before the user's edit on the stack
           // item the edit made, as y-prosemirror's undo plugin keeps the
           // selection (`undo-plugin.js`).
           const stopKeeping = onUndoStack.attach(view);

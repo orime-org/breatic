@@ -122,7 +122,7 @@ describe("opening a conversation with more messages than one page holds", () => 
     expect(page.hasMore).toBe(true);
     expect(page.messages.length).toBeLessThanOrEqual(size);
     // Not merely "at most a page": a page that came back half full would
-    // satisfy the line above while making the reader scroll for what was
+    // satisfy the line above while making the user scroll for what was
     // already there.
     expect(page.messages.length).toBeGreaterThan(size - 2);
   });

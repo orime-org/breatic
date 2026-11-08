@@ -9,7 +9,7 @@
 #                          it on only where both appear (`modelLabel`). The
 #                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
-#                          display_name, so it is what tells a reader which of
+#                          display_name, so it is what tells a user which of
 #                          several models for one mode to pick: say what this
 #                          model is good at, never restate the name or the mode.
 #                          Only capabilities the panel reaches.
@@ -40,7 +40,7 @@
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
 #                          and `step` draw a slider; other `values` an option group.
-#   param.default        — what the param holds when the reader sets nothing;
+#   param.default        — what the param holds when the user sets nothing;
 #                          a run sends it unless it equals `absent_value`.
 #   param.absent_value   — the value that is sent as nothing: holding it
 #                          leaves the param out of the request (`auto` lets

@@ -468,7 +468,7 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    // Null while the conversation has no name of its own. What the reader
+    // Null while the conversation has no name of its own. What the user
     // sees in that case is decided where their language is known, which is
     // not here.
     title: varchar("title", { length: 200 }),
@@ -888,7 +888,7 @@ export const studioUpstreamClones = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * AIGC generations, user uploads, and the copies a user asks to keep.
  * Queried by frontend to show version history and support restore. Node
  * soft-deletes don't cascade - history is preserved until the project is
  * deleted.
@@ -1168,7 +1168,7 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** One promoter application; partial unique indexes and CHECKs live in 0116 (inner#1868). */
+/** One promoter application; partial unique indexes and CHECKs live in 0117 (inner#1868). */
 export const promoterApplications = pgTable("promoter_applications", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
@@ -2938,7 +2938,7 @@ export const studioAssets = pgTable(
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself) | 'project_cover' /
      * 'studio_avatar' (a picture uploaded to be a project's cover or a
-     * studio's avatar) | 'agent' (a link the chat agent saved for the reader,
+     * studio's avatar) | 'agent' (a link the chat agent saved for the user,
      * inner#1315; usually a picture, but the row keeps whatever uploadable
      * type the link held). A dedup hit keeps the first uploader's value, so this
      * does not say what a row is used as. varchar, no schema change.

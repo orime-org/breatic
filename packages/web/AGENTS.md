@@ -13,7 +13,7 @@
 
 **A Space is a type (a template), not a route: one Project page hosts many Space instances.** Spaces open inside `/project/:projectId/*`; a Space type never gets a route of its own.
 
-**The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one reader.
+**The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one user.
 
 ## Production standards
 **Scene object commands use `planSceneCommand` and `applySceneCommand` in `data/yjs/scene-document.ts`; each object record stores plain current values, edits overwrite fields and deletes remove the record.** Writing anywhere else bypasses the format version, lock and permission checks. The record format and personal-history origin are described in [docs/ARCHITECTURE.md#scene-document-format-and-commands](../../docs/ARCHITECTURE.md#scene-document-format-and-commands).
@@ -163,7 +163,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **In the document space a command acts on exactly the selected range: no trimming, no word expansion; spaces are content and vote on whether a mark is present; typing at the end of a formatted region continues it.** Toggle commands: all marked → shows on → click removes all; partly marked → shows off → click adds all. Cross-block selection is handled separately. Check: am I deciding the range from content? Early signals: `trim()`, `/^\s*/`, "all whitespace so it doesn't count" branches.
 
 ## Inputs send what they show
-**What an input box displays is exactly what is sent; the program never performs an invisible action the reader did not ask for.** The reader cannot see the difference.
+**What an input box displays is exactly what is sent; the program never performs an invisible action the user did not ask for.** The user cannot see the difference.
 
 ## Lists render from data
 **Lists always render from data and show an empty state when empty; never hide a section because it is empty today.** Later data then needs no display change. Check: is this branch a special case for "no data today"? → delete it.

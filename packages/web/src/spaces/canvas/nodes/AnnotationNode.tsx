@@ -47,7 +47,7 @@ export const AnnotationNode = React.memo(function AnnotationNode({
 }: AnnotationNodeProps): React.JSX.Element {
   const nodeId = React.useContext(NodeIdContext);
   // The box is sized in flow pixels against the zoom, which is what makes
-  // `offsetWidth` — the only measurement xyflow takes — equal what the reader
+  // `offsetWidth` — the only measurement xyflow takes — equal what the user
   // sees (`pin-geometry`). Read from xyflow's own transform: the canvas store
   // holds a copy of it written by an effect, which is a frame behind during a
   // continuous pinch or wheel zoom.

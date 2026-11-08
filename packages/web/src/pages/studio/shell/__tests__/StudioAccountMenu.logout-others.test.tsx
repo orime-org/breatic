@@ -130,7 +130,7 @@ describe('StudioAccountMenu — sign out of other devices', () => {
 
   it('hands focus back to the account button when it closes', async () => {
     // Opened from a menu entry that is gone by then, so without this focus
-    // lands on the page body and a keyboard reader starts over from the top.
+    // lands on the page body and a keyboard user starts over from the top.
     const user = userEvent.setup();
     setup();
     await chooseLogoutOthers(user);

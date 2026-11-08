@@ -132,7 +132,7 @@ export function MembershipContent({
       ? subscription.period
       : null;
 
-  // Which period the reader is looking at. A checkout or plan change still
+  // Which period the user is looking at. A checkout or plan change still
   // waiting from an earlier opening comes first, so its card is on screen
   // spinning (inner#1490). Otherwise it starts on the one this account is
   // being charged over, because opening on the other one would answer "what
@@ -302,7 +302,7 @@ export function MembershipContent({
                   <div className='flex items-center gap-3'>
                     {/* What the yearly price saves, so it belongs to the yearly
                       view. Beside monthly prices it describes something other
-                      than what the reader is looking at. */}
+                      than what the user is looking at. */}
                     {selectedPeriod === 'year' ? (
                       <span
                         className='text-xs text-status-success-foreground'
@@ -330,14 +330,14 @@ export function MembershipContent({
                           // overlay marks its chosen row: one step above hover, so
                           // hovering the other segment cannot make it look chosen
                           // too. The page's primary fill would read as the thing
-                          // to press, and pressing it is what the reader has
+                          // to press, and pressing it is what the user has
                           // already done.
                           //
                           // `ring-inset` is load-bearing: the frame around both
                           // segments clips overflow to round its corners, and the
                           // segments fill it exactly, so a ring drawn outside
                           // their edges has nowhere to land. Drawn inside, the
-                          // keyboard reader sees where they are.
+                          // keyboard user sees where they are.
                           className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:hover-enabled:bg-accent-strong'
                           data-testid={`membership-period-${period}`}
                           onClick={() => setSelectedPeriod(period)}
@@ -458,7 +458,7 @@ const TIER_CARD_SKELETONS = [...COMPARABLE_MEMBERSHIP_TIERS, 'enterprise'] as co
 /**
  * Two sentences the price list has to carry, together because both are about
  * what a price does and does not cover. Membership and credits are separate
- * legs, and a reader who assumes a tier comes with generation credits finds
+ * legs, and a user who assumes a tier comes with generation credits finds
  * out mid-generation; the tax line stops at "excluded" because nothing
  * anywhere calculates tax (#170), and #106 deleted the half-sentence that said
  * otherwise. The loading frame draws them too: they never depend on the answer.

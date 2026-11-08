@@ -43,7 +43,7 @@ export interface WatchedWire {
    * out loud, because a case written that way reads as though it works and
    * quietly runs both turns against the first answer.
    * @param status - The status to refuse with.
-   * @param message - The sentence the server writes for the reader.
+   * @param message - The sentence the server writes for the user.
    */
   refuseNext: (status: number, message: string) => void;
 }
@@ -114,7 +114,7 @@ export function stubChatWire(): WatchedWire {
  * that answers some other shape lets a reader of that shape pass while the
  * real one fails. That is exactly what happened once.
  * @param status - The status to refuse with.
- * @param message - The sentence the server writes for the reader.
+ * @param message - The sentence the server writes for the user.
  */
 export function stubRefusingWire(status: number, message: string): void {
   vi.stubGlobal(

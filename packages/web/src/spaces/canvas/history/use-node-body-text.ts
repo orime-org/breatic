@@ -16,7 +16,7 @@ import { getTextBody } from '@web/data/yjs/canvas-space';
  * the way in for the one place that needs them without being the editor — the
  * history panel, which marks the row the node currently holds.
  *
- * It has to stay live rather than read once: the reader edits the node with
+ * It has to stay live rather than read once: the user edits the node with
  * the panel open, and the marked row must stop being marked.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.

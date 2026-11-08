@@ -5,7 +5,7 @@
  * How long the link toolbar waits, in both directions.
  *
  * Its own pair rather than the canvas hover preview's: one is a picture
- * glanced at while passing over a node, the other is a control the reader
+ * glanced at while passing over a node, the other is a control the user
  * reaches out to press, drawn on top of the prose they are reading. A preview
  * that comes late wastes the glance; a toolbar that comes early covers the
  * line under a hand that was only crossing the page.

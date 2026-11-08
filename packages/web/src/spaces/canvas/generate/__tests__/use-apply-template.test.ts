@@ -168,7 +168,7 @@ function wire(from: string, to: string, createdAt?: number): void {
  * @param anchor - The anchor's id; every other id is prefixed with it.
  * @param options - What to leave out or change.
  * @param options.guide - Whether the guide text node is there.
- * @param options.models - Models the reader switched the anchor and upstream to.
+ * @param options.models - Models the user switched the anchor and upstream to.
  */
 function seedFlowInstance(anchor: string, options: { guide?: boolean; models?: boolean } = {}): void {
   const { guide = true, models = false } = options;
@@ -389,11 +389,11 @@ describe('useApplyTemplate', () => {
       });
       // No steps, so no guide.
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
-      // An empty node and a `{✏️ …}` are left for the reader (6.5 step 8).
+      // An empty node and a `{✏️ …}` are left for the user (6.5 step 8).
       expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
     });
 
-    it('writes the anchor prompt in the reader’s language', () => {
+    it('writes the anchor prompt in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
       const place = vi.fn();
@@ -403,7 +403,7 @@ describe('useApplyTemplate', () => {
       expect(words).toContain('5 行 5 列');
     });
 
-    it('names the group its new nodes may form after the template, in the reader’s language', () => {
+    it('names the group its new nodes may form after the template, in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
       const place = vi.fn();
@@ -491,7 +491,7 @@ describe('useApplyTemplate', () => {
       );
       // The guide already there is neither duplicated nor rewritten.
       expect(indexOf(existing, 'target-guide')).toBe(-1);
-      // The template's own nodes are marked as this instance; the reader's inputs and the anchor are not.
+      // The template's own nodes are marked as this instance; the user's inputs and the anchor are not.
       expect([...existing.values()].filter((e) => e.instance).map((e) => e.nodeId).sort()).toEqual(['target-sheet', 'target-style']);
       expect(proposal.nodes.filter((n) => n.role === 'written')).toEqual([]);
       // Two same-type inputs each @ the node first given them.
@@ -541,7 +541,7 @@ describe('useApplyTemplate', () => {
       expect(edgesOf(proposal, existing)).not.toContain('only->target');
     });
 
-    it('keeps every node after the reader switched the anchor’s and upstream’s models', () => {
+    it('keeps every node after the user switched the anchor’s and upstream’s models', () => {
       seedFlowInstance('target', { models: true });
       const place = vi.fn();
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
@@ -552,7 +552,7 @@ describe('useApplyTemplate', () => {
       expect(proposal.nodes[indexOf(existing, 'target-sheet')]).toMatchObject({ mode: 'i2i', model: 'model-sheet' });
     });
 
-    it('marks an input node this template placed as part of the instance, and a reader\'s own input not', () => {
+    it('marks an input node this template placed as part of the instance, and a user\'s own input not', () => {
       seedFlowInstance('target');
       setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'target' });
       const place = vi.fn();
@@ -623,7 +623,7 @@ describe('useApplyTemplate', () => {
   });
 
   describe('the guide text node', () => {
-    it('puts the guide back when the reader deleted it', () => {
+    it('puts the guide back when the user deleted it', () => {
       seedFlowInstance('target', { guide: false });
       const place = vi.fn();
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
@@ -812,7 +812,7 @@ describe('the view the panel matches on', () => {
     _resetForTests();
   });
 
-  it('carries data.templateNode from the document; the anchor and a reader\'s own inputs carry none', () => {
+  it('carries data.templateNode from the document; the anchor and a user\'s own inputs carry none', () => {
     seedFlowInstance('target');
     const views = readCanvasGraph('p', 's').nodes;
     const tagOf = (id: string): unknown =>

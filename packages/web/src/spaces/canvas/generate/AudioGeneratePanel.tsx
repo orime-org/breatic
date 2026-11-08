@@ -110,7 +110,7 @@ interface AudioGeneratePanelProps {
   promptPlaceholder: string;
   /** Which box is open while both are there (#1201). */
   expanded: 'prompt' | 'lyrics';
-  /** The reader opened the other box. */
+  /** The user opened the other box. */
   onExpand: (box: 'prompt' | 'lyrics') => void;
   /** The prompt's words, for its row's first line while it is closed. */
   promptFragment: Y.XmlFragment | null;
@@ -179,7 +179,7 @@ interface AudioGeneratePanelProps {
  * @param root0.promptLabel - The name over the prompt box, if it has one.
  * @param root0.promptPlaceholder - What the closed, empty prompt row shows.
  * @param root0.expanded - Which box is open while both are there.
- * @param root0.onExpand - Called with the box the reader opened.
+ * @param root0.onExpand - Called with the box the user opened.
  * @param root0.promptFragment - The prompt's words.
  * @param root0.lyricsFragment - The lyrics' words.
  * @param root0.references - The derived reference rows.

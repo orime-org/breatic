@@ -54,7 +54,7 @@ import {
 } from "@server/modules/asset/upload-ticket.service.js";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
-import { readerUrlSchema } from "@breatic/domain";
+import { userUrlSchema } from "@breatic/domain";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -356,7 +356,7 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
 
 /** An address with no node behind it: a document body's pending block. */
 const ingestUrlSchema = z.object({
-  url: readerUrlSchema,
+  url: userUrlSchema,
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
 });

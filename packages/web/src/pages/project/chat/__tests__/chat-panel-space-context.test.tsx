@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The chat panel tells the Agent about the reader's Spaces (inner#1413): the
+ * The chat panel tells the Agent about the user's Spaces (inner#1413): the
  * chip names the Space whose tab is active, pressing it turns that Space off
  * and on, and each message carries the project's Spaces with the open one
  * only while it is on.

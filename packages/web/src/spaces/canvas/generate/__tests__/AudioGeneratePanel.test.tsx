@@ -154,7 +154,7 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
     renderPanel(<AudioGeneratePanel {...BASE} models={[FISH]} currentModel={FISH} model={FISH.name} />);
     expect(screen.queryByTestId('generate-audio-settings-trigger')).toBeNull();
     // The rest of the footer stays: the mode and model pickers are how the
-    // reader gets back to a text-to-speech model.
+    // user gets back to a text-to-speech model.
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
   });
