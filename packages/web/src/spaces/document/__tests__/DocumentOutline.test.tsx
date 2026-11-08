@@ -341,7 +341,7 @@ describe('DocumentOutline', () => {
     /**
      * Lays out "One" above the reading line and "Two" and "Three" below it, so
      * the reading rule picks "One", or "Three" at the bottom; `scrollTo` moves
-     * the viewport as a browser would.
+     * the viewport straight to where a smooth scroll ends.
      * @param scrollHeight - The body's scroll height; 1000 leaves only 200px of scroll.
      * @returns The body's viewport.
      */
@@ -492,7 +492,7 @@ describe('DocumentOutline', () => {
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
     });
 
-    describe('while the body scrolls smoothly to a heading at its end', () => {
+    describe('while the body scrolls smoothly to a heading', () => {
       const FOUR = [h('a', 1, 'One'), h('m', 2, 'Mid'), h('b', 2, 'Two'), h('c', 2, 'Three')];
       // Each heading's line at scrollTop 0; the body can scroll 200px, and
       // "Two" lands at 200, its end, so "Three" stays below it in view.
@@ -714,6 +714,12 @@ describe('DocumentOutline', () => {
 
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
     });
+
+    it('changes a row’s words in the same frame as its fill, with no colour transition', () => {
+      renderWith([h('a', 1, 'One'), h('b', 1, 'Two')]);
+      expect(row('One')).toHaveClass('transition-none');
+      expect(row('One')).not.toHaveClass('transition-colors');
+    });
   });
 
   describe('A5 — numbers on a highlighted row', () => {
@@ -730,12 +736,6 @@ describe('DocumentOutline', () => {
       expect(numberOf('Two')).toHaveClass('text-foreground-secondary');
       expect(numberOf('Two')).not.toHaveClass('text-muted-foreground');
       expect(numberOf('One')).toHaveClass('text-muted-foreground', 'group-hover:text-foreground-secondary');
-    });
-
-    it('changes a row’s words in the same frame as its fill, with no colour transition', () => {
-      renderWith([h('a', 1, 'One'), h('b', 1, 'Two')]);
-      expect(row('One')).toHaveClass('transition-none');
-      expect(row('One')).not.toHaveClass('transition-colors');
     });
   });
 

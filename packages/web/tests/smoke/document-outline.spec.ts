@@ -5,7 +5,9 @@
  * The heading outline beside the document body, end to end (inner#1149).
  *
  * What jsdom cannot show: where a jump really leaves each level of heading,
- * the highlight following a real scroll, the hover text of a heading cut
+ * the browser's smooth scroll and the highlight passing headings on the way,
+ * a jump aiming again when the body grows mid-scroll and ending when the
+ * user types, the highlight following a real scroll, the hover text of a heading cut
  * short, the outline staying put while the body scrolls and scrolling on its
  * own, the body width with the outline shut at two Space widths, and the
  * outline floating over the body, above the block handles, in a narrow Space.
@@ -72,7 +74,7 @@ function section(marks: string, title: string, paragraphs = 6): string {
 /**
  * A document with all three levels, a long heading and two short sections at
  * the end. Enough follows "Two" for a jump to reach the landing; the end of the
- * document stops a jump short only for the last sections.
+ * document stops a jump short for "Two one one" and the two short sections after it.
  */
 const DOCUMENT =
   section('#', 'One') + section('##', 'One one') + section('###', 'One one one') + section('##', LONG) +
@@ -105,7 +107,7 @@ async function highlighted(p: Page): Promise<string | null> {
  * Follows a jump's smooth scroll frame by frame until the body has held still
  * for five frames.
  * @param p - The page.
- * @returns The highlighted row and the body's scrollTop in every frame.
+ * @returns The highlighted row, the colour of its words and the body's scrollTop in every frame.
  */
 async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; colours: (string | null)[]; tops: number[] }> {
   return p.evaluate(({ outline, viewport }) => new Promise((resolve) => {
@@ -234,8 +236,8 @@ test('a jump scrolls smoothly, the highlight passing the headings on the way and
   const { highlights, colours, tops } = await scrollSettled(page);
   expect(new Set(tops).size).toBeGreaterThan(2);
   expect(highlights.some((h) => h !== null && h !== 'One' && h !== 'Two one one')).toBe(true);
-  // The highlighted row's words take the body colour in the frame its fill
-  // arrives, however briefly the highlight rests there.
+  // The highlighted row's words take the full foreground colour in the frame
+  // its fill arrives, however briefly the highlight rests there.
   const foreground = await page.evaluate(() => {
     const probe = document.createElement('span');
     probe.style.color = 'var(--color-foreground)';
@@ -372,7 +374,7 @@ test('rows draw the demo\'s states: small corners, the one being read darker, an
     return items.slice(1).map((r, n) => Math.round(r.top - items[n]!.bottom));
   }, OUTLINE);
   for (const gap of gaps) expect(gap).toBe(2);
-  // The row eases into its new colour over the button's transition.
+  // The row being read has its words in the full foreground colour.
   await expect.poll(() => row(page, 'Two').evaluate((el) => getComputedStyle(el).color)).toBe(look.foreground);
 
   const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
