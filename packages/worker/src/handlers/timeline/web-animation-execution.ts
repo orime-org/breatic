@@ -32,6 +32,7 @@ import {
   createUsageRecorder,
   creditLotService,
   sumCreditsByOperationKeys,
+  timelineOperationKey,
   toChargeCredits,
   webAnimationSourceRepo,
 } from "@breatic/domain";
@@ -97,16 +98,6 @@ function ended(report: WebAnimationJobReport): report is EndedReport {
 }
 
 /**
- * The operation key an execution's usage rows and charge are recorded under.
- * @param executionId - The execution.
- * @returns The key.
- * @throws {never} Never.
- */
-function operationKeyOf(executionId: string): string {
-  return `timeline:${executionId}`;
-}
-
-/**
  * Whether this attempt still owns the job. A pickup outside the queue (no token) has no rival.
  * @param pickup - The pickup.
  * @returns True when it may write.
@@ -146,7 +137,7 @@ function storedStep(steps: unknown[]): JobStep | undefined {
  */
 function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep {
   const config = getTimelineConfig().web_animation;
-  const jobId = `timeline:${row.id}`;
+  const jobId = timelineOperationKey(row.id);
   const deadlineAt = Date.parse(row.deadlineAt);
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
@@ -252,7 +243,7 @@ async function validated(pickup: Pickup, report: EndedReport): Promise<{ manifes
 async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
   const { row, step } = pickup;
   const recorder = createUsageRecorder({
-    operationKey: operationKeyOf(row.id),
+    operationKey: timelineOperationKey(row.id),
     feature: "timeline_web_animation",
     actorUserId: row.actorUserId,
     projectId: row.projectId,
@@ -278,7 +269,7 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
       providerMetadata: call.costUsd === null ? undefined : { openrouter: { usage: { cost: call.costUsd } } },
       // Only a priced call names its generation: one without a cost is recorded at zero, not looked up later.
       ...(call.costUsd !== null && call.generationId !== null && { generationId: call.generationId }),
-      costIdentity: `${operationKeyOf(row.id)}:${call.seq}`,
+      costIdentity: `${timelineOperationKey(row.id)}:${call.seq}`,
     });
   }
   if (report.container !== null) {
@@ -305,8 +296,8 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
  */
 async function bill(pickup: Pickup): Promise<void> {
   const { row, step } = pickup;
-  const sums = await sumCreditsByOperationKeys([operationKeyOf(row.id)]);
-  const amount = toChargeCredits(Number(sums.get(operationKeyOf(row.id)) ?? 0));
+  const sums = await sumCreditsByOperationKeys([timelineOperationKey(row.id)]);
+  const amount = toChargeCredits(Number(sums.get(timelineOperationKey(row.id)) ?? 0));
   if (amount <= 0 || !(await timelineExecutionRepo.markBilled(row.id, String(amount)))) return;
   const outcome = await creditLotService.chargeForGeneration({
     projectId: row.projectId,

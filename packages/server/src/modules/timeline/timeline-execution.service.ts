@@ -25,7 +25,7 @@ import {
   logger,
   timelineExecutionRepo,
 } from "@breatic/core";
-import { SMALLEST_CREDIT, sumCreditsByOperationKeys, webAnimationSourceRepo } from "@breatic/domain";
+import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineRate } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
@@ -63,16 +63,6 @@ class ActionTaken extends Error {
     super("timeline execution action taken");
     this.name = "ActionTaken";
   }
-}
-
-/**
- * The operation key an execution's usage rows and charge are recorded under.
- * @param executionId - The execution.
- * @returns The key.
- * @throws {never} Never.
- */
-function operationKeyOf(executionId: string): string {
-  return `timeline:${executionId}`;
 }
 
 /**
@@ -175,8 +165,8 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
 export async function list(userId: string, projectId: string, spaceId: string): Promise<ListedExecution[]> {
   await projectService.assertAccess(projectId, userId, "viewer");
   const rows = await timelineExecutionRepo.listForSpace({ projectId, spaceId });
-  const sums = await sumCreditsByOperationKeys(rows.map((row) => operationKeyOf(row.id)));
-  return rows.map((row) => ({ ...row, usageCredits: ceilToCreditCent(Number(sums.get(operationKeyOf(row.id)) ?? 0)) }));
+  const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
+  return rows.map((row) => ({ ...row, usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)) }));
 }
 
 /**
