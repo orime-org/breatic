@@ -4,7 +4,7 @@
 /**
  * inner#1306 test plan ยง97 D27-1: one side-effect-free builder, `buildPlannedVideoRequest(tool, draft, panelFacts,
  * outputNodeIds)` beside `preparePlannedVideoRun`, makes the planned request body the quote and the Run both send, for
- * `video.remove-bg`, `video.lip-sync` and `video.transitions`. It keeps the draft as it is, names the given output node ids
+ * `video.remove-bg`, `video.lip-sync`, `video.transitions`, `video.erase` and `video.expand`. It keeps the draft as it is, names the given output node ids
  * in order, passes shared `miniToolPlannedRequestSchema`, and writes nothing (no Yjs write, no request).
  *
  * `panelFacts` is a shape this test chose from what `preparePlannedVideoRun` reads today plus what the lip-sync and
@@ -60,6 +60,15 @@ const TRANSITIONS: VideoToolDraftById['video.transitions'] = {
   ] },
 } as VideoToolDraftById['video.transitions'];
 const REMOVE_BG: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '60000000-0000-4000-8000-000000000003', revision: '70000000-0000-4000-8000-000000000003', source, inputs: [], params: {} };
+const ERASE: VideoToolDraftById['video.erase'] = {
+  version: 1, draftId: '60000000-0000-4000-8000-000000000004', revision: '70000000-0000-4000-8000-000000000004', source, inputs: [],
+  params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' },
+};
+const TRACKED_REF: VideoToolAnalysisRef = { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: ERASE.draftId, analysisRunId: RUN, inputFingerprint: 'e'.repeat(64) };
+const EXPAND: VideoToolDraftById['video.expand'] = {
+  version: 1, draftId: '60000000-0000-4000-8000-000000000005', revision: '70000000-0000-4000-8000-000000000005', source, inputs: [],
+  params: { frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '16:9', prompt: '' },
+};
 
 /**
  * The builder under test, or a failure naming it when it does not exist yet.
@@ -108,6 +117,17 @@ describe('buildPlannedVideoRequest makes the body the quote and the Run share (ย
   it('builds a remove-bg request with the given output node', async () => {
     const body = await built('video.remove-bg', REMOVE_BG, { projectId: PROJECT, spaceId: SPACE, presentationRef: { source: ref('a') }, analysisRefs: [] });
     expect(body.outputs).toEqual([{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: 'remove-bg' } }]);
+  });
+
+  it('builds an erase request with its tracking ref and the given output node', async () => {
+    const body = await built('video.erase', ERASE, { projectId: PROJECT, spaceId: SPACE, presentationRef: { source: ref('a') }, analysisRefs: [TRACKED_REF] });
+    expect(body.analysis_refs).toEqual([TRACKED_REF]);
+    expect(body.outputs).toEqual([{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: 'erase' } }]);
+  });
+
+  it('builds an expand request with the given output node', async () => {
+    const body = await built('video.expand', EXPAND, { projectId: PROJECT, spaceId: SPACE, presentationRef: { source: ref('a') }, analysisRefs: [] });
+    expect(body.outputs).toEqual([{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: 'expand' } }]);
   });
 
   it('writes nothing: no canvas node, no edge, no request', async () => {

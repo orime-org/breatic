@@ -48,6 +48,7 @@ type PlannedRecipe = MiniToolPlannedRequest['outputs'][number]['recipe'];
 /** The one output recipe each single-output planned video tool's request names. */
 const SINGLE_RECIPES: Partial<Record<VideoToolId, PlannedRecipe>> = {
   'video.remove-bg': { kind: 'remove-bg' }, 'video.lip-sync': { kind: 'lip-sync' }, 'video.transitions': { kind: 'transitions' },
+  'video.erase': { kind: 'erase' }, 'video.expand': { kind: 'expand' },
 };
 
 /**
