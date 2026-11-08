@@ -574,11 +574,13 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
         throw toolFailed(said, only === undefined ? FAILURE_LINES.pagesUnreadable : USER_LINE[only]);
       }
 
-      const sources = pages.flatMap((page, i): FetchSource[] =>
-        isFirst(i) && page.status === "ok" && page.index !== undefined
-          ? [{ url: page.url, title: page.title ?? "", publisher: publisherOf(page.url), index: page.index }]
-          : [],
-      );
+      // The row links to the address that was read; the model's spelling stays in the page's url.
+      const sources = pages.flatMap((page, i): FetchSource[] => {
+        const readAt = stored[i];
+        return isFirst(i) && page.status === "ok" && page.index !== undefined && readAt !== undefined
+          ? [{ url: readAt, title: page.title ?? "", publisher: publisherOf(readAt), index: page.index }]
+          : [];
+      });
       return { pages, sources };
     },
   });
