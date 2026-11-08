@@ -63,10 +63,8 @@ export function PromoterApplyDialog({
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
   // The draft and the answer live in the referral forms store: a waiting press
   // outlives this dialog when the panel closes.
-  const { country, channels, plan, agreedTerms, termsNotice, answeredTerms } = useReferralForm('apply');
+  const { country, channels, plan, agreedTerms, termsNotice } = useReferralForm('apply');
   const [errors, setErrors] = React.useState<FieldErrors>({});
-  // Ticking agrees to the version on screen now; after a terms_changed answer, the one it named.
-  const shownTerms = answeredTerms ?? termsVersion;
   const pressing = useRunning(APPLY_INTENT) !== undefined;
   useReferralFormOnScreen('apply', open);
   const countries = React.useMemo(() => countryOptions(getLocale()), []);
@@ -94,9 +92,14 @@ export function PromoterApplyDialog({
       },
       onFailure: (err) => {
         if (err instanceof ApiException && err.reason === 'terms_changed') {
-          void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
+          // The answer names the current version; the panel shows it even if the re-read below fails.
           const named = err.details?.termsVersion;
-          editApplication({ agreedTerms: null, termsNotice: true, ...(typeof named === 'string' ? { answeredTerms: named } : {}) });
+          if (typeof named === 'string') {
+            client.setQueryData<AccountReferral | null>(referralQueryKey(userId), (view) =>
+              view ? { ...view, program: { ...view.program, termsVersion: named } } : view);
+          }
+          void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
+          editApplication({ agreedTerms: null, termsNotice: true });
           if (!isReferralFormOnScreen('apply')) toast.warning(t('membership.promoter.termsChanged'));
           return;
         }
@@ -189,7 +192,7 @@ export function PromoterApplyDialog({
                   <Checkbox
                     checked={agreedTerms !== null}
                     aria-invalid={!!errors.agree || undefined}
-                    onCheckedChange={(v) => { editApplication({ agreedTerms: v === true ? shownTerms : null, termsNotice: false }); setErrors((er) => ({ ...er, agree: undefined })); }}
+                    onCheckedChange={(v) => { editApplication({ agreedTerms: v === true ? termsVersion : null, termsNotice: false }); setErrors((er) => ({ ...er, agree: undefined })); }}
                   />
                   <span>
                     {t('membership.promoter.agreeLead')}{' '}

@@ -33,8 +33,6 @@ export interface ApplicationDraft {
   agreedTerms: string | null;
   /** The terms changed under the last press; shown until the box is ticked again. */
   termsNotice: boolean;
-  /** The terms version that answer named, recorded when the box is ticked again. */
-  answeredTerms: string | null;
 }
 
 /** Which form. */
@@ -54,7 +52,6 @@ export const EMPTY_APPLICATION: Readonly<ApplicationDraft> = Object.freeze({
   plan: '',
   agreedTerms: null,
   termsNotice: false,
-  answeredTerms: null,
 });
 
 const useReferralFormsStore = create<ReferralFormsState>(() => ({ bind: EMPTY_BIND, apply: EMPTY_APPLICATION }));
