@@ -17,7 +17,7 @@
  *   `MiniToolStepAttempt.attemptId`), pinned on the run's execution pin, with no `studio_assets` row (D21-1).
  * - faces, clip, stem, composite: standard-4 container jobs with the ยง7.17 recipes (shapes of ยง97 D20-1), their job ids
  *   built from the step key and an attempt ordinal and their outputs at `videoPresentationWorkKeyFor(sourceKey, jobId)`
- *   (D21-2), each output pinned and not registered; per stage no more first-attempt jobs than the frozen `stageJobs`.
+ *   followed by the extension of the type they hold (D21-2), each output pinned and not registered; per stage no more first-attempt jobs than the frozen `stageJobs`.
  * - gen: one prediction to the frozen `generator.modelId` (provider `sync/lipsync-3`) with exactly the person video and
  *   stem URLs, `sync_mode: "cut_off"` only for `providerSyncMode: "cut_off"`; its result URL fetched into
  *   `${stepKeys.gen}:${attemptId}` and pinned; a 400 or 422 on submit, or the model's configured `async_rejection`, is
@@ -456,7 +456,7 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       expect(job.jobId).toContain(f.execution.persons.find((p) => p.personId === person)!.stepKeys.faces);
       expect(bound(job, recipe.inputId)).toBe(preparedKey);
       expect(recipe.profile).toMatchObject({ id: "opencv-yunet-2023mar" });
-      expect(job.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId), contentType: jsonType });
+      expect(job.outputs[0]).toMatchObject({ storageKey: `${videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId)}.txt`, contentType: jsonType });
       expect(await pinned(f.execution.taskId)).toContain(job.outputs[0]!.storageKey);
       expect(await assetsAt([job.outputs[0]!.storageKey])).toBe(0);
     }
@@ -475,14 +475,14 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       expect(bound(clip, c.faces)).toBe(faces.outputs[0]!.storageKey);
       expect(bound(clip, c.track)).toBe(joinedKey(person));
       expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
-      expect(clip.outputs[0]).toMatchObject({ storageKey: videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId), contentType: "video/mp4" });
+      expect(clip.outputs[0]).toMatchObject({ storageKey: `${videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId)}.mp4`, contentType: "video/mp4" });
       // Times are exact rationals, as every recipe carries them (ยง97 D20-1 lipsync_stem shape).
       const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: Exact }[]; duration: Exact };
       expect(seconds(s.duration)).toBe(2);
       expect(s.rows.map((row) => ({ key: bound(stem, row.inputId), startTime: seconds(row.startTime) })))
         .toEqual(person === "person-1" ? [{ key: f.audioKeys["person-1"][0], startTime: 0 }]
           : [{ key: f.audioKeys["person-3"][0], startTime: 0.25 }, { key: f.audioKeys["person-3"][1], startTime: 1 }]);
-      expect(stem.outputs[0]!.storageKey).toBe(videoPresentationWorkKeyFor(SOURCE_KEY, stem.jobId));
+      expect(stem.outputs[0]!.storageKey).toBe(`${videoPresentationWorkKeyFor(SOURCE_KEY, stem.jobId)}.m4a`);
       const pins = await pinned(f.execution.taskId);
       expect(pins).toEqual(expect.arrayContaining([clip.outputs[0]!.storageKey, stem.outputs[0]!.storageKey]));
     }
@@ -497,6 +497,9 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       const stem = personJob("lipsync_stem", person).outputs[0]!.storageKey;
       const body = { video: publicUrl(clip), audio: publicUrl(stem), sync_mode: "cut_off" };
       expect(gens.map((call) => call[2])).toContainEqual(body);
+      // A model reads an object's type from its link's extension.
+      expect(body.video).toMatch(/\.mp4$/);
+      expect(body.audio).toMatch(/\.m4a$/);
       const attempt = await attemptOf(f, GENERATOR, (sent) => sent.video === body.video);
       const key = lipsyncObjectKey(lipsyncStepKey(PLAN, person, "gen"), attempt);
       expect(outside.fetchUrl.mock.calls.map((call) => call[0])).toContain(`https://provider.example.test/gen/${person}.mp4`);
@@ -526,7 +529,7 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       expect(recipe.timeline).toEqual({ duration: 2, videoDuration: 3.84, syncMode: "cut_off" });
       expect(recipe.persons.map((p) => bound(job, p.result)).sort()).toEqual([...genKeys].sort());
       expect(recipe.persons.map((p) => p.cropSize)).toEqual([512, 512]);
-      expect(job.outputs[0]!.storageKey).toBe(videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId));
+      expect(job.outputs[0]!.storageKey).toBe(`${videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId)}.mp4`);
       expect(await pinned(f.execution.taskId)).toContain(job.outputs[0]!.storageKey);
     }
     const frozen = new Map(plannedStageJobs(LAYOUT).map((stage) => [stage.stage, stage.jobs]));

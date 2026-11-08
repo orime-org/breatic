@@ -12,6 +12,7 @@
  * ingest `/jobs` boundary (every job done at once unless a case scripts it).
  *
  * What is asserted, at those boundaries:
+ * - every object a model reads ends in its type's file extension (a link without one fails VACE's decode):
  * - erase: `prepare_model_input` with the frozen 30 fps grid, `bria_mask` over the tracked RLE with the same grid, one Bria
  *   request `{ video, mask_video, copy_audio: false }` on their outputs, erase composite chunks reading the Bria result and
  *   the RLE with the grid and the configured matte, one stitch; Bria's async code 1401 and a composite
@@ -292,6 +293,7 @@ describe("the erase chain (execution design §10.4 steps and composite rows)", (
     expect(bound(mask!, mask!.outputs[0]!.recipe.inputId)).toBe(f.rleKey);
     const bria = calls(BRIA_ENDPOINT);
     expect(bria).toEqual([{ video: publicUrl(prepare!.outputs[0]!.storageKey), mask_video: publicUrl(mask!.outputs[0]!.storageKey), copy_audio: false }]);
+    for (const job of [prepare!, mask!]) expect(job.outputs[0]!.storageKey).toMatch(/\.mp4$/);
     const composites = jobsOf("model_composite");
     expect(composites.length).toBeGreaterThan(0);
     for (const job of composites) {
@@ -336,6 +338,7 @@ describe("the expand chain (execution design §10.5 steps, model and composite r
     expect(vace[0]).toMatchObject({ task: "inpainting", num_inference_steps: 30, guidance_scale: 5, flow_shift: 16, context_scale: 1, size: "832*480", duration: 10,
       seed: plan.seed, prompt: miniToolById("video.expand")?.prompt?.defaultText });
     expect(Object.values(vace[0]!)).toEqual(expect.arrayContaining([publicUrl(window!.outputs[0]!.storageKey), publicUrl(mask!.outputs[0]!.storageKey)]));
+    for (const job of [window!, mask!]) expect(job.outputs[0]!.storageKey).toMatch(/\.mp4$/);
     const composites = jobsOf("model_composite");
     expect(composites.length).toBeGreaterThan(0);
     for (const job of composites) for (const background of job.outputs[0]!.recipe.backgrounds as { crop: unknown }[]) expect(background.crop).toEqual(plan.targetRoi);
@@ -357,6 +360,7 @@ describe("the expand chain (execution design §10.5 steps, model and composite r
       expect(Number(recipe.time.numerator) / Number(recipe.time.denominator)).toBeCloseTo(windows[at + 1]!.span.start - windows[at]!.span.start, 6);
       expect(recipe.target).toMatchObject({ width: 832, height: 480 });
       expect(vace[at + 1]!.image).toBe(publicUrl(job.outputs[0]!.storageKey));
+      expect(job.outputs[0]!.storageKey).toMatch(/\.png$/);
     });
   });
 

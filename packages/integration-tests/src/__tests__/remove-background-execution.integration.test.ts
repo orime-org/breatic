@@ -246,11 +246,11 @@ async function step(f: Fixture): Promise<Awaited<ReturnType<typeof upstreamStepR
   const row = rows[0]!; expect(row).toMatchObject({ kind: "generate", endpoint: GOLDEN.provider.model_id, itemIndex: 0 }); return row;
 }
 
-/** The output key and public URL of one preparation job, from the shared key function (§5.4). @throws {Error} When it is missing. */
+/** The output key and public URL of one preparation job: the shared work key and the mp4 extension (§5.4). @throws {Error} When it is missing. */
 function prepared(f: Fixture, jobId: string): { key: string; url: string } {
   const keyFor = (shared as Record<string, unknown>).videoPresentationWorkKeyFor as ((storageKey: string, id: string) => string) | undefined;
   expect(keyFor, "videoPresentationWorkKeyFor is exported from @breatic/shared").toBeTypeOf("function");
-  const key = keyFor!(f.plan.sourceKey, jobId);
+  const key = `${keyFor!(f.plan.sourceKey, jobId)}.mp4`;
   return { key, url: publicUrl(key) };
 }
 

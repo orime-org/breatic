@@ -14,12 +14,12 @@ import {
   recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson,
 } from "@breatic/domain";
 import {
-  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanJobRequest,
+  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
   type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import type { ExpandFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { appendStep } from "@worker/handlers/mini-tool/prepare-model-input.js";
+import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { chunkInputId, FullLedgerInvalid, readJobLedger, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
@@ -368,7 +368,7 @@ export async function advanceContainer(run: ModelStepRun, planned: ContainerStep
     const built = existing === undefined ? await planned.build() : null;
     const candidate: MiniToolPlanJobRequest = existing === undefined
       ? { schemaVersion: 2, jobId, containerClass, deadlineAt, limits: run.container.limits, inputs: built!.inputs,
-        outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(run.sourceKey, jobId), contentType: planned.contentType, recipe: built!.recipe }] }
+        outputs: [{ outputIndex: 0, storageKey: stepWorkKey(run.sourceKey, jobId, planned.contentType), contentType: planned.contentType, recipe: built!.recipe }] }
       : storedRequest(existing)!;
     const step = existing ?? await appendStep(run.taskId, { kind: "container_job", endpoint: containerClass, itemIndex: steps.length });
     const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });

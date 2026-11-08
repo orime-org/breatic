@@ -178,6 +178,8 @@ describe("the tracked mask analysis executor (execution design §10.2, §10.3)",
     const tracks = outside.runPrediction.mock.calls.filter((call) => call[1] === TRACKER).map((call) => call[2] as Record<string, unknown>);
     expect(tracks.map((body) => body.video).sort()).toEqual([publicUrl(forward!.outputs[0]!.storageKey), publicUrl(reverse!.outputs[0]!.storageKey)].sort());
     for (const body of tracks) {
+      // A model reads an object's type from its link's extension.
+      expect(body.video).toMatch(/\.mp4$/);
       expect(body).toEqual({ video: body.video, prompt: "object", box_prompts: [{ frame_index: 0, object_id: 1, x_min: 288, y_min: 162, x_max: 480, y_max: 270 }], apply_mask: false });
     }
     const joins = submitted.filter((job) => job.outputs[0]!.recipe.kind === "rle_join");

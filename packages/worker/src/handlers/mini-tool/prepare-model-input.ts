@@ -41,6 +41,23 @@ interface Unit {
 /** The one input of every preparation job: the registered source. */
 const SOURCE_INPUT_ID = "00000000-0000-4000-8000-000000000001";
 
+/** The file extension of each type a step writes; a model reads an object's type from its link, and VACE fails one without. */
+const EXTENSIONS: Readonly<Record<string, string>> = { "video/mp4": "mp4", "video/webm": "webm", "image/png": "png", "audio/mp4": "m4a", "text/plain": "txt" };
+
+/**
+ * A step's work object key: the source's work key for the job, ending in the extension of the type it holds.
+ * @param sourceKey - The source's storage key.
+ * @param jobId - The job of the attempt.
+ * @param contentType - The type the job writes.
+ * @returns The key.
+ * @throws {Error} When the type has no extension here.
+ */
+export function stepWorkKey(sourceKey: string, jobId: string, contentType: string): string {
+  const extension = EXTENSIONS[contentType];
+  if (extension === undefined) throw new Error(`No file extension for ${contentType}`);
+  return `${videoPresentationWorkKeyFor(sourceKey, jobId)}.${extension}`;
+}
+
 /**
  * Append one step after the task's existing steps.
  * @param taskId - The task.
@@ -96,7 +113,7 @@ async function advanceUnit(execution: PreparingRun, unit: Unit, deadlineAt: numb
     const candidate: MiniToolPlanJobRequest = {
       schemaVersion: 2, jobId, containerClass: preparation.containerClass, deadlineAt, limits: preparation.limits,
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...built.inputs ?? []],
-      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: "video/mp4", recipe: built.recipe }],
+      outputs: [{ outputIndex: 0, storageKey: stepWorkKey(execution.sourceKey, jobId, "video/mp4"), contentType: "video/mp4", recipe: built.recipe }],
     };
     const step = existing ?? await appendStep(execution.taskId, { kind: "container_job", endpoint: preparation.containerClass, itemIndex: unit.chunkIndex });
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: unit.chunkIndex, chargeTo: "user", request: candidate });

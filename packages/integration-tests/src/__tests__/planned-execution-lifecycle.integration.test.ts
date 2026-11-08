@@ -32,7 +32,7 @@ import * as shared from "@breatic/shared";
  */
 function resolvedBody(f: ExecutionFixture): Record<string, unknown> {
   const keyFor = (shared as unknown as { videoPresentationWorkKeyFor: (key: string, id: string) => string }).videoPresentationWorkKeyFor;
-  return { ...f.plan.body, video: `https://assets.example.test/${keyFor(f.plan.sourceKey, `${f.taskId}:prep:0:a1`)}` };
+  return { ...f.plan.body, video: `https://assets.example.test/${keyFor(f.plan.sourceKey, `${f.taskId}:prep:0:a1`)}.mp4` };
 }
 
 const { runPrediction, storeFromUrl } = vi.hoisted(() => ({ runPrediction: vi.fn<typeof wavespeedModule.runPrediction>(), storeFromUrl: vi.fn<typeof uploadModule.storeFromUrl>() }));
