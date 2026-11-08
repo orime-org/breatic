@@ -300,7 +300,18 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     else next.set(key, player);
     return next;
   }), []);
+  // Instances that can register no player until a retry: their address was refused or the player module failed.
+  const [unregistrable, setUnregistrable] = React.useState<ReadonlySet<string>>(() => new Set());
+  const reportUnavailable = React.useCallback((key: string, unavailable: boolean): void => setUnregistrable((current) => {
+    if (current.has(key) === unavailable) return current;
+    const next = new Set(current);
+    if (unavailable) next.add(key);
+    else next.delete(key);
+    return next;
+  }), []);
   const layerSpecs = webEntries.flatMap((entry) => entry.instance === null ? [] : [{ key: entry.instance.key, clip: entry.clip, fps: entry.instance.fps }]);
+  // A visible copy whose player has not registered yet holds play like a loading instance (inner#1711 design §7.2).
+  const webPending = layerSpecs.some((spec) => !players.has(spec.key) && !unregistrable.has(spec.key));
   const layerSignature = JSON.stringify(layerSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the instances.
   const webLayers = React.useMemo((): TimelineWebLayer[] => layerSpecs.flatMap((spec) => {
@@ -313,7 +324,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const resourceState = source === null ? 'ready' : resource.isError ? 'failed' : resource.isPending ? 'loading' : 'ready';
   const playback = useTimelinePlayback({
     document, readyClipIds: readyIds, frame, onFrame: setFrame, clip: active, source, media, enabled: true, resourceState,
-    webLayers, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
+    webLayers, webPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
   });
   const { seek, retry: retryPlayback, retryWeb } = playback;
   const { refetch: refetchResource } = resource;
@@ -628,7 +639,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
             <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
           )}
-          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} onPlayer={registerPlayer} onRetry={retryWeb} />
+          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} />
           {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
           {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
           {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}

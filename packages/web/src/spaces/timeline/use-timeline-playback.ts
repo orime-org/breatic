@@ -25,6 +25,8 @@ export interface TimelinePlaybackInput {
   resourceState: 'loading' | 'ready' | 'failed';
   /** The visible web-animation instances, bottom-up; an unchanged set keeps its identity. */
   webLayers?: readonly TimelineWebLayer[];
+  /** Whether a visible web-animation copy has not registered its player yet; play waits for it like a loading one. */
+  webPending?: boolean;
   /** How long a web-animation page may take to say its bridge is ready. */
   webLoadTimeoutMs?: number;
 }
@@ -50,8 +52,9 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry' | 'ret
 
 /**
  * Drive the preview against the integer-frame document clock. The current frame is ready when the visible video has
- * seeked to it and every visible web-animation instance that has not failed has answered it (inner#1711 design
- * §7.2); play waits, with the video paused and the clock frozen, until it is.
+ * seeked to it and every visible web-animation instance that has not failed has answered it, including one whose
+ * player has not registered yet (inner#1711 design §7.2); play waits, with the video paused and the clock frozen,
+ * until it is.
  * @param input - The current frame, placement, native media element and visible web-animation instances.
  * @returns The local transport state and user controls.
  * @throws {never} Never.
@@ -266,7 +269,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const terminalHold = media !== null && clip !== null && source !== null && media.ended
         && !awaitingSeek && position.current === clip.startFrame + clip.durationFrames - 1
         && media.currentTime >= Number(source.durationSeconds);
-      const webReady = host.ready();
+      const webReady = host.ready() && latest.current.webPending !== true;
       const next = clip === null || terminalHold ? (webReady ? 'playing' : 'waiting') : resolveTimelineMediaTransport({
         intent: 'play', generationMatches: true, targetReady: !awaitingSeek && resourceState === 'ready' && webReady,
         paused: media?.paused ?? true, seeking: media?.seeking ?? true,
@@ -441,6 +444,10 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     setWebStates(host.states());
     evaluateNow.current?.();
   }, [host, webLayers]);
+
+  React.useEffect(() => {
+    evaluateNow.current?.();
+  }, [input.webPending]);
 
   React.useEffect(() => {
     if (!atBoundary.current) return;

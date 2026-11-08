@@ -98,6 +98,7 @@ interface WebInstanceProps {
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
   onPlayerRetry: () => void;
+  onUnavailable?: (key: string, unavailable: boolean) => void;
 }
 
 /**
@@ -131,10 +132,11 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
  * @param props.onPlayer - Hands its element to the playback.
  * @param props.onRetry - Loads it again.
  * @param props.onPlayerRetry - Loads the player module again.
+ * @param props.onUnavailable - Says whether it can never register a player until a retry, so play does not wait for it.
  * @returns The player and, when it is unavailable, its note.
  * @throws {never} Never.
  */
-const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, onPlayer, onRetry, onPlayerRetry }: WebInstanceProps): React.JSX.Element {
+const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, onPlayer, onRetry, onPlayerRetry, onUnavailable }: WebInstanceProps): React.JSX.Element {
   const t = useTranslation();
   const { key, sourceVersionId } = entry.instance;
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
@@ -152,6 +154,13 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     if (playerFailed) onPlayerRetry();
     if (!playerFailed || preview.failed) { refresh(); onRetry(key); }
   }, [playerFailed, preview.failed, onPlayerRetry, refresh, onRetry, key]);
+  // Without an address or a player module no player registers, so the playback's barrier must not wait for one.
+  const unregistrable = preview.failed || playerFailed;
+  React.useEffect(() => {
+    if (!unregistrable || onUnavailable === undefined) return;
+    onUnavailable(key, true);
+    return () => onUnavailable(key, false);
+  }, [unregistrable, key, onUnavailable]);
   // A page reloaded after its address expired never says it is ready; one fresh address is tried before giving up.
   const refreshedOnce = React.useRef(false);
   React.useEffect(() => {
@@ -159,7 +168,7 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     refreshedOnce.current = true;
     refresh();
   }, [state, refresh]);
-  const unavailable = preview.failed || playerFailed || (state === 'failed' && refreshedOnce.current);
+  const unavailable = unregistrable || (state === 'failed' && refreshedOnce.current);
   const loading = !drawn && !unavailable;
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
@@ -178,6 +187,7 @@ interface TimelineWebPreviewProps {
   states: ReadonlyMap<string, WebInstanceState>;
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
+  onUnavailable?: (key: string, unavailable: boolean) => void;
 }
 
 /**
@@ -190,10 +200,11 @@ interface TimelineWebPreviewProps {
  * @param props.states - Each instance's state.
  * @param props.onPlayer - Hands a player element to the playback.
  * @param props.onRetry - Loads an instance again.
+ * @param props.onUnavailable - Says which instances can register no player until a retry.
  * @returns The layers.
  * @throws {never} Never.
  */
-export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRetry }: TimelineWebPreviewProps): React.JSX.Element {
+export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRetry, onUnavailable }: TimelineWebPreviewProps): React.JSX.Element {
   const t = useTranslation();
   const instances = React.useMemo(() => entries.flatMap((entry) => entry.instance === null ? [] : [{ ...entry, instance: entry.instance }])
     .sort((a, b) => (a.instance.key < b.instance.key ? -1 : a.instance.key > b.instance.key ? 1 : 0)), [entries]);
@@ -202,7 +213,7 @@ export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRet
   const notesStyle = React.useMemo(() => ({ zIndex: entries.length + 1 }), [entries.length]);
   return <>
     {instances.map((entry) => <WebInstance key={entry.instance.key} projectId={projectId} entry={entry} state={states.get(entry.instance.key)} defined={player.defined}
-      playerFailed={player.failed} notes={notes} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} />)}
+      playerFailed={player.failed} notes={notes} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} onUnavailable={onUnavailable} />)}
     <div ref={setNotes} className='absolute right-3 top-3 flex flex-col items-end gap-1.5' style={notesStyle}>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status === null ? '' : t(`timeline.webAnimation.status.${entry.status}`);
