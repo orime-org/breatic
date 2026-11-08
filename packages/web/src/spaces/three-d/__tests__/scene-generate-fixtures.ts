@@ -31,8 +31,8 @@ const TEXTURED = { flag_on: 'texture' };
 const COMMON: Record<string, Record<string, unknown>> = {
   texture: toggle('Texture', true),
   pbr: toggle('PBR', true),
-  texture_quality: choice('Texture quality', ['standard', 'fast', 'detailed', 'extreme'], 'standard',
-    { standard: 'Standard', fast: 'Fast', detailed: 'Detailed', extreme: 'Extreme' }, TEXTURED),
+  texture_quality: choice('Texture quality', ['standard', 'fast', 'detailed'], 'standard',
+    { standard: 'Standard', fast: 'Fast', detailed: 'Detailed' }, TEXTURED),
   texture_version: choice('Texture version', ['v3.0', 'v3.5'], 'v3.0', { 'v3.0': 'v3.0', 'v3.5': 'v3.5' }, TEXTURED),
   delight: toggle('Remove lighting', true, { flag_on: 'texture', equals: { texture_version: 'v3.5' } }),
   geometry_quality: choice('Geometry quality', ['standard', 'detailed'], 'standard', { standard: 'Standard', detailed: 'Detailed' }),

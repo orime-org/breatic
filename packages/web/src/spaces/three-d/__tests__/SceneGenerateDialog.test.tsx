@@ -296,7 +296,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     const { rerender } = renderDialog();
     await ready();
     await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
-    await user.click(screen.getByTestId('generate-param-texture_quality-option-extreme'));
+    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
 
     rerender(false, null);
     rerender(true, null);

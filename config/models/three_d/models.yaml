@@ -27,6 +27,11 @@
 # https://wavespeed.ai/models/tripo3d/h3.1/multiview-to-3d. The formula is
 # written from the price table on those pages: the base is geometry only,
 # texture adds by quality, and parts are priced on geometry only.
+# Two upstream options are not offered, because their results cannot be
+# placed in a 3D Space: quad, which outputs FBX, and the extreme texture
+# quality, whose 8K maps exceed the scene's texture budget
+# (config/scene.yaml max_texture_bytes). The formula still prices them as
+# the upstream does.
 
 models:
 
@@ -56,8 +61,8 @@ models:
         description: "Texture detail"
         label: "Texture quality"
         default: "standard"
-        values: ["standard", "fast", "detailed", "extreme"]
-        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed", "extreme": "Extreme"}
+        values: ["standard", "fast", "detailed"]
+        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
         fill: "panel"
         when: { flag_on: "texture" }
       texture_version:
@@ -198,8 +203,8 @@ models:
         description: "Texture detail"
         label: "Texture quality"
         default: "standard"
-        values: ["standard", "fast", "detailed", "extreme"]
-        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed", "extreme": "Extreme"}
+        values: ["standard", "fast", "detailed"]
+        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
         fill: "panel"
         when: { flag_on: "texture" }
       texture_version:
@@ -357,8 +362,8 @@ models:
         description: "Texture detail"
         label: "Texture quality"
         default: "standard"
-        values: ["standard", "fast", "detailed", "extreme"]
-        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed", "extreme": "Extreme"}
+        values: ["standard", "fast", "detailed"]
+        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
         fill: "panel"
         when: { flag_on: "texture" }
       texture_version:

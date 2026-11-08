@@ -40,6 +40,14 @@ describe("the 3D settings as the agent reads them", () => {
     }
   });
 
+  it("offers only the texture qualities whose result a 3D Space can place", () => {
+    for (const mode of ["t23d", "i23d"]) {
+      for (const model of modelsIn(mode)) {
+        expect(model.params.texture_quality?.options, model.name).toEqual(["standard", "fast", "detailed"]);
+      }
+    }
+  });
+
   it("gives the face limit its own range and the ranges other settings switch to", () => {
     for (const mode of ["t23d", "i23d"]) {
       for (const model of modelsIn(mode)) {
