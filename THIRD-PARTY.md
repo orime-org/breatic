@@ -174,7 +174,10 @@ and `collab` beside our own code, so every production dependency of those three
 is distributed with it. These are the ones whose licence is not one of the four
 permissive ones. The media container carries no `node_modules` at all — its
 service is bundled into a single file — and the `breatic-web` image carries the
-front-end bundle covered by the next section.
+front-end bundle covered by the next section. The MiniToolContainerGl image adds
+the transition renderer's `node_modules`, installed with `npm ci` from
+[packages/ingest/container/gl-renderer/package-lock.json](./packages/ingest/container/gl-renderer/package-lock.json);
+its packages under other licences are listed after the server-side ones.
 
 ### Server-side packages under other licences
 
@@ -194,6 +197,21 @@ front-end bundle covered by the next section.
 | `sax` | `1.6.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `svgo` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/sax-js |
 | `sentry` | `0.45.0` | `packages/server`, `packages/worker`, `packages/collab` → `@sentry/node` → `@sentry/bundler-plugins` | **FSL-1.1-Apache-2.0** (Functional Source License 1.1), per the tarball's `LICENSE.md`: use and redistribution for any purpose other than a product competing with Sentry, becoming Apache-2.0 two years after each release. It is Sentry's command-line tool; `@sentry/node` imports it only from its bundler-plugin entry points (`/vite`, `/rollup`, `/webpack`, `/esbuild`), which none of our services load, so it sits in the image without running | https://github.com/getsentry/cli |
 | `slick` | `1.12.2` | `packages/server` → `mjml` → `mjml-core` → `juice` | Reported as `MIT (http://mootools.net/license.txt)`, which is what its `package.json` declares. Neither the published tarball nor the upstream repository carries a licence file, and that address no longer serves the licence text. We use it under the author's MIT declaration | https://github.com/kamicane/slick |
+
+### Transition renderer packages under other licences
+
+| Package | Version | Reached through | Licence | Source |
+|---|---|---|---|---|
+| `expand-template` | `2.0.3` | `gl` → `prebuild-install` | MIT **or** WTFPL, at the recipient's option. **Our election: MIT** | https://github.com/ralphtheninja/expand-template |
+| `gl-format-compiler-error` | `1.0.3` | `gl-transition` → `gl-shader` | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/wwwtyro/gl-format-compiler-error |
+| `isexe` | `3.1.5` | `gl` → `node-gyp` → `which` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/isexe |
+| `jackspeak` | `3.4.3` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/jackspeak |
+| `minipass` | `7.1.3` | `gl` → `node-gyp` → `tar` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass |
+| `minipass-flush` | `1.0.7` | `gl` → `node-gyp` → `make-fetch-happen` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass-flush |
+| `package-json-from-dist` | `1.0.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/package-json-from-dist |
+| `path-scurry` | `1.11.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/path-scurry |
+| `rc` | `1.2.8` | `gl` → `prebuild-install` | BSD-2-Clause **or** MIT **or** Apache-2.0, at the recipient's option. **Our election: MIT** | https://github.com/dominictarr/rc |
+| `weakmap-shim` | `1.1.1` | `gl-transition` → `gl-shader` | Its `package.json` declares no licence; the repository's `LICENCE` is the MIT licence | https://github.com/Raynos/weakmap-shim |
 
 ## Source copied into our own files
 
