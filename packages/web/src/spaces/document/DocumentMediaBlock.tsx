@@ -234,7 +234,8 @@ function ToolButton({
           {children}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      {/* The toolbar hangs in the body's scroller, which would cut it off. */}
+      <TooltipContent portal>{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -730,6 +731,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       {sized &&
             selected &&
             CORNERS.map(({ corner, side: towards, place, cursor }) => (
+              // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- a knob is dragged with the mouse only; the press is only kept from the browser
               <span
                 key={corner}
                 data-media-chrome=''
@@ -738,6 +740,15 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                 className={`absolute h-6 w-6 ${place} ${cursor}`}
                 onPointerDown={(event) => {
                   startResize(towards, event);
+                }}
+                // The knob sits inside the selection drawn over the selected
+                // block, and a press in a selection may start a native drag of
+                // it: at once on Windows, after a 150 ms hold on macOS
+                // (Chromium's `kTextDragDelay`). The drag would take the pointer
+                // from the resize (#1396); only cancelling the press's
+                // `mousedown` keeps it from starting.
+                onMouseDown={(event) => {
+                  event.preventDefault();
                 }}
               />
             ))}

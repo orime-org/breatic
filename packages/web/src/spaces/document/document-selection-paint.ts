@@ -35,6 +35,7 @@
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
@@ -100,6 +101,33 @@ function paintClassOf(name: string): string {
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
+ * The selected look for the blocks without text a range holds: dividers,
+ * media and the like, and empty lines when asked. The AI dialog's range
+ * (`document-ai-range.ts`) paints with it too.
+ * @param doc - The body.
+ * @param range - The range.
+ * @param range.from - Where it starts.
+ * @param range.to - Where it ends.
+ * @param holdsLines - Whether empty lines are painted.
+ * @returns The decorations.
+ */
+export function noTextPaint(doc: ProseMirrorNode, range: { from: number; to: number }, holdsLines = true): Decoration[] {
+  const found: Decoration[] = [];
+  doc.nodesBetween(range.from, range.to, (node, pos) => {
+    if (node.isTextblock) {
+      if (holdsLines && node.content.size === 0) {
+        found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
+      }
+      return false;
+    }
+    if (!NO_TEXT.has(node.type.name)) return true;
+    found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
+    return false;
+  });
+  return found;
+}
+
+/**
  * The decorations for the blocks the current selection holds.
  * @param state - The editor state.
  * @returns The set, empty when nothing is to be painted.
@@ -121,19 +149,8 @@ function paintFor(state: EditorState): DecorationSet {
     // inside any range that reaches it. A selection taking a table whole
     // holds the blocks without words at the edges of its cells too
     // (inner#1619 T14), which lie past its ends.
-    const holdsLines = !(selection instanceof CellSelection);
     const range = heldRange(selection) ?? selection;
-    doc.nodesBetween(range.from, range.to, (node, pos) => {
-      if (node.isTextblock) {
-        if (holdsLines && node.content.size === 0) {
-          found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
-        }
-        return false;
-      }
-      if (!NO_TEXT.has(node.type.name)) return true;
-      found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
-      return false;
-    });
+    found.push(...noTextPaint(doc, range, !(selection instanceof CellSelection)));
     // The text an edge takeover holds, in the colour the panel stand-in
     // paints with (`index.css`, `[data-show-selection]`).
     if (selection instanceof BodyEdgeSelection) {

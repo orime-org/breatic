@@ -45,7 +45,7 @@ interface Described {
 
 /**
  * The guide leaves the message out, for this reason. A name only a screen
- * reader hears also carries the phrase that describes its control by look.
+ * user hears also carries the phrase that describes its control by look.
  */
 interface Excluded {
   excluded: (typeof REASONS)[keyof typeof REASONS];
@@ -1040,7 +1040,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.studio.slug_taken": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.team_limit_reached": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.transfer_credits_designated": { excluded: REASONS.NOT_ON_THESE_SCREENS },
-  "server.text_tool.already_running": { excluded: REASONS.NO_CALLER },
+  "server.text_tool.document_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.text_tool.failed": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "server.text_tool.selection_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "share.inviteFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "share.inviteSending": { excluded: REASONS.PASSING },
   "share.inviteSent": { excluded: REASONS.ECHO },
@@ -1055,7 +1057,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.typeLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
   "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
-  "spaces.document.commands.aiOtherGroup": { excluded: REASONS.NOT_OPEN },
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1074,23 +1075,14 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.captionPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "spaces.document.media.captionReadOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.captionRetained": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "spaces.document.commands.aiProduceGroup": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.aiRewriteGroup": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_custom": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_expand": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.ai_illustrate": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_refine": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_shorten": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.ai_storyboard": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_tone": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_translate": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.bold": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.code": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.comingLabel": { excluded: REASONS.SCREEN_READER, look: /a sparkle with the word/ },
-  "spaces.document.commands.italic": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.link": { excluded: REASONS.SCREEN_READER, look: /a link icon/ },
-  "spaces.document.commands.strike": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.underline": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
+  "spaces.document.ai.close": { excluded: REASONS.SCREEN_READER, look: /An X at the top right of the panel/ },
+  "spaces.document.ai.customTitle": { described: /titled with the command/ },
+  "spaces.document.ai.instruction": { described: /the instruction\s+then stays as a line above the result/ },
+  "spaces.document.ai.instructionsPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "spaces.document.ai.notWritable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.document.ai.selectionTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.comment.closeRail": { excluded: REASONS.SCREEN_READER, look: /and an X that closes it/ },
   "spaces.document.comment.deleteReply": { excluded: REASONS.SCREEN_READER, look: /each later reply has a small X/ },
   "spaces.document.docMenu.label": { excluded: REASONS.SCREEN_READER, look: /Three dots at the top right open/ },
@@ -1098,7 +1090,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.schemaOutdated.risksLead": { described: /warns above the button that/ },
   "spaces.document.table.cellMenu": { excluded: REASONS.SCREEN_READER, look: /a small box with a down arrow/ },
   "spaces.document.table.columnHandle": { excluded: REASONS.SCREEN_READER, look: /one above its column/ },
-  "spaces.document.table.mergeCells": { excluded: REASONS.SCREEN_READER, look: /a merge icon after the speech bubble/ },
   "spaces.document.table.rowHandle": { excluded: REASONS.SCREEN_READER, look: /a small handle of dots at the left of its row/ },
   "spaces.drawer.action.deleteConfirmDescription": { described: /says the owner can restore it/ },
   "spaces.drawer.action.deleteConfirmTitle": { described: /which asks whether to delete the space by name/ },

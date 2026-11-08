@@ -30,7 +30,9 @@
       "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
     },
     "text_tool": {
-      "already_running": "另一个文本工具正在运行,请稍候。"
+      "selection_too_long": "选中的内容太长，AI 处理不了：{actual} 个字符，上限是 {limit}。",
+      "document_too_long": "随选中内容发送的上下文太长：{actual} 个字符，上限是 {limit}。",
+      "failed": "AI 没能完成这次请求，请重试。"
     },
     "auth": {
       "invalid_credentials": "邮箱或密码错误",
@@ -2026,7 +2028,6 @@
         "code": "行内代码",
         "comment": "批注",
         "ai": "AI",
-        "comingLabel": "{name}（未开放）",
         "link": "链接",
         "blockType": "块类型",
         "paragraph": "正文",
@@ -2057,6 +2058,28 @@
         "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
       },
+      "ai": {
+        "customTitle": "自定义要求",
+        "tone": {
+          "professional": "更专业",
+          "casual": "更轻松",
+          "straightforward": "更直白",
+          "confident": "更自信",
+          "friendly": "更亲切"
+        },
+        "close": "关闭",
+        "stop": "停止",
+        "retry": "重试",
+        "start": "开始",
+        "insert": "插入",
+        "replace": "替换",
+        "instructionsPlaceholder": "写下你要 AI 对选中文字做什么，回车开始，Shift+回车换行",
+        "instruction": "要求：{text}",
+        "rangeGone": "原来选中的文字已被删掉",
+        "blockGone": "原来所在的段落已被删掉",
+        "notWritable": "你现在没有编辑权限",
+        "selectionTooLong": "选中的内容太多，请少选一些再试"
+      },
       "comment": {
         "placeholder": "写一条批注…",
         "targetGone": "原文已被改动或删除。",
@@ -2086,6 +2109,11 @@
         "risksLead": "刷新前请留意：",
         "riskUploads": "正在进行的上传会被中断，可以先切到对应的 Space 看一眼。",
         "action": "刷新页面"
+      },
+      "outline": {
+        "show": "显示大纲",
+        "hide": "隐藏大纲",
+        "empty": "还没有标题"
       },
       "docMenu": {
         "label": "整个 Document 的命令",

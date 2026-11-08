@@ -1492,9 +1492,13 @@ export function renderProductGuide(): string {
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
-      "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), a speech bubble with a plus (add " +
-      "to Agent), and a sparkle with the word " +
-      `${quoted(t("spaces.document.commands.ai"))} and an arrow. The other buttons show no name on hover. Hovering ` +
+      "icon, the letter A with an arrow (colour), a speech bubble with a plus (add to Agent), a sparkle with the word " +
+      `${quoted(t("spaces.document.commands.ai"))} and an arrow, and alone at the far right a speech-bubble icon ` +
+      "(comment). Hovering a button with no arrow shows its name, greyed or not: " +
+      `${quoted(t("spaces.document.commands.bold"))}, ${quoted(t("spaces.document.commands.italic"))}, ` +
+      `${quoted(t("spaces.document.commands.strike"))}, ${quoted(t("spaces.document.commands.underline"))}, ` +
+      `${quoted(t("spaces.document.commands.link"))}, ${quoted(t("spaces.document.commands.code"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("spaces.document.commands.comment"))}. Hovering ` +
       "the block type, alignment, colour or AI button opens its menu. The block type menu lists " +
       `${quoted(t("spaces.document.commands.paragraph"))}, ${quoted(t("spaces.document.commands.heading1"))}, ` +
       `${quoted(t("spaces.document.commands.heading2"))}, ${quoted(t("spaces.document.commands.heading3"))}, ` +
@@ -1505,11 +1509,49 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
       "Comments below). The speech bubble with a plus puts the selected text into the Agent's box as an " +
       "attachment written as Markdown (bold, italic, strikethrough, code and links are kept; underline, colour " +
-      "and alignment are not), opening the Agent panel if it is hidden. The AI menu's commands look " +
-      "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
+      "and alignment are not), opening the Agent panel if it is hidden. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
       "pressing it turns the inline code back into plain text. On an empty line the colour menu is greyed.",
+    `- The AI menu has three groups: ${quoted(t("spaces.document.commands.aiRewriteGroup"))} with ` +
+      `${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
+      `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
+      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
+      `with two rows; and ${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
+      `${quoted(t("spaces.document.commands.ai_custom"))}. Two of the AI menu's commands look available but do ` +
+      `nothing yet: the two under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for a shot list and an ` +
+      "illustration. Hovering " +
+      `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
+      "languages, each written in its own language; hovering " +
+      `${quoted(t("spaces.document.commands.ai_tone"))} opens ${quoted(t("spaces.document.ai.tone.professional"))}, ` +
+      `${quoted(t("spaces.document.ai.tone.casual"))}, ${quoted(t("spaces.document.ai.tone.straightforward"))}, ` +
+      `${quoted(t("spaces.document.ai.tone.confident"))} and ${quoted(t("spaces.document.ai.tone.friendly"))}. ` +
+      "Picking a command opens a panel under the selection, titled with the command, where the result appears as " +
+      "it is written; the document itself does not change. A selection running across several blocks is widened " +
+      "to those whole blocks as the panel opens, and the document shows the widened selection; a selection inside " +
+      "one block stays the selected words. While it is written the panel shows " +
+      `${quoted(t("spaces.document.ai.stop"))}; once it is done or stopped it shows ` +
+      `${quoted(t("spaces.document.ai.retry"))}, ${quoted(t("spaces.document.ai.insert"))} and ` +
+      `${quoted(t("spaces.document.ai.replace"))}. ${quoted(t("spaces.document.ai.insert"))} adds the result as ` +
+      "new blocks under the block the selection ends in (under the whole table when the selection runs into a " +
+      "table from outside or across cells) and keeps the selection as it was; " +
+      `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
+      "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
+      "block stay. The fixed commands keep the structure (headings, lists, code blocks); expand may turn a " +
+      "paragraph into several. A custom instruction can change the structure, such as turning the words into a " +
+      "list or merging paragraphs into one. Either is one step Cmd+Z takes " +
+      "back. If the selected words are deleted while the panel is open, " +
+      `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
+      `${quoted(t("spaces.document.ai.rangeGone"))}; if their block is deleted too, both are greyed with ` +
+      `${quoted(t("spaces.document.ai.blockGone"))}. ${quoted(t("spaces.document.commands.ai_custom"))} first ` +
+      "shows a box to write the instruction in: Enter or the " +
+      `${quoted(t("spaces.document.ai.start"))} button under it starts (it is greyed until something is written), ` +
+      "Shift+Enter starts a new line, and the instruction " +
+      "then stays as a line above the result. An X at the top right of the panel, or Escape, closes it and stops " +
+      "the run; clicking elsewhere does not. A run that fails shows a message and leaves only the X and " +
+      `${quoted(t("spaces.document.ai.retry"))}. Picking another AI command while the panel is open closes it and ` +
+      "opens a new one. With several table cells selected the bar has no AI button. Each run uses the Studio's " +
+      "credits.",
     `- The link icon opens a box, ${quoted(t("spaces.document.link.placeholder"))}, with ` +
       `${quoted(t("spaces.document.link.confirm"))}; for an address that is not one, ` +
       `${quoted(t("spaces.document.link.confirm"))} looks greyed, and pressing it or Enter shows ` +
@@ -1584,7 +1626,8 @@ export function renderProductGuide(): string {
       "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
       "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
-      `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
+      `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. Clicking a picture or video ` +
+      "also shows a small square at each " +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
       "hover it to open a floating panel, or Tab to the video and press Enter. The icons, full " +
@@ -1646,9 +1689,9 @@ export function renderProductGuide(): string {
       "across cells selects them. With words selected inside a cell, or with cells selected, the text bar's block " +
       "type button changes the blocks in that cell or in every selected cell, and its colour menu has the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
-      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble with a plus that merges them into one, the blocks of every cell that held something one after " +
-      "another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon ` +
+      `after the colour menu, named ${quoted(t("spaces.document.table.mergeCells"))} on hover, that merges them ` +
+      "into one, the blocks of every cell that held something one after another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
       "removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
@@ -1661,6 +1704,16 @@ export function renderProductGuide(): string {
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
+    "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
+      `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
+      "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
+      "inside table cells and empty headings are left out. Clicking a heading scrolls the body to it, and for an " +
+      "editor the caret lands at the start of that heading. The arrow in front of a heading folds the headings " +
+      "under it. The heading being read is highlighted. When the document area is too narrow, the outline floats " +
+      "over the left of the body instead of taking its own column, and after a click on a heading it tucks away " +
+      "until the outline icon is clicked again. Whether the outline is shown is remembered for each account in " +
+      "this browser and applies to every document. With no headings yet the column says " +
+      `${quoted(t("spaces.document.outline.empty"))}.`,
     `- Comments: select text and press the speech bubble, or choose ` +
       `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no ` +
       `words). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
@@ -1693,7 +1746,8 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
+    "- There is no slash menu. Not available yet: the AI commands that draft a shot list or illustrate a " +
+      "passage, snapshots, images or other media, " +
       "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",

@@ -8,6 +8,7 @@
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -522,6 +523,29 @@ describe('the toolbar', () => {
     const editor = open('audio');
 
     expect(within(toolbar(editor)).queryByTestId('doc-media-align-left')).toBeNull();
+  });
+
+  // breatic#1184: every toolbar button names itself on hover, and the name is
+  // drawn outside the body's scroller, which would otherwise cut it off.
+  it.each([
+    ['image', 'doc-media-caption-button'],
+    ['image', 'doc-media-fullscreen'],
+    ['image', 'doc-media-download'],
+    ['image', 'doc-media-delete'],
+    ['video', 'doc-media-fullscreen'],
+    ['audio', 'doc-media-caption-button'],
+    ['audio', 'doc-media-download'],
+    ['audio', 'doc-media-delete'],
+  ] as const)('names the %s toolbar\'s %s on hover, outside the scroller', async (type, testId) => {
+    const user = userEvent.setup();
+    const editor = open(type);
+    const scroller = roots[roots.length - 1]!;
+
+    await user.hover(within(toolbar(editor)).getByTestId(testId));
+
+    const tip = await screen.findByRole('tooltip');
+    expect(tip.textContent).not.toBe('');
+    expect(scroller.contains(tip)).toBe(false);
   });
 
   it.each(['image', 'video', 'audio'] as const)(
