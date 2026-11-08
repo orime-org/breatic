@@ -566,6 +566,16 @@ describe('DocumentOutline', () => {
         expect(scrollTo).toHaveBeenLastCalledWith({ top: 404, behavior: 'smooth' });
       });
 
+      it('lets a jump run on when the body changes size without moving its heading', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        resizeTo(1440);
+        expect(scrollTo).toHaveBeenCalledTimes(1);
+      });
+
       it('leaves the scroll alone when the body changes height after a jump has arrived', async () => {
         renderWith(FOUR);
         const viewport = layOutFour();

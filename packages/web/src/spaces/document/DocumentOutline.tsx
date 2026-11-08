@@ -47,11 +47,13 @@ interface DocumentOutlineProps {
   commentsOpen: boolean;
 }
 
-/** A jump on its way to a heading at the body's end, pinned once it gets there. */
-interface PendingPin {
+/** A jump on its way to a heading, until the body arrives or the user takes over. */
+interface Jump {
   id: string;
   /** The scrollTop the jump scrolls to. */
   target: number;
+  /** The target is the body's end: the heading is pinned on arrival. */
+  pinOnArrival: boolean;
   /** How far from the target the jump set off. */
   start: number;
   /** The nearest the body has come to the target so far. */
@@ -122,12 +124,40 @@ function headingLine(viewport: HTMLElement, id: string): HTMLElement | null {
 }
 
 /**
- * Whether the body is scrolled to its end, give or take 2px.
+ * Whether a scroll position is the body's end, give or take 2px.
  * @param viewport - The body's scrolling viewport.
+ * @param top - The scroll position; the current one by default.
  * @returns True at the end.
  */
-function atEnd(viewport: HTMLElement): boolean {
-  return viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 2;
+function atEnd(viewport: HTMLElement, top = viewport.scrollTop): boolean {
+  return top + viewport.clientHeight >= viewport.scrollHeight - 2;
+}
+
+/**
+ * Where the body scrolls to for a heading: its line at the landing, or the
+ * body's end when too little follows it.
+ * @param viewport - The body's scrolling viewport.
+ * @param id - The heading's block id.
+ * @returns The scrollTop, or null when the heading is not on the page.
+ */
+function landingFor(viewport: HTMLElement, id: string): number | null {
+  const line = headingLine(viewport, id);
+  if (line === null) return null;
+  const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
+  return Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
+}
+
+/**
+ * Starts a smooth scroll to a heading's landing.
+ * @param viewport - The body's scrolling viewport.
+ * @param id - The heading's block id.
+ * @param target - Its landing, from `landingFor`.
+ * @returns The jump, measured from where the body is now.
+ */
+function launch(viewport: HTMLElement, id: string, target: number): Jump {
+  const distance = Math.abs(target - viewport.scrollTop);
+  viewport.scrollTo({ top: target, behavior: 'smooth' });
+  return { id, target, pinOnArrival: atEnd(viewport, target), start: distance, closest: distance };
 }
 
 /**
@@ -285,11 +315,11 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const [reading, setReading] = React.useState<string | null>(null);
   const pinned = React.useRef<string | null>(null);
-  const pending = React.useRef<PendingPin | null>(null);
+  const jump = React.useRef<Jump | null>(null);
   // Hiding the Space runs every effect's cleanup; the highlight effect also
-  // re-runs on any outline change, which must not drop a wait mid-scroll.
+  // re-runs on any outline change, which must not drop a jump mid-scroll.
   React.useEffect(() => () => {
-    pending.current = null;
+    jump.current = null;
   }, []);
   React.useEffect(() => {
     if (viewport === null) return undefined;
@@ -299,22 +329,24 @@ export const DocumentOutline = React.memo(function DocumentOutline({
      * Marks the last heading whose line has reached the reading line; at the
      * bottom, the lowest heading in view; while a jump is pinned, that one.
      * A pin lasts while the body stays at its end and the heading is there.
+     * A jump in flight ends once the body arrives, pinning its heading when it
+     * aimed at the end, or once the body, having closed in, moves away.
      */
     const compute = (): void => {
       frame = 0;
-      const wait = pending.current;
-      if (wait !== null) {
-        const distance = Math.abs(viewport.scrollTop - wait.target);
-        if (atEnd(viewport)) {
-          pinned.current = wait.id;
-          pending.current = null;
-        } else if (distance < wait.closest) {
-          wait.closest = distance;
-        } else if (distance > wait.closest && wait.closest < wait.start) {
+      const flight = jump.current;
+      if (flight !== null) {
+        const distance = Math.abs(viewport.scrollTop - flight.target);
+        if (flight.pinOnArrival ? atEnd(viewport) : distance < 1) {
+          if (flight.pinOnArrival) pinned.current = flight.id;
+          jump.current = null;
+        } else if (distance < flight.closest) {
+          flight.closest = distance;
+        } else if (distance > flight.closest && flight.closest < flight.start) {
           // Moving away after closing in is the user taking over. The first
           // frames may still carry the body's earlier momentum away from the
           // landing (a smooth scroll that retargets keeps its velocity).
-          pending.current = null;
+          jump.current = null;
         }
       }
       if (pinned.current !== null && ancestors.has(pinned.current) && atEnd(viewport)) {
@@ -336,9 +368,22 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(compute);
     };
+    /**
+     * Aims a jump in flight again once the body changes height: Chrome keeps a
+     * running smooth scroll on its old target when content above it grows.
+     */
+    const reaim = (): void => {
+      const flight = jump.current;
+      if (flight === null) return;
+      const target = landingFor(viewport, flight.id);
+      if (target !== null && Math.abs(target - flight.target) >= 1) jump.current = launch(viewport, flight.id, target);
+    };
     // The comment panel sits in the same scroller: opening it rewraps the
     // text without changing the viewport's size, so the content is watched too.
-    const sizes = new ResizeObserver(schedule);
+    const sizes = new ResizeObserver(() => {
+      reaim();
+      schedule();
+    });
     sizes.observe(viewport);
     const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
@@ -372,32 +417,26 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const onJump = React.useCallback((id: string) => {
     if (viewport === null) return;
-    const line = headingLine(viewport, id);
-    if (line === null) return;
+    if (headingLine(viewport, id) === null) return;
     // The caret goes in before the measuring: a browser that scrolls a new
     // selection into view does so first, and the smooth scroll carries on from there.
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
       viewOf(editor)?.dom.focus({ preventScroll: true });
     }
-    const end = viewport.scrollHeight - viewport.clientHeight;
-    const from = viewport.scrollTop;
-    const want = from + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
-    const target = Math.max(0, Math.min(end, want));
-    viewport.scrollTo({ top: target, behavior: 'smooth' });
+    const target = landingFor(viewport, id);
+    if (target === null) return;
     // On the way the highlight follows the body. A jump that ends at the
     // body's end (a body too short to scroll always is) can leave the heading
     // short of the landing, where the reading rule picks another, so the
     // clicked heading holds from the frame the body reaches the end until it
     // leaves it; scroll anchoring keeps it there when content above grows.
-    const distance = Math.abs(target - from);
-    pending.current = null;
-    if (distance < 1) {
+    pinned.current = null;
+    jump.current = launch(viewport, id, target);
+    if (jump.current.start < 1) {
+      jump.current = null;
       pinned.current = atEnd(viewport) ? id : null;
       setReading(id);
-    } else {
-      pinned.current = null;
-      if (target >= end - 2) pending.current = { id, target, start: distance, closest: distance };
     }
     if (floating) setTucked(true);
   }, [viewport, readOnly, editor, floating]);
