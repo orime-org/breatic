@@ -185,3 +185,120 @@ describe('useWebAnimationPreviewUrl', () => {
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('useWebAnimationPreviewUrl sharing one address per source version (inner#1711 design §7.3 "address")', () => {
+  // The Timeline limits' signature validity and player load timeout; a new mount reuses an address until 8 s after
+  // its request was sent.
+  const SHARING = { previewTokenTtlMs: 10_000, playerLoadTimeoutMs: 2_000 };
+  const T0 = 1_000_000;
+  const URL_1 = 'https://preview.example/one/index.html';
+  const URL_2 = 'https://preview.example/two/index.html';
+  let sourceSerial = 0;
+
+  /**
+   * A source version no other case has used, so the page-wide shared address of one case never reaches another.
+   * @returns Its id.
+   * @throws {never} Never.
+   */
+  function freshSource(): string {
+    sourceSerial += 1;
+    return `80000000-0000-4000-8000-0000000003${String(sourceSerial).padStart(2, '0')}`;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+  });
+
+  it('shares one address across mounts from when its request was sent until its validity less the load timeout, then asks again', async () => {
+    const source = freshSource();
+    let answer: (value: { url: string }) => void = () => {};
+    vi.mocked(timelineApi.previewUrl).mockReset()
+      .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
+      .mockResolvedValue({ url: URL_2 });
+    const { wrapper } = provider();
+    const first = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    // The answer arrives half a second after the request; the window counts from the request.
+    vi.setSystemTime(T0 + 500);
+    await act(async () => { answer({ url: URL_1 }); await Promise.resolve(); });
+    await waitFor(() => expect(first.result.current.url).toBe(URL_1));
+    first.unmount();
+
+    vi.setSystemTime(T0 + 7_999);
+    const second = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(second.result.current.url).toBe(URL_1));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(T0 + 8_000);
+    const third = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(third.result.current.url).toBe(URL_2));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
+    // A page already loaded keeps the address it loaded with.
+    expect(second.result.current.url).toBe(URL_1);
+  });
+
+  it('keeps addresses of different source versions and Projects apart', async () => {
+    const source = freshSource();
+    const other = freshSource();
+    vi.mocked(timelineApi.previewUrl).mockReset()
+      .mockImplementation(async (projectId, sourceVersionId) => ({ url: `https://preview.example/${projectId}/${sourceVersionId}/index.html` }));
+    const { wrapper } = provider();
+    const a = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(a.result.current.url).not.toBeNull());
+    const again = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(again.result.current.url).toBe(a.result.current.url));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+    const b = renderHook(() => useWebAnimationPreviewUrl(PROJECT, other, SHARING), { wrapper });
+    await waitFor(() => expect(b.result.current.url).toBe(`https://preview.example/${PROJECT}/${other}/index.html`));
+    const otherProject = '60000000-0000-4000-8000-000000000002';
+    const c = renderHook(() => useWebAnimationPreviewUrl(otherProject, source, SHARING), { wrapper });
+    await waitFor(() => expect(c.result.current.url).toBe(`https://preview.example/${otherProject}/${source}/index.html`));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not share when the validity is no longer than the load timeout, nor before the Timeline limits arrive', async () => {
+    vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: URL_1 });
+    const { wrapper } = provider();
+    // Control: with a usable window two mounts share one request.
+    const shared = freshSource();
+    for (let mount = 0; mount < 2; mount += 1) {
+      const hook = renderHook(() => useWebAnimationPreviewUrl(PROJECT, shared, SHARING), { wrapper });
+      await waitFor(() => expect(hook.result.current.url).toBe(URL_1));
+      hook.unmount();
+    }
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+
+    const tight = freshSource();
+    for (let mount = 0; mount < 2; mount += 1) {
+      const hook = renderHook(() => useWebAnimationPreviewUrl(PROJECT, tight, { previewTokenTtlMs: 2_000, playerLoadTimeoutMs: 2_000 }), { wrapper });
+      await waitFor(() => expect(hook.result.current.url).toBe(URL_1));
+      hook.unmount();
+    }
+    expect(vi.mocked(timelineApi.previewUrl).mock.calls.filter((call) => call[1] === tight)).toHaveLength(2);
+
+    const unknown = freshSource();
+    for (let mount = 0; mount < 2; mount += 1) {
+      const hook = renderHook(() => useWebAnimationPreviewUrl(PROJECT, unknown, undefined), { wrapper });
+      await waitFor(() => expect(hook.result.current.url).toBe(URL_1));
+      hook.unmount();
+    }
+    expect(vi.mocked(timelineApi.previewUrl).mock.calls.filter((call) => call[1] === unknown)).toHaveLength(2);
+  });
+
+  it('replaces the shared address when a mount refreshes after its page failed to load', async () => {
+    const source = freshSource();
+    vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValueOnce({ url: URL_1 }).mockResolvedValue({ url: URL_2 });
+    const { wrapper } = provider();
+    const failing = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(failing.result.current.url).toBe(URL_1));
+    vi.setSystemTime(T0 + 1_000);
+    act(() => failing.result.current.refresh());
+    await waitFor(() => expect(failing.result.current.url).toBe(URL_2));
+    failing.unmount();
+
+    vi.setSystemTime(T0 + 5_000);
+    const next = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(next.result.current.url).toBe(URL_2));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
+  });
+});

@@ -205,6 +205,72 @@ describe('Timeline preview of a web copy', () => {
   });
 });
 
+/** A pool role the preview is to read from each entry's instance (inner#1711 design §7.4). */
+type PoolRole = 'visible' | 'premount' | 'idle';
+
+/**
+ * The one copy's entry with its instance in this pool role.
+ * @param role - The role.
+ * @returns The entry.
+ * @throws {never} Never.
+ */
+function entryAs(role: PoolRole): TimelineWebEntry {
+  return { ...ENTRY, instance: { key: KEY, sourceVersionId: SRC_A, fps: FPS, role } as NonNullable<TimelineWebEntry['instance']> };
+}
+
+/**
+ * Render the Timeline preview's web layers with the one copy's instance in a role and a state.
+ * @param role - The instance's pool role.
+ * @param state - Its bridge state.
+ * @returns A rerender taking the next role and state.
+ * @throws {Error} When rendering fails.
+ */
+function showPooled(role: PoolRole, state: WebInstanceState): (nextRole: PoolRole, nextState: WebInstanceState) => void {
+  const onPlayer = vi.fn();
+  const onRetry = vi.fn();
+  const view = (r: PoolRole, value: WebInstanceState): React.JSX.Element => <div className='relative' data-testid='preview'>
+    <TimelineWebPreview projectId={PROJECT} entries={[entryAs(r)]} states={new Map([[KEY, value]])} onPlayer={onPlayer} onRetry={onRetry} />
+  </div>;
+  const { rerender } = render(view(role, state));
+  return (nextRole, nextState) => { rerender(view(nextRole, nextState)); };
+}
+
+describe('Timeline preview of premounted and idle instances (inner#1711 design §7.4)', () => {
+  it.each(['premount', 'idle'] as const)('keeps a %s instance hidden and unclickable with no note, whether its page answered, is loading or failed', async (role) => {
+    const next = showPooled(role, 'ready');
+    const element = await player();
+    expect(element.style.opacity).toBe('0');
+    expect(element.style.pointerEvents).toBe('none');
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    next(role, 'loading');
+    expect(element.style.opacity).toBe('0');
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    next(role, 'failed');
+    await act(async () => { await Promise.resolve(); });
+    expect(element.style.opacity).toBe('0');
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+  });
+
+  it('keeps the same player element, and so the loaded page, as its instance moves between visible, premount and idle', async () => {
+    const next = showPooled('premount', 'ready');
+    const element = await player();
+    expect(element.style.opacity).toBe('0');
+    next('visible', 'ready');
+    expect(await player()).toBe(element);
+    // A premounted page that answered draws on its first visible frame.
+    expect(element.style.opacity).not.toBe('0');
+    next('idle', 'ready');
+    expect(await player()).toBe(element);
+    expect(element.style.opacity).toBe('0');
+    next('premount', 'waiting');
+    expect(await player()).toBe(element);
+    expect(element.style.opacity).toBe('0');
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(element).toHaveAttribute('src', PREVIEW_URL);
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+  });
+});
+
 /** The result preview's player with an iframe window that records what the host posts. */
 interface ResultPlayer { element: HTMLElement; frameWindow: Window; posted: ReturnType<typeof vi.fn> }
 

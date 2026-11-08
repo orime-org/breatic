@@ -224,11 +224,14 @@ describe("Project registered media HTTP reads", () => {
         aspects: Object.keys(config.web_animation.viewports),
         playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
         sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+        previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+        premountMs: config.web_animation.preview_premount_ms,
+        idleInstancesMax: config.web_animation.preview_idle_instances_max,
       },
     });
   });
 
-  it("gives web the web animation dialog bounds and preview timings from config/timeline.yaml (inner#1711 design §8, §10)", async () => {
+  it("gives web the web animation dialog bounds, preview timings and preview pool limits from config/timeline.yaml (inner#1711 design §7.4, §8, §10)", async () => {
     const fixture = await seedFixture();
     const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
     const config = getTimelineConfig();
@@ -239,7 +242,13 @@ describe("Project registered media HTTP reads", () => {
       aspects: Object.keys(config.web_animation.viewports),
       playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
       sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+      premountMs: config.web_animation.preview_premount_ms,
+      idleInstancesMax: config.web_animation.preview_idle_instances_max,
     });
+    // The preview reuses an address within the signature validity, premounts two seconds ahead and keeps eight idle
+    // pages; toEqual alone would accept a missing key whose expected value is undefined.
+    expect(limits["webAnimation"]).toMatchObject({ previewTokenTtlMs: 3_600_000, premountMs: 2000, idleInstancesMax: 8 });
     // The tracked yaml offers the dialog's three aspects in this order; the creation input accepts exactly these.
     expect(limits["webAnimation"]).toMatchObject({ aspects: ["16:9", "9:16", "1:1"] });
     // The dialog opens at the approved demo's four seconds.

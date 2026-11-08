@@ -213,7 +213,15 @@ interface HarnessProps {
   layersAt: (frame: number) => TimelineWebLayer[];
   video: { clip: TimelineVideoClip; source: TimelineVideoSource; media: HTMLVideoElement } | null;
   initialFrame: number;
+  /** Hand the hook a new layer array on every frame, as an allocation on every frame of play does. */
+  fresh?: boolean;
 }
+
+/**
+ * A layer as the instance pool hands it to the playback (inner#1711 design §7.4): its role and, for a premounted
+ * instance, the frame it is first visible at. `TimelineWebLayer` is to carry both; without a role a layer is visible.
+ */
+type PooledLayer = TimelineWebLayer & { role?: 'visible' | 'premount' | 'idle'; targetFrame?: number };
 
 /**
  * Render the hook as the Timeline body drives it: the visible web layers follow the current frame, and an
@@ -227,9 +235,11 @@ function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, H
     const [frame, setFrame] = React.useState(input.initialFrame);
     const onFrame = React.useCallback((value: number): void => { reported.push(value); setFrame(value); }, []);
     const layersNow = input.layersAt(frame);
-    const signature = JSON.stringify(layersNow.map((layer) => [layer.key, layer.clip, layer.fps]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
-    const webLayers = React.useMemo(() => layersNow, [signature, input.layersAt]);
+    const signature = JSON.stringify(layersNow.map((layer: PooledLayer) => [layer.key, layer.clip, layer.fps, layer.role, layer.targetFrame]));
+    // With `fresh`, every frame brings a new allocation and so a new layer array even when its content is unchanged.
+    const allocation = input.fresh === true ? frame : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content (or, with `fresh`, the frame) does.
+    const webLayers = React.useMemo(() => layersNow, [signature, input.layersAt, allocation]);
     const readyClipIds = React.useMemo(() => new Set(Object.keys(input.document.clips)), [input.document]);
     const playbackInput: PlaybackInput = {
       document: input.document, readyClipIds, frame, onFrame,
@@ -666,5 +676,217 @@ describe('holding at a boundary while a web instance is not ready', () => {
     expect(hook.result.current.state).toBe('paused');
     expect(hook.result.current.frame).toBe(24);
     expect(reported.slice(before).filter((frame) => frame < 24)).toEqual([]);
+  });
+});
+
+describe('premounted and idle instances (inner#1711 design §7.4)', () => {
+  // Two seconds at 24 fps, the default lead.
+  const LEAD = 48;
+  const KEY = `${SRC}:0`;
+  // A copy on v2 entering at frame 72 over the main video that runs under it.
+  const LATER = web(1, 72, 48);
+  // A copy on v2 from frame 0 that a higher video on v3 hides until frame 72, where it is revealed at source 3 s.
+  const UNDER = web(2, 0, 240);
+  const TOP: TimelineVideoClip = { ...VIDEO, trackId: V3, durationFrames: 72 };
+
+  /**
+   * The layers the pool hands the playback for one copy with one instance: premounted within the lead before the
+   * frame it is first visible at, visible while it shows, idle once it has been loaded and is assigned to nothing.
+   * @param clip - The copy.
+   * @param fixture - Its instance's player.
+   * @param firstVisible - The frame it is first visible at.
+   * @returns The layer function.
+   * @throws {never} Never.
+   */
+  function pooled(clip: TimelineWebAnimationClip, fixture: PlayerFixture, firstVisible = clip.startFrame): (frame: number) => TimelineWebLayer[] {
+    let loaded = false;
+    return (frame) => {
+      const base = { key: KEY, clip, fps: FPS, player: fixture.player };
+      if (frame >= firstVisible && frame < clip.startFrame + clip.durationFrames) {
+        loaded = true;
+        return [{ ...base, role: 'visible' } satisfies PooledLayer];
+      }
+      if (frame < firstVisible && frame >= firstVisible - LEAD) {
+        loaded = true;
+        return [{ ...base, role: 'premount', targetFrame: firstVisible } satisfies PooledLayer];
+      }
+      return loaded ? [{ ...base, role: 'idle' } satisfies PooledLayer] : [];
+    };
+  }
+
+  it('leaves a premounted instance out of the barrier: play goes on over the video while its page still loads', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(30 / 24);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, LATER]), layersAt: pooled(LATER, fixture),
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 30,
+    });
+    expect(sent(fixture)).toEqual([{ type: 'breatic-hello' }]);
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.webStates.get(KEY)).toBe('loading');
+    expect(hook.result.current.state).toBe('playing');
+    expect(video.media.pause).not.toHaveBeenCalled();
+  });
+
+  it('positions a premounted instance once per session at the source time of its first visible frame, not the current frame', () => {
+    const fixture = playerFixture();
+    const video = videoFixture(30 / 24);
+    const hook = renderPlayback({
+      document: documentOf([UNDER, TOP]), layersAt: pooled(UNDER, fixture, 72),
+      video: { clip: TOP, source: VIDEO_SOURCE, media: video.media }, initialFrame: 30,
+    });
+    bridgeReady(fixture);
+    expect(seeks(fixture).map((seek) => seek.time)).toEqual([3]);
+    // Seeks inside the lead reposition only visible instances; the premounted one keeps its single target seek.
+    act(() => hook.result.current.seek(31));
+    act(() => hook.result.current.seek(40));
+    expect(seeks(fixture).map((seek) => seek.time)).toEqual([3]);
+    answerLast(fixture);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+    // A new session (a hello after the Space tab is shown again) is positioned at the target once more.
+    bridgeReady(fixture);
+    expect(seeks(fixture).map((seek) => seek.time)).toEqual([3, 3]);
+    const [first, second] = seeks(fixture);
+    expect(second?.session).not.toEqual(first?.session);
+  });
+
+  it('leaves a premounted instance waiting for its target receipt through frame-by-frame allocations, sends it no frames, and the receipt makes it ready', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(1);
+    const hook = renderPlayback({
+      document: documentOf([UNDER, TOP]), layersAt: pooled(UNDER, fixture, 72),
+      video: { clip: TOP, source: VIDEO_SOURCE, media: video.media }, initialFrame: 24, fresh: true,
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    bridgeReady(fixture);
+    const target = lastSeek(fixture);
+    expect(target.time).toBe(3);
+    runFrames(250);
+    runFrames(500);
+    expect(hook.result.current.frame).toBe(36);
+    expect(seeks(fixture)).toEqual([expect.objectContaining({ sequence: target.sequence, time: 3 })]);
+    expect(hook.result.current.webStates.get(KEY)).toBe('waiting');
+    answerLast(fixture);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+    expect(hook.result.current.state).toBe('playing');
+  });
+
+  it('enters a copy that premounted three seconds ahead at its target frame without pausing the video or freezing the clock', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(0);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, LATER]), layersAt: pooled(LATER, fixture),
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 0,
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    runFrames(1000);
+    expect(hook.result.current.frame).toBe(24);
+    expect(sent(fixture)).toEqual([{ type: 'breatic-hello' }]);
+    expect(hook.result.current.state).toBe('playing');
+    bridgeReady(fixture);
+    expect(lastSeek(fixture).time).toBe(0);
+    answerLast(fixture);
+    const sequence = lastSeek(fixture).sequence;
+    runFrames(3000);
+    expect(hook.result.current.frame).toBe(72);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(3500);
+    expect(hook.result.current.frame).toBe(84);
+    expect(hook.result.current.state).toBe('playing');
+    expect(video.media.pause).not.toHaveBeenCalled();
+    // The receipt it was premounted with stands for the entry frame: entering adds no sequence.
+    expect(seeks(fixture).every((seek) => seek.sequence === sequence)).toBe(true);
+    expect(reported.filter((frame, index) => index > 0 && frame < (reported[index - 1] ?? 0))).toEqual([]);
+  });
+
+  it('replays from the start into a copy whose instance went idle, ready at its entry frame without a pause', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(30 / 24);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, LATER]), layersAt: pooled(LATER, fixture),
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 30,
+    });
+    bridgeReady(fixture);
+    answerLast(fixture);
+    act(() => hook.result.current.seek(100));
+    videoEvent(video, 'seeked', { seeking: false });
+    answerLast(fixture);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+    // The copy has played out: its instance is idle from here on and through the replay's first second.
+    act(() => hook.result.current.seek(130));
+    videoEvent(video, 'seeked', { seeking: false });
+    act(() => hook.result.current.seek(0));
+    videoEvent(video, 'seeked', { seeking: false });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(1000);
+    expect(hook.result.current.frame).toBe(24);
+    // Kept from idle into the lead, it is positioned at its entry frame on the page it already loaded.
+    expect(lastSeek(fixture).time).toBe(0);
+    expect(sent(fixture).filter((message) => message['type'] === 'breatic-hello')).toHaveLength(1);
+    answerLast(fixture);
+    const pauses = vi.mocked(video.media.pause).mock.calls.length;
+    runFrames(3000);
+    expect(hook.result.current.frame).toBe(72);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(3500);
+    expect(hook.result.current.frame).toBe(84);
+    expect(vi.mocked(video.media.pause).mock.calls.length).toBe(pauses);
+  });
+
+  it('positions the premounted instance at the reveal frame when a seek goes back from inside the revealed copy into its lead', () => {
+    const fixture = playerFixture();
+    const hook = renderPlayback({ document: documentOf([UNDER, TOP]), layersAt: pooled(UNDER, fixture, 72), video: null, initialFrame: 100 });
+    bridgeReady(fixture);
+    expect(lastSeek(fixture).time).toBe(100 / 24);
+    answerLast(fixture);
+    act(() => hook.result.current.seek(40));
+    expect(lastSeek(fixture).time).toBe(3);
+    answerLast(fixture);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+  });
+
+  it('repositions only visible instances on a seek, a play start and a pause', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(30 / 24);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, LATER]), layersAt: pooled(LATER, fixture),
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 30,
+    });
+    bridgeReady(fixture);
+    answerLast(fixture);
+    expect(seeks(fixture)).toHaveLength(1);
+    act(() => hook.result.current.seek(35));
+    videoEvent(video, 'seeked', { seeking: false });
+    act(() => hook.result.current.toggle());
+    await settle();
+    act(() => hook.result.current.toggle());
+    expect(hook.result.current.state).toBe('paused');
+    expect(seeks(fixture)).toHaveLength(1);
+    expect(hook.result.current.webStates.get(KEY)).toBe('ready');
+  });
+
+  it('sends an idle instance nothing and keeps it out of the barrier', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(130 / 24);
+    const idle: PooledLayer = { key: KEY, clip: LATER, fps: FPS, player: fixture.player, role: 'idle' };
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, LATER]), layersAt: () => [idle],
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 130,
+    });
+    bridgeReady(fixture);
+    expect(seeks(fixture)).toEqual([]);
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(500);
+    expect(seeks(fixture)).toEqual([]);
   });
 });

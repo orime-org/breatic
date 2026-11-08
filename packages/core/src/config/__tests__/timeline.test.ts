@@ -48,3 +48,14 @@ describe("web_animation.font_set_version", () => {
     expect(getTimelineConfig().web_animation.font_set_version).toBe(3);
   });
 });
+
+describe("web_animation preview instance pool (inner#1711 design §7.4, §10)", () => {
+  it("defaults the premount lead to 2000 ms and the idle instance cap to 8", () => {
+    const config = timelineConfigSchema.parse({}).web_animation;
+    expect(config).toMatchObject({ preview_premount_ms: 2000, preview_idle_instances_max: 8 });
+  });
+
+  it("reads 2000 ms and 8 from the tracked yaml", () => {
+    expect(getTimelineConfig().web_animation).toMatchObject({ preview_premount_ms: 2000, preview_idle_instances_max: 8 });
+  });
+});
