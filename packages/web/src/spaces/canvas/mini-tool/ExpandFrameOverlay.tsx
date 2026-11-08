@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useInternalNode, useReactFlow, useStore, type Node } from '@xyflow/react';
 import * as React from 'react';
 
-import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-tools';
+import { catalogEntryOf, isModelTool, miniToolById, videoExpandLayout } from '@breatic/shared/mini-tools';
 
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
@@ -19,7 +19,6 @@ import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
 import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   isExpanded,
-  expandLayout,
   moveFrame,
   resizeFrame,
   type ExpandFrame,
@@ -302,7 +301,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSo
           }}
         />
       )}
-      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left', zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}>{expandLayout(frame, sourceSize).width} × {expandLayout(frame, sourceSize).height}</span> : null}
+      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left', zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}>{videoExpandLayout(frame, sourceSize, Infinity).width} × {videoExpandLayout(frame, sourceSize, Infinity).height}</span> : null}
       {CROP_HANDLES.map(({ id, className }) => (
         <div
           key={id}

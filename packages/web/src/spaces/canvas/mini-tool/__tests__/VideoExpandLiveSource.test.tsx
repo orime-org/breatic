@@ -52,4 +52,15 @@ describe('approved live-source video expansion structure', () => {
       expect(band.style.backgroundImage).not.toBe('');
     }
   });
+
+  // Execution design §10.5 geometry row: a video expansion's size is shared videoExpandLayout's, each side rounded up to even.
+  it('labels the frame with the even-sided size the video comes out at', () => {
+    openLiveVideo();
+    act(() => {
+      const session = canvasSessions.of('').getState();
+      session.setMiniToolSourceSize({ width: 480, height: 480 });
+      session.setExpand({ frame: { x: -373 / 960, y: 0, width: 853 / 480, height: 1 }, ratio: 'free' });
+    });
+    expect(screen.getByText(/^\d+ × \d+$/).textContent).toBe('854 × 480');
+  });
 });
