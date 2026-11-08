@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { ProjectAssetPage, SceneControlsConfig } from '@breatic/shared';
+import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody } from '@breatic/shared';
 
 /**
  * Scene controls and model import budgets from the owning Project's readable API.
@@ -28,8 +28,8 @@ export function resolveSceneAsset(projectId: string, assetId: string, signal: Ab
 /**
  * One row of a 3D Space's task list, as the server answers it: a model
  * import, or a 3D generation (`kind: 'generation'`), which carries what a
- * retry fills the dialog with. Only an import row has `errorMessage`; only a
- * generation row has the fields after it.
+ * retry fills the dialog with. Only a generation row has the fields after
+ * `errorMessage`.
  */
 export interface SpaceTask {
   id: string;
@@ -41,15 +41,13 @@ export interface SpaceTask {
   assetId: string | null;
   /** Absent on rows from a server that knew only imports. */
   kind?: 'import' | 'generation';
+  /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage?: string | null;
-  /** The `task-failure` code a generation failed with. */
-  errorCode?: string | null;
   origin?: 'space' | 'agent' | null;
   model?: { name: string; displayName: string };
   mode?: string;
   prompt?: string | null;
-  negativePrompt?: string | null;
-  /** The resolved settings, without the prompt, the negative prompt or the views. */
+  /** The resolved settings, `negative_prompt` among them, without the prompt or the views. */
   params?: Record<string, unknown>;
   /** The views in front, left, back, right order. */
   inputs?: { assetId: string; url: string }[];
@@ -114,23 +112,6 @@ export async function removeSpaceTask(projectId: string, spaceId: string, taskId
  */
 export async function reportSpaceTaskFailure(projectId: string, spaceId: string, taskId: string): Promise<void> {
   await apiPost(`/projects/${projectId}/three-d/${spaceId}/tasks/${taskId}/failure`, { reason: 'aborted' });
-}
-
-/** What a 3D generation submit sends (inner#1691 design 4.2). */
-export interface SceneGenerationBody {
-  mode: 't23d' | 'i23d';
-  model: string;
-  prompt?: string;
-  params: Record<string, unknown>;
-  image_asset_ids?: string[];
-  origin: 'space' | 'agent';
-}
-
-/** What the server answers a 3D generation submit with; `failed` names a row that holds the reason. */
-export interface SceneGenerationAnswer {
-  task_id: string;
-  row_id: string;
-  status: 'pending' | 'failed';
 }
 
 /**

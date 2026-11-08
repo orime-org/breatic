@@ -10,9 +10,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SceneGenerationProposal } from '@breatic/shared';
-
-import { useSceneProposals } from '@web/stores/scene-proposals';
+import { useSceneProposals, type SceneGenerateFill } from '@web/stores/scene-proposals';
 import { useSceneProposalReceiver } from '@web/spaces/three-d/use-scene-proposal-receiver';
 
 const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
@@ -20,20 +18,17 @@ vi.mock('@web/lib/toast', () => ({ toast }));
 
 const BUSY = 'Another generation is being submitted.';
 
-/** An image-to-3D proposal from two views. */
-const PROPOSAL: SceneGenerationProposal = {
-  proposalId: 'p1',
+/** An image-to-3D fill from a proposal of two views. */
+const PROPOSAL: SceneGenerateFill = {
+  source: 'agent',
+  origin: 'agent',
   mode: 'i23d',
-  model: 'tripo-h3.1-multiview',
   prompt: '',
   params: { texture: true, pbr: true, texture_quality: 'detailed' },
   images: [
     { assetId: 'a-front', url: 'https://cdn.example/front.png' },
     { assetId: 'a-left', url: 'https://cdn.example/left.png' },
   ],
-  credits: 40,
-  rationale: 'A chair from the two sketches',
-  placed: true,
 };
 
 interface Props {

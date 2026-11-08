@@ -33,9 +33,7 @@ interface Fill {
   source: 'agent' | 'retry';
   origin: 'space' | 'agent';
   mode: 't23d' | 'i23d';
-  model: string;
   prompt: string;
-  negativePrompt: string;
   params: Record<string, unknown>;
   images: { assetId: string; url: string; displayName: string | null }[];
 }
@@ -46,7 +44,7 @@ interface Fill {
  * @returns The fill.
  */
 function fillOf(over: Partial<Fill>): Fill {
-  return { source: 'retry', origin: 'space', mode: 't23d', model: T23D, prompt: '', negativePrompt: '', params: {}, images: [], ...over };
+  return { source: 'retry', origin: 'space', mode: 't23d', prompt: '', params: {}, images: [], ...over };
 }
 
 /**
@@ -190,7 +188,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
 
   it('moves the later views forward when a middle one is removed', async () => {
     const user = userEvent.setup();
-    renderDialog(fillOf({ mode: 'i23d', model: MULTIVIEW, images: [view('front'), view('left'), view('back')] }));
+    renderDialog(fillOf({ mode: 'i23d', images: [view('front'), view('left'), view('back')] }));
     await ready();
     expect([0, 1, 2, 3].map(slotImage)).toEqual(['https://cdn.test/front.png', 'https://cdn.test/left.png', 'https://cdn.test/back.png', null]);
 
@@ -203,7 +201,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
   it('submits the single-image entry when only the front view is filled', async () => {
     const user = userEvent.setup();
     api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
-    renderDialog(fillOf({ mode: 'i23d', model: MULTIVIEW, images: [view('a1')] }));
+    renderDialog(fillOf({ mode: 'i23d', images: [view('a1')] }));
     await ready();
     await user.click(screen.getByTestId('scene-generate-run'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -215,7 +213,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
   it('submits the multi-view entry, views in order, when more than the front is filled', async () => {
     const user = userEvent.setup();
     api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
-    renderDialog(fillOf({ mode: 'i23d', model: I23D, origin: 'agent', images: [view('a1'), view('a2')] }));
+    renderDialog(fillOf({ mode: 'i23d', origin: 'agent', images: [view('a1'), view('a2')] }));
     await ready();
     await user.click(screen.getByTestId('scene-generate-run'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -307,14 +305,14 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
 
     await user.type(screen.getByTestId('scene-generate-prompt'), 'Something else');
-    rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', negativePrompt: 'base', params: { texture_quality: 'detailed', geometry_quality: 'detailed' } }));
+    rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', params: { texture_quality: 'detailed', geometry_quality: 'detailed', negative_prompt: 'base' } }));
     await waitFor(() => expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
     expect(screen.getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
     expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
     expect(screen.getByTestId('generate-param-geometry_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
 
     rerender(false, null);
-    rerender(true, fillOf({ mode: 'i23d', model: I23D, images: [view('a1')], params: { texture_alignment: 'geometry' } }));
+    rerender(true, fillOf({ mode: 'i23d', images: [view('a1')], params: { texture_alignment: 'geometry' } }));
     await ready();
     expect(screen.getByTestId('scene-generate-mode-i23d')).toHaveAttribute('aria-current', 'true');
     expect(slotImage(0)).toBe('https://cdn.test/a1.png');
@@ -322,7 +320,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
   });
 
-  it('cannot be closed by Esc or its close button while the submit waits', async () => {
+  it('closes while the submit waits, and the answer still hands its row on', async () => {
     const user = userEvent.setup();
     const answer = Promise.withResolvers<unknown>();
     api.post.mockReturnValue(answer.promise);
@@ -333,12 +331,29 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     await waitFor(() => expect(screen.getByTestId('scene-generate-run')).toHaveAttribute('aria-busy', 'true'));
 
     await user.keyboard('{Escape}');
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }));
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onSubmitted).not.toHaveBeenCalled();
 
     answer.resolve({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-    expect(onSubmitted).toHaveBeenCalledWith('row-1');
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith('row-1'));
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a refusal of ours in the words the server wrote', async () => {
+    const user = userEvent.setup();
+    const sentence = 'View slot 2 (left) is not an image in this Project.';
+    api.post.mockRejectedValue(new ApiException({ status: 422, message: sentence, fromServer: true }));
+    renderDialog(fillOf({ mode: 'i23d', images: [view('a1'), view('a2')] }));
+    await ready();
+    await user.click(screen.getByTestId('scene-generate-run'));
+
+    await waitFor(() => expect(shown(toast.error)).toEqual([sentence]));
+  });
+
+  it('shows which model runs', async () => {
+    renderDialog();
+    await ready();
+    expect(screen.getByTestId('scene-generate-model')).toHaveTextContent('Tripo H3.1');
   });
 
   it('stays open with every input kept when the credits are not enough', async () => {
@@ -447,7 +462,7 @@ describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => 
     expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
   });
 
-  it('says the upload failed inside its slot and empties the slot again', async () => {
+  it('keeps a failed upload in its slot, says so there, and offers nothing after it until it is replaced or removed', async () => {
     const user = userEvent.setup();
     renderDialog();
     await ready();
@@ -457,6 +472,31 @@ describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => 
     await waitFor(() => expect(screen.getByTestId('scene-generate-view-0-error')).toBeInTheDocument());
     expect(slotImage(0)).toBeNull();
     expect(addable()).toEqual([true, false, false, false]);
+    expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+
+    await user.click(screen.getByTestId('scene-generate-view-0-add'));
+    await user.click(await screen.findByTestId('scene-generate-view-remove'));
+    expect(screen.queryByTestId('scene-generate-view-0-error')).toBeNull();
+    expect(addable()).toEqual([true, false, false, false]);
+  });
+
+  it('leaves the later views where they are when replacing the front one fails', async () => {
+    const user = userEvent.setup();
+    let sinks: UploadSinks | undefined;
+    upload.run.mockImplementation((_file: File, _context: unknown, deps: UploadSinks) => {
+      sinks = deps;
+      return new Promise<void>(() => undefined);
+    });
+    renderDialog(fillOf({ mode: 'i23d', images: [view('front'), view('left')] }));
+    await ready();
+    await user.click(screen.getByTestId('scene-generate-view-0-change'));
+    await user.click(await screen.findByTestId('scene-generate-view-upload'));
+    await user.upload(screen.getByTestId('scene-generate-view-file-input'), new File(['png'], 'new-front.png', { type: 'image/png' }));
+    await waitFor(() => expect(upload.run).toHaveBeenCalledTimes(1));
+
+    sinks!.onFailure({ reason: 'network' });
+    await waitFor(() => expect(screen.getByTestId('scene-generate-view-0-error')).toBeInTheDocument());
+    expect(slotImage(1)).toBe('https://cdn.test/left.png');
     expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
   });
 });

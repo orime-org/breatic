@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Accessibility, Box, Keyboard, MessageCircle, Plus, Sparkles, Upload } from 'lucide-react';
-import type { ProjectRole, SceneGenerationProposal } from '@breatic/shared';
+import type { ProjectRole } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
@@ -14,16 +14,12 @@ import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
-import { fillFromProposal, sceneGenerateIntent, type SceneGenerateFill } from '@web/spaces/three-d/scene-generation';
+import { sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposalReceiver } from '@web/spaces/three-d/use-scene-proposal-receiver';
+import type { SceneGenerateFill } from '@web/stores/scene-proposals';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 
 const icons = { add: <Plus className='size-5' />, import: <Upload className='size-5' />, generate: <Sparkles className='size-5' />, controls: <Keyboard className='size-5' /> };
-
-/** A request to open the generation dialog filled, such as a task row's Retry; each request is a new object. */
-export interface SceneGenerateRequest {
-  fill: SceneGenerateFill;
-}
 
 interface SceneCreationMenuProps {
   projectId: string;
@@ -34,8 +30,6 @@ interface SceneCreationMenuProps {
   canEdit: boolean;
   onAdd: (kind: 'box' | 'figure') => void;
   onImport: () => void;
-  /** A request to open the generation dialog filled, from outside the rail. */
-  generateRequest?: SceneGenerateRequest | null;
   /** Told the row a submitted generation opened. */
   onGenerated?: (rowId: string) => void;
 }
@@ -46,7 +40,7 @@ interface SceneCreationMenuProps {
  * Add and Import model need the scene ready for shared edits; AI generation
  * reads and writes no scene document, so it needs only the project role
  * (inner#1691 design 7.1). The rail also hosts the generation dialog and,
- * while drawn, receives the Agent's 3D proposals.
+ * while drawn, receives the fills an Agent proposal or a Retry hands in.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.projectId - The project.
  * @param root0.spaceId - The 3D Space.
@@ -54,12 +48,11 @@ interface SceneCreationMenuProps {
  * @param root0.canEdit - Whether this document currently permits shared edits.
  * @param root0.onAdd - Places the requested built-in source.
  * @param root0.onImport - Opens the document's model import.
- * @param root0.generateRequest - A request to open the generation dialog filled.
  * @param root0.onGenerated - Told the row a submitted generation opened.
  * @returns The left rail and its controlled dialogs.
  * @throws {never} Commands use the existing session feedback path.
  */
-export const SceneCreationMenu = React.memo(function SceneCreationMenu({ projectId, spaceId, myRole, canEdit, onAdd, onImport, generateRequest, onGenerated }: SceneCreationMenuProps): React.JSX.Element {
+export const SceneCreationMenu = React.memo(function SceneCreationMenu({ projectId, spaceId, myRole, canEdit, onAdd, onImport, onGenerated }: SceneCreationMenuProps): React.JSX.Element {
   const t = useTranslation();
   const id = React.useId();
   const [addOpen, setAddOpen] = useExclusiveOverlay(`${id}:add`);
@@ -70,7 +63,6 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ project
   const submitting = useRunning(sceneGenerateIntent(spaceId)) !== undefined;
   const viewer = myRole === 'viewer';
   const readOnlyText = t('spaces.threeD.readOnlyCreate');
-  const busyText = t('spaces.threeD.proposalBusy');
   /**
    * Say why a viewer's press does nothing.
    * @throws {never} Never.
@@ -87,32 +79,25 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ project
    * @throws {never} Never.
    */
   const openFilled = React.useCallback((next: SceneGenerateFill): void => { setFill(next); setAiOpen(true); }, [setAiOpen]);
-  /**
-   * Open the generation dialog with a proposal the chat handed in.
-   * @param proposal - The proposal.
-   * @throws {never} Never.
-   */
-  const openProposal = React.useCallback((proposal: SceneGenerationProposal): void => openFilled(fillFromProposal(proposal)), [openFilled]);
-  useSceneProposalReceiver({ submitting, open: openProposal });
-  const handled = React.useRef<SceneGenerateRequest | null>(null);
-  React.useEffect(() => {
-    if (!generateRequest || handled.current === generateRequest) return;
-    handled.current = generateRequest;
-    if (submitting) toast.warning(busyText);
-    else openFilled(generateRequest.fill);
-  }, [generateRequest, submitting, busyText, openFilled]);
+  useSceneProposalReceiver({ submitting, open: openFilled });
   // The row a submit opened, handed on once the dialog has finished closing:
   // the close returns focus to whatever opened the dialog, so a row focused
-  // before that would lose it again.
+  // before that would lose it again. A dialog closed while the submit was
+  // still waiting has no close left to wait for.
   const openedRow = React.useRef<string | null>(null);
+  const dialogOpen = React.useRef(aiOpen);
+  React.useEffect(() => {
+    dialogOpen.current = aiOpen;
+  }, [aiOpen]);
   /**
    * Keep the row the server opened until the dialog has closed on it.
    * @param rowId - The row the server opened.
    * @throws {never} Never.
    */
   const submitted = React.useCallback((rowId: string): void => {
-    openedRow.current = rowId;
-  }, []);
+    if (dialogOpen.current) openedRow.current = rowId;
+    else onGenerated?.(rowId);
+  }, [onGenerated]);
   /**
    * Return focus as every closing overlay does, then hand on the row a submit opened.
    * @param event - The dialog's close-focus event.

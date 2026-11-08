@@ -10,6 +10,7 @@ import type { ProjectRole, SceneGenerationProposal } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
+import { fillFromProposal } from '@web/spaces/three-d/scene-generation';
 import { PROJECT, RAW_CATALOG, SPACE } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn(async (url: string) => {
@@ -191,7 +192,7 @@ describe('SceneCreationMenu receiving Agent proposals (inner#1691 design 6.2, 8.
     renderRail({ myRole: 'editor', canEdit: true });
 
     act(() => {
-      store.getState().request(PROPOSAL);
+      store.getState().request(fillFromProposal(PROPOSAL));
     });
 
     const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
@@ -248,6 +249,27 @@ describe('SceneCreationMenu focus after the generation dialog closes (inner#1691
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'AI generation' })).toBeNull());
     expect(document.activeElement).toBe(row);
+  });
+
+  it('hands the row on when the answer arrives after the dialog was closed during the submit', async () => {
+    const user = userEvent.setup();
+    const answer = Promise.withResolvers<unknown>();
+    api.post.mockReturnValue(answer.promise);
+    const row = renderWithRow();
+
+    await user.click(screen.getByRole('button', { name: 'AI generation' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
+    await within(dialog).findByTestId('generate-param-texture-toggle');
+    await user.type(within(dialog).getByTestId('scene-generate-prompt'), 'A stone lion');
+    await user.click(within(dialog).getByTestId('scene-generate-run'));
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'AI generation' })).toBeNull());
+
+    await act(async () => {
+      answer.resolve({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+      await answer.promise;
+    });
+    await waitFor(() => expect(document.activeElement).toBe(row));
   });
 
   it('hands focus back to the AI generation button when the dialog is closed without a submit', async () => {

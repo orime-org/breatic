@@ -8,41 +8,17 @@
  * dialog is filled with when it opens from a proposal or a retry.
  */
 
-import type { ModelEntry, SceneGenerationProposal } from '@breatic/shared';
+import type { ModelEntry, SceneGenerationProposal, ThreeDGenerationMode } from '@breatic/shared';
 
 import type { SpaceTask } from '@web/data/api/scene';
+import type { SceneGenerateFill } from '@web/stores/scene-proposals';
 import { spaceTaskIntent } from '@web/stores/task-actions-in-flight';
 
-/** The two ways to generate a 3D model. */
-export type SceneGenerationMode = 't23d' | 'i23d';
-
 /** Mode names, English only like every generation mode name. */
-export const SCENE_MODE_LABELS: Readonly<Record<SceneGenerationMode, string>> = {
+export const SCENE_MODE_LABELS: Readonly<Record<ThreeDGenerationMode, string>> = {
   t23d: 'Text to 3D',
   i23d: 'Image to 3D',
 };
-
-/** The views an image run takes, in the order the model reads them. */
-export const SCENE_VIEWS = ['front', 'left', 'back', 'right'] as const;
-
-/** One picture in a view slot. */
-export interface SceneViewImage {
-  assetId: string;
-  url: string;
-  displayName?: string | null;
-}
-
-/** What the dialog opens filled with, besides blank: an Agent proposal or a Retry. */
-export interface SceneGenerateFill {
-  source: 'agent' | 'retry';
-  origin: 'space' | 'agent';
-  mode: SceneGenerationMode;
-  model: string;
-  prompt: string;
-  negativePrompt: string;
-  params: Record<string, unknown>;
-  images: SceneViewImage[];
-}
 
 /**
  * The run-once intent of one 3D Space's generate press.
@@ -58,7 +34,7 @@ export function sceneGenerateIntent(spaceId: string): string {
  * @param mode - The mode as stored.
  * @returns The mode; text when it is not an image mode.
  */
-function modeOf(mode: string | undefined): SceneGenerationMode {
+function modeOf(mode: string | undefined): ThreeDGenerationMode {
   return mode === 'i23d' ? 'i23d' : 't23d';
 }
 
@@ -71,7 +47,7 @@ function modeOf(mode: string | undefined): SceneGenerationMode {
  * @param views - How many views are filled.
  * @returns The entry, or undefined before the catalog holds one.
  */
-export function sceneEntryFor(entries: readonly ModelEntry[], mode: SceneGenerationMode, views: number): ModelEntry | undefined {
+export function sceneEntryFor(entries: readonly ModelEntry[], mode: ThreeDGenerationMode, views: number): ModelEntry | undefined {
   const inMode = entries.filter((entry) => (Array.isArray(entry.mode) ? entry.mode.includes(mode) : entry.mode === mode));
   if (mode === 't23d') return inMode[0];
   const wanted = views > 1 ? 'images' : 'image';
@@ -91,16 +67,12 @@ export function commonSceneParams(entries: readonly ModelEntry[]): ReadonlySet<s
 }
 
 /**
- * The dialog's fill for an Agent proposal; the negative prompt rides in its params.
+ * The dialog's fill for an Agent proposal.
  * @param proposal - The proposal the card handed in.
  * @returns The fill.
  */
 export function fillFromProposal(proposal: SceneGenerationProposal): SceneGenerateFill {
-  const negative = proposal.params.negative_prompt;
-  return {
-    source: 'agent', origin: 'agent', mode: proposal.mode, model: proposal.model, prompt: proposal.prompt ?? '',
-    negativePrompt: typeof negative === 'string' ? negative : '', params: proposal.params, images: proposal.images,
-  };
+  return { source: 'agent', origin: 'agent', mode: proposal.mode, prompt: proposal.prompt ?? '', params: proposal.params, images: proposal.images };
 }
 
 /**
@@ -110,7 +82,7 @@ export function fillFromProposal(proposal: SceneGenerationProposal): SceneGenera
  */
 export function fillFromTask(task: SpaceTask): SceneGenerateFill {
   return {
-    source: 'retry', origin: task.origin ?? 'space', mode: modeOf(task.mode), model: task.model?.name ?? '',
-    prompt: task.prompt ?? '', negativePrompt: task.negativePrompt ?? '', params: task.params ?? {}, images: task.inputs ?? [],
+    source: 'retry', origin: task.origin ?? 'space', mode: modeOf(task.mode),
+    prompt: task.prompt ?? '', params: task.params ?? {}, images: task.inputs ?? [],
   };
 }

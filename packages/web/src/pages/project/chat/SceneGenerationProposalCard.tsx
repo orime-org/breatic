@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Box } from 'lucide-react';
-import { resolveParams, type SceneGenerationProposal } from '@breatic/shared';
+import type { SceneGenerationProposal } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -13,7 +13,7 @@ import { ProposalAction, ProposalActions } from '@web/pages/project/chat/Proposa
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import { SCENE_MODE_LABELS } from '@web/spaces/three-d/scene-generation';
+import { SCENE_MODE_LABELS, fillFromProposal } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 
 /**
@@ -49,7 +49,15 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
      * @returns Its translated name.
      */
     const nameOf = (name: string): string => t(`canvas.generatePanel.param.${name}`);
-    return ownControlSummary(entry, proposal.mode, resolveParams(entry, proposal.params), nameOf, MAIN_SETTING).join(' · ');
+    /**
+     * A choice with the setting it sets, since the card has no controls beside it.
+     * @param name - The setting's name on screen.
+     * @param value - The value's name.
+     * @returns The part.
+     */
+    const named = (name: string, value: string): string => t('chat.sceneProposal.setting', { name, value });
+    // The tool resolved the params already.
+    return ownControlSummary(entry, proposal.mode, proposal.params, nameOf, MAIN_SETTING, named).join(' · ');
   }, [entry, proposal.mode, proposal.params, t]);
   const needScene = t('chat.sceneProposal.needScene');
   const open = React.useCallback((): void => {
@@ -57,7 +65,7 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
       toast.warning(needScene);
       return;
     }
-    request(proposal);
+    request(fillFromProposal(proposal));
   }, [listening, request, proposal, needScene]);
   return <div data-testid='scene-proposal-card' className='mt-2 flex flex-col gap-2 rounded-overlay border border-border bg-popover px-3 py-2.5'>
     <div className='flex items-center gap-2 text-sm font-semibold text-foreground'><Box className='size-4 shrink-0' aria-hidden='true' /><span>{t('chat.sceneProposal.title')}</span></div>

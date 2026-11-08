@@ -18,6 +18,7 @@ import type { SceneGenerationProposal } from '@breatic/shared';
 
 import { SceneGenerationProposalCard } from '@web/pages/project/chat/SceneGenerationProposalCard';
 import { useSceneProposals } from '@web/stores/scene-proposals';
+import { fillFromProposal } from '@web/spaces/three-d/scene-generation';
 import { RAW_CATALOG } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() }));
@@ -98,8 +99,8 @@ describe('what the card shows', () => {
     expect(await screen.findByText('Tripo H3.1')).toBeInTheDocument();
     expect(screen.getByText(/\bText to 3D\b/)).toBeInTheDocument();
     expect(screen.getByText('A wooden chair')).toBeInTheDocument();
-    // Texture quality, by its value label.
-    expect(screen.getByText(/\bDetailed\b/)).toBeInTheDocument();
+    // A choice says which setting it sets, since the card has no controls beside it.
+    expect(screen.getByText(/Texture quality: Detailed/)).toBeInTheDocument();
     expect(screen.getByText(/\b36\b/)).toBeInTheDocument();
   });
 
@@ -147,7 +148,7 @@ describe('the Open in 3D Space button', () => {
 
     await user.click(button());
 
-    expect(useSceneProposals.getState().incoming).toEqual(TEXT_TO_3D);
+    expect(useSceneProposals.getState().incoming).toEqual(fillFromProposal(TEXT_TO_3D));
     expect(toast.warning).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -165,6 +166,6 @@ describe('the Open in 3D Space button', () => {
     expect(button()).not.toHaveAttribute('aria-busy', 'true');
     await user.click(button());
 
-    expect(useSceneProposals.getState().incoming).toEqual(TEXT_TO_3D);
+    expect(useSceneProposals.getState().incoming).toEqual(fillFromProposal(TEXT_TO_3D));
   });
 });

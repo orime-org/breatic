@@ -184,6 +184,8 @@ function lockNotice(reason: string | undefined): (() => void) | undefined {
 function ModelControlRow({ control, label, shown, customShown, onChange, autoNote, even, lockedReason, error }: ModelControlRowProps): React.JSX.Element {
   const row = <ModelControlBody control={control} label={label} shown={shown} customShown={customShown} onChange={onChange}
     autoNote={autoNote} even={even} lockedReason={lockedReason} error={error} />;
+  // An integer box writes on every keystroke, so it draws its own rule line:
+  // wrapping it here when the rule breaks would remount the box mid-typing.
   if (error === undefined || control.kind === 'integer') return row;
   return <div>{row}<p className='mt-1 text-xs text-status-error'>{error}</p></div>;
 }

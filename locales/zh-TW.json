@@ -575,7 +575,8 @@
       "title": "3D 生成",
       "open": "在 3D Space 中開啟",
       "needScene": "先開啟一個 3D Space。",
-      "credits": "約 {credits} 積分"
+      "credits": "約 {credits} 積分",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {

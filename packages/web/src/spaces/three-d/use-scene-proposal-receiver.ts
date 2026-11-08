@@ -2,25 +2,24 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import type { SceneGenerationProposal } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useSceneProposals } from '@web/stores/scene-proposals';
+import { useSceneProposals, type SceneGenerateFill } from '@web/stores/scene-proposals';
 
 /**
- * Receive the 3D generation proposals handed in from the chat while this 3D
- * Space is in front (inner#1691, design 6.2 and 8.5): listening while
- * mounted, opening the idle dialog with each proposal, and saying another
- * generation is being submitted while one is. Either way the proposal is
+ * Receive the fills handed in from the chat's proposal cards and from Retry
+ * while this 3D Space is in front (inner#1691, design 4.6, 6.2 and 8.5):
+ * listening while mounted, opening the idle dialog with each fill, and saying
+ * another generation is being submitted while one is. Either way the fill is
  * taken out of the mailbox.
  * @param root0 - The dialog's state and its opener.
  * @param root0.submitting - Whether the dialog is waiting on a submit.
- * @param root0.open - Opens the dialog filled with a proposal.
+ * @param root0.open - Opens the dialog filled.
  */
 export function useSceneProposalReceiver({ submitting, open }: {
   submitting: boolean;
-  open: (proposal: SceneGenerationProposal) => void;
+  open: (fill: SceneGenerateFill) => void;
 }): void {
   const t = useTranslation();
   const busy = t('spaces.threeD.proposalBusy');
@@ -32,9 +31,9 @@ export function useSceneProposalReceiver({ submitting, open }: {
   }, [setListening]);
   React.useEffect(() => {
     if (incoming === null) return;
-    const proposal = useSceneProposals.getState().take();
-    if (proposal === null) return;
+    const fill = useSceneProposals.getState().take();
+    if (fill === null) return;
     if (submitting) toast.warning(busy);
-    else open(proposal);
+    else open(fill);
   }, [incoming, submitting, open, busy]);
 }

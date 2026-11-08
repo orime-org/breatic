@@ -85,6 +85,7 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * @param props - Store, edit right, remote progress and place handler.
  * @param props.uploads - The page store.
  * @param props.canEdit - Whether the reader may edit.
+ * @param props.canGenerate - Whether the reader may generate in the project.
  * @param props.remoteUploads - Peers' progress.
  * @param props.onPlace - Place handler.
  * @param props.focusTaskId - The row handed over by a started upload.
@@ -92,13 +93,13 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * @param props.onRetryGeneration - Opens the generation dialog filled from a generation row.
  * @returns The query client.
  */
-function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null, onFocused, onRetryGeneration }: {
-  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
+function renderList({ uploads = store(), canEdit = true, canGenerate = canEdit, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null, onFocused, onRetryGeneration }: {
+  uploads?: SceneUploads; canEdit?: boolean; canGenerate?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
   onRetryGeneration?: (task: SpaceTask) => void;
 } = {}): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><TooltipProvider><CollaboratorNamesProvider value={names}>
-    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused}
+    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} canGenerate={canGenerate} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused}
       {...(onRetryGeneration === undefined ? {} : { onRetryGeneration })} />
   </CollaboratorNamesProvider></TooltipProvider></QueryClientProvider>);
   return client;
@@ -291,7 +292,7 @@ function generation(over: Record<string, unknown>): SpaceTask {
   const { errorMessage: _unused, ...shared } = row({});
   return {
     ...shared, kind: 'generation', origin: 'space', model: { name: 'tripo-h3.1-t23d', displayName: 'Tripo H3.1' }, mode: 't23d',
-    prompt: 'A brass desk lamp', negativePrompt: '', params: {}, inputs: [], errorCode: null, label: 'A brass desk lamp', ...over,
+    prompt: 'A brass desk lamp', params: {}, inputs: [], errorMessage: null, label: 'A brass desk lamp', ...over,
   } as unknown as SpaceTask;
 }
 
@@ -327,7 +328,7 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
       generation({ id: 'text', startedByUserId: 'user-zhang', origin: 'agent', startedAt: new Date(NOW - 180_000).toISOString() }),
       generation({ id: 'image', mode: 'i23d', model: { name: 'tripo-h3.1-multiview', displayName: 'Tripo H3.1' }, prompt: '', label: 'front.png', status: 'done', assetId: 'model-1',
         inputs: [{ assetId: 'a1', url: 'https://cdn.test/a1.png' }, { assetId: 'a2', url: 'https://cdn.test/a2.png' }] }),
-      generation({ id: 'broken', status: 'failed', errorCode: 'internal' }),
+      generation({ id: 'broken', status: 'failed', errorMessage: 'internal' }),
       row({ id: 'import', status: 'done', assetId: 'x' }),
     ));
     renderList();
@@ -352,7 +353,7 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
     api.listSpaceTasks.mockResolvedValue(listed(
       row({ id: 'import', status: 'done', assetId: 'x', startedByUserId: 'user-zhang' }),
       generation({ id: 'mine-running' }),
-      generation({ id: 'their-failed', status: 'failed', errorCode: 'internal', startedByUserId: 'user-zhang', origin: 'agent' }),
+      generation({ id: 'their-failed', status: 'failed', errorMessage: 'internal', startedByUserId: 'user-zhang', origin: 'agent' }),
       generation({ id: 'mine-done', status: 'done', assetId: 'm', origin: 'agent' }),
     ));
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -385,8 +386,8 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
 
   it('offers Retry only to the starter with editing access, and Remove to every editor', async () => {
     api.listSpaceTasks.mockResolvedValue(listed(
-      generation({ id: 'mine-failed', status: 'failed', errorCode: 'internal' }),
-      generation({ id: 'their-failed', status: 'failed', errorCode: 'internal', startedByUserId: 'user-zhang' }),
+      generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' }),
+      generation({ id: 'their-failed', status: 'failed', errorMessage: 'internal', startedByUserId: 'user-zhang' }),
       generation({ id: 'mine-expired', status: 'expired' }),
       generation({ id: 'mine-late', status: 'expired', assetId: 'm' }),
     ));
@@ -398,14 +399,55 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
     expect(await actions('mine-late')).toEqual(['Place in scene']);
   });
 
+  it('shows the prompt of a text run once, as its label', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'text', prompt: 'A brass desk lamp', label: 'A brass desk lamp' })));
+    renderList();
+    expect(within(await rowOf('text')).getAllByText('A brass desk lamp')).toHaveLength(1);
+  });
+
+  it('offers Retry and Remove on a generation row by the project role while the scene is not ready to edit', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' }),
+      generation({ id: 'mine-done', status: 'done', assetId: 'm' }),
+    ));
+    renderList({ canEdit: false, canGenerate: true, onRetryGeneration: vi.fn() });
+    const actions = async (id: string): Promise<string[]> => within(await rowOf(id)).queryAllByRole('button').map((button) => button.textContent ?? '');
+    expect(await actions('mine-failed')).toEqual(['Retry', 'Remove']);
+    // Placing writes the scene, so it waits for the scene.
+    expect(await actions('mine-done')).toEqual([]);
+  });
+
+  it('clears the filters of the page when the row a submit opened does not pass them, and focuses it', async () => {
+    const user = userEvent.setup();
+    const onFocused = vi.fn();
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'from-agent', origin: 'agent' }),
+      generation({ id: 'new-run', origin: 'space' }),
+    ));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (focusTaskId: string | null): React.JSX.Element => <QueryClientProvider client={client}><TooltipProvider><CollaboratorNamesProvider value={names}>
+      <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit canGenerate uploads={store()} remoteUploads={{}} onPlace={vi.fn(async () => undefined)}
+        focusTaskId={focusTaskId} onFocused={onFocused} />
+    </CollaboratorNamesProvider></TooltipProvider></QueryClientProvider>;
+    const { rerender } = render(tree(null));
+    await rowOf('new-run');
+    await filterBy(user, 'origin-agent');
+    expect(shownIds()).toEqual(['from-agent']);
+
+    rerender(tree('new-run'));
+    await waitFor(() => expect(shownIds()).toEqual(['from-agent', 'new-run']));
+    await waitFor(() => expect(onFocused).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(screen.getByTestId('scene-task-new-run'));
+  });
+
   it('offers a read-only starter no Retry on their own failed generation', async () => {
-    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'mine-failed', status: 'failed', errorCode: 'internal' })));
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' })));
     renderList({ canEdit: false, onRetryGeneration: vi.fn() });
     expect(within(await rowOf('mine-failed')).queryAllByRole('button')).toEqual([]);
   });
 
   it('retries a failed generation by opening the dialog from the row, without a check', async () => {
-    const failed = generation({ id: 'mine-failed', status: 'failed', errorCode: 'internal', negativePrompt: 'base', params: { texture_quality: 'detailed' } });
+    const failed = generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal', params: { texture_quality: 'detailed', negative_prompt: 'base' } });
     api.listSpaceTasks.mockResolvedValue(listed(failed));
     const onRetryGeneration = vi.fn();
     renderList({ onRetryGeneration });

@@ -79,15 +79,12 @@ describe('resetProjectUiStores (#1771)', () => {
     const { useSceneProposals } = (await import(/* @vite-ignore */ storePath)) as typeof import('@web/stores/scene-proposals');
     useSceneProposals.getState().setListening(true);
     useSceneProposals.getState().request({
-      proposalId: 'p1',
+      source: 'agent',
+      origin: 'agent',
       mode: 't23d',
-      model: 'tripo-h3.1-t23d',
       prompt: 'A wooden chair',
       params: { texture: true, negative_prompt: '' },
       images: [],
-      credits: 30,
-      rationale: 'A chair for the set',
-      placed: true,
     });
     expect(useSceneProposals.getState().listening).toBe(true);
     expect(useSceneProposals.getState().incoming).not.toBeNull();

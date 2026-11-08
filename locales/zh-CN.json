@@ -575,7 +575,8 @@
       "title": "3D 生成",
       "open": "在 3D Space 中打开",
       "needScene": "先打开一个 3D Space。",
-      "credits": "约 {credits} 积分"
+      "credits": "约 {credits} 积分",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {

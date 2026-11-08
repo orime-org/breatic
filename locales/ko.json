@@ -575,7 +575,8 @@
       "title": "3D 생성",
       "open": "3D Space에서 열기",
       "needScene": "먼저 3D Space를 여세요.",
-      "credits": "약 {credits} 크레딧"
+      "credits": "약 {credits} 크레딧",
+      "setting": "{name}: {value}"
     }
   },
   "canvas": {

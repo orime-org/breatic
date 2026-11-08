@@ -28,6 +28,8 @@ interface SceneTaskListProps {
   spaceId: string;
   userId: string;
   canEdit: boolean;
+  /** Whether the reader may generate in this project: a generation row's Retry and Remove are server calls that never touch the scene. */
+  canGenerate: boolean;
   /** The page's own uploads: live percent, registration and which rows it may retry. */
   uploads: SceneUploads;
   /** Other pages' whole-percent progress, by task row. */
@@ -94,7 +96,7 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
  * @param props - Space identity, edit right, the page's uploads and the row actions.
  * @returns The list.
  */
-export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, uploads, remoteUploads, onPlace, focusTaskId, onFocused,
+export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, canGenerate, uploads, remoteUploads, onPlace, focusTaskId, onFocused,
   onRetryGeneration, placedAssetIds, onLocate, filterHost }: SceneTaskListProps): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
@@ -123,11 +125,17 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   }, [focusTaskId, data, queryClient, queryKey]);
   React.useEffect(() => {
     if (!focusTaskId) return;
+    // The row the user just made shows whatever the page's filters say.
+    const handed = data?.tasks.find((task) => task.id === focusTaskId);
+    if (handed !== undefined && !passes(handed, filters, userId)) {
+      setFilters(NO_FILTERS);
+      return;
+    }
     const target = list.current?.querySelector<HTMLElement>(`[data-testid="scene-task-${focusTaskId}"]`);
     if (!target) return;
     target.focus();
     onFocused?.();
-  }, [focusTaskId, data, onFocused]);
+  }, [focusTaskId, data, filters, userId, onFocused]);
 
   React.useEffect(() => {
     if (!data) return;
@@ -296,28 +304,29 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
                 : minutes >= 1 ? t('spaces.threeD.taskList.runningFor', { minutes }) : t('spaces.threeD.taskList.running')
             : t(`spaces.threeD.taskList.${task.status}`);
         const failure = task.status !== 'failed' ? null
-          : generation ? failureSentence(task.errorCode ?? 'internal', t)
-            : task.errorMessage ? failureSentence(task.errorMessage, t) : t('spaces.threeD.taskList.failedReason');
+          : task.errorMessage ? failureSentence(task.errorMessage, t)
+            : generation ? failureSentence('internal', t) : t('spaces.threeD.taskList.failedReason');
         const placeable = canEdit && hasResult;
         const locatable = hasResult && task.assetId !== null && onLocate !== undefined && (placedAssetIds?.has(task.assetId) ?? false);
-        const removable = canEdit && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null));
+        const removable = (generation ? canGenerate : canEdit) && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null));
         const retryable = generation
-          ? canEdit && onRetryGeneration !== undefined && task.startedByUserId === userId && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null))
+          ? canGenerate && onRetryGeneration !== undefined && task.startedByUserId === userId && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null))
           : canEdit && task.status === 'failed' && (own?.phase === 'retained' || own?.phase === 'retrying');
         return <div key={task.id} tabIndex={-1} className='rounded-chrome border border-border p-2.5 text-sm outline-none focus-visible:border-active-border' data-testid={`scene-task-${task.id}`}>
           <div className='flex items-center gap-2'>
             <span className={cn('size-2 shrink-0 rounded-full', DOT_CLASS[hasResult ? 'done' : task.status])} />
             <Tooltip><TooltipTrigger asChild><span className='min-w-0 flex-1 truncate font-medium'>{task.label}</span></TooltipTrigger>
-              <TooltipContent portal side='top'>{task.label}</TooltipContent></Tooltip>
+              <TooltipContent portal side='top' className='max-w-sm break-all'>{task.label}</TooltipContent></Tooltip>
             {generation ? <KindBadge icon={Sparkles} label={t('spaces.threeD.taskList.kindGeneration')} colorClassName='text-muted-foreground' />
               : <KindBadge icon={Upload} label={t('spaces.threeD.taskList.kind')} colorClassName='text-muted-foreground' />}
           </div>
           {generation ? <>
+            {/* A text run's label already is its prompt; an image run shows its views. */}
             {task.mode === 'i23d' ? <div className='mt-1.5 flex items-center gap-1.5'>
               {task.inputs.map((input) => <HoverPreview key={input.assetId} kind='image' src={input.url}>
                 <span className='inline-flex shrink-0'><img src={input.url} alt='' className='size-7 rounded-content-xs object-cover' /></span>
               </HoverPreview>)}
-            </div> : task.prompt ? <p className='mt-1 truncate text-xs text-muted-foreground'>{task.prompt}</p> : null}
+            </div> : null}
             <p className='mt-1 flex items-center gap-1 text-xs text-muted-foreground'>
               {task.origin === 'agent' ? <Bot className='size-3 shrink-0' aria-hidden='true' /> : null}
               {`${task.model.displayName} · ${starter} · ${task.origin === 'agent' ? t('spaces.threeD.taskList.originAgent') : t('spaces.threeD.taskList.originSpace')}`}

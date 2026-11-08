@@ -17,8 +17,9 @@ import { readSceneView, writeSceneView } from '@web/lib/scene-view-storage';
 import { toast } from '@web/lib/toast';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
-import { SceneCreationMenu, type SceneGenerateRequest } from '@web/spaces/three-d/SceneCreationMenu';
+import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
+import { useSceneProposals } from '@web/stores/scene-proposals';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
@@ -267,9 +268,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [handedOff, setRightOpen]);
   /** The handed row has been shown; a later reopening of the task list starts where the user left it. */
   const taskFocused = React.useCallback((): void => setFocusTaskId(null), []);
-  const [generateRequest, setGenerateRequest] = React.useState<SceneGenerateRequest | null>(null);
   /** Open the generation dialog filled from a generation row's Retry (design 4.6). */
-  const retryGeneration = React.useCallback((task: SpaceTask): void => setGenerateRequest({ fill: fillFromTask(task) }), []);
+  const retryGeneration = React.useCallback((task: SpaceTask): void => useSceneProposals.getState().request(fillFromTask(task)), []);
   const [filterHost, setFilterHost] = React.useState<HTMLSpanElement | null>(null);
 
   // A placement holds its model through the viewport's own cache until the
@@ -473,11 +473,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
     </React.Suspense>
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
-      : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} uploads={uploads}
+      : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
         remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
         onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties,
-    projectId, userId, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost]);
+    projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -507,7 +507,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       </div> : null}
     </div>
     <SceneCreationMenu projectId={projectId} spaceId={spaceId} myRole={myRole} canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport}
-      generateRequest={generateRequest} onGenerated={importStarted} />
+      onGenerated={importStarted} />
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}

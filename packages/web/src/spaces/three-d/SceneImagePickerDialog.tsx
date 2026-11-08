@@ -12,7 +12,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { listProjectImages, projectImagesQueryKey } from '@web/data/api/scene';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { SceneViewImage } from '@web/spaces/three-d/scene-generation';
+import type { SceneViewImage } from '@web/stores/scene-proposals';
 
 /** The image types a view slot takes. */
 export const SCENE_VIEW_ACCEPT = 'image/png,image/jpeg,image/webp';

@@ -4,7 +4,10 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderOpen, Plus, RefreshCw, Upload, X } from 'lucide-react';
-import { applyForces, checkParamCombination, getLocale, resolveParams, type ModelEntry, type ParamViolation } from '@breatic/shared';
+import {
+  SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, applyForces, checkParamCombination, getLocale, resolveParams,
+  type ModelEntry, type ParamViolation, type SceneGenerationBody, type ThreeDGenerationMode,
+} from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -14,7 +17,7 @@ import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { assetsApi } from '@web/data/api/assets';
-import { projectImagesQueryKey, submitSceneGeneration, type SceneGenerationBody } from '@web/data/api/scene';
+import { projectImagesQueryKey, submitSceneGeneration } from '@web/data/api/scene';
 import { ApiException } from '@web/data/api/types';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
@@ -30,10 +33,8 @@ import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamContro
 import { ParamOptionGroup, type ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { useCreditEstimate } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
-import {
-  SCENE_MODE_LABELS, SCENE_VIEWS, commonSceneParams, sceneEntryFor, sceneGenerateIntent,
-  type SceneGenerateFill, type SceneGenerationMode, type SceneViewImage,
-} from '@web/spaces/three-d/scene-generation';
+import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
+import type { SceneGenerateFill, SceneViewImage } from '@web/stores/scene-proposals';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
 interface SceneGenerateDialogProps {
@@ -49,16 +50,22 @@ interface SceneGenerateDialogProps {
   onCloseAutoFocus?: (event: Event) => void;
 }
 
-/** One view slot: a picture, or an upload on its way. */
-type ViewSlot = ({ kind: 'image' } & SceneViewImage) | { kind: 'uploading'; id: string; percent: number };
-
-/** The view slots and which one, if any, says its upload failed. */
-interface Slots {
-  views: ViewSlot[];
-  failedAt: number | null;
-}
+/**
+ * One view slot: a picture, an upload on its way, or an upload that failed,
+ * which keeps its place until the user replaces or removes it.
+ */
+type ViewSlot = ({ kind: 'image' } & SceneViewImage) | { kind: 'uploading'; id: string; percent: number } | { kind: 'failed' };
 
 const NO_ENTRIES: readonly ModelEntry[] = [];
+
+/**
+ * Whether a resolved value is one a setting can be sent as.
+ * @param value - The value.
+ * @returns True for a string, number, boolean or null.
+ */
+function isSettingValue(value: unknown): value is string | number | boolean | null {
+  return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
 
 /**
  * Put a picture or an upload into a slot: the slot it names, or the next empty one.
@@ -71,7 +78,7 @@ function put(views: readonly ViewSlot[], index: number, slot: ViewSlot): ViewSlo
   const next = [...views];
   if (index < next.length) next[index] = slot;
   else next.push(slot);
-  return next.slice(0, SCENE_VIEWS.length);
+  return next.slice(0, SCENE_VIEW_SLOTS.length);
 }
 
 /**
@@ -79,9 +86,9 @@ function put(views: readonly ViewSlot[], index: number, slot: ViewSlot): ViewSlo
  * entry shares on top, the current mode's own content in the middle, the mode
  * switch, the estimate and Generate in the bottom row. Opened blank it starts
  * empty; opened from a proposal or a Retry it holds exactly what that carries.
- * While a submit waits it cannot be closed; it closes on the server's answer,
- * a row that failed to start included, and stays open with everything kept on
- * a refusal.
+ * It closes on the server's answer, a row that failed to start included, and
+ * stays open with everything kept on a refusal. Closed while a submit waits,
+ * the submit carries on: the answer still opens the task list on its row.
  * @param props - The Space, the open state, the fill and the submit hand-off.
  * @param props.projectId - The project.
  * @param props.spaceId - The 3D Space the run's row lands in.
@@ -103,14 +110,10 @@ export const SceneGenerateDialog = React.memo(function SceneGenerateDialog({ pro
     setSeen({ open, fill });
     if (open) setVersion((value) => value + 1);
   }
-  const changeOpen = React.useCallback((next: boolean): void => {
-    if (!next && submitting) return;
-    onOpenChange(next);
-  }, [submitting, onOpenChange]);
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   const description = fill?.source === 'agent' ? t('spaces.threeD.generateDialog.descriptionAgent')
     : fill?.source === 'retry' ? t('spaces.threeD.generateDialog.descriptionRetry') : t('spaces.threeD.generateDialog.descriptionBlank');
-  return <Dialog open={open} onOpenChange={changeOpen}>
+  return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className='max-w-[640px]' onCloseAutoFocus={onCloseAutoFocus}>
       <DialogHeader><DialogTitle>{t('spaces.threeD.generate')}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
       <SceneGenerateForm key={version} projectId={projectId} spaceId={spaceId} fill={fill} intent={intent} submitting={submitting} onClose={close} onSubmitted={onSubmitted} />
@@ -146,21 +149,20 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const queryClient = useQueryClient();
   const catalog = useQuery(modelCatalogQuery());
   const entries = catalog.data?.three_d ?? NO_ENTRIES;
-  const [mode, setMode] = React.useState<SceneGenerationMode>(fill?.mode ?? 't23d');
+  const [mode, setMode] = React.useState<ThreeDGenerationMode>(fill?.mode ?? 't23d');
   const [prompt, setPrompt] = React.useState(fill?.prompt ?? '');
-  const [params, setParams] = React.useState<Record<string, unknown>>(() => (fill ? { ...fill.params, negative_prompt: fill.negativePrompt } : {}));
-  const [slots, setSlots] = React.useState<Slots>(() => ({
-    views: (fill?.images ?? []).slice(0, SCENE_VIEWS.length).map((image) => ({ kind: 'image', ...image })), failedAt: null,
-  }));
+  const [params, setParams] = React.useState<Record<string, unknown>>(() => fill?.params ?? {});
+  const [views, setViews] = React.useState<ViewSlot[]>(() => (fill?.images ?? []).slice(0, SCENE_VIEW_SLOTS.length).map((image) => ({ kind: 'image', ...image })));
   const [picking, setPicking] = React.useState<number | null>(null);
   const origin = fill?.origin ?? 'space';
-  const { views } = slots;
 
   const entry = sceneEntryFor(entries, mode, views.length);
   const common = React.useMemo(() => commonSceneParams(entries), [entries]);
   const resolved = React.useMemo(() => (entry ? resolveParams(entry, params) : {}), [entry, params]);
   // What is sent: the panel's settings as they resolve, never the view params.
-  const settings = React.useMemo(() => Object.fromEntries(Object.entries(resolved).filter(([name]) => entry?.params[name]?.fill === 'panel')), [resolved, entry]);
+  const settings = React.useMemo((): SceneGenerationBody['params'] => Object.fromEntries(Object.entries(resolved).filter(
+    (pair): pair is [string, string | number | boolean | null] => entry?.params[pair[0]]?.fill === 'panel' && isSettingValue(pair[1]),
+  )), [resolved, entry]);
   const violations = React.useMemo(() => (entry ? checkParamCombination(entry, mode === 't23d' ? { ...settings, prompt } : settings) : []), [entry, mode, settings, prompt]);
   const ruleText = React.useCallback((violation: ParamViolation): string => {
     switch (violation.rule) {
@@ -209,19 +211,15 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
     const id = crypto.randomUUID();
     const controller = new AbortController();
     uploads.current.add(controller);
-    setSlots((previous) => ({ views: put(previous.views, index, { kind: 'uploading', id, percent: 0 }), failedAt: null }));
+    setViews((previous) => put(previous, index, { kind: 'uploading', id, percent: 0 }));
     /**
-     * Land the upload in its slot, or empty the slot and say it failed there.
+     * Land the upload in its slot, or mark the slot failed where it stands, so
+     * no later view moves into a place the user did not put it.
      * @param image - The stored picture, or null when the upload did not give one.
      */
     const settle = (image: SceneViewImage | null): void => {
       if (controller.signal.aborted || !uploads.current.delete(controller)) return;
-      setSlots((previous) => {
-        const at = previous.views.findIndex((slot) => slot.kind === 'uploading' && slot.id === id);
-        if (at < 0) return previous;
-        if (image !== null) return { ...previous, views: previous.views.map((slot, i) => (i === at ? { kind: 'image', ...image } : slot)) };
-        return { views: previous.views.filter((_, i) => i !== at), failedAt: at };
-      });
+      setViews((previous) => previous.map((slot) => (slot.kind === 'uploading' && slot.id === id ? (image === null ? { kind: 'failed' } : { kind: 'image', ...image }) : slot)));
       if (image !== null) void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) });
     };
     void runMediaUpload(file, { projectId, spaceId }, {
@@ -232,7 +230,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
       onProgress: (fraction) => {
         if (controller.signal.aborted) return;
         const percent = Math.round(fraction * 100);
-        setSlots((previous) => ({ ...previous, views: previous.views.map((slot) => (slot.kind === 'uploading' && slot.id === id ? { ...slot, percent } : slot)) }));
+        setViews((previous) => previous.map((slot) => (slot.kind === 'uploading' && slot.id === id ? { ...slot, percent } : slot)));
       },
       onSuccess: (stored) => settle(stored.kind === 'image' ? { assetId: stored.assetId, url: stored.fileUrl, displayName: file.name } : null),
       onFailure: () => settle(null),
@@ -250,18 +248,20 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
     event.target.value = '';
     if (file !== undefined) startUpload(uploadSlot.current, file);
   }, [startUpload]);
-  const removeView = React.useCallback((index: number): void => setSlots((previous) => ({ views: previous.views.filter((_, i) => i !== index), failedAt: null })), []);
+  const removeView = React.useCallback((index: number): void => setViews((previous) => previous.filter((_, i) => i !== index)), []);
   const pickerOpenChange = React.useCallback((next: boolean): void => { if (!next) setPicking(null); }, []);
   const picked = React.useCallback((image: SceneViewImage): void => {
     if (picking === null) return;
-    setSlots((previous) => ({ views: put(previous.views, picking, { kind: 'image', ...image }), failedAt: null }));
+    setViews((previous) => put(previous, picking, { kind: 'image', ...image }));
   }, [picking]);
   const pickedFile = React.useCallback((file: File): void => {
     if (picking !== null) startUpload(picking, file);
   }, [picking, startUpload]);
 
-  const uploading = views.some((slot) => slot.kind === 'uploading');
-  const ready = entry !== undefined && violations.length === 0 && (mode === 't23d' ? prompt.trim() !== '' : views.length > 0 && !uploading);
+  // Views fill in order: one whose upload failed is replaced or removed before the next is offered.
+  const failedView = views.some((slot) => slot.kind === 'failed');
+  const viewsReady = views.length > 0 && views.every((slot) => slot.kind === 'image');
+  const ready = entry !== undefined && violations.length === 0 && (mode === 't23d' ? prompt.trim() !== '' : viewsReady);
   const submit = React.useCallback((): void => {
     if (entry === undefined || !ready) return;
     const body: SceneGenerationBody = {
@@ -279,12 +279,14 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
         return undefined;
       },
       onFailure: async (err) => {
-        toast.error(await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
+        // A 422 of ours names the rule or the view slot, in the user's language.
+        const ours = err instanceof ApiException && err.status === 422 && err.fromServer;
+        toast.error(ours ? err.message : await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
       },
     });
   }, [entry, ready, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
 
-  const modeOptions = React.useMemo((): ParamOption[] => (['t23d', 'i23d'] as const).map((value) => ({ value, label: SCENE_MODE_LABELS[value], disabled: submitting })), [submitting]);
+  const modeOptions = React.useMemo((): ParamOption[] => THREE_D_GENERATION_MODES.map((value) => ({ value, label: SCENE_MODE_LABELS[value], disabled: submitting })), [submitting]);
   const selectMode = React.useCallback((value: string | number): void => setMode(value === 'i23d' ? 'i23d' : 't23d'), []);
   const promptError = errors.prompt;
 
@@ -309,8 +311,8 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
           </div> : <div className='flex flex-col gap-2'>
             <p className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.generateDialog.views')}</p>
             <div className='grid grid-cols-4 gap-2'>
-              {SCENE_VIEWS.map((view, index) => <ViewSlotCell key={view} view={view} index={index} slot={views[index]} next={index === views.length}
-                failed={slots.failedAt === index} onUpload={chooseFile} onPick={setPicking} onRemove={removeView} />)}
+              {SCENE_VIEW_SLOTS.map((view, index) => <ViewSlotCell key={view} view={view} index={index} slot={views[index]} next={index === views.length && !failedView}
+                onUpload={chooseFile} onPick={setPicking} onRemove={removeView} />)}
             </div>
             <p className='text-xs text-muted-foreground'>{t('spaces.threeD.generateDialog.viewsHint')}</p>
           </div>}
@@ -320,7 +322,10 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
       <Input ref={fileInput} data-testid='scene-generate-view-file-input' type='file' accept={SCENE_VIEW_ACCEPT} onChange={fileChosen} className='hidden' />
     </fieldset>
     <PanelRunFooter
-      leading={<ParamOptionGroup label='' options={modeOptions} value={mode} onSelect={selectMode} testIdPrefix='scene-generate-mode' />}
+      leading={<div className='flex min-w-0 items-center gap-3'>
+        <ParamOptionGroup label='' options={modeOptions} value={mode} onSelect={selectMode} testIdPrefix='scene-generate-mode' />
+        {entry === undefined ? null : <span data-testid='scene-generate-model' className='truncate text-xs text-muted-foreground'>{entry.display_name}</span>}
+      </div>}
       creditText={creditText}
       runLabel={t('spaces.threeD.submit')}
       disabled={!ready}
@@ -334,13 +339,11 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
 }
 
 interface ViewSlotCellProps {
-  view: (typeof SCENE_VIEWS)[number];
+  view: (typeof SCENE_VIEW_SLOTS)[number];
   index: number;
   slot: ViewSlot | undefined;
   /** Whether this is the slot that fills next. */
   next: boolean;
-  /** Whether this slot's last upload failed. */
-  failed: boolean;
   onUpload: (index: number) => void;
   onPick: (index: number) => void;
   onRemove: (index: number) => void;
@@ -348,24 +351,24 @@ interface ViewSlotCellProps {
 
 /**
  * One view slot: its picture with a menu to change or remove it, its upload's
- * progress, the add menu when it fills next, or a dash until the one before it is filled.
+ * progress, its failed upload with the same menu, the add menu when it fills
+ * next, or a dash until the one before it is filled.
  * @param props - The slot and what its menu does.
  * @param props.view - Which view it is.
  * @param props.index - Its place, front first.
  * @param props.slot - What it holds.
  * @param props.next - Whether it fills next.
- * @param props.failed - Whether its last upload failed.
  * @param props.onUpload - Chooses a file to upload into it.
  * @param props.onPick - Opens the Project picker for it.
  * @param props.onRemove - Empties it, moving the later views forward.
  * @returns The slot.
  */
-const ViewSlotCell = React.memo(function ViewSlotCell({ view, index, slot, next, failed, onUpload, onPick, onRemove }: ViewSlotCellProps): React.JSX.Element {
+const ViewSlotCell = React.memo(function ViewSlotCell({ view, index, slot, next, onUpload, onPick, onRemove }: ViewSlotCellProps): React.JSX.Element {
   const t = useTranslation();
   const name = t(`spaces.threeD.generateDialog.view.${view}`);
   /**
-   * The slot's menu: upload, choose from the Project and, for a filled slot, remove.
-   * @param filled - Whether the slot holds a picture.
+   * The slot's menu: upload, choose from the Project and, for a slot in use, remove.
+   * @param filled - Whether the slot holds a picture or a failed upload.
    * @returns The menu content.
    */
   const menu = (filled: boolean): React.JSX.Element => <DropdownMenuContent align='start'>
@@ -385,11 +388,11 @@ const ViewSlotCell = React.memo(function ViewSlotCell({ view, index, slot, next,
       </> : slot?.kind === 'uploading' ? <span role='progressbar' aria-valuenow={slot.percent} aria-valuemin={0} aria-valuemax={100}
         className='absolute inset-x-2 bottom-2 h-1 overflow-hidden rounded-full bg-muted'>
         <span className='block h-full bg-foreground' style={{ width: `${slot.percent}%` }} />
-      </span> : next ? <>
+      </span> : slot?.kind === 'failed' || next ? <>
         <DropdownMenu modal={false}><DropdownMenuTrigger asChild>
           <Button type='button' variant='ghost' size='icon' data-testid={`scene-generate-view-${index}-add`} aria-label={t('spaces.threeD.generateDialog.addView', { view: name })}><Plus className='size-4' /></Button>
-        </DropdownMenuTrigger>{menu(false)}</DropdownMenu>
-        {failed ? <p data-testid={`scene-generate-view-${index}-error`} className='absolute inset-x-1 bottom-1 text-center text-xs leading-tight text-status-error'>{t('spaces.threeD.generateDialog.uploadFailed')}</p> : null}
+        </DropdownMenuTrigger>{menu(slot?.kind === 'failed')}</DropdownMenu>
+        {slot?.kind === 'failed' ? <p data-testid={`scene-generate-view-${index}-error`} className='absolute inset-x-1 bottom-1 text-center text-xs leading-tight text-status-error'>{t('spaces.threeD.generateDialog.uploadFailed')}</p> : null}
       </> : <Tooltip><TooltipTrigger asChild><span className='text-xs text-muted-foreground'>—</span></TooltipTrigger>
         <TooltipContent>{t('spaces.threeD.generateDialog.fillEarlier')}</TooltipContent></Tooltip>}
     </div>

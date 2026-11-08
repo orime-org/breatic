@@ -575,7 +575,8 @@
       "title": "3D generation",
       "open": "Open in 3D Space",
       "needScene": "Open a 3D Space first.",
-      "credits": "About {credits} credits"
+      "credits": "About {credits} credits",
+      "setting": "{name}: {value}"
     }
   },
   "canvas": {

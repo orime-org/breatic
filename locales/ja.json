@@ -575,7 +575,8 @@
       "title": "3D 生成",
       "open": "3D Space で開く",
       "needScene": "先に 3D Space を開いてください。",
-      "credits": "約 {credits} クレジット"
+      "credits": "約 {credits} クレジット",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {

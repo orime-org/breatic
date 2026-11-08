@@ -276,6 +276,8 @@ export function ownControlValues(
  * @param params - What the node holds for it, with the model's defaults resolved in.
  * @param nameOf - A param's name on screen.
  * @param include - Which controls to summarise; all of them when absent.
+ * @param named - Joins a choice's or a range's name to its value, for a
+ *   summary drawn away from the controls; the value alone when absent.
  * @returns One part per control that has something to show, in declared order.
  */
 export function ownControlSummary(
@@ -284,6 +286,7 @@ export function ownControlSummary(
   params: Readonly<Record<string, unknown>>,
   nameOf: (name: string) => string,
   include?: (control: ModelControl) => boolean,
+  named?: (name: string, value: string) => string,
 ): string[] {
   const parts: string[] = [];
   for (const control of modelControls(model, mode)) {
@@ -297,10 +300,9 @@ export function ownControlSummary(
       continue;
     }
     const shown = params[control.name];
-    if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
-      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
-    } else if (control.kind === 'range' && typeof shown === 'number') {
-      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
+    if ((control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) || (control.kind === 'range' && typeof shown === 'number')) {
+      const value = optionLabel(model.params[control.name] ?? {}, shown);
+      parts.push(named ? named(nameOf(control.name), value) : value);
     } else if (control.kind === 'toggle' && shown === true) {
       parts.push(nameOf(control.name));
     } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {
