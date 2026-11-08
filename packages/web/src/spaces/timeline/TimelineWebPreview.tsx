@@ -86,7 +86,7 @@ export interface TimelineWebEntry {
   /** Its stacking position, bottom 1. */
   z: number;
   /**
-   * The instance serving it, keyed by source version and its pool ordinal, with its pool role (absent means visible);
+   * The instance serving it, keyed by source version and its pool ordinal, with its pool role;
    * an idle instance's entry carries the copy it last showed.
    */
   instance: { key: string; sourceVersionId: string; fps: TimelineRate; role: WebInstanceRole; targetFrame?: number } | null;

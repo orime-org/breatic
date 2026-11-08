@@ -29,7 +29,7 @@ export interface TimelineWebLayer {
   clip: TimelineWebAnimationClip;
   fps: TimelineRate;
   player: WebAnimationPlayerElement;
-  /** Its pool role (inner#1711 design §7.4); absent means visible. */
+  /** Its pool role (inner#1711 design §7.4). */
   role: WebInstanceRole;
   /** A premounted instance's target: the copy's first visible frame. */
   targetFrame?: number;
