@@ -548,8 +548,10 @@ export class MainAgent {
         }
       }
       const storage = await getStorageAdapter();
-      // Read once per turn, as far as the history reads, memory watermark or not.
-      pageLinks ??= await pageLinksForTurn(conversationId, opening.kind === "answer" ? turnIndex + 1 : turnIndex);
+      // The folded turns are read once per turn; the history above the
+      // watermark is added each time it is read.
+      pageLinks ??= await pageLinksForTurn(conversationId, watermark);
+      for (const row of history) pageLinks.addRow(row);
 
       if (preparePictures === undefined) {
         turnStudioId = await assetService.resolveOwnerStudioId(projectId);
@@ -565,7 +567,7 @@ export class MainAgent {
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
-          pageUrlAllowed: (url) => pageLinks?.allows(url) === true,
+          pageUrlFor: (url) => pageLinks?.urlFor(url),
           preparePictures,
           // The Spaces a request to read Spaces may name: this turn's list.
           spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],

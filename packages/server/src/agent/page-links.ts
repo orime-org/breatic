@@ -32,6 +32,11 @@ export interface PageLinks {
   addToolResult(toolName: string, output: unknown): void;
   /** Whether a link is in the set. */
   allows(url: string): boolean;
+  /**
+   * The spelling the set first recorded for a link's key, a bare host given
+   * `https://`; undefined when the set does not hold it.
+   */
+  urlFor(url: string): string | undefined;
 }
 
 /**
@@ -110,14 +115,25 @@ function linksOfResult(toolName: string, output: unknown): string[] {
  * @throws {never} Never.
  */
 export function makePageLinks(): PageLinks {
-  const keys = new Set<string>();
+  // Each key's first recorded spelling: what is read is what the
+  // conversation holds, never what the model added to it.
+  const spellings = new Map<string, string>();
   /**
-   * Note links by their key.
+   * Note links by their key, keeping the first spelling of each.
    * @param links - The links.
    */
   const add = (links: readonly string[]): void => {
-    for (const link of links) keys.add(pageLinkKey(link));
+    for (const link of links) {
+      const key = pageLinkKey(link);
+      if (!spellings.has(key)) spellings.set(key, /^https?:\/\//i.test(link) ? link : `https://${link}`);
+    }
   };
+  /**
+   * The spelling recorded for a link's key.
+   * @param url - The link.
+   * @returns The spelling, or undefined when the set does not hold it.
+   */
+  const urlFor = (url: string): string | undefined => spellings.get(pageLinkKey(url));
   /**
    * Note the links a message the model was sent from the user's side holds.
    * @param message - The message.
@@ -166,20 +182,22 @@ export function makePageLinks(): PageLinks {
         }
       }
     },
-    allows: (url: string): boolean => keys.has(pageLinkKey(url)),
+    allows: (url: string): boolean => urlFor(url) !== undefined,
+    urlFor,
   };
 }
 
 /**
- * The set holding every link of the conversation's rows before `upTo`,
- * memory watermark or not: a link the user gave long ago is still theirs.
+ * The set holding every link of the turns the memory watermark folded away,
+ * up to and including it: a link the user gave long ago is still theirs. The
+ * turns above the watermark are the turn's history, which its caller adds.
  * @param conversationId - The conversation.
- * @param upTo - The turn to stop short of, as the turn's history reads it.
+ * @param watermark - The last turn folded into memory.
  * @returns The set.
  * @throws {Error} When the conversation's rows cannot be read.
  */
-export async function pageLinksForTurn(conversationId: string, upTo: number): Promise<PageLinks> {
+export async function pageLinksForTurn(conversationId: string, watermark: number): Promise<PageLinks> {
   const links = makePageLinks();
-  for (const row of await conversationService.getMessagesForLlm(conversationId, 0, upTo)) links.addRow(row);
+  for (const row of await conversationService.getMessagesForLlm(conversationId, 0, watermark + 1)) links.addRow(row);
   return links;
 }
