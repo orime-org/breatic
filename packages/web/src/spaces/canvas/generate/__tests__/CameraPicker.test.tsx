@@ -115,6 +115,15 @@ describe('CameraPicker — the camera panel the params popover opens (#1788, #22
     expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
   });
 
+  it('throws the master switch only from the switch itself, never from its state word', () => {
+    const onChange = vi.fn();
+    render(<CameraPicker model={FULL} value={{ enable_camera: false }} onChange={onChange} />);
+    fireEvent.click(screen.getByText('Off'));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Camera' }));
+    expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
+  });
+
   it('reflects the on/off state in the header copy', () => {
     const { rerender } = render(
       <CameraPicker

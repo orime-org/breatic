@@ -24,6 +24,8 @@ import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
+import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
+import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -915,3 +917,30 @@ export const chatEarlierMessagesQuerySchema = z.object({
   before_turn: z.coerce.number().int().positive(),
 });
 export type ChatEarlierMessagesQueryInput = z.infer<typeof chatEarlierMessagesQuerySchema>;
+
+// ── 3D generation (inner#1691) ───────────────────────────────────────
+
+/** What the generation dialog submits. */
+export const sceneGenerationBodySchema = z.object({
+  mode: z.enum(THREE_D_GENERATION_MODES),
+  /** `tasks.model` is varchar(100). */
+  model: z.string().min(1).max(100),
+  prompt: z.string().max(8192).optional(),
+  // The settings, `negative_prompt` among them; each is judged against the
+  // model's own declarations, so the shape here only bounds the values.
+  params: z.record(z.string().max(64), z.union([z.string().max(8192), z.number(), z.boolean(), z.null()])),
+  // The views in front, left, back, right order. How many the model takes is
+  // its rule, said with its name when broken; the cap here only bounds work.
+  image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
+  origin: z.enum(SCENE_GENERATION_ORIGINS),
+});
+
+/** A submission, as {@link sceneGenerationBodySchema} describes it. */
+export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;
+
+/** What a submission answers: the task, its row, and whether the job was queued. */
+export interface SceneGenerationAnswer {
+  task_id: string;
+  row_id: string;
+  status: "pending" | "failed";
+}

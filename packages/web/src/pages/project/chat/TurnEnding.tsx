@@ -144,6 +144,7 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     message.sources !== undefined ||
     message.proposals !== undefined ||
     message.documentProposals !== undefined ||
+    message.sceneProposals !== undefined ||
     message.questionnaires !== undefined ||
     message.spaceRequests !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {

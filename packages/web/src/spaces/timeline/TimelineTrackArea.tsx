@@ -137,7 +137,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
 function DeleteTrackButton({ trackId, placement, onCommit }: { trackId: string; placement: TimelineEditPlacement; onCommit: (command: TimelineEditCommand) => void }): React.JSX.Element {
   const t = useTranslation();
   const remove = React.useCallback((): void => onCommit({ operation: 'delete_track', parameters: { trackId }, placement }), [onCommit, trackId, placement]);
-  return <Button data-testid={`timeline-delete-track-${trackId}`} variant='ghost' size='compact' className='ml-auto' onClick={remove} icon={<Trash2 className='size-3.5' />}>{t('timeline.edit.deleteTrack')}</Button>;
+  return <Button data-testid={`timeline-delete-track-${trackId}`} variant='ghost' size='compact' className='ml-auto' onClick={remove} icon={<Trash2 className='mr-1.5 size-3.5' />}>{t('timeline.edit.deleteTrack')}</Button>;
 }
 
 /**

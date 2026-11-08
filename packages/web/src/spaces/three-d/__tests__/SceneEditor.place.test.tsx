@@ -203,3 +203,24 @@ describe('placing a finished model from the task list (inner#1690)', () => {
   });
 
 });
+
+describe('locating a finished model in the scene (inner#1691)', () => {
+  it('selects every object placed from the row and frames them together', async () => {
+    const session = await placeable();
+    await pressPlace();
+    await pressPlace();
+    const ids = readSceneDocument(session.doc).objects.map((object) => object.id);
+    act(() => session.select(null, false));
+    const before = h.latest.props!.focusRevision;
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByTestId('scene-task-task-1')).getByRole('button', { name: t('spaces.threeD.taskList.locate') }));
+    });
+
+    expect(ids).toHaveLength(2);
+    expect([...session.getSnapshot().selectedIds].sort()).toEqual([...ids].sort());
+    expect([...h.latest.props!.selectedIds].sort()).toEqual([...ids].sort());
+    expect(h.latest.props!.focusRevision).toBe(before + 1);
+    expect(screen.getByTestId('scene-tasks-panel')).toBeVisible();
+  });
+});

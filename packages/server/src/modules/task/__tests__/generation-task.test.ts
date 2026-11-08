@@ -40,6 +40,8 @@ vi.mock("@breatic/domain", () => ({
   emitNodeTaskCounts: emit,
 }));
 
+vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess: vi.fn() }));
+
 vi.mock("@breatic/core", async () => {
   // The real AppError, because what this suite asserts about a refused run is
   // the status it carries.
