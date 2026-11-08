@@ -172,8 +172,9 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
     if (pins?.prepared !== undefined) {
       await presentationPinService.acquire({ holderKind: "prepared", holderId: task.id, toolInputId: pins.prepared.toolInputId, preparedKey: pins.prepared.preparedKey, objectKeys: [pins.prepared.preparedKey] }, tx);
     }
-    if (pins?.retire !== undefined) await presentationPinService.retire(pins.retire, tx);
-    if (pins?.pin !== undefined) await pinRepo.appendPinObjects(task.taskType === "mini_tool_analysis" ? "analysis" : "execution", task.id, pins.pin, tx);
+    const holderKind = task.taskType === "mini_tool_analysis" ? "analysis" : "execution";
+    if (pins?.retire !== undefined) await presentationPinService.retire({ holderKind, holderId: task.id }, pins.retire, tx);
+    if (pins?.pin !== undefined) await pinRepo.appendPinObjects(holderKind, task.id, pins.pin, tx);
     return reread(task.id, step.id, tx);
   });
   if (answer instanceof Error) throw answer;

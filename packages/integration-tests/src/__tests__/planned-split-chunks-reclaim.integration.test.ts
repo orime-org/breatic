@@ -163,4 +163,52 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     expect(retried.status, await retried.clone().text()).toBe(201);
     expect(await queued()).toEqual([...doneChunks].sort());
   });
+
+  it("SR02 a stitched segment's chunks are registered at its stitch while a retryable failed segment's done chunks stay pinned", async () => {
+    const target = await seedStudioFixture(pg, "split-reclaim");
+    await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
+    await seedDesignatedLot(pg, target, 1000);
+    const sourceId = randomUUID(); const sourceKey = `video/split-reclaim/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
+    await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
+      VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
+    const presented = await presentedSource(hash, sourceKey, publicUrl);
+    outside.snapshots.set(sourceKey, presented.snapshot);
+    for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
+    const cuts = [2.5];
+    const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
+      draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
+        mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
+      analysis_refs: [], presentation_ref: presented.presentationRef,
+      outputs: planVideoSplit(REMOVAL_TABLE as VideoPresentationTable, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+    const admitted = await post(target.userId, body);
+    expect(admitted.status, await admitted.clone().text()).toBe(201);
+    const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
+    const plan = execution as unknown as { layout: { encodes: { outputIndex: number; chunks: unknown[] }[] }; outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
+    const chunksOf = (output: number): number => plan.layout.encodes.find((entry) => entry.outputIndex === output)!.chunks.length;
+    expect(chunksOf(0)).toBeGreaterThan(1);
+    expect(chunksOf(1)).toBeGreaterThan(1);
+    // Segment 0 is encoded and stitched; the last chunk of segment 1 fails on every attempt, its earlier chunks are done.
+    const last = chunksOf(1) - 1;
+    failing = new RegExp(`:out:1:enc:${last}:`);
+    const stored = await taskRepo.getMiniToolExecutionTask(task.id);
+    const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
+    const run = ((await import("@worker/handlers/mini-tool/run-video-tool.js")) as unknown as Record<string, Runner>).runMiniToolVideoTool!;
+    let results = new Map<number, Record<string, unknown>>();
+    for (let pickup = 0; pickup < 60 && results.size < plan.outputs.length; pickup += 1) {
+      try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
+    }
+    expect(results.get(0)).toMatchObject({ status: "registered" });
+    expect(results.get(1)).toMatchObject({ status: "failed" });
+    const chunkKeys = (output: number, count: number): string[] => Array.from({ length: count }, (_unused, chunk) =>
+      videoPresentationWorkKeyFor(sourceKey, videoContainerJobId({ kind: "run-chunk", taskId: task.id, output, chunk, attempt: 1 }))).sort();
+    const stitched = chunkKeys(0, chunksOf(0)); const waiting = chunkKeys(1, last);
+    const error = { code: "mini_tool_failed" };
+    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error,
+      outputs: plan.outputs.map((output) => ({ ...output, late: false, result: results.get(output.outputIndex)! })) } as never);
+    const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${[...stitched, ...waiting]}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    expect(queued).toEqual(stitched);
+    const pinned = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
+      WHERE p.holder_kind='execution' AND p.holder_id=${task.id} AND p.deleted_at IS NULL AND o.storage_key=ANY(${[...stitched, ...waiting]})`).map((row) => row.storage_key).sort();
+    expect(pinned).toEqual(waiting);
+  });
 });

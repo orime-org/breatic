@@ -176,14 +176,26 @@ export async function heldExecutionObjects(holderId: string, tx: DbTx): Promise<
 }
 
 /**
- * Register outputs nothing will use (a failed attempt's, chunks after their stitch) unless a live pin references them.
+ * Retire outputs nothing will use (a failed attempt's, chunks after their stitch commits; §7.15 execution row and release
+ * points): the holder's live rows stop referencing them, and each one no other live pin references is registered. Keys
+ * are append-only, so a row that held one is replaced by a row without it.
+ * @param holder - The run or analysis that recorded the result.
+ * @param holder.holderKind - Its kind.
+ * @param holder.holderId - The holder.
  * @param keys - The keys.
- * @param tx - The caller's transaction, if any.
+ * @param tx - The caller's transaction.
  * @returns Nothing.
  * @throws {Error} When persistence fails.
  */
-export async function retire(keys: readonly string[], tx?: DbTx): Promise<void> {
-  await within(tx, (tx) => registerUnpinned(keys, tx));
+export async function retire(holder: { holderKind: "execution" | "analysis"; holderId: string }, keys: readonly string[], tx: DbTx): Promise<void> {
+  const dropped = new Set(keys);
+  await pinRepo.lockHolder(holder.holderKind, holder.holderId, tx);
+  for (const row of (await pinRepo.findLive(holder.holderKind, holder.holderId, tx)).filter((live) => live.keys.some((key) => dropped.has(key)))) {
+    await pinRepo.softDelete([row.id], tx);
+    const id = await pinRepo.insertPin({ ...holder, toolInputId: row.toolInputId, preparedKey: row.preparedKey, versionId: row.versionId }, tx);
+    await pinRepo.addObjects(id, row.keys.filter((key) => !dropped.has(key)), tx);
+  }
+  await registerUnpinned(keys, tx);
 }
 
 /**
