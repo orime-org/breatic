@@ -34,6 +34,8 @@ export interface VideoToolModels {
   expand?: ExpandLimits;
   lipSyncFailure: LipsyncFailureReason | null;
   onRetryFailed?: () => void;
+  /** How long the priced inputs hold still before the panel asks for a quote (config `quote_debounce_ms`). */
+  quoteDebounceMs: number;
 }
 
 /**
@@ -106,5 +108,5 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
   }, [failure, spaceId, nodeId, projectId, queryClient, t, failureKey]);
-  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }) };
+  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0 };
 }

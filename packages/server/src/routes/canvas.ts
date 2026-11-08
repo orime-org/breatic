@@ -127,6 +127,8 @@ const urlIngestQueue = createQueue("url-ingest");
  * offers, from the same executions admission reads (inner#1306). `erase` and
  * `expand`: the limits the panel checks before tracking or running, as admission
  * checks them again (execution design §10.4, §10.5).
+ * `quoteDebounceMs`: how long a video tool panel's priced inputs hold still before
+ * it asks for a quote.
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
@@ -141,6 +143,7 @@ canvas.get("/limits", (c) => {
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
       waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
+      quoteDebounceMs: getMiniToolsConfig().quote_debounce_ms,
       removeBackgroundModel: getMiniToolsConfig().executions["video.remove-bg"]?.model ?? null,
       lipSync: lipSyncChoices(),
       erase: eraseLimits(),

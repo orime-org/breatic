@@ -84,7 +84,7 @@ const LIMITS = {
   waveformMaxSeconds: 600, waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
   removeBackgroundModel: 'remove-bg-configured',
   lipSync: { models: [{ name: 'lipsync-configured-a', minDurationSeconds: 1, maxDurationSeconds: 300 }], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: 2, maxDialogues: 8 },
-  erase: { minSeconds: 1, maxSeconds: 5, maxGridFps: 30 },
+  erase: { minSeconds: 1, maxSeconds: 5, maxGridFps: 30 }, quoteDebounceMs: 0,
   expand: { maxDurationSeconds: 180, maxTargetSide: 4096 },
 };
 
@@ -93,9 +93,12 @@ const LIMITS = {
  * whose people analysis is served and recorded on the node; erase with a 3 s range tracked twice, an older tracking of
  * another box and the one of its current box, both served and recorded; expand widened to half the width again.
  * @param toolId - The tool.
+ * @param tracking - The erase tracking seeded: billed credits, or none at all.
+ * @param tracking.billed - What the current tracking was charged.
+ * @param tracking.none - Seeds no tracking.
  * @returns The committed draft.
  */
-async function seed(toolId: QuotedTool): Promise<VideoToolDraft> {
+async function seed(toolId: QuotedTool, tracking: { billed?: number; none?: boolean } = {}): Promise<VideoToolDraft> {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   if (toolId === 'video.remove-bg') {
@@ -114,6 +117,7 @@ async function seed(toolId: QuotedTool): Promise<VideoToolDraft> {
     const box = { x: 0.3, y: 0.2, width: 0.3, height: 0.6 };
     const draft: VideoToolDraftById['video.erase'] = { ...initial, params: { ...initial.params, range: { start: 0, end: 3 }, region: { box, points: [] } } };
     commitVideoToolDraft(doc, nodeId, toolId, draft);
+    if (tracking.none === true) return draft;
     const profile = { id: 'sam3', version: '1', weightsHash: null, params: {} };
     const tracked = async (runId: string, region: typeof draft.params.region, acceptedAt: string): Promise<MiniToolAnalysisRecord> => {
       const analysisInput = projectMiniToolAnalysisInput({ kind: 'tracked_mask', source, params: { ...draft.params, region }, profile });
@@ -121,7 +125,7 @@ async function seed(toolId: QuotedTool): Promise<VideoToolDraft> {
       const identity = { schemaVersion: 1 as const, draftId: draft.draftId, revision: draft.revision, analysisRunId: runId, acceptedAt,
         binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video' as const, mediaInfo }, analysisInput, inputFingerprint };
       commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: draft.draftId, analysisRunId: runId, inputFingerprint });
-      return { ...identity, kind: 'tracked_mask', status: 'completed', artifactUnavailable: false, error: null, usage: [],
+      return { ...identity, kind: 'tracked_mask', status: 'completed', artifactUnavailable: false, error: null, usage: tracking.billed === undefined ? [] : [{ credits: tracking.billed }],
         result: { ...identity, kind: 'tracked_mask', width: 960, height: 540, frameCount: 75, timeBase: { numerator: 1, denominator: 100 }, anchor: draft.params.anchor,
           regionFingerprint: 'c'.repeat(64), sourceFrameMapping: Array.from({ length: 75 }, (_unused, frameIndex) => ({ frameIndex, sourcePts: frameIndex * 0.04 })),
           artifactRefs: [{ role: 'rle', assetId: '70000000-0000-4000-8000-000000000002', canonicalURL: 'https://assets.example.test/track.rle', contentHash: 'b'.repeat(64),
@@ -135,7 +139,7 @@ async function seed(toolId: QuotedTool): Promise<VideoToolDraft> {
   const initial = createVideoToolDraft('video.lip-sync', source);
   const draft: VideoToolDraftById['video.lip-sync'] = { ...initial,
     inputs: [{ inputId: audioId, url: 'https://assets.example.test/voice.m4a', mediaInfo: { duration: 3, mimeType: 'audio/mp4' } }],
-    params: { ...initial.params, dialogues: [{ ...initial.params.dialogues[0]!, personId: 'person-a', analysisRunId, audioInputId: audioId, startTime: 0 }] } };
+    params: { ...initial.params, dialogues: [{ ...initial.params.dialogues[0], personId: 'person-a', analysisRunId, audioInputId: audioId, startTime: 0 }] } };
   commitVideoToolDraft(doc, nodeId, toolId, draft);
   const analysisInput = projectMiniToolAnalysisInput({ kind: 'people', source, params: draft.params, profile: { id: 'people', version: '1', weightsHash: null, params: {} } });
   const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
@@ -152,10 +156,11 @@ async function seed(toolId: QuotedTool): Promise<VideoToolDraft> {
  * Mounts the canvas's mini-tool panel container as `CanvasSpace` does, on an open video tool with a complete draft.
  * @param toolId - The video tool.
  * @param onRunVideo - The execution entry.
+ * @param tracking - The erase tracking seeded: billed credits, or none at all.
  * @returns Nothing.
  */
-async function mount(toolId: QuotedTool, onRunVideo: (...args: unknown[]) => Promise<unknown> = vi.fn()): Promise<void> {
-  await seed(toolId);
+async function mount(toolId: QuotedTool, onRunVideo: (...args: unknown[]) => Promise<unknown> = vi.fn(), tracking: { billed?: number; none?: boolean } = {}): Promise<void> {
+  await seed(toolId, tracking);
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -203,7 +208,7 @@ describe('video model tools show the server quote of the current draft in their 
     expect(body).toMatchObject({ tool: toolId, project_id: projectId, space_id: spaceId, presentation_ref: PRESENTATION_REF, draft: reading.state === 'supported' ? reading.draft : null });
     const outputs = body.outputs as { outputIndex: number; nodeId: string; recipe: unknown }[];
     expect(outputs).toEqual([{ outputIndex: 0, nodeId: expect.any(String) as string, recipe: { kind: RECIPES[toolId] } }]);
-    expect(outputs[0]!.nodeId).not.toBe(nodeId);
+    expect(outputs[0].nodeId).not.toBe(nodeId);
     // A quote puts nothing on the canvas.
     expect(readNodes(getDoc(docName.canvasSpace(projectId, spaceId))).map((node) => node.id)).toEqual([nodeId]);
   });
@@ -220,9 +225,9 @@ describe('video model tools show the server quote of the current draft in their 
     expect(refs).toEqual([analysisRunId]);
     await act(async () => { screen.getByTestId('mini-tool-run').click(); });
     await waitFor(() => expect(onRunVideo).toHaveBeenCalledTimes(1));
-    const plan = onRunVideo.mock.calls[0]!.at(4) as { analysisRefs: { analysisRunId: string }[]; outputNodeIds: string[] };
+    const plan = onRunVideo.mock.calls[0].at(4) as { analysisRefs: { analysisRunId: string }[]; outputNodeIds: string[] };
     expect(plan.analysisRefs.map((reference) => reference.analysisRunId)).toEqual([analysisRunId]);
-    expect(plan.outputNodeIds).toEqual([(quoteBodies().at(-1)!.outputs as { nodeId: string }[])[0]!.nodeId]);
+    expect(plan.outputNodeIds).toEqual([(quoteBodies().at(-1)!.outputs as { nodeId: string }[])[0].nodeId]);
   });
 
   it.each(['video.remove-bg', 'video.lip-sync', 'video.erase', 'video.expand'] as const)('%s shows no number while the quote has not answered', async (toolId) => {
@@ -232,5 +237,33 @@ describe('video model tools show the server quote of the current draft in their 
     // Give any number the panel could compute on its own (the catalog prices every model) the time to appear.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
     expect(footer()).not.toMatch(/\d/);
+  });
+});
+
+// Canvas design §4 erase row: beside "Track selection" the server's quote of the tracking the press would start, and once that
+// tracking is billed, what it used in the same place (`POST /mini-tools/analyses/quote`; the record's `usage`).
+describe('the erase tracking cost beside "Track selection" (canvas design §4 erase row)', () => {
+  it('shows the quoted tracking credits for the request the press would send, before any tracking', async () => {
+    http.post.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path === '/mini-tools/analyses/quote') return { credits: 8.5 };
+      if (path === '/mini-tools/quote') return { credits: QUOTES['video.erase'] };
+      throw new Error(`Unexpected POST ${path}`);
+    });
+    await mount('video.erase', vi.fn(), { none: true });
+    await waitFor(() => expect(screen.getByText(`Est. ${formatCreditAmount(8.5)}`)).toBeTruthy());
+    const body = http.post.mock.calls.find(([path]) => path === '/mini-tools/analyses/quote')![1] as Record<string, unknown>;
+    expect(body).toMatchObject({ kind: 'tracked_mask', projectId, spaceId, hostNodeId: nodeId, presentationRef: PRESENTATION_REF,
+      params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' } });
+  });
+
+  it('shows what the current tracking used once it is billed, in place of the estimate', async () => {
+    http.post.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path === '/mini-tools/analyses/quote') return { credits: 8.5 };
+      if (path === '/mini-tools/quote') return { credits: QUOTES['video.erase'] };
+      throw new Error(`Unexpected POST ${path}`);
+    });
+    await mount('video.erase', vi.fn(), { billed: 6.25 });
+    await waitFor(() => expect(screen.getByText(`Used ${formatCreditAmount(6.25)}`)).toBeTruthy());
+    expect(screen.queryByText(/^Est\. /)).toBeNull();
   });
 });

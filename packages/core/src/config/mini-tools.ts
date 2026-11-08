@@ -275,6 +275,8 @@ export const miniToolsConfigSchema = z
     // How often, and for how long, a band past those reads peaks not yet written.
     waveform_peaks_retry_ms: z.number().int().positive().default(5000),
     waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
+    // How long a video tool panel's priced inputs hold still before it asks for a quote.
+    quote_debounce_ms: z.number().int().nonnegative().default(300),
   })
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {

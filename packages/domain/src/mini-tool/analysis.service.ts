@@ -262,7 +262,8 @@ export function recordFromTask(task: taskRepo.AnalysisTaskRow): MiniToolAnalysis
   }
   const status = task.status === "cancelled" ? "failed" : task.status;
   return miniToolAnalysisRecordSchema.parse({
-    ...identity, status, result: stored?.result ?? null, usage: stored?.usage ?? [],
+    // Once billed, the analysis reads as what it was charged (canvas design §4 erase row: the tracking's actual use).
+    ...identity, status, result: stored?.result ?? null, usage: task.billedCredits === null ? stored?.usage ?? [] : [{ credits: task.billedCredits }],
     artifactUnavailable: stored?.artifactUnavailable ?? false,
     error: status === "failed" ? stored?.error ?? { code: task.errorMessage ?? "analysis_failed" } : null,
   });
@@ -291,24 +292,17 @@ export async function get(id: string, userId: string): Promise<MiniToolAnalysisR
 }
 
 /**
- * Freeze a new run or replay the durable identity before any node row or hold.
+ * Resolve, check and price one analysis request as admission freezes it, writing nothing.
  * @param body - Validated editable inputs.
- * @param userId - The authenticated editor.
- * @param start - The application's existing row/hold/queue adapter.
- * @returns The complete accepted record, using SQL time on every path.
- * @throws {ConflictError} When a run UUID belongs to another actor or body.
+ * @returns The frozen facts and the credits the run holds.
  * @throws {ValidationError} When a source, range or expected fingerprint is invalid.
- * @throws {Error} When infrastructure cannot persist or start the task.
+ * @throws {AppError} When the deployment does not offer or price the analysis.
+ * @throws {Error} When the ledger cannot be read.
  */
-export async function accept(
-  body: MiniToolAnalysisRequest,
-  userId: string,
-  start: (accepted: AcceptedMiniToolAnalysis) => Promise<"pending" | "failed">,
-): Promise<MiniToolAnalysisRecord> {
-  await assertAccess(body.projectId, userId, true);
-  const requestFingerprint = await hashMiniToolValue(body);
-  const previous = await taskRepo.getAnalysisTask(body.analysisRunId);
-  if (previous !== null) return replay(previous, body, userId, requestFingerprint);
+async function freeze(body: MiniToolAnalysisRequest): Promise<{
+  binding: MiniToolFrozenAnalysis["binding"]; sourceKey: string; versionId: string; receipt: MiniToolFrozenAnalysis["ledgerReceipts"]["source"];
+  profile: MiniToolAnalysisRecord["analysisInput"]["profile"]; analysisInput: MiniToolAnalysisRecord["analysisInput"]; inputFingerprint: string; credits: number;
+}> {
   const { binding, sourceKey } = await resolveSource(body.source);
   const { versionId, receipt } = await selectedToolInput(body.presentationRef.source, binding, sourceKey, structuredClone(getMiniToolsConfig()));
   const profile = getMiniToolsConfig().analyses[body.kind].profile;
@@ -333,13 +327,51 @@ export async function accept(
   if (body.inputFingerprint !== undefined && body.inputFingerprint !== inputFingerprint) {
     throw new ValidationError(t("server.idempotency.mismatch"));
   }
+  return { binding, sourceKey, versionId, receipt, profile, analysisInput, inputFingerprint, credits: await estimate(body.kind, analysisInput, table) };
+}
+
+/**
+ * Quote an analysis request with the admission's own checks and price, writing nothing (canvas design §4 erase row).
+ * @param body - The request the press would send.
+ * @param userId - The authenticated editor.
+ * @returns The credits admission would hold.
+ * @throws {NotFoundError} When the Project is not visible to the caller.
+ * @throws {ForbiddenError} When a viewer asks.
+ * @throws {ValidationError} When admission would refuse the request.
+ */
+export async function quote(body: MiniToolAnalysisRequest, userId: string): Promise<{ credits: number }> {
+  await assertAccess(body.projectId, userId, true);
+  return { credits: (await freeze(body)).credits };
+}
+
+/**
+ * Freeze a new run or replay the durable identity before any node row or hold.
+ * @param body - Validated editable inputs.
+ * @param userId - The authenticated editor.
+ * @param start - The application's existing row/hold/queue adapter.
+ * @returns The complete accepted record, using SQL time on every path.
+ * @throws {ConflictError} When a run UUID belongs to another actor or body.
+ * @throws {ValidationError} When a source, range or expected fingerprint is invalid.
+ * @throws {Error} When infrastructure cannot persist or start the task.
+ */
+export async function accept(
+  body: MiniToolAnalysisRequest,
+  userId: string,
+  start: (accepted: AcceptedMiniToolAnalysis) => Promise<"pending" | "failed">,
+): Promise<MiniToolAnalysisRecord> {
+  await assertAccess(body.projectId, userId, true);
+  const requestFingerprint = await hashMiniToolValue(body);
+  const previous = await taskRepo.getAnalysisTask(body.analysisRunId);
+  if (previous !== null) return replay(previous, body, userId, requestFingerprint);
+  const frozen = await freeze(body);
+  const { sourceKey, profile } = frozen;
   const analysis: MiniToolFrozenAnalysis = {
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId,
     spaceId: body.spaceId, hostNodeId: body.hostNodeId, draftId: body.draftId,
-    revision: body.revision, kind: body.kind, source: body.source, binding, analysisInput, inputFingerprint,
-    presentationRef: body.presentationRef, ledgerReceipts: { source: receipt }, versionIds: { source: versionId },
+    revision: body.revision, kind: body.kind, source: body.source, binding: frozen.binding, analysisInput: frozen.analysisInput,
+    inputFingerprint: frozen.inputFingerprint, presentationRef: body.presentationRef, ledgerReceipts: { source: frozen.receipt }, versionIds: { source: frozen.versionId },
   };
-  const taskParams: MiniToolAnalysisTaskParams = { analysis, requestFingerprint, sourceKey, credits: await estimate(body.kind, analysisInput, table) };
+  const taskParams: MiniToolAnalysisTaskParams = { analysis, requestFingerprint, sourceKey, credits: frozen.credits };
   const toolInputId = body.presentationRef.source.toolInputId;
   const inserted = await db.transaction(async (tx) => {
     const claimed = await taskRepo.claimAnalysisTask({

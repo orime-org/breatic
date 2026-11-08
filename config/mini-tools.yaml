@@ -291,6 +291,9 @@ waveform_max_bytes: 200000000
 # often for this long.
 waveform_peaks_retry_ms: 5000
 waveform_peaks_retry_max_ms: 600000
+# A video tool panel asks for a quote once the inputs it prices have held still this long,
+# so a playing video does not ask on every frame.
+quote_debounce_ms: 300
 
 # Frozen public detector/provider profiles for accepted analyses (inner#1306).
 # The worker consumes the accepted profile; later config changes apply to new runs.

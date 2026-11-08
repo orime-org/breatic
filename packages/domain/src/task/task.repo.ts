@@ -246,12 +246,14 @@ export interface AnalysisTaskRow {
   result: Record<string, unknown> | null;
   errorMessage: string | null;
   acceptedAt: string;
+  /** What the analysis was charged once billed, null before. */
+  billedCredits: number | null;
 }
 
 const analysisTaskSelection = {
   id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
   spaceId: tasks.spaceId, taskType: tasks.taskType, source: tasks.source, status: tasks.status,
-  params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage,
+  params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage, billedCredits: tasks.billedCredits,
   acceptedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
 };
 

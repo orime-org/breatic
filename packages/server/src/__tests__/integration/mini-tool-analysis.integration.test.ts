@@ -771,4 +771,43 @@ describe("tracked mask admission checks (execution design §10.2–§10.4)", () 
     // One 5 s clip against two 2.5 s clips, each priced at least the tracker's 3 s floor, plus a second preparation.
     expect(await held(middle.analysisRunId)).toBeGreaterThan(await held(first.analysisRunId));
   });
+
+  /**
+   * Quotes an analysis request through the real app.
+   * @param body - The request the press would send.
+   * @param cookie - The actor's session.
+   * @returns The HTTP response.
+   */
+  async function quote(body: unknown, cookie: string): Promise<Response> {
+    return app.request("/api/v1/mini-tools/analyses/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify(body) });
+  }
+
+  // Canvas design §4 erase row: the estimate beside "Track selection" is the server's quote of the request the press sends.
+  it("TQ05 quotes exactly what admitting the same request holds, and writes nothing", async () => {
+    const fixture = await seed();
+    const body = tracked(fixture, { start: 0, end: 5 }, 500);
+    const response = await quote(body, fixture.ownerCookie);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const { data } = await response.json() as { data: { credits: number } };
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+    await accepted(await post(body, fixture.ownerCookie));
+    expect(data.credits).toBe(await held(body.analysisRunId));
+  });
+
+  it("TQ06 refuses a quote as admission would refuse the request", async () => {
+    const fixture = await seed();
+    const response = await quote(tracked(fixture, { start: 1, end: 3 }, 700), fixture.ownerCookie);
+    const json = await response.json() as { error?: { message?: string } };
+    expect({ status: response.status, message: json.error?.message }).toEqual({ status: 400, message: sharedT("server.mini_tool.anchorOutsideRange") });
+  });
+
+  // Canvas design §4 erase row: once tracking is billed, the same place shows what it used; GET carries it as `usage`.
+  it("TQ07 reads a billed analysis with the credits it was charged as its usage", async () => {
+    const fixture = await seed();
+    const body = tracked(fixture, { start: 0, end: 5 }, 0);
+    const record = await accepted(await post(body, fixture.ownerCookie));
+    expect(record.usage).toEqual([]);
+    await sql`UPDATE tasks SET billed_credits = 6.25, billed_at = now() WHERE id = ${body.analysisRunId}`;
+    expect((await reading(await get(body.analysisRunId, fixture.ownerCookie))).usage).toEqual([{ credits: 6.25 }]);
+  });
 });

@@ -51,6 +51,8 @@ export interface CanvasLimits {
   waveformPeaksRetryMs: number;
   /** How long an open cut band keeps reading peaks not yet written, in ms. */
   waveformPeaksRetryMaxMs: number;
+  /** How long a video tool panel's priced inputs hold still before it asks for a quote (config `quote_debounce_ms`). */
+  quoteDebounceMs?: number;
   /** The model the video remove-background tool runs (config `executions.video.remove-bg`), or null where none is configured. */
   removeBackgroundModel?: string | null;
   /** The lip-sync choices (config `executions.video.lip-sync`), or null where the deployment offers no lip-sync. */
