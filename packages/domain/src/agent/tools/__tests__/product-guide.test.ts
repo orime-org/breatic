@@ -948,7 +948,7 @@ describe("mini-tools and the task rows", () => {
   // tools, so only the mark says which tools are billed by run time.
   it("marks exactly the tools run in the media container as billed by run time", () => {
     const tools = section("Mini-tools");
-    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in the list above are billed that way/);
+    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in this section's list are billed that way/);
     for (const tool of MINI_TOOLS) {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
       expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
