@@ -47,7 +47,7 @@ export class WebReaderContainer extends Container {
   /**
    * Read the pages, then destroy the instance.
    *
-   * The destroy waits for `start()` to have an outcome: a destroy sent while
+   * The destroy waits for the start to have an outcome: a destroy sent while
    * the start is on its way leaves the start to finish after it, with a
    * container running and nobody left to destroy it.
    * @param request - The pages and the limits to read them within.
@@ -70,7 +70,8 @@ export class WebReaderContainer extends Container {
     try {
       await this.schedule(new Date(request.deadlineAt + DESTROY_MARGIN_MS), "expireRead", {});
       const startedAt = Date.now();
-      starting = this.start();
+      // Waits until the service listens on `defaultPort`, so the read is not sent to a closed port.
+      starting = this.startAndWaitForPorts();
       await Promise.race([
         starting.catch((err: unknown) => {
           // Workers RPC carries the message across, not the class: the route reads this prefix.
