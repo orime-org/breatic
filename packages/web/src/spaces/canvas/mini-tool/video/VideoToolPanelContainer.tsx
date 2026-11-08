@@ -533,19 +533,20 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     startAnalysis(request);
   }, [current, disabled, presentation, change, doc, nodeId, toolId, projectId, spaceId, startAnalysis]);
   /**
-   * Starts a new tracking run with a failed run's frozen range, anchor, region and prompt (execution design §10.3), on the
-   * current tool input, without touching the draft.
+   * Starts a new tracking run for the selection a failed run was made for (execution design §10.3), on the current tool
+   * input, without touching the draft. Retry shows only for a failed run matching the draft, so the request carries the
+   * draft's own range, anchor, region and prompt, as Track selection sends them, without re-anchoring on the presented frame.
    * @param failed - The failed tracking record.
    * @throws {never} Failures are reported by the press.
    */
   const retryTracking = React.useCallback((failed: MiniToolAnalysisRecord): void => {
-    if (current === null || disabled || failed.analysisInput.kind !== 'tracked_mask' || presentation?.status !== 'ready' || presentation.sourceURL !== current.source.canonicalURL) return;
+    if (current === null || disabled || toolId !== 'video.erase' || failed.analysisInput.kind !== 'tracked_mask' || presentation?.status !== 'ready' || presentation.sourceURL !== current.source.canonicalURL) return;
     const { presentationRef } = presentation;
     if (presentationRef === undefined) return;
-    const { range, anchor, region, trackingPrompt } = failed.analysisInput;
+    const { range, anchor, region, trackingPrompt } = (current as VideoToolDraftById['video.erase']).params;
     startAnalysis({ analysisRunId: newId(), projectId, spaceId, hostNodeId: nodeId, draftId: current.draftId, revision: current.revision, source: current.source, presentationRef,
       kind: 'tracked_mask', params: { range, anchor, region, trackingPrompt } });
-  }, [current, disabled, presentation, projectId, spaceId, nodeId, startAnalysis]);
+  }, [current, disabled, toolId, presentation, projectId, spaceId, nodeId, startAnalysis]);
   React.useEffect(() => {
     if (toolId !== 'video.lip-sync' || current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || autoPeople.current === current.draftId || refs.some((reference) => reference.toolId === toolId && reference.draftId === current.draftId)) return;
     autoPeople.current = current.draftId;

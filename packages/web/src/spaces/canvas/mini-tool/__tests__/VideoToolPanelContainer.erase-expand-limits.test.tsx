@@ -128,8 +128,10 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', params: { range: { start: 10, end: 14 }, anchor: { frameIndex: 300, pts: 12 } } });
   });
 
-  // Execution design §10.3: a retry starts a new tracking run with the failed run's frozen input, wherever the user scrubbed.
-  it('retries a failed tracking with its frozen anchor, not the presented frame, and leaves the draft as it was', async () => {
+  // Execution design §10.3: a retry starts a new tracking run for the selection the failed run was made for, wherever the
+  // user scrubbed. Retry shows only for a failed run matching the draft, so it sends the draft's own range, anchor, region
+  // and prompt as the panel's Track selection does; the profile's default prompt stays the server's to substitute.
+  it('retries a failed tracking with the draft selection and its anchor, not the presented frame, and leaves the draft as it was', async () => {
     const anchor = { frameIndex: 250, pts: 10 };
     mount('video.erase', { ...REGION, range: { start: 10, end: 14 }, anchor }, { presentedTime: 12 });
     const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -151,7 +153,8 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     act(() => retry.click());
     await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     const body = start.mock.calls[0]?.[0];
-    expect(body).toMatchObject({ kind: 'tracked_mask', draftId: draft.draftId, params: { range: analysisInput.range, anchor, region: analysisInput.region, trackingPrompt: analysisInput.trackingPrompt },
+    expect(analysisInput.trackingPrompt).toBe('object');
+    expect(body).toMatchObject({ kind: 'tracked_mask', draftId: draft.draftId, params: { range: draft.params.range, anchor, region: draft.params.region, trackingPrompt: '' },
       presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } });
     expect(body?.analysisRunId).not.toBe(failedRunId);
     const after = readVideoToolDraft(doc, nodeId, 'video.erase');
