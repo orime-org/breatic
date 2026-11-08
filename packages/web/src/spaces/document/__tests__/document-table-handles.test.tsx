@@ -26,13 +26,13 @@ import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
-  editor: undefined,
-  state: undefined,
+  editor: undefined as unknown,
+  state: undefined as unknown,
   frozen: 0,
   unfrozen: 0,
 }));
 
-const attachToChat = vi.hoisted(() => vi.fn(async () => undefined));
+const attachToChat = vi.hoisted(() => vi.fn(async (_projectId: string, _items: readonly unknown[]) => undefined));
 
 vi.mock('@web/stores/attach-to-chat', () => ({ attachToChat }));
 
@@ -282,7 +282,7 @@ describe('the row handle (A6)', () => {
 
   it('is there over a selection the body let go of, with no bubble bar up (inner#1127)', () => {
     const editor = openOver(0, 0);
-    const pm = editor.prosemirrorView;
+    const pm = editor.prosemirrorView!;
     pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 4)));
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
 
@@ -439,14 +439,15 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
   it('pastes a copied row below the row it was opened on', async () => {
     const written = fakeClipboard();
     const editor = openOver(0, 0);
-    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    const { rerender } = render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
     fireEvent.click(screen.getByTestId('doc-table-row-handle'));
     await act(async () => {
       fireEvent.click(screen.getByTestId('doc-table-row-copy'));
     });
     await waitFor(() => expect(written['text/html']).toContain('a1'));
+    // The pointer moves to the second row, and the handle opens there.
     side.state = { ...(side.state as object), rowIndex: 1, cellPos: cellPosAt(editor, 1, 0) };
-    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    rerender(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
     fireEvent.click(screen.getByTestId('doc-table-row-handle'));
 
     await act(async () => {

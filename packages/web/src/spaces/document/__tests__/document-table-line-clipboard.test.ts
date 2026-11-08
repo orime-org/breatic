@@ -304,7 +304,7 @@ describe('cutting a row, a column or the table from its menu', () => {
 
     await cutTableLine(editor, cellOf(editor, 'only'), 'row');
 
-    expect(editor.document.some((block) => block.type === 'docTable')).toBe(false);
+    expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(false);
   });
 
   it('deletes the whole table it copied', async () => {
@@ -313,7 +313,7 @@ describe('cutting a row, a column or the table from its menu', () => {
     await cutTableLine(editor, cellOf(editor, 'a1'), 'table');
 
     expect(copied['text/html']).toContain('<table');
-    expect(editor.document.some((block) => block.type === 'docTable')).toBe(false);
+    expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(false);
   });
 
   it('deletes nothing when neither way of writing the clipboard works', async () => {
@@ -581,11 +581,11 @@ describe('handing a row or a column to the Agent', () => {
 describe('a cell colour in HTML', () => {
   it('is written out and read back', () => {
     const { editor } = open({ rows: [{ cells: [{ content: 'red', props: { backgroundColor: 'red' } }, 'b1'] }] });
-    const html = editor.blocksToHTMLLossy(editor.document.filter((block) => block.type === 'docTable'));
+    const html = editor.blocksToHTMLLossy((editor.document as { type: string }[]).filter((block) => block.type === 'docTable') as never);
 
     expect(html).toContain('data-background-color="red"');
 
-    const parsed = editor.tryParseHTMLToBlocks(html);
+    const parsed = editor.tryParseHTMLToBlocks(html) as { type: string }[];
     const table = parsed.find((block) => block.type === 'docTable') as unknown as { children: { children: { props: Record<string, unknown> }[] }[] };
     expect(table.children[0].children[0].props['backgroundColor']).toBe('red');
   });
