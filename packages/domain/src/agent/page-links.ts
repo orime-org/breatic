@@ -17,11 +17,12 @@ import { READ_PAGE_MAX_URL_CHARS } from "@breatic/shared";
  *
  * A host has a top-level label of two or more letters, so `1.2` and `file.c`
  * are not hosts. It may not follow a character that would make it part of a
- * longer word or address; a JSON escape such as `\n` before it counts as a
- * break, because a document body reaches the model JSON-encoded.
+ * longer word or address; a colon may come before it (`site:example.com`),
+ * and a JSON escape such as `\n` before it counts as a break, because a
+ * document body reaches the model JSON-encoded.
  */
 const LINK_START =
-  /https?:\/\/|(?<=^|[^A-Za-z0-9.\-_@/:%\\]|\\[ntr])(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}(?![A-Za-z0-9-])/gi;
+  /https?:\/\/|(?<=^|[^A-Za-z0-9.\-_@/%\\]|\\[ntr])(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}(?![A-Za-z0-9-])/gi;
 
 /**
  * Chinese punctuation that ends a link: the full-width comma, full stop,
@@ -96,13 +97,15 @@ function countOf(text: string, char: string): number {
 
 /**
  * Drop the punctuation a sentence put after a link: trailing marks, a
- * closing parenthesis that closes nothing opened inside the link (GFM).
+ * closing parenthesis that closes nothing opened inside the link (GFM), and
+ * a single quote the link holds no other to pair with.
  * @param link - The link as read.
  * @returns The link.
  */
 function trimEnd(link: string): string {
   const opens = countOf(link, "(");
   let closes = countOf(link, ")");
+  let quotes = countOf(link, "'");
   let end = link.length;
   for (; end > 0; end -= 1) {
     const last = link[end - 1] as string;
@@ -111,9 +114,26 @@ function trimEnd(link: string): string {
       closes -= 1;
       continue;
     }
+    if (last === "'" && quotes % 2 === 1) {
+      quotes -= 1;
+      continue;
+    }
     break;
   }
   return link.slice(0, end);
+}
+
+/**
+ * Whether a host written without a scheme goes on into a path, a query, a
+ * fragment or a port at a place in the text.
+ * @param text - The text.
+ * @param at - The character right after the host.
+ * @returns True when the link keeps reading there.
+ */
+function hostGoesOn(text: string, at: number): boolean {
+  const char = text[at];
+  if (char === "/" || char === "?" || char === "#") return true;
+  return char === ":" && /[0-9]/.test(text[at + 1] ?? "");
 }
 
 /**
@@ -135,7 +155,7 @@ export function pageLinksIn(text: string): string[] {
     const hasScheme = /^https?:\/\//i.test(opening);
     let link: string | null;
     let end: number;
-    if (hasScheme || text[found.index + opening.length] === "/") {
+    if (hasScheme || hostGoesOn(text, found.index + opening.length)) {
       ({ link, end } = readLink(text, found.index));
     } else {
       link = opening;
