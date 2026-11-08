@@ -9,7 +9,8 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import {
-  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName, t,
+  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, DOC_SIZE_ACK_PARAM, isReauthCloseReason, parseDocName, t,
+  type DocSizeSeen,
 } from '@breatic/shared';
 import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
@@ -39,9 +40,11 @@ const COLLAB_WS_PATH = import.meta.env.VITE_COLLAB_URL?.trim() || '/ws';
  * @returns The absolute WebSocket URL to dial.
  */
 function toAbsoluteWsUrl(url: string): string {
-  if (url.startsWith('ws')) return url;
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${window.location.host}${url}`;
+  const absolute = new URL(url.startsWith('ws') ? url : `${scheme}://${window.location.host}${url}`);
+  // Tells collab this tab acknowledges size pushes and handles the size-limit close.
+  absolute.searchParams.set(DOC_SIZE_ACK_PARAM, '1');
+  return absolute.toString();
 }
 
 // ───────────────────────── module-level shared socket ─────────────────────────
@@ -474,10 +477,13 @@ export function acquireDocProvider(
     entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
   if (isSpaceContentDoc(name)) {
-    // Every Space document hears its size from collab (inner#1790).
+    // Every Space document hears its size from collab and acknowledges it
+    // at once: collab judges what this tab sends next by the phase it has
+    // acknowledged (inner#1790).
     provider.on('stateless', (data: { payload: string }) => {
       if (docEntries.get(name) !== entry) return;
-      receiveDocSizePayload(name, data.payload);
+      const seq = receiveDocSizePayload(name, data.payload);
+      if (seq !== null) provider.sendStateless(JSON.stringify({ type: 'doc:size-seen', seq } satisfies DocSizeSeen));
     });
   }
   docEntries.set(name, entry);

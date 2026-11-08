@@ -160,17 +160,20 @@ export function setDocSize(name: string, status: DocSizeStatus): void {
  * Take one stateless payload; anything but a valid `doc:size` push is ignored.
  * @param name - Canonical document name.
  * @param payload - The serialized message.
+ * @returns The push's `seq`, for the caller to acknowledge, or null when it was not a push.
  */
-export function receiveDocSizePayload(name: string, payload: string): void {
+export function receiveDocSizePayload(name: string, payload: string): number | null {
   let value: unknown;
   try {
     value = JSON.parse(payload);
   } catch {
     // Not every stateless message is JSON this module reads.
-    return;
+    return null;
   }
   const parsed = DocSizeStatusSchema.safeParse(value);
-  if (parsed.success) setDocSize(name, parsed.data);
+  if (!parsed.success) return null;
+  setDocSize(name, parsed.data);
+  return parsed.data.seq;
 }
 
 /**
