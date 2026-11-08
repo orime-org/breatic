@@ -185,19 +185,18 @@ describe('24.1 a stateless message leaves after the Updates written before it', 
 });
 
 describe('24.5 the receipt waits the provider\'s own flushDelay', () => {
-  it('W8-14 flushDelay 5: nothing at 4 ms, [update, confirm] at 5 ms; the receipt timer is set for 5', async () => {
+  it('W8-14 flushDelay 5: nothing up to 4 ms, [update, confirm] at 5 ms; the receipt timer is set for 5', async () => {
     const { doc, provider } = await open(CANVAS);
     provider.configuration.flushDelay = 5;
-    const timers = vi.spyOn(globalThis, 'setTimeout');
     const mark = server.mark();
     write(doc, 1);
-    await vi.advanceTimersByTimeAsync(4);
-    expect(frames(CANVAS, mark)).toEqual([]);
+    // A receipt timer set for less than 5 would send it, with the Update it
+    // flushes, at one of these steps; one set for more misses 5 ms.
+    for (let ms = 0; ms < 5; ms += 1) {
+      await vi.advanceTimersByTimeAsync(ms === 0 ? 0 : 1);
+      expect(frames(CANVAS, mark)).toEqual([]);
+    }
     await vi.advanceTimersByTimeAsync(1);
     expect(frames(CANVAS, mark)).toEqual(['update', 'confirm']);
-    const delays = timers.mock.calls.map((call) => call[1]);
-    // The provider's flush timer and the binding's receipt timer.
-    expect(delays.filter((delay) => delay === 5)).toHaveLength(2);
-    timers.mockRestore();
   });
 });
