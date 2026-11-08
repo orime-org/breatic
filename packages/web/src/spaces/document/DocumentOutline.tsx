@@ -212,8 +212,10 @@ const OutlineRow = React.memo(function OutlineRow({
             // own column at the start. `Button` centres and sets a medium weight
             // on everything it draws; a row's words start after that column, and
             // only the one being read is medium and in the full foreground colour.
+            // Its words change in the same frame as the row's fill: during a
+            // jump the highlight rests on a row for only a few frames.
             className={cn(
-              'flex h-full w-full min-w-0 items-center justify-start gap-1.5 pr-2 text-left text-sm',
+              'flex h-full w-full min-w-0 items-center justify-start gap-1.5 pr-2 text-left text-sm transition-none',
               active ? 'font-medium text-foreground' : 'font-normal text-foreground-secondary',
             )}
             style={jumpStyle}
