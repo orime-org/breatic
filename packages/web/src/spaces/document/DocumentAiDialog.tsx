@@ -612,7 +612,7 @@ function AiPanel({
           </>
         )}
         {session.state !== 'composing' && (
-          <div className='flex shrink-0 items-center justify-between gap-2 border-t border-border px-2 py-1.5'>
+          <div className='flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-1.5'>
             <div className='flex items-center gap-2'>
               {(buttons.stop || buttons.retry) && (
                 // One element for both, so the keyboard stays on it as stop
@@ -793,7 +793,7 @@ function Composer({
           }}
         />
       </div>
-      <div className='flex shrink-0 items-center justify-end gap-2 border-t border-border px-2 py-1.5'>
+      <div className='flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-1.5'>
         <Button
           size='sm'
           data-testid='doc-ai-start'
