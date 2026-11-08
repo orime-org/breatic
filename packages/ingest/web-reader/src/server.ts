@@ -20,7 +20,7 @@ import { READER_SERVICE_PORT, READER_UNREACHABLE_HEADER, readPagesRequestSchema 
 import type { ReadPageResult, ReadPagesRequest, ReaderServiceAnswer } from "@shared/agent/read-pages.js";
 
 import { articleOf } from "./article.js";
-import { recoverUtf8, textOfDownload } from "./body-text.js";
+import { isMediaType, mediaTypeOf, recoverUtf8, textOfDownload } from "./body-text.js";
 import { statusOfResponse } from "./classify.js";
 import { cpuUsecOf } from "./cpu-usage.js";
 import { isPdf, readPdf } from "./pdf-page.js";
@@ -34,13 +34,6 @@ const USER_AGENT =
 
 /** Readability's source, run inside each rendered page. */
 const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozilla/readability/Readability.js"), "utf8");
-
-/**
- * Download types that are never read, so the file is not fetched: media.
- * Any other type is fetched: a file that starts `%PDF-` is read as a PDF
- * whatever its type, and otherwise as text when its type is text.
- */
-const NOT_PDF_TYPE = /^(?:image|audio|video)\//;
 
 /** Where the container's cgroup reports its CPU time. */
 const CPU_STAT = "/sys/fs/cgroup/cpu.stat";
@@ -80,7 +73,9 @@ function textPage(
  * another type, which is not read.
  *
  * The navigation's headers are judged before the file is waited for, so an
- * oversized file or a media file is cancelled rather than downloaded.
+ * oversized file or a media file (`isMediaType`) is cancelled rather than
+ * downloaded. Any other file is fetched: one that starts `%PDF-` is read as
+ * a PDF whatever its type, and otherwise as text when its type is text.
  * @param url - The page asked for.
  * @param download - The download.
  * @param head - The navigation's response, when one arrived.
@@ -100,8 +95,7 @@ async function readDownload(
     await download.cancel().catch(() => undefined);
     return { url, status: "too_large", finalUrl };
   }
-  const type = (headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (NOT_PDF_TYPE.test(type)) {
+  if (isMediaType(mediaTypeOf(headers["content-type"] ?? ""))) {
     await download.cancel().catch(() => undefined);
     return { url, status: "unsupported_type", finalUrl };
   }

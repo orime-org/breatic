@@ -24,6 +24,16 @@ export function mediaTypeOf(contentType: string): string {
 }
 
 /**
+ * Whether a media type is media (image, audio or video), which is never read.
+ * @param type - The media type, as `mediaTypeOf` gives it.
+ * @returns True for media, `image/svg+xml` included.
+ * @throws {never} Never.
+ */
+export function isMediaType(type: string): boolean {
+  return MEDIA_TYPE.test(type);
+}
+
+/**
  * Whether a media type is text a page can be read from: `text/*`, XML, JSON,
  * or a type outside the media families that ends in `+xml` or `+json`.
  * @param type - The media type, as `mediaTypeOf` gives it.
@@ -31,7 +41,7 @@ export function mediaTypeOf(contentType: string): string {
  * @throws {never} Never.
  */
 export function isTextType(type: string): boolean {
-  if (MEDIA_TYPE.test(type)) return false;
+  if (isMediaType(type)) return false;
   return (
     type.startsWith("text/") ||
     type === "application/xml" ||
