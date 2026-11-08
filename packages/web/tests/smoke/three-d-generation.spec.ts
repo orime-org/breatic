@@ -23,9 +23,20 @@ import { roomForUploads } from '../helpers/upload-budget';
 
 const FIXTURES = join(__dirname, '..', 'fixtures');
 const created: string[] = [];
+const PLACE_TIMEOUT = 5 * 60_000;
+// The real model takes minutes (catalog generation_time 240 s) before the row is done, then placing takes up to PLACE_TIMEOUT.
+const CASE_TIMEOUT = 12 * 60_000 + PLACE_TIMEOUT;
 
 test.afterEach(async ({ page }) => {
-  for (const id of created.splice(0)) await deleteSpace(page, id);
+  for (const id of created.splice(0)) {
+    // A placed model of tens of megabytes keeps the headless page busy for
+    // seconds per action; closing its tab first frees the page for the drawer.
+    const tab = page.getByTestId(`space-tab-${id}`);
+    await tab.hover().then(() => page.getByTestId(`space-tab-close-${id}`).click())
+      .then(() => expect(tab).toHaveCount(0, { timeout: 60_000 }))
+      .catch((err: unknown) => console.warn(`[smoke] could not close Space tab ${id}:`, err));
+    await deleteSpace(page, id);
+  }
 });
 
 /**
@@ -91,8 +102,10 @@ async function generateAndPlace(page: Page, dialog: Locator, spaceId: string): P
   await expect.poll(async () => (await row.innerText()).includes('Done') || (await row.innerText()).includes('Failed'), { timeout: test.info().timeout }).toBe(true);
   await expect(row).toContainText('Done');
   await row.getByRole('button', { name: 'Place in scene', exact: true }).click();
+  // Placing downloads and reads the whole model first; a generated one is
+  // tens of megabytes, which an uncached dev bucket serves in about a minute.
   await expect.poll(async () => JSON.parse(await visibleSpace(page).getByTestId('three-d-viewport').getAttribute('data-objects') ?? '[]').length,
-    { timeout: 60_000 }).toBe(1);
+    { timeout: PLACE_TIMEOUT }).toBe(1);
   await expect(page.getByText('The model couldn’t be placed in the scene.', { exact: true })).toHaveCount(0);
   await test.info().attach('scene-generation-run', { body: JSON.stringify(run), contentType: 'application/json' });
   return run;
@@ -136,7 +149,7 @@ async function chooseFromProject(page: Page, dialog: Locator, index: number, nam
 }
 
 test('text to 3D runs from the dialog to a model placed in the scene @needs-model @needs-storage @needs-ingest', async ({ page }) => {
-  test.setTimeout(12 * 60_000); // The real model takes minutes (catalog generation_time 240 s) before the row is done.
+  test.setTimeout(CASE_TIMEOUT);
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `scene-generate-text-${crypto.randomUUID()}`);
   created.push(id);
@@ -149,7 +162,7 @@ test('text to 3D runs from the dialog to a model placed in the scene @needs-mode
 });
 
 test('one picture chosen from the Project runs to a model placed in the scene @needs-model @needs-storage @needs-ingest', async ({ page }) => {
-  test.setTimeout(12 * 60_000); // The real model takes minutes (catalog generation_time 240 s) before the row is done.
+  test.setTimeout(CASE_TIMEOUT);
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `scene-generate-image-${crypto.randomUUID()}`);
   created.push(id);
@@ -166,7 +179,7 @@ test('one picture chosen from the Project runs to a model placed in the scene @n
 });
 
 test('front and left views chosen from the Project run to a model placed in the scene @needs-model @needs-storage @needs-ingest', async ({ page }) => {
-  test.setTimeout(12 * 60_000); // The real model takes minutes (catalog generation_time 240 s) before the row is done.
+  test.setTimeout(CASE_TIMEOUT);
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `scene-generate-views-${crypto.randomUUID()}`);
   created.push(id);
@@ -174,8 +187,8 @@ test('front and left views chosen from the Project run to a model placed in the 
   await seedProjectImages(page, views);
   const dialog = await openDialog(page);
   await dialog.getByTestId('scene-generate-mode-i23d').click();
-  await chooseFromProject(page, dialog, 0, views[0]!);
-  await chooseFromProject(page, dialog, 1, views[1]!);
+  await chooseFromProject(page, dialog, 0, views[0]);
+  await chooseFromProject(page, dialog, 1, views[1]);
   const credits = await geometryOnly(dialog);
   expect(credits.geometry).toBeGreaterThan(0);
   await test.info().attach('scene-generation-credits', { body: JSON.stringify(credits), contentType: 'application/json' });
