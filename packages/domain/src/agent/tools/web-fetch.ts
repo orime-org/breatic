@@ -303,12 +303,13 @@ function isHighSurrogate(unit: number): boolean {
 }
 
 /**
- * Whether a character is whitespace, where a cut leaves no word or link in two.
+ * Whether a character can be part of a link a cut would leave in two: ASCII
+ * and not whitespace. Text with no spaces, such as Chinese, is never one run.
  * @param char - The character, or undefined past either end.
- * @returns True for whitespace.
+ * @returns True for an ASCII non-space character.
  */
-function isSpace(char: string | undefined): boolean {
-  return char !== undefined && /\s/u.test(char);
+function inLinkRun(char: string | undefined): boolean {
+  return char !== undefined && char.charCodeAt(0) < 0x80 && !/\s/u.test(char);
 }
 
 /**
@@ -330,8 +331,8 @@ function linksOf(text: string): string[] {
  * The part of a page one call hands over, with the links its own text and
  * the page's title hold.
  *
- * A cut inside a run of non-space characters, such as a link, moves to the
- * run's end, at most `READ_PAGE_MAX_URL_CHARS` further, so a link is never
+ * A cut inside a run of ASCII non-space characters, such as a link, moves to
+ * the run's end, at most `READ_PAGE_MAX_URL_CHARS` further, so a link is never
  * handed over in two halves.
  * @param url - The address asked for.
  * @param page - The page in full.
@@ -344,9 +345,9 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
   const total = page.text.length;
   const from = Math.min(start, total);
   let to = Math.min(from + share, total);
-  if (to > from && to < total && !isSpace(page.text[to - 1]) && !isSpace(page.text[to])) {
+  if (to > from && to < total && inLinkRun(page.text[to - 1]) && inLinkRun(page.text[to])) {
     const furthest = Math.min(to + READ_PAGE_MAX_URL_CHARS, total);
-    while (to < furthest && !isSpace(page.text[to])) to += 1;
+    while (to < furthest && inLinkRun(page.text[to])) to += 1;
   }
   // A cut between the two halves of a surrogate pair would hand over half a character.
   if (to < total && to > from && isHighSurrogate(page.text.charCodeAt(to - 1))) to += 1;
