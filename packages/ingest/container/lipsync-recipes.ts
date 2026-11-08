@@ -220,7 +220,7 @@ async function rawFrames(file: string, width: number, height: number, alpha: boo
     count,
     async read(index: number): Promise<Picture> {
       const bytes = Buffer.alloc(size);
-      await handle.read(bytes, 0, size, Math.min(index, count - 1) * size);
+      await handle.read(bytes, 0, size, index * size);
       return pictureOf(bytes, width, height, alpha);
     },
     close: () => handle.close(),
@@ -672,6 +672,8 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       const file = join(request.directory, "composite-source.yuv");
       await decodeRaw(sourceArgs, alpha, file, run);
       held = await rawFrames(file, target.width, target.height, alpha);
+      if (held.count < shown.end - shown.start) throw new RangeError("The lip-sync composite's source ends before a frame it shows");
+      if (held.count > shown.end - shown.start) throw new RangeError("The lip-sync composite's source decoded past the frames it shows");
     } else streamed = startDecode(sourceArgs, alpha, run);
     const stream = streamed === null ? null : frameStream(streamed.stdout!, target.width, target.height, alpha);
     encode = startEncode({ width: target.width, height: target.height, alpha }, { clock: recipe.timescale, tick, end: length * tick }, target, request.output, run);

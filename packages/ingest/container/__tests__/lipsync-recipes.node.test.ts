@@ -768,6 +768,26 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     expect([report.ok, report.outputs]).toEqual([false, []]);
   });
 
+  /**
+   * The error message the job logged for its failed output.
+   * @returns The message, or undefined.
+   */
+  function failure(): string | undefined {
+    const call = vi.mocked(console.error).mock.calls.find(([event]) => event === 'mini_tool_plan_run_failed');
+    return (call?.[1] as { err?: string } | undefined)?.err;
+  }
+
+  // A chunk that goes back reads its source window from a raw file; a source that decodes fewer frames than the window
+  // fails as the streamed source does, never repeating its last frame in place of the missing ones.
+  it('LM07 a chunk that goes back fails when its source decodes fewer frames than the window it shows', async () => {
+    await lossless('comp-source-short.mp4', '40+18*N', { width: W, height: H, frames: 8 });
+    const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
+    const { report } = await runJob(await inputs('comp-source-short.mp4'), [{ ...recipe(OPAQUE), timeline: bounce, window: { start: 6, end: 14 }, entries }]);
+    expect([report.ok, report.outputs]).toEqual([false, []]);
+    expect(failure()).toBe("The lip-sync composite's source ends before a frame it shows");
+  });
+
   // Execution design paragraph before §9.4: a chunk whose source frames never go back streams the source, every person's
   // result (seeked to the window, never decoded from frame 0) and the output through pipes, writing no raw file.
   it.each([
