@@ -53,7 +53,7 @@ export interface ExpandBox { frame: { width: number; height: number }; size: "83
 /**
  * The expand model's standard frame and the two rectangles a plan freezes in it (§10.5 standard frame row): a landscape or
  * square target is placed in 832x480, a portrait one in 480x832, scaled to fit and centred; `targetRoi` is the target's
- * rectangle (the composite crops it), `sourceRoi` the source's (the model input and mask place it), with even sides.
+ * rectangle (the composite crops it), `sourceRoi` the source's (the model input and mask place it), with even sides and kept inside `targetRoi`.
  * @param layout - The even video expand layout.
  * @param source - The source's display size.
  * @param source.width - Its width.
@@ -77,7 +77,12 @@ export function expandBox(layout: VideoExpandLayout, source: { width: number; he
    * @throws {never} Never.
    */
   const even = (side: number): number => Math.max(2, 2 * Math.floor(side / 2));
-  const sourceRoi = { x: targetRoi.x + Math.round(layout.sourceX * scale), y: targetRoi.y + Math.round(layout.sourceY * scale),
-    width: even(Math.round(source.width * scale)), height: even(Math.round(source.height * scale)) };
+  const sourceWidth = even(Math.round(source.width * scale));
+  const sourceHeight = even(Math.round(source.height * scale));
+  // Rounding the offset and the side can each add half a pixel, so the source is shifted back inside the target.
+  const sourceRoi = {
+    x: Math.max(targetRoi.x, Math.min(targetRoi.x + Math.round(layout.sourceX * scale), targetRoi.x + targetRoi.width - sourceWidth)),
+    y: Math.max(targetRoi.y, Math.min(targetRoi.y + Math.round(layout.sourceY * scale), targetRoi.y + targetRoi.height - sourceHeight)),
+    width: sourceWidth, height: sourceHeight };
   return { frame, size: landscape ? "832*480" : "480*832", targetRoi, sourceRoi };
 }
