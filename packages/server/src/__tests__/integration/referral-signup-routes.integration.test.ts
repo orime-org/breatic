@@ -3,6 +3,21 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
+const sent = vi.hoisted(() => ({ mails: [] as { to: string; text: string }[] }));
+vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
+  ...(await importOriginal()),
+  sendMail: async (mail: { to: string; text: string }) => {
+    sent.mails.push(mail);
+    return { status: "sent" };
+  },
+}));
+
+// Google's token check is answered here; the rest of the route runs for real.
+const google = vi.hoisted(() => ({ verifyIdToken: vi.fn() }));
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: vi.fn().mockImplementation(() => ({ verifyIdToken: google.verifyIdToken })),
+}));
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({ fullStream: (async function* () {})(), text: Promise.resolve(""), usage: Promise.resolve({ totalTokens: 0 }) }),
@@ -23,11 +38,18 @@ let sql: ReturnType<typeof postgres>;
 let app: Hono;
 
 /**
- * Starts core with email sign-up taking no code and payments on or off.
+ * Starts core with payments on or off and Google sign-in configured.
  * @param payments - Whether payments are enabled.
+ * @param emailBackend - `disabled` for one-step sign-up, `console` for the two-step one with a code.
  */
-function start(payments: boolean): void {
-  initCore({ ...process.env, ...PAYMENTS, EMAIL_BACKEND: "disabled", PAYMENT_ENABLED: payments ? "true" : "false" });
+function start(payments: boolean, emailBackend: "disabled" | "console" = "disabled"): void {
+  initCore({
+    ...process.env,
+    ...PAYMENTS,
+    EMAIL_BACKEND: emailBackend,
+    PAYMENT_ENABLED: payments ? "true" : "false",
+    GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+  });
 }
 
 beforeAll(async () => {
@@ -37,8 +59,13 @@ beforeAll(async () => {
   app = withPeer(createApp());
 });
 afterEach(async () => {
-  const throttled = await getRedis().keys(`${env.ENV}:ratelimit:register*`);
+  const throttled = [
+    ...(await getRedis().keys(`${env.ENV}:ratelimit:register*`)),
+    ...(await getRedis().keys(`${env.ENV}:ratelimit:google*`)),
+  ];
   if (throttled.length > 0) await getRedis().del(...throttled);
+  sent.mails.length = 0;
+  google.verifyIdToken.mockReset();
   start(true);
 });
 afterAll(async () => {
@@ -102,6 +129,118 @@ describe("sign-up with a referral code while payments are on", () => {
   it("treats a blank code as no code", async () => {
     const { res } = await register({ referralCode: "   ", referralSource: "signup_typed" });
     expect(res.status).toBe(201);
+  });
+});
+
+/**
+ * POSTs a JSON body to an auth route.
+ * @param path - The route under `/api/v1/auth`.
+ * @param body - The JSON body.
+ * @param cookie - A Cookie header to send.
+ * @returns The response.
+ */
+async function post(path: string, body: unknown, cookie?: string): Promise<Response> {
+  return await app.request(`/api/v1/auth${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Runs step one of the two-step sign-up and answers step two with the mailed code.
+ * @param referralCode - The code step one carries.
+ * @param between - What happens between the two steps.
+ * @returns The email used and step two's response.
+ */
+async function signUpInTwoSteps(referralCode: string, between: () => Promise<void> = async () => {}): Promise<{ email: string; res: Response }> {
+  const email = `ref-route-${crypto.randomUUID()}@example.test`;
+  const first = await post("/register", { email, password: "correct horse battery", referralCode, referralSource: "signup_typed" });
+  expect(first.status).toBe(202);
+  const ticket = first.headers.getSetCookie().find((c) => c.startsWith("breatic_signup_"))!.split(";")[0]!;
+  const mailed = /\b(\d{6})\b/.exec(sent.mails.at(-1)!.text)![1]!;
+  await between();
+  return { email, res: await post("/register/verify", { code: mailed }, ticket) };
+}
+
+describe("two-step sign-up with a referral code", () => {
+  it("refuses an invalid code at step one as a field error and sends no mail", async () => {
+    start(true, "console");
+    const res = await post("/register", {
+      email: `ref-route-${crypto.randomUUID()}@example.test`,
+      password: "correct horse battery",
+      referralCode: "NOPE-NOPE",
+      referralSource: "signup_typed",
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: object }).error).toMatchObject({ reason: "invalid_code", field: "referralCode" });
+    expect(sent.mails).toHaveLength(0);
+  });
+
+  it("says the code was applied and binds it", async () => {
+    start(true, "console");
+    const code = await activeCode();
+    const { email, res } = await signUpInTwoSteps(code);
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { data: { referral?: string } }).data.referral).toBe("applied");
+    const [row] = await sql`select b.source from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`;
+    expect(row).toEqual({ source: "signup_typed" });
+  });
+
+  it("says the code was not applied when it was disabled between the steps", async () => {
+    start(true, "console");
+    const code = await activeCode();
+    const { email, res } = await signUpInTwoSteps(code, async () => {
+      await sql`update referral_codes set status = 'disabled' where code = ${code}`;
+    });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { data: { referral?: string } }).data.referral).toBe("not_applied");
+    expect(await sql`select 1 from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`).toHaveLength(0);
+  });
+});
+
+describe("Google sign-in with a referral code", () => {
+  /**
+   * Signs in with Google as one Google account.
+   * @param sub - The Google account id.
+   * @param email - Its address.
+   * @param body - Extra body fields.
+   * @returns The response.
+   */
+  async function googleSignIn(sub: string, email: string, body: Record<string, unknown> = {}): Promise<Response> {
+    google.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
+    });
+    return await post("/google", { credential: "signed-token", ...body });
+  }
+
+  it("refuses an invalid code for a new account as a field error and creates no account", async () => {
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: object }).error).toMatchObject({ reason: "invalid_code", field: "referralCode" });
+    expect(await sql`select 1 from users where email = ${email}`).toHaveLength(0);
+  });
+
+  it("binds a code carried into a new account and says it was applied", async () => {
+    const code = await activeCode();
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: code, referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: true, referral: "applied" });
+    const [row] = await sql`select b.source from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`;
+    expect(row).toEqual({ source: "signup_link" });
+  });
+
+  it("says a code carried into an existing account was not applied, and binds nothing", async () => {
+    const sub = crypto.randomUUID();
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    expect((await googleSignIn(sub, email)).status).toBe(200);
+    const code = await activeCode();
+    const res = await googleSignIn(sub, email, { referralCode: code, referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: false, referral: "not_applied" });
+    expect(await sql`select 1 from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`).toHaveLength(0);
   });
 });
 
