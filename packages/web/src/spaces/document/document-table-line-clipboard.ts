@@ -197,7 +197,10 @@ export async function cutTableLine(editor: LineEditor, cellPos: number, scope: L
   try {
     if (!(await copyByClipboard(clipped))) return 'failed';
     const now = held.now();
-    if (now !== null) deleteLine(editor, now, scope);
+    if (now === null) return 'cut';
+    // The table may have changed while the clipboard was written.
+    if (scope !== 'table' && !canDragFrom(view.state.doc, now, scope)) return 'merged';
+    deleteLine(editor, now, scope);
     return 'cut';
   } finally {
     held.release();
@@ -283,10 +286,13 @@ export async function pasteTableLines(editor: LineEditor, cellPos: number, side:
   try {
     const text = await readClipboard();
     if (text === null) return 'unreadable';
-    const found = clipboardTable(editor, pasted, text);
-    if (found === null) return 'no-table';
+    // The table may have changed while the clipboard was read; nothing is
+    // judged (no upload queued, no medium counted) for a paste that cannot land.
     const now = held.now();
     if (now === null) return 'gone';
+    if (!canDragFrom(view.state.doc, now, rows ? 'row' : 'column')) return 'merged';
+    const found = clipboardTable(editor, pasted, text);
+    if (found === null) return 'no-table';
     insertLinesOf(editor, now, side, found.table);
     pasted.leaveOut(found.lost);
     return 'pasted';

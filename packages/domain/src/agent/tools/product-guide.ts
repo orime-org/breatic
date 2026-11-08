@@ -1676,8 +1676,9 @@ export function renderProductGuide(): string {
       `clipboard first; refused, a notice says ${quoted(t("spaces.document.table.clipboardNotAllowed"))}, and ` +
       `with no table on it ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent and shows only in a ` +
-      "Project. Where a merged cell reaches out of the row or column, the copy, cut, paste and " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
+      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "row or column, the copy, cut, paste and " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
       `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
       `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +

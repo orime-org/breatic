@@ -71,6 +71,16 @@ function selectedWords(doc: PMNode, selection: Selection): string {
 }
 
 /**
+ * Whether a selection covers any words, which handing it to the Agent needs.
+ * @param doc - The document.
+ * @param selection - The selection.
+ * @returns True when it does.
+ */
+export function selectionHasWords(doc: PMNode, selection: Selection): boolean {
+  return selectedWords(doc, selection).trim() !== '';
+}
+
+/**
  * The selection as Markdown: what copy puts on the clipboard, except inside
  * one block. There BlockNote exports bare inline HTML, and its Markdown
  * conversion reads a top-level `<br>` as nothing and a top-level link as a
@@ -160,7 +170,7 @@ export const addToAgentTool: ToolDef = {
    */
   canRun: (editor: ToolEditor): boolean => {
     const view = editor.prosemirrorView;
-    return view !== null && selectedWords(view.state.doc, view.state.selection).trim() !== '';
+    return view !== null && selectionHasWords(view.state.doc, view.state.selection);
   },
 
   /**

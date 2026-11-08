@@ -52,14 +52,15 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { canDragFrom } from '@web/spaces/document/document-table-drag';
 import {
   copyTableLine,
   cutTableLine,
   pasteTableLines,
   tableLineItem,
+  tableLineSelection,
   type PasteSide,
 } from '@web/spaces/document/document-table-line-clipboard';
+import { selectionHasWords } from '@web/spaces/document/document-to-agent';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
@@ -189,6 +190,8 @@ interface HeaderFaces {
   readonly on: boolean;
   /** Whether no merged cell reaches out of the row (or column): copy, cut, paste and Add to Agent need it. */
   readonly whole: boolean;
+  /** Whether the row (or column) holds words: Add to Agent needs them, as the bubble bar's does. */
+  readonly words: boolean;
 }
 
 /**
@@ -209,15 +212,17 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         const pos = tableTargetOf(state);
         const at = pos === null ? null : cellAt(state.doc, pos);
         if (pos === null || at === null) return null;
+        const line = tableLineSelection(state.doc, pos, row ? 'row' : 'column');
         return {
           reachable: row ? at.top === 0 : at.left === 0,
           on: headerOn(state.doc, pos, row ? 'row' : 'column'),
-          whole: canDragFrom(state.doc, pos, row ? 'row' : 'column'),
+          whole: line !== null,
+          words: line !== null && selectionHasWords(state.doc, line),
         };
       },
       [row],
     ),
-    (a, b) => a === b || (a !== null && b !== null && a.reachable === b.reachable && a.on === b.on && a.whole === b.whole),
+    (a, b) => a === b || (a !== null && b !== null && a.reachable === b.reachable && a.on === b.on && a.whole === b.whole && a.words === b.words),
   );
   const projectId = useDocumentProjectId();
 
@@ -239,6 +244,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
     ['cut', 'spaces.document.table.cut', Scissors, (pos: number) => {
       void cutTableLine(editor as never, pos, scope).then((outcome) => {
         if (outcome === 'failed') toast.error(t('spaces.document.table.copyFailed'));
+        if (outcome === 'merged') refuseMerged();
       });
     }],
     ...((row ? [['pasteAbove', 'above'], ['pasteBelow', 'below']] : [['pasteLeft', 'left'], ['pasteRight', 'right']]) as readonly [string, PasteSide][]).map(
@@ -246,6 +252,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         void pasteTableLines(editor as never, pos, side).then((outcome) => {
           if (outcome === 'no-table') toast.warning(t('spaces.document.table.noTableToPaste'));
           if (outcome === 'unreadable') toast.warning(t('spaces.document.table.clipboardNotAllowed'));
+          if (outcome === 'merged') refuseMerged();
         });
       }] as const,
     ),
@@ -310,12 +317,12 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         <>
           <DropdownMenuItem
             data-testid={`${stem}addToAgent`}
-            {...itemWithin(header.whole, () => {
+            {...itemWithin(header.words, () => {
               onTargetCell(editor, (pos) => {
                 const item = tableLineItem(editor as never, pos, scope);
                 if (item !== null) void attachToChat(projectId, [item]);
               });
-            }, refuseMerged)}
+            }, header.whole ? undefined : refuseMerged)}
           >
             <AGENT_ROW.Icon />
             {t(AGENT_ROW.labelKey)}
