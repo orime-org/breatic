@@ -162,10 +162,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
             failed.headers()["content-type"] ?? null,
             failed.headers()[READER_UNREACHABLE_HEADER] === "1",
           );
-          if (ended !== null) {
-            void downloaded.then((download) => download?.cancel()).catch(() => undefined);
-            return { url, status: ended, httpStatus: failed.status(), finalUrl: failed.url() };
-          }
+          if (ended !== null) return { url, status: ended, httpStatus: failed.status(), finalUrl: failed.url() };
         }
         const download = await downloaded;
         if (download !== null) return await readDownload(url, download, head, request.maxBytes);
