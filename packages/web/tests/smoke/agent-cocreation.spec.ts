@@ -166,9 +166,12 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
       const content = scenario.doc.map(([, text]) => text).join('\n\n');
       return { content, total_chars: content.length, blocks };
     })();
+    // As the product sends them: the agent reads canvases and documents; a Timeline or 3D Space comes as unreadable.
+    const readable = spaceType === 'canvas' || spaceType === 'document';
     if (scenario.space !== undefined) {
       extra.spaces = [{ id: space.id, name: space.name, kind: space.type }];
       if (docRead !== undefined) extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', ...docRead };
+      if (!readable) extra.current_space = { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
     }
     const conversation = await dataOf<{ id: string }>(
       await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
@@ -198,12 +201,11 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         const detail = space.type === 'canvas'
           ? { detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }
           : {};
-        answered.set(pending.toolCallId ?? '', `shared the Space: ${content}`);
-        await send(api, scenario, {
-          ...base,
-          message: '',
-          shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [{ id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail }] },
-        });
+        answered.set(pending.toolCallId ?? '', readable ? `shared the Space: ${content}` : 'shared the Space, which cannot be read');
+        const shared = readable
+          ? { id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail }
+          : { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
+        await send(api, scenario, { ...base, message: '', shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [shared] } });
       }
     }
     const steps: RunStep[] = (await partsOf(api, conversation.id)).flatMap((part): RunStep[] => {

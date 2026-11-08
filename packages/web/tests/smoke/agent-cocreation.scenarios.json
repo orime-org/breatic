@@ -111,9 +111,8 @@
     "lang": "zh-CN",
     "text": "把这三段视频剪成一个 30 秒的片子。",
     "space": "timeline",
-    "spaceContent": "Video track 1: \"海边-01\" 0:00–0:12, \"海边-02\" 0:12–0:21, \"海边-03\" 0:21–0:36. Audio track: none.",
-    "user": "Has the three clips on the timeline already. Answers in Simplified Chinese.",
-    "pass": "The agent reads the Timeline (asks to read the Space) before saying what is or is not on it, and never says the timeline is empty without having read it. It then tells the user how to place and trim the clips in the Timeline to reach 30 seconds; it does not claim it can cut the video itself. Any missing clip is suggested as a video made on the Canvas."
+    "user": "Has three clips named 海边-01 (12 s), 海边-02 (9 s) and 海边-03 (15 s) on the Timeline's main track, in that order. Answers in Simplified Chinese.",
+    "pass": "The agent cannot read a Timeline Space (it comes as unreadable), so it never says what is or is not on it as if it had seen it; it may ask the user what the clips are. It tells the user how to place and trim the clips in the Timeline to reach 30 seconds and does not claim it can cut the video itself. Any missing clip is suggested as a video made on the Canvas."
   },
   {
     "id": "howto",
@@ -156,7 +155,7 @@
     "lang": "zh-CN",
     "text": "我用 nano-banana-2 出的海报，上面的中文字全是乱码，是不是你们这个做不了中文字？",
     "user": "Frustrated user. Answers in Simplified Chinese.",
-    "pass": "The agent says this is the limit of that model's lettering, not something Breatic cannot do, and recommends making the poster again on at least one model whose own description in the model list says it is good at lettering or text; it does not claim nano-banana-2 is the best at Chinese text. A reply that is empty fails."
+    "pass": "The agent says this is the limit of that model's lettering, not something Breatic cannot do, and names at least one model whose own description in the model list says it is good at lettering or text as a way to make it again; it may add that Chinese lettering is not certain on any model and give other ways (such as making the picture without text and adding the text afterwards). It does not claim nano-banana-2 is the best at Chinese text. A reply that is empty fails."
   },
   {
     "id": "pick-full",
@@ -205,7 +204,7 @@
     "lang": "ko",
     "text": "우리 카페 오픈 포스터 하나 만들어 줘.",
     "user": "Owns a small cafe called 'Moon Bean', opening on 1 December. Has a logo but no fixed brand colours. Answers in Korean.",
-    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text."
+    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text. When the user says brand material will be sent, waiting for it before proposing looks is right."
   },
   {
     "id": "usage-unknown",
