@@ -307,6 +307,16 @@
       "credits_amount": "{credits} 크레딧",
       "fact_line": "{label}: {value}"
     },
+    "referral": {
+      "invalid_code": "유효하지 않은 추천 코드입니다.",
+      "already_bound": "이 계정에는 이미 추천 코드가 등록되어 있습니다.",
+      "already_paid": "추천 코드는 첫 멤버십 결제 전에만 등록할 수 있습니다.",
+      "not_eligible": "엔터프라이즈 계정은 추천 코드를 등록할 수 없습니다.",
+      "program_closed": "프로모터 신청은 아직 열리지 않았습니다.",
+      "terms_changed": "프로모터 약관이 업데이트되었습니다. 다시 읽은 후 신청해 주세요.",
+      "application_pending": "이미 심사 중인 신청이 있습니다.",
+      "already_promoter": "이미 프로모터입니다."
+    },
     "three_d": {
       "model_not_offered": "{model}은(는) {mode}용 3D 모델이 아닙니다.",
       "prompt_required": "텍스트로 3D 생성에는 프롬프트가 필요합니다.",
@@ -1821,6 +1831,19 @@
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
       "privacyLink": "개인정보 처리방침"
+    },
+    "referral": {
+      "label": "추천 코드",
+      "optional": "선택",
+      "placeholder": "없으면 비워 두세요",
+      "notApplied": "추천 코드가 더 이상 유효하지 않아 사용되지 않았습니다. 멤버십 패널에서 등록할 수 있습니다.",
+      "existingAccount": "이미 있는 계정이라 추천 코드가 사용되지 않았습니다. 아직 멤버십에 가입하지 않았다면 멤버십 패널에서 등록할 수 있습니다.",
+      "carried": "Google로 새로 가입하면 추천 코드 {code}가 사용됩니다",
+      "carriedInvalid": "추천 코드 {code}는 유효하지 않습니다",
+      "remove": "이 코드 사용 안 함",
+      "haveCode": "추천 코드가 있나요?",
+      "invalid": "추천 코드가 유효하지 않습니다. 수정하거나 비운 뒤 계속하세요.",
+      "googleOnly": "Google로 새로 가입할 때 사용됩니다"
     }
   },
   "roleTag": {
@@ -3074,7 +3097,64 @@
       "enterpriseScale": "용량은 협의로 결정",
       "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
     },
-    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다."
+    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다.",
+    "referral": {
+      "heading": "추천 코드",
+      "intro": "첫 멤버십 가입 전에 추천 코드를 등록하면 첫 기간이 {percent}% 할인됩니다. 등록 후에는 변경할 수 없습니다.",
+      "placeholder": "추천 코드 입력",
+      "add": "등록",
+      "required": "추천 코드를 입력하세요.",
+      "bound": "추천 코드 {code}",
+      "boundDiscount": "결제 시 자동으로 적용됩니다.",
+      "badge": "첫 기간 {percent}% 할인",
+      "added": "등록되었습니다. 멤버십을 선택하면 첫 기간이 {percent}% 할인됩니다.",
+      "loadFailed": "추천 정보를 불러오지 못했습니다.",
+      "retry": "다시 시도"
+    },
+    "promoter": {
+      "heading": "프로모터 프로그램",
+      "closed": "프로모터 신청은 아직 열리지 않았습니다.",
+      "pitch": "breatic을 추천하고, 추천한 사람의 멤버십 결제에 따라 수수료를 받으세요.",
+      "pitchDetail": "승인되면 나만의 추천 코드와 링크를 받으며, 추천받은 사람은 첫 멤버십 기간이 {percent}% 할인됩니다.",
+      "apply": "프로모터 신청",
+      "applyAgain": "다시 신청",
+      "pending": "심사 중",
+      "pendingDetail": "{date}에 신청했습니다. 결과는 여기에 표시됩니다.",
+      "pendingBadge": "심사 중",
+      "rejected": "지난 신청은 승인되지 않았습니다",
+      "rejectedNote": "안내: {note}",
+      "yourCode": "내 추천 코드",
+      "copyCode": "코드 복사",
+      "copyLink": "링크 복사",
+      "copied": "복사했습니다",
+      "copyFailed": "클립보드에 복사하지 못했습니다.",
+      "shareHint": "이 코드로 가입하거나 첫 멤버십 전에 등록한 사람은 첫 기간이 {percent}% 할인됩니다.",
+      "disabled": "사용 중지",
+      "removed": "제외됨",
+      "disabledDetail": "이 코드는 사용이 중지되어 지금은 누구도 등록할 수 없습니다. 이미 등록한 사람은 첫 기간 할인을 계속 받습니다.",
+      "removedDetail": "프로모터 프로그램에서 제외되었습니다. 이 코드는 영구적으로 사용이 중지되며, 이미 등록한 사람은 첫 기간 할인을 계속 받습니다.",
+      "dialogTitle": "프로모터 신청",
+      "dialogDescription": "모든 신청을 심사하고 결과를 여기에 표시합니다.",
+      "country": "국가 또는 지역",
+      "countryPlaceholder": "선택",
+      "channels": "홍보 채널",
+      "channelsHint": "링크 또는 짧은 설명, 최대 10개",
+      "channelPlaceholder": "https://youtube.com/@yourchannel 또는 '200명 디자이너 모임'",
+      "addChannel": "하나 더 추가",
+      "removeChannel": "이 항목 삭제",
+      "plan": "홍보 방법",
+      "planPlaceholder": "대상과 breatic을 소개할 방법",
+      "agreeLead": "다음을 읽고 동의합니다:",
+      "termsLink": "프로모터 약관",
+      "agreeRequired": "신청하려면 프로모터 약관에 동의해야 합니다.",
+      "countryRequired": "국가 또는 지역을 선택하세요.",
+      "channelsRequired": "채널을 하나 이상 입력하세요.",
+      "planRequired": "홍보 방법을 입력하세요.",
+      "termsChanged": "프로모터 약관이 업데이트되었습니다. 다시 읽은 후 동의해 주세요.",
+      "cancel": "취소",
+      "submit": "신청 제출",
+      "submitted": "신청했습니다"
+    }
   },
   "credits": {
     "panelTitle": "크레딧",

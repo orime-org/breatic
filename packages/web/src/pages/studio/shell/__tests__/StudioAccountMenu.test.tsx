@@ -560,9 +560,9 @@ describe('StudioAccountMenu', () => {
     });
 
     it('keeps one account’s figure away from the next one to sign in', async () => {
-      // The query client is a module singleton that a sign-out never clears,
-      // so a key without the account would hand the second user the first
-      // one's figures out of cache.
+      // This client is not wrapped in the app's provider, which also empties
+      // the cache on an account change, so the key alone keeps the second
+      // user away from the first one's figures here.
       const user = userEvent.setup();
       // One client across both sign-ins, which is what the app has: it is
       // created once at module scope and outlives every session on this tab.

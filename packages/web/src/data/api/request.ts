@@ -95,6 +95,7 @@ function normalizeError(err: unknown): ApiError {
       retryAfterSeconds: data?.error?.retryAfterSeconds ?? headerSeconds(err, 'retry-after'),
       idempotencyStatus: idempotencyStatusOf(err),
       reason: data?.error?.reason,
+      details: data?.error,
       network: err.response === undefined,
     };
   }

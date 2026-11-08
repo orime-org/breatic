@@ -24,6 +24,7 @@ describe('storage-keys registry', () => {
       deferredAppVersions: 'breatic.deferredAppVersions',
       reloadDrafts: 'breatic.reloadDrafts',
       attribution: 'breatic.attribution',
+      referralCode: 'breatic.referralCode',
     });
   });
 

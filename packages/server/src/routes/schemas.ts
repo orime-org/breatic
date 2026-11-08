@@ -14,6 +14,7 @@ export {
   signupVerifySchema,
   setupStudioSchema,
   loginSchema,
+  googleAuthSchema,
   chatMessageSchema,
   taskCreateSchema,
   understandSchema,

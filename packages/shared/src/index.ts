@@ -309,6 +309,12 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  googleAuthSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -353,6 +359,7 @@ export {
 
 export type {
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,

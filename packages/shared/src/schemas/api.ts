@@ -52,10 +52,40 @@ export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().m
  */
 const attributionField = z.unknown().optional();
 
+/**
+ * The longest referral code text any request carries (inner#1868): room for a
+ * code with stray spaces, well short of a pasted link. Inputs stop at it too,
+ * so too-long text gets the field's own refusal.
+ */
+export const REFERRAL_CODE_INPUT_MAX = 40;
+
+/** How many channels a promoter application lists (inner#1868 §7). */
+export const PROMOTER_CHANNELS_MAX = 10;
+
+/** The longest one channel of a promoter application may be. */
+export const PROMOTER_CHANNEL_INPUT_MAX = 200;
+
+/** The longest the promotion plan of a promoter application may be. */
+export const PROMOTER_PLAN_INPUT_MAX = 2000;
+
+/** Where a sign-up's referral code came from: a share link, or typed by the user. */
+export const SIGNUP_REFERRAL_SOURCES = ["signup_link", "signup_typed"] as const;
+export type SignupReferralSource = (typeof SIGNUP_REFERRAL_SOURCES)[number];
+
+/**
+ * A referral code a sign-up carries (inner#1868): from a share link, or typed.
+ * Blank means none; the server parses the code itself.
+ */
+const signupReferralFields = {
+  referralCode: z.string().max(REFERRAL_CODE_INPUT_MAX).optional(),
+  referralSource: z.enum(SIGNUP_REFERRAL_SOURCES).optional(),
+};
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
   attribution: attributionField,
+  ...signupReferralFields,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -182,6 +212,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: attributionField,
+  ...signupReferralFields,
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 

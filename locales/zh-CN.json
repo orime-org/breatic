@@ -307,6 +307,16 @@
       "credits_amount": "{credits} 积分",
       "fact_line": "{label}：{value}"
     },
+    "referral": {
+      "invalid_code": "推广码无效。",
+      "already_bound": "这个账号已经绑定过推广码。",
+      "already_paid": "推广码只能在第一次付会员费之前填写。",
+      "not_eligible": "企业版账号不能绑定推广码。",
+      "program_closed": "推广计划暂未开放申请。",
+      "terms_changed": "推广条款已更新，请重新阅读后再申请。",
+      "application_pending": "你已经有一份申请在审核中。",
+      "already_promoter": "你已经是推广者。"
+    },
     "three_d": {
       "model_not_offered": "{model} 不是用于 {mode} 的 3D 模型。",
       "prompt_required": "文生 3D 需要填写提示词。",
@@ -1821,6 +1831,19 @@
       "notice": "继续即表示你同意{terms}，并已阅读{privacy}。",
       "termsLink": "使用条款",
       "privacyLink": "隐私政策"
+    },
+    "referral": {
+      "label": "推广码",
+      "optional": "选填",
+      "placeholder": "没有可以不填",
+      "notApplied": "推广码已失效，没有使用。可以在会员面板补填。",
+      "existingAccount": "这个账号已存在，推广码没有使用。还没开过会员的话，可以在会员面板补填。",
+      "carried": "用 Google 新注册时会使用推广码 {code}",
+      "carriedInvalid": "推广码 {code} 已失效",
+      "remove": "不使用这个推广码",
+      "haveCode": "有推广码？",
+      "invalid": "推广码无效。改一下，或清空后继续。",
+      "googleOnly": "用 Google 新注册时使用"
     }
   },
   "roleTag": {
@@ -3074,7 +3097,64 @@
       "enterpriseScale": "容量按协议约定",
       "enterpriseGovernance": "SSO、审计、知识产权保障"
     },
-    "noCreditsIncluded": "会员不含生成积分，积分单独购买。"
+    "noCreditsIncluded": "会员不含生成积分，积分单独购买。",
+    "referral": {
+      "heading": "推广码",
+      "intro": "有推广码的话，在第一次开会员前填上，首期会员 {zhe} 折。绑定后不能修改。",
+      "placeholder": "输入推广码",
+      "add": "绑定",
+      "required": "请输入推广码。",
+      "bound": "已绑定推广码 {code}",
+      "boundDiscount": "结账时自动生效。",
+      "badge": "首期 {zhe} 折",
+      "added": "已绑定，选择会员即享首期 {zhe} 折。",
+      "loadFailed": "没有读到推广信息。",
+      "retry": "重试"
+    },
+    "promoter": {
+      "heading": "推广计划",
+      "closed": "推广计划暂未开放申请。",
+      "pitch": "推荐别人用 breatic，按他们的会员付款拿佣金。",
+      "pitchDetail": "审核通过后你会拿到自己的推广码和专属链接；被推荐的人首期会员 {zhe} 折。",
+      "apply": "申请成为推广者",
+      "applyAgain": "再次申请",
+      "pending": "申请审核中",
+      "pendingDetail": "{date} 提交。审核结果会显示在这里。",
+      "pendingBadge": "审核中",
+      "rejected": "上次的申请没有通过",
+      "rejectedNote": "说明：{note}",
+      "yourCode": "你的推广码",
+      "copyCode": "复制推广码",
+      "copyLink": "复制链接",
+      "copied": "已复制",
+      "copyFailed": "复制到剪贴板失败。",
+      "shareHint": "别人用这个码注册，或在第一次开会员前填上，首期会员 {zhe} 折。",
+      "disabled": "已停用",
+      "removed": "已移出",
+      "disabledDetail": "这个推广码已停用，现在不能再填写。已经用了它的人照常享受首期折扣。",
+      "removedDetail": "你已不在推广计划中，这个推广码永久停用。已经用了它的人照常享受首期折扣。",
+      "dialogTitle": "申请成为推广者",
+      "dialogDescription": "我们审核后会在这里告诉你结果。",
+      "country": "国家或地区",
+      "countryPlaceholder": "选择",
+      "channels": "推广渠道",
+      "channelsHint": "网址或一句描述，最多 10 条",
+      "channelPlaceholder": "https://youtube.com/@yourchannel 或「200 人的设计师群」",
+      "addChannel": "再加一条",
+      "removeChannel": "删除这一条",
+      "plan": "推广方式",
+      "planPlaceholder": "你的受众是谁、打算怎么介绍 breatic",
+      "agreeLead": "我已阅读并同意",
+      "termsLink": "推广条款",
+      "agreeRequired": "需要同意推广条款才能提交。",
+      "countryRequired": "请选择国家或地区。",
+      "channelsRequired": "至少写一个推广渠道。",
+      "planRequired": "请写一下你打算怎么推广。",
+      "termsChanged": "推广条款已更新，请重新阅读后再勾选。",
+      "cancel": "取消",
+      "submit": "提交申请",
+      "submitted": "申请已提交"
+    }
   },
   "credits": {
     "panelTitle": "积分",

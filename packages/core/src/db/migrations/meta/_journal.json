@@ -827,6 +827,13 @@
       "when": 1794125472036,
       "tag": "0117_scene_generation_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1794131462154,
+      "tag": "0118_referral_codes",
+      "breakpoints": true
     }
   ]
 }
