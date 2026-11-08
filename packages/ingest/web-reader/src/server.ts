@@ -35,10 +35,11 @@ const USER_AGENT =
 const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozilla/readability/Readability.js"), "utf8");
 
 /**
- * Download types that are never a PDF, so the file is not fetched; any other
- * type is read, and `readPdf` decides from the bytes whether it is one.
+ * Download types that are never a PDF, so the file is not fetched: media.
+ * Any other type, text included (a site may send a PDF with any type), is
+ * read, and `readPdf` decides from the bytes.
  */
-const NOT_PDF_TYPE = /^(?:text|image|audio|video)\//;
+const NOT_PDF_TYPE = /^(?:image|audio|video)\//;
 
 /** Where the container's cgroup reports its CPU time. */
 const CPU_STAT = "/sys/fs/cgroup/cpu.stat";
