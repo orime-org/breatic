@@ -8,18 +8,14 @@
  */
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { newId } from '@breatic/shared';
 import { lipsyncFailureReasonSchema, type LipsyncFailureReason, type VideoToolId } from '@breatic/shared/mini-tools';
 import { canvasApi, canvasLimitsQuery, type CanvasEraseLimits, type CanvasExpandLimits } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { readEdges, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { useTranslation } from '@web/i18n/use-translation';
-import { toast } from '@web/lib/toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { plannedRetryIntent, plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { plannedRetryIntent, retryPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import type { LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
-import { runOnce } from '@web/stores/task-actions-in-flight';
 
 /** What the panel reads of its tool's models. */
 export interface VideoToolModels {
@@ -70,7 +66,6 @@ async function lastLipSyncFailure(projectId: string, spaceId: string, outputs: r
  */
 export function useVideoToolModels(args: { projectId: string; spaceId: string; nodeId: string; toolId: VideoToolId; nodes: readonly CanvasNodeView[] }): VideoToolModels {
   const { projectId, spaceId, nodeId, toolId, nodes } = args;
-  const t = useTranslation();
   const queryClient = useQueryClient();
   const modelTool = toolId === 'video.lip-sync';
   const limits = useQuery({ ...canvasLimitsQuery(), enabled: modelTool || toolId === 'video.erase' || toolId === 'video.expand' || toolId === 'video.split' }).data;
@@ -95,14 +90,8 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const failure = useQuery({ queryKey: failureKey, queryFn: () => lastLipSyncFailure(projectId, spaceId, outputs), enabled: outputs.length > 0 }).data ?? null;
   // A taken-over output is retried from the run that took it over, so the old one offers no retry.
   const onRetryFailed = React.useMemo(() => failure === null || failure.takenOver ? undefined : (): void => {
-    void runOnce(plannedRetryIntent(failure.runId), {
-      scope: 'mini-tool',
-      prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId: failure.runId, outputIndexes: [0] } }),
-      send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
-      onDone: () => { void queryClient.invalidateQueries({ queryKey: failureKey }); return undefined; },
-      onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
-    });
-  }, [failure, spaceId, projectId, queryClient, t, failureKey]);
+    void retryPlannedVideoRun({ projectId, spaceId, tool: 'video.lip-sync', runId: failure.runId, onDone: () => { void queryClient.invalidateQueries({ queryKey: failureKey }); } });
+  }, [failure, spaceId, projectId, queryClient, failureKey]);
   return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null,
     ...(onRetryFailed === undefined || failure === null ? {} : { onRetryFailed, retryIntent: plannedRetryIntent(failure.runId) }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0,
     ...(limits?.maxOutputs?.[toolId] === undefined ? {} : { maxOutputs: limits.maxOutputs[toolId] }) };

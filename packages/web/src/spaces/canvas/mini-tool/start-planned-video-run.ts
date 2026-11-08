@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId, t } from '@breatic/shared';
-import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, nodeDataMap, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -42,6 +42,36 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
  */
 export function plannedRetryIntent(runId: string, outputIndex = 0): string {
   return `planned-retry:${runId}:${outputIndex}`;
+}
+
+/** One retry of a planned run's failed output. */
+export interface PlannedVideoRetry {
+  projectId: string;
+  spaceId: string;
+  tool: MiniToolExecutionRetryRequest['tool'];
+  runId: string;
+  /** The output retried; the first when omitted. */
+  outputIndex?: number;
+  /** Rereads what shows the failure once the retry is admitted. */
+  onDone: () => void;
+}
+
+/**
+ * Retries a planned run's failed output once, under {@link plannedRetryIntent}, so the output node's task row and the host's
+ * tool panel send one request between them; a refusal is told with the server's reason.
+ * @param retry - The output to retry and what to reread once admitted.
+ * @returns The press outcome.
+ * @throws {never} Request failures settle the press and are reported by toast.
+ */
+export function retryPlannedVideoRun(retry: PlannedVideoRetry): Promise<RunOnceOutcome<MiniToolPlannedRunAnswer>> {
+  const outputIndex = retry.outputIndex ?? 0;
+  return runOnce(plannedRetryIntent(retry.runId, outputIndex), {
+    scope: 'mini-tool',
+    prepare: (): MiniToolExecutionRetryRequest => ({ tool: retry.tool, project_id: retry.projectId, space_id: retry.spaceId, run_id: newId(), retry: { runId: retry.runId, outputIndexes: [outputIndex] } }),
+    send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
+    onDone: () => { retry.onDone(); return undefined; },
+    onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
+  });
 }
 
 /** What the panel knows besides the draft that a planned request names (§97 D27-1). */

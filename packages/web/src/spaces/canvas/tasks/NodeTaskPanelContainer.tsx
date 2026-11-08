@@ -14,7 +14,7 @@ import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
-import { newId, type NodeTaskEntry } from '@breatic/shared';
+import type { NodeTaskEntry } from '@breatic/shared';
 import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, miniToolById, plannedFailureRetryable, type EraseFailureReason, type ExpandFailureReason, type MiniToolExecutionRetryRequest } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -23,7 +23,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import { plannedRetryIntent, plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { plannedRetryIntent, retryPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { LipSyncFailure } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { ModelRunFailure } from '@web/spaces/canvas/mini-tool/video/ModelRunFailure';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
@@ -35,7 +35,6 @@ import {
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import {
-  runOnce,
   taskActionKey,
   trackTaskAction,
   useTaskActionsInFlight,
@@ -199,13 +198,7 @@ function OpenNodeTaskPanel({
   // (frames-split §7.15 可重试结束). Lip-sync, erase and expand runs have one output.
   const takenOverRuns = React.useMemo(() => new Set(parentRunIds.filter((_runId, at) => runs[at]?.data?.outputs[0]?.takenOver === true)), [parentRunIds, runs]);
   const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
-    runOnce(plannedRetryIntent(runId, outputIndex), {
-      scope: 'mini-tool',
-      prepare: () => ({ tool, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [outputIndex] } }),
-      send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
-      onDone: () => { void query.refetch(); return undefined; },
-      onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
-    }), [projectId, spaceId, query, t]);
+    retryPlannedVideoRun({ projectId, spaceId, tool, runId, outputIndex, onDone: () => { void query.refetch(); } }), [projectId, spaceId, query]);
   // Every other planned output retries from its own failed task row (frames-split §10.8 retry row): the node's output of
   // the parent run, matched by node id, when it failed for a reason a retry can clear.
   const plannedRetryOf = React.useCallback((taskId: string): { runId: string; tool: MiniToolExecutionRetryRequest['tool']; outputIndex: number } | null => {
