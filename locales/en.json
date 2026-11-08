@@ -399,6 +399,8 @@
         "pageRefused": "the site refused to be read",
         "pageTooSlow": "took too long to open",
         "pageEmpty": "no text to read",
+        "pageUnreachable": "couldn't be reached",
+        "pageUnsupportedType": "not in a format that can be read",
         "pagesUnreadable": "none of these pages could be read",
         "declined": "the service declined to handle this content",
         "ourFault": "the server ran into a problem, try again"

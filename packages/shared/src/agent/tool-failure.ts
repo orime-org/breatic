@@ -64,6 +64,10 @@ export const FAILURE_LINES = {
   pageTooSlow: "chat.tool.failure.pageTooSlow",
   /** The page has no text to read. */
   pageEmpty: "chat.tool.failure.pageEmpty",
+  /** The page could not be reached, or does not exist. */
+  pageUnreachable: "chat.tool.failure.pageUnreachable",
+  /** The page is not in a format that can be read as text. */
+  pageUnsupportedType: "chat.tool.failure.pageUnsupportedType",
   /** None of the pages could be read, each for its own reason. */
   pagesUnreadable: "chat.tool.failure.pagesUnreadable",
   /** The service would not handle this content. */

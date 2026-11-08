@@ -399,6 +399,8 @@
         "pageRefused": "网站拒绝了读取",
         "pageTooSlow": "网页打开太慢，没能读完",
         "pageEmpty": "网页上没有能读的文字",
+        "pageUnreachable": "无法打开",
+        "pageUnsupportedType": "不是能读取的格式",
         "pagesUnreadable": "这些网页都没能读到",
         "declined": "服务拒绝处理这项内容",
         "ourFault": "服务器出了问题，可以再试一次"

@@ -157,12 +157,12 @@ const WHAT_FAILED: Readonly<Record<Exclude<FetchStatus, "ok">, string>> = {
  * only the model is told.
  */
 const USER_LINE: Readonly<Record<Exclude<FetchStatus, "ok" | "not_in_conversation">, FailureLine>> = {
-  unreachable: FAILURE_LINES.linkUnreachable,
+  unreachable: FAILURE_LINES.pageUnreachable,
   needs_login: FAILURE_LINES.pageNeedsLogin,
   refused: FAILURE_LINES.pageRefused,
   busy: FAILURE_LINES.busy,
   too_slow: FAILURE_LINES.pageTooSlow,
-  unsupported_type: FAILURE_LINES.unsupportedType,
+  unsupported_type: FAILURE_LINES.pageUnsupportedType,
   too_large: FAILURE_LINES.fileTooLarge,
   empty: FAILURE_LINES.pageEmpty,
 };

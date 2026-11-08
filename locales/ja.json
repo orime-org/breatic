@@ -399,6 +399,8 @@
         "pageRefused": "サイトに読み込みを拒否されました",
         "pageTooSlow": "ページの表示に時間がかかりすぎ、読み込めませんでした",
         "pageEmpty": "ページに読める文字がありません",
+        "pageUnreachable": "開けませんでした",
+        "pageUnsupportedType": "読み取れる形式ではありません",
         "pagesUnreadable": "どのページも読み込めませんでした",
         "declined": "サービスがこの内容の処理を拒否しました",
         "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
