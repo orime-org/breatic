@@ -19,7 +19,6 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { selectionItem } from '@web/spaces/document/document-to-agent';
 import { setTableTarget } from '@web/spaces/document/document-table-target';
 import { insertRow } from '@web/spaces/document/document-table-run';
@@ -187,6 +186,29 @@ function cellOf(editor: Editor, words: string): number {
 }
 
 /**
+ * What Cmd+C writes over the editor's selection: a copy event on the body.
+ * @param editor - The editor.
+ * @returns The clipboard, by type.
+ */
+function cmdC(editor: Editor): Record<string, string> {
+  const data: Record<string, string> = {};
+  const event = new Event('copy', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      setData: (format: string, value: string) => {
+        data[format] = value;
+      },
+      clearData: () => undefined,
+      getData: (format: string) => data[format] ?? '',
+    },
+  });
+  // A copy in the body lands while it holds the focus.
+  editor.prosemirrorView.focus();
+  editor.prosemirrorView.dom.dispatchEvent(event);
+  return data;
+}
+
+/**
  * Hands the clipboard what a copy wrote, as an async read gets it: the HTML
  * and the plain text, never our own type.
  * @param data - What the copy wrote.
@@ -199,14 +221,14 @@ describe('copying a row, a column or the table from its menu', () => {
   it.each(['row', 'column'] as const)('writes what Cmd+C over the %s writes', async (scope) => {
     const { editor } = open(SMALL);
     const view = editor.prosemirrorView;
-    const selection = tableLineSelection(view.state.doc, cellOf(editor, 'a2'), scope)!;
-    const expected = tableClipped(editor, { ...view, state: view.state.apply(view.state.tr.setSelection(selection)) } as never)!;
+    const before = view.state.selection;
+    view.dispatch(view.state.tr.setSelection(tableLineSelection(view.state.doc, cellOf(editor, 'a2'), scope)!));
+    const expected = cmdC(editor);
+    view.dispatch(view.state.tr.setSelection(before));
 
     expect(await copyTableLine(editor as never, cellOf(editor, 'a2'), scope)).toBe('copied');
 
-    expect(copied['blocknote/html']).toBe(expected.internal);
-    expect(copied['text/html']).toBe(expected.external);
-    expect(copied['text/plain']).toBe(expected.plain);
+    expect(copied).toEqual(expected);
     expect(copied['text/plain']).toContain('a2');
     expect(copied['text/plain']).not.toContain(scope === 'row' ? 'a3' : 'b2');
   });
@@ -234,6 +256,9 @@ describe('copying a row, a column or the table from its menu', () => {
   it('falls back to the async clipboard when the copy event never runs', async () => {
     const { editor } = open(SMALL);
     Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    vi.stubGlobal('ClipboardItem', class {
+      constructor(readonly items: Record<string, Blob>) {}
+    });
 
     expect(await copyTableLine(editor as never, cellOf(editor, 'a1'), 'row')).toBe('copied');
 
@@ -294,6 +319,9 @@ describe('cutting a row, a column or the table from its menu', () => {
   it('deletes nothing when neither way of writing the clipboard works', async () => {
     const { editor } = open(SMALL);
     Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    vi.stubGlobal('ClipboardItem', class {
+      constructor(readonly items: Record<string, Blob>) {}
+    });
     vi.mocked(navigator.clipboard.write).mockRejectedValueOnce(new DOMException('denied', 'NotAllowedError'));
 
     expect(await cutTableLine(editor as never, cellOf(editor, 'a2'), 'row')).toBe('failed');
