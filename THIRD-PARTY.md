@@ -247,19 +247,6 @@ The timeline editor's gesture ownership correction is distributed in
 The three transition shaders retain their upstream author and licence notices.
 The full dependency notices travel with the generated front-end licence file.
 
-### Mediabunny
-
-| | |
-|---|---|
-| Version | `1.62.1` |
-| Package | `mediabunny` |
-| Reached through | Declared by `packages/web`; video track metadata and frame-accurate media reading |
-| Licence | **MPL-2.0** |
-| Source | https://github.com/Vanilagy/mediabunny/tree/v1.62.1 |
-
-The package is used as published, with no modified library files. Its licence
-and source remain available with the front end's third-party notices.
-
 ### BlockNote
 
 | | |
