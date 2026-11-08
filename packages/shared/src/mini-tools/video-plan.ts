@@ -222,3 +222,25 @@ export function transitionDurationBounds(clips: readonly VideoToolTimelineClip[]
   const max = (frames / 2) * Number(fps.denominator) / Number(fps.numerator);
   return max < min ? null : { min, max };
 }
+
+/**
+ * The clips with every transition that no longer fits turned into a Cut (frames-split §5.4: the front end and admission
+ * share one check): a junction keeps its type and duration while the duration lies within `transitionDurationBounds` of
+ * the two clips it joins, on the output grid, or within half the shorter of them while the grid is unknown; the last clip
+ * carries no transition.
+ * @param clips - The ordered clips.
+ * @param fps - The output frame rate, or null while it is unknown.
+ * @returns The clips, each junction kept or made a Cut.
+ * @throws {z.ZodError} When clip data is invalid.
+ * @throws {RangeError} When the frame rate is not positive.
+ */
+export function fitTransitions(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate | null): VideoToolTimelineClip[] {
+  return clips.map((clip, index) => {
+    const next = clips[index + 1];
+    if (clip.transition.kind === "cut" || next === undefined) return { ...clip, transition: { kind: "cut", duration: 0 } };
+    const pair = [clip, next];
+    const bounds = fps === null ? { min: 0, max: Math.min(...pair.map((item) => item.out - item.in)) / 2 } : transitionDurationBounds(pair, fps);
+    const { duration } = clip.transition;
+    return bounds !== null && duration >= bounds.min && duration <= bounds.max ? clip : { ...clip, transition: { kind: "cut", duration: 0 } };
+  });
+}

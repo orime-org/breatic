@@ -18,7 +18,8 @@ import { projectPresentationTable } from "@shared/mini-tools/video-presentation-
 type Rational = { numerator: string; denominator: string };
 type Plan = Record<string, unknown> & { display: { width: number; height: number; duration: Rational }; policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" } };
 interface Profile { width: number; height: number; fps: Rational; timeBase: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string; color: unknown }
-const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile };
+type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
+const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational };
 const r = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
 const CONFIG = { encode: { crf: 18, preset: "medium" } };
 const BT709 = { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" };
@@ -126,5 +127,28 @@ describe("the transition output profile (§97 D13-1; frames-split §7.17)", () =
 
   it("TP05 a transparent output keeps odd sides", () => {
     expect(api.transitionOutputProfile(transparentPlan(97), cfrPlan(), CONFIG)).toMatchObject({ width: 97, height: 64, alpha: true, codec: "vp9" });
+  });
+});
+
+// frames-split §7.17 转场输出档 row: one rule for the output frame rate, which the profile, the panel and the timeline
+// Dialog all read. A table tiles [0, display.duration) (§7.16), so a CFR clip whose last frame is cut short at the end of
+// its stream still has one frame spacing.
+describe("the output frame rate of a presentation table (frames-split §7.17)", () => {
+  // 100 frames at 25 fps on a 1/100 s clock, the last one shown for 2 ticks instead of 4.
+  const shortenedLast: Table = { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 99, step: 4, duration: 4 }, { start: 396, count: 1, step: 2, duration: 2 }] };
+
+  it("FPS01 a CFR table whose last run is a shortened single frame keeps its frame rate", () => {
+    expect(same(api.presentationOutputFps(shortenedLast), r(25))).toBe(true);
+    const plan = { ...cfrPlan(), display: { width: 64, height: 48, duration: r(398, 100) }, presentation: shortenedLast };
+    expect(same(api.transitionOutputProfile(plan, cfrPlan(), CONFIG).fps, r(25))).toBe(true);
+  });
+
+  it("FPS02 a table with uneven frame spacing averages its frames over its duration", () => {
+    expect(same(api.presentationOutputFps(vfrPlan().presentation as Table), r(2000, 847))).toBe(true);
+    expect(same(api.presentationOutputFps(transparentPlan().presentation as Table), r(3, 2))).toBe(true);
+  });
+
+  it("FPS03 a single-frame table is one frame over its duration", () => {
+    expect(same(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs: [{ start: 0, count: 1, step: 5000, duration: 5000 }] }), r(1, 5))).toBe(true);
   });
 });

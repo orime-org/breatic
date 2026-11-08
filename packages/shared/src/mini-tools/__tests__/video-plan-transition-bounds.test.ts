@@ -14,7 +14,7 @@ type Rational = { numerator: string; denominator: string };
 const fps = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
 // D13-2: fps is the plan's exact rational; the bounds are plain seconds, as the draft's transition duration is.
 type Bounds = (clips: readonly Clip[], fps: Rational) => { min: number; max: number } | null;
-const api = miniTools as unknown as { transitionDurationBounds: Bounds };
+const api = miniTools as unknown as { transitionDurationBounds: Bounds; fitTransitions: (clips: readonly Clip[], fps: Rational | null) => Clip[] };
 /**
  * A two-clip timeline with the given trimmed lengths.
  * @param first - The first clip's trimmed seconds.
@@ -41,5 +41,31 @@ describe("transition duration bounds (§97 D11-3; canvas design §4, frames-spli
 
   it("TR03 at exactly two output frames the window is one frame wide", () => {
     expect(api.transitionDurationBounds(clips(0.08, 4), fps(25))).toEqual({ min: 0.04, max: 0.04 });
+  });
+});
+
+// frames-split §5.4 (前后端用同一个校验函数): the panel's pick and the timeline Dialog's edits keep a junction only while
+// it fits the bounds above, otherwise it becomes a Cut; the last clip carries no transition.
+describe("a junction fits its bounds or becomes a Cut (frames-split §5.4; canvas design §4 转场)", () => {
+  const cut = { kind: "cut", duration: 0 } as const;
+
+  it("TR04 keeps a junction inside the bounds and makes the last clip a Cut", () => {
+    const [first, second] = clips(4, 3);
+    const fitted = api.fitTransitions([first!, { ...second!, transition: { kind: "fade", duration: 0.2 } }], fps(25));
+    expect(fitted.map((clip) => clip.transition)).toEqual([{ kind: "fade", duration: 0.5 }, cut]);
+  });
+
+  it.each([
+    ["longer than half the shorter clip", 2, 1.5],
+    ["shorter than one output frame", 0.02, 3],
+  ] as const)("TR05 turns a junction %s into a Cut", (_name, duration, second) => {
+    const [first, last] = clips(4, second);
+    expect(api.fitTransitions([{ ...first!, transition: { kind: "wipeLeft", duration } }, last!], fps(25))[0]!.transition).toEqual(cut);
+  });
+
+  it("TR06 without a frame rate judges by half the shorter clip alone", () => {
+    const [first, last] = clips(4, 3);
+    expect(api.fitTransitions([{ ...first!, transition: { kind: "fade", duration: 0.02 } }, last!], null)[0]!.transition).toEqual({ kind: "fade", duration: 0.02 });
+    expect(api.fitTransitions([{ ...first!, transition: { kind: "fade", duration: 1.6 } }, last!], null)[0]!.transition).toEqual(cut);
   });
 });

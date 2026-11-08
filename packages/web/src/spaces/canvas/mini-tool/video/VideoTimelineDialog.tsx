@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import { ArrowLeftRight, Film, Pause, Play } from 'lucide-react';
-import { planVideoTimelineSeconds, transitionDurationBounds, type VideoFrameRate, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { fitTransitions, planVideoTimelineSeconds, presentationOutputFps, transitionDurationBounds, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -37,32 +37,16 @@ export interface VideoTimelineDialogProps {
 const TRANSITION_KEYS = { cut: 'transitionCut', fade: 'transitionFade', wipeLeft: 'transitionWipeLeft', wipeRight: 'transitionWipeRight' } as const;
 
 /**
- * A compact table's frame rate (frames-split §7.17 transition output profile row): a constant-rate table's timescale over its frame step,
- * otherwise its frame count over its presented duration.
- * @param table - The table.
- * @returns The rate, exact.
- * @throws {never} Never.
- */
-export function tableFrameRate(table: VideoPresentationTable): VideoFrameRate {
-  const step = table.runs[0]!.step;
-  if (table.runs.every((run) => run.step === step || run.count === 1)) return { numerator: String(table.timescale), denominator: String(step) };
-  const frames = table.runs.reduce((sum, run) => sum + run.count, 0);
-  const last = table.runs.at(-1)!;
-  return { numerator: String(frames * table.timescale), denominator: String(last.start + (last.count - 1) * last.step + last.duration - table.runs[0]!.start) };
-}
-
-/**
- * Keeps each clip's transition no longer than half the shorter clip and the last clip's a Cut.
- * @throws {never} Never.
+ * The clips with a junction that no longer fits its duration range turned into a Cut, on the output grid of the first
+ * clip's table (frames-split §7.17), or by half the shorter clip while that table is unknown (shared `fitTransitions`).
  * @param clips - The full ordered source clip sequence.
- * @returns The current value derived from these inputs.
+ * @param tables - Each input's selected presentation table, by input id.
+ * @returns The clips, each junction kept or made a Cut.
+ * @throws {never} Never.
  */
-function normalize(clips: readonly VideoToolTimelineClip[]): VideoToolTimelineClip[] {
-  return clips.map((clip, index) => {
-    const next = clips[index + 1];
-    const maximum = next === undefined ? 0 : Math.min(clip.out - clip.in, next.out - next.in) / 2;
-    return { ...clip, transition: { kind: maximum === 0 ? 'cut' : clip.transition.kind, duration: clip.transition.kind === 'cut' ? 0 : Math.min(maximum, clip.transition.duration) } };
-  });
+function normalize(clips: readonly VideoToolTimelineClip[], tables: ReadonlyMap<string, VideoPresentationTable> | undefined): VideoToolTimelineClip[] {
+  const table = clips[0] === undefined ? undefined : tables?.get(clips[0].inputId);
+  return fitTransitions(clips, table === undefined ? null : presentationOutputFps(table));
 }
 
 /**
@@ -96,7 +80,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const junction = clips.length === 2 ? clips[0]! : null;
   const firstTable = clips[0] === undefined ? undefined : props.inputTables?.get(clips[0].inputId);
   // The output grid is the first clip's rate (D13-1); without its table no transition length can be judged yet.
-  const bounds = React.useMemo(() => (junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, tableFrameRate(firstTable))), [junction, firstTable, clips]);
+  const bounds = React.useMemo(() => (junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, presentationOutputFps(firstTable))), [junction, firstTable, clips]);
   const width = Math.max(900, Math.ceil(plan.duration + 1) * 100 + 32);
   const rows: React.ComponentProps<typeof Timeline>['editorData'] = [{ id: 'video', actions: plan.clips.map((item) => ({ id: item.clipId, start: item.start, end: item.end, effectId: 'video', selected: item.clipId === clip?.clipId, minStart: Math.max(0, item.start - item.in), maxEnd: item.end + (draft.inputs.find((asset) => asset.inputId === item.inputId)?.mediaInfo?.duration ?? item.out) - item.out, flexible: !props.disabled, movable: !props.disabled })) }];
   React.useEffect(() => { setPlaying(false); setCursor((value) => Math.min(value, plan.duration)); }, [draft.revision, plan.duration]);
@@ -121,7 +105,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     if (props.disabled) return;
     setPlaying(false);
     setSelected(selection);
-    props.onChange({ ...draft, params: { clips: normalize(next) } });
+    props.onChange({ ...draft, params: { clips: normalize(next, props.inputTables) } });
   }
   /**
    * Edits only the selected clip's owned source properties.

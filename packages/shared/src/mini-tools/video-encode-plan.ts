@@ -9,6 +9,7 @@
  */
 
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/mini-tools/types.js";
+import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 
 /** How a presentation candidate gets its carrier (§7.1). */
 export type VideoCarrierRoute = "reuse" | "identity" | "copy" | "dispatch_copy" | "encode";
@@ -519,10 +520,10 @@ export interface TransitionOutputProfile {
   width: number; height: number; fps: ExactRational; timeBase: ExactRational; pixFmt: "yuv420p" | "yuva420p";
   color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;
 }
-/** What a clip's selected plan gives the profile: its display, its presentation clock and its empty fill. */
+/** What a clip's selected plan gives the profile: its display, its presentation table and its empty fill. */
 export interface TransitionClipPlan {
-  display: { width: number; height: number; duration: ExactRational };
-  presentation: { timescale: number; runs: readonly { count: number; duration: number }[] };
+  display: { width: number; height: number };
+  presentation: VideoPresentationTable;
   policy: { emptyFill: "black" | "transparent" };
 }
 
@@ -537,6 +538,30 @@ function reduced(numerator: bigint, denominator: bigint): ExactRational {
   let [a, b] = [numerator < 0n ? -numerator : numerator, denominator];
   while (b !== 0n) [a, b] = [b, a % b];
   return { numerator: String(numerator / a), denominator: String(denominator / a) };
+}
+
+/**
+ * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
+ * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
+ * ticks apart (the last frame's own length does not count, so a stream cut short in its last frame stays CFR), otherwise
+ * the frames over the presented duration. The table tiles [0, display.duration) (§7.16), so that duration is its end.
+ * @param table - The compact presentation table.
+ * @returns The rate, exact and reduced.
+ * @throws {RangeError} When the table presents no frame.
+ */
+export function presentationOutputFps(table: VideoPresentationTable): ExactRational {
+  const { runs, timescale } = table;
+  const frames = runs.reduce((total, run) => total + run.count, 0);
+  if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
+  const spacings = new Set<number>();
+  runs.forEach((run, index) => {
+    if (run.count > 1) spacings.add(run.step);
+    const next = runs[index + 1];
+    if (next !== undefined) spacings.add(next.start - (run.start + (run.count - 1) * run.step));
+  });
+  if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings][0]!));
+  const last = runs.at(-1)!;
+  return reduced(BigInt(frames) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step + last.duration - runs[0]!.start));
 }
 
 /**
@@ -555,13 +580,7 @@ function reduced(numerator: bigint, denominator: bigint): ExactRational {
  */
 export function transitionOutputProfile(first: TransitionClipPlan, second: TransitionClipPlan, config: { encode: { crf: number; preset: string } }): TransitionOutputProfile {
   const alpha = first.policy.emptyFill === "transparent" || second.policy.emptyFill === "transparent";
-  const { runs, timescale } = first.presentation;
-  const frames = runs.reduce((total, run) => total + run.count, 0);
-  if (frames === 0) throw new RangeError("A transition clip presents at least one frame");
-  const duration = first.display.duration;
-  const fps = runs.every((run) => run.duration === runs[0]!.duration)
-    ? reduced(BigInt(timescale), BigInt(runs[0]!.duration))
-    : reduced(BigInt(frames) * BigInt(duration.denominator), BigInt(duration.numerator));
+  const fps = presentationOutputFps(first.presentation);
   /**
    * An opaque side taken down to even, one up to two; a transparent side kept.
    * @param side - The display side.
