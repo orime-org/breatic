@@ -90,14 +90,17 @@ const WINDOWS_1252_BYTE: ReadonlyMap<string, number> = new Map(
  */
 export function recoverUtf8(text: string, contentType: string | null, characterSet: string): string {
   if (charsetOf(contentType) !== undefined || characterSet.toLowerCase() !== "windows-1252") return text;
-  const bytes: number[] = [];
+  // One byte per character at most, so the bytes fit in the text's length.
+  const bytes = new Uint8Array(text.length);
+  let length = 0;
   for (const char of text) {
     const byte = WINDOWS_1252_BYTE.get(char);
     if (byte === undefined) return text;
-    bytes.push(byte);
+    bytes[length] = byte;
+    length += 1;
   }
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bytes));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length));
   } catch {
     return text;
   }
