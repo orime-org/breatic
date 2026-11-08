@@ -3,8 +3,9 @@
 
 /**
  * Web animation in a Timeline (inner#1711): a real execution, its reuse as independent copies, the preview's seek,
- * play and click behaviour, cancel and Run again, and what a Viewer sees. Each case spends one real model run, so
- * every check that needs a finished result shares the one run its case makes.
+ * play and click behaviour, trim to the source end, a split off the second boundary, a portrait source on a landscape
+ * Timeline, the video held while a copy loads, cancel and Run again, and what a Viewer sees. Each case spends one real
+ * model run, so every check that needs a finished result shares the one run its case makes.
  */
 import { expect, type Locator, type Page } from 'playwright/test';
 
@@ -38,14 +39,20 @@ async function executionIdOf(row: Locator): Promise<string> {
  * @returns The new execution's id, read from the row the list opens on.
  * @throws {Error} When the dialog or the accepted row does not appear as designed.
  */
-async function executeWebAnimation(page: Page, addAtPlayhead: boolean): Promise<string> {
+async function executeWebAnimation(page: Page, addAtPlayhead: boolean, aspect: '16:9' | '9:16' = '16:9'): Promise<string> {
   const outlet = visibleSpace(page);
   await outlet.getByTestId('timeline-create-web-animation').click();
   const dialog = page.getByRole('dialog', { name: 'Create web animation', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId('web-animation-duration')).toHaveValue(String(SECONDS));
   await expect(dialog.getByTestId('web-animation-engine')).toHaveText('DeepSeek');
-  await expect(dialog.getByTestId('web-animation-aspect')).toHaveText('16:9');
+  const aspectField = dialog.getByTestId('web-animation-aspect');
+  await expect(aspectField).toHaveText('16:9');
+  if (aspect !== '16:9') {
+    await aspectField.click();
+    await page.getByRole('option', { name: aspect, exact: true }).click();
+    await expect(aspectField).toHaveText(aspect);
+  }
   const add = dialog.getByTestId('web-animation-add-at-playhead');
   await expect(add).toHaveAttribute('aria-checked', 'true');
   if (!addAtPlayhead) {
@@ -171,6 +178,64 @@ function timecodeOf(frame: number, nominal: number): string {
   return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60, frame % nominal].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
+/**
+ * Drag a handle sideways with the real mouse from its centre.
+ * @throws {Error} When the handle has no geometry.
+ */
+async function dragBy(page: Page, handle: Locator, dx: number): Promise<void> {
+  const box = await handle.boundingBox();
+  if (box === null) throw new Error('The drag handle has no geometry');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  // Cross dnd-kit's activation distance before travelling the rest.
+  await page.mouse.move(x + Math.sign(dx) * 8, y, { steps: 4 });
+  await page.mouse.move(x + dx, y, { steps: 8 });
+  await page.mouse.up();
+  // dnd-kit swallows clicks for 50 ms after a drag ends.
+  await page.waitForTimeout(100);
+}
+
+/** What the preview showed on one animation frame while it played. */
+interface PlaySample { frame: number; paused: boolean; time: number; players: { clipId: string; state: string; opacity: string; marked: boolean }[]; notes: number }
+
+/**
+ * Press Play, then sample the clock, the video and every web copy on each animation frame until the clock reaches a
+ * frame, and press Pause from inside the page on that same frame.
+ * @returns The samples, one per animation frame.
+ * @throws {Error} When the page cannot be read.
+ */
+async function playUntil(page: Page, until: number, nominal: number): Promise<PlaySample[]> {
+  const outlet = visibleSpace(page);
+  const timecode = await outlet.getByText(/^\d{2}:\d{2}:\d{2}:\d{2} \/ \d{2}:\d{2}:\d{2}:\d{2}$/).elementHandle();
+  await outlet.getByTestId('timeline-play').click();
+  const samples = await outlet.getByTestId('timeline-preview').evaluate(async (preview, { clock, until, nominal, limitMs }) => {
+    const seen: PlaySample[] = [];
+    const end = performance.now() + limitMs;
+    while (performance.now() < end) {
+      const parts = /^(\d{2}):(\d{2}):(\d{2}):(\d{2})/.exec(clock?.textContent ?? '');
+      const frame = parts === null ? -1 : ((Number(parts[1]) * 60 + Number(parts[2])) * 60 + Number(parts[3])) * nominal + Number(parts[4]);
+      const players = [...preview.querySelectorAll<HTMLElement & { iframeElement?: HTMLIFrameElement | null }>('hyperframes-player')].map((player) => ({
+        clipId: player.dataset.clipId ?? '',
+        state: player.dataset.webState ?? '',
+        opacity: player.style.opacity,
+        marked: (player.iframeElement as (HTMLIFrameElement & { smokeMark?: boolean }) | null | undefined)?.smokeMark === true,
+      }));
+      const video = preview.querySelector('video');
+      seen.push({ frame, paused: video?.paused ?? true, time: video?.currentTime ?? -1, players, notes: preview.querySelectorAll('[data-testid^="timeline-web-note-"]').length });
+      if (frame >= until) {
+        document.querySelector<HTMLElement>('[data-testid="timeline-play"]')?.click();
+        break;
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return seen;
+  }, { clock: timecode, until, nominal, limitMs: 60_000 });
+  await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
+  return samples;
+}
+
 test.use({ viewport: { width: 1680, height: 1100 } });
 
 test('one real web animation is created, reused as three copies over a video, seeks, plays across copies and is read by a Viewer @needs-model @needs-ingest @needs-storage', async ({ page, browser }) => {
@@ -260,6 +325,8 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect(playerOf(first)).toHaveCSS('z-index', '2');
       await expect(playerOf(copies[1])).toHaveCSS('z-index', '3');
       await expect(playerOf(copies[0])).toHaveCount(0);
+      // A copy notes that it is loading until its page first answers.
+      await copiesAnswered(preview);
       await expect(preview.locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
     });
 
@@ -307,6 +374,102 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect.poll(async () => (await timelineClipIds(page)).length).toBe(4);
     });
 
+    const overlap = copies[1];
+    await test.step('trim: dragging a copy\'s right edge past its source end stops it at the source end', async () => {
+      // The minimum zoom fits the whole Timeline, so the copy and its handles are on screen.
+      const zoom = outlet.getByTestId('timeline-zoom').getByRole('slider');
+      await zoom.focus();
+      await zoom.press('Home');
+      await selectTimelineClip(page, overlap);
+      await expect(clipOf(overlap)).toBeInViewport();
+      const duration = outlet.getByTestId('timeline-clip-duration');
+      await expect(duration).toHaveValue(String(copyFrames));
+      const width = (await clipOf(overlap).boundingBox())?.width ?? 0;
+      expect(width).toBeGreaterThan(0);
+      // Shorten it first, so the clamp below is seen moving the edge rather than a drag that did nothing.
+      await dragBy(page, outlet.getByTestId(`timeline-trim-end-${overlap}`), -Math.round(width / 4));
+      await expect.poll(async () => Number(await duration.inputValue())).toBeLessThan(copyFrames);
+      // Then pull the edge a copy and a half to the right; its track is empty there, so only the source stops it.
+      await dragBy(page, outlet.getByTestId(`timeline-trim-end-${overlap}`), Math.round(width * 1.5));
+      await expect(duration).toHaveValue(String(copyFrames));
+      await expect(outlet.getByTestId('timeline-clip-start')).toHaveValue(String(third));
+      await expect(outlet.getByTestId('timeline-clip-in')).toHaveValue('0');
+    });
+
+    // Frame 37 at 24 fps is 1.54 s, inside the first copy and before the overlapping one starts at 2 s.
+    const cut = 37;
+    let right = '';
+    await test.step('split: Cmd/Ctrl+B at a frame off the second boundary leaves two ready copies, the second advanced into its source', async () => {
+      expect(nominal).toBe(24);
+      await selectTimelineClip(page, first);
+      await seekPreview(page, cut);
+      const before = await timelineClipIds(page);
+      await clipOf(first).focus();
+      await page.keyboard.press('ControlOrMeta+b');
+      await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
+      const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
+      expect(added).toHaveLength(1);
+      right = added[0];
+      for (const id of [first, right]) {
+        await expect(clipOf(id)).toHaveAttribute('data-kind', 'web-animation');
+        await expect(clipOf(id)).toHaveAttribute('data-state', 'ready');
+      }
+      await expect(clipOf(right)).toHaveAttribute('data-track-id', (await clipOf(first).getAttribute('data-track-id')) ?? '');
+      await expectTimelineStart(page, first, 0, cut);
+      await expect(outlet.getByTestId('timeline-clip-in')).toHaveValue('0');
+      await expectTimelineStart(page, right, cut, copyFrames - cut);
+      await expect(outlet.getByTestId('timeline-clip-in')).toHaveValue(String(cut));
+    });
+
+    await test.step('split: seeking and playing across the cut keep the same page and its picture', async () => {
+      const from = cut - 7;
+      const to = cut + 7;
+      await seekPreview(page, from);
+      await expect(playerOf(first)).toHaveCount(1);
+      await copiesAnswered(preview);
+      // Mark the page's iframe and count its loads; a reload or a new player would lose either.
+      await playerOf(first).evaluate((player: HTMLElement & { iframeElement?: HTMLIFrameElement | null }) => {
+        const iframe = player.iframeElement as (HTMLIFrameElement & { smokeMark?: boolean; smokeLoads?: number }) | null | undefined;
+        if (iframe === null || iframe === undefined) throw new Error('The player has no iframe');
+        iframe.smokeMark = true;
+        iframe.smokeLoads = 0;
+        iframe.addEventListener('load', () => { iframe.smokeLoads = (iframe.smokeLoads ?? 0) + 1; });
+      });
+      const previewRequests: string[] = [];
+      const onRequest = (request: { url: () => string }): void => {
+        const path = new URL(request.url()).pathname;
+        if (/\/timeline\/sources\/[^/]+\/preview$/.test(path)) previewRequests.push(path);
+      };
+      page.on('request', onRequest);
+      try {
+        const slider = previewSlider(page);
+        await stepSlider(slider, from, to);
+        await expect(playerOf(right)).toHaveCount(1);
+        await expect(playerOf(first)).toHaveCount(0);
+        await copiesAnswered(preview);
+        const loadsOf = (): Promise<number> => playerOf(right).evaluate((player: HTMLElement & { iframeElement?: HTMLIFrameElement | null }) => {
+          const iframe = player.iframeElement as (HTMLIFrameElement & { smokeMark?: boolean; smokeLoads?: number }) | null | undefined;
+          return iframe?.smokeMark === true ? iframe.smokeLoads ?? 0 : -1;
+        });
+        expect(await loadsOf(), 'the copy after the cut must keep the marked iframe without reloading it').toBe(0);
+        await expect(preview.locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
+
+        // Play from before the cut to past it, still before the overlapping copy starts.
+        await stepSlider(slider, to, from);
+        await copiesAnswered(preview);
+        const samples = await playUntil(page, to, nominal);
+        expect(samples.some((sample) => sample.frame < cut)).toBe(true);
+        expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(to);
+        const broken = samples.filter((sample) => sample.notes > 0 || sample.players.length !== 1 || !sample.players[0].marked
+          || sample.players[0].opacity === '0' || sample.players[0].state === 'loading' || sample.players[0].state === 'failed');
+        expect(broken, 'one drawn player with the same iframe must show the copy on every frame').toEqual([]);
+        expect(samples.some((sample) => sample.players[0]?.clipId === right && sample.frame >= cut)).toBe(true);
+        expect(await loadsOf()).toBe(0);
+        expect(previewRequests, 'crossing the cut must not fetch the page address again').toEqual([]);
+      } finally {
+        page.off('request', onRequest);
+      }
+    });
 
     // Inside the second copy after the third ends, only the video and the second copy are visible.
     const late = Math.round(7.75 * nominal);
@@ -380,6 +543,83 @@ test('one real web animation is created, reused as three copies over a video, se
       expect(frames[frames.length - 1]).toBe(end - 1);
       await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
     });
+
+    // Ten seconds in, after every copy has ended and while the video still plays.
+    const later = 10 * nominal;
+    await test.step('hold: a copy that is still loading when play reaches it holds the video on its start until it answers', async () => {
+      await seekPreview(page, later);
+      const list = await openCompleted(page);
+      const before = await timelineClipIds(page);
+      await list.getByTestId(`timeline-execution-add-${executionId}`).click();
+      await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
+      const [held] = (await timelineClipIds(page)).filter((id) => !before.includes(id));
+      await closeExecutions(page);
+      await expectTimelineStart(page, held, later, copyFrames);
+      await expect(clipOf(held)).toHaveAttribute('data-state', 'ready');
+      // Step back to where no copy is visible, so its player is gone and must load again when play reaches it.
+      const from = later - nominal;
+      await seekPreview(page, from);
+      await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+      await expect(preview.locator('hyperframes-player')).toHaveCount(0);
+      const samples = await playUntil(page, later + nominal / 2, nominal);
+      const stateOf = (sample: PlaySample): string => sample.players.find((player) => player.clipId === held)?.state ?? 'absent';
+      const reached = samples.findIndex((sample) => sample.frame >= later);
+      expect(reached).toBeGreaterThan(0);
+      const answered = samples.findIndex((sample, index) => index >= reached && stateOf(sample) === 'ready');
+      expect(answered, `the copy never answered: ${samples.map((sample) => `${sample.frame}:${stateOf(sample)}`).join(' ')}`).toBeGreaterThan(reached);
+      const waiting = samples.slice(reached, answered);
+      // Each sample is one animation frame; the copy's page cannot load and answer inside one.
+      expect(waiting.length).toBeGreaterThan(0);
+      const brief = (list: PlaySample[]): string => list.map((sample) => `${sample.frame}@${sample.time.toFixed(3)}s:${sample.paused ? 'paused' : 'playing'}:${stateOf(sample)}`).join(' ');
+      // The clock never passes the copy's start, and the video never plays into it, while the copy loads.
+      expect(waiting.filter((sample) => sample.frame > later), `the clock passed the copy start: ${brief(waiting)}`).toEqual([]);
+      expect(waiting.filter((sample) => sample.time > later / nominal), `the video played past the copy start: ${brief(waiting)}`).toEqual([]);
+      // Once the copy answered, play went on past its start.
+      expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(later + nominal / 2);
+      // From the frame the clock reached the copy's start, the video is paused until the copy answers.
+      expect(waiting.filter((sample) => !sample.paused).length, `the video kept playing while the copy loaded: ${brief(waiting)}`).toBe(0);
+    });
+    expect(errors.unexpected).toEqual([]);
+  } finally {
+    await deleteSpace(page, spaceId);
+  }
+});
+
+test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not stretched @needs-model @needs-ingest', async ({ page }) => {
+  // One real model run (up to RUN_MS) before the copy can be measured.
+  test.setTimeout(360_000);
+  const errors = watchTimelineErrors(page);
+  await openSmokeProject(page);
+  const spaceId = await createSpace(page, 'timeline', `Timeline web portrait ${crypto.randomUUID()}`);
+  try {
+    const outlet = visibleSpace(page);
+    const preview = outlet.getByTestId('timeline-preview');
+    await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
+    const id = await executeWebAnimation(page, true, '9:16');
+    const list = outlet.getByTestId('timeline-executions');
+    await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
+    await openCompleted(page);
+    await expect(list.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'succeeded');
+    const copy = outlet.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
+    await expect(copy).toHaveCount(1);
+    await expect(copy).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+    await closeExecutions(page);
+    await seekPreview(page, 1);
+    await copiesAnswered(preview);
+    const player = preview.locator('hyperframes-player');
+    await expect(player).toHaveCount(1);
+    const { stage, page: shown } = await player.evaluate((element: HTMLElement & { iframeElement?: HTMLIFrameElement | null }) => {
+      const box = (rect: DOMRect): { x: number; y: number; width: number; height: number } => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+      const iframe = element.iframeElement;
+      if (iframe === null || iframe === undefined) throw new Error('The player has no iframe');
+      return { stage: box(element.getBoundingClientRect()), page: box(iframe.getBoundingClientRect()) };
+    });
+    // The player covers the 16:9 preview; the portrait page inside it fills its height, keeps 9:16 and sits in the middle.
+    expect(stage.width / stage.height).toBeCloseTo(16 / 9, 1);
+    expect(Math.abs(shown.height - stage.height)).toBeLessThanOrEqual(2);
+    expect(shown.width / shown.height).toBeCloseTo(9 / 16, 2);
+    expect(shown.width).toBeLessThan(stage.width / 2);
+    expect(Math.abs((shown.x + shown.width / 2) - (stage.x + stage.width / 2))).toBeLessThanOrEqual(2);
     expect(errors.unexpected).toEqual([]);
   } finally {
     await deleteSpace(page, spaceId);
