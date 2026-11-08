@@ -196,7 +196,7 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await expect(row(page, 'ZOne one')).toBeVisible();
 });
 
-test('a jump scrolls smoothly, the highlight passing the headings on the way', async () => {
+test('a jump scrolls smoothly, the highlight passing the headings on the way and holding one the end stops short', async () => {
   await openWith(page, DOCUMENT);
   await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
   await expect.poll(() => highlighted(page)).toBe('One');
@@ -205,8 +205,15 @@ test('a jump scrolls smoothly, the highlight passing the headings on the way', a
   const { highlights, tops } = await scrollSettled(page);
   expect(new Set(tops).size).toBeGreaterThan(2);
   expect(highlights.filter((h) => h !== 'One' && h !== 'Two one one')).not.toEqual([]);
+  // Too little follows "Two one one" for its landing: the body stops at its
+  // end, the heading lower down, and the highlight still settles on it.
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
+  expect(await lineBelowTop(page, 'Two one one')).toBeGreaterThan(16 + 2);
   expect(highlights.at(-1)).toBe('Two one one');
-  expect(Math.abs(await lineBelowTop(page, 'Two one one') - 16)).toBeLessThanOrEqual(2);
 });
 
 test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {
