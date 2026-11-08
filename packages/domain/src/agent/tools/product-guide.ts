@@ -1005,8 +1005,9 @@ export function renderProductGuide(): string {
       "a cut removes it. The segment count reflects the complete split plan; one run makes up to 8 segments, and with " +
       "more Run says the limit instead of running.",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
-      `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}. Open ` +
-      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} and press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
+      `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}; picking another replaces it and resets its trim, ` +
+      "and Run asks for a video while none is picked. Picking a video opens the timeline, and " +
+      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} opens it again; press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
       "their order; the transition stays between them. Select a clip and edit " +
       `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))} to trim it. ` +
       `${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +

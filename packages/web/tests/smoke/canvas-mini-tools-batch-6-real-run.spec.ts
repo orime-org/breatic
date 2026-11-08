@@ -421,8 +421,7 @@ test('transitions: two videos and a crossfade give one video as long as both les
     await add.click();
     await nodeOf(c, 'clip3b.mp4').click();
     await expect(c.page.locator('[data-testid^="video-timeline-thumbnail-"]')).toHaveCount(2);
-    await add.click();
-    await c.page.getByRole('button', { name: 'Edit timeline' }).click();
+    // Picking the video opens the timeline (canvas design §4 transitions row).
     const dialog = c.page.getByTestId('video-timeline-dialog');
     await expect(dialog).toBeVisible();
     // The clip picker, then the transition's type.
