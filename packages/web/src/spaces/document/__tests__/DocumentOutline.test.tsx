@@ -531,12 +531,14 @@ describe('DocumentOutline', () => {
        * @param viewport - The body's viewport.
        * @param top - scrollTop before the growth.
        * @param growth - How much taller the content gets.
+       * @param anchored - Whether scroll anchoring moves scrollTop by the growth;
+       *   Chrome's running smooth scroll takes it back the next frame.
        * @returns Once the frame after the growth has run.
        */
-      async function growAbove(viewport: HTMLElement, top: number, growth: number): Promise<void> {
+      async function growAbove(viewport: HTMLElement, top: number, growth: number, anchored = true): Promise<void> {
         Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 + growth });
-        viewport.scrollTop = top + growth;
-        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line - top);
+        viewport.scrollTop = anchored ? top + growth : top;
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line + growth - viewport.scrollTop);
         resizeTo(1440);
         await scrolled(viewport);
       }
@@ -551,6 +553,20 @@ describe('DocumentOutline', () => {
         expect(scrollTo).toHaveBeenLastCalledWith({ top: 500, behavior: 'smooth' });
 
         await frameAt(viewport, 450, 300);
+        await frameAt(viewport, 500, 300);
+        expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      });
+
+      it('measures the closing in afresh from a new aim, so growth the scroll does not absorb keeps the jump', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        await growAbove(viewport, 100, 300, false);
+        expect(scrollTo).toHaveBeenLastCalledWith({ top: 500, behavior: 'smooth' });
+
+        await frameAt(viewport, 300, 300);
         await frameAt(viewport, 500, 300);
         expect(itemOf('Two')).toHaveClass('bg-accent-strong');
       });
