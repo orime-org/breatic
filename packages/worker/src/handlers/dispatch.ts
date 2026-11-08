@@ -78,6 +78,7 @@ import {
   transcribeQuestion,
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
+import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -1466,23 +1467,6 @@ export function declaredOutputType(model: string | undefined, toolId: string | u
   const runModel = model ?? (spec === undefined ? undefined : modelOf(spec));
   return runModel === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), runModel)?.output_type;
 }
-
-/**
- * The extension a result is stored under when its model declares the type it
- * returns (inner#1305), one per media type an upload may be.
- */
-const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/webp": ".webp",
-  "video/mp4": ".mp4",
-  "video/webm": ".webm",
-  "video/quicktime": ".mov",
-  "audio/mpeg": ".mp3",
-  "audio/wav": ".wav",
-  "audio/mp4": ".m4a",
-  "audio/webm": ".webm",
-};
 
 /** Provider-level result fields that may carry a URL consumers read. */
 const EXTRA_URL_FIELDS = [

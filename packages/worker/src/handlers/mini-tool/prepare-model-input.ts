@@ -19,6 +19,7 @@ import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
@@ -38,9 +39,6 @@ interface Unit {
   consumed?: string[];
 }
 
-/** The file extension of each type a step writes; a model reads an object's type from its link, and VACE fails one without. */
-const EXTENSIONS: Readonly<Record<string, string>> = { "video/mp4": "mp4", "video/webm": "webm", "image/png": "png", "audio/mp4": "m4a", "text/plain": "txt" };
-
 /**
  * A step's work object key: the source's work key for the job, ending in the extension of the type it holds.
  * @param sourceKey - The source's storage key.
@@ -50,9 +48,9 @@ const EXTENSIONS: Readonly<Record<string, string>> = { "video/mp4": "mp4", "vide
  * @throws {Error} When the type has no extension here.
  */
 export function stepWorkKey(sourceKey: string, jobId: string, contentType: string): string {
-  const extension = EXTENSIONS[contentType];
+  const extension = EXTENSION_OF_TYPE[contentType];
   if (extension === undefined) throw new Error(`No file extension for ${contentType}`);
-  return `${videoPresentationWorkKeyFor(sourceKey, jobId)}.${extension}`;
+  return `${videoPresentationWorkKeyFor(sourceKey, jobId)}${extension}`;
 }
 
 /**
