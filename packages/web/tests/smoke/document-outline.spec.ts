@@ -222,9 +222,10 @@ test('a jump aims again when the body above grows mid-scroll, and still ends on 
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Tail b').click();
-  // Twelve frames in, 300px appears above what is in view, as an image
-  // without a stored size does once it loads.
-  await page.evaluate((viewport) => new Promise<void>((resolve) => {
+  // Twelve frames in, the body's content grows by 300px above what is in view,
+  // as it does when an image without a stored size loads. The spacer sits in
+  // the body's surface, outside the editable element ProseMirror keeps in step.
+  await page.evaluate((surface) => new Promise<void>((resolve) => {
     let n = 0;
     const tick = (): void => {
       n += 1;
@@ -234,11 +235,11 @@ test('a jump aims again when the body above grows mid-scroll, and still ends on 
       }
       const spacer = document.createElement('div');
       spacer.style.height = '300px';
-      document.querySelector(viewport)!.firstElementChild!.prepend(spacer);
+      document.querySelector(surface)!.prepend(spacer);
       resolve();
     };
     requestAnimationFrame(tick);
-  }), VIEWPORT);
+  }), `${VIEWPORT} .doc-body-editor`);
   const { tops } = await scrollSettled(page);
   const end = await page.evaluate((viewport) => {
     const vp = document.querySelector(viewport)!;
