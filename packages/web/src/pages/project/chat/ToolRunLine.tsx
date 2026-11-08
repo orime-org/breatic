@@ -9,7 +9,9 @@ import type { ToolCall } from '@web/pages/project/chat/types';
 
 /**
  * The site and how many pages a page read names, for its running line
- * (inner#1664): nothing while the arguments are still arriving or do not parse.
+ * (inner#1664). The arguments arrive as a half-built object while the model
+ * writes them, so the site shows as its address arrives; until a first
+ * address parses, the host is empty and the count 0.
  * @param args - The call's arguments so far.
  * @returns The first page's host and the page count, or an empty host and 0.
  */
