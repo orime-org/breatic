@@ -4291,6 +4291,7 @@ function CanvasSpaceInner({
     const session = sessionStore.getState().panelSession;
     return startPlannedVideoRun({
       projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef, frameTable: presented?.frameTable ?? null,
+      ...(presented?.display === undefined ? {} : { display: presented.display }),
       ...(plan === undefined ? {} : { plan: { analysisRefs: plan.analysisRefs, outputNodeIds: plan.outputNodeIds } }),
       source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
         mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },

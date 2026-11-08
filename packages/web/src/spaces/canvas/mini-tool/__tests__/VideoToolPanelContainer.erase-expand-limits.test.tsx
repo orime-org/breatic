@@ -16,7 +16,7 @@
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@web/lib/toast', () => ({
@@ -28,12 +28,12 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 }));
 
 import { t } from '@breatic/shared';
-import type { VideoToolDraftById, VideoToolId } from '@breatic/shared/mini-tools';
+import { videoExpandLayout, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
 import { addNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -57,19 +57,22 @@ const EXPAND = { maxDurationSeconds: 180, maxTargetSide: 4096 };
  * @param options.expand - The expand config prop.
  * @param options.transparent - Whether the source is transparent.
  * @param options.presentedTime - The presented frame's time, 0 s by default.
+ * @param options.mediaInfo - The stored source size, 960x540 by default.
+ * @param options.display - The presentation's display size, which applies the sample aspect ratio.
  * @param options.onRunVideo - The execution entry.
  * @returns Nothing.
  */
 function mount(toolId: Extract<VideoToolId, 'video.erase' | 'video.expand'>, params: Record<string, unknown>,
-  options: { erase?: object; expand?: object; transparent?: boolean; presentedTime?: number; onRunVideo?: () => Promise<unknown> } = {}): void {
+  options: { erase?: object; expand?: object; transparent?: boolean; presentedTime?: number; mediaInfo?: typeof mediaInfo; display?: { width: number; height: number }; onRunVideo?: () => Promise<unknown> } = {}): void {
+  const stored = options.mediaInfo ?? mediaInfo;
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
-  const initial = createVideoToolDraft(toolId, source);
+  const initial = createVideoToolDraft(toolId, { ...source, mediaInfo: stored });
   commitVideoToolDraft(doc, nodeId, toolId, { ...initial, params: { ...initial.params, ...params } } as VideoToolDraftById[typeof toolId]);
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
   const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: options.presentedTime ?? 0,
-    presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } }, ...(options.transparent ? { transparent: true } : {}) } as VideoToolPresentation;
-  const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
+    presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } }, ...(options.display ? { display: options.display } : {}), ...(options.transparent ? { transparent: true } : {}) } as VideoToolPresentation;
+  const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...stored } };
   const proposed: object = { erase: options.erase ?? ERASE, expand: options.expand ?? EXPAND };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={options.onRunVideo ?? vi.fn()} {...proposed} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
 }
@@ -151,6 +154,17 @@ describe('expand limits on Run (execution design §10.5)', () => {
   it('refuses a target whose long side passes maxTargetSide', () => {
     mount('video.expand', { frame: { x: -2, y: 0, width: 5, height: 1 }, ratio: 'free' });
     expectRefused(screen.getByTestId('mini-tool-run'), t('canvas.miniTool.videoUI.expandTooLarge', { max: 4096 }));
+  });
+
+  // A 1440x1080 source with a 4:3 sample aspect ratio displays, and is expanded by admission, at 1920x1080 (ledger plan.display).
+  it('sizes the frame of an anamorphic source by its display size, so 1:1 is 1920x1920', () => {
+    mount('video.expand', {}, { mediaInfo: { ...mediaInfo, width: 1440, height: 1080 }, display: { width: 1920, height: 1080 } });
+    act(() => within(screen.getByTestId('video-expand-ratios')).getByRole('button', { name: '1:1' }).click());
+    const held = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.expand');
+    expect(held.state).toBe('supported');
+    const frame = held.state === 'supported' ? (held.draft as VideoToolDraftById['video.expand']).params.frame : null;
+    expect(videoExpandLayout(frame!, { width: 1920, height: 1080 }, Infinity)).toMatchObject({ width: 1920, height: 1920 });
+    expect(canvasSessions.of(spaceId).getState().miniTool?.sourceSize).toEqual({ width: 1920, height: 1080 });
   });
 
   it('refuses a transparent source', () => {

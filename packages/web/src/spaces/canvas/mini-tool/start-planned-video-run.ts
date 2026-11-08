@@ -28,6 +28,8 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   plan?: Pick<PlannedVideoPress, 'analysisRefs' | 'outputNodeIds'>;
   /** The source's compact presentation table, which frames and split plan their outputs from; null while not read. */
   frameTable?: VideoPresentationTable | null;
+  /** The selected version's display size, which an expansion's node is sized on as admission sizes it (§10.5). */
+  display?: { width: number; height: number };
 }
 
 /** What the panel knows besides the draft that a planned request names (§97 D27-1). */
@@ -109,7 +111,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   const spec = miniToolById(run.toolId);
   if (spec === undefined || spec.run.kind !== 'planned' || spec.outputs?.length !== 1) throw new Error('Planned video execution has no output descriptor');
   // An expansion's node takes the widened frame the quote and the admission size it to (execution design §10.5 geometry row).
-  const layout = run.toolId === 'video.expand' ? videoExpandLayout((held as VideoToolDraftById['video.expand']).params.frame, held.source.mediaInfo, Infinity) : held.source.mediaInfo;
+  const layout = run.toolId === 'video.expand' ? videoExpandLayout((held as VideoToolDraftById['video.expand']).params.frame, run.display ?? held.source.mediaInfo, Infinity) : held.source.mediaInfo;
   const size = { width: layout.width, height: layout.height };
   const placements = plannedOutputPlacementOf(recipes.map(() => spec.outputs![0]!), recipes.map(() => size), source.name);
   const nodes = placements.map((placed, index) => {

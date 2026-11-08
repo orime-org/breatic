@@ -64,6 +64,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   onRetryFailed?: () => void;
   /** Why "Track selection" cannot track this selection now; a press shows it (execution design §10.2, §10.4). */
   trackBlockedReason?: string;
+  /** The source's display size an expansion's ratio frames wrap (the presentation's, sample aspect ratio applied). */
+  expandSize?: { width: number; height: number };
 }
 
 /** The tracking failure codes the panel names (execution design §10.3). */
@@ -248,7 +250,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
   switch (props.toolId) {
     case 'video.expand': {
       const draft = props.draft as VideoToolDraftById['video.expand'];
-      return <><div className='grid grid-cols-4 gap-1.5' data-testid='video-expand-ratios'>{EXPAND_RATIOS.map((ratio) => <Button key={ratio} variant={null} size={null} disabled={props.disabled} aria-current={draft.params.ratio === ratio} className={PARAM_OPTION_CLASS} onClick={() => props.onChange({ ...draft, params: { ...draft.params, ratio, frame: frameForRatio(ratio, draft.source.mediaInfo, draft.params.frame) } })}>{ratio === 'free' ? 'Free' : ratio}</Button>)}</div><Textarea autoComplete='off' value={draft.params.prompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.expandPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, prompt: event.currentTarget.value } })} /></>;
+      return <><div className='grid grid-cols-4 gap-1.5' data-testid='video-expand-ratios'>{EXPAND_RATIOS.map((ratio) => <Button key={ratio} variant={null} size={null} disabled={props.disabled} aria-current={draft.params.ratio === ratio} className={PARAM_OPTION_CLASS} onClick={() => props.onChange({ ...draft, params: { ...draft.params, ratio, frame: frameForRatio(ratio, props.expandSize ?? draft.source.mediaInfo, draft.params.frame) } })}>{ratio === 'free' ? 'Free' : ratio}</Button>)}</div><Textarea autoComplete='off' value={draft.params.prompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.expandPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, prompt: event.currentTarget.value } })} /></>;
     }
     case 'video.lip-sync': return <PeopleDialogues {...props} />;
     case 'video.erase': {

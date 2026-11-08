@@ -97,6 +97,14 @@ describe('planned frame and segment outputs', () => {
     expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[602, 240]]);
   });
 
+  // Execution design §10.5: admission lays the target out on the ledger's display size, which applies the sample aspect ratio.
+  it('F26 sizes an anamorphic source\'s expand destination from the presentation display size', async () => {
+    const anamorphic = { ...COMMON, source: { ...COMMON.source, mediaInfo: { ...COMMON.source.mediaInfo, width: 1440, height: 1080 } } };
+    const expandDraft: VideoToolDraftById['video.expand'] = { ...anamorphic, params: { frame: { x: 0, y: -0.5 + 1080 / 3840, width: 1, height: 1920 / 1080 }, ratio: '1:1', prompt: '' } };
+    await preparePlannedVideoRun(press({ toolId: 'video.expand', draft: expandDraft, display: { width: 1920, height: 1080 } }));
+    expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[1920, 1920]]);
+  });
+
   it('F22 builds nothing for a frame or segment run without the source table', async () => {
     const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1] } };
     await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: null }))).rejects.toThrow();

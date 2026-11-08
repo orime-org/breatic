@@ -180,7 +180,8 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
         // A transparent source plays as an alpha-packed version (execution design §10.4 transparent source row).
         ...(facts?.response?.presentation ? { presentationRef: { source: { toolInputId: facts.response.presentation.toolInputId, planSha256: facts.response.presentation.planSha256 } },
-          transparent: facts.response.presentation.playback.kind === 'alpha-packed' } : {}),
+          transparent: facts.response.presentation.playback.kind === 'alpha-packed',
+          display: { width: facts.response.presentation.display.width, height: facts.response.presentation.display.height } } : {}),
       });
     }
     return { bindings, presentations, onVideoBinding, onVideoFrame };
