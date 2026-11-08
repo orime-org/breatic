@@ -491,7 +491,12 @@ export function renderProductGuide(): string {
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
       "a studio. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
-      "can assign them to this studio, so anyone else asks the admin.",
+      "can assign them to this studio, so anyone else asks the admin. Where the deployment takes payments, " +
+      `${quoted(t("studio.topBar.membership"))} in the same menu opens the membership panel, which has a ` +
+      `${quoted(t("membership.referral.heading"))} section, where an account that has never paid for a ` +
+      "membership adds a code for a discount on its first period, and a " +
+      `${quoted(t("membership.promoter.heading"))} section with ${quoted(t("membership.promoter.apply"))}; ` +
+      `the sign-up form there also has an optional ${quoted(t("auth.referral.label"))} field.`,
     `In ${quoted(t("chat.history.title"))}, ${quoted(t("chat.conversation.rename"))} turns the name into a box ` +
       `(${quoted(t("chat.conversation.renamePlaceholder"))} when empty); ` +
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +
