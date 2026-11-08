@@ -30,7 +30,7 @@ import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-m
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { ParamOptionGroup, type ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ModePill, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { useCreditEstimate } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
@@ -57,6 +57,10 @@ interface SceneGenerateDialogProps {
 type ViewSlot = ({ kind: 'image' } & SceneViewImage) | { kind: 'uploading'; id: string; percent: number } | { kind: 'failed' };
 
 const NO_ENTRIES: readonly ModelEntry[] = [];
+/** The two ways to generate, as the footer's mode pill lists them. */
+const MODE_OPTIONS: readonly ModeOption[] = THREE_D_GENERATION_MODES.map((value) => ({ value, label: SCENE_MODE_LABELS[value], testId: `scene-generate-mode-${value}` }));
+/** Settings in two columns, each a name with its control on one row. */
+const SETTING_GRID = 'grid grid-cols-2 gap-x-6 gap-y-3';
 
 /**
  * Whether a resolved value is one a setting can be sent as.
@@ -205,8 +209,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
    */
   const shown = React.useCallback((control: ModelControl): boolean => entry?.params[control.name]?.when === undefined || resolved[control.name] !== undefined, [entry, resolved]);
   const commonToggles = React.useCallback((control: ModelControl): boolean => common.has(control.name) && control.kind === 'toggle' && shown(control), [common, shown]);
-  const commonChoices = React.useCallback((control: ModelControl): boolean => common.has(control.name) && control.kind === 'choice' && shown(control), [common, shown]);
-  const commonNumbers = React.useCallback((control: ModelControl): boolean => common.has(control.name) && control.kind === 'integer' && shown(control), [common, shown]);
+  const commonSettings = React.useCallback((control: ModelControl): boolean => common.has(control.name) && control.kind !== 'toggle' && shown(control), [common, shown]);
   const ownSettings = React.useCallback((control: ModelControl): boolean => !common.has(control.name) && shown(control), [common, shown]);
   const change = React.useCallback((partial: Record<string, unknown>): void => setParams((previous) => ({ ...previous, ...partial })), []);
 
@@ -299,8 +302,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
     });
   }, [entry, ready, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
 
-  const modeOptions = React.useMemo((): ParamOption[] => THREE_D_GENERATION_MODES.map((value) => ({ value, label: SCENE_MODE_LABELS[value], disabled: submitting })), [submitting]);
-  const selectMode = React.useCallback((value: string | number): void => setMode(value === 'i23d' ? 'i23d' : 't23d'), []);
+  const selectMode = React.useCallback((value: string): void => setMode(value === 'i23d' ? 'i23d' : 't23d'), []);
   const promptError = errors.prompt;
 
   return <>
@@ -308,9 +310,8 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
       {entry === undefined ? <p className='py-6 text-sm text-muted-foreground'>{t('spaces.threeD.loading')}</p> : <>
         <section data-testid='scene-generate-common' className='flex flex-col gap-3'>
           <p className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.generateDialog.common')}</p>
-          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={commonToggles} locked={locked} errors={errors} className='grid grid-cols-2 gap-x-6 gap-y-3' />
-          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={commonChoices} locked={locked} errors={errors} />
-          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={commonNumbers} locked={locked} errors={errors} className='grid grid-cols-2 gap-x-6 gap-y-3' />
+          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={commonToggles} locked={locked} errors={errors} className={SETTING_GRID} />
+          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={commonSettings} locked={locked} errors={errors} className={SETTING_GRID} inline />
         </section>
         <section data-testid='scene-generate-mode-section' className='flex flex-col gap-3 rounded-overlay border border-border p-3'>
           {mode === 't23d' ? <div className='flex flex-col gap-1.5'>
@@ -329,14 +330,14 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
             </div>
             <p className='text-xs text-muted-foreground'>{t('spaces.threeD.generateDialog.viewsHint')}</p>
           </div>}
-          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={ownSettings} locked={locked} errors={errors} />
+          <ModelParamControls model={entry} mode={mode} value={resolved} onChange={change} include={ownSettings} locked={locked} errors={errors} className={SETTING_GRID} inline />
         </section>
       </>}
       <Input ref={fileInput} data-testid='scene-generate-view-file-input' type='file' accept={SCENE_VIEW_ACCEPT} onChange={fileChosen} className='hidden' />
     </fieldset>
     <PanelRunFooter
       leading={<div className='flex min-w-0 items-center gap-3'>
-        <ParamOptionGroup label='' options={modeOptions} value={mode} onSelect={selectMode} testIdPrefix='scene-generate-mode' />
+        <ModePill value={mode} options={MODE_OPTIONS} onChange={selectMode} triggerTestId='scene-generate-mode' disabled={submitting} />
         {entry === undefined ? null : <span data-testid='scene-generate-model' className='truncate text-xs text-muted-foreground'>{entry.display_name}</span>}
       </div>}
       creditText={creditText}

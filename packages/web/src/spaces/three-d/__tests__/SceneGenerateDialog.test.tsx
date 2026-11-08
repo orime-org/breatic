@@ -13,7 +13,7 @@ import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
-import { I23D, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
+import { I23D, MODE_LABEL, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage, valueLabel } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
@@ -119,6 +119,27 @@ function shown(fn: unknown): unknown[] {
   return (fn as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
 }
 
+/**
+ * Switch the way to generate from the footer pill.
+ * @param user - The user driving the page.
+ * @param mode - The mode to pick.
+ */
+async function pickMode(user: ReturnType<typeof userEvent.setup>, mode: 't23d' | 'i23d'): Promise<void> {
+  await user.click(screen.getByTestId('scene-generate-mode'));
+  await user.click(await screen.findByTestId(`scene-generate-mode-${mode}`));
+}
+
+/**
+ * Open a setting's menu and pick a value.
+ * @param user - The user driving the page.
+ * @param param - The setting.
+ * @param value - The value to pick.
+ */
+async function pick(user: ReturnType<typeof userEvent.setup>, param: string, value: string): Promise<void> {
+  await user.click(screen.getByTestId(`generate-param-${param}-menu`));
+  await user.click(await screen.findByTestId(`generate-param-${param}-option-${value}`));
+}
+
 beforeEach(() => {
   api.get.mockReset();
   api.post.mockReset();
@@ -139,12 +160,12 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     const user = userEvent.setup();
     renderDialog();
     await ready();
-    expect(screen.getByTestId('scene-generate-mode-t23d')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('scene-generate-mode')).toHaveTextContent(MODE_LABEL.t23d);
     expect(screen.getByTestId('scene-generate-prompt')).toBeInTheDocument();
     expect(screen.queryByTestId('scene-generate-view-0')).toBeNull();
 
-    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
-    expect(screen.getByTestId('scene-generate-mode-i23d')).toHaveAttribute('aria-current', 'true');
+    await pickMode(user, 'i23d');
+    expect(screen.getByTestId('scene-generate-mode')).toHaveTextContent(MODE_LABEL.i23d);
     expect(screen.queryByTestId('scene-generate-prompt')).toBeNull();
     expect([0, 1, 2, 3].map((index) => screen.queryByTestId(`scene-generate-view-${index}`) !== null)).toEqual([true, true, true, true]);
   });
@@ -156,27 +177,42 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     const common = screen.getByTestId('scene-generate-common');
     for (const name of ['texture', 'pbr', 'smart_low_poly', 'generate_parts', 'export_uv']) expect(within(common).getByTestId(`generate-param-${name}-toggle`)).toBeInTheDocument();
     for (const name of ['face_limit', 'model_seed', 'texture_seed']) expect(within(common).getByTestId(`generate-param-${name}-input`)).toBeInTheDocument();
-    expect(within(common).getByTestId('generate-param-geometry_quality-option-detailed')).toBeInTheDocument();
+    expect(within(common).getByTestId('generate-param-geometry_quality-menu')).toBeInTheDocument();
     expect(within(common).queryByTestId('generate-param-negative_prompt-input')).toBeNull();
-    expect(within(common).queryByTestId('generate-param-texture_alignment-option-geometry')).toBeNull();
+    expect(within(common).queryByTestId('generate-param-texture_alignment-menu')).toBeNull();
 
     const textSection = screen.getByTestId('scene-generate-mode-section');
     expect(within(textSection).getByTestId('generate-param-negative_prompt-input')).toBeInTheDocument();
     expect(within(textSection).queryByTestId('generate-param-enable_image_autofix-toggle')).toBeNull();
 
-    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    await pickMode(user, 'i23d');
     const imageSection = screen.getByTestId('scene-generate-mode-section');
-    expect(within(imageSection).getByTestId('generate-param-texture_alignment-option-geometry')).toBeInTheDocument();
-    expect(within(imageSection).getByTestId('generate-param-orientation-option-align_image')).toBeInTheDocument();
+    expect(within(imageSection).getByTestId('generate-param-texture_alignment-menu')).toBeInTheDocument();
+    expect(within(imageSection).getByTestId('generate-param-orientation-menu')).toBeInTheDocument();
     expect(within(imageSection).getByTestId('generate-param-enable_image_autofix-toggle')).toBeInTheDocument();
     expect(within(imageSection).queryByTestId('generate-param-negative_prompt-input')).toBeNull();
+  });
+
+  it('shows each choice as its held value beside its name, listing every value only once opened', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const menu = screen.getByTestId('generate-param-texture_quality-menu');
+    expect(menu).toHaveTextContent('Standard');
+    expect(menu.parentElement).toHaveTextContent(t('canvas.generatePanel.param.texture_quality'));
+    expect(screen.queryByTestId('generate-param-texture_quality-option-fast')).toBeNull();
+
+    await user.click(menu);
+    expect(await screen.findByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('generate-param-texture_quality-option-fast')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('lets the view slots fill only in front, left, back, right order', async () => {
     const user = userEvent.setup();
     renderDialog();
     await ready();
-    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    await pickMode(user, 'i23d');
     expect(addable()).toEqual([true, false, false, false]);
 
     await user.click(screen.getByTestId('scene-generate-view-0-add'));
@@ -253,16 +289,17 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.pbr_needs_texture'), t('spaces.threeD.force.parts_geometry_only')]);
   });
 
-  it('holds the texture version at v3.5 under Fast, the v3.0 option saying why when pressed', async () => {
+  it('holds the texture version at v3.5 under Fast, its menu saying why when pressed', async () => {
     const user = userEvent.setup();
     renderDialog();
     await ready();
-    await user.click(screen.getByTestId('generate-param-texture_quality-option-fast'));
-    expect(screen.getByTestId('generate-param-texture_version-option-v3.5')).toHaveAttribute('aria-current', 'true');
-    const older = screen.getByTestId('generate-param-texture_version-option-v3.0');
-    expect(older).toHaveAttribute('aria-disabled', 'true');
-    await user.click(older);
-    expect(screen.getByTestId('generate-param-texture_version-option-v3.5')).toHaveAttribute('aria-current', 'true');
+    await pick(user, 'texture_quality', 'fast');
+    expect(screen.getByTestId('generate-param-texture_version-menu')).toHaveTextContent(valueLabel('texture_version', 'v3.5'));
+    const version = screen.getByTestId('generate-param-texture_version-menu');
+    expect(version).toHaveAttribute('aria-disabled', 'true');
+    await user.click(version);
+    expect(screen.queryByTestId('generate-param-texture_version-option-v3.0')).toBeNull();
+    expect(version).toHaveTextContent(valueLabel('texture_version', 'v3.5'));
     expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.fast_uses_v35')]);
   });
 
@@ -296,28 +333,28 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     const { rerender } = renderDialog();
     await ready();
     await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
-    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
+    await pick(user, 'texture_quality', 'detailed');
 
     rerender(false, null);
     rerender(true, null);
     await ready();
     expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('');
-    expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'standard'));
 
     await user.type(screen.getByTestId('scene-generate-prompt'), 'Something else');
     rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', params: { texture_quality: 'detailed', geometry_quality: 'detailed', negative_prompt: 'base' } }));
     await waitFor(() => expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
     expect(screen.getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
-    expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByTestId('generate-param-geometry_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'detailed'));
+    expect(screen.getByTestId('generate-param-geometry_quality-menu')).toHaveTextContent(valueLabel('geometry_quality', 'detailed'));
 
     rerender(false, null);
     rerender(true, fillOf({ mode: 'i23d', images: [view('a1')], params: { texture_alignment: 'geometry' } }));
     await ready();
-    expect(screen.getByTestId('scene-generate-mode-i23d')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('scene-generate-mode')).toHaveTextContent(MODE_LABEL.i23d);
     expect(slotImage(0)).toBe('https://cdn.test/a1.png');
-    expect(screen.getByTestId('generate-param-texture_alignment-option-geometry')).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByTestId('generate-param-texture_quality-option-standard')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-texture_alignment-menu')).toHaveTextContent(valueLabel('texture_alignment', 'geometry'));
+    expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'standard'));
   });
 
   it('closes while the submit waits, and the answer still hands its row on', async () => {
@@ -382,7 +419,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     const { onOpenChange, onSubmitted } = renderDialog();
     await ready();
     await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
-    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
+    await pick(user, 'texture_quality', 'detailed');
     await user.click(screen.getByTestId('scene-generate-run'));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
 
@@ -391,7 +428,7 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onSubmitted).not.toHaveBeenCalled();
     expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A lamp');
-    expect(screen.getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'detailed'));
     expect(screen.getByTestId('scene-generate-run')).toBeEnabled();
   });
 
@@ -414,18 +451,18 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     // Text to 3D, Standard texture: $0.24.
     await waitFor(() => expect(credit).toHaveTextContent(/^24$/));
     // Image to 3D, Standard texture: $0.36.
-    await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+    await pickMode(user, 'i23d');
     await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
-    await user.click(screen.getByTestId('scene-generate-mode-t23d'));
+    await pickMode(user, 't23d');
     await waitFor(() => expect(credit).toHaveTextContent(/^24$/));
     // Detailed texture: $0.36.
-    await user.click(screen.getByTestId('generate-param-texture_quality-option-detailed'));
+    await pick(user, 'texture_quality', 'detailed');
     await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
     // Separate parts forces geometry only, priced as $0.12 plus $0.24 whatever the texture quality held.
     await user.click(screen.getByTestId('generate-param-generate_parts-toggle'));
     await waitFor(() => expect(credit).toHaveTextContent(/^36$/));
     // Detailed geometry adds $0.24.
-    await user.click(screen.getByTestId('generate-param-geometry_quality-option-detailed'));
+    await pick(user, 'geometry_quality', 'detailed');
     await waitFor(() => expect(credit).toHaveTextContent(/^60$/));
   });
 });
@@ -454,7 +491,7 @@ async function startFrontUpload(user: ReturnType<typeof userEvent.setup>): Promi
     sinks = deps;
     return new Promise<void>(() => undefined);
   });
-  await user.click(screen.getByTestId('scene-generate-mode-i23d'));
+  await pickMode(user, 'i23d');
   await user.click(screen.getByTestId('scene-generate-view-0-add'));
   await user.click(await screen.findByTestId('scene-generate-view-upload'));
   await user.upload(screen.getByTestId('scene-generate-view-file-input'), new File(['png'], 'front.png', { type: 'image/png' }));

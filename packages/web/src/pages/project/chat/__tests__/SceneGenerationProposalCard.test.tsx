@@ -111,6 +111,17 @@ describe('what the card shows', () => {
     expect(screen.getByText(/PBR: Off/)).toBeInTheDocument();
   });
 
+  it('keeps each setting\'s name and value on one line, wrapping only between settings', async () => {
+    draw({ ...TEXT_TO_3D, params: { ...TEXT_TO_3D.params, texture: false, pbr: false } }, true);
+
+    const summary = await screen.findByTestId('scene-proposal-settings');
+    const parts = [...summary.querySelectorAll('span')];
+    expect(parts.length).toBeGreaterThan(1);
+    for (const part of parts) expect(part).toHaveClass('whitespace-nowrap');
+    expect(parts.map((part) => part.textContent)).toContain('Texture quality: Detailed');
+    expect(summary.textContent).toBe(parts.map((part) => part.textContent).join(' · '));
+  });
+
   it('shows the input images of an image-to-3D proposal in view order', async () => {
     const { container } = draw(IMAGE_TO_3D, true);
 

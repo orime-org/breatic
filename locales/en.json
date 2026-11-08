@@ -2335,7 +2335,7 @@
         "prompt": "Prompt",
         "promptPlaceholder": "Describe the 3D model you want",
         "views": "Reference images",
-        "viewsHint": "Fill views in front, left, back, right order.",
+        "viewsHint": "Fill views in front, left, back, right order. A front view alone makes a single-image model; any other view makes a multi-view one.",
         "view": {
           "front": "Front",
           "left": "Left",

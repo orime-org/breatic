@@ -11,7 +11,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromProposal } from '@web/spaces/three-d/scene-generation';
-import { PROJECT, RAW_CATALOG, SPACE } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
+import { MODE_LABEL, PROJECT, RAW_CATALOG, SPACE, valueLabel } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn(async (url: string) => {
   if (url === '/models') return RAW_CATALOG;
@@ -144,7 +144,7 @@ describe('SceneCreationMenu entries by project role and scene readiness (inner#1
     expect(generate).not.toHaveAttribute('aria-disabled', 'true');
     await user.click(generate);
     const dialog = await screen.findByRole('dialog', { name: 'AI generation' });
-    expect(await within(dialog).findByTestId('scene-generate-mode-t23d')).toBeInTheDocument();
+    expect(await within(dialog).findByTestId('scene-generate-mode')).toHaveTextContent(MODE_LABEL.t23d);
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });
@@ -199,7 +199,7 @@ describe('SceneCreationMenu receiving Agent proposals (inner#1691 design 6.2, 8.
     await within(dialog).findByTestId('generate-param-texture-toggle');
     await waitFor(() => expect(within(dialog).getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
     expect(within(dialog).getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
-    expect(within(dialog).getByTestId('generate-param-texture_quality-option-detailed')).toHaveAttribute('aria-current', 'true');
+    expect(within(dialog).getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'detailed'));
     expect(store.getState().incoming).toBeNull();
 
     await user.click(within(dialog).getByTestId('scene-generate-run'));

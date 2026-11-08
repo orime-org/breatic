@@ -42,7 +42,7 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
   const { data: catalog } = useQuery(modelCatalogQuery());
   const entry = React.useMemo(() => catalog?.three_d.find((candidate) => candidate.name === proposal.model), [catalog, proposal.model]);
   const settings = React.useMemo(() => {
-    if (entry === undefined) return '';
+    if (entry === undefined) return [];
     /**
      * A setting's name on screen.
      * @param name - The param.
@@ -57,7 +57,7 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
      */
     const named = (name: string, value: string): string => t('chat.sceneProposal.setting', { name, value });
     // The tool resolved the params already.
-    return ownControlSummary(entry, proposal.mode, proposal.params, nameOf, MAIN_SETTING, named, t('canvas.generatePanel.switchOff')).join(' · ');
+    return ownControlSummary(entry, proposal.mode, proposal.params, nameOf, MAIN_SETTING, named, t('canvas.generatePanel.switchOff'));
   }, [entry, proposal.mode, proposal.params, t]);
   const needScene = t('chat.sceneProposal.needScene');
   const open = React.useCallback((): void => {
@@ -82,7 +82,10 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
         : <div className='flex items-center gap-1.5'>{proposal.images.map((image) => <HoverPreview key={image.assetId} kind='image' src={image.url}>
           <span className='inline-flex shrink-0'><img src={image.url} alt='' className='size-7 rounded-content-xs object-cover' /></span>
         </HoverPreview>)}</div>}
-      {settings === '' ? null : <p className='text-muted-foreground'>{settings}</p>}
+      {/* Each "name: value" stays on one line; a long list wraps only between them. */}
+      {settings.length === 0 ? null : <p data-testid='scene-proposal-settings' className='text-muted-foreground'>
+        {settings.map((part, index) => <React.Fragment key={part}>{index > 0 ? ' · ' : null}<span className='whitespace-nowrap'>{part}</span></React.Fragment>)}
+      </p>}
     </div>
     <ProposalActions><ProposalAction data-testid='scene-proposal-open' onClick={open}>{t('chat.sceneProposal.open')}</ProposalAction></ProposalActions>
   </div>;

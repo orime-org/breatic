@@ -141,3 +141,19 @@ export function projectImage(assetId: string, displayName: string | null = `${as
 }
 
 export { PROJECT, SPACE };
+
+/**
+ * The name a choice's value shows under, as the image entry declares it.
+ * @param param - The setting.
+ * @param value - The value.
+ * @returns Its name on screen.
+ */
+export function valueLabel(param: string, value: string): string {
+  const declared = (RAW_CATALOG.three_d[1]!.params as Record<string, { value_labels?: Record<string, string> }>)[param];
+  const label = declared?.value_labels?.[value];
+  if (label === undefined) throw new Error(`no label for ${param}=${value}`);
+  return label;
+}
+
+/** The footer pill's name for each way to generate. */
+export const MODE_LABEL = { t23d: 'Text to 3D', i23d: 'Image to 3D' } as const;

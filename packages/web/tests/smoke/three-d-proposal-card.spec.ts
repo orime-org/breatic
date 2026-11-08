@@ -86,7 +86,7 @@ test('the card opens the 3D Space in front on a generation dialog filled from th
   const dialog = page.getByRole('dialog', { name: 'AI generation', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Filled in from the Agent’s proposal. Check it, then generate.');
-  await expect(dialog.getByTestId('scene-generate-mode-t23d')).toHaveAttribute('aria-current', 'true');
+  await expect(dialog.getByTestId('scene-generate-mode')).toHaveText('Text to 3D');
   await expect(dialog.getByLabel('Prompt', { exact: true })).toHaveValue('A small wooden treasure chest');
   await expect(dialog.getByLabel('Negative prompt', { exact: true })).toHaveValue('cracks');
   await expect(dialog.getByRole('switch', { name: 'Texture', exact: true })).toHaveAttribute('aria-checked', 'false');

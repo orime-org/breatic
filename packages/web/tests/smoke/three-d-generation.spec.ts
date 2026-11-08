@@ -63,6 +63,17 @@ async function shownCredits(dialog: Locator): Promise<number> {
 }
 
 /**
+ * Switch the dialog to Image to 3D from its footer pill; the list opens above it, outside the dialog.
+ * @param page - The Project page.
+ * @param dialog - The generation dialog.
+ */
+async function imageTo3D(page: Page, dialog: Locator): Promise<void> {
+  await dialog.getByTestId('scene-generate-mode').click();
+  await page.getByTestId('scene-generate-mode-i23d').click();
+  await expect(dialog.getByTestId('scene-generate-mode')).toHaveText('Image to 3D');
+}
+
+/**
  * Turn texture off the only way the dialog lets it: PBR first, which holds texture on.
  * @param dialog - The dialog.
  * @returns The credits shown before and after.
@@ -119,7 +130,7 @@ async function generateAndPlace(page: Page, dialog: Locator, spaceId: string): P
  */
 async function seedProjectImages(page: Page, names: string[]): Promise<void> {
   const dialog = await openDialog(page);
-  await dialog.getByTestId('scene-generate-mode-i23d').click();
+  await imageTo3D(page, dialog);
   await roomForUploads(names.length);
   for (const [index, name] of names.entries()) {
     const chooser = page.waitForEvent('filechooser');
@@ -169,7 +180,7 @@ test('one picture chosen from the Project runs to a model placed in the scene @n
   const front = `front-${crypto.randomUUID()}.jpg`;
   await seedProjectImages(page, [front]);
   const dialog = await openDialog(page);
-  await dialog.getByTestId('scene-generate-mode-i23d').click();
+  await imageTo3D(page, dialog);
   await expect(dialog.getByTestId('scene-generate-view-0').locator('img')).toHaveCount(0);
   await chooseFromProject(page, dialog, 0, front);
   const credits = await geometryOnly(dialog);
@@ -186,7 +197,7 @@ test('front and left views chosen from the Project run to a model placed in the 
   const views = [`front-${crypto.randomUUID()}.jpg`, `left-${crypto.randomUUID()}.jpg`];
   await seedProjectImages(page, views);
   const dialog = await openDialog(page);
-  await dialog.getByTestId('scene-generate-mode-i23d').click();
+  await imageTo3D(page, dialog);
   await chooseFromProject(page, dialog, 0, views[0]);
   await chooseFromProject(page, dialog, 1, views[1]);
   const credits = await geometryOnly(dialog);

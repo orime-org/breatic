@@ -1398,11 +1398,11 @@ export function renderProductGuide(): string {
       `When the model list cannot be loaded, it closes at once and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or, when offline, ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))} ` +
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
-      `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share: switches, option rows and number boxes. ` +
+      `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share, in two columns with each setting's name at the left of its row: switches, choices that show the value set and list every value when clicked, and number boxes. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
       `${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
       "A value a setting does not accept shows the rule it breaks under that setting. " +
-      "The middle part holds the mode's own content and its own settings. " +
+      "The middle part holds the mode's own content and, below it, its own settings laid out the same way. " +
       `For Text to 3D that is the ${quoted(t("spaces.threeD.generateDialog.prompt"))} box with a character count. ` +
       `For Image to 3D it is ${quoted(t("spaces.threeD.generateDialog.views"))}: four view slots, ${quoted(t("spaces.threeD.generateDialog.view.front"))}, ` +
       `${quoted(t("spaces.threeD.generateDialog.view.left"))}, ${quoted(t("spaces.threeD.generateDialog.view.back"))} and ${quoted(t("spaces.threeD.generateDialog.view.right"))}, ` +
@@ -1418,7 +1418,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.picker.project"))} lists this Project's pictures, and ${quoted(t("spaces.threeD.picker.more"))} reads the next page; ` +
       `${quoted(t("spaces.threeD.picker.local"))} takes ${quoted(t("spaces.threeD.picker.formats"))} through ${quoted(t("spaces.threeD.picker.chooseFile"))}, which uploads into the slot. ` +
       "Clicking a picture or choosing a file closes it and fills the slot. " +
-      "The bottom row has the mode switch at the left, Text to 3D or Image to 3D, named in English on every screen, followed by the model that runs, Tripo H3.1; at the right, a star with the credit " +
+      "The bottom row has a rounded mode button at the left showing Text to 3D or Image to 3D, named in English on every screen, whose list opens upward to switch, " +
+      "followed by the model that runs, Tripo H3.1; at the right, a star with the credit " +
       "estimate and the round button with an upward arrow, which generates. That button is unavailable while a view is uploading, a setting is not accepted, " +
       "the prompt is empty (Text to 3D), no view is filled or a view's upload failed (Image to 3D). " +
       `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row, clearing the panel's filters if they would hide it; a generation that could not start gets its row too, with the reason and Retry. ` +
@@ -1453,7 +1454,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.taskList.retry"))}: it opens the generation dialog filled with that task's prompt or pictures and settings, saying ` +
       `${quoted(t("spaces.threeD.generateDialog.descriptionRetry"))} On a timed-out row Retry first checks the task: if it is still running it says ` +
       `${quoted(t("spaces.threeD.taskList.stillRunning"))} and if its model has arrived it says ${quoted(t("spaces.threeD.taskList.hasResult"))} ` +
-      `Any row whose model is in the scene has ${quoted(t("spaces.threeD.taskList.locate"))}, which selects every object placed from it and keeps the panel open. ` +
+      `Any row whose model is in the scene has ${quoted(t("spaces.threeD.taskList.locate"))}, which selects every object placed from it, turns the view so they are all in sight, and keeps the panel open. ` +
       `A row holding a model cannot be removed. A Viewer sees the list with no button but ${quoted(t("spaces.threeD.taskList.locate"))}. ` +
       `When there are none it says ${quoted(t("spaces.threeD.taskList.empty"))} The project activity records each import whose file was uploaded, under the model's name; importing a model this studio already has adds no activity entry.`,
     `A 3D generation you propose appears in this chat as a card headed ${quoted(t("chat.sceneProposal.title"))}: your short reason, the mode (Text to 3D or Image to 3D, in English), ` +

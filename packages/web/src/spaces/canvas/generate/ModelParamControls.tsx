@@ -18,7 +18,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
-import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ChoiceMenu } from '@web/spaces/canvas/generate/ChoiceMenu';
+import { ParamOptionGroup, type ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
@@ -54,6 +55,12 @@ interface ModelParamControlsProps {
   locked?: Readonly<Record<string, string>>;
   /** The rule a param's value breaks, said under its control (inner#1691). */
   errors?: Readonly<Record<string, string>>;
+  /**
+   * Each choice and whole number on one row, its name left and a menu or box
+   * right, as a dialog lays its settings out in columns (inner#1691); a wider
+   * control spans every column.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -81,6 +88,7 @@ function asPercent(value: number): string {
  * @param root0.controls - The controls to draw in place of the model's own.
  * @param root0.autoNote - Said after an Auto value's name.
  * @param root0.evenOptions - Whether option groups share their width evenly.
+ * @param root0.inline - Whether choices and whole numbers sit on one row with their names.
  * @param root0.locked - Params a rule holds, with what a press says.
  * @param root0.errors - The rule each param's value breaks.
  * @returns The controls, or null when the model has none of its own.
@@ -98,6 +106,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   evenOptions = false,
   locked,
   errors,
+  inline = false,
 }: ModelParamControlsProps): React.JSX.Element | null {
   const t = useTranslation();
   const controls = React.useMemo(
@@ -135,6 +144,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
             even={evenOptions}
             lockedReason={locked?.[control.name]}
             error={errors?.[control.name]}
+            inline={inline}
           />
         ),
       )}
@@ -156,7 +166,12 @@ interface ModelControlRowProps {
   lockedReason: string | undefined;
   /** The rule its value breaks. */
   error: string | undefined;
+  /** Whether a choice or whole number sits on one row with its name. */
+  inline: boolean;
 }
+
+/** Controls that fit beside their name on one row. */
+const INLINE_KINDS: ReadonlySet<ModelControl['kind']> = new Set(['toggle', 'choice', 'integer']);
 
 /**
  * Say why a held control does not change.
@@ -179,15 +194,18 @@ function lockNotice(reason: string | undefined): (() => void) | undefined {
  * @param root0.even - Whether an option group's options share its width evenly.
  * @param root0.lockedReason - What a press says while a rule holds this param.
  * @param root0.error - The rule its value breaks.
+ * @param root0.inline - Whether it sits on one row with its name.
  * @returns The row.
  */
-function ModelControlRow({ control, label, shown, customShown, onChange, autoNote, even, lockedReason, error }: ModelControlRowProps): React.JSX.Element {
-  const row = <ModelControlBody control={control} label={label} shown={shown} customShown={customShown} onChange={onChange}
-    autoNote={autoNote} even={even} lockedReason={lockedReason} error={error} />;
+function ModelControlRow({ control, label, shown, customShown, onChange, autoNote, even, lockedReason, error, inline }: ModelControlRowProps): React.JSX.Element {
+  const body = <ModelControlBody control={control} label={label} shown={shown} customShown={customShown} onChange={onChange}
+    autoNote={autoNote} even={even} lockedReason={lockedReason} error={error} inline={inline} />;
+  const wide = inline && !INLINE_KINDS.has(control.kind) ? 'col-span-full' : undefined;
+  const row = wide === undefined ? body : <div className={wide}>{body}</div>;
   // An integer box writes on every keystroke, so it draws its own rule line:
   // wrapping it here when the rule breaks would remount the box mid-typing.
   if (error === undefined || control.kind === 'integer') return row;
-  return <div>{row}<p className='mt-1 text-xs text-status-error'>{error}</p></div>;
+  return <div className={wide}>{body}<p className='mt-1 text-xs text-status-error'>{error}</p></div>;
 }
 
 /**
@@ -202,9 +220,10 @@ function ModelControlRow({ control, label, shown, customShown, onChange, autoNot
  * @param root0.even - Whether an option group's options share its width evenly.
  * @param root0.lockedReason - What a press says while a rule holds this param.
  * @param root0.error - The rule its value breaks.
+ * @param root0.inline - Whether it sits on one row with its name.
  * @returns The control.
  */
-function ModelControlBody({ control, label, shown, customShown, onChange, autoNote, even, lockedReason, error }: ModelControlRowProps): React.JSX.Element {
+function ModelControlBody({ control, label, shown, customShown, onChange, autoNote, even, lockedReason, error, inline }: ModelControlRowProps): React.JSX.Element {
   const t = useTranslation();
   const prefix = `generate-param-${control.name}`;
   switch (control.kind) {
@@ -219,6 +238,11 @@ function ModelControlBody({ control, label, shown, customShown, onChange, autoNo
         />
       );
     case 'choice':
+      if (inline) {
+        return (
+          <InlineChoice name={control.name} label={label} options={control.options} shown={shown} onChange={onChange} lockedReason={lockedReason} />
+        );
+      }
       return (
         <ParamOptionGroup
           label={label}
@@ -289,6 +313,7 @@ function ModelControlBody({ control, label, shown, customShown, onChange, autoNo
           held={shown === undefined || shown === null ? '' : String(shown)}
           onChange={onChange}
           error={error}
+          inline={inline}
         />
       );
   }
@@ -300,6 +325,45 @@ interface IntegerControlProps {
   held: string;
   onChange: (partial: Record<string, unknown>) => void;
   error: string | undefined;
+  inline: boolean;
+}
+
+/** The width of a menu or box beside its name, so both columns line up. */
+const INLINE_CONTROL = 'w-36 shrink-0';
+
+interface InlineChoiceProps {
+  name: string;
+  label: string;
+  options: readonly ParamOption[];
+  shown: unknown;
+  onChange: (partial: Record<string, unknown>) => void;
+  lockedReason: string | undefined;
+}
+
+/**
+ * A choice on one row: its name, then a menu of its options (inner#1691).
+ * @param root0 - Props.
+ * @param root0.name - The param name.
+ * @param root0.label - Its name on screen.
+ * @param root0.options - Its options.
+ * @param root0.shown - What it is set to.
+ * @param root0.onChange - Called with the changed param.
+ * @param root0.lockedReason - What a press says while a rule holds it.
+ * @returns The row.
+ */
+function InlineChoice({ name, label, options, shown, onChange, lockedReason }: InlineChoiceProps): React.JSX.Element {
+  const id = React.useId();
+  const prefix = `generate-param-${name}`;
+  const items = React.useMemo(() => options.map((option) => ({ ...option, testId: `${prefix}-option-${String(option.value)}` })), [options, prefix]);
+  const select = React.useCallback((next: string | number): void => onChange({ [name]: next }), [onChange, name]);
+  const onLocked = React.useMemo(() => lockNotice(lockedReason), [lockedReason]);
+  return (
+    <div className='flex items-center justify-between gap-3'>
+      <label htmlFor={id} className='text-xs font-medium text-muted-foreground'>{label}</label>
+      <ChoiceMenu id={id} value={typeof shown === 'string' || typeof shown === 'number' ? shown : undefined} options={items} onSelect={select}
+        triggerTestId={`${prefix}-menu`} triggerClassName={cn(INLINE_CONTROL, 'justify-between rounded-overlay')} onLocked={onLocked} />
+    </div>
+  );
 }
 
 /**
@@ -312,32 +376,48 @@ interface IntegerControlProps {
  * @param root0.held - What the box shows.
  * @param root0.onChange - Called with each edit.
  * @param root0.error - The rule its value breaks.
+ * @param root0.inline - Whether it sits on one row with its name.
  * @returns The row.
  */
-function IntegerControl({ name, label, held, onChange, error }: IntegerControlProps): React.JSX.Element {
+function IntegerControl({ name, label, held, onChange, error, inline }: IntegerControlProps): React.JSX.Element {
   const t = useTranslation();
   const id = React.useId();
   const change = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     const text = event.target.value.trim();
     onChange({ [name]: text === '' ? null : /^-?\d+$/.test(text) ? Number(text) : event.target.value });
   }, [onChange, name]);
+  const box = (
+    <Input
+      autoComplete='off'
+      id={id}
+      inputMode='numeric'
+      data-testid={`generate-param-${name}-input`}
+      placeholder={t('canvas.generatePanel.integerBlank')}
+      value={held}
+      onChange={change}
+      aria-invalid={error === undefined ? undefined : true}
+      className={cn('h-8 text-xs', inline && INLINE_CONTROL)}
+    />
+  );
+  const said = error === undefined ? null : <p className='mt-1 text-xs text-status-error'>{error}</p>;
+  if (inline) {
+    return (
+      <div>
+        <div className='flex items-center justify-between gap-3'>
+          <label htmlFor={id} className='text-xs font-medium text-muted-foreground'>{label}</label>
+          {box}
+        </div>
+        {said}
+      </div>
+    );
+  }
   return (
     <div>
       <label htmlFor={id} className='mb-1.5 block text-xs font-medium text-muted-foreground'>
         {label}
       </label>
-      <Input
-        autoComplete='off'
-        id={id}
-        inputMode='numeric'
-        data-testid={`generate-param-${name}-input`}
-        placeholder={t('canvas.generatePanel.integerBlank')}
-        value={held}
-        onChange={change}
-        aria-invalid={error === undefined ? undefined : true}
-        className='h-8 text-xs'
-      />
-      {error === undefined ? null : <p className='mt-1 text-xs text-status-error'>{error}</p>}
+      {box}
+      {said}
     </div>
   );
 }

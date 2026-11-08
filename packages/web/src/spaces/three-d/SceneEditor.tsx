@@ -328,7 +328,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
 
   const placedAssetIds = React.useMemo(() => new Set(snapshot.objects.flatMap((object) => (object.model.kind === 'asset' ? [object.model.assetId] : []))), [snapshot.objects]);
   /**
-   * Select the scene's objects of one model, keeping the task list open.
+   * Select the scene's objects of one model and frame them all, keeping the task list open.
    * @param assetId - The model.
    */
   const locateAsset = React.useCallback((assetId: string): void => {
@@ -336,6 +336,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (ids.length === 0) return;
     keepTasksPanel.current = true;
     ids.forEach((id, index) => session.select(id, index > 0));
+    setFocusRevision((value) => value + 1);
   }, [snapshot.objects, session]);
 
   const wasRightOpen = React.useRef(false);

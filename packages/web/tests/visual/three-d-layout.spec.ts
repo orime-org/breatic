@@ -100,9 +100,12 @@ test('scene floating panels preserve the approved stage, Escape and development 
     await expect(page.getByTestId('scene-tasks-panel')).toHaveText('Models you import or generate appear here.');
     await scene.getByRole('button', { name: 'AI generation', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'AI generation', exact: true });
-    await expect(dialog.getByTestId('scene-generate-mode-t23d')).toHaveText('Text to 3D');
-    await expect(dialog.getByTestId('scene-generate-mode-t23d')).toHaveAttribute('aria-current', 'true');
-    await expect(dialog.getByTestId('scene-generate-mode-i23d')).toHaveText('Image to 3D');
+    await expect(dialog.getByTestId('scene-generate-mode')).toHaveText('Text to 3D');
+    await dialog.getByTestId('scene-generate-mode').click();
+    await expect(page.getByTestId('scene-generate-mode-t23d')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('scene-generate-mode-i23d')).toHaveText('Image to 3D');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('scene-generate-mode-i23d')).toBeHidden();
     const common = dialog.getByTestId('scene-generate-common');
     for (const setting of ['Texture', 'PBR', 'Smart low-poly', 'Separate parts', 'Export UV']) await expect(common.getByRole('switch', { name: setting, exact: true })).toBeVisible();
     await expect(common.getByText('Geometry quality', { exact: true })).toBeVisible();

@@ -1,16 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
-import { Button } from '@web/components/ui/button';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@web/components/ui/popover';
-import { cn } from '@web/lib/utils';
+import { ChoiceMenu } from '@web/spaces/canvas/generate/ChoiceMenu';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** One selectable generation mode. */
@@ -69,63 +62,41 @@ export const ModeToggle = React.memo(function ModeToggle({
   // popover would drift off its trigger — same fix as the ratio / camera / model
   // pickers. Inert while closed.
   useFollowCanvasViewport(open);
-  const active = options.find((o) => o.value === value);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid={triggerTestId}
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          {/* Falls back to the raw id when the active mode is not offered here
-              — the same degradation the model picker makes, so a node carrying
-              a mode from another panel still reads as something. */}
-          {active?.label ?? value}
-          <ChevronDown
-            className='h-3.5 w-3.5 shrink-0 opacity-60'
-            aria-hidden='true'
-          />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side='top'
-        align='start'
-        // Clip, don't flip/shift, at a screen edge (like the ratio / camera / model
-        // pickers): a following popover (useFollowCanvasViewport) that flipped would
-        // fight the follow and jump as the canvas pans (user's clip-not-jump, #1788).
-        avoidCollisions={false}
-        className='w-auto min-w-[10rem] p-1 shadow-md'
-      >
-        {/* Same option pattern as LangSwitcher / ThemeToggle: a gap-0.5 column
-            of ghost menu-item Buttons — the gap keeps the hover and chosen
-            highlights visually separate. Single-choice, so the fill is the
-            whole mark; a check mark reads as "more than one can be on at
-            once" (DESIGN.md §5.3). */}
-        <div className='flex flex-col gap-0.5'>
-          {options.map(({ value: mode, label, testId }) => (
-            <Button
-              key={mode}
-              variant='ghost'
-              size='menu-item'
-              aria-pressed={mode === value}
-              data-testid={testId}
-              className={cn(
-                'justify-start',
-                mode === value && 'bg-accent-strong hover-enabled:bg-accent-strong',
-              )}
-              onClick={() => {
-                if (mode !== value) onChange(mode);
-                setOpen(false);
-              }}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <ModePill value={value} options={options} onChange={onChange} triggerTestId={triggerTestId}
+      // Clip, don't flip/shift, at a screen edge (like the ratio / camera / model
+      // pickers): a following popover that flipped would fight the follow and
+      // jump as the canvas pans (user's clip-not-jump, #1788).
+      avoidCollisions={false} onOpenChange={setOpen} />
   );
 });
+
+interface ModePillProps extends ModeToggleProps {
+  /** Whether the list moves to stay on screen. */
+  avoidCollisions?: boolean;
+  /** Told when the list opens or closes. */
+  onOpenChange?: (open: boolean) => void;
+  /** Whether the pill cannot be pressed. */
+  disabled?: boolean;
+}
+
+/**
+ * The mode pill on its own, for a panel that does not sit on the canvas (the
+ * 3D generation dialog, inner#1691): it opens upward, a list of the modes.
+ * @param root0 - Props.
+ * @param root0.value - The active generation mode.
+ * @param root0.options - The modes offered.
+ * @param root0.onChange - Called with the newly-picked mode.
+ * @param root0.triggerTestId - Test id for the pill.
+ * @param root0.avoidCollisions - Whether the list moves to stay on screen.
+ * @param root0.onOpenChange - Told when the list opens or closes.
+ * @param root0.disabled - Whether the pill cannot be pressed.
+ * @returns The pill.
+ */
+export function ModePill({ value, options, onChange, triggerTestId, avoidCollisions, onOpenChange, disabled }: ModePillProps): React.JSX.Element {
+  const select = React.useCallback((next: string | number): void => onChange(String(next)), [onChange]);
+  return (
+    <ChoiceMenu value={value} options={options} onSelect={select} triggerTestId={triggerTestId} triggerClassName='shrink-0 rounded-full'
+      side='top' avoidCollisions={avoidCollisions} onOpenChange={onOpenChange} disabled={disabled} />
+  );
+}
