@@ -10,17 +10,23 @@
 # Our code, the shared protocol it reads (resolved through tsconfig's
 # @shared/* path) and zod go into the bundle. The four libraries the service
 # runs are installed in the image that runs, at the versions
-# packages/ingest/package.json pins: Playwright brings its browser files, and
-# Readability is read as a file and run inside each page.
+# packages/ingest/package.json pins, read from it here so the two cannot
+# drift: Playwright brings its browser files, and Readability is read as a
+# file and run inside each page.
 FROM node:24-bookworm-slim AS build
 WORKDIR /src/packages/ingest
 COPY tsconfig.base.json /src/tsconfig.base.json
 COPY packages/ingest/web-reader ./web-reader
+COPY packages/ingest/package.json ./package.json
 COPY packages/shared/src /src/packages/shared/src
 COPY scripts/release.mjs /src/scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
 RUN mkdir -p /out && node /src/scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /out/build-info.json
+RUN node -e 'const d = require("./package.json").dependencies; \
+  const names = ["playwright-core", "@mozilla/readability", "turndown", "unpdf"]; \
+  for (const n of names) if (!d[n]) throw new Error(`${n} is not a dependency of packages/ingest`); \
+  require("fs").writeFileSync("/out/runtime-libs.txt", names.map((n) => `${n}@${d[n]}`).join(" "));'
 # Pinned so the image builds the same way on every machine, as the media
 # container's esbuild is; zod at the version the workspace catalog resolves.
 RUN npm install --prefix /src/packages/shared --no-audit --no-fund --no-save zod@4.4.3 \
@@ -41,8 +47,8 @@ WORKDIR /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # The headless shell only: the full browser opens a PDF in its own viewer and
 # reads nothing, where the shell hands a PDF over as a download.
-RUN npm install --no-audit --no-fund --omit=dev \
-    playwright-core@1.62.1 @mozilla/readability@0.6.0 turndown@7.2.0 unpdf@1.1.0 \
+COPY --from=build /out/runtime-libs.txt /app/runtime-libs.txt
+RUN npm install --no-audit --no-fund --omit=dev $(cat /app/runtime-libs.txt) \
   && npx playwright-core install --with-deps --only-shell chromium \
   && rm -rf /var/lib/apt/lists/* /root/.npm
 
