@@ -727,6 +727,40 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
       const rect = face1(s)!;
       expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 at source ${s}'s face shows result frame ${k}`).toBeLessThan(3.5);
     });
+    // The chunk goes back through the source, so only its union window [6, 10) is decoded to a raw file.
+    const outputs = [...vi.mocked(runPlanCommand).mock.calls, ...vi.mocked(startPlanCommand).mock.calls].map(([, args]) => (args as string[]).at(-1)!);
+    expect(outputs.filter(output => output.endsWith('.yuv'))).toEqual([expect.stringMatching(/composite-source\.yuv$/)]);
+  });
+
+  // Execution design paragraph before §9.4: a chunk whose source frames never go back streams the source, every person's
+  // result (seeked to the window, never decoded from frame 0) and the output through pipes, writing no raw file.
+  it.each([
+    ['cut_off', 0.4, { start: 2, end: 9 }], ['silence', 0.72, { start: 6, end: 16 }], ['remap', 0.72, { start: 3, end: 15 }],
+  ] as const)('LM04 a forward %s chunk streams its frames and writes no raw file', async (syncMode, duration, window) => {
+    const timeline: LipsyncTimeline = { duration, videoDuration: V, syncMode };
+    const sources = Array.from({ length: window.end - window.start }, (_unused, j) => lipsyncSourceFrameAt(timeline, TABLE, (window.start + j) / FPS));
+    const shown = { start: Math.min(...sources), end: Math.max(...sources) + 1 };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(shown.start, 25), displayStart: r(shown.start, 25), displayEnd: r(shown.end, 25), rate: r(1) }];
+    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline, window, entries });
+    const calls = [...vi.mocked(runPlanCommand).mock.calls, ...vi.mocked(startPlanCommand).mock.calls].map(([program, args]) => ({ program, args: args as string[] }));
+    expect(calls.filter(({ args }) => args.at(-1)!.endsWith('.yuv')), 'no raw file').toEqual([]);
+    // Person results are the job's inputs after the source: each is opened at the window, not trimmed from frame 0.
+    const persons = calls.filter(({ program, args }) => program === 'ffmpeg' && args.some((arg, at) => args[at - 1] === '-i' && /source-[1-9]$/.test(arg)) && args.at(-1) === 'pipe:1');
+    expect(persons).toHaveLength(2);
+    for (const { args } of persons) {
+      expect(args.join(' ')).not.toContain('trim=start_frame');
+      expect(args.indexOf('-ss'), 'seeks before opening the result').toBeLessThan(args.indexOf('-i'));
+      expect(args.indexOf('-ss')).toBeGreaterThanOrEqual(0);
+    }
+    const [y, source] = await Promise.all([planeFrames(file, 'y'), planeFrames(join(dir, 'comp-source.mp4'), 'y')]);
+    expect(y.frames).toHaveLength(window.end - window.start);
+    y.frames.forEach((frame, j) => {
+      const [k, s] = [window.start + j, sources[j]!];
+      expect(mad(frame, source.frames[s]!, W, OUTSIDE), `frame ${j} outside every mask is source ${s}`).toBeLessThan(2.5);
+      const rect = face1(s);
+      if (rect !== null) expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 shows result frame ${k}`).toBeLessThan(3.5);
+      expect(Math.abs(mean(frame, W, { x: 120, y: 56, width: 16, height: 16 }) - (160 - 5 * k)), `frame ${j} person 2 shows result frame ${k}`).toBeLessThan(3.5);
+    });
   });
 
   it('LM02 transparent: VP9 with alpha on the result clock, the source alpha kept everywhere including the faces', async () => {
