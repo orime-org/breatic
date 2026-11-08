@@ -71,7 +71,8 @@ describe("shared size constants and close reason", () => {
   });
 
   it("S-07 the built entry other packages load exports updateShape", async () => {
-    const dist = (await import("../../dist/index.js")) as Record<string, unknown>;
+    // The built file has no declarations; a computed specifier keeps tsc from looking for them.
+    const dist = (await import(new URL("../../dist/index.js", import.meta.url).href)) as Record<string, unknown>;
     expect(typeof dist.updateShape).toBe("function");
   });
 });
