@@ -61,11 +61,11 @@ export interface SizeFrame {
 }
 
 /**
- * Decode one server frame.
+ * Decode one frame, sent by the server or by a client.
  * @param bytes - The frame.
  * @returns The decoded frame.
  */
-function decodeFrame(bytes: Uint8Array): SizeFrame {
+export function decodeFrame(bytes: Uint8Array): SizeFrame {
   const decoder = decoding.createDecoder(bytes);
   const key = decoding.readVarString(decoder);
   const nul = key.indexOf("\0");
@@ -98,6 +98,10 @@ export interface SizeSocket {
   closedByServer(): boolean;
   /** The `seq` of every `doc:size-seen` this socket sent, oldest first, with the message key. */
   acks: Array<{ key: string; seq: unknown }>;
+  /** Every frame this socket sent, oldest first. */
+  sent: Uint8Array[];
+  /** Per message key: send the document's buffered updates now (design 5.6; set by `openDoc`). */
+  flushers: Map<string, () => void>;
 }
 
 /** How a socket speaks the size cap's acknowledgement (design 3, 5.1). */
@@ -106,6 +110,8 @@ export interface SizeAckOptions {
   sizeAck?: boolean;
   /** Whether each `doc:size` is answered with `doc:size-seen` in the same callback (default: as `sizeAck`). */
   autoAck?: boolean;
+  /** Runs in that callback when a `doc:size` arrives, before the buffered updates are flushed and the acknowledgement sent. */
+  beforeAck?: (key: string, push: Record<string, unknown>) => void;
 }
 
 /** One document opened on a socket. */
@@ -134,8 +140,10 @@ export interface SizeDocClient {
   sendSync(subType: number, payload: Uint8Array, outerType?: number): void;
   /** Ask for `sync:confirmed` and wait for it. */
   confirm(): Promise<Record<string, unknown>>;
-  /** Send `doc:size-seen` for a push `seq`. */
+  /** Send `doc:size-seen` for a push `seq`, after the buffered updates. */
   ack(seq: unknown): void;
+  /** Send the updates `edit` buffered (`flushDelayMs`), as `HocuspocusProvider.flushPendingUpdates` does. */
+  flushPendingUpdates(): void;
 }
 
 /**
@@ -145,6 +153,8 @@ export interface SizeDocClient {
  * @param seq - The push's `seq`.
  */
 function sendAck(socket: SizeSocket, key: string, seq: unknown): void {
+  // Design 5.6: a stateless message goes after the updates written before it.
+  socket.flushers.get(key)?.();
   socket.acks.push({ key, seq });
   socket.send(statelessFrame(key, JSON.stringify({ type: "doc:size-seen", seq })));
 }
@@ -167,7 +177,12 @@ export async function openSocket(port: number, cookie: string, opts: SizeAckOpti
     ws,
     frames: [],
     acks: [],
-    send: (bytes: Uint8Array): void => ws.send(bytes),
+    sent: [],
+    flushers: new Map(),
+    send: (bytes: Uint8Array): void => {
+      socket.sent.push(bytes);
+      ws.send(bytes);
+    },
     close: (): void => {
       closedHere = true;
       ws.terminate();
@@ -185,7 +200,9 @@ export async function openSocket(port: number, cookie: string, opts: SizeAckOpti
     socket.frames.push(frame);
     if (!autoAck || frame.stateless === undefined) return;
     const message = JSON.parse(frame.stateless) as Record<string, unknown>;
-    if (message.type === "doc:size") sendAck(socket, frame.key, message.seq);
+    if (message.type !== "doc:size") return;
+    opts.beforeAck?.(frame.key, message);
+    sendAck(socket, frame.key, message.seq);
   });
   await new Promise<void>((resolve, reject) => {
     ws.once("open", () => resolve());
@@ -203,16 +220,31 @@ export async function openSocket(port: number, cookie: string, opts: SizeAckOpti
  * @param opts.doc - The client copy to use (a fresh one by default).
  * @param opts.mode - The authorization the fixture expects.
  * @param opts.answerServerStep1 - Whether to answer the server's SyncStep1 automatically.
+ * @param opts.flushDelayMs - Buffer `edit` updates this long before sending, as a provider with `flushDelay` does (default: send at once).
  * @returns The opened document.
  * @throws {Error} When authentication does not complete.
  */
 export async function openDoc(
   socket: SizeSocket,
   documentName: string,
-  opts: { key?: string; doc?: Y.Doc; mode?: "read-write" | "readonly"; answerServerStep1?: boolean } = {},
+  opts: { key?: string; doc?: Y.Doc; mode?: "read-write" | "readonly"; answerServerStep1?: boolean; flushDelayMs?: number } = {},
 ): Promise<SizeDocClient> {
   const key = opts.key ?? documentName;
   const doc = opts.doc ?? new Y.Doc();
+  let pending: Uint8Array | undefined;
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Send the buffered updates as one Update.
+   */
+  const flushPendingUpdates = (): void => {
+    if (flushTimer !== undefined) clearTimeout(flushTimer);
+    flushTimer = undefined;
+    if (!pending) return;
+    const update = pending;
+    pending = undefined;
+    socket.send(syncFrame(key, WIRE.sync, SYNC.update, update));
+  };
+  socket.flushers.set(key, flushPendingUpdates);
   const since = socket.frames.length;
   let applied = since;
   let answered = false;
@@ -271,6 +303,11 @@ export async function openDoc(
       doc.transact(() => fn(doc));
       doc.off("update", listener);
       if (!update) throw new Error("the edit emitted no update");
+      if (opts.flushDelayMs !== undefined && outerType === WIRE.sync) {
+        pending = pending ? Y.mergeUpdates([pending, update]) : update;
+        flushTimer ??= setTimeout(flushPendingUpdates, opts.flushDelayMs);
+        return update;
+      }
       socket.send(syncFrame(key, outerType, SYNC.update, update));
       return update;
     },
@@ -292,6 +329,7 @@ export async function openDoc(
       return reply!;
     },
     ack: (seq: unknown): void => sendAck(socket, key, seq),
+    flushPendingUpdates,
   };
   return client;
 }

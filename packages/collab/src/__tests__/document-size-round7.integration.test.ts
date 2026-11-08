@@ -38,6 +38,7 @@ import type { ActivityCollabFixture } from "./helpers/account-activity-fixture.j
 import { S, fill } from "./helpers/document-size-fixtures.js";
 import {
   canvasOf,
+  decodeFrame,
   documentOf,
   member,
   openDoc,
@@ -521,3 +522,52 @@ describe("the size_ack connection parameter (spec 14b.5)", () => {
     await waitFor(() => socket.closedByServer(), "the server closes O's WebSocket", 10_000);
   });
 });
+
+describe("round 8: an update written before the full push goes ahead of its acknowledgement (spec 14c.1)", () => {
+  it("R8-02 a node a coalescing client wrote before it saw full is sent before the acknowledgement and admitted; its next node is refused", async () => {
+    const fixture = await seedCollabActivity();
+    const name = canvasOf(fixture);
+    const bytes = await seedFilled(name, S.L - 25_000);
+    expect(bytes).toBeGreaterThanOrEqual(S.W);
+    expect(bytes + 40_000).toBeGreaterThanOrEqual(S.L);
+    const holder: { a?: SizeDocClient } = {};
+    let wrote = false;
+    const socketA = await socketOf(fixture, {
+      // The user's a1 is still in the 1 ms send buffer when the full push is handled.
+      beforeAck: (key, push): void => {
+        if (wrote || holder.a === undefined || key !== name || push.phase !== "full") return;
+        wrote = true;
+        holder.a.edit((d) => addNode(d, "a1", "a"));
+      },
+    });
+    const a = await openDoc(socketA, name, { flushDelayMs: 1 });
+    holder.a = a;
+    await a.sync();
+    const b = await syncedOn(await member(fixture, "editor"), name);
+    const sentFrom = socketA.sent.length;
+
+    b.edit((d) => addNode(d, "big", "y".repeat(40_000)));
+    expect(await settle(b)).toEqual([]);
+    await waitFor(() => wrote && socketA.acks.length > 0, "A wrote a1 and acknowledged full", 10_000);
+    expect(await settle(a)).toEqual([]);
+
+    const sent = socketA.sent.slice(sentFrom).map(decodeFrame).filter((f) => f.documentName === name);
+    const updateAt = sent.findIndex((f) => f.syncSubType === SYNC.update && Buffer.from(f.payload ?? []).includes("a1"));
+    const ackAt = sent.findIndex((f) => f.stateless !== undefined && (JSON.parse(f.stateless) as { type?: unknown }).type === "doc:size-seen");
+    expect(updateAt).toBeGreaterThanOrEqual(0);
+    expect(ackAt).toBeGreaterThan(updateAt);
+
+    expect(a.closeReasons()).toEqual([]);
+    await b.confirm();
+    expect(nodesOf(b.doc).has("a1")).toBe(true);
+    expect(nodesOf(await persisted(active, name)).has("a1")).toBe(true);
+    expect(refusals(name)).toEqual([]);
+
+    await untilKnowsFull(active, size, name, fixture.userId);
+    a.edit((d) => addNode(d, "a2", "b"));
+    a.flushPendingUpdates();
+    await refusedFor(a);
+    expect(refusals(name).map((r) => r.step)).toEqual(["full"]);
+  });
+});
+

@@ -1849,3 +1849,27 @@ describe("round 7: the size_ack connection parameter (spec 14b.5)", () => {
   });
 });
 
+describe("round 8: an update that arrives before the acknowledgement (spec 14c.1)", () => {
+  it("R8-01 the insert A wrote before seeing full is admitted when it arrives ahead of the acknowledgement, refused when it arrives after", async () => {
+    for (const order of ["update first", "ack first"] as const) {
+      await boot();
+      const doc = await load(CV, combo().src);
+      setCur(CV, L - 1);
+      const a = await arrived(doc);
+      const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+      await accepts(doc, b, SYNC.update, insertOnly(doc, 201, 50_000));
+      expect(pushes(a).at(-1)?.phase).toBe("full");
+      const n = lastSeq(a);
+      const buffered = insertOnly(doc, 202);
+      if (order === "update first") {
+        await accepts(doc, a, SYNC.update, buffered);
+        await ack(doc, a, n);
+        expect(knows(CV, a)).toBe(true);
+      } else {
+        await ack(doc, a, n);
+        await refuses(doc, a, SYNC.update, buffered, "full");
+      }
+    }
+  });
+});
+
