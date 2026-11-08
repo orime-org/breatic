@@ -76,7 +76,7 @@ export type SizeCode = 'U' | 'N' | 'W' | 'F' | 'O' | 'Z';
 export function enterState(name: string, code: SizeCode): void {
   const pushes = { N: P_NORMAL, W: P_WARNING, F: P_FULL, O: P_OVER, Z: P_FULL } as const;
   if (code === 'U') return;
-  setDocSize(name, { type: 'doc:size', ...pushes[code] });
+  setDocSize(name, { type: 'doc:size', seq: 1, ...pushes[code] });
   if (code === 'Z') startDocResync(name);
 }
 

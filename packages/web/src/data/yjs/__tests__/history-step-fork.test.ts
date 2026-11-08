@@ -15,7 +15,7 @@
  *
  * Round 6 (spec 14 head, H-01, H-14, H-19, 21.5, ST-01): `nextHistoryStep`
  * returns the kind itself; an empty stack is not tried; a manager reuses its
- * last conclusion while the top entry, both stack lengths and the real
+ * last conclusion while the top entry of that direction and the real
  * document's update count are unchanged; every entry runs `runHistoryStep`.
  * A copy is counted as an `encodeStateAsUpdate` of the real document (`yjs`
  * mocked passing through).
@@ -69,6 +69,7 @@ import {
   redoneMap,
   resetCopies,
   spyOnSteps,
+  trialFor,
   trialKind,
   trialRan,
   type StepSpies,
@@ -727,6 +728,78 @@ describe('HC-04 to HC-08 a manager reuses its last conclusion', () => {
     expect(copiesOf(b.doc)).toBe(1);
     expect(b.nodes.has('n1')).toBe(true);
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * W7-36's history on a canvas document with an empty `nodesMap`: in warning,
+ * `n1` set, `n1` deleted and `n2` set, each its own step, then one undo
+ * (of `n2`). The redo stack holds one entry and the undo stack's top is the
+ * deletion of `n1`.
+ * @returns The board.
+ */
+function clearedStackBoard(): Board {
+  const doc = getDoc(CANVAS);
+  const nodes = doc.getMap<unknown>('nodesMap');
+  const manager = new Y.UndoManager(nodes, { trackedOrigins: new Set([TRACKED]), captureTimeout: 0 });
+  enterSize(CANVAS, P_WARNING);
+  tracked(doc, () => { nodes.set('n1', new Y.Map<unknown>([['name', 'one']])); });
+  tracked(doc, () => { nodes.delete('n1'); });
+  tracked(doc, () => { nodes.set('n2', new Y.Map<unknown>([['name', 'two']])); });
+  manager.undo();
+  expect(nodes.has('n2')).toBe(false);
+  expect(stacks(manager)).toEqual([2, 1]);
+  return { doc, nodes, manager };
+}
+
+describe('23.7 the cache key is the top entry of that direction and the update count', () => {
+  it('W7-36 clearing only the redo stack keeps the undo conclusion: no second copy, still the real undo kind', () => {
+    const b = clearedStackBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+    expect(nextHistoryStep(b.manager, 'undo')).toBe('add');
+    expect(copiesOf(b.doc)).toBe(1);
+
+    b.manager.clear(false, true);
+    expect(stacks(b.manager)).toEqual([2, 0]);
+    const kind = nextHistoryStep(b.manager, 'undo');
+
+    expect(copiesOf(b.doc)).toBe(1);
+    expect(kind).toBe(trialFor(realKind(b.manager, 'undo')));
+  });
+
+  it('W7-37 clearing only the undo stack answers remove without a copy; a new tracked step is then tried afresh', () => {
+    const b = clearedStackBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+    expect(nextHistoryStep(b.manager, 'undo')).toBe('add');
+    expect(copiesOf(b.doc)).toBe(1);
+
+    b.manager.clear(true, false);
+    expect(nextHistoryStep(b.manager, 'undo')).toBe('remove');
+    expect(copiesOf(b.doc)).toBe(1);
+
+    tracked(b.doc, () => { b.nodes.set('n3', new Y.Map<unknown>([['name', 'three']])); });
+    resetCopies();
+    const kind = nextHistoryStep(b.manager, 'undo');
+
+    expect(copiesOf(b.doc)).toBe(1);
+    expect(kind).toBe(trialFor(realKind(b.manager, 'undo')));
+  });
+
+  it('W7-38 clearing only the undo stack keeps the redo conclusion: no second copy, still the real redo kind', () => {
+    const b = clearedStackBoard();
+    enterSize(CANVAS, P_FULL);
+    resetCopies();
+    nextHistoryStep(b.manager, 'redo');
+    expect(copiesOf(b.doc)).toBe(1);
+
+    b.manager.clear(true, false);
+    expect(stacks(b.manager)).toEqual([0, 1]);
+    const kind = nextHistoryStep(b.manager, 'redo');
+
+    expect(copiesOf(b.doc)).toBe(1);
+    expect(kind).toBe(trialFor(realKind(b.manager, 'redo')));
   });
 });
 

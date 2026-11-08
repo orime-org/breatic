@@ -50,6 +50,9 @@ export interface ProviderSpy {
 export const providers: ProviderSpy[] = [];
 export const sockets: SocketSpy[] = [];
 
+/** The `seq` the next push carries (spec 23.0: 1, 2, 3… in the order a case sends them). */
+let nextSeq = 1;
+
 /**
  * Builds the mocked `@hocuspocus/provider` module.
  * @param actual - The real module, for everything not replaced.
@@ -129,6 +132,7 @@ export function mockProviderModule(actual: object): object {
 export function resetProviderSpies(): void {
   providers.length = 0;
   sockets.length = 0;
+  nextSeq = 1;
 }
 
 /**
@@ -162,13 +166,16 @@ export async function runTimers(): Promise<void> {
 }
 
 /**
- * Sends one push on the stateless channel (`{ type: 'doc:size', ...push }`).
+ * Sends one push on the stateless channel (`{ type: 'doc:size', seq, ...push }`),
+ * numbered in the order the case sends them.
  * @param provider - The receiving provider.
  * @param push - The fixture, possibly altered.
  * @throws {never} Never.
  */
 export function push(provider: ProviderSpy, push: object): void {
-  act(() => { provider.emit('stateless', { payload: docSizePayload(push) }); });
+  const seq = nextSeq;
+  nextSeq += 1;
+  act(() => { provider.emit('stateless', { payload: docSizePayload({ seq, ...push }) }); });
 }
 
 /**

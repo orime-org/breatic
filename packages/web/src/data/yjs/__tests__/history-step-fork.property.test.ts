@@ -13,8 +13,9 @@
  *
  * Round 6 (P-01): `nextHistoryStep` returns the kind itself, a real step that
  * writes nothing is judged `remove`, an empty stack is judged too (without a
- * trial), and a second judgement with nothing changed in between (the reused
- * conclusion) must equal the real kind as well.
+ * trial), and a second judgement with the top entry and the real document's
+ * update count unchanged (the reused conclusion) must equal the real kind as
+ * well.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -196,7 +197,7 @@ describe('P-01 the trial kind equals the real kind', () => {
         }
         enterSize(NAME, P_FULL);
         const trial = trialKind(w.manager, o.direction);
-        // Nothing changed since: the manager's reused conclusion.
+        // Same top entry and update count: the manager's reused conclusion.
         const reused = trialKind(w.manager, o.direction);
         // The real step runs on the manager itself, ungated.
         const real = realKind(w.manager, o.direction);

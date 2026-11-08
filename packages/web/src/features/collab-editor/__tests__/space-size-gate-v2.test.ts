@@ -37,6 +37,7 @@ import { planSpaceDelete } from '@web/features/collab-editor/space-delete-execut
 import { deleteRow } from '@web/spaces/document/document-handle-commands';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { BODY_CASES, type BodyCase } from '@web/features/collab-editor/__tests__/helpers/executor-cases';
 import {
   CANVAS_NAME,
   CHIP_A,
@@ -48,6 +49,7 @@ import {
   chipParagraph,
   clearToasts,
   cut,
+  deleteBetween,
   enterState,
   expectBodyInStep,
   expectNoTextMappings,
@@ -301,8 +303,6 @@ describe('10.1 states and remote transactions', () => {
   });
 
   it.each(EDITORS)('G-04: $label in F, the sync-keyed transaction after an executor write (X-07) is let through and matches Yjs', async (editor) => {
-    // Round 6: a deletion inside one paragraph no longer reaches the
-    // executor, so the case runs X-07, a cross-block deletion it still takes.
     const subject = editor.open(['Hello', 'World']);
     enterState(editor.name, 'F');
     vi.mocked(planSpaceDelete).mockClear();
@@ -312,6 +312,24 @@ describe('10.1 states and remote transactions', () => {
     expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
     expect(subject.view.state.doc.textContent).toBe('Herld');
     subject.inStep();
+    expectWarnings();
+  });
+
+  it.each(([
+    ...BODY_CASES.filter((entry) => ['X-01', 'X-02', 'X-11', 'X-19', 'X-20'].includes(entry.id)),
+    { id: 'X-08 (F)', blocks: [p('Hello'), p('World')], code: 'F', op: (body) => { deleteBetween(body, ['World', 0], ['World', 5]); }, keepFirst: true },
+  ] satisfies BodyCase[]).map((entry) => [entry.id, entry] as const))('G-04: D document body in F, the sync-keyed transaction after the executor write of %s is let through and matches Yjs', async (_id, entry) => {
+    const body = openBody(entry.blocks);
+    enterState(DOCUMENT_NAME, 'F');
+    if (entry.prep !== undefined) await entry.prep(body);
+    vi.mocked(planSpaceDelete).mockClear();
+    clearToasts();
+    const before = body.view.state.doc;
+    entry.op(body);
+    await flush();
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
+    expect(body.view.state.doc.eq(before)).toBe(false);
+    expectBodyInStep(body);
     expectWarnings();
   });
 });

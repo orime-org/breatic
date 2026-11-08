@@ -24,17 +24,17 @@ import { toast } from '@web/lib/toast';
 
 import * as F from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 
-/** One `doc:size` push as collab sends it (design 3: five fields and the type). */
-export type SizePush = { type: 'doc:size'; bytes: number; limit: number; ceiling: number; phase: 'normal' | 'warning' | 'full' };
+/** One `doc:size` push as collab sends it (design 3: the type, its sequence number and four fields). */
+export type SizePush = { type: 'doc:size'; seq: number; bytes: number; limit: number; ceiling: number; phase: 'normal' | 'warning' | 'full' };
 
-export const P_NORMAL: SizePush = { type: 'doc:size', ...F.P_NORMAL };
-export const P_WARNING: SizePush = { type: 'doc:size', ...F.P_WARNING };
-export const P_FULL: SizePush = { type: 'doc:size', ...F.P_FULL };
-export const P_FULL_EDGE: SizePush = { type: 'doc:size', ...F.P_FULL_EDGE };
-export const P_CEIL: SizePush = { type: 'doc:size', ...F.P_CEIL };
-export const P_OVER: SizePush = { type: 'doc:size', ...F.P_OVER };
-export const P_UNLIMITED: SizePush = { type: 'doc:size', ...F.P_UNLIMITED };
-export const P_UNLIMITED_FULL: SizePush = { type: 'doc:size', ...F.P_UNLIMITED_FULL };
+export const P_NORMAL: SizePush = { type: 'doc:size', seq: 1, ...F.P_NORMAL };
+export const P_WARNING: SizePush = { type: 'doc:size', seq: 1, ...F.P_WARNING };
+export const P_FULL: SizePush = { type: 'doc:size', seq: 1, ...F.P_FULL };
+export const P_FULL_EDGE: SizePush = { type: 'doc:size', seq: 1, ...F.P_FULL_EDGE };
+export const P_CEIL: SizePush = { type: 'doc:size', seq: 1, ...F.P_CEIL };
+export const P_OVER: SizePush = { type: 'doc:size', seq: 1, ...F.P_OVER };
+export const P_UNLIMITED: SizePush = { type: 'doc:size', seq: 1, ...F.P_UNLIMITED };
+export const P_UNLIMITED_FULL: SizePush = { type: 'doc:size', seq: 1, ...F.P_UNLIMITED_FULL };
 
 /** The size-cap sentences of spec 0.5, English (demo `COPY.en`). */
 export const SIZE_COPY_EN = F.COPY_V2_EN;

@@ -45,7 +45,7 @@ export type Direction = 'undo' | 'redo';
  * @throws {never} Never.
  */
 export function enterSize(name: string, push: DocSizePushV2): void {
-  setDocSize(name, { type: 'doc:size', ...push });
+  setDocSize(name, { type: 'doc:size', seq: 1, ...push });
 }
 
 /**

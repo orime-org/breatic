@@ -255,10 +255,17 @@ export interface CountedUpdate {
   shape: 'S' | 'D' | 'R';
 }
 
+/** What a count reads: the frames a socket sent, in order. */
+export interface FrameLog {
+  readonly frames: readonly SentFrame[];
+}
+
 /** A running count of one document's Update messages. */
 export interface MessageCount {
   /** The Update messages sent since the count started, judged in order. */
   updates: () => CountedUpdate[];
+  /** Every frame of the document sent since the count started. */
+  frames: () => SentFrame[];
   /** Whether the mirror, with every counted update applied, equals the document. */
   mirrorMatches: () => boolean;
 }
@@ -267,13 +274,13 @@ export interface MessageCount {
  * Starts counting the Update messages one document sends on a socket. Each
  * is judged by shared `updateShape` against a `gc: false` mirror of the
  * document taken now, then applied to it (spec 21.1, 0.4).
- * @param socket - The recording socket.
+ * @param socket - The socket's frame log.
  * @param name - Canonical document name.
  * @param doc - The document.
  * @returns The count.
  * @throws {never} Never.
  */
-export function countMessages(socket: RecordingSocket, name: string, doc: Y.Doc): MessageCount {
+export function countMessages(socket: FrameLog, name: string, doc: Y.Doc): MessageCount {
   const start = socket.frames.length;
   const mirror = new Y.Doc({ gc: false });
   Y.applyUpdate(mirror, Y.encodeStateAsUpdate(doc));
@@ -291,6 +298,7 @@ export function countMessages(socket: RecordingSocket, name: string, doc: Y.Doc)
   };
   return {
     updates: (): CountedUpdate[] => { catchUp(); return [...judged]; },
+    frames: (): SentFrame[] => socket.frames.slice(start).filter((frame) => frame.name === name),
     mirrorMatches: (): boolean => {
       catchUp();
       return Y.equalSnapshots(Y.snapshot(mirror), Y.snapshot(doc));

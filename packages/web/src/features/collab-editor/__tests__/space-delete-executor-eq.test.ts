@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1790 v2 web test spec 21.3a (round 6): the editor after an executor
- * write (design 5.3 line 220). The executor writes Yjs while holding the
+ * inner#1790 v2 web test spec 21.3a and 23.9: the editor after an executor
+ * write (design 5.3 step 8). The executor writes Yjs while holding the
  * binding's `mux`, so y-prosemirror (or y-tiptap) does not redraw the whole
  * document from Yjs; the executor then dispatches one transaction carrying the
  * sync plugin's meta that turns the editor into the document step 5
@@ -17,43 +17,44 @@
  * EQ-03: a peer's update and a later keystroke still map correctly.
  * EQ-04: undo brings the content back and the two still agree.
  *
- * Where a case of sections 11 to 13 has every block in its range, a leading
- * paragraph `top` is added so EQ-02 has a block to watch; it changes nothing
- * the executor does to the rest.
+ * The cases are in `helpers/executor-cases.ts`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { NodeSelection, TextSelection, type PluginKey, type Transaction } from '@tiptap/pm/state';
+import { TextSelection, type PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import * as Y from 'yjs';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
+vi.mock('@web/features/collab-editor/space-delete-executor', async (importOriginal) => {
+  const actual = await importOriginal<typeof Executor>();
+  return { ...actual, planSpaceDelete: vi.fn(actual.planSpaceDelete) };
+});
 
-import { documentBodyFragment } from '@breatic/shared';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
-import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import type * as Executor from '@web/features/collab-editor/space-delete-executor';
+import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
+import {
+  BODY_CASES,
+  TIPTAP_CASES,
+  expectBodyMatchesRebuilt,
+  expectTiptapMatchesRebuilt,
+  type BodyCase,
+  type TiptapCase,
+} from '@web/features/collab-editor/__tests__/helpers/executor-cases';
+import { P6, at, deleteOffsets, openMarked, type How } from '@web/features/collab-editor/__tests__/helpers/marked-paragraph';
 import {
   CANVAS_NAME,
-  CHIP_A,
   DOCUMENT_NAME,
+  backspaceChar,
   capture,
-  caretIntoEmpty,
-  chipParagraph,
   clearToasts,
   deleteBetween,
   enterState,
-  expectBodyInStep,
-  expectTiptapInStep,
   expectWarnings,
   flush,
-  fragmentOf,
-  nodesOf,
   openBody,
   openTiptap,
   pBlock as p,
@@ -65,50 +66,11 @@ import {
   resetHarness,
   rows,
   select,
-  selectAllAndDelete,
-  sideMenuDelete,
-  tiptapExtensions,
   topBlockIds,
   typeText,
-  type BlockInput,
   type OpenBody,
   type OpenTiptap,
-  type TiptapKind,
 } from '@web/features/collab-editor/__tests__/helpers/space-editor-harness';
-
-const IMAGE: BlockInput = { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a' } };
-
-/**
- * The document an editor rebuilt from a copy of the Yjs document shows.
- * @param doc - The Space document.
- * @returns The rebuilt body's ProseMirror document, as JSON.
- */
-function rebuiltBody(doc: Y.Doc): unknown {
-  const fresh = new Y.Doc();
-  Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc));
-  const editor = buildDocumentEditor({ fragment: documentBodyFragment(fresh) });
-  editor.mount(document.createElement('div'));
-  const json = editor.prosemirrorView.state.doc.toJSON() as unknown;
-  editor.unmount();
-  fresh.destroy();
-  return json;
-}
-
-/**
- * The document a TipTap editor of the same kind rebuilt from a copy of the Yjs document shows.
- * @param doc - The canvas document.
- * @param kind - Which editor.
- * @returns The rebuilt editor's document, as JSON.
- */
-function rebuiltTiptap(doc: Y.Doc, kind: TiptapKind): unknown {
-  const fresh = new Y.Doc();
-  Y.applyUpdate(fresh, Y.encodeStateAsUpdate(doc));
-  const editor = new Editor({ element: document.createElement('div'), extensions: tiptapExtensions(kind, fragmentOf(fresh, kind)) });
-  const json = editor.state.doc.toJSON() as unknown;
-  editor.destroy();
-  fresh.destroy();
-  return json;
-}
 
 /** What the view dispatched with the sync key's meta and a document change. */
 interface SyncRecorder {
@@ -172,60 +134,6 @@ function expectOnlyChangedBlocksReplaced(view: EditorView, recorder: SyncRecorde
   expect(view.nodeDOM(pos)).toBe(watched.dom);
 }
 
-/** One executor case on the body. */
-interface BodyCase {
-  readonly id: string;
-  readonly blocks: BlockInput[];
-  readonly code: 'F' | 'O';
-  /** Runs before the watched write (X-13: X-12 first). */
-  readonly prep?: (body: OpenBody) => Promise<void>;
-  readonly op: (body: OpenBody) => void;
-  /** The first block is outside the range. */
-  readonly keepFirst: boolean;
-}
-
-/**
- * Deletes the body's hard break with a node selection.
- * @param body - The open body.
- */
-function deleteHardBreak(body: OpenBody): void {
-  const at = nodesOf(body.view.state.doc, 'hardBreak')[0];
-  body.view.dispatch(body.view.state.tr.setSelection(NodeSelection.create(body.view.state.doc, at)));
-  press(body.view, 'Backspace');
-}
-
-/**
- * Backspace with the caret in the first empty paragraph.
- * @param body - The open body.
- */
-function backspaceInEmpty(body: OpenBody): void {
-  caretIntoEmpty(body.view, 'paragraph');
-  press(body.view, 'Backspace');
-}
-
-const BODY_CASES: readonly BodyCase[] = [
-  { id: 'X-03', blocks: [p('top'), p('a'), p('b'), p('c')], code: 'F', op: (body) => { sideMenuDelete(body, 2); }, keepFirst: true },
-  { id: 'X-04', blocks: [p('top'), p('a'), p('b', [p('b1')]), p('c')], code: 'F', op: (body) => { sideMenuDelete(body, 2); }, keepFirst: true },
-  { id: 'X-07', blocks: [p('top'), p('Hello'), p('World')], code: 'F', op: (body) => { deleteBetween(body, ['Hello', 2], ['World', 2]); }, keepFirst: true },
-  { id: 'X-09', blocks: [p('top'), p('Hello'), p('World')], code: 'F', op: (body) => { deleteBetween(body, ['Hello', 2], ['World', 5]); }, keepFirst: true },
-  { id: 'X-10', blocks: [p('top'), p('Hello'), p('World')], code: 'F', op: (body) => { deleteBetween(body, ['Hello', 0], ['World', 2]); }, keepFirst: true },
-  { id: 'X-12', blocks: [p('top'), p('ab\ncd')], code: 'F', op: deleteHardBreak, keepFirst: true },
-  {
-    id: 'X-13', blocks: [p('top'), p('ab\ncd')], code: 'F',
-    prep: async (body) => { deleteHardBreak(body); await flush(); },
-    op: (body) => { const start = posOf(body.view.state.doc, 'abcd', 1); select(body.view, start, start + 2); press(body.view, 'Backspace'); },
-    keepFirst: true,
-  },
-  { id: 'X-14', blocks: [p('top'), p('abc', [p('def')])], code: 'F', op: (body) => { deleteBetween(body, ['abc', 1], ['def', 2]); }, keepFirst: true },
-  { id: 'X-17', blocks: [p('top'), p('ab'), p('cd', [p('fgh')])], code: 'F', op: (body) => { deleteBetween(body, ['ab', 1], ['cd', 2]); }, keepFirst: true },
-  { id: 'X-06', blocks: [p('one'), p('two'), p('three')], code: 'F', op: (body) => { selectAllAndDelete(body); }, keepFirst: false },
-  { id: 'X-21', blocks: [IMAGE, p('x')], code: 'F', op: (body) => { selectAllAndDelete(body); }, keepFirst: false },
-  { id: 'X-24', blocks: [tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })], code: 'F', op: (body) => { selectAllAndDelete(body); }, keepFirst: false },
-  { id: 'K-01', blocks: [p('a'), p(''), p('b')], code: 'F', op: backspaceInEmpty, keepFirst: true },
-  { id: 'K-03', blocks: [p('top'), p('a', [p('')])], code: 'F', op: backspaceInEmpty, keepFirst: true },
-  { id: 'X-08 (O)', blocks: [p('Hello'), p('World')], code: 'O', op: (body) => { deleteBetween(body, ['World', 0], ['World', 5]); }, keepFirst: true },
-];
-
 /** The position of the body's first block container. */
 const BODY_FIRST = 1;
 
@@ -251,58 +159,6 @@ async function runBody(entry: BodyCase): Promise<{ body: OpenBody; recorder: Syn
 }
 
 /**
- * EQ-01 on the body.
- * @param body - The open body.
- */
-function expectBodyMatchesRebuilt(body: OpenBody): void {
-  expect(rebuiltBody(body.doc)).toEqual(body.view.state.doc.toJSON());
-  expectBodyInStep(body);
-}
-
-/** One executor case on a canvas TipTap editor. */
-interface TiptapCase {
-  readonly id: string;
-  readonly kind: TiptapKind;
-  readonly content: Record<string, unknown>;
-  readonly prep?: (open: OpenTiptap) => Promise<void>;
-  readonly op: (open: OpenTiptap) => void;
-  readonly keepFirst: boolean;
-}
-
-const TOP_THEN_CHIP: Record<string, unknown> = {
-  type: 'doc',
-  content: [
-    { type: 'paragraph', content: [{ type: 'text', text: 'top' }] },
-    ...(chipParagraph('ab ', CHIP_A, ' cd')['content'] as unknown[]),
-  ],
-};
-
-/**
- * Selects the chip with a node selection and presses Backspace.
- * @param open - The open editor.
- */
-function deleteChip(open: OpenTiptap): void {
-  const at = nodesOf(open.view.state.doc, REFERENCE_MENTION_NODE)[0];
-  open.view.dispatch(open.view.state.tr.setSelection(NodeSelection.create(open.view.state.doc, at)));
-  press(open.view, 'Backspace');
-}
-
-const TIPTAP_CASES: readonly TiptapCase[] = [
-  {
-    id: 'XT-02', kind: 'textBody', content: paragraphs('a', 'b'),
-    op: (open) => { press(open.view, 'a', { mod: true }); press(open.view, 'Backspace'); },
-    keepFirst: false,
-  },
-  { id: 'XT-03', kind: 'prompt', content: TOP_THEN_CHIP, op: deleteChip, keepFirst: true },
-  {
-    id: 'XT-04', kind: 'prompt', content: TOP_THEN_CHIP,
-    prep: async (open) => { deleteChip(open); await flush(); },
-    op: (open) => { const start = posOf(open.view.state.doc, 'abcd', 1); select(open.view, start, start + 2); press(open.view, 'Backspace'); },
-    keepFirst: true,
-  },
-];
-
-/**
  * Opens the TipTap editor, runs the case and records around the write.
  * @param entry - The case.
  * @returns The editor, the recorder and the watched block.
@@ -320,15 +176,6 @@ async function runTiptap(entry: TiptapCase): Promise<{ open: OpenTiptap; recorde
   expect(cap.updates).toHaveLength(1);
   cap.stop();
   return { open, recorder, watched };
-}
-
-/**
- * EQ-01 on a TipTap editor.
- * @param open - The open editor.
- */
-function expectTiptapMatchesRebuilt(open: OpenTiptap): void {
-  expect(rebuiltTiptap(open.doc, open.kind)).toEqual(open.view.state.doc.toJSON());
-  expectTiptapInStep(open);
 }
 
 /**
@@ -391,13 +238,14 @@ describe('21.3a the editor after an executor write, document body', () => {
     expectBodyMatchesRebuilt(body);
   });
 
-  it.each(BODY_CASES.filter((entry) => ['X-07', 'K-01', 'X-06'].includes(entry.id)).map((entry) => [entry.id, entry] as const))(
+  it.each(BODY_CASES.filter((entry) => ['X-07', 'K-01', 'X-06', 'X-01', 'X-02', 'X-11', 'X-19', 'X-20'].includes(entry.id)).map((entry) => [entry.id, entry] as const))(
     'EQ-04: %s, warning and one undo bring the blocks back with their ids, still matching Yjs',
     async (_id, entry) => {
       const body = openBody(entry.blocks);
       const before = rows(body.view.state.doc);
       const ids = topBlockIds(body.editor);
       enterState(DOCUMENT_NAME, entry.code);
+      if (entry.prep !== undefined) await entry.prep(body);
       entry.op(body);
       await flush();
       expect(rows(body.view.state.doc)).not.toEqual(before);
@@ -438,5 +286,73 @@ describe('21.3a the editor after an executor write, canvas TipTap editors', () =
     expect(cap.shape()).toBe('S');
     expect(texts(open.view.state.doc).some((text) => text.startsWith('x'))).toBe(true);
     expectTiptapMatchesRebuilt(open);
+  });
+});
+
+/** EQ-01 cases on the body that only EQ-01 adds (spec 23.9). */
+const EQ01_BODY_CASES: readonly BodyCase[] = [
+  { id: 'X-08 (F)', blocks: [p('Hello'), p('World')], code: 'F', op: (body) => { deleteBetween(body, ['World', 0], ['World', 5]); }, keepFirst: true },
+];
+
+/** EQ-01 cases on the TipTap editors that only EQ-01 adds (spec 23.9). */
+const EQ01_TIPTAP_CASES: readonly TiptapCase[] = [
+  {
+    id: 'XT-01', kind: 'textBody', content: paragraphs('hello world'),
+    op: (open) => { const start = posOf(open.view.state.doc, 'hello', 3); select(open.view, start, start + 4); press(open.view, 'Backspace'); },
+    keepFirst: true,
+  },
+  {
+    id: 'XT-06', kind: 'prompt', content: paragraphs('hello world'),
+    op: (open) => { select(open.view, posOf(open.view.state.doc, 'world', 5)); backspaceChar(open.view); },
+    keepFirst: true,
+  },
+];
+
+/** The PT cases EQ-01 adds, on `P6` (spec 21.3). */
+const EQ01_PT_CASES: ReadonlyArray<{ id: string; from: number; to: number; how: How }> = [
+  { id: 'PT-01', from: at('plain', 2), to: at('plain', 3), how: 'backspace' },
+  { id: 'PT-02', from: at('boldword'), to: at('boldword', 1), how: 'backspace' },
+  { id: 'PT-03', from: at('boldword', 7), to: at('boldword', 8), how: 'backspace' },
+  { id: 'PT-04', from: at('boldword', 3), to: at('boldword', 4), how: 'backspace' },
+  { id: 'PT-05', from: at('boldword', 8), to: at('boldword', 9), how: 'backspace' },
+  { id: 'PT-06', from: at('italword', 7), to: at('italword', 8), how: 'backspace' },
+  { id: 'PT-07', from: at('linkword'), to: at('linkword', 1), how: 'backspace' },
+  { id: 'PT-08', from: at('linkword', 7), to: at('linkword', 8), how: 'backspace' },
+  { id: 'PT-09', from: at('text', 2), to: at('middle', 2), how: 'range' },
+  { id: 'PT-10', from: at('italword', 2), to: at('tail', 2), how: 'range' },
+  { id: 'PT-11', from: at('commented', 2), to: at('commented', 3), how: 'backspace' },
+  { id: 'PT-12', from: at('tail', 2), to: at('end', 1), how: 'range' },
+  { id: 'PT-15', from: at('boldword', 3), to: at('boldword', 4), how: 'delete' },
+];
+
+describe('23.9 EQ-01 on the deletions inside one text block, now through the executor', () => {
+  it.each(EQ01_BODY_CASES.map((entry) => [entry.id, entry] as const))('EQ-01: %s, an editor rebuilt from the same Yjs shows the same document', async (_id, entry) => {
+    vi.mocked(planSpaceDelete).mockClear();
+    const { body } = await runBody(entry);
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
+    expectBodyMatchesRebuilt(body);
+    expectWarnings();
+  });
+
+  it.each(EQ01_TIPTAP_CASES.map((entry) => [entry.id, entry] as const))('EQ-01: %s, an editor rebuilt from the same Yjs shows the same document', async (_id, entry) => {
+    vi.mocked(planSpaceDelete).mockClear();
+    const { open } = await runTiptap(entry);
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
+    expectTiptapMatchesRebuilt(open);
+    expectWarnings();
+  });
+
+  it.each(EQ01_PT_CASES.map((entry) => [entry.id, entry] as const))('EQ-01: %s on P6, an editor rebuilt from the same Yjs shows the same document', async (_id, { from, to, how }) => {
+    const { body } = await openMarked(P6);
+    enterState(DOCUMENT_NAME, 'F');
+    vi.mocked(planSpaceDelete).mockClear();
+    const cap = capture(body.doc);
+    deleteOffsets(body.view, from, to, how);
+    await flush();
+    cap.stop();
+    expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
+    expect(cap.updates).toHaveLength(1);
+    expectBodyMatchesRebuilt(body);
+    expectWarnings();
   });
 });

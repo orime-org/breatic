@@ -402,9 +402,9 @@ describe('which documents take pushes (S-20, S-21)', () => {
     const providers = names.map((name) => open(name));
     const metaProvider = open(meta);
     for (const provider of providers) {
-      act(() => { provider.emit('stateless', { payload: JSON.stringify({ type: 'doc:size', ...P_FULL }) }); });
+      act(() => { provider.emit('stateless', { payload: JSON.stringify({ type: 'doc:size', seq: 1, ...P_FULL }) }); });
     }
-    act(() => { metaProvider.emit('stateless', { payload: JSON.stringify({ type: 'doc:size', ...P_FULL }) }); });
+    act(() => { metaProvider.emit('stateless', { payload: JSON.stringify({ type: 'doc:size', seq: 1, ...P_FULL }) }); });
     expect(names.map((name) => readDocSize(name).phase)).toEqual(['full', 'full', 'full', 'full']);
     expect(facts(meta)).toEqual(UNKNOWN_FACTS);
   });
@@ -440,8 +440,8 @@ describe('no reservations are left (S-22)', () => {
     expect(spaceWriteSource).not.toMatch(/no_room|'overwrite'/);
   });
 
-  it('S-22 a push with only the five v2 fields is accepted, by the schema and by the state', () => {
-    expect(DocSizeStatusSchema.safeParse({ type: 'doc:size', ...P_FULL }).success).toBe(true);
+  it('S-22 a push with only the v2 fields and its seq is accepted, by the schema and by the state', () => {
+    expect(DocSizeStatusSchema.safeParse({ type: 'doc:size', seq: 1, ...P_FULL }).success).toBe(true);
     const provider = open();
     push(provider, P_FULL);
     expect(facts()).toEqual(pushedFacts(P_FULL, 'full', false));

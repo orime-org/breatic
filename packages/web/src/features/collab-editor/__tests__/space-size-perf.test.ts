@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1790 v2 web test spec 21.4 (round 6): how long the body takes on a
+ * inner#1790 v2 web test spec 21.4 and W7-34: how long the body takes on a
  * 10 MiB document (design 5.3 line 220, design 8 line 354). The fixture
  * `BIG(n)` is n paragraph blocks of about 460 characters each, built on
  * another document with `prosemirrorJSONToYXmlFragment` and loaded into the
@@ -144,7 +144,7 @@ afterEach(() => {
 });
 
 describe('21.4 timings on a 10 MiB body', () => {
-  it('PF-01: BIG(16000), a one-character Backspace in the first block: full median at most 1.5 times warning, one pure delete each', async () => {
+  it('PF-01 / W7-34: BIG(16000), a one-character Backspace in the first block: full median at most 1.5 times warning, one pure delete and one plan each', async () => {
     const body = openBig(16000);
     enterState(DOCUMENT_NAME, 'W');
     const warning: number[] = [];
@@ -156,10 +156,12 @@ describe('21.4 timings on a 10 MiB body', () => {
     const full: number[] = [];
     for (const offset of [50, 40, 30, 20, 10]) {
       select(body.view, charPos(body, 0, offset));
+      vi.mocked(planSpaceDelete).mockClear();
       const cap = capture(body.doc);
       full.push(await timed(() => { backspaceChar(body.view); }));
       expect(cap.updates).toHaveLength(1);
       expect(cap.shape()).toBe('D');
+      expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(1);
       cap.stop();
     }
     expectWarnings();

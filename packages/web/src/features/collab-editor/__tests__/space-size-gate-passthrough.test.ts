@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1790 v2 web test spec 21.3 (round 6): while full, a deletion of text
- * that stays inside one `XmlText`, in a text block whose element holds only
- * that `XmlText`, is let through to y-prosemirror (design 5.3 line 217); over
- * the ceiling, deleting part of one `XmlText` is refused before any planning
- * (lines 218, 231). A range holding an inline node, or a block with two
- * neighbouring `XmlText`s, still goes to the executor.
+ * inner#1790 v2 web test spec 21.3 and 23.6: while full, a deletion of text
+ * inside one text block goes to the delete executor like every other
+ * deletion, and follows template `X7` (design 5.3 state table, `full` row);
+ * over the ceiling, deleting part of one `XmlText` is refused before any
+ * planning (step 7).
  *
  * The body is the production one, its content loaded as a remote update: the
  * paragraph `P6` carries bold, italic, a link and a comment mark (thread t1),
@@ -16,10 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
-import type { EditorView } from '@tiptap/pm/view';
-import * as Y from 'yjs';
 
 vi.mock('@web/features/collab-editor/space-delete-executor', async (importOriginal) => {
   const actual = await importOriginal<typeof Executor>();
@@ -29,12 +25,23 @@ vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
-import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
+import { documentCommentThreads } from '@breatic/shared';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import type * as Executor from '@web/features/collab-editor/space-delete-executor';
 import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { COMMENT_MARK, asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+import {
+  P6,
+  P6_TEXT,
+  at,
+  bodySubject,
+  charMarks,
+  deleteOffsets,
+  expectX7,
+  openMarked,
+  textStart,
+  type How,
+} from '@web/features/collab-editor/__tests__/helpers/marked-paragraph';
 import {
   CANVAS_NAME,
   COPY,
@@ -45,12 +52,10 @@ import {
   deleteBetween,
   enterState,
   expectBodyInStep,
-  expectNoTextMappings,
   expectTiptapInStep,
   expectUntouched,
   expectWarnings,
   flush,
-  mountBody,
   nodesOf,
   openBody,
   openTiptap,
@@ -62,130 +67,7 @@ import {
   resetHarness,
   rows,
   select,
-  topBlockIds,
-  type BlockInput,
-  type OpenBody,
 } from '@web/features/collab-editor/__tests__/helpers/space-editor-harness';
-
-const LINK = 'https://example.test';
-
-/** The paragraph `P6` of spec 21.3, as BlockNote inline content. */
-const P6: BlockInput = {
-  type: 'paragraph',
-  content: [
-    { type: 'text', text: 'plain text ', styles: {} },
-    { type: 'text', text: 'boldword', styles: { bold: true } },
-    { type: 'text', text: ' middle ', styles: {} },
-    { type: 'text', text: 'italword', styles: { italic: true } },
-    { type: 'link', href: LINK, content: 'linkword' },
-    { type: 'text', text: ' tail commented end', styles: {} },
-  ],
-};
-
-/** `P6` as plain text; offsets below index into it. */
-const P6_TEXT = 'plain text boldword middle italwordlinkword tail commented end';
-
-/**
- * The offset of a needle in `P6_TEXT`, plus characters into it.
- * @param needle - Text.
- * @param into - Characters into the needle.
- * @returns The offset.
- */
-function at(needle: string, into = 0): number {
-  const found = P6_TEXT.indexOf(needle);
-  expect(found).toBeGreaterThanOrEqual(0);
-  return found + into;
-}
-
-/** The open body with `P6` and the thread its comment mark points at. */
-interface P6Body {
-  readonly body: OpenBody;
-  readonly threadId: string;
-}
-
-/**
- * Opens the body with `P6`, loaded as a remote update: thread t1 is created
- * first (a thread the store owns), then a peer writes the paragraph and marks
- * `commented` with t1.
- * @returns The open body and t1's id.
- */
-async function openP6(): Promise<P6Body> {
-  const mounted = mountBody();
-  const store = commentsOn(mounted.editor)!.threadStore as unknown as {
-    createThread: (options: { initialComment: { body: never } }) => Promise<{ id: string }>;
-  };
-  const thread = await store.createThread({ initialComment: { body: asCommentBody('t1') as never } });
-  const source = new Y.Doc();
-  Y.applyUpdate(source, Y.encodeStateAsUpdate(mounted.doc));
-  const peer = buildDocumentEditor({ fragment: documentBodyFragment(source) });
-  peer.mount(document.createElement('div'));
-  peer.replaceBlocks(peer.document, [P6] as never);
-  const peerView = peer.prosemirrorView;
-  const from = posOf(peerView.state.doc, 'commented');
-  const mark = peerView.state.schema.marks[COMMENT_MARK].create({ threadId: thread.id, orphan: false });
-  peerView.dispatch(peerView.state.tr.addMark(from, from + 'commented'.length, mark));
-  Y.applyUpdate(mounted.doc, Y.encodeStateAsUpdate(source, Y.encodeStateVector(mounted.doc)), 'remote');
-  peer.unmount();
-  source.destroy();
-  mounted.view.dom.focus();
-  expectNoTextMappings(mounted.view, mounted.syncKey);
-  const body = { ...mounted, ids: topBlockIds(mounted.editor) };
-  expect(body.view.state.doc.textContent).toBe(P6_TEXT);
-  return { body, threadId: thread.id };
-}
-
-/**
- * Each character of the first paragraph with the marks it carries, as text.
- * @param doc - The body.
- * @returns One entry per character: the character and its sorted marks with their attributes.
- */
-function charMarks(doc: PMNode): string[] {
-  const out: string[] = [];
-  const paragraph = doc.nodeAt(nodesOf(doc, 'paragraph')[0])!;
-  paragraph.forEach((child) => {
-    const marks = child.marks.map((mark) => `${mark.type.name}${JSON.stringify(mark.attrs)}`).sort().join('|');
-    for (const char of child.text ?? '') out.push(`${char}<${marks}>`);
-  });
-  return out;
-}
-
-/**
- * The document position of an offset in the first paragraph's text.
- * @param doc - The body.
- * @param offset - Offset into `P6_TEXT`.
- * @returns The position.
- */
-function posAt(doc: PMNode, offset: number): number {
-  return posOf(doc, 'plain') + offset;
-}
-
-/** How a case deletes `[from, to)` of `P6_TEXT`. */
-type How = 'backspace' | 'range' | 'delete';
-
-/**
- * Deletes `[from, to)` of the first paragraph the way the case says.
- * @param view - The view.
- * @param from - Start offset.
- * @param to - End offset.
- * @param how - A Backspace after the character, a selection and Backspace, or Delete before the character.
- */
-function deleteOffsets(view: EditorView, from: number, to: number, how: How): void {
-  const a = posAt(view.state.doc, from);
-  const b = posAt(view.state.doc, to);
-  if (how === 'range') {
-    select(view, a, b);
-    press(view, 'Backspace');
-    return;
-  }
-  if (how === 'backspace') {
-    select(view, b);
-    backspaceChar(view);
-    return;
-  }
-  select(view, a);
-  if (press(view, 'Delete')) return;
-  view.dispatch(view.state.tr.delete(a, a + 1));
-}
 
 /**
  * Asserts how many times the filter asked the executor to plan.
@@ -248,41 +130,30 @@ afterEach(() => {
   resetHarness();
 });
 
-describe('21.3 a deletion inside one text block is let through while full', () => {
-  it.each(CASES.map((entry) => [`${entry.id}: in F, ${entry.what} is let through to y-prosemirror as one pure delete`, entry] as const))(
+describe('21.3 a deletion inside one text block goes to the executor while full', () => {
+  it.each(CASES.map((entry) => [`${entry.id}: in F, ${entry.what} goes to the executor as one pure delete (X7)`, entry] as const))(
     '%s',
     async (_title, { id, from, to, how }) => {
-      const { body, threadId } = await openP6();
+      const { body, threadId } = await openMarked(P6);
       enterState(DOCUMENT_NAME, 'F');
       const threads = documentCommentThreads(body.doc);
       const threadsBefore = JSON.stringify(threads.toJSON());
-      const marksBefore = charMarks(body.view.state.doc);
-      const cap = capture(body.doc);
-      deleteOffsets(body.view, from, to, how);
-      await flush();
-      expect(cap.updates).toHaveLength(1);
-      expect(cap.shape()).toBe('D');
-      expectPlans(0);
-      expectWarnings();
       const text = P6_TEXT.slice(0, from) + P6_TEXT.slice(to);
       if (EXPECTED_TEXT[id] !== undefined) expect(text).toBe(EXPECTED_TEXT[id]);
-      expect(rows(body.view.state.doc)).toEqual([['paragraph', text]]);
-      // What is left keeps its marks: bold, italic, the link's href, the thread id.
-      expect(charMarks(body.view.state.doc)).toEqual([...marksBefore.slice(0, from), ...marksBefore.slice(to)]);
-      expectBodyInStep(body);
+      await expectX7(bodySubject(body), from, to, how);
       expect(JSON.stringify(threads.toJSON())).toBe(threadsBefore);
-      expect(threads.has(threadId)).toBe(true);
+      expect(threads.has(threadId!)).toBe(true);
     },
   );
 
   it('PT-12: deleting every marked character leaves no comment mark and keeps thread t1', async () => {
-    const { body, threadId } = await openP6();
+    const { body, threadId } = await openMarked(P6);
     enterState(DOCUMENT_NAME, 'F');
     deleteOffsets(body.view, at('tail', 2), at('end', 1), 'range');
     await flush();
     expect(charMarks(body.view.state.doc).some((entry) => entry.includes(COMMENT_MARK))).toBe(false);
-    expect(documentCommentThreads(body.doc).has(threadId)).toBe(true);
-    expectPlans(0);
+    expect(documentCommentThreads(body.doc).has(threadId!)).toBe(true);
+    expectPlans(1);
   });
 
   it('PT-13: a range holding a hard break is not let through: the executor deletes it (R)', async () => {
@@ -342,7 +213,7 @@ describe('21.3 a deletion inside one text block is let through while full', () =
     expectWarnings();
   });
 
-  it('PT-16: canvas text node body in F, deleting lo is let through to y-tiptap (D)', async () => {
+  it('PT-16: canvas text node body in F, deleting lo goes to the executor (D)', async () => {
     const open = openTiptap('textBody', paragraphs('hello world'));
     enterState(CANVAS_NAME, 'F');
     const cap = capture(open.doc);
@@ -350,7 +221,7 @@ describe('21.3 a deletion inside one text block is let through while full', () =
     select(open.view, start, start + 2);
     press(open.view, 'Backspace');
     await flush();
-    expectPlans(0);
+    expectPlans(1);
     expect(cap.updates).toHaveLength(1);
     expect(cap.shape()).toBe('D');
     expect(paragraphTexts(open.view.state.doc)).toEqual(['hel world']);
@@ -372,10 +243,10 @@ describe('21.3 a deletion inside one text block is let through while full', () =
   });
 
   it('PT-18: typing x over the selected bold word is not let through: add toast, nothing written', async () => {
-    const { body } = await openP6();
+    const { body } = await openMarked(P6);
     enterState(DOCUMENT_NAME, 'F');
     const cap = capture(body.doc);
-    const from = posAt(body.view.state.doc, at('boldword'));
+    const from = textStart(body.view.state.doc) + at('boldword');
     select(body.view, from, from + 'boldword'.length);
     const { from: a, to: b } = body.view.state.selection;
     const handled = body.view.someProp('handleTextInput', (f) => f(body.view, a, b, 'x', () => body.view.state.tr.insertText('x', a, b)));
@@ -387,13 +258,13 @@ describe('21.3 a deletion inside one text block is let through while full', () =
   });
 
   it('PT-19: after PT-04, warning and one undo bring the d back, still bold; the undo stack grew by one', async () => {
-    const { body } = await openP6();
+    const { body } = await openMarked(P6);
     enterState(DOCUMENT_NAME, 'F');
     const marksBefore = charMarks(body.view.state.doc);
     const depth = body.handle.undoManager.undoStack.length;
     deleteOffsets(body.view, at('boldword', 3), at('boldword', 4), 'backspace');
     await flush();
-    expectPlans(0);
+    expectPlans(1);
     expect(body.handle.undoManager.undoStack.length).toBe(depth + 1);
     enterState(DOCUMENT_NAME, 'W');
     body.editor.undo();
@@ -406,7 +277,7 @@ describe('21.3 a deletion inside one text block is let through while full', () =
   it.each(CASES.map((entry) => [`PT-20: in O, ${entry.id} (${entry.what}) is refused with the over-ceiling toast, before any planning`, entry] as const))(
     '%s',
     async (_title, { from, to, how }) => {
-      const { body } = await openP6();
+      const { body } = await openMarked(P6);
       enterState(DOCUMENT_NAME, 'O');
       const cap = capture(body.doc);
       deleteOffsets(body.view, from, to, how);
@@ -432,14 +303,14 @@ describe('21.3 a deletion inside one text block is let through while full', () =
     expectPlans(0);
   });
 
-  it('PT-21: in F, Backspace held 30 times through bold, italic and link text: 30 pure deletes, no plan, no toast', async () => {
+  it('PT-21 / W7-35: in F, Backspace held 30 times through bold, italic and link text: 30 pure deletes, 30 plans, no toast', async () => {
     // The spec puts the caret at the end of `middle`, which has 26 characters
     // before it; the caret goes at the end of `linkword` instead, so 30
     // presses still end inside `boldword` and cross the italic and link runs.
-    const { body } = await openP6();
+    const { body } = await openMarked(P6);
     enterState(DOCUMENT_NAME, 'F');
     const end = at('linkword', 8);
-    select(body.view, posAt(body.view.state.doc, end));
+    select(body.view, textStart(body.view.state.doc) + end);
     const shapes: string[] = [];
     for (let k = 0; k < 30; k += 1) {
       const cap = capture(body.doc);
@@ -449,7 +320,7 @@ describe('21.3 a deletion inside one text block is let through while full', () =
       cap.stop();
     }
     expect(shapes).toEqual(Array.from({ length: 30 }, () => '1D'));
-    expectPlans(0);
+    expectPlans(30);
     expectWarnings();
     expect(body.view.state.doc.textContent).toBe(P6_TEXT.slice(0, end - 30) + P6_TEXT.slice(end));
     expectBodyInStep(body);

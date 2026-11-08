@@ -14,12 +14,10 @@
  * plugin keeps a space on each side of every chip; the contents below are
  * written with those spaces, as the editor keeps them.
  *
- * Round 6 (design 5.3 line 217): a deletion of text inside one `XmlText`
- * whose paragraph holds only that `XmlText` is let through to y-tiptap while
- * full (0 plans, counted by a pass-through spy on the executor module); a
- * chip in the range, or two neighbouring `XmlText`s in the paragraph, goes to
- * the executor (1 plan). Over the ceiling, deleting part of one `XmlText` is
- * refused before planning (line 231).
+ * While full every deletion goes to the executor, a deletion of text inside
+ * one `XmlText` included (1 plan, counted by a pass-through spy on the
+ * executor module). Over the ceiling, deleting part of one `XmlText` is
+ * refused before planning (design 5.3 step 7).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -149,7 +147,7 @@ afterEach(() => {
 });
 
 describe('12. the delete executor on the canvas TipTap editors', () => {
-  it('XT-01: text node body in F, deleting text inside a paragraph is let through to y-tiptap (D)', async () => {
+  it('XT-01: text node body in F, deleting text inside a paragraph goes to the executor (D)', async () => {
     const open = openTiptap('textBody', paragraphs('hello world'));
     enterState(CANVAS_NAME, 'F');
     const cap = capture(open.doc);
@@ -158,7 +156,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     press(open.view, 'Backspace');
     await flush();
     expectAccepted(open, cap, { texts: ['helorld'], shape: 'D', start });
-    expectPlans(0);
+    expectPlans(1);
     await expectUndoRestores(open, ['hello world']);
   });
 
@@ -244,7 +242,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     expectWarnings();
   });
 
-  it('XT-06: prompt in F, the user\'s Backspace is let through to y-tiptap, goes on the undo stack and comes back after warning', async () => {
+  it('XT-06: prompt in F, the user\'s Backspace goes to the executor, goes on the undo stack and comes back after warning', async () => {
     const open = openTiptap('prompt', paragraphs('hello world'));
     enterState(CANVAS_NAME, 'F');
     const depth = undoManagerOf(open).undoStack.length;
@@ -254,7 +252,7 @@ describe('12. the delete executor on the canvas TipTap editors', () => {
     backspaceChar(open.view);
     await flush();
     expectAccepted(open, cap, { texts: ['hello worl'], shape: 'D', start: start - 1 });
-    expectPlans(0);
+    expectPlans(1);
     expect(undoManagerOf(open).undoStack.length).toBe(depth + 1);
     await expectUndoRestores(open, ['hello world']);
   });

@@ -14,12 +14,10 @@
  * range's start. The body is the production one (`getDocumentEditor`), its
  * content loaded as a remote update (spec 0.1).
  *
- * Round 6 (design 5.3 line 217): a deletion of text inside one `XmlText`
- * whose block holds only that `XmlText` is let through to y-prosemirror while
- * full; X-01, X-02, X-08 (in F), X-11, X-19 and X-20 are such deletions and
- * assert the planning function ran zero times (a pass-through spy on the
- * executor module). Over the ceiling, a deletion of part of one `XmlText` is
- * refused before planning (line 231).
+ * While full every deletion goes to the executor, a deletion of text inside
+ * one `XmlText` included: each case asserts the planning function ran (a
+ * pass-through spy on the executor module). Over the ceiling, a deletion of
+ * part of one `XmlText` is refused before planning (design 5.3 step 7).
  *
  * X-30 and X-31 cannot be reached from a real editor and feed the
  * executor's planning function directly (spec answer Q7). Its name and
@@ -114,8 +112,8 @@ interface Accepted {
   readonly outside: string[];
   /** The case is accepted over the ceiling too (shape R). */
   readonly overCeiling?: boolean;
-  /** Round 6: let through to y-prosemirror (0 plans) or handed to the executor (1 plan). */
-  readonly plans: 0 | 1;
+  /** How many times the filter asked the executor to plan. */
+  readonly plans: 1;
 }
 
 /**
@@ -184,9 +182,9 @@ async function expectUndoRestores(body: OpenBody, before: Row[]): Promise<void> 
 
 const ACCEPTED: readonly Accepted[] = [
   {
-    id: 'X-01', title: 'deleting text inside a paragraph is let through to y-prosemirror', blocks: [p('Hello world')],
+    id: 'X-01', title: 'deleting text inside a paragraph', blocks: [p('Hello world')],
     op: (body) => deleteBetween(body, ['Hello', 2], ['Hello', 5]),
-    result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'], plans: 0,
+    result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'], plans: 1,
   },
   {
     id: 'X-03', title: 'the side menu deleting the middle block', blocks: [p('a'), p('b'), p('c')],
@@ -204,9 +202,9 @@ const ACCEPTED: readonly Accepted[] = [
     result: [['paragraph', 'He'], ['paragraph', 'rld']], shape: 'D', outside: ['He', 'rld'], plans: 1,
   },
   {
-    id: 'X-08', title: 'selecting all of a block\'s text is let through to y-prosemirror, which leaves the XmlText empty (D)', blocks: [p('Hello'), p('World')],
+    id: 'X-08', title: 'selecting all of a block\'s text deletes its XmlText whole (R)', blocks: [p('Hello'), p('World')],
     op: (body) => deleteBetween(body, ['World', 0], ['World', 5]),
-    result: [['paragraph', 'Hello'], ['paragraph', '']], shape: 'D', outside: ['Hello'], plans: 0,
+    result: [['paragraph', 'Hello'], ['paragraph', '']], shape: 'R', outside: ['Hello'], plans: 1,
   },
   {
     id: 'X-09', title: 'a cross-block selection emptying the end side deletes the end block', blocks: [p('Hello'), p('World')],
@@ -234,9 +232,9 @@ const ACCEPTED: readonly Accepted[] = [
     result: [['paragraph', 'a'], ['paragraph', '', [['paragraph', 'fgh']]]], shape: 'D', outside: ['a', 'fgh'], plans: 1,
   },
   {
-    id: 'X-20', title: 'deleting text in a code block is let through to y-prosemirror', blocks: [{ type: 'codeBlock', content: 'const x' }],
+    id: 'X-20', title: 'deleting text in a code block', blocks: [{ type: 'codeBlock', content: 'const x' }],
     op: (body) => deleteBetween(body, ['const x', 3], ['const x', 5]),
-    result: [['codeBlock', 'con x']], shape: 'D', outside: ['con', ' x'], plans: 0,
+    result: [['codeBlock', 'con x']], shape: 'D', outside: ['con', ' x'], plans: 1,
   },
   {
     id: 'X-21', title: 'selecting all of [image, p x] keeps the first text block, emptied', blocks: [IMAGE, p('x')],
@@ -278,14 +276,14 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     await expectUndoRestores(ran.body, ran.before);
   });
 
-  it('X-02: a second delete in the same paragraph is let through to y-prosemirror too', async () => {
+  it('X-02: a second delete in the same paragraph goes to the executor too', async () => {
     const ran = await run([p('Hello world')], 'F', (body) => deleteBetween(body, ['Hello', 2], ['Hello', 5]));
     expectAccepted(ran, { result: [['paragraph', 'He world']], shape: 'D', outside: ['He', ' world'] });
     const second = capture(ran.body.doc);
     const start = deleteBetween(ran.body, ['He world', 1], ['He world', 3]);
     await flush();
     expectAccepted({ body: ran.body, cap: second, start }, { result: [['paragraph', 'Hworld']], shape: 'D', outside: ['H', 'world'] });
-    expectPlans(0);
+    expectPlans(2);
   });
 
   it.each(['F', 'O'] as const)('X-05: in %s, the side menu deleting the only block empties it and keeps its id', async (code) => {
@@ -305,7 +303,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     await expectUndoRestores(ran.body, ran.before);
   });
 
-  it('X-11: deleting across a bold run is let through to y-prosemirror and keeps the marks on what is left', async () => {
+  it('X-11: deleting across a bold run goes to the executor and keeps the marks on what is left', async () => {
     const blocks: BlockInput[] = [{
       type: 'paragraph',
       content: [
@@ -316,7 +314,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     }];
     const ran = await run(blocks, 'F', (body) => deleteBetween(body, ['plain ', 3], ['bold', 2]));
     expectAccepted(ran, { result: [['paragraph', 'plald tail']], shape: 'D', outside: ['pla', 'ld', ' tail'] });
-    expectPlans(0);
+    expectPlans(1);
     const doc = ran.body.view.state.doc;
     expect(doc.resolve(posOf(doc, 'ld') + 1).marks().map((mark) => mark.type.name)).toContain('bold');
     expect(doc.resolve(posOf(doc, 'pla') + 1).marks()).toHaveLength(0);
@@ -406,7 +404,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     return nodesOf(doc, 'docTableCell').map((pos) => doc.nodeAt(pos)!.textContent);
   }
 
-  it('X-19: deleting text inside a table cell is let through to y-prosemirror', async () => {
+  it('X-19: deleting text inside a table cell goes to the executor', async () => {
     const ran = await run([tableBlock({ rows: [{ cells: ['abc', 'def'] }] })], 'F', (body) => deleteBetween(body, ['abc', 1], ['abc', 2]));
     const { body, cap } = ran;
     expect(cap.updates).toHaveLength(1);
@@ -415,7 +413,7 @@ describe('11. the delete executor on the document body, accepted cases', () => {
     expectBodyInStep(body);
     expectWarnings();
     expectCaretNear(body.view, ran.start);
-    expectPlans(0);
+    expectPlans(1);
     enterState(DOCUMENT_NAME, 'W');
     body.editor.undo();
     await flush();
@@ -511,7 +509,7 @@ describe('11. the delete executor on the document body, refused and abandoned ca
       after: [['paragraph', 'He'], ['paragraph', 'rld']],
     },
     {
-      how: '(2) X-01 let through to y-prosemirror', plans: 0,
+      how: '(2) X-01 through the executor', plans: 1,
       run: (body) => { deleteBetween(body, ['Hello', 2], ['Hello', 5]); },
       after: [['paragraph', 'He world'], ['paragraph', 'World']],
     },
