@@ -1052,6 +1052,25 @@ describe("web_fetch says how to use it", () => {
     expect(said()).toMatch(/PDF/);
   });
 
+  // Plan §12 row 1: with the user's own link refused, a model that found the
+  // page's content through web_search summarised that instead of asking for
+  // the page itself.
+  it("says to ask the user for the page's text even when a search finds content about the page", () => {
+    expect(said()).toMatch(/even when a search finds/i);
+  });
+
+  it.each(["refused", "needs_login"] as const)(
+    "tells the model, for a page that %s, to ask the user for its text even when a search finds content about it",
+    (status) => {
+      const rendered = renderFetchForModel({
+        pages: [{ url: "https://user-gave.example/page", status, links: [] }],
+        sources: [],
+      });
+
+      expect(rendered).toMatch(/even when a search finds/i);
+    },
+  );
+
   it("says a page whose text is a login form, a paywall or a verification or security check counts as needing a login or refused, even when it came back ok (plan §9 E)", () => {
     expect(said()).toMatch(/paywall/i);
     expect(said()).toMatch(/verification|security check/i);

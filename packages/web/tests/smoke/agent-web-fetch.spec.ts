@@ -221,7 +221,7 @@ test('a page whose site refuses to be read is not a source, and the user is aske
   // The refused page is not a source. Other pages of the same site may be:
   // the model is free to search after the refusal, and a search can find them.
   expect(turn.sources.map(pageOf)).not.toContain(pageOf(REFUSING));
-  expect(turn.reply).toMatch(/cop(y|ied)|paste|screenshot|PDF/i);
+  expect(turn.reply).toMatch(/cop(y|ied)|paste|screenshot|PDF|(the|its|page'?s) text|贴|文字/i);
 });
 
 test('a page found by search is read, and both are sources the reply cites @needs-model @needs-search @needs-ingest @needs-internet', async ({
