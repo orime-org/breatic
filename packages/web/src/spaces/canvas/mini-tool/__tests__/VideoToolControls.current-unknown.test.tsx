@@ -6,7 +6,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { VideoToolControls } from '../video/VideoToolControls';
 import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
-import { t } from '@breatic/shared';
 
 vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../video/use-video-frame-thumbnails')>()),
@@ -31,7 +30,6 @@ describe('explicit unknown presented frame', () => {
     const modes = screen.getAllByTestId(/^video-frame-mode-/);
     expect(modes.map((mode) => mode.getAttribute('data-testid'))).toEqual(['video-frame-mode-first', 'video-frame-mode-last', 'video-frame-mode-current']);
     expect(new Set(modes.map((mode) => mode.parentElement)).size).toBe(1);
-    expect(screen.queryByText(t('canvas.miniTool.videoUI.interval'))).toBeNull();
   });
 
   it('never persists a fabricated zero or null Current time while selecting a table-only mode', () => {

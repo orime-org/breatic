@@ -70,7 +70,8 @@ describe('the erase tracking failure line (execution design §10.3)', () => {
 
   it('has no erase description box, only the tracking prompt', () => {
     mount('timeout');
-    expect(screen.queryByPlaceholderText(t('canvas.miniTool.videoUI.erasePrompt'))).toBeNull();
-    expect(screen.getByPlaceholderText(t('canvas.miniTool.videoUI.trackingPrompt'))).toBeInTheDocument();
+    // The range's Start and End are numeric fields; the one text box besides them is the tracking prompt.
+    const textBoxes = screen.getAllByRole('textbox').filter((box) => box.getAttribute('inputmode') !== 'decimal');
+    expect(textBoxes).toEqual([screen.getByPlaceholderText(t('canvas.miniTool.videoUI.trackingPrompt'))]);
   });
 });
