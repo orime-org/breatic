@@ -1370,8 +1370,6 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
    * @returns The response.
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    void ctx;
-
     const origin = allowedOrigin(request, env);
 
     // Answered before the configuration is judged. A refused preflight is a
@@ -1404,7 +1402,7 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
       );
     }
 
-    return withCors(await answer(request, env), origin);
+    return withCors(await answer(request, env, ctx), origin);
   },
 } satisfies ExportedHandler<Env>);
 
@@ -1417,11 +1415,12 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
  * this was ours to fix never arrives.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
+ * @param ctx - The execution context, for work that outlives the response.
  * @returns The endpoint's response, or a 500.
  */
-async function answer(request: Request, env: Env): Promise<Response> {
+async function answer(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
-    return await route(request, env);
+    return await route(request, env, ctx);
   } catch (err) {
     // Written here because catching it is what takes it off Cloudflare's own
     // error reporting: what that shows is the exceptions nobody handled. A 500
@@ -1439,9 +1438,10 @@ async function answer(request: Request, env: Env): Promise<Response> {
  * Match one request to its endpoint.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
+ * @param ctx - The execution context, for work that outlives the response.
  * @returns The endpoint's response.
  */
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const { pathname } = new URL(request.url);
 
   if (request.method === "POST" && pathname === "/uploads") {
@@ -1461,7 +1461,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   if (request.method === "POST" && pathname === "/read-pages") {
-    return readPages(request, env);
+    return readPages(request, env, ctx);
   }
 
   if (request.method === "POST" && pathname === "/long-media/jobs") {

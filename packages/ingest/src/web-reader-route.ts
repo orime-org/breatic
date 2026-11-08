@@ -21,15 +21,17 @@ export interface WebReaderEnv {
  * Read the pages a request names, in an instance of their own.
  *
  * When the caller goes, the instance is stopped: Workers RPC cannot carry an
- * abort signal into the object, so the stop is a call of its own.
+ * abort signal into the object, so the stop is a call of its own, handed to
+ * `ctx.waitUntil` so the Worker stays alive until it is sent.
  * @param request - The request.
  * @param env - The bindings.
+ * @param ctx - The execution context, which keeps the stop running after the answer.
  * @returns 200 with the pages, 401 without the secret, 400 for a body that is
  *   not a read-pages request, 503 naming `reader_not_started` when the
  *   container would not start, 499 when the caller went before the answer.
  * @throws {Error} When the reader failed while the caller was still waiting.
  */
-export async function readPages(request: Request, env: WebReaderEnv): Promise<Response> {
+export async function readPages(request: Request, env: WebReaderEnv, ctx: ExecutionContext): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
   const parsed = readPagesRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a read-pages request", { status: 400 });
@@ -38,7 +40,7 @@ export async function readPages(request: Request, env: WebReaderEnv): Promise<Re
 
   const reader = env.WEB_READER.get(env.WEB_READER.idFromName(crypto.randomUUID()));
   const stop = (): void => {
-    void reader.stop();
+    ctx.waitUntil(reader.stop().catch((err: unknown) => noteFailure("ingest_web_reader_stop_failed", {}, err)));
   };
   request.signal.addEventListener("abort", stop, { once: true });
   try {
