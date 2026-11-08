@@ -131,13 +131,6 @@ interface PageInFull {
   truncated?: boolean;
 }
 
-/**
- * Worker answers that mean no container ran, so nothing is charged: a request
- * it would not take (400), our secret refused (401), a reader that never
- * started (503).
- */
-const NO_CONTAINER_STATUSES: ReadonlySet<number> = new Set([400, 401, 503]);
-
 /** What the model is told about each way a page can fail to be read. */
 const WHAT_FAILED: Readonly<Record<Exclude<FetchStatus, "ok">, string>> = {
   not_in_conversation:
@@ -431,8 +424,11 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
               err,
             );
           }
-          // The container may have run: it is charged for the time the call took.
-          if (!(err instanceof UploadHttpError && NO_CONTAINER_STATUSES.has(err.status))) {
+          // The container may have run: it is charged for the time the call took,
+          // unless the Worker refused the call (a 4xx) or said its reader never started.
+          const noContainer =
+            err instanceof UploadHttpError && (err.status < 500 || err.code === "reader_not_started");
+          if (!noContainer) {
             recordRun(context.usage, { wallMs: Date.now() - startedAt, cpuUsec: null });
           }
           if (isStop(err, abortSignal)) throw stoppedByUser();
