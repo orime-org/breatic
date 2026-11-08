@@ -3289,7 +3289,8 @@
       "preview": {
         "pending": "{track}: web animation {status}…",
         "failed": "{track}: web animation {status}, not shown",
-        "unavailable": "{track}: web animation unavailable"
+        "unavailable": "{track}: web animation unavailable",
+        "loading": "{track}: web animation loading…"
       }
     }
   }

@@ -3289,7 +3289,8 @@
       "preview": {
         "pending": "{track}: 웹 애니메이션 {status}…",
         "failed": "{track}: 웹 애니메이션 {status}, 표시되지 않음",
-        "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음"
+        "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
+        "loading": "{track}: 웹 애니메이션 불러오는 중…"
       }
     }
   }

@@ -51,6 +51,23 @@ export function usePlayerDefined(needed: boolean): boolean {
   return defined;
 }
 
+/**
+ * Whether an instance has a picture to draw: it answered a position since it last (re)loaded. Until then the player's
+ * own black background would cover what is beneath it; a later seek keeps the last picture while it waits.
+ * @param state - The instance's current state.
+ * @returns Whether to draw it.
+ * @throws {never} Never.
+ */
+export function useWebInstanceDrawn(state: WebInstanceState | undefined): boolean {
+  const [drawn, setDrawn] = React.useState(state === 'ready');
+  if (state === 'ready' && !drawn) setDrawn(true);
+  if ((state === undefined || state === 'loading') && drawn) setDrawn(false);
+  return drawn;
+}
+
+/** The style of a player that has no picture yet: it keeps loading and stays in the layout, unseen. */
+export const UNDRAWN_PLAYER = { opacity: 0 } as const;
+
 /** One visible web copy: the instance showing it, or the status a placeholder notes. */
 export interface TimelineWebEntry {
   clip: TimelineWebAnimationClip;
@@ -119,7 +136,8 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     onPlayer(key, element as WebAnimationPlayerElement);
     return () => onPlayer(key, null);
   }, [defined, element, key, onPlayer]);
-  const style = React.useMemo(() => ({ zIndex: entry.z, pointerEvents: 'none' as const }), [entry.z]);
+  const drawn = useWebInstanceDrawn(state);
+  const style = React.useMemo(() => ({ zIndex: entry.z, pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [entry.z, drawn]);
   const retry = React.useCallback((): void => { refresh(); onRetry(key); }, [refresh, onRetry, key]);
   // A page reloaded after its address expired never says it is ready; one fresh address is tried before giving up.
   const refreshedOnce = React.useRef(false);
@@ -129,9 +147,11 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     refresh();
   }, [state, refresh]);
   const unavailable = preview.failed || (state === 'failed' && refreshedOnce.current);
+  const loading = !drawn && !unavailable;
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
-      data-instance-key={key} data-clip-id={entry.clip.id} className='absolute inset-0 size-full' style={style} />}
+      data-instance-key={key} data-clip-id={entry.clip.id} data-web-state={state ?? 'loading'} className='absolute inset-0 size-full' style={style} />}
+    {loading && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.loading', { track: entry.track })} />, notes)}
     {unavailable && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.unavailable', { track: entry.track })}>
       <Button data-testid={`timeline-web-retry-${entry.clip.id}`} variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
     </WebNote>, notes)}

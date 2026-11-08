@@ -3289,7 +3289,8 @@
       "preview": {
         "pending": "{track}：網頁動畫{status}…",
         "failed": "{track}：網頁動畫{status}，不顯示",
-        "unavailable": "{track}：網頁動畫不可用"
+        "unavailable": "{track}：網頁動畫不可用",
+        "loading": "{track}：網頁動畫載入中…"
       }
     }
   }

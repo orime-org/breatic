@@ -1388,7 +1388,8 @@ export function renderProductGuide(): string {
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
       "In the preview a copy above a video shows on top of it, and one under a higher video is hidden. A copy with nothing to show yet is noted at the top right of the " +
-      "preview with its track and its run's status, and a copy whose page cannot be loaded is noted there as unavailable with " +
+      "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
+      "and a copy whose page cannot be loaded is noted there as unavailable with " +
       `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +

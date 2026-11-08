@@ -3289,7 +3289,8 @@
       "preview": {
         "pending": "{track}：ウェブアニメーション{status}…",
         "failed": "{track}：ウェブアニメーション{status}、表示されません",
-        "unavailable": "{track}：ウェブアニメーションを利用できません"
+        "unavailable": "{track}：ウェブアニメーションを利用できません",
+        "loading": "{track}：ウェブアニメーションを読み込み中…"
       }
     }
   }

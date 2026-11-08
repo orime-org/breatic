@@ -117,6 +117,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.webAnimation.preview.pending": { described: /noted at the top right of the preview with its track and its run's status/ },
   "timeline.webAnimation.preview.failed": { described: /noted at the top right of the preview with its track and its run's status/ },
   "timeline.webAnimation.preview.unavailable": { described: /noted there as unavailable/ },
+  "timeline.webAnimation.preview.loading": { described: /noted there as loading/ },
   "timeline.edit.magnetOn": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.edit.magnetOff": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.edit.newTrackZone": { excluded: REASONS.SAYS_WHAT_TO_PICK },

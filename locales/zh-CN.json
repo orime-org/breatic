@@ -3289,7 +3289,8 @@
       "preview": {
         "pending": "{track}：网页动画{status}…",
         "failed": "{track}：网页动画{status}，不显示",
-        "unavailable": "{track}：网页动画不可用"
+        "unavailable": "{track}：网页动画不可用",
+        "loading": "{track}：网页动画加载中…"
       }
     }
   }

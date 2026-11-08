@@ -5,12 +5,13 @@ import * as React from 'react';
 import type { TimelineWebAnimationClip } from '@breatic/shared';
 import { webAnimationDurationFrames, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
+import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
-import { usePlayerDefined } from '@web/spaces/timeline/TimelineWebPreview';
+import { UNDRAWN_PLAYER, usePlayerDefined, useWebInstanceDrawn } from '@web/spaces/timeline/TimelineWebPreview';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
-import { createWebAnimationHost, type WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
+import { createWebAnimationHost, type WebAnimationPlayerElement, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 
 /** One succeeded execution's result. */
 interface TimelineWebResultPreviewProps { projectId: string; executionId: string; sourceVersionId: string; input: TimelineExecutionInput }
@@ -39,7 +40,16 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
     id: executionId, trackId: '', kind: 'web-animation', contentBinding: { baseSourceResultId: sourceVersionId, operationId: null },
     startFrame: 0, sourceInFrame: 0, durationFrames, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   }), [executionId, sourceVersionId, durationFrames]);
-  const [host] = React.useState(() => createWebAnimationHost({ frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => undefined, onChange: () => {} }));
+  const [state, setState] = React.useState<WebInstanceState | undefined>(undefined);
+  const [host] = React.useState(() => {
+    const created = createWebAnimationHost({
+      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => undefined,
+      // The one instance is keyed by its source version; its state decides whether the picture is drawn yet.
+      onChange: () => setState(created.states().values().next().value),
+    });
+    return created;
+  });
+  const drawn = useWebInstanceDrawn(state);
   React.useEffect(() => {
     /**
      * Hand a window message to the host.
@@ -63,10 +73,12 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   }, [host]);
   const value = React.useMemo(() => [frame], [frame]);
   const style = React.useMemo(() => ({ aspectRatio: input.aspect.replace(':', ' / ') }), [input.aspect]);
-  const playerStyle = React.useMemo(() => ({ pointerEvents: 'none' as const }), []);
+  const playerStyle = React.useMemo(() => ({ pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [drawn]);
   return <div className='flex flex-col gap-1.5'>
     <div className='relative mx-auto max-h-48 w-full max-w-full overflow-hidden rounded-chrome border border-border bg-muted' style={style}>
-      {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' className='absolute inset-0 size-full' style={playerStyle} />}
+      {!drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
+      {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
+        className='absolute inset-0 size-full' style={playerStyle} />}
     </div>
     <div className='flex items-center gap-2'>
       <Slider aria-label={t('timeline.seek')} value={value} onValueChange={scrub} min={0} max={Math.max(1, durationFrames - 1)} step={1} className='min-w-0 flex-1' />

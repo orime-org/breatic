@@ -555,8 +555,10 @@ describe('preview of web copies', () => {
     const copy = '30000000-0000-4000-8000-000000000104';
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    const note = await screen.findByTestId(`timeline-web-note-${copy}`);
-    expect(note).toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) }));
+    // The copy notes it is loading while its address is fetched, then that it is unavailable once the fetch fails.
+    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${copy}`))
+      .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
+    const note = screen.getByTestId(`timeline-web-note-${copy}`);
     await userEvent.click(within(note).getByTestId(`timeline-web-retry-${copy}`));
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
