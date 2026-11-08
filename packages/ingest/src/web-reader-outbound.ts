@@ -10,6 +10,8 @@
  */
 import { READER_UNREACHABLE_HEADER } from "@breatic/shared";
 
+import { noteFailure } from "@ingest/error-monitoring.js";
+
 /** How a request is sent on. */
 export type SendOn = (request: Request, init: RequestInit) => Promise<Response>;
 
@@ -49,7 +51,9 @@ export async function webReaderOutbound(request: Request, send?: SendOn): Promis
   const sendOn: SendOn = send ?? ((req, init) => fetch(req, init));
   try {
     return await sendOn(request, { redirect: "manual" });
-  } catch {
+  } catch (err) {
+    // The host the page named did not answer: the page's matter, so logged and never reported.
+    noteFailure("ingest_web_reader_send_failed", { host: new URL(request.url).hostname }, err, { userInput: true });
     // Marked so the reader can tell it from a 502 the site itself gave.
     return new Response("Unreachable", { status: 502, headers: { [READER_UNREACHABLE_HEADER]: "1" } });
   }
