@@ -461,14 +461,43 @@ export function answerFor(
 export async function renderProposalForModel(answer: ProposalAnswer): Promise<string> {
   if (!answer.placed) return `That proposal was refused, so nothing is on screen. ${answer.reason}`;
   const priced = await Promise.all(
-    answer.nodes.flatMap((node) =>
+    answer.nodes.flatMap((node, index) =>
       node.role === "generate" && node.model !== undefined
-        ? [estimateModelCredits(node.model, { params: node.params ?? {}, prompt: wordsOf(node) }).then((price) => ({ name: node.name, price }))]
+        ? [estimateModelCredits(node.model, { params: wiredParams(answer, node, index), prompt: wordsOf(node) }).then((price) => ({ name: node.name, price }))]
         : [],
     ),
   );
   const lines = priced.map(({ name, price }) => `- "${name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`);
   return ["The proposal is on screen as a card. The user decides whether to place it.", ...(priced.length === 0 ? [] : ["Running its generations costs:", ...lines]), ...totalLine(priced.map(({ price }) => price))].join("\n");
+}
+
+/**
+ * A generation's params with what the proposal wires into its source slots:
+ * each slot an edge or a fill reaches holds one stand-in per node feeding it,
+ * so a price that counts a slot's sources counts them.
+ * @param proposal - The placed proposal.
+ * @param node - The generation.
+ * @param index - Where it sits in the proposal.
+ * @returns Its params, each wired slot it left unset holding its stand-ins.
+ */
+function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...(node.params ?? {}) };
+  const declared = chosenModelOf(node)?.params ?? {};
+  const counts = new Map<string, number>();
+  const intos = [
+    ...proposal.edges.flatMap((edge) => (edge.toIndex === index && edge.into !== undefined ? [edge.into] : [])),
+    ...Object.entries(node.fills ?? {}).flatMap(([slot, from]) => from.map(() => slot)),
+  ];
+  for (const into of intos) {
+    const name = into === "pool" ? Object.keys(declared).find((key) => declared[key]?.fromReferencePool === true) : into;
+    if (name !== undefined) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  for (const [name, count] of counts) {
+    const spec = declared[name];
+    if (spec?.filledBySource !== true || params[name] !== undefined) continue;
+    params[name] = spec.type === "list" ? Array.from({ length: count }, (_, i) => `wired ${String(i + 1)}`) : "wired";
+  }
+  return params;
 }
 
 /**
@@ -483,8 +512,10 @@ function wordsOf(node: ProposalNode): string {
 
 /**
  * The total of a proposal's estimates, worded by how they bound the charge:
- * exact when every one is, otherwise at least or up to, naming what the sum
- * leaves out. No line when nothing could be summed.
+ * a generation left out of the sum, or one priced at least, makes it a floor;
+ * one priced up to makes it a ceiling; with both, it is neither, and the
+ * lines above say which way each part may move. No line when nothing could be
+ * summed.
  * @param prices - Each generation's estimate, undefined when unpriced.
  * @returns The line, or none.
  */
@@ -494,9 +525,12 @@ function totalLine(prices: readonly (CreditEstimate | undefined)[]): string[] {
   const credits = formatCredits(summed.reduce((sum, price) => sum + price.credits, 0), "en-US");
   const left = prices.length - summed.length;
   const outside = left === 0 ? "" : `, plus ${String(left)} generation${left === 1 ? "" : "s"} not in this sum`;
-  if (left === 0 && summed.every((price) => price.bound === "exact")) return [`Total: ${credits} credits.`];
-  if (left === 0 && summed.every((price) => price.bound === "at_most")) return [`Total: up to ${credits} credits.`];
-  return [`Total: at least ${credits} credits${outside}.`];
+  const floor = left > 0 || summed.some((price) => price.bound === "at_least");
+  const ceiling = summed.some((price) => price.bound === "at_most");
+  if (floor && ceiling) return [`Total: ${credits} credits${outside}; the lines above say which may cost more and which less.`];
+  if (floor) return [`Total: at least ${credits} credits${outside}.`];
+  if (ceiling) return [`Total: up to ${credits} credits.`];
+  return [`Total: ${credits} credits.`];
 }
 
 /**
