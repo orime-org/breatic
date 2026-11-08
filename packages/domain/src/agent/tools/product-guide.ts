@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { getAgentConfig } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
 import {
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
@@ -47,6 +47,38 @@ type Creatable = (typeof CREATABLE)[number];
  */
 function quoted(message: string): string {
   return `"${message}"`;
+}
+
+/**
+ * The erase range the deployment's model takes, opening the sentence about the marked frame.
+ * @returns The opening, up to the word before "frame".
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function eraseRange(): string {
+  const erase = getMiniToolsConfig().executions["video.erase"];
+  return erase === undefined ? "The" : `Erase takes a range of ${String(erase.model.min_seconds)}–${String(erase.model.max_seconds)} s, and the`;
+}
+
+/**
+ * The source duration and output size video expansion takes in this deployment.
+ * @returns The clause, empty where the deployment offers no expansion.
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function expandLimits(): string {
+  const expand = getMiniToolsConfig().executions["video.expand"];
+  return expand === undefined
+    ? ""
+    : `; it takes videos up to ${String(expand.max_duration_seconds)} s, and the expanded video's long side can be at most ${String(expand.max_target_side)} px`;
+}
+
+/**
+ * How many people and dialogue rows one lip-sync run takes in this deployment.
+ * @returns The sentence with its trailing space, empty where the deployment offers no lip-sync.
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function lipSyncLimits(): string {
+  const lipSync = getMiniToolsConfig().executions["video.lip-sync"];
+  return lipSync === undefined ? "" : `A run takes up to ${String(lipSync.max_people)} people and ${String(lipSync.max_dialogues)} dialogue rows. `;
 }
 
 /**
@@ -967,13 +999,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection; the text box above it can describe the ` +
       "object to track. Once tracked, the box turns green and follows the object frame by frame. A tracking that failed " +
       `says why under the button, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
-      "when that can help. Erase takes a range of 1–5 s, and the frame the selection was marked on must lie inside the " +
+      "when that can help. " + eraseRange() + " frame the selection was marked on must lie inside the " +
       "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
       "expansion lists on its output node what failed, by step or by window, and what to do next; " +
       `${quoted(t("canvas.miniTool.videoUI.retryFailedItems"))} is offered only when retrying can succeed. ` +
       "Video expansion uses the frame around the " +
-      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion; it takes videos " +
-      "up to 180 s, and the expanded video's long side can be at most 4096 px. Neither erase nor expansion works on a " +
+      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion" + expandLimits() + ". Neither erase nor expansion works on a " +
       "video with transparency, such as a background removal result.",
     `In ${quoted(t("canvas.miniTool.video.lip-sync.label"))}, ${quoted(t("canvas.miniTool.videoUI.dialoguePairs"))} ` +
       `has one compact row per dialogue: ${quoted(t("canvas.miniTool.videoUI.targetPerson"))} on the left, ` +
@@ -988,8 +1019,8 @@ export function renderProductGuide(): string {
       "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
       `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap. ` +
       "Choose the lip-sync model in the panel; Run stays unavailable, with a toast giving the range, while the result is " +
-      "outside the model's duration range or the used part of the video is outside what person tracking takes. A run " +
-      "takes up to two people and eight dialogue rows. A failed run lists one line per person with the step that failed " +
+      "outside the model's duration range or the used part of the video is outside what person tracking takes. " + lipSyncLimits() +
+      "A failed run lists one line per person with the step that failed " +
       "and what to do next; retry is offered only when every failure can clear on a retry, and it reruns only the failed people.",
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
       `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
