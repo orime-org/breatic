@@ -239,9 +239,9 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const filterCount = [filters.running, filters.kind !== 'all', filters.starter !== 'all', filters.origin !== 'all'].filter(Boolean).length;
   const filterMenu = <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild>
-      <Button type='button' variant='ghost' size='compact' data-testid='scene-task-filter' icon={<ListFilter className='size-4' />}>
+      <Button type='button' variant='ghost' size='compact' data-testid='scene-task-filter' icon={<ListFilter className='mr-1.5 size-4' />}>
         {t('spaces.threeD.taskList.filter')}
-        {filterCount > 0 ? <span data-testid='scene-task-filter-count' className='rounded-content-xs bg-accent px-1 text-xs tabular-nums'>{filterCount}</span> : null}
+        {filterCount > 0 ? <span data-testid='scene-task-filter-count' className='ml-1.5 rounded-content-xs bg-accent px-1 text-xs tabular-nums'>{filterCount}</span> : null}
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align='end'>
@@ -339,7 +339,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           {failure === null ? null : <p className='mt-1 text-xs text-status-error'>{failure}</p>}
           {placeable || locatable || removable || retryable ? <div className='mt-2 flex flex-wrap gap-1.5'>
             {placeable ? <Button size='compact' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
-            {locatable ? <Button size='compact' variant='outline' icon={<Crosshair className='size-3.5' />} onClick={() => onLocate(task.assetId!)}>{t('spaces.threeD.taskList.locate')}</Button> : null}
+            {locatable ? <Button size='compact' variant='outline' icon={<Crosshair className='mr-1.5 size-3.5' />} onClick={() => onLocate(task.assetId!)}>{t('spaces.threeD.taskList.locate')}</Button> : null}
             {retryable ? <Button size='compact' variant='outline' loading={generation ? checking.has(task.id) : own?.phase === 'retrying'}
               onClick={() => (generation ? retryGeneration(task) : retry(task))}>{t('spaces.threeD.taskList.retry')}</Button> : null}
             {removable ? <Button size='compact' variant='outline' loading={removing.has(task.id)} onClick={() => remove(task)}>{t('spaces.threeD.taskList.remove')}</Button> : null}

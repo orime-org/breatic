@@ -91,7 +91,7 @@ function PickerBody({ projectId, onOpenChange, onPick, onPickFile }: Omit<SceneI
         {[0, 1, 2, 3, 4, 5].map((index) => <Skeleton key={index} className='aspect-square w-full' />)}
       </div> : list.isError ? <div data-testid='scene-image-picker-error' className='flex flex-col items-center gap-2 py-10 text-sm text-muted-foreground'>
         <p>{t('spaces.threeD.picker.loadFailed')}</p>
-        <Button type='button' variant='outline' size='compact' data-testid='scene-image-picker-retry' loading={list.isFetching} icon={<RotateCw className='size-4' />} onClick={retry}>{t('spaces.threeD.retry')}</Button>
+        <Button type='button' variant='outline' size='compact' data-testid='scene-image-picker-retry' loading={list.isFetching} icon={<RotateCw className='mr-1.5 size-4' />} onClick={retry}>{t('spaces.threeD.retry')}</Button>
       </div> : images.length === 0 ? <div data-testid='scene-image-picker-empty' className='flex flex-col items-center gap-2 py-10 text-sm text-muted-foreground'>
         <ImageIcon className='size-6' aria-hidden='true' /><p>{t('spaces.threeD.picker.empty')}</p>
       </div> : <div className='flex flex-col gap-2'>
@@ -110,7 +110,7 @@ function PickerBody({ projectId, onOpenChange, onPick, onPickFile }: Omit<SceneI
       <ImageIcon className='size-6' aria-hidden='true' />
       <p>{t('spaces.threeD.picker.formats')}</p>
       <Input ref={fileInput} data-testid='scene-image-picker-file-input' type='file' accept={SCENE_VIEW_ACCEPT} onChange={changeFile} className='hidden' />
-      <Button type='button' variant='outline' icon={<Upload className='size-4' />} onClick={chooseFile}>{t('spaces.threeD.picker.chooseFile')}</Button>
+      <Button type='button' variant='outline' icon={<Upload className='mr-2 size-4' />} onClick={chooseFile}>{t('spaces.threeD.picker.chooseFile')}</Button>
     </div>}
   </>;
 }
