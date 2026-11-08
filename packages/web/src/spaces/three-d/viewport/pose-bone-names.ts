@@ -4,7 +4,7 @@
 /**
  * Which VRM 1.0 humanoid bone a rig's node stands for (inner#1692). Rigs name
  * their bones by their own convention (Mixamo, Unreal, Rigify, Character
- * Creator, 3ds Max Biped, VRM itself), and GLTFLoader cleans the names; the
+ * Creator, 3ds Max Biped, VRoid, VRM itself), and GLTFLoader cleans the names; the
  * name is lowered, stripped of separators and known prefixes, its side read
  * from a left or right token at either end, and the rest looked up. UniVRM's
  * bone guesser and Unity's Avatar auto-mapping match names the same way.
@@ -59,18 +59,26 @@ const SIDED_NAMES: Readonly<Record<string, Sided>> = {
 };
 
 /**
- * Mixamo's numbered finger names (`HandThumb1`) under their VRM names.
+ * Numbered finger names under their VRM names: Mixamo's `HandThumb1` and
+ * VRoid's `Thumb1`, the first thumb joint being VRM 1.0's metacarpal.
  * @returns Cleaned names to sided suffixes.
  */
 function fingerNames(): Record<string, Sided> {
-  const fingers = { thumb: 'Thumb', index: 'Index', middle: 'Middle', ring: 'Ring', pinky: 'Little' } as const;
+  const fingers = [['thumb', 'thumb', 'Thumb'], ['index', 'index', 'Index'], ['middle', 'middle', 'Middle'],
+    ['ring', 'ring', 'Ring'], ['pinky', 'little', 'Little']] as const;
   const names: Record<string, Sided> = {};
-  for (const [mixamo, vrm] of Object.entries(fingers)) {
+  for (const [mixamo, vroid, vrm] of fingers) {
     const joints = vrm === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
-    joints.forEach((joint, index) => { names[`hand${mixamo}${index + 1}`] = `${vrm}${joint}` as Sided; });
+    joints.forEach((joint, index) => {
+      names[`hand${mixamo}${index + 1}`] = `${vrm}${joint}` as Sided;
+      names[`${vroid}${index + 1}`] = `${vrm}${joint}` as Sided;
+    });
   }
   return names;
 }
+
+/** VRoid's names, which `tripo3d/rig` writes for a VRM rig: `J_Bip_C_Hips`, `J_Bip_L_UpperArm`. */
+const VROID = /^jbip([clr])(.+)$/u;
 
 /**
  * The side a cleaned name carries and the name without it.
@@ -98,6 +106,13 @@ function splitSide(name: string): { side: 'left' | 'right'; rest: string } | nul
 export function humanoidBoneOf(name: string): VrmHumanBoneName | null {
   const cleaned = name.toLowerCase().replace(/[^a-z0-9]/gu, '').replace(PREFIX, '');
   if (cleaned === '') return null;
+  const vroid = VROID.exec(cleaned);
+  if (vroid) {
+    const [, side, rest] = vroid;
+    if (side === 'c') return UNSIDED_NAMES[rest] ?? null;
+    const suffix = SIDED_NAMES[rest];
+    return suffix === undefined ? null : `${side === 'l' ? 'left' : 'right'}${suffix}`;
+  }
   const unsided = UNSIDED_NAMES[cleaned];
   if (unsided !== undefined) return unsided;
   const split = splitSide(cleaned);

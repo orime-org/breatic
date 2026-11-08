@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
-import { humanoidBoneOf, type VrmHumanBoneName } from '@web/spaces/three-d/viewport/pose-bone-names';
+import { humanoidBoneOf, REQUIRED_HUMAN_BONES, type VrmHumanBoneName } from '@web/spaces/three-d/viewport/pose-bone-names';
 
 type Case = readonly [string, VrmHumanBoneName];
 
@@ -78,6 +78,39 @@ const MANNEQUINY: readonly Case[] = [
   ['thighr', 'rightUpperLeg'], ['calfr', 'rightLowerLeg'], ['footr', 'rightFoot'], ['ballr', 'rightToes'],
 ];
 
+/** VRoid joints, as WaveSpeed `tripo3d/rig` with `spec=vrm` names them; fingers are numbered 1..3. */
+const VROID: readonly Case[] = [
+  ['J_Bip_C_Hips', 'hips'], ['J_Bip_C_Spine', 'spine'], ['J_Bip_C_Chest', 'chest'], ['J_Bip_C_UpperChest', 'upperChest'],
+  ['J_Bip_C_Neck', 'neck'], ['J_Bip_C_Head', 'head'],
+  ['J_Bip_L_Shoulder', 'leftShoulder'], ['J_Bip_L_UpperArm', 'leftUpperArm'], ['J_Bip_L_LowerArm', 'leftLowerArm'], ['J_Bip_L_Hand', 'leftHand'],
+  ['J_Bip_R_Shoulder', 'rightShoulder'], ['J_Bip_R_UpperArm', 'rightUpperArm'], ['J_Bip_R_LowerArm', 'rightLowerArm'], ['J_Bip_R_Hand', 'rightHand'],
+  ['J_Bip_L_UpperLeg', 'leftUpperLeg'], ['J_Bip_L_LowerLeg', 'leftLowerLeg'], ['J_Bip_L_Foot', 'leftFoot'], ['J_Bip_L_ToeBase', 'leftToes'],
+  ['J_Bip_R_UpperLeg', 'rightUpperLeg'], ['J_Bip_R_LowerLeg', 'rightLowerLeg'], ['J_Bip_R_Foot', 'rightFoot'], ['J_Bip_R_ToeBase', 'rightToes'],
+  // VRM 1.0 renamed the VRM 0.x thumb joints, so Thumb1 is the metacarpal.
+  ['J_Bip_L_Thumb1', 'leftThumbMetacarpal'], ['J_Bip_L_Thumb2', 'leftThumbProximal'], ['J_Bip_L_Thumb3', 'leftThumbDistal'],
+  ['J_Bip_R_Thumb1', 'rightThumbMetacarpal'], ['J_Bip_R_Thumb2', 'rightThumbProximal'], ['J_Bip_R_Thumb3', 'rightThumbDistal'],
+  ['J_Bip_L_Index1', 'leftIndexProximal'], ['J_Bip_L_Index2', 'leftIndexIntermediate'], ['J_Bip_L_Index3', 'leftIndexDistal'],
+  ['J_Bip_R_Index1', 'rightIndexProximal'], ['J_Bip_R_Index2', 'rightIndexIntermediate'], ['J_Bip_R_Index3', 'rightIndexDistal'],
+  ['J_Bip_L_Middle1', 'leftMiddleProximal'], ['J_Bip_L_Middle2', 'leftMiddleIntermediate'], ['J_Bip_L_Middle3', 'leftMiddleDistal'],
+  ['J_Bip_R_Middle1', 'rightMiddleProximal'], ['J_Bip_R_Middle2', 'rightMiddleIntermediate'], ['J_Bip_R_Middle3', 'rightMiddleDistal'],
+  ['J_Bip_L_Ring1', 'leftRingProximal'], ['J_Bip_L_Ring2', 'leftRingIntermediate'], ['J_Bip_L_Ring3', 'leftRingDistal'],
+  ['J_Bip_R_Ring1', 'rightRingProximal'], ['J_Bip_R_Ring2', 'rightRingIntermediate'], ['J_Bip_R_Ring3', 'rightRingDistal'],
+  ['J_Bip_L_Little1', 'leftLittleProximal'], ['J_Bip_L_Little2', 'leftLittleIntermediate'], ['J_Bip_L_Little3', 'leftLittleDistal'],
+  ['J_Bip_R_Little1', 'rightLittleProximal'], ['J_Bip_R_Little2', 'rightLittleIntermediate'], ['J_Bip_R_Little3', 'rightLittleDistal'],
+];
+
+/** Every joint of the real `tripo3d/rig` VRM-spec skin, helpers included. */
+const VROID_RIG: readonly string[] = [
+  'Root', 'J_Adj_L_FaceEye', 'J_Adj_R_FaceEye',
+  ...VROID.map(([name]) => name),
+];
+
+/** Neighbouring conventions with numbered fingers that a VRoid rule must leave as they are. */
+const FINGER_NEIGHBOURS: readonly Case[] = [
+  ['mixamorigLeftHandRing1', 'leftRingProximal'], ['mixamorigRightHandThumb3', 'rightThumbDistal'],
+  ['mixamorigLeftHandPinky2', 'leftLittleIntermediate'], ['LeftHandIndex3', 'leftIndexDistal'],
+];
+
 /**
  * Names that are not a main humanoid bone. Twist and split-segment helpers map to null, so they can
  * never take the place of the upper arm, forearm or thigh they sit under.
@@ -128,5 +161,25 @@ describe('humanoidBoneOf (inner#1692)', () => {
 
   it.each(NOT_HUMANOID)('does not map %j', (name) => {
     expect(humanoidBoneOf(name)).toBeNull();
+  });
+
+  it.each(VROID)('maps VRoid %s to %s', (name, bone) => {
+    expect(humanoidBoneOf(name)).toBe(bone);
+  });
+
+  it('does not map the VRoid Root joint', () => {
+    expect(humanoidBoneOf('Root')).toBeNull();
+  });
+
+  it('finds every required bone exactly once in a tripo3d/rig VRM-spec skin', () => {
+    const bones = VROID_RIG.map(humanoidBoneOf).filter((bone): bone is VrmHumanBoneName => bone !== null);
+    expect(new Set(bones).size).toBe(bones.length);
+    for (const required of REQUIRED_HUMAN_BONES) {
+      expect(bones.filter((bone) => bone === required), required).toHaveLength(1);
+    }
+  });
+
+  it.each(FINGER_NEIGHBOURS)('still maps the numbered finger %s to %s', (name, bone) => {
+    expect(humanoidBoneOf(name)).toBe(bone);
   });
 });
