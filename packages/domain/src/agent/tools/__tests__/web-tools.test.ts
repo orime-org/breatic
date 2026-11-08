@@ -63,7 +63,7 @@ import { renderSearchForModel, type SearchAnswer } from "@domain/agent/tools/web
 import { usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 /** A turn's context in which every link is one the conversation holds. */
-const CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: (url: string) => url };
+const CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: async (url: string) => url };
 
 /**
  * A body shaped like Brave's LLM context endpoint.
@@ -158,7 +158,7 @@ describe("web_fetch in the registry", () => {
   });
 
   it("reads the turn's links through the context it was built with", async () => {
-    const urlFor = vi.fn((_url: string): string | undefined => undefined);
+    const urlFor = vi.fn(async (_url: string): Promise<string | undefined> => undefined);
     const set = buildToolSet(["web_fetch"], { mediaUrlAllowed: () => false, pageUrlFor: urlFor });
 
     await fetchWith(set.web_fetch, ["https://example.com/a"]).catch(() => undefined);
@@ -170,7 +170,7 @@ describe("web_fetch in the registry", () => {
   it("sends the reader the spelling the context recorded, not the model's (plan §9 A)", async () => {
     const set = buildToolSet(["web_fetch"], {
       mediaUrlAllowed: () => false,
-      pageUrlFor: (url: string) => (url.startsWith("https://example.com/a") ? "https://example.com/a" : undefined),
+      pageUrlFor: async (url: string) => (url.startsWith("https://example.com/a") ? "https://example.com/a" : undefined),
     });
 
     const answer = await fetchWith(set.web_fetch, ["https://example.com/a#secret"]);
@@ -180,8 +180,8 @@ describe("web_fetch in the registry", () => {
     expect(answer.pages[0]).toMatchObject({ url: "https://example.com/a#secret", status: "ok" });
   });
 
-  it("holds no link when the turn knows no conversation", () => {
-    expect(NO_TOOL_CONTEXT.pageUrlFor?.("https://example.com/a")).toBeUndefined();
+  it("holds no link when the turn knows no conversation", async () => {
+    expect(await NO_TOOL_CONTEXT.pageUrlFor?.("https://example.com/a")).toBeUndefined();
     expect(NO_TOOL_CONTEXT).not.toHaveProperty("pageUrlAllowed");
   });
 });

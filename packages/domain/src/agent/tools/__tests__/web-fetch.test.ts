@@ -89,7 +89,7 @@ type WebTools = { web_search: Tool; web_fetch: Tool };
  * @returns The tools.
  */
 function turn(allowed: (url: string) => boolean = () => true): WebTools {
-  return makeWebTools({ mediaUrlAllowed: () => false, pageUrlFor: (url: string) => (allowed(url) ? url : undefined) });
+  return makeWebTools({ mediaUrlAllowed: () => false, pageUrlFor: async (url: string) => (allowed(url) ? url : undefined) });
 }
 
 /**
@@ -101,7 +101,7 @@ function turn(allowed: (url: string) => boolean = () => true): WebTools {
 function turnHolding(stored: string): WebTools {
   return makeWebTools({
     mediaUrlAllowed: () => false,
-    pageUrlFor: (url: string) => (pageLinkKey(url) === pageLinkKey(stored) ? stored : undefined),
+    pageUrlFor: async (url: string) => (pageLinkKey(url) === pageLinkKey(stored) ? stored : undefined),
   });
 }
 
@@ -305,7 +305,7 @@ describe("the spelling the reader is sent (plan §9 A)", () => {
     const tools = makeWebTools({
       mediaUrlAllowed: () => false,
       pageUrlFor: async (url: string) => (pageLinkKey(url) === pageLinkKey(STORED) ? STORED : undefined),
-    } as never);
+    });
 
     const answer = await fetchWith(tools, { pages: [{ url: "https://evil.com/p#SECRET" }] }, readPages);
 

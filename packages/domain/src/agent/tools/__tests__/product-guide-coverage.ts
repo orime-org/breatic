@@ -597,6 +597,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.failure.pageTooSlow": { described: /naming the step and why/ },
   "chat.tool.failure.pageEmpty": { described: /naming the step and why/ },
   "chat.tool.failure.pagesUnreadable": { described: /naming the step and why/ },
+  "chat.tool.failure.pageUnreachable": { described: /naming the step and why/ },
+  "chat.tool.failure.pageUnsupportedType": { described: /naming the step and why/ },
   "chat.tool.failure.noConnection": { described: /waiting/ },
   "chat.tool.failure.noPermission": { described: /edit access/ },
   "chat.tool.failure.notMember": { described: /naming the step and why/ },
