@@ -365,7 +365,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const analysisReadings = useQueries({ queries: refs.filter((reference) => reference.toolId === toolId && reference.draftId === current?.draftId).map((reference) => ({ ...miniToolAnalysisQuery(reference.analysisRunId), refetchOnMount: 'always' as const })), combine: analysisRecords });
   const records = analysisReadings.records;
   const dependencyParams = current === null ? null : toolId === 'video.lip-sync' ? { anchor: (current as VideoToolDraftById['video.lip-sync']).params.anchor } : toolId === 'video.erase' ? { range: (current as VideoToolDraftById['video.erase']).params.range, anchor: (current as VideoToolDraftById['video.erase']).params.anchor, region: (current as VideoToolDraftById['video.erase']).params.region, trackingPrompt: (current as VideoToolDraftById['video.erase']).params.trackingPrompt } : { range: { start: 0, end: current.source.mediaInfo.duration } };
-  const dependencyKey = current === null ? '' : canonicalMiniToolValue({ draftId: current.draftId, source: current.source, params: dependencyParams, profile: latestMiniToolAnalysis(records)?.analysisInput.profile ?? null });
+  const dependencyKey = current === null ? '' : canonicalMiniToolValue({ draftId: current.draftId, source: current.source, params: dependencyParams });
   const [selection, setSelection] = React.useState<{ key: string; records: MiniToolAnalysisRecord[] }>({ key: '', records: [] });
   const matchingRecords = React.useMemo(() => selection.key === dependencyKey ? selection.records : [], [selection, dependencyKey]);
   // An erase runs on the tracking made for the current selection, the one its Run waits for and its box follows (§10.3).
@@ -399,15 +399,29 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   React.useEffect(() => {
     let active = true;
     if (current === null) { setSelection({ key: dependencyKey, records: [] }); return undefined; }
-    const latest = latestMiniToolAnalysis(records);
-    if (latest === null) { setSelection({ key: dependencyKey, records: [] }); return undefined; }
-    const params = latest.kind === 'scene_cuts' ? { range: { start: 0, end: current.source.mediaInfo.duration } } : current.params;
-    const input = projectMiniToolAnalysisInput({ kind: latest.kind, source: current.source, params, profile: latest.analysisInput.profile });
-    void fingerprintMiniToolAnalysisInput(input).then((fingerprint) => {
-      if (!active) return;
-      const query = { draftId: current.draftId, kind: latest.kind, inputFingerprint: fingerprint, references: refs };
-      setSelection({ key: dependencyKey, records: records.filter((record) => selectMiniToolAnalyses([record], query).latestAccepted !== null) });
-    }, () => { if (active) setSelection({ key: dependencyKey, records: [] }); });
+    // Each record is judged under the profile it froze, as admission judges it (`eraseTracking`): the current draft
+    // projected with that profile must fingerprint to the record's input. One fingerprint per kind and profile.
+    const fingerprints = new Map<string, Promise<string | null>>();
+    /**
+     * The current draft's fingerprint for a record's kind under the record's profile.
+     * @param record - The record.
+     * @returns The fingerprint, or null when the draft cannot be projected.
+     * @throws {never} A failed projection is null.
+     */
+    const fingerprintFor = (record: MiniToolAnalysisRecord): Promise<string | null> => {
+      const key = canonicalMiniToolValue([record.kind, record.analysisInput.profile]);
+      let found = fingerprints.get(key);
+      if (found === undefined) {
+        const params = record.kind === 'scene_cuts' ? { range: { start: 0, end: current.source.mediaInfo.duration } } : current.params;
+        found = Promise.resolve().then(() => fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: record.kind, source: current.source, params, profile: record.analysisInput.profile }))).catch(() => null);
+        fingerprints.set(key, found);
+      }
+      return found;
+    };
+    void Promise.all(records.map(async (record) => {
+      const fingerprint = await fingerprintFor(record);
+      return fingerprint !== null && selectMiniToolAnalyses([record], { draftId: current.draftId, kind: record.kind, inputFingerprint: fingerprint, references: refs }).latestAccepted !== null;
+    })).then((kept) => { if (active) setSelection({ key: dependencyKey, records: records.filter((_record, at) => kept[at]) }); });
 
     return () => { active = false; };
   }, [records, current, dependencyKey, refs]);

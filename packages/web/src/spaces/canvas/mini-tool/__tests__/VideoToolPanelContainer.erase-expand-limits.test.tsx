@@ -161,6 +161,40 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     expect(after.state === 'supported' ? after.draft.revision : null).toBe(draft.revision);
   });
 
+  // Execution design §10.3 and erase admission (`eraseTracking`): a tracking stays made for a selection under the profile it
+  // froze. After the tracking profile changed between two trackings, the user's undo back to the first selection shows
+  // the first tracking again: each record is judged with its own profile, not the newest record's.
+  it('shows the tracking made for the current selection under its own profile after a later tracking used another profile', async () => {
+    const anchor = { frameIndex: 250, pts: 10 };
+    mount('video.erase', { ...REGION, range: { start: 10, end: 14 }, anchor }, { presentedTime: 12 });
+    const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+    const held = readVideoToolDraft(doc, nodeId, 'video.erase');
+    if (held.state !== 'supported') throw new Error('No draft');
+    const draft = held.draft as VideoToolDraftById['video.erase'];
+    /**
+     * A tracking record for these params under this profile.
+     * @param analysisRunId - The run.
+     * @param params - The selection it was made for.
+     * @param profile - The profile it froze.
+     * @param acceptedAt - When it was accepted.
+     * @returns The record and its fingerprint.
+     */
+    async function tracking(analysisRunId: string, params: VideoToolDraftById['video.erase']['params'], profile: object, acceptedAt: string): Promise<MiniToolAnalysisRecord> {
+      const analysisInput = projectMiniToolAnalysisInput({ kind: 'tracked_mask', source: draft.source, params, profile });
+      const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
+      return { schemaVersion: 1, draftId: draft.draftId, revision: draft.revision, analysisRunId, acceptedAt,
+        binding: { assetId: '50000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video', mediaInfo },
+        analysisInput, inputFingerprint, kind: 'tracked_mask', status: 'failed', result: null, error: { code: 'timeout', step: 'track' }, usage: [], artifactUnavailable: false } as MiniToolAnalysisRecord;
+    }
+    const first = await tracking('40000000-0000-4000-8000-000000000001', draft.params, { id: 'sam3-video-rle', version: '1', weightsHash: null, params: { default_prompt: 'object' } }, '2026-11-07T00:00:00.000001Z');
+    const later = await tracking('40000000-0000-4000-8000-000000000002', { ...draft.params, range: { start: 11, end: 14 } }, { id: 'sam3-video-rle', version: '2', weightsHash: null, params: { default_prompt: 'thing' } }, '2026-11-07T01:00:00.000001Z');
+    vi.spyOn(miniToolAnalysesApi, 'get').mockImplementation(async (runId: string) => (runId === first.analysisRunId ? first : later));
+    act(() => {
+      for (const record of [first, later]) commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: draft.draftId, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint });
+    });
+    expect(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryTracking') })).toBeInTheDocument();
+  });
+
   it('refuses a transparent source', () => {
     mount('video.erase', { ...REGION, range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 } }, { transparent: true });
     expectRefused(track(), t('canvas.miniTool.videoUI.transparentSource'));
