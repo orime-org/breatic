@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-import type { ContainerUsage } from "@shared/upload/mini-tool-job.js";
+import { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 
 /** How reading one page ended. */
 export const READ_PAGE_STATUSES = [
@@ -53,11 +53,49 @@ export interface ReadPagesAnswer {
   usage: ContainerUsage;
 }
 
-/** The request as the Worker reads it. Placeholder until implemented. */
-export const readPagesRequestSchema: z.ZodType<ReadPagesRequest> = z.never();
+/** The longest link `web_fetch` takes; a contract bound, shared by both ends. */
+export const READ_PAGE_MAX_URL_CHARS = 2048;
 
-/** One page's result as the server reads it. Placeholder until implemented. */
-export const readPageResultSchema: z.ZodType<ReadPageResult> = z.never();
+/**
+ * Whether a string is an http or https address.
+ * @param value - The string.
+ * @returns True for an http or https URL.
+ */
+function isWebAddress(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
-/** The answer as the server reads it. Placeholder until implemented. */
-export const readPagesAnswerSchema: z.ZodType<ReadPagesAnswer> = z.never();
+const webAddress = z.string().max(READ_PAGE_MAX_URL_CHARS).refine(isWebAddress, "an http or https address");
+
+/** The request as the Worker reads it. */
+export const readPagesRequestSchema: z.ZodType<ReadPagesRequest> = z.object({
+  urls: z.array(webAddress).min(1),
+  deadlineAt: z.number().int().positive(),
+  pageTimeoutMs: z.number().int().positive(),
+  settleMs: z.number().int().nonnegative(),
+  concurrency: z.number().int().positive(),
+  maxBytes: z.number().int().positive(),
+});
+
+/** One page's result as the server reads it. */
+export const readPageResultSchema: z.ZodType<ReadPageResult> = z.object({
+  url: z.string(),
+  status: z.enum(READ_PAGE_STATUSES),
+  httpStatus: z.number().int().optional(),
+  finalUrl: z.string().optional(),
+  title: z.string().optional(),
+  kind: z.enum(["html", "pdf"]).optional(),
+  pages: z.number().int().nonnegative().optional(),
+  text: z.string().optional(),
+});
+
+/** The answer as the server reads it. */
+export const readPagesAnswerSchema: z.ZodType<ReadPagesAnswer> = z.object({
+  pages: z.array(readPageResultSchema),
+  usage: containerUsageSchema,
+});

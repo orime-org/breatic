@@ -641,6 +641,7 @@ export {
 export { pageLinksIn, pageLinkKey } from "@shared/agent/page-links.js";
 export {
   READ_PAGE_STATUSES,
+  READ_PAGE_MAX_URL_CHARS,
   readPagesRequestSchema,
   readPageResultSchema,
   readPagesAnswerSchema,
@@ -915,11 +916,11 @@ export {
   readMiniToolJobReport,
   submitMiniToolJob,
   MINI_TOOL_JOB_MAX_OUTPUTS,
-  type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
   type MiniToolJobRequest,
 } from "@shared/upload/mini-tool-job.js";
+export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
