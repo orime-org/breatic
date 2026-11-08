@@ -37,8 +37,11 @@ const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozill
 /** The header the Worker's outbound handler marks a send that failed with. */
 const UNREACHABLE_HEADER = "x-breatic-unreachable";
 
-/** Download types that may be a PDF; any other is not read. */
-const PDF_TYPES = new Set(["application/pdf", "application/octet-stream"]);
+/**
+ * Download types that are never a PDF, so the file is not fetched; any other
+ * type is read, and `readPdf` decides from the bytes whether it is one.
+ */
+const NOT_PDF_TYPE = /^(?:text|image|audio|video)\//;
 
 /** Where the container's cgroup reports its CPU time. */
 const CPU_STAT = "/sys/fs/cgroup/cpu.stat";
@@ -82,7 +85,7 @@ async function readDownload(
     return { url, status: "too_large", finalUrl };
   }
   const type = (headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (type !== "" && !PDF_TYPES.has(type)) {
+  if (NOT_PDF_TYPE.test(type)) {
     await download.cancel().catch(() => undefined);
     return { url, status: "unsupported_type", finalUrl };
   }
