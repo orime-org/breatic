@@ -115,6 +115,13 @@ COPY packages/shared/src/mini-tools/video-presentation-timeline.ts /shared/src/m
 # container/lipsync-recipes.ts).
 COPY packages/shared/src/upload/mini-tool-plan-types.ts /shared/src/upload/mini-tool-plan-types.ts
 COPY packages/shared/src/mini-tools/lipsync-timeline.ts /shared/src/mini-tools/lipsync-timeline.ts
+# The erase and expand recipes read the model grid and decode tracked masks (container/model-recipes.ts); the rest are
+# the types the service imports. container/__tests__/image-shared-files.node.test.ts holds this list to the imports.
+COPY packages/shared/src/mini-tools/model-grid.ts /shared/src/mini-tools/model-grid.ts
+COPY packages/shared/src/mini-tools/coco-rle.ts /shared/src/mini-tools/coco-rle.ts
+COPY packages/shared/src/media/long-media-job-types.ts /shared/src/media/long-media-job-types.ts
+COPY packages/shared/src/upload/video-presentation-types.ts /shared/src/upload/video-presentation-types.ts
+COPY packages/shared/src/upload/video-source-ledger-types.ts /shared/src/upload/video-source-ledger-types.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
