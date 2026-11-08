@@ -457,6 +457,22 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     expect(weights.some(weight => weight > 0.1 && weight < 0.9)).toBe(true);
   });
 
+  it('MC06 expand chunk starting inside an overlap: the later background fades in on its own timeline, matching the unchunked composite', async () => {
+    const displayRect = { x: 16, y: 20, width: 64, height: 36 };
+    const target = { ...TARGET, width: 128, height: 72, displayRect };
+    const backgrounds = [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(8, 25) } }, { inputId: BACKGROUNDS[1], window: { start: r(4, 25), end: r(2, 5) } }];
+    const inputs = { [SOURCE]: join(dir, 'greys.mp4'), [BACKGROUNDS[0]!]: join(dir, 'bg0.mp4'), [BACKGROUNDS[1]!]: join(dir, 'bg1.mp4') };
+    const whole = { kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))], target, backgrounds };
+    // Frames 6 to 9: the chunk opens two frames into window 1's overlap with window 0 (frames 4 to 7), decoding from keyframe 5.
+    const chunk = { ...whole, window: { start: 6, end: 10 }, entries: [span(r(5, 25), r(6, 25), r(6, 25), r(2, 5))] };
+    const [unchunked] = await produce(inputs, [whole]);
+    const [chunked] = await produce(inputs, [chunk]);
+    expect(await packets(chunked!)).toHaveLength(4);
+    const strip = { x: 0, y: 0, width: 128, height: 16 };
+    const [expected, actual] = [await lumaMeans(unchunked!, strip), await lumaMeans(chunked!, strip)];
+    actual.forEach((mean, n) => expect(Math.abs(mean - expected[n + 6]!), `chunk frame ${n}`).toBeLessThan(4));
+  });
+
   // inner#1306 D20-2 (execution §8 "模型整框输出经已核坐标映射裁出产品ROI，缩回目标尺寸，最后在冻结源位置叠回原片"): the
   // background is the model's whole frame and `crop` names the product ROI in its pixels.
   it('MC05 expand from a whole model frame: the surround is the cropped ROI scaled to the target, by PTS, with nothing from outside the crop', async () => {

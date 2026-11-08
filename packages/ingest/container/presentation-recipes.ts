@@ -651,10 +651,10 @@ async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: Reado
     const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
     const previous = recipe.backgrounds[at - 1];
     const overlap = previous === undefined ? null : minus(previous.window.end, background.window.start);
-    const fade = overlap === null || overlap[0] <= 0n ? ""
-      : `,format=yuva420p,fade=t=in:st=${Number(ticksFrom(background.window.start, origin, clock)) / Number(clock)}:d=${seconds(overlap)}:alpha=1`;
+    // On the background's own timeline from its first frame, so a chunk opening inside the overlap never starts the fade before 0.
+    const fade = overlap === null || overlap[0] <= 0n ? "" : `,setpts=PTS-STARTPTS,format=yuva420p,fade=t=in:st=0:d=${seconds(overlap)}:alpha=1`;
     graph.push(`${placed(background.inputId, background.window.start,
-      `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}`)}${fade}[g${at}]`,
+      `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}${fade}`)}[g${at}]`,
     `[b${at}][g${at}]overlay[b${at + 1}]`);
   });
   graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y}[o]`);
