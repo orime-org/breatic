@@ -46,7 +46,7 @@ import type * as Y from 'yjs';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { runHistoryStep } from '@web/data/yjs/history-step';
-import { spaceRefusalMessage } from '@web/data/yjs/space-write';
+import { spaceRefusalMessage, writeSpaceDoc } from '@web/data/yjs/space-write';
 import {
   applySpaceDelete,
   planNodeRemoval,
@@ -205,8 +205,67 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
     return true;
   };
 
-  return new Plugin({
-    key: new PluginKey('spaceSizeFilter'),
+  // Whether the Yjs transaction whose observers are running now was made by
+  // this client, per document the binding writes.
+  const localNow = new WeakMap<Y.Doc, boolean>();
+
+  /**
+   * Starts telling, for a binding's document, whether a Yjs transaction is
+   * this client's own while y-prosemirror redraws from it.
+   * @param doc - The binding's document.
+   */
+  const watchOrigin = (doc: Y.Doc): void => {
+    if (localNow.has(doc)) return;
+    localNow.set(doc, false);
+    doc.on('beforeObserverCalls', (transaction: Y.Transaction) => localNow.set(doc, transaction.local));
+  };
+
+  /**
+   * After a redraw of this client's own Yjs write, writes what plugins
+   * appended to the redraw: y-prosemirror holds its mutex through the redraw
+   * and leaves the appended change in ProseMirror only, where any later
+   * transaction would write it unjudged. A peer's write is left alone, since
+   * every member's editor appends the same change (design 5.3).
+   * @param editorView - The view.
+   * @param redrawn - The document the sync transaction left.
+   */
+  const writeAppended = (editorView: EditorView, redrawn: ProseMirrorNode): void => {
+    const binding = bindingOf(editorView) as SpaceDeleteWriteBinding & {
+      _prosemirrorChanged: (doc: ProseMirrorNode) => void;
+      _forceRerender: () => void;
+    };
+    if (!localNow.get(binding.doc)) return;
+    const appended = editorView.state.doc;
+    queueMicrotask(() => {
+      const name = options.docName();
+      if (name === null || editorView.isDestroyed || editorView.state.doc !== appended || appended === redrawn) return;
+      const written = writeSpaceDoc(name, { kind: 'add', notify: false }, () =>
+        binding.mux(() =>
+          binding.doc.transact((ytr) => {
+            ytr.meta.set('addToHistory', false);
+            binding._prosemirrorChanged(appended);
+          }, options.syncKey),
+        ),
+      );
+      if (!written.ok) binding._forceRerender();
+    });
+  };
+
+  const key = new PluginKey<ProseMirrorNode | null>('spaceSizeFilter');
+  // The redraw whose appended change was last handed to `writeAppended`.
+  let handled: ProseMirrorNode | null = null;
+
+  return new Plugin<ProseMirrorNode | null>({
+    key,
+    // The document a sync transaction left, kept through the transactions
+    // plugins append to it and cleared by the next one of anyone's.
+    state: {
+      init: (): ProseMirrorNode | null => null,
+      apply: (tr, redrawn): ProseMirrorNode | null => {
+        if (tr.getMeta(options.syncKey) !== undefined) return tr.doc;
+        return tr.getMeta('appendedTransaction') !== undefined ? redrawn : null;
+      },
+    },
     props: {
       // DOM handlers run before every plugin's `handleKeyDown`, whatever
       // order the extensions put the keymaps in.
@@ -274,7 +333,20 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
         }, 0);
       };
       editorView.dom.addEventListener('compositionend', onEnd);
+      /** Watches the binding's document once the sync plugin has made it. */
+      const watch = (): void => {
+        const binding = (options.syncKey.getState(editorView.state) as { binding?: SpaceDeleteWriteBinding | null } | undefined)?.binding;
+        if (binding) watchOrigin(binding.doc);
+      };
+      watch();
       return {
+        update: (updated): void => {
+          watch();
+          const redrawn = key.getState(updated.state) ?? null;
+          if (redrawn === null || redrawn === handled || updated.state.doc === redrawn) return;
+          handled = redrawn;
+          writeAppended(updated, redrawn);
+        },
         destroy: (): void => {
           editorView.dom.removeEventListener('compositionend', onEnd);
           view = null;
