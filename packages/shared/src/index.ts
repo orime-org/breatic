@@ -642,9 +642,13 @@ export { pageLinksIn, pageLinkKey } from "@shared/agent/page-links.js";
 export {
   READ_PAGE_STATUSES,
   READ_PAGE_MAX_URL_CHARS,
+  webPageUrlSchema,
   readPagesRequestSchema,
   readPageResultSchema,
   readPagesAnswerSchema,
+  readerServiceAnswerSchema,
+  READER_SERVICE_PORT,
+  type ReaderServiceAnswer,
   type ReadPageStatus,
   type ReadPagesRequest,
   type ReadPageResult,

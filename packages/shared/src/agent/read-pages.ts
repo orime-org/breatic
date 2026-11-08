@@ -70,11 +70,12 @@ function isWebAddress(value: string): boolean {
   }
 }
 
-const webAddress = z.string().max(READ_PAGE_MAX_URL_CHARS).refine(isWebAddress, "an http or https address");
+/** An address a page may be read from: http or https, at most `READ_PAGE_MAX_URL_CHARS`. */
+export const webPageUrlSchema = z.string().max(READ_PAGE_MAX_URL_CHARS).refine(isWebAddress, "an http or https address");
 
 /** The request as the Worker reads it. */
 export const readPagesRequestSchema: z.ZodType<ReadPagesRequest> = z.object({
-  urls: z.array(webAddress).min(1),
+  urls: z.array(webPageUrlSchema).min(1),
   deadlineAt: z.number().int().positive(),
   pageTimeoutMs: z.number().int().positive(),
   settleMs: z.number().int().nonnegative(),
@@ -99,3 +100,19 @@ export const readPagesAnswerSchema: z.ZodType<ReadPagesAnswer> = z.object({
   pages: z.array(readPageResultSchema),
   usage: containerUsageSchema,
 });
+
+/** What the reader service inside the container answers the Worker with. */
+export interface ReaderServiceAnswer {
+  pages: ReadPageResult[];
+  /** cgroup `cpu.stat` `usage_usec`; null when the container could not read it. */
+  cpuUsec: number | null;
+}
+
+/** The reader service's answer, as the Worker reads it. */
+export const readerServiceAnswerSchema: z.ZodType<ReaderServiceAnswer> = z.object({
+  pages: z.array(readPageResultSchema),
+  cpuUsec: z.number().nonnegative().nullable(),
+});
+
+/** The port the reader service listens on inside its container; the Worker asks it there. */
+export const READER_SERVICE_PORT = 8080;
