@@ -199,21 +199,21 @@ describe("two-step sign-up with a referral code", () => {
   });
 });
 
-describe("Google sign-in with a referral code", () => {
-  /**
-   * Signs in with Google as one Google account.
-   * @param sub - The Google account id.
-   * @param email - Its address.
-   * @param body - Extra body fields.
-   * @returns The response.
-   */
-  async function googleSignIn(sub: string, email: string, body: Record<string, unknown> = {}): Promise<Response> {
-    google.verifyIdToken.mockResolvedValue({
-      getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
-    });
-    return await post("/google", { credential: "signed-token", ...body });
-  }
+/**
+ * Signs in with Google as one Google account.
+ * @param sub - The Google account id.
+ * @param email - Its address.
+ * @param body - Extra body fields.
+ * @returns The response.
+ */
+async function googleSignIn(sub: string, email: string, body: Record<string, unknown> = {}): Promise<Response> {
+  google.verifyIdToken.mockResolvedValue({
+    getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
+  });
+  return await post("/google", { credential: "signed-token", ...body });
+}
 
+describe("Google sign-in with a referral code", () => {
   it("refuses an invalid code for a new account as a field error and creates no account", async () => {
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
     const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
@@ -251,5 +251,34 @@ describe("sign-up with a referral code while payments are off", () => {
     const { email, res } = await register({ referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
     expect(res.status).toBe(201);
     expect(await sql`select 1 from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`).toHaveLength(0);
+  });
+
+  it("ignores a code on two-step sign-up: the code is mailed, and the account is created unbound", async () => {
+    start(false, "console");
+    const { email, res } = await signUpInTwoSteps("NOPE-NOPE");
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty("referral");
+    expect(await sql`select 1 from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`).toHaveLength(0);
+  });
+
+  it("ignores a code on Google sign-in for a new account", async () => {
+    start(false);
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
+    expect(res.status).toBe(200);
+    const data = ((await res.json()) as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ created: true });
+    expect(data).not.toHaveProperty("referral");
+    expect(await sql`select 1 from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`).toHaveLength(0);
+  });
+
+  it("says nothing about a code on Google sign-in to an existing account", async () => {
+    start(false);
+    const sub = crypto.randomUUID();
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    expect((await googleSignIn(sub, email)).status).toBe(200);
+    const res = await googleSignIn(sub, email, { referralCode: "NOPE-NOPE", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty("referral");
   });
 });
