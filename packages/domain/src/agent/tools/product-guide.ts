@@ -433,7 +433,12 @@ export function renderProductGuide(): string {
       "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
       "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
-      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. Links in a reply open in a new tab. A code block shows a " +
+      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. " +
+      "The Agent can read web pages and PDFs behind links the user gives in the conversation, several at once, and " +
+      "pages its own searches found; the pages it read are among the sources under the reply. Pages that need a " +
+      "login, and sites that refuse to be read (such as WeChat articles, Zhihu and Xiaohongshu), cannot be read: the " +
+      "user can copy the page's text into the message, or attach a screenshot or a PDF of it. Links to pictures, " +
+      "audio and video are understood as media. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the user appear as a row of squares, the last showing a plus and " +

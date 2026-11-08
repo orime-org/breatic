@@ -8,25 +8,27 @@
 import type { Tool } from "ai";
 
 import type { ToolContext } from "@domain/agent/tools/index.js";
+import { citationNumbers } from "@domain/agent/tools/citation.js";
+import { makeFetchTool } from "@domain/agent/tools/web-fetch.js";
+import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+
+export { publisherOf } from "@domain/agent/tools/citation.js";
 
 /**
  * This turn's web tools.
- * @param context - What the turn knows that the tools need when built.
+ *
+ * Built together so a page found by a search and a page read by a fetch never
+ * take the same number: the model writes `[N]` against what it was shown, and
+ * the panel resolves N to one source.
+ * @param context - What the turn knows that the tools need when built. Without
+ *   it no link is one the conversation holds.
  * @returns The two tools, keyed as the model names them.
- * @throws {Error} Always, until implemented.
+ * @throws {never} Never; the tools it returns throw.
  */
 export function makeWebTools(context?: ToolContext): { web_search: Tool; web_fetch: Tool } {
-  void context;
-  throw new Error("not implemented: makeWebTools");
-}
-
-/**
- * Name the publisher a page belongs to.
- * @param url - The page's address.
- * @returns The publisher's name.
- * @throws {Error} Always, until implemented.
- */
-export function publisherOf(url: string): string {
-  void url;
-  throw new Error("not implemented: publisherOf");
+  const numbers = citationNumbers();
+  return {
+    web_search: makeSearchTools(numbers).web_search,
+    web_fetch: makeFetchTool(numbers, context?.pageUrlAllowed ?? (() => false)),
+  };
 }

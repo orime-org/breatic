@@ -34,9 +34,11 @@ import {
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
+  WEB_FETCH,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch, makeImageSearchTool } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+import { makeWebTools } from "@domain/agent/tools/web-tools.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
@@ -61,7 +63,7 @@ export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceCont
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
-export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
+export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlAllowed: () => false };
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -77,7 +79,10 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // length of a turn -- the search tools share one space of citation numbers
   // -- gets a fresh one per turn from here. Tools may also bind per-turn
   // capabilities; context-independent tools can reuse one object.
-  web_search: () => makeSearchTools().web_search,
+  // The two web tools share one run of citation numbers, so `buildToolSet`
+  // builds them together; built one at a time, each starts its own run.
+  web_search: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_search,
+  [WEB_FETCH]: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_fetch,
   [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
@@ -126,6 +131,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
+  WEB_FETCH,
   "search_images",
   UNDERSTAND_MEDIA,
   ASK_USER,
@@ -173,6 +179,7 @@ export {
   MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
+  WEB_FETCH,
 } from "@domain/agent/tools/tool-names.js";
 
 /**
@@ -234,9 +241,17 @@ export function buildToolSet(
   context: ToolContext = NO_TOOL_CONTEXT,
 ): Record<string, Tool> {
   const result: Record<string, Tool> = {};
+  // One pair of web tools for the whole set, so their citation numbers never collide.
+  let web: ReturnType<typeof makeWebTools> | undefined;
   for (const name of toolNames) {
     const build = TOOL_MAP[name];
-    if (build && isConfigured(name)) result[name] = build(context);
+    if (!build || !isConfigured(name)) continue;
+    if (name === "web_search" || name === WEB_FETCH) {
+      web ??= makeWebTools(context);
+      result[name] = web[name];
+    } else {
+      result[name] = build(context);
+    }
   }
   return result;
 }
@@ -245,6 +260,7 @@ export {
   makeAskUserTool,
   imageSearch,
   makeSearchTools,
+  makeWebTools,
   canvasCapabilities,
   generationModels,
   makeProposeDocumentEdit,
