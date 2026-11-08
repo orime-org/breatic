@@ -107,18 +107,21 @@ async function highlighted(p: Page): Promise<string | null> {
  * @param p - The page.
  * @returns The highlighted row and the body's scrollTop in every frame.
  */
-async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; tops: number[] }> {
+async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; colours: (string | null)[]; tops: number[] }> {
   return p.evaluate(({ outline, viewport }) => new Promise((resolve) => {
     const vp = document.querySelector(viewport)!;
     const highlights: (string | null)[] = [];
+    const colours: (string | null)[] = [];
     const tops: number[] = [];
     let still = 0;
     const tick = (): void => {
       const item = [...document.querySelectorAll(`${outline} [data-outline-item]`)].find((i) => i.className.includes('bg-accent-strong'));
-      highlights.push(item?.querySelector('[data-testid="doc-outline-row"]')?.textContent ?? null);
+      const words = item?.querySelector('[data-testid="doc-outline-row"]') ?? null;
+      highlights.push(words?.textContent ?? null);
+      colours.push(words === null ? null : getComputedStyle(words).color);
       still = tops.length > 0 && tops[tops.length - 1] === vp.scrollTop ? still + 1 : 0;
       tops.push(vp.scrollTop);
-      if (still >= 5) resolve({ highlights, tops });
+      if (still >= 5) resolve({ highlights, colours, tops });
       else requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -228,9 +231,20 @@ test('a jump scrolls smoothly, the highlight passing the headings on the way and
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Two one one').click();
-  const { highlights, tops } = await scrollSettled(page);
+  const { highlights, colours, tops } = await scrollSettled(page);
   expect(new Set(tops).size).toBeGreaterThan(2);
   expect(highlights.some((h) => h !== null && h !== 'One' && h !== 'Two one one')).toBe(true);
+  // The highlighted row's words take the body colour in the frame its fill
+  // arrives, however briefly the highlight rests there.
+  const foreground = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-foreground)';
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  expect(colours.filter((c) => c !== null && c !== foreground)).toEqual([]);
   // Too little follows "Two one one" for its landing: the body stops at its
   // end, the heading lower down, and the highlight still settles on it.
   const end = await page.evaluate((viewport) => {

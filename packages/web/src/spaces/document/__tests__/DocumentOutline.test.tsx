@@ -731,6 +731,12 @@ describe('DocumentOutline', () => {
       expect(numberOf('Two')).not.toHaveClass('text-muted-foreground');
       expect(numberOf('One')).toHaveClass('text-muted-foreground', 'group-hover:text-foreground-secondary');
     });
+
+    it('changes a row’s words in the same frame as its fill, with no colour transition', () => {
+      renderWith([h('a', 1, 'One'), h('b', 1, 'Two')]);
+      expect(row('One')).toHaveClass('transition-none');
+      expect(row('One')).not.toHaveClass('transition-colors');
+    });
   });
 
   describe('A10 — folding', () => {
