@@ -349,7 +349,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const matchingRecords = React.useMemo(() => selection.key === dependencyKey ? selection.records : [], [selection, dependencyKey]);
   // An erase runs on the tracking made for the current selection, the one its Run waits for and its box follows (§10.3).
   const tracking = toolId === 'video.erase' ? latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable)) ?? undefined : undefined;
-  // Every footer shows the server's quote of the planned request the Run sends (§97 D26-1, D27-1; frames-split §10.8 计费).
+  // Every footer shows the server's quote of the planned request the Run sends (§97 D26-1, D27-1; frames-split §10.8, billing).
   const frameTable = presentation?.frameTable ?? null;
   const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
     if (current === null) return null;
