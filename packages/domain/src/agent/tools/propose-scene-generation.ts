@@ -10,7 +10,7 @@
  * model and mode, the prompt, the number of views, the settings, and each
  * view resolved to an image of this Project), so a proposal that passes is
  * one the dialog can send. Nothing runs and nothing is held until the user
- * presses Generate there.
+ * presses the dialog's round generate button.
  */
 
 import { randomUUID } from "node:crypto";
@@ -164,7 +164,7 @@ async function answerSceneGeneration(input: SceneGenerationInput, projectId: str
  */
 export function renderSceneProposalForModel(answer: SceneProposalAnswer): string {
   return answer.placed
-    ? "The proposal is on screen as a card. The user opens it in a 3D Space they have open and presses Generate there."
+    ? "The proposal is on screen as a card. The user opens it in a 3D Space they have open and presses the dialog's round generate button there."
     : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
 }
 
@@ -178,8 +178,8 @@ export function makeProposeSceneGeneration(): Tool<SceneGenerationInput, ScenePr
       "Propose a 3D model generation as a card. The 3D Space only generates 3D models, from a prompt (t23d) or " +
       "from one to four pictures of an object (i23d); pictures, videos and audio are generated on a Canvas. The " +
       "proposal names no Space: the user presses the card's button in the 3D Space they have open, and its " +
-      "generate dialog opens filled with this proposal; nothing runs or costs anything until they press Generate " +
-      `there. Ask ${LIST_GENERATION_MODELS} with target "3d" first for the models, their settings and forced values. ` +
+      "generate dialog opens filled with this proposal; nothing runs or costs anything until they press the dialog's " +
+      `round generate button. Ask ${LIST_GENERATION_MODELS} with target "3d" first for the models, their settings and forced values. ` +
       "For i23d use pictures the user already has: one they attached, one saved here, one added from a Canvas " +
       "node or one in the Project. When there is no suitable picture, tell the user to generate one on a Canvas " +
       "first, or to attach one, and propose after that. The card shows the estimated credits.",

@@ -90,8 +90,8 @@ const PROPOSE_DOCUMENT_TOOL = 'propose_document_edit';
 const PROPOSE_SCENE_TOOL = 'propose_scene_generation';
 
 /**
- * The proposal one finished `propose_canvas_action` or `propose_document_edit`
- * call carries, if any.
+ * The proposal one finished `propose_canvas_action`, `propose_document_edit` or
+ * `propose_scene_generation` call carries, if any.
  *
  * Read defensively, like the pictures above: a refused proposal answers with a
  * reason instead of a proposal, and a row stored before the tool existed

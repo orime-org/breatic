@@ -33,8 +33,8 @@
 # Two upstream options are not offered, because their results cannot be
 # placed in a 3D Space: quad, which outputs FBX, and the extreme texture
 # quality, whose 8K maps exceed the scene's texture budget
-# (config/scene.yaml max_texture_bytes). The formula still prices them as
-# the upstream does.
+# (config/scene.yaml max_texture_bytes). The formula still prices the extreme
+# quality as the upstream does; it has no term for quad.
 
 models:
 
