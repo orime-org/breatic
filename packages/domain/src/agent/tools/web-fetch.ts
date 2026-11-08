@@ -192,6 +192,10 @@ function label(name: string, value: string | number | undefined): string[] {
  * @returns The block.
  */
 function renderPage(page: FetchedPage): string {
+  // A repeat of a part asked earlier in the call carries no text of its own.
+  if (page.text === undefined) {
+    return `${onOneLine(keepInside(page.url))}: same page as source ${String(page.index)} above`;
+  }
   const total = page.chars_total ?? 0;
   const end = page.end ?? total;
   // A page the reader cut at its cap ends where the reading stopped, not where the page does.
@@ -212,7 +216,7 @@ function renderPage(page: FetchedPage): string {
     `chars_total: ${String(total)}`,
     `showing: ${showing}`,
     "<text>",
-    keepInside(page.text ?? ""),
+    keepInside(page.text),
     "</text>",
     "</source>",
   ].join("\n");
@@ -445,8 +449,8 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
         }
       }
 
-      // One page asked twice at one start is one part: the repeat reuses the
-      // first's answer and takes no share and no number of its own.
+      // One page asked twice at one start is one part: the repeat takes no
+      // share, no number and no text of its own; the model reads it under the first.
       const partOf = asked.map((page, i) => `${keys[i] as string}\n${String(page.start)}`);
       const firstOf = new Map<string, number>();
       partOf.forEach((part, i) => {
@@ -469,7 +473,9 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
         const key = keys[i] as string;
         const first = firstOf.get(partOf[i] as string) as number;
         if (first !== i) {
-          pages.push({ ...(pages[first] as FetchedPage), url: page.url });
+          const repeat: FetchedPage = { ...(pages[first] as FetchedPage), url: page.url };
+          delete repeat.text;
+          pages.push(repeat);
           return;
         }
         if (stored[i] === undefined) {
