@@ -7,7 +7,7 @@ import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
 import { SIDE_REQUEST_MS } from "../../http/request.js";
 import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
-import { generateText, type FinishReason, type LanguageModelUsage } from "ai";
+import { generateText, streamText, type FinishReason, type LanguageModelUsage } from "ai";
 import { createProvider } from "../../provider.js";
 import type { CapabilityPolicy, UnderstandAnswer } from "../api.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
@@ -38,7 +38,6 @@ const usage: LanguageModelUsage = {
 describe("costOf", () => {
   it("takes the cost OpenRouter reported", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage,
       providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: 0.000136764 } } },
@@ -48,7 +47,6 @@ describe("costOf", () => {
 
   it.each([Number.POSITIVE_INFINITY, Number.NaN, "0.5"])("reads a reported cost of %s as no cost, never a known one", (reported) => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage,
       providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: reported as number } } },
@@ -58,7 +56,6 @@ describe("costOf", () => {
 
   it("answers pending with the lookup when OpenRouter did not say", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage,
       providerMetadata: { breatic: { upstream: "openrouter", costRef: { upstream: "openrouter", generationId: "gen-9" } } },
@@ -68,28 +65,34 @@ describe("costOf", () => {
 
   it("prices a direct call from the token prices", () => {
     const cost = llmProvider(fakes, { DEEPSEEK_API_KEY: "ds" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage,
-      providerMetadata: { breatic: { upstream: "deepseek" } },
+      providerMetadata: { breatic: { upstream: "deepseek", sentAt: Date.now() } },
     });
     expect(cost).toMatchObject({ state: "known", source: "price_table", tokens: TOKENS });
     expect((cost as { usd: number }).usd).toBeCloseTo((11 * 1.32 + 3 * 3.96) / 1_000_000, 12);
   });
 
+  it("answers missing for a direct call whose finish names no send time", () => {
+    const cost = llmProvider(fakes, { DEEPSEEK_API_KEY: "ds" }).llm.costOf({
+      model: "deepseek/deepseek-v4-pro",
+      usage,
+      providerMetadata: { breatic: { upstream: "deepseek" } },
+    });
+    expect(cost).toEqual({ state: "missing", reason: expect.stringContaining("names no send time"), tokens: TOKENS });
+  });
+
   it("answers missing for a direct call of a model without prices", () => {
     const cost = llmProvider(fakes, { ANTHROPIC_API_KEY: "k" }).llm.costOf({
-      startedAt: Date.now(),
       model: "anthropic/claude-unpriced",
       usage,
-      providerMetadata: { breatic: { upstream: "anthropic" } },
+      providerMetadata: { breatic: { upstream: "anthropic", sentAt: Date.now() } },
     });
     expect(cost).toMatchObject({ state: "missing", tokens: TOKENS });
   });
 
   it("splits cached and reasoning tokens into their own buckets", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage: { ...usage, inputTokens: 20, inputTokenDetails: { noCacheTokens: 12, cacheReadTokens: 8, cacheWriteTokens: 0 }, outputTokens: 9, outputTokenDetails: { textTokens: 4, reasoningTokens: 5 } },
       providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: 0.001 } } },
@@ -99,7 +102,6 @@ describe("costOf", () => {
 
   it("answers missing, with the tokens, for an OpenRouter call that reported no cost and no generation", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
-      startedAt: Date.now(),
       model: "deepseek/deepseek-v4-pro",
       usage,
       providerMetadata: { breatic: { upstream: "openrouter" } },
@@ -126,7 +128,6 @@ describe("costOf by the price table, to the cent (critical path)", () => {
     }];
     const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
     return provider.llm.costOf({
-      startedAt: Date.now(),
       model: "anthropic/claude-priced",
       usage: {
         inputTokens: 100,
@@ -135,7 +136,7 @@ describe("costOf by the price table, to the cent (critical path)", () => {
         outputTokenDetails: { textTokens: 10, reasoningTokens: 0 },
         totalTokens: 110,
       },
-      providerMetadata: { breatic: { upstream: "anthropic", cacheTtl } },
+      providerMetadata: { breatic: { upstream: "anthropic", cacheTtl, sentAt: Date.now() } },
     });
   };
 
@@ -173,7 +174,7 @@ describe("a direct price that changes on a stated date (critical path)", () => {
     [CHANGES_AT, (11 * 1.5 + 3 * 7.5) / 1_000_000],
   ])("books a direct Gemini call sent at %i at the price in effect then", (at, usd) => {
     const provider = createProvider({ config: dated(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
-    const cost = provider.llm.costOf({ startedAt: at, model: "google/gemini-3.8-flash", usage, providerMetadata: { breatic: { upstream: "google" } } });
+    const cost = provider.llm.costOf({ model: "google/gemini-3.8-flash", usage, providerMetadata: { breatic: { upstream: "google", sentAt: at } } });
     expect(cost).toMatchObject({ state: "known", source: "price_table" });
     expect((cost as { usd: number }).usd).toBeCloseTo(usd, 12);
   });
@@ -207,6 +208,36 @@ describe("a direct price that changes on a stated date (critical path)", () => {
     });
     expect(Date.now()).toBe(CHANGES_AT + 60_000);
     expect(answer.costs).toEqual([{ state: "known", usd: (11 * 0.75 + 3 * 3.75) / 1_000_000, tokens: TOKENS, source: "price_table" }]);
+  });
+  it("books an understand call whose upload and wait for the file span the change at the price in effect when the model request was sent", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: CHANGES_AT - 60_000 });
+    const config = dated();
+    config.upstreams.google = { ...config.upstreams.google!, base_url: `${fakes.google.url}/v1beta` };
+    config.llm!.gemini_inline_max_bytes = 8;
+    config.llm!.gemini_file_poll_ms = 20;
+    let generateSentAt = 0;
+    fakes.google.answer(({ method, path }) => {
+      if (path === "/upload/v1beta/files") return { status: 200, body: {}, headers: { "x-goog-upload-url": `${fakes.google.url}/upload-session/1` } };
+      if (path === "/upload-session/1") return { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } };
+      if (method === "GET") {
+        // Google finishes processing the file after the price changed.
+        vi.setSystemTime(CHANGES_AT + 30_000);
+        return { status: 200, body: { name: "files/abc", uri: "https://files.example/abc", state: "ACTIVE" } };
+      }
+      if (method === "DELETE") return { status: 200, body: {} };
+      generateSentAt = Date.now();
+      return { status: 200, body: GENERATE_CONTENT_REPLY };
+    });
+    const provider = createProvider({ config, keyOf: (name) => ({ GOOGLE_API_KEY: "g" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const answer = await provider.llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array(32), contentType: "image/png" }],
+      maxOutputTokens: 200,
+      deadlineAt: CHANGES_AT + 3_600_000,
+    });
+    expect(generateSentAt).toBe(CHANGES_AT + 30_000);
+    expect(answer.costs).toEqual([{ state: "known", usd: (11 * 1.5 + 3 * 7.5) / 1_000_000, tokens: TOKENS, source: "price_table" }]);
   });
 });
 
@@ -245,6 +276,8 @@ describe("DeepSeek's off-peak price, half the peak outside 01:00-04:00 and 06:00
     ["Monday 09:59", MONDAY + 9 * HOUR + 59 * MINUTE, true],
     ["Monday 10:00", MONDAY + 10 * HOUR, false],
     ["Saturday 12:00", Date.parse("2026-11-14T12:00:00Z"), false],
+    ["Saturday 02:00, inside a weekday window's hours", Date.parse("2026-11-14T02:00:00Z"), false],
+    ["Sunday 07:00, inside a weekday window's hours", Date.parse("2026-11-15T07:00:00Z"), false],
     ["2027-01-01 02:00, a Friday and a Chinese public holiday", Date.parse("2027-01-01T02:00:00Z"), false],
   ];
 
@@ -252,14 +285,72 @@ describe("DeepSeek's off-peak price, half the peak outside 01:00-04:00 and 06:00
     const provider = createProvider({ config: shippedPrices(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
     const [miss, output] = PEAK[model]!;
     const factor = peak ? 1 : 0.5;
-    const cost = provider.llm.costOf({ startedAt: at, model, usage, providerMetadata: { breatic: { upstream: "deepseek" } } });
+    const cost = provider.llm.costOf({ model, usage, providerMetadata: { breatic: { upstream: "deepseek", sentAt: at } } });
     expect(cost).toEqual({ state: "known", usd: (11 * (miss * factor) + 3 * (output * factor)) / 1_000_000, tokens: TOKENS, source: "price_table" });
+  });
+
+  /** Each model's cache-hit price at peak, per million tokens, as DeepSeek's pricing page states it. */
+  const PEAK_HIT: Readonly<Record<string, number>> = { "deepseek/deepseek-v4-pro": 0.044, "deepseek/deepseek-v4.1-flash-1017": 0.006 };
+  /** Saturday 2026-11-14 02:00 UTC: inside a weekday window's hours, off-peak since it is a weekend. */
+  const SATURDAY_TWO = Date.parse("2026-11-14T02:00:00Z");
+
+  it.each(Object.keys(PEAK))("books an off-peak %s call's cache reads at half the cache-hit price", (model) => {
+    const provider = createProvider({ config: shippedPrices(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+    const [miss, output] = PEAK[model]!;
+    const cached: LanguageModelUsage = { ...usage, inputTokens: 20, inputTokenDetails: { noCacheTokens: 12, cacheReadTokens: 8, cacheWriteTokens: 0 } };
+    const cost = provider.llm.costOf({ model, usage: cached, providerMetadata: { breatic: { upstream: "deepseek", sentAt: SATURDAY_TWO } } });
+    expect(cost).toEqual({
+      state: "known",
+      usd: (12 * (miss * 0.5) + 8 * (PEAK_HIT[model]! * 0.5) + 3 * (output * 0.5)) / 1_000_000,
+      tokens: { input: 20, cachedInput: 8, output: 3, reasoning: 0 },
+      source: "price_table",
+    });
+  });
+
+  it.each(["5m", "1h"] as const)("books an off-peak call's %s cache writes at the off-peak write price", (cacheTtl) => {
+    const config = llmConfig(fakes);
+    config.llm!.prices!["anthropic/claude-priced"] = [{
+      input_cache_miss_per_mtok: 3,
+      input_cache_hit_per_mtok: 0.3,
+      input_cache_write_5m_per_mtok: 3.75,
+      input_cache_write_1h_per_mtok: 6,
+      output_per_mtok: 15,
+      off_peak: { factor: 0.5, peak_utc: [{ days: [1, 2, 3, 4, 5], from: "01:00", to: "04:00" }] },
+    }];
+    const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+    const cost = provider.llm.costOf({
+      model: "anthropic/claude-priced",
+      usage: {
+        inputTokens: 100,
+        inputTokenDetails: { noCacheTokens: 50, cacheReadTokens: 20, cacheWriteTokens: 30 },
+        outputTokens: 10,
+        outputTokenDetails: { textTokens: 10, reasoningTokens: 0 },
+        totalTokens: 110,
+      },
+      providerMetadata: { breatic: { upstream: "anthropic", cacheTtl, sentAt: SATURDAY_TWO } },
+    });
+    const write = cacheTtl === "1h" ? 6 : 3.75;
+    expect(cost).toMatchObject({ state: "known", usd: (50 * (3 * 0.5) + 20 * (0.3 * 0.5) + 30 * (write * 0.5) + 10 * (15 * 0.5)) / 1_000_000 });
+  });
+
+  it.each([
+    ["before the dated price, which alone has an off-peak", Date.parse("2026-11-14T02:00:00Z"), 1],
+    ["after the dated price, at its own off-peak factor", Date.parse("2027-01-02T02:00:00Z"), 0.25],
+  ])("books a Saturday 02:00 call %s", (_name, at, factor) => {
+    const config = llmConfig(fakes);
+    config.llm!.prices!["deepseek/deepseek-v4-pro"] = [
+      { input_cache_miss_per_mtok: 1.32, output_per_mtok: 3.96 },
+      { from: "2027-01-01T00:00:00Z", input_cache_miss_per_mtok: 1.32, output_per_mtok: 3.96, off_peak: { factor: 0.25, peak_utc: [{ days: [1, 2, 3, 4, 5], from: "01:00", to: "04:00" }] } },
+    ];
+    const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+    const cost = provider.llm.costOf({ model: "deepseek/deepseek-v4-pro", usage, providerMetadata: { breatic: { upstream: "deepseek", sentAt: at } } });
+    expect(cost).toEqual({ state: "known", usd: (11 * (1.32 * factor) + 3 * (3.96 * factor)) / 1_000_000, tokens: TOKENS, source: "price_table" });
   });
 
   it("books a call sent in peak hours and finished off-peak at the peak price", () => {
     vi.useFakeTimers({ toFake: ["Date"], now: MONDAY + 4 * HOUR + MINUTE });
     const provider = createProvider({ config: shippedPrices(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
-    const cost = provider.llm.costOf({ startedAt: MONDAY + 3 * HOUR + 59 * MINUTE, model: "deepseek/deepseek-v4-pro", usage, providerMetadata: { breatic: { upstream: "deepseek" } } });
+    const cost = provider.llm.costOf({ model: "deepseek/deepseek-v4-pro", usage, providerMetadata: { breatic: { upstream: "deepseek", sentAt: MONDAY + 3 * HOUR + 59 * MINUTE } } });
     expect(cost).toEqual({ state: "known", usd: (11 * 1.32 + 3 * 3.96) / 1_000_000, tokens: TOKENS, source: "price_table" });
   });
 
@@ -272,6 +363,66 @@ describe("DeepSeek's off-peak price, half the peak outside 01:00-04:00 and 06:00
     const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false }, { mode: "cheapest" });
     const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
     expect(result.providerMetadata?.breatic?.upstream).toBe(first);
+  });
+
+  /** A streamed DeepSeek answer: one text chunk, then the finish with the usage `usage` holds. */
+  const STREAMED = [
+    { id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "ok" }, finish_reason: null }] },
+    { id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 } },
+  ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
+
+  /**
+   * Run one prepared call, whole or streamed, and book its finish.
+   * @param provider - The provider.
+   * @param shape - Whole or streamed.
+   * @returns The finish's cost and its breatic metadata.
+   */
+  const bookedCall = async (provider: ReturnType<typeof createProvider>, shape: "whole" | "streamed"): Promise<{ cost: unknown; breatic: unknown }> => {
+    const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false });
+    let finished: { usage: LanguageModelUsage; providerMetadata: Parameters<typeof provider.llm.costOf>[0]["providerMetadata"] };
+    if (shape === "whole") {
+      finished = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    } else {
+      const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options });
+      await stream.consumeStream();
+      finished = { usage: await stream.usage, providerMetadata: await stream.providerMetadata };
+    }
+    const cost = provider.llm.costOf({ model: "deepseek/deepseek-v4-pro", usage: finished.usage, providerMetadata: finished.providerMetadata });
+    return { cost, breatic: finished.providerMetadata?.breatic };
+  };
+
+  it.each(["whole", "streamed"] as const)("books a %s call whose 429 was retried across 01:00 at the peak price, the moment the retry that served it was sent", async (shape) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: MONDAY + 59 * MINUTE + 50_000 });
+    let n = 0;
+    fakes.deepseek.answer(() => {
+      if (++n === 1) {
+        // The Retry-After wait carries the retry past 01:00.
+        vi.setSystemTime(MONDAY + HOUR + 10_000);
+        return { status: 429, body: {}, headers: { "retry-after-ms": "10" } };
+      }
+      return shape === "whole" ? { status: 200, body: CHAT_REPLY } : { status: 200, raw: STREAMED, contentType: "text/event-stream" };
+    });
+    const provider = createProvider({ config: shippedPrices(), keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds" })[name], llmMaxRetries: 1, cleanText: (t) => t });
+    const { cost, breatic } = await bookedCall(provider, shape);
+    expect(n).toBe(2);
+    expect(breatic).toMatchObject({ upstream: "deepseek", sentAt: MONDAY + HOUR + 10_000 });
+    expect(cost).toMatchObject({ state: "known", usd: (11 * 1.32 + 3 * 3.96) / 1_000_000, source: "price_table" });
+  });
+
+  it.each(["whole", "streamed"] as const)("books a %s call that switched upstream across 01:00 at the moment the second upstream was sent it", async (shape) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: MONDAY + 59 * MINUTE + 50_000 });
+    const config = shippedPrices();
+    config.upstreams.backup = { kind: "deepseek", base_url: fakes.openai.url, key_env: "DEEPSEEK_API_KEY" };
+    config.llm!.routes = config.llm!.routes.map((r) => (r.prefix === "deepseek/" ? { ...r, upstreams: [{ upstream: "deepseek", weight: 0 }, { upstream: "backup", weight: 1 }] } : r));
+    fakes.deepseek.answer(() => {
+      vi.setSystemTime(MONDAY + HOUR + 10_000);
+      return { status: 503, body: {} };
+    });
+    fakes.openai.answer(() => (shape === "whole" ? { status: 200, body: CHAT_REPLY } : { status: 200, raw: STREAMED, contentType: "text/event-stream" }));
+    const provider = createProvider({ config, keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const { cost, breatic } = await bookedCall(provider, shape);
+    expect(breatic).toMatchObject({ upstream: "backup", sentAt: MONDAY + HOUR + 10_000 });
+    expect(cost).toMatchObject({ state: "known", usd: (11 * 1.32 + 3 * 3.96) / 1_000_000, source: "price_table" });
   });
 });
 

@@ -35,7 +35,7 @@
  * direct price there: the cheapest endpoint OpenRouter lists for the model
  * (its public endpoints list, no key), the one a cheapest LLM call is served by,
  * so such a call ranks OpenRouter beside the direct upstream, and it names each
- * direct price whose off-peak holidays list no date in the coming year. Last it regenerates
+ * direct price whose off-peak holidays list no date in the current year (from 1 December, the next). Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
  *

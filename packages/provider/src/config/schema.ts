@@ -137,6 +137,9 @@ const llmPriceSchema = z.strictObject({
   output_per_mtok: z.number().min(0),
 });
 
+/** One token price a call is charged at, in USD per million tokens. */
+export type LlmPrice = z.infer<typeof llmPriceSchema>;
+
 /** A time of day in UTC, "HH:MM". */
 const utcTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 
@@ -147,7 +150,11 @@ const utcTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
  */
 const offPeakSchema = z.strictObject({
   factor: z.number().gt(0).max(1),
-  peak_utc: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).min(1), from: utcTime, to: utcTime })).min(1),
+  peak_utc: z.array(
+    z.strictObject({ days: z.array(z.number().int().min(0).max(6)).min(1), from: utcTime, to: utcTime })
+      // Only a window whose times are well formed is compared, so a malformed time is one problem.
+      .refine((w) => w.from < w.to, { message: "an off-peak window's from is not before its to", when: (payload) => payload.issues.length === 0 }),
+  ).min(1),
   holidays: z.array(z.iso.date()).default([]),
 });
 
@@ -177,7 +184,11 @@ const llmSchema = z.strictObject({
    * model always has a price in effect, and each later one takes effect at its `from` (an ISO 8601 UTC time, strictly
    * ascending), so a price the vendor has announced is in place before its day.
    */
-  prices: z.record(z.string(), z.tuple([directPriceSchema], directPriceSchema.extend({ from: z.iso.datetime() }))).optional(),
+  prices: z.record(
+    z.string(),
+    z.tuple([directPriceSchema], directPriceSchema.extend({ from: z.iso.datetime() }))
+      .refine(([, ...later]) => later.every((entry, i) => i === 0 || Date.parse(entry.from) > Date.parse(later[i - 1]!.from)), { message: "the from dates of its direct prices do not ascend", when: (payload) => payload.issues.length === 0 }),
+  ).optional(),
   /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
@@ -386,7 +397,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
       const problem = formulaProblem(when);
       if (problem !== undefined) problems.push(`${model}: the vendor's limit "${when}" is not JSONata: ${problem}`);
     }
-    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ when, reason }) => ({ when, reason }));
+    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ when, reason, from }) => ({ when, reason, ...(from === undefined ? {} : { from }) }));
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
     const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
@@ -463,19 +474,6 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   };
   checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
   checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
-  for (const [model, entries] of Object.entries(llm.prices)) {
-    const [, ...later] = entries;
-    let previous = -Infinity;
-    for (const { from } of later) {
-      const date = Date.parse(from);
-      if (date <= previous) {
-        problems.push(`${model}: the from dates of its direct prices do not ascend`);
-        break;
-      }
-      previous = date;
-    }
-    if (entries.some((entry) => entry.off_peak?.peak_utc.some((w) => w.from >= w.to))) problems.push(`${model}: an off-peak window's from is not before its to`);
-  }
   if (problems.length > 0) throw new ProviderConfigError(problems);
   return { upstreams: raw.upstreams, models, rejects, llm };
 }

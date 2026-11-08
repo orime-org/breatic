@@ -404,7 +404,7 @@ const DIRECT_PRICES: Readonly<Record<string, readonly Record<string, number | st
  * All other hours are off-peak, including weekends and Chinese public holidays in full." The holidays are the Chinese
  * public holidays that fall on a weekday, from the State Council's yearly schedule (2027:
  * https://www.news.cn/politics/20261105/f90cd6ad4df94ab4833b141e52ccfc13/c.html); `pnpm provider:prices` reports a
- * list with no date in the coming year.
+ * list with no date in the current year (from 1 December, the next); add the next year's dates here.
  * @returns A fresh copy, so the yaml writer gives each model its own and no alias.
  */
 const deepseekOffPeak = (): Record<string, unknown> => ({

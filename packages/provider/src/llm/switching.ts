@@ -263,11 +263,12 @@ export class SwitchingModel implements ModelV4 {
    * @param upstream - Who served it.
    * @param generationId - Its generation id, when the upstream gave one.
    * @param metadata - The call's provider metadata.
+   * @param sentAt - When the request that served it was sent, in epoch ms: a direct price is the one in effect then.
    * @returns The metadata to add.
    */
-  private finished(upstream: string, generationId: string | undefined, metadata: unknown): Record<string, unknown> {
+  private finished(upstream: string, generationId: string | undefined, metadata: unknown, sentAt: number): Record<string, unknown> {
     const costRef = costRefOf(upstream, this.setup.tracksGenerations(upstream), generationId, metadata);
-    return { ...this.setup.breatic, upstream, ...(costRef === undefined ? {} : { costRef }) };
+    return { ...this.setup.breatic, upstream, sentAt, ...(costRef === undefined ? {} : { costRef }) };
   }
 
   /**
@@ -319,12 +320,17 @@ export class SwitchingModel implements ModelV4 {
    * @throws {unknown} As `attempt` throws.
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
+    // Each try overwrites it, so the finish carries the moment of the request that served the call.
+    let sentAt = 0;
     const { value, servedBy } = await this.attempt(async (c) => {
       /**
        * The call on this upstream.
        * @returns What it answered.
        */
-      const run = async (): Promise<GenerateResult> => this.setup.modelFor(c).doGenerate(options);
+      const run = async (): Promise<GenerateResult> => {
+        sentAt = Date.now();
+        return this.setup.modelFor(c).doGenerate(options);
+      };
       const tracks = this.setup.tracksGenerations(c.upstream);
       // The answer's status, and a copy of its body when a 2xx may name a generation; any other copy
       // is cancelled at once. The SDK fetches once per call (its own retries are off).
@@ -354,7 +360,7 @@ export class SwitchingModel implements ModelV4 {
       }
     }, options.abortSignal);
     const id = isGenerationId(value.response?.id) ? value.response.id : undefined;
-    const breatic = this.finished(servedBy.upstream, id, value.providerMetadata);
+    const breatic = this.finished(servedBy.upstream, id, value.providerMetadata, sentAt);
     return { ...value, providerMetadata: { ...value.providerMetadata, breatic: breatic as Record<string, never> } };
   }
 
@@ -369,6 +375,7 @@ export class SwitchingModel implements ModelV4 {
   async doStream(options: CallOptions): Promise<StreamResult> {
     const { pending } = this.setup;
     const { value, servedBy } = await this.attempt(async (c) => {
+      const sentAt = Date.now();
       const result = await this.setup.modelFor(c).doStream({ ...options, includeRawChunks: true });
       // An opened stream was billed: it is missing until it names a generation to look up, or until
       // its finish is read; a direct vendor never names one.
@@ -399,9 +406,9 @@ export class SwitchingModel implements ModelV4 {
         held.push(part);
         if (CONTENT.has(part.type) || part.type === "finish") break;
       }
-      return { result, reader, held, opened };
+      return { result, reader, held, opened, sentAt };
     }, options.abortSignal);
-    const { result, reader, held, opened } = value;
+    const { result, reader, held, opened, sentAt } = value;
     const upstream = servedBy.upstream;
     let generationId: string | undefined;
     /**
@@ -420,7 +427,7 @@ export class SwitchingModel implements ModelV4 {
       // lookups here, and a stream stopped before its finish keeps it there.
       if (generationId !== undefined) pending.delete(generationId);
       if (opened.missing !== undefined) pending.delete(opened.missing);
-      const breatic = this.finished(upstream, generationId, part.providerMetadata);
+      const breatic = this.finished(upstream, generationId, part.providerMetadata, sentAt);
       return { ...part, providerMetadata: { ...part.providerMetadata, breatic: breatic as Record<string, never> } };
     };
     const stream = new ReadableStream<StreamPart>(

@@ -949,6 +949,10 @@ models:
       - when: get_duration(videos) > get_duration(videos, min=0, max=3, total=1000000)
         reason: "Google Gemini Omni reference videos: up to 3 seconds each"
         source: https://web.archive.org/web/20261023092214/https://ai.google.dev/gemini-api/docs/omni?hl=en
+      - when: $count(images) > 6
+        reason: "Google Gemini Omni reference images: up to 6 images across all video durations"
+        source: https://ai.google.dev/gemini-api/docs/omni
+        from: 2026-12-03T00:00:00Z
     upstreams:
       - upstream: wavespeed
         weight: 1

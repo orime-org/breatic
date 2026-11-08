@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import { NoUpstreamAvailable } from "../../errors.js";
 import { createMediaRunner } from "../../media/runner.js";
@@ -458,7 +458,7 @@ describe("a model vendor's own input limits (model-level rejects)", () => {
    * @param rejects - The model's limits.
    * @returns The provider.
    */
-  const vendorBound = (rejects: { when: string; reason: string; source?: string }[] = [
+  const vendorBound = (rejects: { when: string; reason: string; source?: string; from?: string }[] = [
     { when: "$length(prompt) > 10", reason: "Vendor prompt: up to 10 characters", source: SOURCE },
     { when: "get_duration(audio) > 10", reason: "Vendor audio: up to 10 seconds", source: SOURCE },
   ]): ReturnType<typeof createProvider> => createProvider({
@@ -470,7 +470,7 @@ describe("a model vendor's own input limits (model-level rejects)", () => {
       media: {
         models: {
           m: {
-            rejects: rejects as { when: string; reason: string; source: string }[],
+            rejects: rejects as { when: string; reason: string; source: string; from?: string }[],
             upstreams: [
               { upstream: "wavespeed", weight: 1, model_id: "m", prompt_field: "prompt", params: { audio: { field: "audio" } }, pricing: pricing(300) },
               { upstream: "fal", weight: 2, model_id: "m", prompt_field: "text", output_field: "video", params: { audio: { field: "audio_url" } }, mentions: { audio: "Audio {n}" }, pricing: pricing(100) },
@@ -526,6 +526,28 @@ describe("a model vendor's own input limits (model-level rejects)", () => {
     const p = vendorBound([{ when: "$contains(tag, /x/)", reason: "Vendor tag pattern", source: SOURCE }]);
     const input = { ...audioRun(5), params: { tag: 5 } };
     for (const upstream of ["wavespeed", "fal"]) expect(await rejectedInput(p.pricingRules("m"), upstream, input)).toEqual({ reason: "Vendor tag pattern", evaluationError: expect.any(String) });
+  });
+
+  describe("a limit the vendor announced for a date", () => {
+    const FROM = "2026-12-03T00:00:00Z";
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([
+      ["before its from", Date.parse(FROM) - 1, undefined],
+      ["at its from", Date.parse(FROM), { reason: "Vendor audio: up to 10 seconds" }],
+      ["after its from", Date.parse(FROM) + 86_400_000, { reason: "Vendor audio: up to 10 seconds" }],
+    ])("holds %s alike on the server and in the browser", async (_name, now, expected) => {
+      vi.useFakeTimers({ toFake: ["Date"], now });
+      const p = vendorBound([{ when: "get_duration(audio) > 10", reason: "Vendor audio: up to 10 seconds", source: SOURCE, from: FROM }]);
+      const browser = parsePricingRules(JSON.parse(JSON.stringify(p.pricingRules("m"))));
+      for (const rules of [p.pricingRules("m"), browser]) {
+        for (const upstream of ["wavespeed", "fal"]) expect(await rejectedInput(rules, upstream, audioRun(11))).toEqual(expected);
+        expect(await estimateCost(rules, p.availability("m"), audioRun(11), { mode: "cheapest" }) === null).toBe(expected !== undefined);
+      }
+    });
   });
 
   it.each([

@@ -76,17 +76,25 @@ export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
 }
 
 /**
- * The direct prices whose off-peak holidays will run out: a model with an off-peak discount whose holidays list no date in
- * the calendar year (UTC) after `now`, since the vendor's holidays are announced a year at a time.
- * @param {Readonly<Record<string, readonly { off_peak?: { holidays?: readonly string[] } }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
+ * The direct prices whose off-peak holidays run out: a model whose price in effect at `now`, or one taking effect later,
+ * has an off-peak discount whose holidays list no date in the current UTC year or after it, or, from 1 December, none
+ * in the next year or after it, since the vendor's holidays are announced a year at a time, by the end of the year
+ * before. The dates belong in the migration, which rewrites llm.yaml's `prices`.
+ * @param {Readonly<Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
  * @param {number} now - The run's moment, in epoch ms.
- * @returns {string[]} A problem for each such model.
+ * @returns {string[]} A problem for each such model and year.
  */
 export function offPeakHolidayProblems(prices, now) {
-  const year = new Date(now).getUTCFullYear() + 1;
-  return Object.entries(prices)
-    .filter(([, entries]) => entries.some((e) => e.off_peak !== undefined && !(e.off_peak.holidays ?? []).some((d) => d.startsWith(`${year}-`))))
-    .map(([model]) => `${model}: off-peak holidays list no date in ${year}`);
+  const today = new Date(now);
+  const years = [today.getUTCFullYear(), ...(today.getUTCMonth() === 11 ? [today.getUTCFullYear() + 1] : [])];
+  return Object.entries(prices).flatMap(([model, entries]) => {
+    const lists = entries
+      .filter((e, i) => i + 1 === entries.length || Date.parse(entries[i + 1].from) > now)
+      .flatMap((e) => (e.off_peak === undefined ? [] : [e.off_peak.holidays ?? []]));
+    return years
+      .filter((year) => lists.some((holidays) => !holidays.some((d) => Number(d.slice(0, 4)) >= year)))
+      .map((year) => `${model}: off-peak holidays list no date in ${year} (add them to OFF_PEAK in scripts/provider-config-migration.ts and rerun it)`);
+  });
 }
 
 /**

@@ -3,7 +3,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildBody } from "../../media/body.js";
 import { estimateCost, orderByPrice, rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
@@ -109,6 +109,11 @@ const CONDITION_WORDS = new Set(["and", "or", "not", "in", "true", "false", "nul
 
 /** A sample source url. */
 const URL_A = "https://a/x.mp4";
+
+/** Every `from` a model's vendor limits carry, in epoch ms. */
+const FROMS = Object.values(models).flatMap(({ rejects }) => (rejects ?? []).flatMap(({ from }) => (from === undefined ? [] : [Date.parse(from)])));
+/** The moment every row is judged at: after every dated vendor limit took effect, so each is in force. */
+const JUDGED_AT = Math.max(Date.now(), ...FROMS.map((from) => from + 86_400_000));
 
 /**
  * One model's binding on one upstream.
@@ -271,6 +276,14 @@ describe("the WaveSpeed binding a relisted model gets back", () => {
 
 describe("the limits a reseller states beyond its schema", () => {
   const provider = createProvider({ config: shipped(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"], now: JUDGED_AT });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   /**
    * A run as the application prepares it.
@@ -472,6 +485,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, resolution: "4k" } }, { prompt: "a fox", params: { image: URL_A, resolution: "1080p" } }, "1080p"],
     ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, resolution: "4k" }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, resolution: "1080p" }, durations: { video: [5] } }, "1080p"],
     ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
+    ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { images: Array<string>(7).fill(URL_A) } }, { prompt: "a fox", params: { images: Array<string>(6).fill(URL_A) } }, "up to 6 images"],
     ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 19, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 18, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
     ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 8] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [8, 7] } }, "15 seconds"],
     ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [0.5] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A] }, durations: { videos: [1] } }, "[1, 15]"],
@@ -500,7 +514,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["sfx-1.6-text-to-audio", { prompt: "rain", params: { duration: 0.09 } }, { prompt: "rain", params: { duration: 0.1 } }, "100-60000"],
     ["sfx-1.6-text-to-audio", { prompt: "rain", params: { duration: 61 } }, { prompt: "rain", params: { duration: 60 } }, "without loop"],
     ["sfx-1.6-text-to-audio", { prompt: "rain", params: { loop: true, duration: 0.9 } }, { prompt: "rain", params: { loop: true, duration: 1 } }, "1000-600000"],
-    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { loop: true, duration: 601 } }, { prompt: "rain", params: { loop: true, duration: 600 } }, "at most 600000"],
+    ["sfx-1.6-text-to-audio", { prompt: "rain", params: { loop: true, duration: 601 } }, { prompt: "rain", params: { loop: true, duration: 60 } }, "at most 600000"],
     ["sfx-1.6-text-to-audio", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
     ["sonilo-sfx-v1", { prompt: "x".repeat(2001) }, { prompt: "x".repeat(2000) }, "maxLength 2000"],
     ["veed-clean-audio", { params: { audio: URL_A }, durations: { audio: [1801] } }, { params: { audio: URL_A }, durations: { audio: [1800] } }, "30 minutes"],
@@ -520,11 +534,11 @@ describe("the limits a reseller states beyond its schema", () => {
     ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 99 } }, { prompt: "a fox", params: { target_polycount: 100 } }, "100 to 300000"],
     ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 1000.5 } }, { prompt: "a fox", params: { target_polycount: 1000 } }, "integer"],
     ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 1500001 } }, { prompt: "a fox", params: { face_count: 1500000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 2999 } }, { prompt: "a fox", params: { face_count: 3000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 3000.5 } }, { prompt: "a fox", params: { face_count: 3000 } }, "Integer"],
+    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 2999 } }, { prompt: "a fox", params: { face_count: 40000 } }, "[3000, 1500000]"],
+    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 40000.5 } }, { prompt: "a fox", params: { face_count: 40000 } }, "Integer"],
     ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 1500001 } }, { params: { image: URL_A, face_count: 1500000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 2999 } }, { params: { image: URL_A, face_count: 3000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 3000.5 } }, { params: { image: URL_A, face_count: 3000 } }, "Integer"],
+    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 2999 } }, { params: { image: URL_A, face_count: 40000 } }, "[3000, 1500000]"],
+    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 40000.5 } }, { params: { image: URL_A, face_count: 40000 } }, "Integer"],
     ["realtime-tts-2", { prompt: "hi", params: { speed: 1.55 } }, { prompt: "hi", params: { speed: 1.5 } }, "[0.5, 1.5]"],
     ["realtime-tts-2", { prompt: "hi", params: { speed: 0.45 } }, { prompt: "hi", params: { speed: 0.5 } }, "[0.5, 1.5]"],
     ["minimax-speech-2.8-hd", { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2.05 } }, { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2 } }, "[0.5, 2]"],
@@ -665,6 +679,28 @@ describe("the limits a reseller states beyond its schema", () => {
     expect(wrong, wrong.join("\n")).toEqual([]);
   });
 
+  it("holds each dated vendor limit only from its from: a VENDOR row's run it refuses after then is taken on every upstream just before", async () => {
+    const unproven: string[] = [];
+    for (const [model, { rejects }] of Object.entries(models)) {
+      for (const reject of (rejects ?? []).filter((r) => r.from !== undefined)) {
+        const runs = VENDOR.filter(([m]) => m === model).map(([, refusedRow]) => run(withDefaults(model, refusedRow)));
+        const upstreams = (models[model]?.upstreams ?? []).map((b) => b.upstream);
+        let proven = false;
+        for (const input of runs) {
+          const after = await Promise.all(upstreams.map((u) => rejectedInput(provider.pricingRules(model), u, input)));
+          if (!after.every((r) => JSON.stringify(r) === JSON.stringify({ reason: reject.reason }))) continue;
+          vi.setSystemTime(Date.parse(reject.from!) - 1);
+          const before = await Promise.all(upstreams.map((u) => rejectedInput(provider.pricingRules(model), u, input)));
+          vi.setSystemTime(JUDGED_AT);
+          if (before.every((r) => r === undefined)) proven = true;
+        }
+        if (!proven) unproven.push(`${model}: ${reject.when} from ${reject.from}`);
+      }
+    }
+    expect(FROMS.length).toBeGreaterThan(0);
+    expect(unproven, unproven.join("\n")).toEqual([]);
+  });
+
   it("lists in SKIPS and STRICTER only what some VENDOR row uses", async () => {
     const used = new Set((await Promise.all(VENDOR.map(vendorVerdict))).flatMap((v) => v.used));
     expect([...Object.keys(SKIPS), ...Object.keys(STRICTER)].filter((key) => !used.has(key))).toEqual([]);
@@ -722,6 +758,9 @@ describe("the limits a reseller states beyond its schema", () => {
     "sfx-1.6-extend-audio: append_duration > 58": "the vendor's source is at least 3 s, so more than 57 s appended passes the 60 s cap, which refuses it anyway",
     "meshy6-t23d: $length(prompt) > 801": "both upstreams refuse a prompt past 600 characters, before the vendor's 800",
     "meshy6-t23d: $length(prompt) > 799": "both upstreams refuse a prompt past 600 characters, before the vendor's 800",
+    "sfx-1.6-text-to-audio: loop = true and duration > 599": "the catalog caps duration at 60, and fal, the only upstream with loop, takes at most 60, before the vendor's 600",
+    "hunyuan3d-v3: face_count < 3001 or face_count > 1500000": "every upstream takes face_count from 40000, above the vendor's 3000, and the catalog sends 500000",
+    "hunyuan3d-v3-i23d: face_count < 3001 or face_count > 1500000": "every upstream takes face_count from 40000, above the vendor's 3000, and the catalog sends 500000",
   };
 
   /**

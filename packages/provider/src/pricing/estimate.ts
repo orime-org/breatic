@@ -159,9 +159,10 @@ export type PricingRule = z.infer<typeof pricingRuleSchema>;
 /**
  * One input limit of an upstream's own: a JSONata condition over the run, read exactly as a pricing formula reads it
  * (top-level fields under the upstream's names; values, and the sub-fields of list items, as our catalog spells them),
- * and the upstream's own words for the limit. A run it holds for cannot go there.
+ * and the upstream's own words for the limit. A run it holds for cannot go there. A limit announced for a date carries
+ * `from` (an ISO 8601 UTC time) and holds only from then on.
  */
-export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1) });
+export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1), from: z.iso.datetime().optional() });
 
 /** One input limit: the condition a run breaks it on, and the words for it. */
 export type Reject = z.infer<typeof rejectSchema>;
@@ -369,13 +370,15 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
 }
 
 /**
- * The first of some conditions that holds on a run.
+ * The first of some conditions in effect now that holds on a run: one whose `from` is still to come is not read.
  * @param rejects - The conditions, in order.
  * @param read - The run in the names they read.
  * @returns Its reason, or its reason and the evaluator's message when it cannot be evaluated; undefined when none holds.
  */
 async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof runIn>): Promise<RejectedInput | undefined> {
-  for (const { when, reason } of rejects) {
+  const now = Date.now();
+  for (const { when, reason, from } of rejects) {
+    if (from !== undefined && Date.parse(from) > now) continue;
     try {
       if (await holds(when, read.fields, read.durations)) return { reason };
     } catch (error) {

@@ -73,6 +73,11 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("1");
   });
 
+  it("refuses a vendor limit whose from is not an ISO 8601 UTC time, naming where", () => {
+    const raw: ProviderConfigInput = { upstreams, media: { models: { seedance: { rejects: [{ when: "duration > 10", reason: "r", source: "https://vendor.example/limits", from: "December 3, 2026" }], upstreams: [bind("wavespeed", 1)] } } } };
+    expect(problemsOf(raw)).toEqual([expect.stringMatching(/^media\.models\.seedance\.rejects\.0\.from: /)]);
+  });
+
   it("refuses a binding reject that reads a dotted body field", () => {
     const problems = problemsOf(input([bind("wavespeed", 1, { params: { duration: { field: "settings.duration" } }, rejects: [{ when: "settings.duration > 10", reason: "r" }] })]));
     expect(problems).toEqual(['seedance: the binding to "wavespeed" rejects when "settings.duration > 10", which reads "settings.duration", a dotted field conditions do not read']);

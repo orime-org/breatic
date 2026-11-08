@@ -51,6 +51,8 @@ export interface UnderstandCall {
 /** The upstream's answer as it came: its status, parsed body and text. */
 export interface Answered {
   url: string;
+  /** When the request left, in epoch ms: a model answer's direct price is the one in effect then. */
+  sentAt: number;
   status: number;
   headers: Headers;
   body: unknown;
@@ -152,6 +154,7 @@ export class AnswerUnread extends Error {
  */
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
+  const sentAt = Date.now();
   const response = await deliver(request, bounds);
   let text: string;
   try {
@@ -159,7 +162,7 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
   } catch (error) {
     throw new AnswerUnread(request.url, response.status, error);
   }
-  return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
+  return { url: request.url, sentAt, status: response.status, body: parsed(text), text, headers: response.headers };
 }
 
 /**

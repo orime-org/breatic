@@ -8,7 +8,7 @@
  */
 
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, ProviderConfigError, type LlmPrice, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
@@ -64,9 +64,6 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
   });
 }
 
-/** One token price a call is charged at, in USD per million tokens. */
-type TokenPrice = ProviderConfig["llm"]["openrouter_prices"][string];
-
 /**
  * The direct price in effect at a moment: the last that took effect at or before it (the first is in effect from the
  * start), every per-million-token price times its off-peak factor when the moment is outside the price's peak hours
@@ -75,29 +72,19 @@ type TokenPrice = ProviderConfig["llm"]["openrouter_prices"][string];
  * @param at - The moment, in epoch ms.
  * @returns The price, or undefined when the model has none.
  */
-function priceAt(entries: ProviderConfig["llm"]["prices"][string] | undefined, at: number): TokenPrice | undefined {
+function priceAt(entries: ProviderConfig["llm"]["prices"][string] | undefined, at: number): LlmPrice | undefined {
   if (entries === undefined) return undefined;
   const [first, ...later] = entries;
-  const { off_peak: offPeak, ...price } = later.findLast((entry) => Date.parse(entry.from) <= at) ?? first;
+  const entry = later.findLast((e) => Date.parse(e.from) <= at) ?? first;
+  const offPeak = entry.off_peak;
   const moment = new Date(at);
   const time = moment.toISOString().slice(11, 16);
   const peak = offPeak === undefined
     || (!offPeak.holidays.includes(moment.toISOString().slice(0, 10))
       && offPeak.peak_utc.some((w) => w.days.includes(moment.getUTCDay()) && time >= w.from && time < w.to));
   const factor = peak ? 1 : offPeak.factor;
-  /**
-   * One per-million-token price at the factor.
-   * @param usd - The price, or none.
-   * @returns The price times the factor, or none.
-   */
-  const scaled = (usd: number | undefined): number | undefined => (usd === undefined ? undefined : usd * factor);
-  return {
-    input_cache_miss_per_mtok: price.input_cache_miss_per_mtok * factor,
-    input_cache_hit_per_mtok: scaled(price.input_cache_hit_per_mtok),
-    input_cache_write_5m_per_mtok: scaled(price.input_cache_write_5m_per_mtok),
-    input_cache_write_1h_per_mtok: scaled(price.input_cache_write_1h_per_mtok),
-    output_per_mtok: price.output_per_mtok * factor,
-  };
+  // Every number of a price is a per-million-token price, so each is scaled, a field added later included.
+  return Object.fromEntries(Object.entries(entry).flatMap(([field, usd]) => (typeof usd === "number" ? [[field, usd * factor]] : []))) as LlmPrice;
 }
 
 /**
@@ -274,7 +261,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns Known, pending or missing.
    */
   const costOf = (finished: FinishedCall): Cost => {
-    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown } | undefined;
+    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
     // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
     const tokens: TokenBuckets = {
@@ -293,8 +280,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         ? { state: "pending", lookup: { upstream: String(ref.upstream ?? upstream), generationId: ref.generationId } }
         : { state: "missing", reason: `${upstream} reported no cost and no generation id`, tokens };
     }
-    // Priced when the request was sent, which is when the vendor's price in effect is read.
-    const price = priceAt(config.llm.prices[finished.model], finished.startedAt);
+    // Priced when the request that served the call was sent, which provider stamped on its finish.
+    if (typeof breatic?.sentAt !== "number") return { state: "missing", reason: `the call of ${finished.model} on ${upstream} names no send time`, tokens };
+    const price = priceAt(config.llm.prices[finished.model], breatic.sentAt);
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
     const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
@@ -476,7 +464,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             // Held to the model's backend pin, which is understand's alone, and in cheapest mode sorted by price as a prepared call is.
             const provider = openRouterRouting(c.upstream, request.model, chosen, true);
             let answered;
-            const startedAt = Date.now();
             try {
               answered = await adapter.ask({
                 decl,
@@ -521,7 +508,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
             billed.push(missing !== undefined
               ? { state: "missing", reason: missing }
-              : costOf({ model: request.model, startedAt, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } }));
+              : costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, sentAt: answered.sentAt, ...(costRef ? { costRef } : {}) } } }));
             if ("error" in reading) throw new InBandError(reading.error, answered.status);
             return reading;
           },
