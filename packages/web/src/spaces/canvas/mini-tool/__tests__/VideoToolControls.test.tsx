@@ -45,6 +45,19 @@ describe('approved production video parameter controls', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(onChange).toHaveBeenCalledTimes(0);
   });
+  // frames-split §7: planVideoSplit refuses a cut at or past the presentation's end (0.28 s here, not the stored 5 s).
+  it('refuses a split cut at or past the presentation end, as the slider does', () => {
+    const onChange = vi.fn();
+    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [0.1] } }} onChange={onChange} />);
+    const input = screen.getByTestId('video-cut-0');
+    for (const value of ['1', '0.28']) {
+      fireEvent.change(input, { target: { value } });
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+    }
+    fireEvent.change(input, { target: { value: '0.2' } });
+    expect(input).toHaveAttribute('aria-invalid', 'false');
+    expect(onChange).toHaveBeenCalledOnce();
+  });
   it('starts scene analysis from inside Split', () => {
     const onAnalyse = vi.fn();
     render(<VideoToolControls {...base} onAnalyse={onAnalyse} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
