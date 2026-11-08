@@ -101,13 +101,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       finish: plan.task.status === "pending" || plan.task.status === "running",
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
-    // No failed output, a tool without retry (transitions), or a failure no retry can clear (§9.4, §10.4, §10.5: no_face,
-    // model_rejected, a frame count mismatch): nothing can retry this run, so its pins end with this commit (§7.15 end of retryability).
-    const unretryable = outputs.some((output) => output.result?.status === "failed" && !plannedFailureRetryable(plan.execution.tool, output.result.error));
-    if (status === "completed" || unretryable) {
-      await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
-      await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
-    }
+    await releaseUnretryablePins(id, plan.execution.tool, record, tx);
     if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
     else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
@@ -305,6 +299,23 @@ async function requireRegistered(output: MiniToolExecutionOutput): Promise<void>
 }
 
 /**
+ * End a run's pins at a terminal write when nothing can retry it (frames-split §7.15 end of retryability): it completed, its
+ * tool has no retry (transitions), or a failed output carries a failure no retry can clear (§9.4, §10.4, §10.5: no_face,
+ * model_rejected, a frame count mismatch).
+ * @param id - The run.
+ * @param tool - Its frozen tool.
+ * @param record - The terminal record just stored.
+ * @param tx - The terminal write's transaction.
+ * @throws {Error} When releasing a pin fails.
+ */
+async function releaseUnretryablePins(id: string, tool: string, record: MiniToolExecutionRecord, tx: DbTx): Promise<void> {
+  const unretryable = record.outputs.some((output) => output.result?.status === "failed" && !plannedFailureRetryable(tool, output.result.error));
+  if (record.status !== "completed" && !unretryable) return;
+  await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
+  await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
+}
+
+/**
  * Preserve the accepted execution and actual expenses when admission fails or loses its queue acknowledgement.
  * @param taskId - The original SQL-claimed execution task.
  * @param error - The admission failure observed by the existing start adapter.
@@ -325,6 +336,7 @@ export async function failMiniToolExecutionAdmission(taskId: string, error: NonN
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
       status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "internal", finish: true,
     });
+    await releaseUnretryablePins(id, plan.execution.tool, record, tx);
     // Original intents register settlement under this same lock before paid IO.
     // An acknowledgement failure cannot release their hold or close their set.
     if (plan.task.result?.settlement === undefined) {

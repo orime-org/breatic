@@ -365,6 +365,8 @@ describe("existing credit and acknowledgement ownership (A14-A17 / preparation A
     const rows = await pg`SELECT node_id,status,error_message FROM node_tasks WHERE task_id=${f.body.run_id}`; expect([...rows]).toEqual([{ node_id: f.body.outputs[0]!.nodeId, status: "failed", error_message: reason }]);
     expect(await queue.getJob(f.body.run_id)).toBeUndefined();
     const held = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.body.run_id} AND status='held'`; expect([...held]).toEqual([]);
+    // A removal refused at admission stays retryable (frames-split §7.15), so its execution pin outlives the refusal.
+    const pins = await pg`SELECT holder_kind FROM presentation_pins WHERE holder_id=${f.body.run_id} AND deleted_at IS NULL`; expect([...pins]).toEqual([{ holder_kind: "execution" }]);
   });
   it("A16 payment-disabled admission keeps the real quote and queue but opens no hold", async () => {
     const f = await seed(); configure(false); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(35);

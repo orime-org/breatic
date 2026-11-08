@@ -414,3 +414,24 @@ describe("a failed transitions run releases its pins at the terminal commit (fra
     expect(queued).toEqual(held);
   });
 });
+
+// frames-split §7.15 可重试结束: a transitions run refused at admission is just as unretryable as one that failed later, so
+// the admission failure is a terminal write that ends its retryability: the execution pins taken at admission are
+// released there and the ledgers they held are registered for reclaim.
+describe("a transitions run refused at admission releases its pins (frames-split §7.15)", () => {
+  it("TP02 a no_credits refusal leaves no live execution pin and registers the ledgers for reclaim", async () => {
+    const f = await seed();
+    await pg`UPDATE credit_lots SET designated_studio_id=NULL WHERE designated_studio_id=${f.studioId}`;
+    const response = await post(f);
+    expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: f.body.run_id, status: "failed" } } });
+    const [task] = await pg<{ error_message: string }[]>`SELECT error_message FROM tasks WHERE id=${f.body.run_id}`;
+    expect(task!.error_message).toBe("no_credits");
+    const held = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
+      WHERE p.holder_kind='execution' AND p.holder_id=${f.body.run_id}`).map((row) => row.storage_key).sort();
+    expect(held.filter((key) => key.endsWith(".json"))).toHaveLength(4);
+    const [live] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM presentation_pins WHERE holder_id=${f.body.run_id} AND deleted_at IS NULL`;
+    expect(live!.count).toBe(0);
+    const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${held}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    expect(queued).toEqual(held);
+  });
+});
