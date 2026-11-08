@@ -439,7 +439,7 @@ export function renderProductGuide(): string {
       "if the model list cannot be read at that moment, nothing is attached and " +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
-      "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
+      "handle's menu (see the Document spaces section); the same line handed over again leaves one chip holding what " +
       "it reads now, and the same selection handed over again unchanged leaves one chip. Each attachment shows " +
       "as a small " +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +

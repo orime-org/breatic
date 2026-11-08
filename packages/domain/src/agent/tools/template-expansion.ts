@@ -58,36 +58,6 @@ export function sentWords(mode: string | undefined): SentWords {
 }
 
 /**
- * The tweak marks a template generate node's own words carry, by label.
- * @param template - The template.
- * @param key - The generate node's key.
- * @returns Each label once.
- * @throws {never} Never.
- */
-function templateTweakLabels(template: GenerationTemplate, key: TemplateNodeKey): Set<string> {
-  const words = templateNodeWords(template, key);
-  const keys = "prompt" in words ? [words.prompt] : words.shots.map((shot) => shot.key);
-  const labels = keys.flatMap((rest) =>
-    markedSegments(t(`canvas.template.${template.id}.${rest}`)).flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])),
-  );
-  return new Set(labels);
-}
-
-/**
- * The labels of the tweak blanks a node's words hold, once each, from its
- * prompt and every shot.
- * @param node - The node.
- * @returns The labels, in the order they first appear.
- */
-export function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
-  const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
-  return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
-}
-
-/** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */
-export const FILL_BLANKS = "write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.";
-
-/**
  * Template keys and inputs, quoted, for a sentence.
  * @param names - The names.
  * @returns They, quoted and joined.
@@ -191,17 +161,6 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const shotList = own?.role === "generate" && own.shots !== undefined;
     return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
-  }
-  // A template's own tweak mark sent back unchanged is a blank the user
-  // never filled in, so the result would be made without it.
-  const ownTweaks = templateTweakLabels(template, key);
-  const left = tweakLabels(rest).filter((label) => ownTweaks.has(label));
-  if (left.length > 0) {
-    return refuse(
-      "template-tweak-unfilled",
-      `"${rest.name}" still holds template "${template.id}"'s blanks ${quoted(left)}.`,
-      fixOn(at, FILL_BLANKS),
-    );
   }
   return { ok: true, node: filled };
 }

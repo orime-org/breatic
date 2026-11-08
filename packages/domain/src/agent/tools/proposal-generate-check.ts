@@ -24,7 +24,7 @@ import {
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
-import { FILL_BLANKS, quoted, tweakLabels } from "@domain/agent/tools/template-expansion.js";
+import { quoted } from "@domain/agent/tools/template-expansion.js";
 import {
   aNode,
   entriesFor,
@@ -346,6 +346,20 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   });
   return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts, at)) ?? { ok: true };
 }
+
+/**
+ * The labels of the tweak blanks a node's words hold, once each, from its
+ * prompt and every shot.
+ * @param node - The node.
+ * @returns The labels, in the order they first appear.
+ */
+export function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
+  const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
+}
+
+/** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */
+export const FILL_BLANKS = "write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.";
 
 /**
  * Whether the agent's proposal sends every generation with its words filled.
