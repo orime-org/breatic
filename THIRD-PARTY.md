@@ -118,12 +118,12 @@ for web-animation execution (inner#1711):
 | `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
 | `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
 | `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy is shown in a Timeline preview | https://github.com/heygen-com/hyperframes |
-| `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter` | `5.3.1`, `5.3.1`, `5.3.0` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
+| `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter`, `@fontsource-variable/noto-sans-kr` | `5.3.1`, `5.3.1`, `5.3.0`, `5.3.1` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
 
 The runner bundles nothing but Node and our own code
 (`breatic/media-container-own-code-only` holds it to that, as for the media
 container). The OFL's one prohibition, selling the fonts on their own, is not
-something Breatic does, and none of the three copyright lines declares a
+something Breatic does, and none of the four copyright lines declares a
 Reserved Font Name.
 
 `@hyperframes/player` 0.8.186 declares `@hyperframes/core` as a dependency

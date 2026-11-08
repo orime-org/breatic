@@ -28,7 +28,7 @@ const webAnimationSchema = z.object({
   /** One model call's limit, and so the longest a cancel or deadline waits to drain it. */
   call_timeout_ms: positiveInt.default(300_000),
   max_package_bytes: positiveInt.default(5_000_000),
-  font_set_version: positiveInt.default(1),
+  font_set_version: positiveInt.default(2),
   /** How long a signed preview address stays readable. */
   preview_token_ttl_ms: positiveInt.default(3_600_000),
   /** How long the preview waits for a page's bridge-ready before it shows the copy unavailable. */

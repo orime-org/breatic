@@ -3,7 +3,7 @@
 
 /**
  * Lay out the web-animation font set (inner#1711 design §3.6) from the pinned @fontsource-variable packages in this
- * package's devDependencies: every `wght-normal` woff2 slice of the three families into `<out>/v<version>/`, with
+ * package's devDependencies: every `wght-normal` woff2 slice of the four families into `<out>/v<version>/`, with
  * `faces.json` (family, file, unicode-range and weight of each slice, which the runner turns into the package's
  * @font-face rules) and each package's OFL text beside them.
  *
@@ -27,6 +27,7 @@ const FAMILIES = [
   ["Noto Sans SC", "@fontsource-variable/noto-sans-sc"],
   ["Noto Serif SC", "@fontsource-variable/noto-serif-sc"],
   ["Inter", "@fontsource-variable/inter"],
+  ["Noto Sans KR", "@fontsource-variable/noto-sans-kr"],
 ];
 
 const config = readFileSync(join(here, "../../../config/timeline.yaml"), "utf8");
