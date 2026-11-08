@@ -38,6 +38,8 @@ interface SpaceTaskCommon {
   assetId: string | null;
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage: string | null;
+  /** What the user is told beside a done generation (inner#1692); null when nothing. */
+  notice: "rig_failed" | null;
 }
 
 /** A model upload, as the panel reads it. */
@@ -120,6 +122,7 @@ export async function listSpaceTasks(
         deadlineAt: new Date(nodeTaskService.rowDeadline(row)).toISOString(),
         assetId: row.assetId,
         errorMessage: row.errorMessage,
+        notice: row.notice,
       };
       return row.action === "generate"
         ? { ...common, kind: "generation", ...generationFields(row, row.taskId === null ? undefined : runs.get(row.taskId)) }
@@ -184,7 +187,8 @@ async function checkRun(row: SpaceRow): Promise<GenerationCheck> {
     return "running";
   }
   const run = (await taskService.getByIdInternal(row.taskId)) ?? queued;
-  const outcome = sceneTaskService.generationOutcome((run.result as { outputs?: Array<{ asset_id?: unknown }> } | null)?.outputs);
+  const stored = run.result as { outputs?: Array<{ asset_id?: unknown }>; notice?: unknown } | null;
+  const outcome = sceneTaskService.generationOutcome(stored?.outputs, stored);
   if (run.billedAt === null || outcome.outcome === "failed") return "ended";
   const settled = await sceneTaskService.settle(row, outcome);
   if (settled.assetWritten) await publishSpaceTasksQuietly(row.projectId, row.spaceId);

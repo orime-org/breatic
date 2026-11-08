@@ -16,7 +16,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { assertBeforeDeadline, untilDeadline, untilDeadlineIfAhead } from "@breatic/shared";
+import { assertBeforeDeadline, DeadlinePassed, untilDeadline, untilDeadlineIfAhead } from "@breatic/shared";
 import type { upstreamCloneRepo, upstreamStepRepo, FullModelEntry } from "@breatic/domain";
 
 import { acquireSemaphore, resolveModel, type ResolvedModel } from "@worker/providers/shared.js";
@@ -24,7 +24,8 @@ import { entryOf, FAMILIES, type CatalogModality, type GenerationResult } from "
 import { planSteps } from "@worker/providers/plan-steps.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 import { runPrediction, type PredictionRun } from "@worker/providers/wavespeed.js";
-import { queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { HttpStatusError, queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 type CloneKind = upstreamCloneRepo.UpstreamCloneKind;
@@ -42,6 +43,8 @@ export interface RunTaskContext {
    * before stopped at that step, and never reached the ones after it.
    */
   retryStarting: boolean;
+  /** Whether no retry follows this pickup: an optional step's transient failure is final then. */
+  lastAttempt: boolean;
 }
 
 /** The storage a run reads and writes; the two domain repositories in production. */
@@ -98,6 +101,33 @@ interface Carried {
   inlineCostUsd: number;
   /** What the run produced, in upstream order. */
   urls?: string[];
+}
+
+/** What an optional step's failure tells the user, by the step's kind. */
+const NOTICES: Readonly<Partial<Record<Step["kind"], NonNullable<GenerationResult["notice"]>>>> = { rig: "rig_failed" };
+
+/** A prediction that finished without an output address. */
+class MissingOutputError extends Error {
+  /** Name the answer the run could not use. */
+  constructor() {
+    super("No output URL after WaveSpeed polling");
+  }
+}
+
+/**
+ * Whether an optional step's failure is final for this run. A refusal, an
+ * answer with no output or one that is not JSON says the same on a retry; a
+ * dropped connection, a 5xx, a 408 or a 429 may not, so it is final only when
+ * no retry follows. Waiting and the deadline are never the step's failure.
+ * @param err - What the step threw.
+ * @param lastAttempt - Whether no retry follows this pickup.
+ * @returns True when the run should deliver without the step.
+ */
+function optionalStepFailed(err: unknown, lastAttempt: boolean): boolean {
+  if (err instanceof StillRunning || err instanceof DeadlinePassed) return false;
+  if (err instanceof UpstreamTaskFailed || err instanceof MissingOutputError || err instanceof SyntaxError) return true;
+  if (err instanceof HttpStatusError && err.status >= 400 && err.status < 500 && err.status !== 408 && err.status !== 429) return true;
+  return lastAttempt;
 }
 
 /**
@@ -321,6 +351,14 @@ async function runStep(
       const run = await predict(deps, ctx, resolved, step, { text: prompt, voice_id: carried.voiceId });
       return { urls: [outputUrls(run)[0]!], prediction: run.taskId };
     }
+    case "rig": {
+      // The generated model goes to the rig by its address; VRM bone names
+      // let a preset pose it with no name table (inner#1692).
+      const model = carried.urls?.[0];
+      if (model === undefined) throw new Error("No generated model to rig");
+      const run = await predict(deps, ctx, resolved, step, { model, rig_type: "auto", spec: "vrm", out_format: "glb" });
+      return { urls: [outputUrls(run)[0]!], prediction: run.taskId };
+    }
     case "generate": {
       // A submitted step is only asked about, so its body is not built: for
       // some families building it is a paid LLM call.
@@ -378,7 +416,7 @@ async function runStep(
 function outputUrls(run: PredictionRun): string[] {
   const urls = run.outputs;
   if (urls.length === 0 || !urls.every((url): url is string => typeof url === "string" && url !== "")) {
-    throw new Error("No output URL after WaveSpeed polling");
+    throw new MissingOutputError();
   }
   return [...urls];
 }
@@ -453,9 +491,17 @@ export async function runCatalogTask(
   const entry = entryOf(modality, resolved.modelName);
   const steps = await deps.steps.ensureSteps(ctx.taskId, planSteps(entry, params));
   const carried: Carried = { ids: {}, elementIds: [], cached: [], predictions: [], inlineCostUsd: 0 };
+  const optional = new Set((entry.extra_steps ?? []).filter((step) => step.optional === true).map((step) => step.endpoint));
   let retryStarting = ctx.retryStarting;
+  let notice: GenerationResult["notice"];
 
   for (const step of steps) {
+    // An optional step that failed is passed over: the run delivers what the
+    // steps before it produced, and says what is missing.
+    if (step.status === "failed" && optional.has(step.endpoint)) {
+      notice = NOTICES[step.kind];
+      continue;
+    }
     if (step.status === "failed") {
       const reason = step.output.error;
       throw new UpstreamTaskFailed(resolved.providerName, typeof reason === "string" ? reason : `step ${step.kind} failed`);
@@ -474,14 +520,19 @@ export async function runCatalogTask(
         output = await runStep(deps, stepCtx, resolved, entry, step, prompt, params, carried);
       } catch (err) {
         await retireGone(deps, ctx, carried, err);
-        throw err;
+        if (!optional.has(step.endpoint) || !optionalStepFailed(err, ctx.lastAttempt)) throw err;
+        // `predict` already recorded an upstream failure with the upstream's words.
+        if (!(err instanceof UpstreamTaskFailed)) await deps.steps.markFailed(step.id, err instanceof Error ? err.message : String(err));
+        logger.warn({ err, taskId: ctx.taskId, step: step.kind }, "optional_step_failed");
+        notice = NOTICES[step.kind];
+        continue;
       }
       await deps.steps.markDone(step.id, output);
     }
     carry(carried, step, output);
   }
 
-  if (carried.urls === undefined) throw new Error("No output URL after WaveSpeed polling");
+  if (carried.urls === undefined) throw new MissingOutputError();
   let cost = carried.inlineCostUsd;
   // Bounded by the task's deadline like every other call on its chain, and a
   // lookup cut there answers 0, as any failed lookup does. Work that finished
@@ -492,5 +543,5 @@ export async function runCatalogTask(
     cost += await queryBilling(resolved, prediction, billing);
   }
   const outputs = carried.urls.slice(0, outputCount).map((url) => ({ url }));
-  return { outputs, model: resolved.modelName, cost };
+  return { outputs, model: resolved.modelName, cost, ...(notice !== undefined && { notice }) };
 }

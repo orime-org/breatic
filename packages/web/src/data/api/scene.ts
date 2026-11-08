@@ -43,6 +43,8 @@ export interface SpaceTask {
   kind?: 'import' | 'generation';
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage?: string | null;
+  /** Said beside a done generation: `rig_failed` when the model arrived without the skeleton asked for (inner#1692). */
+  notice?: 'rig_failed' | null;
   origin?: SceneGenerationOrigin | null;
   model?: { name: string; displayName: string };
   mode?: string;

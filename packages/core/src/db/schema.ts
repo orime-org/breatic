@@ -1053,6 +1053,10 @@ export const nodeTasks = pgTable(
     // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
     // only, null on every other row; its CHECK lives in 0117.
     origin: varchar("origin", { length: 16 }),
+    // What the user is told beside a done 3D generation (inner#1692):
+    // 'rig_failed' when the model was delivered without the skeleton it was
+    // asked for. Null on every other row; its CHECK lives in 0118.
+    notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only

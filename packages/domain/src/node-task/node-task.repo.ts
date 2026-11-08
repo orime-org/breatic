@@ -55,7 +55,12 @@ export interface SceneTaskRow extends NodeTaskRow {
   taskId: string | null;
   /** Where a generation was started from; null on a model upload. */
   origin: SceneGenerationOrigin | null;
+  /** What the user is told beside a done generation; null when there is nothing to tell. */
+  notice: SceneTaskNotice | null;
 }
+
+/** A done generation's notice: the model arrived without the skeleton it was asked for (inner#1692). */
+export type SceneTaskNotice = "rig_failed";
 
 /**
  * A row as the list a user opens hands it out: the row plus what that task
@@ -116,7 +121,8 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
  * @returns The shared fields, the job and the origin.
  */
 function sceneRowOf(row: typeof nodeTasks.$inferSelect): SceneTaskRow {
-  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null };
+  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null,
+    notice: row.notice as SceneTaskNotice | null };
 }
 
 /**
@@ -177,12 +183,13 @@ export async function insertRunning(data: {
  * @param fields.nodeHistoryId - The history row holding the result.
  * @param fields.assetId - The registered model a Space-level row lands with.
  * @param fields.errorMessage - Why it failed or timed out.
+ * @param fields.notice - What the user is told beside a done Space-level generation.
  * @returns True when this call is the one that moved it.
  */
 export async function settleRunning(
   taskId: string,
   status: Exclude<NodeTaskStatus, "running">,
-  fields: { nodeHistoryId?: string; assetId?: string; errorMessage?: string },
+  fields: { nodeHistoryId?: string; assetId?: string; errorMessage?: string; notice?: SceneTaskNotice | null },
 ): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
@@ -556,12 +563,13 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Sce
  * holds one keeps it.
  * @param taskId - Which task.
  * @param assetId - The registered model.
+ * @param notice - What the user is told beside the model; null when nothing.
  * @returns True when this call wrote it.
  */
-export async function attachAsset(taskId: string, assetId: string): Promise<boolean> {
+export async function attachAsset(taskId: string, assetId: string, notice: SceneTaskNotice | null = null): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
-    .set({ assetId })
+    .set({ assetId, notice })
     .where(
       and(
         eq(nodeTasks.id, taskId),

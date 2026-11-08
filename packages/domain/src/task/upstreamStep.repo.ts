@@ -21,6 +21,7 @@ export type UpstreamStepKind =
   | "element"
   | "generate"
   | "speak"
+  | "rig"
   | "container_job";
 
 /** Where a step stands. */

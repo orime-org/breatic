@@ -9,7 +9,7 @@
  */
 
 import type { FullModelEntry, upstreamStepRepo } from "@breatic/domain";
-import { isPresent, type ExtraStep } from "@breatic/shared";
+import { stepRequested, type ExtraStep } from "@breatic/shared";
 
 
 type PlannedStep = upstreamStepRepo.PlannedStep;
@@ -23,6 +23,7 @@ type StepKind = upstreamStepRepo.UpstreamStepKind;
  * @throws {Error} when the worker has no step that runs this endpoint.
  */
 function kindOf(step: ExtraStep): StepKind {
+  if (step.endpoint === "tripo3d/rig") return "rig";
   if (step.at === "after") return "speak";
   if (step.endpoint === "mureka-ai/create-upload-id") {
     if (step.for_param === "song") return "upload_reference";
@@ -37,14 +38,14 @@ function kindOf(step: ExtraStep): StepKind {
  * The steps an extra step expands into for this run.
  * @param step - The declared extra step.
  * @param params - The run's validated params.
- * @returns None when the param it serves carries nothing, one per item for a
- *   per-item step, otherwise one.
+ * @returns None when the param it serves asks for no step (nothing, or a
+ *   switch turned off), one per item for a per-item step, otherwise one.
  */
 function expand(step: ExtraStep, params: Readonly<Record<string, unknown>>): PlannedStep[] {
   const kind = kindOf(step);
   if (step.for_param === undefined) return [{ kind, endpoint: step.endpoint, itemIndex: null }];
   const value = params[step.for_param];
-  if (!isPresent(value)) return [];
+  if (!stepRequested(value)) return [];
   if (step.per_item === true && Array.isArray(value)) {
     return value.map((_item, itemIndex) => ({ kind, endpoint: step.endpoint, itemIndex }));
   }

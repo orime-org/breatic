@@ -307,6 +307,11 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
         const failure = task.status !== 'failed' ? null
           : task.errorMessage ? failureSentence(task.errorMessage, t)
             : generation ? failureSentence('internal', t) : t('spaces.threeD.taskList.failedReason');
+        // A run asked to rig says so while it runs, and says how the rig went once it holds a model.
+        const rigNote = !generation || task.status === 'failed' ? null
+          : hasResult && task.notice === 'rig_failed' ? 'rigFailed'
+            : task.params.rig_skeleton !== true ? null
+              : task.status === 'running' ? 'willRig' : hasResult ? 'rigged' : null;
         const placeable = canEdit && hasResult;
         const locatable = hasResult && task.assetId !== null && onLocate !== undefined && (placedAssetIds?.has(task.assetId) ?? false);
         const removable = (generation ? canGenerate : canEdit) && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null));
@@ -333,6 +338,9 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
               {`${task.model.displayName} · ${starter} · ${task.origin === 'agent' ? t('spaces.threeD.taskList.originAgent') : t('spaces.threeD.taskList.originSpace')}`}
             </p>
             <p className='mt-0.5 text-xs text-muted-foreground'>{state}</p>
+            {rigNote === null ? null : <p data-testid='scene-task-rig-note'
+              className={cn('mt-0.5 text-xs', rigNote === 'rigFailed' ? 'text-status-warning-foreground' : 'text-muted-foreground')}>
+              {t(`spaces.threeD.taskList.${rigNote}`)}</p>}
           </> : <p className='mt-1 text-xs text-muted-foreground'>{`${starter} · ${state}`}</p>}
           {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'
             ? <div className='mt-1.5 h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground' style={{ width: `${percent}%` }} /></div> : null}

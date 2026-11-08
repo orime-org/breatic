@@ -31,6 +31,8 @@ export interface GenerationResult {
   model: string;
   /** What WaveSpeed billed, in USD; 0 when there was no prediction to bill. */
   cost: number;
+  /** Set when an optional step failed and the run delivered without it (inner#1692). */
+  notice?: "rig_failed";
 }
 
 /** Model name -> family, for the models that have one. */

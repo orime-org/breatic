@@ -430,6 +430,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       credits?: number;
+      notice?: unknown;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -461,7 +462,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs, storedResult), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -563,6 +564,7 @@ async function runTaskBody(
       externalTaskId: `breatic-${taskId}`,
       retryStarting,
       deadlineAt,
+      lastAttempt: isTerminalAttempt(job),
     };
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
@@ -828,7 +830,7 @@ async function runTaskBody(
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs, result), { rethrow: true });
   }
 
   if (projectId) {
@@ -2028,7 +2030,8 @@ async function importProvider(taskType: string): Promise<{
           return {
             ...(await runCatalogTask(
               stepDepsFor(studioId, run.resume.deadlineAt),
-              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting },
+              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting,
+                lastAttempt: run.resume.lastAttempt ?? false },
               modality,
               prompt,
               model,
