@@ -7,8 +7,8 @@ import { VideoToolNodeOverlay } from '@web/spaces/canvas/mini-tool/video/VideoTo
 import type { PresentedMediaFrame, MediaSurfaceBinding, VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { deriveVideoToolPanelState, worstVideoToolPanelState, type VideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { useStore } from '@xyflow/react';
-import { useMutation, useMutationState, useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { CANVAS_NODES_KEY, newId, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
+import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationOutputFps, presentationVideoEnd, fitTransitions, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type MiniToolSlotValue, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
@@ -36,7 +36,7 @@ import { useTrackingCost } from '@web/spaces/canvas/mini-tool/video/use-tracking
 import type { PlannedVideoFacts, PlannedVideoPress } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { sourceLedgerQuery } from '@web/spaces/canvas/video-presentation/source-ledger-query';
-import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
+import { useVideoTableRepair } from '@web/spaces/canvas/video-presentation/use-video-table-repair';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { miniToolById } from '@breatic/shared/mini-tools';
@@ -350,14 +350,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const retryIntent = props.onRetryFailed === undefined ? models.retryIntent : undefined;
   const [timelineOpen, setTimelineOpen] = React.useState(false);
   // A picked input's Retry repairs that input's source, as the current video's does (frames-split §7.12 retry column).
-  const inputRepairKey = React.useMemo(() => ['video-input-repair', projectId], [projectId]);
-  const { mutate: repairInput } = useMutation({ mutationKey: inputRepairKey, mutationFn: async (url: string): Promise<void> => {
-    const response = queryClient.getQueryData<VideoPresentationResponse>(videoPresentationQuery({ projectId, canonicalURL: url, active: true }).queryKey);
-    await createVideoPresentationRecovery(queryClient, { projectId, canonicalURL: url, active: true }).recover('table');
-    if (response !== undefined) await queryClient.resetQueries({ queryKey: sourceLedgerQuery({ projectId, response, active: true }).queryKey, exact: true });
-  }, onError: () => toast.error(t('canvas.task.couldNotStart')) });
-  const repairingURLs = useMutationState({ filters: { mutationKey: inputRepairKey, status: 'pending' }, select: (mutation) => mutation.state.variables as string });
-  const repairing = React.useMemo(() => new Set(repairingURLs), [repairingURLs]);
+  const { repair: repairInput, repairing } = useVideoTableRepair(projectId);
   const { tables: inputTables, refs: inputRefs, states: inputStates } = useInputPresentations(projectId, toolId === 'video.transitions' && current !== null ? current.inputs : NO_INPUTS, repairing);
   const [invalidFields, setInvalidFields] = React.useState<ReadonlySet<string>>(new Set());
   const refs = useAnalysisRefs(projectId, spaceId, nodeId);

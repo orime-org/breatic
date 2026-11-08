@@ -38,6 +38,7 @@ import { commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { toast } from '@web/lib/toast';
 import { repairVideoPresentation, videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { presentedBinding, presentedPreparation, presentedResponse, seedUsablePresentation } from '@web/test-utils/video-presentation';
 
@@ -87,6 +88,15 @@ describe('the transitions panel shows its worst input (frames-split §7.12)', ()
     await waitFor(() => expect(repairVideoPresentation).toHaveBeenCalledOnce());
     expect(vi.mocked(repairVideoPresentation).mock.calls[0]![0]).toMatchObject({ projectId, canonicalURL: inputURL });
     await waitFor(() => expect(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') })).toHaveAttribute('aria-busy', 'true'));
+  });
+
+  // The repair request reports its own refusal (`repairVideoPresentation`); the Retry around it adds no second toast.
+  it('shows exactly one toast when the input repair is refused', async () => {
+    vi.mocked(repairVideoPresentation).mockImplementationOnce(async () => { toast.error('Refused'); throw new Error('Refused'); });
+    mount(presentedResponse(binding, { preparation: presentedPreparation('expired') }));
+    act(() => screen.getByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }).click());
+    await waitFor(() => expect(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') })).not.toHaveAttribute('aria-busy', 'true'));
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith('Refused');
   });
 
   it('shows an input still being prepared as waiting', () => {
