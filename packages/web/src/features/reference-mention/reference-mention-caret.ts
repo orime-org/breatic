@@ -70,6 +70,7 @@ import {
 } from '@web/features/reference-mention/reference-mention-whitespace';
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
+import { mountDragImage } from '@web/lib/drag-image';
 
 /**
  * A recorded selection range.
@@ -300,69 +301,52 @@ function normalizeSelection(
 }
 
 /**
- * Gives a chip-bearing drag a mouse-following drag image on EVERY browser.
- * tiptap's NodeView.onDragStart only sets one when React receives the event —
- * true in Chrome (the Text-node target routes into React) but never in Safari,
- * so a chip drag showed no ghost there (user 2026-07-14). Cloning the dragged
- * range's rendered DOM keeps single- and multi-chip drags consistent across
- * browsers; plain-text drags keep the browser's native ghost. Best-effort: any
- * failure silently falls back to the native ghost (a visual enhancement, not a
- * business error).
+ * Draws the image that follows the pointer while a selection is dragged out
+ * of the editor, chips or not, the way every editor's drag image is drawn
+ * (`lib/drag-image.ts`, inner#1515). The browser draws its own image of a
+ * selection fainter than one handed to it (Chromium and WebKit 0.75), and
+ * tiptap's NodeView sets one only when React receives the event, which Safari
+ * never does, so a chip drag there had none. Best-effort: any failure falls
+ * back to the browser's own image (a visual enhancement, not a business error).
  * @param view - The editor view.
  * @param event - The dragstart event.
  */
-function setChipDragImage(view: EditorView, event: Event): void {
+function setSelectionDragImage(view: EditorView, event: Event): void {
   const dt = (event as DragEvent).dataTransfer;
   if (!dt || typeof dt.setDragImage !== 'function') return;
   const sel = view.state.selection;
   if (sel.empty) return;
-  let hasChip = false;
-  view.state.doc.nodesBetween(sel.from, sel.to, (n) => {
-    if (isChip(n)) hasChip = true;
-  });
-  if (!hasChip) return;
   try {
     const range = document.createRange();
     const fromDom = view.domAtPos(sel.from);
     const toDom = view.domAtPos(sel.to);
     range.setStart(fromDom.node, fromDom.offset);
     range.setEnd(toDom.node, toDom.offset);
-    // Mirror the native selection-snapshot semantics (user 2026-07-14: the
-    // Safari-style ghost is the standard): keep the dragged content's own
-    // line layout (same width/font as the source, so soft-wraps reproduce)
-    // and anchor the image at the press point's offset INSIDE the content —
-    // never pin the pointer to the first character.
+    // The dragged content keeps its own line layout (same width and font as
+    // the source, so soft-wraps reproduce) and the image is anchored at the
+    // press point's offset INSIDE the content, as the browser's own image of a
+    // selection is.
     const rect = range.getBoundingClientRect();
     const editorStyle = getComputedStyle(view.dom);
-    const ghost = document.createElement('div');
-    ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
-    ghost.style.width = `${Math.ceil(rect.width)}px`;
-    // At full strength: each browser shows the image the way it shows its
-    // own drag ghost, as it does for a block dragged without a selection.
-    const inner = document.createElement('div');
-    inner.style.whiteSpace = 'pre-wrap';
+    const content = document.createElement('div');
+    content.style.width = `${Math.ceil(rect.width)}px`;
+    content.style.whiteSpace = 'pre-wrap';
     // Font LONGHANDS, never the shorthand: Chrome's computed `font` is often
     // the EMPTY string (unrepresentable sub-property combos), which left the
-    // ghost inheriting the body's 16px — the ghost text rendered larger than
-    // the 13px source (user 2026-07-14; Safari returns a full shorthand).
-    inner.style.fontFamily = editorStyle.fontFamily;
-    inner.style.fontSize = editorStyle.fontSize;
-    inner.style.fontWeight = editorStyle.fontWeight;
-    inner.style.lineHeight = editorStyle.lineHeight;
-    inner.style.color = editorStyle.color;
-    inner.appendChild(range.cloneContents());
-    ghost.appendChild(inner);
-    document.body.appendChild(ghost);
+    // image inheriting the body's 16px.
+    content.style.fontFamily = editorStyle.fontFamily;
+    content.style.fontSize = editorStyle.fontSize;
+    content.style.fontWeight = editorStyle.fontWeight;
+    content.style.lineHeight = editorStyle.lineHeight;
+    content.style.color = editorStyle.color;
+    content.appendChild(range.cloneContents());
+    const { root, scale } = mountDragImage(document, content);
     const pointer = event as DragEvent;
-    const offsetX = Math.max(0, pointer.clientX - rect.left);
-    const offsetY = Math.max(0, pointer.clientY - rect.top);
-    dt.setDragImage(ghost, offsetX, offsetY);
-    setTimeout(() => {
-      ghost.remove();
-    }, 0);
+    const offsetX = Math.max(0, pointer.clientX - rect.left) * scale;
+    const offsetY = Math.max(0, pointer.clientY - rect.top) * scale;
+    dt.setDragImage(root, offsetX, offsetY);
   } catch {
-    // Native ghost stays — the enhancement must never break the drag.
+    // The browser's own image stays — the enhancement must never break the drag.
   }
 }
 
@@ -614,7 +598,7 @@ export function createReferenceMentionCaret(): Plugin {
               ? null
               : recordFromRange(view.state, sel.from, sel.to),
           });
-          setChipDragImage(view, event);
+          setSelectionDragImage(view, event);
           return false;
         },
         dragover: (view, event): boolean => {
