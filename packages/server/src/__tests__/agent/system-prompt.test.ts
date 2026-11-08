@@ -425,10 +425,11 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(at).toBeLessThan(text().indexOf("- Taste with no right answer"));
   });
 
-  it("answers taste with two or three clearly different takes, proposes later steps only after the pick, never as a list of options", () => {
+  it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never as a list of options", () => {
     const taste = bullet("- Taste with no right answer", "- When what only the user knows and a taste");
     expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result");
-    expect(taste).toContain("say how they differ, and propose the later steps only once they have picked one, never on the same card as the takes. A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).toContain("say how they differ, list the later steps in words with their rough cost, and propose them only once they have picked one, never on the same card as the takes. A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).not.toContain("say how they differ, and propose the later steps only once");
     expect(taste).not.toContain("build the later steps on the one they pick");
   });
 
@@ -460,9 +461,9 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
   });
 
-  it("chooses a model that can do the step and names a model's limit as the model's, not Breatic's", () => {
+  it("chooses a model that can do the step, names a model's limit as the model's, not Breatic's, and says what helps on the model they have", () => {
     expect(text()).toContain("Choose for each step a model that can do what it asks.");
-    expect(text()).toContain("name a model whose own description in the model list says it does this better; when none does, say so plainly.");
+    expect(text()).toContain("name a model whose own description in the model list says it does this better; when none does, say so plainly. Either way, say what can help on the model they have (a shorter or simpler motion, another framing, a reference).");
     expect(text()).not.toContain("name a model that does it better");
   });
 
@@ -505,6 +506,12 @@ describe("what the prompt says per medium (breatic#1361)", () => {
       for (const [i, field] of FIELDS.entries()) expect(at[i], `${medium} lacks ${field}`).toBeGreaterThan(-1);
       expect(at, `${medium} fields out of order`).toEqual([...at].sort((a, b) => a - b));
     }
+  });
+
+  it("asks in Pictures first who a character of theirs is and whether a design or art style of them exists", () => {
+    const para = paragraphs().get("Pictures") ?? "";
+    expect(para.startsWith("Pictures. Ask: for a character of theirs, both who they are (age, gender, role; for a robot or a creature, its age feel and gender leaning) and whether a design of them or an art style already exists; their own pictures or sketches; the look of work the picture must sit beside; where it is used when that changes size or layout.")).toBe(true);
+    expect(para).not.toContain("who a character of theirs is;");
   });
 
   it("has a long piece start as an outline or two openings for the user to pick, and settles a tone by openings, not a question", () => {
