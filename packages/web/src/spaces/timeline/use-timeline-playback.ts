@@ -267,8 +267,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         return;
       }
       const terminalHold = media !== null && clip !== null && source !== null && media.ended
-        && !awaitingSeek && position.current === clip.startFrame + clip.durationFrames - 1
-        && media.currentTime >= Number(source.durationSeconds);
+        && !awaitingSeek && position.current === clip.startFrame + clip.durationFrames - 1;
       const webReady = host.ready() && latest.current.webPending !== true;
       const next = clip === null || terminalHold ? (webReady ? 'playing' : 'waiting') : resolveTimelineMediaTransport({
         intent: 'play', generationMatches: true, targetReady: !awaitingSeek && resourceState === 'ready' && webReady,
