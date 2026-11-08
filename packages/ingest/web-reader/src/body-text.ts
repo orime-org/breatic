@@ -13,6 +13,19 @@
 /** Type families that are media, never text, whatever their suffix (`image/svg+xml`). */
 const MEDIA_TYPE = /^(?:image|audio|video)\//;
 
+/** Application types that are text though neither XML nor JSON: scripts, YAML, line-delimited JSON. */
+const TEXT_APPLICATION_TYPES: ReadonlySet<string> = new Set([
+  "application/xml",
+  "application/json",
+  "application/javascript",
+  "application/x-javascript",
+  "application/ecmascript",
+  "application/yaml",
+  "application/x-yaml",
+  "application/x-ndjson",
+  "application/jsonl",
+]);
+
 /**
  * A `content-type` header's media type, lower-cased, without its parameters.
  * @param contentType - The header.
@@ -35,20 +48,15 @@ export function isMediaType(type: string): boolean {
 
 /**
  * Whether a media type is text a page can be read from: `text/*`, XML, JSON,
- * or a type outside the media families that ends in `+xml` or `+json`.
+ * scripts, YAML, line-delimited JSON, or a type outside the media families
+ * that ends in `+xml` or `+json`.
  * @param type - The media type, as `mediaTypeOf` gives it.
  * @returns True for a text type.
  * @throws {never} Never.
  */
 export function isTextType(type: string): boolean {
   if (isMediaType(type)) return false;
-  return (
-    type.startsWith("text/") ||
-    type === "application/xml" ||
-    type === "application/json" ||
-    type.endsWith("+xml") ||
-    type.endsWith("+json")
-  );
+  return type.startsWith("text/") || TEXT_APPLICATION_TYPES.has(type) || type.endsWith("+xml") || type.endsWith("+json");
 }
 
 /**
