@@ -19,7 +19,7 @@ const CALL_TEXT_UNITS = 8 * 1024 * 1024;
  * @returns The most UTF-16 code units one page's text may take.
  * @throws {never} Never.
  */
-export function perPageTextBytes(urlCount: number): number {
+export function perPageTextUnits(urlCount: number): number {
   return Math.floor(CALL_TEXT_UNITS / urlCount);
 }
 

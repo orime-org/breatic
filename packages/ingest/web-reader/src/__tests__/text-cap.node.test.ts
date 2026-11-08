@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ReadPageResult } from "@breatic/shared";
 
-import { capPageText, perPageTextBytes } from "../text-cap.js";
+import { capPageText, perPageTextUnits } from "../text-cap.js";
 
 /** The code units one call's pages carry together. */
 const CALL_UNITS = 8 * 1024 * 1024;
@@ -41,7 +41,7 @@ function splitsPairAt(text: string, at: number): boolean {
   return high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff;
 }
 
-describe("perPageTextBytes: each page's share, in code units", () => {
+describe("perPageTextUnits: each page's share, in code units", () => {
   it.each([
     [1, 8_388_608],
     [2, 4_194_304],
@@ -49,13 +49,13 @@ describe("perPageTextBytes: each page's share, in code units", () => {
     [6, Math.floor(CALL_UNITS / 6)],
     [20, Math.floor(CALL_UNITS / 20)],
   ])("gives each of %i pages floor(8 Mi / n) code units", (urlCount, expected) => {
-    expect(perPageTextBytes(urlCount)).toBe(expected);
+    expect(perPageTextUnits(urlCount)).toBe(expected);
   });
 
   it("keeps every page's share within 8 Mi code units together", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 20 }), (urlCount) => {
-        const share = perPageTextBytes(urlCount);
+        const share = perPageTextUnits(urlCount);
         expect(Number.isInteger(share)).toBe(true);
         expect(share * urlCount).toBeLessThanOrEqual(CALL_UNITS);
         expect((share + 1) * urlCount).toBeGreaterThan(CALL_UNITS);
@@ -83,7 +83,7 @@ describe("capPageText", () => {
   it("cuts a one-page call's text at 8 Mi code units, whatever its UTF-8 size", () => {
     const text = "a".repeat(CALL_UNITS + 10);
 
-    const capped = capPageText(okPage(text), perPageTextBytes(1));
+    const capped = capPageText(okPage(text), perPageTextUnits(1));
 
     expect(capped.text?.length).toBe(CALL_UNITS);
     expect(capped.truncated).toBe(true);

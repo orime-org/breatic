@@ -24,7 +24,7 @@ import { statusOfResponse } from "./classify.js";
 import { cpuUsecOf } from "./cpu-usage.js";
 import { readPdf } from "./pdf-page.js";
 import { readAll } from "./read-all.js";
-import { capPageText, perPageTextBytes } from "./text-cap.js";
+import { capPageText, perPageTextUnits } from "./text-cap.js";
 import { toMarkdown } from "./to-markdown.js";
 
 /** Who reads, said plainly, in the form ChatGPT-User and Claude-User use. */
@@ -228,7 +228,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     pageTimeoutMs: request.pageTimeoutMs,
     readOne: (url, signal) => readOne(url, signal, request),
   });
-  const cap = perPageTextBytes(request.urls.length);
+  const cap = perPageTextUnits(request.urls.length);
   const answer: ReaderServiceAnswer = { pages: pages.map((page) => capPageText(page, cap)), cpuUsec: cpuUsec() };
   res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(answer));
 }

@@ -45,7 +45,7 @@ export interface ReadPageResult {
   kind?: "html" | "pdf";
   pages?: number;
   text?: string;
-  /** Present and true when the reader cut the text at its byte cap. */
+  /** Present and true when the reader cut the text at its text cap. */
   truncated?: boolean;
 }
 
