@@ -127,7 +127,6 @@ interface PageInFull {
   kind?: "html" | "pdf";
   pages?: number;
   text: string;
-  links: string[];
   truncated?: boolean;
 }
 
@@ -277,7 +276,22 @@ function isHighSurrogate(unit: number): boolean {
 }
 
 /**
- * The part of a page one call hands over.
+ * The links a slice of page text holds, one per page key, each in the
+ * spelling the slice first writes it.
+ * @param text - The slice's text.
+ * @returns The links.
+ */
+function linksOf(text: string): string[] {
+  const byKey = new Map<string, string>();
+  for (const link of pageLinksIn(text)) {
+    const key = pageLinkKey(link);
+    if (!byKey.has(key)) byKey.set(key, link);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * The part of a page one call hands over, with the links its own text holds.
  * @param url - The address asked for.
  * @param page - The page in full.
  * @param start - Where the model asked to start.
@@ -291,6 +305,7 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
   let to = Math.min(from + share, total);
   // A cut between the two halves of a surrogate pair would hand over half a character.
   if (to < total && to > from && isHighSurrogate(page.text.charCodeAt(to - 1))) to += 1;
+  const text = page.text.slice(from, to);
   return {
     url,
     status: "ok",
@@ -302,8 +317,8 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
     start: from,
     end: to,
     next_start: to < total ? to : null,
-    text: page.text.slice(from, to),
-    links: page.links,
+    text,
+    links: linksOf(text),
     index,
     ...(page.truncated === true && { truncated: true }),
   };
@@ -315,14 +330,12 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
  * @returns The page.
  */
 function inFull(result: ReadPageResult): PageInFull {
-  const text = result.text ?? "";
   return {
     ...(result.finalUrl !== undefined && { final_url: result.finalUrl }),
     ...(result.title !== undefined && { title: result.title }),
     ...(result.kind !== undefined && { kind: result.kind }),
     ...(result.pages !== undefined && { pages: result.pages }),
-    text,
-    links: pageLinksIn(text),
+    text: result.text ?? "",
     ...(result.truncated === true && { truncated: true }),
   };
 }
@@ -473,7 +486,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: (url: string
         const key = keys[i] as string;
         const first = firstOf.get(partOf[i] as string) as number;
         if (first !== i) {
-          const repeat: FetchedPage = { ...(pages[first] as FetchedPage), url: page.url };
+          const repeat: FetchedPage = { ...(pages[first] as FetchedPage), url: page.url, links: [] };
           delete repeat.text;
           pages.push(repeat);
           return;
