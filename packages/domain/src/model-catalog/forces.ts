@@ -12,7 +12,7 @@
  * where one of them is still changing when the rounds run out.
  */
 
-import { applyForces } from "@breatic/shared";
+import { applyForces, gateParams } from "@breatic/shared";
 import { z } from "zod";
 
 import { conditionSchema } from "@domain/model-catalog/param-declaration.js";
@@ -68,8 +68,7 @@ function faultsOf(model: ForcingModel): string[] {
   const params = model.params ?? {};
   const touched = new Set<string>();
   for (const force of forces) {
-    const read = [...(force.when.flag_on !== undefined ? [force.when.flag_on] : []), ...Object.keys(force.when.equals ?? {})];
-    for (const name of [...read, ...Object.keys(force.set)]) {
+    for (const name of [...gateParams(force.when), ...Object.keys(force.set)]) {
       touched.add(name);
       if (!(name in params)) faults.push(`forced value ${force.id} names "${name}", which this model does not declare`);
     }

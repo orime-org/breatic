@@ -34,21 +34,13 @@ threeDTasks.post(
     const { projectId, spaceId } = c.req.valid("param");
     const body = c.req.valid("json");
     const userId = c.get("user").id;
-    const submission = {
-      mode: body.mode,
-      model: body.model,
-      ...(body.prompt !== undefined ? { prompt: body.prompt } : {}),
-      params: body.params,
-      ...(body.image_asset_ids !== undefined ? { imageAssetIds: body.image_asset_ids } : {}),
-      origin: body.origin,
-    };
     const held = await holdRun({
       projectId,
       userId,
-      check: () => sceneGenerationService.checkSubmission(projectId, submission),
+      check: () => sceneGenerationService.checkSubmission(projectId, body),
       credits: sceneGenerationService.estimateOf,
     });
-    const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, submission, held);
+    const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, body, held);
     return c.json({ data: answer }, 201);
   },
 );

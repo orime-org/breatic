@@ -314,6 +314,7 @@
       "setting_forced": "在目前設定下「{param}」不能是 {given}：規則 {force} 會把它設為 {value}。",
       "setting_values": "「{param}」只能取 {values}，不能是 {value}。",
       "setting_integer": "「{param}」需要整數，不能是 {value}。",
+      "setting_text": "「{param}」需要文字，不能是 {value}。",
       "setting_bounds": "在目前設定下「{param}」的範圍是 {min} 到 {max}，不能是 {value}。",
       "setting_too_long": "「{param}」最多 {max} 個字元，現在有 {length} 個。",
       "view_not_found": "第 {index} 個視圖槽（{slot, select, front {正面} left {左側} back {背面} right {右側} other {多餘}}）：{input} 不是本 Project 裡的圖片。",

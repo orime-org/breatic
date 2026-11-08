@@ -15,6 +15,12 @@ import { z } from "zod";
 
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 
+/** Where a 3D generation was started: the Space's own dialog, or an Agent proposal. */
+export const SCENE_GENERATION_ORIGINS = ["space", "agent"] as const;
+
+/** One of {@link SCENE_GENERATION_ORIGINS}. */
+export type SceneGenerationOrigin = (typeof SCENE_GENERATION_ORIGINS)[number];
+
 /** A whole proposal: what the generate dialog is filled with, and what it costs. */
 export const sceneGenerationProposalSchema = z.object({
   proposalId: z.string().uuid(),
@@ -50,7 +56,7 @@ export const sceneGenerationBodySchema = z.object({
   // The views in front, left, back, right order. How many the model takes is
   // its rule, said with its name when broken; the cap here only bounds work.
   image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
-  origin: z.enum(["space", "agent"]),
+  origin: z.enum(SCENE_GENERATION_ORIGINS),
 });
 
 /** A submission, as {@link sceneGenerationBodySchema} describes it. */

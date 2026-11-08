@@ -39,6 +39,7 @@ export interface ResolvableModel {
 export type ParamViolation =
   | { readonly param: string; readonly rule: "values"; readonly value: unknown; readonly values: readonly unknown[] }
   | { readonly param: string; readonly rule: "integer"; readonly value: unknown }
+  | { readonly param: string; readonly rule: "text"; readonly value: unknown }
   | { readonly param: string; readonly rule: "bounds"; readonly value: number; readonly min?: number; readonly max?: number }
   | { readonly param: string; readonly rule: "max_length" | "prompt_max_length"; readonly length: number; readonly max: number }
   | {
@@ -58,6 +59,15 @@ export interface AppliedForces {
   readonly forcedBy: Readonly<Record<string, ParamForce>>;
   /** The ids that still changed something in the last round allowed; empty once settled. */
   readonly unsettled: readonly string[];
+}
+
+/**
+ * The params a condition reads.
+ * @param when - The condition.
+ * @returns Their names, the switch first.
+ */
+export function gateParams(when: ParamGate): string[] {
+  return [...(when.flag_on !== undefined ? [when.flag_on] : []), ...Object.keys(when.equals ?? {})];
 }
 
 /**
@@ -177,7 +187,8 @@ function cleanedLength(text: string): number {
 
 /**
  * Every rule the run these params describe breaks: a value not offered, a
- * number out of its range or not whole, a text too long once cleaned, and a
+ * number out of its range or not whole, a text param that is not text, a text
+ * too long once cleaned, and a
  * param given explicitly that a forced value changes.
  * @param model - The model.
  * @param input - The params given, keyed by the catalog's names; `prompt`
@@ -214,6 +225,10 @@ export function checkParamCombination(
     }
     if (spec.type === "integer" && !Number.isInteger(value)) {
       found.push({ param, rule: "integer", value });
+      continue;
+    }
+    if (spec.type === "text" && typeof value !== "string") {
+      found.push({ param, rule: "text", value });
       continue;
     }
     if (typeof value === "number") {

@@ -314,6 +314,7 @@
       "setting_forced": "この設定では「{param}」を {given} にできません。ルール {force} により {value} になります。",
       "setting_values": "「{param}」は {values} のいずれかで、{value} は指定できません。",
       "setting_integer": "「{param}」は整数で指定してください。{value} は指定できません。",
+      "setting_text": "「{param}」は文字で指定してください。{value} は指定できません。",
       "setting_bounds": "この設定では「{param}」は {min}～{max} の範囲で、{value} は指定できません。",
       "setting_too_long": "「{param}」は最大 {max} 文字ですが、{length} 文字あります。",
       "view_not_found": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：{input} はこの Project の画像ではありません。",

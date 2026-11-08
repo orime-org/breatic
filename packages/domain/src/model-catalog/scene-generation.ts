@@ -13,8 +13,9 @@
  */
 
 import {
-  SCENE_VIEW_SLOTS,
   checkParamCombination,
+  modesOf,
+  picturesOf,
   extractPromptText,
   resolveParams,
   type ModelEntry,
@@ -56,27 +57,13 @@ export interface SceneGenerationPlan {
 }
 
 /**
- * The param an entry takes its pictures in, and how many it takes.
- * @param entry - The 3D catalog entry.
- * @returns The param and its count, or none for an entry that takes no picture.
- */
-export function picturesOf(entry: ModelEntry): { name: string; list: boolean; min: number; max: number } | null {
-  for (const [name, spec] of Object.entries(entry.params)) {
-    if (spec.accepts !== "image") continue;
-    if (spec.type !== "list") return { name, list: false, min: 1, max: 1 };
-    return { name, list: true, min: spec.min_items ?? 1, max: spec.max_items ?? SCENE_VIEW_SLOTS.length };
-  }
-  return null;
-}
-
-/**
  * Check a 3D generation and resolve its settings.
  * @param ask - What the submission or proposal asks for.
  * @returns The resolved run, or the first thing that does not hold.
  */
 export function planSceneGeneration(ask: SceneGenerationAsk): SceneGenerationPlan | { ok: false; problem: SceneGenerationProblem } {
   const entry = getModelCatalog().three_d.find((candidate) => candidate.name === ask.model);
-  const modes = entry === undefined ? [] : Array.isArray(entry.mode) ? entry.mode : [entry.mode];
+  const modes = entry === undefined ? [] : modesOf(entry);
   if (entry === undefined || !modes.includes(ask.mode)) {
     return { ok: false, problem: { kind: "model", model: ask.model, mode: ask.mode } };
   }

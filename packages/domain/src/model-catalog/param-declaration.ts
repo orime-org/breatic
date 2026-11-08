@@ -13,7 +13,7 @@
  * on the machine that ships the yaml.
  */
 
-import { PARAM_FILLS } from "@breatic/shared";
+import { PARAM_FILLS, gateParams } from "@breatic/shared";
 import { z } from "zod";
 
 import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
@@ -302,10 +302,7 @@ function faultsOn(
     ...(declared.bounds ?? []).map((bound) => ["bounds", bound.when] as const),
   ];
   for (const [where, condition] of conditions) {
-    for (const gate of [
-      ...(condition.flag_on !== undefined ? [condition.flag_on] : []),
-      ...Object.keys(condition.equals ?? {}),
-    ]) {
+    for (const gate of gateParams(condition)) {
       if (!names.has(gate)) faults.push(`${where} names "${gate}", which this model does not declare`);
     }
   }

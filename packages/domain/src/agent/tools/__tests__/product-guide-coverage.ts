@@ -849,6 +849,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.three_d.setting_forced": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.setting_values": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.setting_integer": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.three_d.setting_text": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.setting_bounds": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.setting_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.view_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },

@@ -54,7 +54,7 @@ import {
   type Redis,
 } from "@breatic/core";
 import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema } from "@breatic/shared";
-import { estimateTaskCredits, sceneTaskService, taskService } from "@breatic/domain";
+import { estimateTaskCredits, resolveProjectImageInputs, sceneTaskService, taskService } from "@breatic/domain";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import type { Hono } from "hono";
 
@@ -737,6 +737,15 @@ describe("the row's label", () => {
     expect((await rowById(answer.row_id)).label).not.toMatch(/</);
   });
 
+  it("cuts a long prompt with characters outside the basic plane to what a scene object's name holds", async () => {
+    const s = await seedProject();
+    const answer = await admitted(s, textBody({ prompt: `🐉 ${"a".repeat(400)}` }));
+    const { label } = await rowById(answer.row_id);
+    expect(label.length).toBeLessThanOrEqual(SCENE_OBJECT_NAME_MAX);
+    expect(SceneObjectValuesSchema.shape.name.safeParse(label).success).toBe(true);
+    expect(label.startsWith("🐉")).toBe(true);
+  });
+
   it("cuts a long prompt to what a scene object's name holds, so the model can be placed", async () => {
     const s = await seedProject();
     const prompt = `${"灯".repeat(300)} end`;
@@ -979,6 +988,22 @@ describe("removing a row", () => {
     }, true);
     expect((await remove(s, answer!.row_id, s.viewer.cookie)).status).toBe(403);
     expect((await rowById(answer!.row_id)).deleted_at).toBeNull();
+  });
+});
+
+describe("resolving views named by their address", () => {
+  it("resolves a picture of this Project by its address, and names the slot of one that is not", async () => {
+    const s = await seedProject();
+    const front = await seedAsset(s, "image", "front.png");
+    const other = await seedProject();
+    const foreign = await seedAsset(other, "image", "theirs.png");
+    const unreferenced = await seedAsset(s, "image", "gone.png");
+    await sql`DELETE FROM project_asset_refs WHERE asset_id = ${unreferenced.assetId}`;
+
+    expect(await resolveProjectImageInputs(s.projectId, [front.url])).toEqual([expect.objectContaining({ assetId: front.assetId, url: front.url })]);
+    for (const address of [foreign.url, unreferenced.url]) {
+      await expect(resolveProjectImageInputs(s.projectId, [front.url, address])).rejects.toMatchObject({ statusCode: 422 });
+    }
   });
 });
 

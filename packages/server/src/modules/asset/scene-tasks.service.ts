@@ -16,13 +16,12 @@ import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import {
   modelCatalog,
   nodeTaskService,
-  picturesOf,
   sceneTaskService,
   taskService,
   type SceneGenerationOrigin,
   type SceneTaskRow,
 } from "@breatic/domain";
-import { t, type TaskEntity } from "@breatic/shared";
+import { modesOf, picturesOf, t, type TaskEntity } from "@breatic/shared";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
@@ -78,7 +77,7 @@ function generationFields(row: SceneTaskRow, run: TaskEntity | undefined): Omit<
   const views = viewParam === undefined ? undefined : params[viewParam];
   const ids = Array.isArray(params.input_asset_ids) ? params.input_asset_ids.filter((id): id is string => typeof id === "string") : [];
   const urls: unknown[] = Array.isArray(views) ? views : [views];
-  const entryMode = entry === undefined ? undefined : Array.isArray(entry.mode) ? entry.mode[0] : entry.mode;
+  const entryMode = entry === undefined ? undefined : modesOf(entry)[0];
   const notSettings = new Set(["prompt", "input_asset_ids", ...(viewParam === undefined ? [] : [viewParam])]);
   return {
     origin: row.origin,

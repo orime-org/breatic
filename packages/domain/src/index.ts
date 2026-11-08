@@ -210,7 +210,6 @@ export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export type { SceneGenerationOrigin, SceneTaskRow } from "@domain/node-task/node-task.repo.js";
 export { resolveProjectImageInputs, type ProjectImageInput } from "@domain/asset/project-image-inputs.js";
 export {
-  picturesOf,
   planSceneGeneration,
   type SceneGenerationPlan,
   type SceneGenerationProblem,

@@ -222,6 +222,7 @@ export type {
   DocumentProposal,
   SceneGenerationAnswer,
   SceneGenerationBody,
+  SceneGenerationOrigin,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -256,6 +257,7 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  SCENE_GENERATION_ORIGINS,
   sceneGenerationBodySchema,
   sceneGenerationProposalSchema,
   hasWords,
@@ -613,7 +615,8 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
-export { applyForces, checkParamCombination, gateHolds, resolveParams } from "@shared/param-resolution.js";
+export { applyForces, checkParamCombination, gateHolds, gateParams, resolveParams } from "@shared/param-resolution.js";
+export { modesOf, picturesOf } from "@shared/scene-generation.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";

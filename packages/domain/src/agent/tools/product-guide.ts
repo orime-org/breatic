@@ -1457,7 +1457,7 @@ export function renderProductGuide(): string {
     `A 3D generation you propose appears in this chat as a card headed ${quoted(t("chat.sceneProposal.title"))}: your short reason, the mode (Text to 3D or Image to 3D, in English), ` +
       `the model, the estimated credits, the prompt or the input pictures, the main settings (the switches that are on, and each choice after its setting's name), and ${quoted(t("chat.sceneProposal.open"))}. ` +
       "The card belongs to no particular Space: pressing it opens the generation dialog in the middle of the screen of the 3D Space in front, filled with the proposal and saying " +
-      `${quoted(t("spaces.threeD.generateDialog.descriptionAgent"))} The card itself generates nothing; the reader checks the dialog and presses its round button. ` +
+      `${quoted(t("spaces.threeD.generateDialog.descriptionAgent"))} The card itself generates nothing; the user checks the dialog and presses its round button. ` +
       `With no 3D Space in front it shows ${quoted(t("chat.sceneProposal.needScene"))} and opens nothing. ` +
       `While that Space is already submitting a generation, the card, like a generation row's Retry, shows ${quoted(t("spaces.threeD.proposalBusy"))} and changes nothing. ` +
       "The 3D Space only generates 3D models; images are generated on the Canvas. To start from a new picture, generate it on a Canvas first, " +

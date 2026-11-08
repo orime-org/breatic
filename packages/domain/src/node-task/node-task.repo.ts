@@ -14,7 +14,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
-import type { NodeTaskAction } from "@breatic/shared";
+import type { NodeTaskAction, SceneGenerationOrigin } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -58,7 +58,7 @@ export interface SceneTaskRow extends NodeTaskRow {
 }
 
 /** Where a 3D Space's generation was started from: its own dialog, or an agent proposal. */
-export type SceneGenerationOrigin = "space" | "agent";
+export type { SceneGenerationOrigin };
 
 /**
  * A row as the list a user opens hands it out: the row plus what that task

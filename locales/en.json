@@ -314,6 +314,7 @@
       "setting_forced": "\"{param}\" cannot be {given} with these settings: the rule {force} sets it to {value}.",
       "setting_values": "\"{param}\" takes one of {values}, not {value}.",
       "setting_integer": "\"{param}\" takes a whole number, not {value}.",
+      "setting_text": "\"{param}\" takes text, not {value}.",
       "setting_bounds": "\"{param}\" takes {min} to {max} with these settings, not {value}.",
       "setting_too_long": "\"{param}\" takes at most {max} characters, and this one has {length}.",
       "view_not_found": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): {input} is not an image in this Project.",

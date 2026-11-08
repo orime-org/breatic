@@ -22,7 +22,6 @@ import {
   resolveProjectImageInputs,
   sceneTaskService,
   type ProjectImageInput,
-  type SceneGenerationOrigin,
   type SceneGenerationPlan,
   type SceneGenerationProblem,
 } from "@breatic/domain";
@@ -31,24 +30,13 @@ import {
   t,
   type ParamViolation,
   type SceneGenerationAnswer,
-  type ThreeDGenerationMode,
+  type SceneGenerationBody,
 } from "@breatic/shared";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { recordJobId, settleUnqueuedRun } from "@server/modules/task/generation-task.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
-
-/** A submission, as the route validated it. */
-export interface SceneGenerationSubmission {
-  mode: ThreeDGenerationMode;
-  model: string;
-  prompt?: string;
-  params: Record<string, unknown>;
-  /** The views in front, left, back, right order. */
-  imageAssetIds?: string[];
-  origin: SceneGenerationOrigin;
-}
 
 /**
  * A value as a refusal names it.
@@ -72,6 +60,8 @@ function violationMessage(v: ParamViolation): string {
       return t("server.three_d.setting_values", { param: v.param, values: v.values.map(shown).join(", "), value: shown(v.value) });
     case "integer":
       return t("server.three_d.setting_integer", { param: v.param, value: shown(v.value) });
+    case "text":
+      return t("server.three_d.setting_text", { param: v.param, value: shown(v.value) });
     case "bounds":
       return t("server.three_d.setting_bounds", { param: v.param, min: shown(v.min ?? null), max: shown(v.max ?? null), value: v.value });
     case "max_length":
@@ -107,7 +97,13 @@ function problemMessage(problem: SceneGenerationProblem): string {
  * @returns The label.
  */
 function rowLabel(text: string): string {
-  return [...text].slice(0, SCENE_OBJECT_NAME_MAX).join("").trim();
+  // The name rule counts UTF-16 units; whole characters keep a pair together.
+  let label = "";
+  for (const character of text) {
+    if (label.length + character.length > SCENE_OBJECT_NAME_MAX) break;
+    label += character;
+  }
+  return label.trim();
 }
 
 /**
@@ -156,8 +152,8 @@ export interface CheckedSubmission {
  * @returns The resolved run and its views.
  * @throws {ValidationError} 422 naming the rule broken, or the view slot that does not resolve.
  */
-export async function checkSubmission(projectId: string, submission: SceneGenerationSubmission): Promise<CheckedSubmission> {
-  const views = submission.imageAssetIds ?? [];
+export async function checkSubmission(projectId: string, submission: SceneGenerationBody): Promise<CheckedSubmission> {
+  const views = submission.image_asset_ids ?? [];
   const plan = planSceneGeneration({
     mode: submission.mode,
     model: submission.model,
@@ -195,7 +191,7 @@ export async function startSceneGeneration(
   userId: string,
   projectId: string,
   spaceId: string,
-  submission: SceneGenerationSubmission,
+  submission: SceneGenerationBody,
   held: { taskId: string; checked: CheckedSubmission },
 ): Promise<SceneGenerationAnswer> {
   const { taskId } = held;

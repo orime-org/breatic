@@ -2,6 +2,8 @@
 # views to 3D (inner#1691). The 3D Space's generation dialog shows one Tripo
 # H3.1 and sends the single-image entry when only the front view is filled,
 # the multi-view entry otherwise; the agent sees both variants.
+# The settings and forced values all three share are written once on the
+# text entry and referenced from the other two through YAML anchors.
 # Guidelines are the image, video and audio catalogs' (see their headers);
 # what only this catalog uses:
 #   model.forces         — values the model forces while a condition holds,
@@ -45,19 +47,19 @@ models:
     guide: "Tripo H3.1 turns a text description into a GLB mesh, with optional texture and PBR materials, a face limit, smart low-poly topology or separate untextured parts."
     generation_time: 240
     params:
-      texture:
+      texture: &tripo_texture
         description: "Paint texture maps onto the model"
         label: "Texture"
         default: true
         values: [true, false]
         fill: "panel"
-      pbr:
+      pbr: &tripo_pbr
         description: "Add PBR materials; needs texture"
         label: "PBR"
         default: true
         values: [true, false]
         fill: "panel"
-      texture_quality:
+      texture_quality: &tripo_texture_quality
         description: "Texture detail"
         label: "Texture quality"
         default: "standard"
@@ -65,7 +67,7 @@ models:
         value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
         fill: "panel"
         when: { flag_on: "texture" }
-      texture_version:
+      texture_version: &tripo_texture_version
         description: "Texture model version"
         label: "Texture version"
         default: "v3.0"
@@ -74,33 +76,33 @@ models:
         fill: "panel"
         when: { flag_on: "texture" }
         upstream_values: {"v3.0": "v3.0-20250812", "v3.5": "v3.5-20260815"}
-      delight:
+      delight: &tripo_delight
         description: "Remove baked-in lighting from the texture"
         label: "Remove lighting"
         default: true
         values: [true, false]
         fill: "panel"
         when: { flag_on: "texture", equals: { texture_version: "v3.5" } }
-      geometry_quality:
+      geometry_quality: &tripo_geometry_quality
         description: "Mesh detail; Detailed takes up to 2M faces"
         label: "Geometry quality"
         default: "standard"
         values: ["standard", "detailed"]
         value_labels: {"standard": "Standard", "detailed": "Detailed"}
         fill: "panel"
-      smart_low_poly:
+      smart_low_poly: &tripo_smart_low_poly
         description: "Simplified low-poly topology"
         label: "Smart low-poly"
         default: false
         values: [true, false]
         fill: "panel"
-      generate_parts:
+      generate_parts: &tripo_generate_parts
         description: "Split into editable parts, no texture"
         label: "Separate parts"
         default: false
         values: [true, false]
         fill: "panel"
-      face_limit:
+      face_limit: &tripo_face_limit
         description: "Most faces in the mesh; blank is adaptive"
         label: "Face limit"
         default: null
@@ -114,20 +116,20 @@ models:
             max: 20000
           - when: { equals: { geometry_quality: "detailed" } }
             max: 2000000
-      auto_size:
+      auto_size: &tripo_auto_size
         description: "Scale to real-world size in meters"
         label: "Auto size"
         default: false
         values: [true, false]
         fill: "panel"
         when: { flag_on: "texture" }
-      export_uv:
+      export_uv: &tripo_export_uv
         description: "Unwrap UVs; off is faster and smaller"
         label: "Export UV"
         default: true
         values: [true, false]
         fill: "panel"
-      model_seed:
+      model_seed: &tripo_model_seed
         description: "Seed for the geometry; blank is random"
         label: "Model seed"
         default: null
@@ -135,7 +137,7 @@ models:
         min: 0
         max: 2147483647
         fill: "panel"
-      texture_seed:
+      texture_seed: &tripo_texture_seed
         description: "Seed for the texture; blank is random"
         label: "Texture seed"
         default: null
@@ -150,7 +152,7 @@ models:
         type: "text"
         max_length: 255
         fill: "panel"
-    forces:
+    forces: &tripo_forces
       - id: "parts_geometry_only"
         when: { flag_on: "generate_parts" }
         set: { texture: false, pbr: false }
@@ -187,104 +189,19 @@ models:
         default: null
         accepts: "image"
         fill: "canvas"
-      texture:
-        description: "Paint texture maps onto the model"
-        label: "Texture"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      pbr:
-        description: "Add PBR materials; needs texture"
-        label: "PBR"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      texture_quality:
-        description: "Texture detail"
-        label: "Texture quality"
-        default: "standard"
-        values: ["standard", "fast", "detailed"]
-        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
-        fill: "panel"
-        when: { flag_on: "texture" }
-      texture_version:
-        description: "Texture model version"
-        label: "Texture version"
-        default: "v3.0"
-        values: ["v3.0", "v3.5"]
-        value_labels: {"v3.0": "v3.0", "v3.5": "v3.5"}
-        fill: "panel"
-        when: { flag_on: "texture" }
-        upstream_values: {"v3.0": "v3.0-20250812", "v3.5": "v3.5-20260815"}
-      delight:
-        description: "Remove baked-in lighting from the texture"
-        label: "Remove lighting"
-        default: true
-        values: [true, false]
-        fill: "panel"
-        when: { flag_on: "texture", equals: { texture_version: "v3.5" } }
-      geometry_quality:
-        description: "Mesh detail; Detailed takes up to 2M faces"
-        label: "Geometry quality"
-        default: "standard"
-        values: ["standard", "detailed"]
-        value_labels: {"standard": "Standard", "detailed": "Detailed"}
-        fill: "panel"
-      smart_low_poly:
-        description: "Simplified low-poly topology"
-        label: "Smart low-poly"
-        default: false
-        values: [true, false]
-        fill: "panel"
-      generate_parts:
-        description: "Split into editable parts, no texture"
-        label: "Separate parts"
-        default: false
-        values: [true, false]
-        fill: "panel"
-      face_limit:
-        description: "Most faces in the mesh; blank is adaptive"
-        label: "Face limit"
-        default: null
-        type: "integer"
-        min: 1
-        max: 1500000
-        fill: "panel"
-        bounds:
-          - when: { flag_on: "smart_low_poly" }
-            min: 500
-            max: 20000
-          - when: { equals: { geometry_quality: "detailed" } }
-            max: 2000000
-      auto_size:
-        description: "Scale to real-world size in meters"
-        label: "Auto size"
-        default: false
-        values: [true, false]
-        fill: "panel"
-        when: { flag_on: "texture" }
-      export_uv:
-        description: "Unwrap UVs; off is faster and smaller"
-        label: "Export UV"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      model_seed:
-        description: "Seed for the geometry; blank is random"
-        label: "Model seed"
-        default: null
-        type: "integer"
-        min: 0
-        max: 2147483647
-        fill: "panel"
-      texture_seed:
-        description: "Seed for the texture; blank is random"
-        label: "Texture seed"
-        default: null
-        type: "integer"
-        min: 0
-        max: 2147483647
-        fill: "panel"
+      texture: *tripo_texture
+      pbr: *tripo_pbr
+      texture_quality: *tripo_texture_quality
+      texture_version: *tripo_texture_version
+      delight: *tripo_delight
+      geometry_quality: *tripo_geometry_quality
+      smart_low_poly: *tripo_smart_low_poly
+      generate_parts: *tripo_generate_parts
+      face_limit: *tripo_face_limit
+      auto_size: *tripo_auto_size
+      export_uv: *tripo_export_uv
+      model_seed: *tripo_model_seed
+      texture_seed: *tripo_texture_seed
       texture_alignment:
         description: "What the texture lines up with"
         label: "Texture alignment"
@@ -306,19 +223,7 @@ models:
         default: false
         values: [true, false]
         fill: "panel"
-    forces:
-      - id: "parts_geometry_only"
-        when: { flag_on: "generate_parts" }
-        set: { texture: false, pbr: false }
-        lock: true
-      - id: "pbr_needs_texture"
-        when: { flag_on: "pbr" }
-        set: { texture: true }
-        lock: true
-      - id: "fast_uses_v35"
-        when: { flag_on: "texture", equals: { texture_quality: "fast" } }
-        set: { texture_version: "v3.5" }
-        lock: true
+    forces: *tripo_forces
     providers:
       - name: "wavespeed"
         model_id: "tripo3d/h3.1/image-to-3d"
@@ -346,104 +251,19 @@ models:
         max_items: 4
         accepts: "image"
         fill: "canvas"
-      texture:
-        description: "Paint texture maps onto the model"
-        label: "Texture"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      pbr:
-        description: "Add PBR materials; needs texture"
-        label: "PBR"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      texture_quality:
-        description: "Texture detail"
-        label: "Texture quality"
-        default: "standard"
-        values: ["standard", "fast", "detailed"]
-        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
-        fill: "panel"
-        when: { flag_on: "texture" }
-      texture_version:
-        description: "Texture model version"
-        label: "Texture version"
-        default: "v3.0"
-        values: ["v3.0", "v3.5"]
-        value_labels: {"v3.0": "v3.0", "v3.5": "v3.5"}
-        fill: "panel"
-        when: { flag_on: "texture" }
-        upstream_values: {"v3.0": "v3.0-20250812", "v3.5": "v3.5-20260815"}
-      delight:
-        description: "Remove baked-in lighting from the texture"
-        label: "Remove lighting"
-        default: true
-        values: [true, false]
-        fill: "panel"
-        when: { flag_on: "texture", equals: { texture_version: "v3.5" } }
-      geometry_quality:
-        description: "Mesh detail; Detailed takes up to 2M faces"
-        label: "Geometry quality"
-        default: "standard"
-        values: ["standard", "detailed"]
-        value_labels: {"standard": "Standard", "detailed": "Detailed"}
-        fill: "panel"
-      smart_low_poly:
-        description: "Simplified low-poly topology"
-        label: "Smart low-poly"
-        default: false
-        values: [true, false]
-        fill: "panel"
-      generate_parts:
-        description: "Split into editable parts, no texture"
-        label: "Separate parts"
-        default: false
-        values: [true, false]
-        fill: "panel"
-      face_limit:
-        description: "Most faces in the mesh; blank is adaptive"
-        label: "Face limit"
-        default: null
-        type: "integer"
-        min: 1
-        max: 1500000
-        fill: "panel"
-        bounds:
-          - when: { flag_on: "smart_low_poly" }
-            min: 500
-            max: 20000
-          - when: { equals: { geometry_quality: "detailed" } }
-            max: 2000000
-      auto_size:
-        description: "Scale to real-world size in meters"
-        label: "Auto size"
-        default: false
-        values: [true, false]
-        fill: "panel"
-        when: { flag_on: "texture" }
-      export_uv:
-        description: "Unwrap UVs; off is faster and smaller"
-        label: "Export UV"
-        default: true
-        values: [true, false]
-        fill: "panel"
-      model_seed:
-        description: "Seed for the geometry; blank is random"
-        label: "Model seed"
-        default: null
-        type: "integer"
-        min: 0
-        max: 2147483647
-        fill: "panel"
-      texture_seed:
-        description: "Seed for the texture; blank is random"
-        label: "Texture seed"
-        default: null
-        type: "integer"
-        min: 0
-        max: 2147483647
-        fill: "panel"
+      texture: *tripo_texture
+      pbr: *tripo_pbr
+      texture_quality: *tripo_texture_quality
+      texture_version: *tripo_texture_version
+      delight: *tripo_delight
+      geometry_quality: *tripo_geometry_quality
+      smart_low_poly: *tripo_smart_low_poly
+      generate_parts: *tripo_generate_parts
+      face_limit: *tripo_face_limit
+      auto_size: *tripo_auto_size
+      export_uv: *tripo_export_uv
+      model_seed: *tripo_model_seed
+      texture_seed: *tripo_texture_seed
       texture_alignment:
         description: "What the texture lines up with"
         label: "Texture alignment"
@@ -465,19 +285,7 @@ models:
         default: false
         values: [true, false]
         fill: "panel"
-    forces:
-      - id: "parts_geometry_only"
-        when: { flag_on: "generate_parts" }
-        set: { texture: false, pbr: false }
-        lock: true
-      - id: "pbr_needs_texture"
-        when: { flag_on: "pbr" }
-        set: { texture: true }
-        lock: true
-      - id: "fast_uses_v35"
-        when: { flag_on: "texture", equals: { texture_quality: "fast" } }
-        set: { texture_version: "v3.5" }
-        lock: true
+    forces: *tripo_forces
     providers:
       - name: "wavespeed"
         model_id: "tripo3d/h3.1/multiview-to-3d"

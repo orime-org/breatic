@@ -10,6 +10,7 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   missingSources,
+  modesOf,
   THREE_D_GENERATION_MODES,
   modelLabel,
   PANEL_EDITOR_PARAM,
@@ -18,9 +19,10 @@ import {
   type GenerationNodeType,
   type MissingSource,
   type ModelEntry,
+  type ParamBound,
   type ParamDescriptor,
+  type ParamForce,
   type ParamGate,
-  type ParamScalar,
   type ReferenceKind,
   type StoryboardSpec,
 } from "@breatic/shared";
@@ -152,7 +154,7 @@ export interface ParamInfo {
    * their condition holds: the first that holds wins, and an end it leaves
    * out is the param's own (inner#1691).
    */
-  bounds?: Array<{ when: ParamGate; min?: number; max?: number }>;
+  bounds?: readonly ParamBound[];
   /** What it is set to when nobody chooses. */
   default: unknown;
   /** What it does, on one line. */
@@ -227,7 +229,7 @@ export interface ModelInfo {
    * Values the model forces while their conditions hold, in the order they
    * apply (inner#1691): a value given against one is refused.
    */
-  forces?: Array<{ id: string; when: ParamGate; set: Readonly<Record<string, ParamScalar>>; lock: boolean }>;
+  forces?: readonly ParamForce[];
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -281,19 +283,6 @@ export function usableModes(
   const backed = new Set<string>();
   for (const entry of entries) for (const mode of modesOf(entry)) backed.add(mode);
   return panelModes.filter((mode) => backed.has(mode));
-}
-
-/**
- * The modes one catalog entry declares.
- *
- * The field is one code or several, and the two readers of it have to agree
- * on that and on what an empty code means -- a mode reported as available
- * that the model lookup then matches nothing for renders as no models at all.
- * @param entry - The entry to read.
- * @returns Its modes, with empty codes dropped.
- */
-function modesOf(entry: ModeSource): string[] {
-  return (Array.isArray(entry.mode) ? entry.mode : [entry.mode]).filter(Boolean);
 }
 
 /**
@@ -430,11 +419,7 @@ function projectParam(
     ...(gate !== undefined ? { gate } : {}),
     ...(spec.bounds !== undefined
       ? {
-          bounds: spec.bounds.map((bound) => ({
-            when: bound.when,
-            ...(bound.min !== undefined ? { min: bound.min } : {}),
-            ...(bound.max !== undefined ? { max: bound.max } : {}),
-          })),
+          bounds: spec.bounds,
         }
       : {}),
     default: spec.default,
@@ -597,12 +582,7 @@ function modelsIn(
       needs: missingSources(entry, mode, {}),
       ...(entry.forces !== undefined
         ? {
-            forces: entry.forces.map((force) => ({
-              id: force.id,
-              when: force.when,
-              set: force.set,
-              lock: force.lock,
-            })),
+            forces: entry.forces,
           }
         : {}),
       params: Object.fromEntries(

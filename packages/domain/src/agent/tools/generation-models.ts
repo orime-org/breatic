@@ -302,7 +302,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    `parameters it names. How the reader fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}. ` +
+    `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}. ` +
     "With target 3d it lists the 3D Space's models for t23d or i23d instead, with no nodeType, each with " +
     "the values it forces and why; propose those with propose_scene_generation.",
   inputSchema,

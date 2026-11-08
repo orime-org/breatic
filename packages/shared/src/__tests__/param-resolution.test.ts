@@ -367,6 +367,12 @@ describe("checkParamCombination", () => {
     expect(found[0]).toMatchObject({ param: "negative_prompt", rule: "max_length" });
   });
 
+  it("refuses a text setting given anything but text", () => {
+    for (const value of [5, true]) {
+      expect(checkParamCombination(T23D, { negative_prompt: value })).toEqual([{ param: "negative_prompt", rule: "text", value }]);
+    }
+  });
+
   it("refuses a prompt longer than 1024 characters after cleaning", () => {
     expect(checkParamCombination(T23D, { prompt: `<p>${"x".repeat(1024)}</p>` })).toEqual([]);
     const found = checkParamCombination(T23D, { prompt: "x".repeat(1025) });

@@ -27,7 +27,7 @@ import { planSceneGeneration, type SceneGenerationProblem } from "@domain/model-
 import { LIST_GENERATION_MODELS } from "@domain/agent/tools/tool-names.js";
 
 /** What the tool answers with: the proposal, or why it was refused. */
-export type SceneGenerationAnswer = SceneGenerationProposal | ProposalRefused;
+export type SceneProposalAnswer = SceneGenerationProposal | ProposalRefused;
 
 /** What this tool is handed in its context: the Project whose images a view may name. */
 export interface ProposeSceneContext extends Record<string, unknown> {
@@ -83,6 +83,8 @@ function violationWords(v: ParamViolation): string {
       return `"${v.param}" takes one of ${v.values.map((value) => JSON.stringify(value)).join(", ")}, not ${JSON.stringify(v.value)}.`;
     case "integer":
       return `"${v.param}" takes a whole number, not ${JSON.stringify(v.value)}.`;
+    case "text":
+      return `"${v.param}" takes text, not ${JSON.stringify(v.value)}.`;
     case "bounds":
       return `"${v.param}" runs from ${String(v.min ?? "any")} to ${String(v.max ?? "any")} with these settings, and this one is ${String(v.value)}.`;
     case "max_length":
@@ -127,7 +129,7 @@ function problemWords(problem: SceneGenerationProblem): string {
  * @returns The proposal, or why it was refused.
  * @throws {Error} When the catalog, the storage configuration or a database read fails.
  */
-async function answerSceneGeneration(input: SceneGenerationInput, projectId: string): Promise<SceneGenerationAnswer> {
+async function answerSceneGeneration(input: SceneGenerationInput, projectId: string): Promise<SceneProposalAnswer> {
   const views = input.images ?? [];
   const params = input.params ?? {};
   const plan = planSceneGeneration({ mode: input.mode, model: input.model, prompt: input.prompt, params, imageCount: views.length });
@@ -160,7 +162,7 @@ async function answerSceneGeneration(input: SceneGenerationInput, projectId: str
  * @param answer - What the tool answered.
  * @returns A sentence saying it is on screen, or why it is not.
  */
-export function renderSceneProposalForModel(answer: SceneGenerationAnswer): string {
+export function renderSceneProposalForModel(answer: SceneProposalAnswer): string {
   return answer.placed
     ? "The proposal is on screen as a card. The user opens it in a 3D Space they have open and presses Generate there."
     : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
@@ -170,7 +172,7 @@ export function renderSceneProposalForModel(answer: SceneGenerationAnswer): stri
  * The 3D generation proposal tool.
  * @returns The tool.
  */
-export function makeProposeSceneGeneration(): Tool<SceneGenerationInput, SceneGenerationAnswer, ProposeSceneContext> {
+export function makeProposeSceneGeneration(): Tool<SceneGenerationInput, SceneProposalAnswer, ProposeSceneContext> {
   return tool({
     description:
       "Propose a 3D model generation as a card. The 3D Space only generates 3D models, from a prompt (t23d) or " +
@@ -190,6 +192,6 @@ export function makeProposeSceneGeneration(): Tool<SceneGenerationInput, SceneGe
       // The signal is unused: the check reads the catalog and a few rows.
       // Declared so every tool has the same shape.
       { context }: { abortSignal?: AbortSignal; context: ProposeSceneContext },
-    ): Promise<SceneGenerationAnswer> => answerSceneGeneration(input, context.projectId),
+    ): Promise<SceneProposalAnswer> => answerSceneGeneration(input, context.projectId),
   });
 }
