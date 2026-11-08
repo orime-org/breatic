@@ -313,13 +313,43 @@ function isHighSurrogate(unit: number): boolean {
 }
 
 /**
- * Whether a character can be part of a link a cut would leave in two: ASCII
- * and not whitespace. Text with no spaces, such as Chinese, is never one run.
+ * Whether a character is whitespace, which no link holds.
  * @param char - The character, or undefined past either end.
- * @returns True for an ASCII non-space character.
+ * @returns True for whitespace.
  */
-function inLinkRun(char: string | undefined): boolean {
-  return char !== undefined && char.charCodeAt(0) < 0x80 && !/\s/u.test(char);
+function isSpace(char: string | undefined): boolean {
+  return char !== undefined && /\s/u.test(char);
+}
+
+/**
+ * Where a cut goes so that no link crosses it: the end of a link that starts
+ * before `to` and ends after it (the nearest end, when a link running on into
+ * non-ASCII text is read both whole and cut there), or `to` itself.
+ *
+ * The links are read from the run of non-space characters that holds `to`,
+ * looked back on and ahead of at most `READ_PAGE_MAX_URL_CHARS` each way. A
+ * link whose spelling the text does not hold as written (its Markdown escapes
+ * were removed) is taken to end where that run does.
+ * @param text - The page's text.
+ * @param to - Where the share would cut it.
+ * @returns The cut.
+ */
+function cutPastLink(text: string, to: number): number {
+  const lookBack = Math.max(0, to - READ_PAGE_MAX_URL_CHARS);
+  let runStart = to;
+  while (runStart > lookBack && !isSpace(text[runStart - 1])) runStart -= 1;
+  const windowEnd = Math.min(to + READ_PAGE_MAX_URL_CHARS, text.length);
+  let runEnd = to;
+  while (runEnd < windowEnd && !isSpace(text[runEnd])) runEnd += 1;
+  const window = text.slice(runStart, windowEnd);
+  let cut = Infinity;
+  for (const link of pageLinksIn(window)) {
+    const at = window.indexOf(link);
+    const start = at < 0 ? runStart : runStart + at;
+    const end = at < 0 ? runEnd : start + link.length;
+    if (start < to && end > to) cut = Math.min(cut, end);
+  }
+  return cut === Infinity ? to : cut;
 }
 
 /**
@@ -341,9 +371,8 @@ function linksOf(text: string): string[] {
  * The part of a page one call hands over, with the links its own text and
  * the page's title hold.
  *
- * A cut inside a run of ASCII non-space characters, such as a link, moves to
- * the run's end, at most `READ_PAGE_MAX_URL_CHARS` further, so a link is never
- * handed over in two halves.
+ * A cut that falls inside a link moves to the link's end (`cutPastLink`), so
+ * a link is never handed over in two halves; any other cut stays at the share.
  * @param url - The address asked for.
  * @param page - The page in full.
  * @param start - Where the model asked to start.
@@ -355,10 +384,7 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
   const total = page.text.length;
   const from = Math.min(start, total);
   let to = Math.min(from + share, total);
-  if (to > from && to < total && inLinkRun(page.text[to - 1]) && inLinkRun(page.text[to])) {
-    const furthest = Math.min(to + READ_PAGE_MAX_URL_CHARS, total);
-    while (to < furthest && inLinkRun(page.text[to])) to += 1;
-  }
+  if (to > from && to < total) to = cutPastLink(page.text, to);
   // A cut between the two halves of a surrogate pair would hand over half a character.
   if (to < total && to > from && isHighSurrogate(page.text.charCodeAt(to - 1))) to += 1;
   const text = page.text.slice(from, to);
