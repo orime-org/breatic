@@ -637,6 +637,18 @@ export {
   TURNED_AWAY,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
+// Links a conversation holds and the pages the Agent reads (inner#1664).
+export { pageLinksIn, pageLinkKey } from "@shared/agent/page-links.js";
+export {
+  READ_PAGE_STATUSES,
+  readPagesRequestSchema,
+  readPageResultSchema,
+  readPagesAnswerSchema,
+  type ReadPageStatus,
+  type ReadPagesRequest,
+  type ReadPageResult,
+  type ReadPagesAnswer,
+} from "@shared/agent/read-pages.js";
 export type {
   FailureLine,
   LegacyFailureLine,
@@ -879,6 +891,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readPagesAtIngest,
   readStoredMediaAtIngest,
   IngestAnswerError,
   UploadHttpError,

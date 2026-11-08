@@ -30,6 +30,7 @@ import { MAX_TIMER_MS } from "@shared/http/constants.js";
 import { untilDeadline, type UntilDeadline } from "@shared/http/deadline.js";
 import { httpRequest } from "@shared/http/request.js";
 import type { UprightCopy } from "@shared/upload/upright.js";
+import type { ReadPagesAnswer, ReadPagesRequest } from "@shared/agent/read-pages.js";
 import {
   INGEST_FAILURE_HEADER,
   readIngestFailureCode,
@@ -636,6 +637,25 @@ export async function fetchUrlToIngest(
     { replaySafe: false, bound },
   );
   return readMeasurements(answered);
+}
+
+/**
+ * Have the Worker's page reader read a set of pages (inner#1664).
+ * @param baseUrl - The Worker's address.
+ * @param secret - The secret the Worker also holds.
+ * @param request - The pages and the limits to read them within.
+ * @param signal - Raised when the caller no longer wants the pages.
+ * @returns What each page produced, and what the container used.
+ * @throws {Error} Always, until implemented.
+ */
+export async function readPagesAtIngest(
+  baseUrl: string,
+  secret: string,
+  request: ReadPagesRequest,
+  signal?: AbortSignal,
+): Promise<ReadPagesAnswer> {
+  void [baseUrl, secret, request, signal];
+  throw new Error("not implemented: readPagesAtIngest");
 }
 
 /**

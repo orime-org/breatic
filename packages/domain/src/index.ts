@@ -128,6 +128,17 @@ export {
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
+export { makeWebTools, publisherOf } from "@domain/agent/tools/web-tools.js";
+export {
+  ReadPagesRefused,
+  renderFetchForModel,
+  type ReadPages,
+  type FetchStatus,
+  type FetchedPage,
+  type FetchSource,
+  type FetchAnswer,
+} from "@domain/agent/tools/web-fetch.js";
+export { WEB_FETCH } from "@domain/agent/tools/tool-names.js";
 export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
 export type {
   ProjectRecords,

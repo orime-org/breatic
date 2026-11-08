@@ -56,6 +56,18 @@ export const FAILURE_LINES = {
   notMember: "chat.tool.failure.notMember",
   /** Too many of these in a short time. */
   tooFrequent: "chat.tool.failure.tooFrequent",
+  /** The link is not one the conversation holds (inner#1664). */
+  linkNotInConversation: "chat.tool.failure.linkNotInConversation",
+  /** The page asks for a login. */
+  pageNeedsLogin: "chat.tool.failure.pageNeedsLogin",
+  /** The site refused to be read. */
+  pageRefused: "chat.tool.failure.pageRefused",
+  /** The page took too long to open. */
+  pageTooSlow: "chat.tool.failure.pageTooSlow",
+  /** The page has no text to read. */
+  pageEmpty: "chat.tool.failure.pageEmpty",
+  /** None of the pages could be read, each for its own reason. */
+  pagesUnreadable: "chat.tool.failure.pagesUnreadable",
   /** The service would not handle this content. */
   declined: "chat.tool.failure.declined",
   /** Something failed on our own server, or a tool failed without saying why. */

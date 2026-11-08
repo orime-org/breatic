@@ -55,7 +55,10 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext & {
+  /** Whether a link is one the conversation holds, which is all `web_fetch` reads (inner#1664). */
+  pageUrlAllowed?: (url: string) => boolean;
+};
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };

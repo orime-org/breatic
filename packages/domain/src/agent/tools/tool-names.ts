@@ -92,6 +92,9 @@ export const UNDERSTAND_MEDIA = "understand_media";
  */
 export const JUDGE_LIKELIHOOD = "judge_likelihood";
 
+/** Read the pages behind links the conversation holds (inner#1664). */
+export const WEB_FETCH = "web_fetch";
+
 // The four tools that read the user's records (inner#1469). Named here
 // because the turn's tool context hands each of them the turn's records under
 // its name, and their descriptions point at one another.
