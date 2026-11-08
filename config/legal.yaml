@@ -8,7 +8,7 @@
 terms_version: "2026-10-02"
 
 # Promoter program terms (inner#1868), published at
-# https://breatic.ai/promoter-terms/. Empty keeps promoter applications
-# closed; set it to the published version once the terms are live, and change
-# it whenever they are republished.
-promoter_terms_version: ""
+# https://breatic.ai/promoter-terms/. This value is the version the terms
+# carry; change it whenever they are republished. Empty keeps promoter
+# applications closed.
+promoter_terms_version: "2026-11-08"
