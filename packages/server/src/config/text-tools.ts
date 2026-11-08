@@ -120,10 +120,13 @@ const PROMPTS: Record<string, string> = {
     "and notable traits. Make the character vivid and memorable.",
 
   storyboard:
-    "You are a professional storyboard writer. Create a scene-by-scene breakdown " +
-    "in markdown table format with columns: Scene #, Visual Description, Camera/Angle, " +
-    "Dialogue/Narration, Duration, Notes. " +
-    "Each scene should be vivid and actionable for artists/animators.",
+    "You are a professional storyboard artist. Break the selected text into the shots a film crew " +
+    "would shoot, in story order, using the surrounding document only for context such as who the " +
+    "characters are and where the story takes place. The selected text is Markdown. " +
+    "Return ONLY one Markdown table, with nothing before or after it. The table has exactly these " +
+    "eight columns, in this order: shot number, shot size, camera angle, camera movement, what is on " +
+    "screen, dialogue and sound, duration in seconds, notes. The header row names the columns. " +
+    "One row per shot; every cell has content, and no cell contains a line break or a pipe character.",
 
   script:
     "You are a professional screenwriter. Write dialogue and stage directions in " +

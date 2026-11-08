@@ -327,7 +327,7 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
     expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
     expect(doc).toMatch(/Viewers can open the panel and read/);
-    expect(doc).toMatch(/Not available yet: the AI commands/);
+    expect(doc).toMatch(/Not available yet: the AI command that illustrates a passage/);
     expect(doc).not.toMatch(/Not available yet: comments/);
     expect(doc).not.toMatch(/marked not open yet\)/);
   });

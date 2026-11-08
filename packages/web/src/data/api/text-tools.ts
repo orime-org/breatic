@@ -26,7 +26,7 @@ interface OnSelection {
 
 /** A request the server's contract reads, one shape per tool. */
 export type TextToolRequest =
-  | (OnSelection & { readonly tool: 'polish' | 'expand' | 'shorten' })
+  | (OnSelection & { readonly tool: 'polish' | 'expand' | 'shorten' | 'storyboard' })
   | (OnSelection & { readonly tool: 'translate'; readonly language: TextToolLanguage })
   | (OnSelection & { readonly tool: 'rewrite'; readonly style: TextToolTone })
   | (OnSelection & { readonly tool: 'custom'; readonly instructions: string });

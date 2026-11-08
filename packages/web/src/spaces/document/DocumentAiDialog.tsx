@@ -89,6 +89,7 @@ import { useDocumentProjectId } from '@web/spaces/document/document-project-cont
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
 import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
+import { frameStaticTable } from '@web/spaces/document/document-table-nodes';
 import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 /** How often, at most, the preview parses the result while it streams. */
@@ -124,6 +125,7 @@ function requestFor(base: Opened['base'], command: AiCommand, instructions: stri
       return { tool: 'polish', ...base };
     case 'expand':
     case 'shorten':
+    case 'storyboard':
       return { tool: command.id, ...base };
     case 'translate':
       return { tool: 'translate', ...base, language: command.language };
@@ -149,6 +151,8 @@ function titleOf(command: AiCommand, t: (key: string) => string): string {
       return t('spaces.document.commands.ai_expand');
     case 'shorten':
       return t('spaces.document.commands.ai_shorten');
+    case 'storyboard':
+      return t('spaces.document.commands.ai_storyboard');
     case 'custom':
       return t('spaces.document.ai.customTitle');
     case 'translate': {
@@ -923,9 +927,12 @@ function Preview({
   const scroller = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const element = host.current;
-    if (element === null) return;
+    if (element === null) return undefined;
+    // Every draw puts new frames round the tables; each starts where the
+    // user had scrolled the one before it sideways.
+    const lefts = [...element.querySelectorAll<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')].map((viewport) => viewport.scrollLeft);
     element.replaceChildren();
-    if (html === '') return;
+    if (html === '') return undefined;
     const template = document.createElement('template');
     template.innerHTML = html;
     // The block group the serialiser writes stands where the body's own does.
@@ -936,7 +943,16 @@ function Preview({
     element.append(view === null ? content : inPlaceOf(view, content, null));
     // The copies keep the body's `contenteditable`; the preview is read only.
     content.contentEditable = 'false';
+    // A table scrolls sideways in its own frame, as in the body, and the
+    // words around it keep the preview's width.
+    const frames = [...content.querySelectorAll('table')].map((table, index) => frameStaticTable(table, lefts[index] ?? 0));
     if (streaming) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+    return () => {
+      // React refuses a synchronous unmount while it is rendering.
+      queueMicrotask(() => {
+        for (const frame of frames) frame.unmount();
+      });
+    };
   }, [html, editor, streaming]);
 
   return (

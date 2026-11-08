@@ -64,8 +64,8 @@ vi.mock('@web/spaces/document/document-table-nodes', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/document/document-table-nodes')>();
   return {
     ...actual,
-    frameStaticTable: (table: HTMLTableElement) => {
-      const root = actual.frameStaticTable(table);
+    frameStaticTable: (...args: Parameters<typeof actual.frameStaticTable>) => {
+      const root = actual.frameStaticTable(...args);
       const seen = { unmounted: false };
       const unmount = root.unmount.bind(root);
       root.unmount = () => {

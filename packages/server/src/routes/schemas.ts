@@ -77,7 +77,7 @@ export const textToolSchema = z.discriminatedUnion("tool", [
   textToolBase.extend({ tool: z.literal("continue"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("generate"), instructions: z.string() }),
   textToolBase.extend({ tool: z.literal("character"), name: z.string(), traits: z.string().optional(), context: z.string().optional() }),
-  textToolBase.extend({ tool: z.literal("storyboard"), instructions: z.string(), scene_count: z.number().int().optional() }),
+  textToolBase.extend({ tool: z.literal("storyboard"), ...onSelection }),
   textToolBase.extend({ tool: z.literal("script"), scene_description: z.string(), characters: z.array(z.string()).optional() }),
 ]);
 
