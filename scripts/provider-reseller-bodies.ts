@@ -32,6 +32,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import type { CatalogBound } from "../packages/provider/src/config/__tests__/shipped.js";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
 import { isPresent } from "../packages/provider/src/pricing/estimate.js";
@@ -47,7 +48,7 @@ interface CatalogParam {
   min?: number;
   max?: number;
   /** Ranges that replace `min` and `max` while their condition holds. */
-  bounds?: { when: { flag_on?: string; equals?: Record<string, unknown> }; min?: number; max?: number }[];
+  bounds?: CatalogBound[];
   default?: unknown;
   type?: string;
   fields?: Record<string, { values?: (string | number | boolean)[] }>;
@@ -130,8 +131,8 @@ function writeJson(path: string, content: unknown): void {
 
 const config = shipped();
 const entries = new Map(catalog().models.map((m) => [m.name, m]));
-const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
-const sourceGroups = new Map(catalog().models.map((m) => [m.name, m.source_groups ?? []] as const));
+const offered = new Map([...entries].map(([name, m]) => [name, m.params as Record<string, CatalogParam>]));
+const sourceGroups = new Map([...entries].map(([name, m]) => [name, m.source_groups ?? []] as const));
 
 /**
  * The params that make a value of a number param reachable: for a value outside its own range, the condition of the

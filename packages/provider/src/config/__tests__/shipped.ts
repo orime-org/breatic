@@ -59,7 +59,7 @@ export type CatalogModel = CatalogShape["models"][number] & {
 };
 
 /** One param of our catalog, as far as resolving a run reads it. */
-interface ResolvedParam {
+interface ResolvableParam {
   default?: unknown;
   type?: string;
   /** Sent only while this holds. */
@@ -72,7 +72,7 @@ interface ResolvedParam {
  * @param params - The params.
  * @returns True when every part given holds.
  */
-export function gateHolds(when: CatalogGate, params: Readonly<Record<string, unknown>>): boolean {
+function gateHolds(when: CatalogGate, params: Readonly<Record<string, unknown>>): boolean {
   if (when.flag_on !== undefined && params[when.flag_on] !== true) return false;
   return Object.entries(when.equals ?? {}).every(([key, value]) => params[key] === value);
 }
@@ -87,7 +87,7 @@ export function gateHolds(when: CatalogGate, params: Readonly<Record<string, unk
  * @returns The resolved params.
  */
 export function resolvedParams(model: Pick<CatalogModel, "params" | "forces">, given: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  const specs = model.params as Record<string, ResolvedParam>;
+  const specs = model.params as Record<string, ResolvableParam>;
   const out: Record<string, unknown> = {};
   for (const [name, spec] of Object.entries(specs)) {
     const value = given[name] === undefined ? spec.default : given[name];

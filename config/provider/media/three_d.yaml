@@ -30,6 +30,18 @@ models:
       - when: generate_parts = true and smart_low_poly = true
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
+      - when: $length(prompt) > 1024
+        reason: 'Tripo prompt: "Text prompt, up to 1024 characters."'
+        source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
+      - when: $length(negative_prompt) > 255
+        reason: 'Tripo negative_prompt: "Negative prompt, up to 255 characters."'
+        source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
+      - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)
+        reason: 'Tripo face_limit: "When smart_low_poly: true, face limits are fixed regardless of model version: Triangle 500 – 20,000"'
+        source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
+      - when: face_limit > 1500000 and $not(geometry_quality = "detailed")
+        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
+        source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -68,7 +80,7 @@ models:
           negative_prompt:
             field: negative_prompt
         rejects:
-          - when: $type(face_limit) = "number" and face_limit < 48
+          - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula
@@ -178,6 +190,12 @@ models:
       - when: generate_parts = true and smart_low_poly = true
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
+      - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)
+        reason: 'Tripo face_limit: "When smart_low_poly: true, face limits are fixed regardless of model version: Triangle 500 – 20,000"'
+        source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
+      - when: face_limit > 1500000 and $not(geometry_quality = "detailed")
+        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
+        source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -221,7 +239,7 @@ models:
           enable_image_autofix:
             field: enable_image_autofix
         rejects:
-          - when: $type(face_limit) = "number" and face_limit < 48
+          - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula
@@ -345,6 +363,12 @@ models:
       - when: generate_parts = true and smart_low_poly = true
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
+      - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)
+        reason: 'Tripo face_limit: "When smart_low_poly: true, face limits are fixed regardless of model version: Triangle 500 – 20,000"'
+        source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
+      - when: face_limit > 1500000 and $not(geometry_quality = "detailed")
+        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
+        source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -388,7 +412,7 @@ models:
           enable_image_autofix:
             field: enable_image_autofix
         rejects:
-          - when: $type(face_limit) = "number" and face_limit < 48
+          - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula

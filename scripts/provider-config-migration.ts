@@ -125,9 +125,8 @@ const WAVESPEED: Readonly<Record<string, {
   },
   "seedvr2-video": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: Max clip length per job: up to 10 minutes" }] },
   "rife-interpolation": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: The maximum supported video duration is 10 minutes" }] },
-  // The catalog takes a face limit from 1; WaveSpeed's schema from 48. Only a number is compared: the frozen estimate
-  // cases (upstream-estimate.json) fill a param without a default with text, which today's WaveSpeed price never reads.
-  ...Object.fromEntries(["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"].map((model) => [model, { rejects: [{ when: "$type(face_limit) = \"number\" and face_limit < 48", reason: "WaveSpeed face_limit: minimum 48" }] }])),
+  // The catalog takes a face limit from 1; WaveSpeed's schema from 48.
+  ...Object.fromEntries(["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"].map((model) => [model, { rejects: [{ when: "face_limit < 48", reason: "WaveSpeed face_limit: minimum 48" }] }])),
   "veed-clean-audio": { delisted: true },
   "recraft-v4-style-text-to-image": { delisted: true },
 };

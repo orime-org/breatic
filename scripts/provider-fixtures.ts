@@ -43,6 +43,9 @@ interface RawParam {
   values?: unknown[];
   type?: string;
   accepts?: string;
+  min?: number;
+  /** Ranges that replace `min` and `max` while their condition holds. */
+  bounds?: { min?: number }[];
   min_items?: number;
   max_items?: number;
   fields?: Record<string, { type?: string; values?: unknown[] }>;
@@ -211,6 +214,8 @@ function filled(name: string, spec: RawParam): unknown {
     );
   }
   if (spec.type === "text") return `some ${name}`;
+  // A whole number is typed as a number, the lowest each of its ranges takes (`min` and every `bounds` entry's).
+  if (spec.type === "integer") return Math.max(spec.min ?? 0, ...(spec.bounds ?? []).map((b) => b.min ?? 0));
   if (spec.default != null || spec.values !== undefined) return undefined;
   // A param whose declaration says it is an image URL gets one; anything else a word.
   return /image url/i.test(spec.description ?? "") ? `https://cdn.example/${name}-1.png` : `some ${name}`;

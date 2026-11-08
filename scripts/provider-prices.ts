@@ -62,7 +62,7 @@ import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
-const { catalog } = createRequire(import.meta.url)("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
+const { catalog, resolvedParams } = createRequire(import.meta.url)("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
 
 interface Pricing { kind: "formula"; base_price: number; formula: string; discount_rate: number }
 interface Binding {
@@ -216,12 +216,12 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
   const media = Object.assign({}, ...[...docs.values()].map((doc) => (doc.toJS() as { models: Record<string, unknown> }).models)) as ProviderConfigInput["media"]["models"];
   const provider = createProvider({ config: { upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: media } }, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
-  const defaults = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { default?: unknown }>]));
+  const entries = new Map(catalog().models.map((m) => [m.name, m]));
   const charged: string[] = [];
   for (const { model } of list) {
     const binding = provider.config.models[model]?.find((b) => b.upstream === upstream);
     if (binding === undefined) continue;
-    const params = Object.fromEntries(Object.entries(defaults.get(model) ?? {}).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));
+    const params = resolvedParams(entries.get(model) ?? { params: {} }, {});
     const prompt = binding.prompt_field === undefined ? "" : SAMPLE_PROMPT;
     const inputs = buildBody(binding, { params, prompt });
     const read = await assess(provider.pricingRules(model), upstream, { params, prompt, durations: {}, placeholders: [], durationsMissing: [] });

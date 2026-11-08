@@ -596,6 +596,17 @@ describe("the limits a reseller states beyond its schema", () => {
     ["tripo-h3.1-t23d", { prompt: "a fox", params: { generate_parts: true, smart_low_poly: true } }, { prompt: "a fox", params: { generate_parts: true } }, "Not compatible with smart_low_poly"],
     ["tripo-h3.1-i23d", { params: { image: URL_A, generate_parts: true, smart_low_poly: true } }, { params: { image: URL_A, generate_parts: true } }, "Not compatible with smart_low_poly"],
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], generate_parts: true, smart_low_poly: true } }, { params: { images: [URL_A, URL_A], generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-t23d", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "up to 1024 characters"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { negative_prompt: "x".repeat(256) } }, { prompt: "a fox", params: { negative_prompt: "x".repeat(255) } }, "up to 255 characters"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { smart_low_poly: true, face_limit: 499 } }, { prompt: "a fox", params: { smart_low_poly: true, face_limit: 500 } }, "500 – 20,000"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { smart_low_poly: true, face_limit: 20001 } }, { prompt: "a fox", params: { smart_low_poly: true, face_limit: 20000 } }, "500 – 20,000"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { face_limit: 1500001 } }, { prompt: "a fox", params: { face_limit: 1500000 } }, "1,500,000"],
+    ["tripo-h3.1-i23d", { params: { image: URL_A, smart_low_poly: true, face_limit: 499 } }, { params: { image: URL_A, smart_low_poly: true, face_limit: 500 } }, "500 – 20,000"],
+    ["tripo-h3.1-i23d", { params: { image: URL_A, smart_low_poly: true, face_limit: 20001 } }, { params: { image: URL_A, smart_low_poly: true, face_limit: 20000 } }, "500 – 20,000"],
+    ["tripo-h3.1-i23d", { params: { image: URL_A, face_limit: 1500001 } }, { params: { image: URL_A, face_limit: 1500000 } }, "1,500,000"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 499 } }, { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 500 } }, "500 – 20,000"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 20001 } }, { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 20000 } }, "500 – 20,000"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], face_limit: 1500001 } }, { params: { images: [URL_A, URL_A], face_limit: 1500000 } }, "1,500,000"],
   ];
 
   // Each entry: a model on an upstream that cannot take a row's param, or the row's value of it, so it refuses the row's

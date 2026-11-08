@@ -263,8 +263,8 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
 };
 
 const config = shipped();
-const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
+const models = new Map([...catalogModels].map(([name, m]) => [name, m.params as Record<string, CatalogParam>]));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /**
@@ -293,7 +293,7 @@ function inOurNames(binding: MediaBinding, when: string): string {
 }
 
 /** The longest prompt each catalog model takes, where it states one. */
-const promptLimits = new Map(catalog().models.flatMap((m) => { const limit = m.max_input_chars ?? m.prompt_max_length; return limit === undefined ? [] : [[m.name, limit] as const]; }));
+const promptLimits = new Map([...catalogModels.values()].flatMap((m) => { const limit = m.max_input_chars ?? m.prompt_max_length; return limit === undefined ? [] : [[m.name, limit] as const]; }));
 
 /**
  * The endpoints one binding's runs reach: the model's own, and each extra step's.
