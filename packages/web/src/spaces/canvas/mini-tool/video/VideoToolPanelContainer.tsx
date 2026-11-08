@@ -9,7 +9,7 @@ import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type MiniToolSlotValue, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, transitionDurationBounds, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type MiniToolSlotValue, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -27,7 +27,7 @@ import { expandDrop, isExpanded, type PixelSize } from '@web/spaces/canvas/mini-
 import { createVideoToolDraft, resetDialoguePeople } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
-import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
+import { tableFrameRate, VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
 import { useVideoToolModels } from '@web/spaces/canvas/mini-tool/video/use-video-tool-models';
 import type { CanvasEraseLimits, CanvasExpandLimits } from '@web/data/api/canvas';
 import { useTrackedBox } from '@web/spaces/canvas/mini-tool/video/use-tracked-box';
@@ -201,6 +201,23 @@ function lipSyncRangeBlock(draft: VideoToolDraftById['video.lip-sync'], table: V
 }
 
 const NO_INPUTS: readonly VideoToolDraft['inputs'][number][] = [];
+
+/**
+ * The two clips with their junction (the first clip's transition) turned into a Cut when it no longer fits the duration
+ * range of their lengths (canvas design §4 transitions row): on the first clip's output grid, or half the shorter clip
+ * while that grid is unknown.
+ * @param clips - The ordered clips after a pick.
+ * @param table - The first clip's presentation table, when known.
+ * @returns The clips, the junction kept when it still fits.
+ * @throws {never} Never.
+ */
+function fitJunction(clips: VideoToolTimelineClip[], table: VideoPresentationTable | undefined): VideoToolTimelineClip[] {
+  const [first, second] = clips;
+  if (first === undefined || second === undefined || first.transition.kind === 'cut') return clips;
+  const { duration } = first.transition;
+  const bounds = table === undefined ? { min: 0, max: Math.min(first.out - first.in, second.out - second.in) / 2 } : transitionDurationBounds(clips, tableFrameRate(table));
+  return bounds !== null && duration >= bounds.min && duration <= bounds.max ? clips : [{ ...first, transition: { kind: 'cut', duration: 0 } }, ...clips.slice(1)];
+}
 
 /**
  * The input a transitions draft opens with, the current video; every other input is the one picked into the slot.
@@ -459,14 +476,16 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
           return [{ ...clip, ...reset }];
         });
         if (!placed && reset !== null) clips.push({ clipId: newId(), ...reset, transition: { kind: 'cut', duration: 0 } });
-        if (!change({ ...draft, inputs: [...draft.inputs.filter((input) => input.inputId === hostId), copied], params: { clips } })) continue;
+        // A shorter input can leave the junction longer than the clips allow, which the timeline cannot lay out.
+        const firstTable = clips[0] === undefined ? undefined : inputTables.get(clips[0].inputId) ?? (clips[0].inputId === hostId ? presentation?.frameTable ?? undefined : undefined);
+        if (!change({ ...draft, inputs: [...draft.inputs.filter((input) => input.inputId === hostId), copied], params: { clips: fitJunction(clips, firstTable) } })) continue;
         pickedTimeline = true;
       }
       store.getState().clearMiniToolSlot(key);
     }
     // A picked video opens the timeline (canvas design §4 transitions row).
     if (pickedTimeline) { store.getState().endPick(); setTimelineOpen(true); }
-  }, [slots, current, disabled, toolId, change, store]);
+  }, [slots, current, disabled, toolId, change, store, inputTables, presentation?.frameTable]);
   const intent = `video-analysis:${projectId}:${spaceId}:${nodeId}:${toolId}`;
   const analysisPressRunning = Boolean(useRunning(intent));
   const analysing = analysisPressRunning || analysisReadings.pending || matchingRecords.some((record) => record.status === 'pending' || record.status === 'running');

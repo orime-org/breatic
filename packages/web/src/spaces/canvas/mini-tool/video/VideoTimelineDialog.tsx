@@ -43,7 +43,7 @@ const TRANSITION_KEYS = { cut: 'transitionCut', fade: 'transitionFade', wipeLeft
  * @returns The rate, exact.
  * @throws {never} Never.
  */
-function tableFrameRate(table: VideoPresentationTable): VideoFrameRate {
+export function tableFrameRate(table: VideoPresentationTable): VideoFrameRate {
   const step = table.runs[0]!.step;
   if (table.runs.every((run) => run.step === step || run.count === 1)) return { numerator: String(table.timescale), denominator: String(step) };
   const frames = table.runs.reduce((sum, run) => sum + run.count, 0);

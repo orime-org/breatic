@@ -124,4 +124,14 @@ describe('the transitions input slot (canvas design §4, §28)', () => {
     expect(screen.getAllByText('Second copy').length).toBeGreaterThan(0);
     expect(screen.queryByText('First copy')).toBeNull();
   });
+
+  it('turns a junction transition the re-picked input is too short for into a Cut (inner#1306 #15)', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 4, in: 0, out: 4 });
+    const draft = held();
+    act(() => { commitVideoToolDraft(getDoc(name), nodeId, 'video.transitions', { ...draft, revision: '70000000-0000-4000-8000-000000000001', params: { clips: [{ ...draft.params.clips[0]!, transition: { kind: 'fade', duration: 1.5 } }, draft.params.clips[1]!] } }); });
+    pick('https://assets.example.test/short.webm', 1);
+    await waitFor(() => expect(screen.getByTestId('video-timeline-dialog')).toBeInTheDocument());
+    expect(held().params.clips.map((clip) => [clip.in, clip.out])).toEqual([[0, 4], [0, 1]]);
+    expect(held().params.clips[0]!.transition).toEqual({ kind: 'cut', duration: 0 });
+  });
 });
