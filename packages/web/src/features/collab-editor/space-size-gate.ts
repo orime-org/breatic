@@ -16,7 +16,7 @@
  * |---|---|
  * | `unknown`, `normal`, `warning` | passes; the sync plugin writes Yjs as usual |
  * | `resyncing` | refused, no toast |
- * | `full` | a deletion of text inside one `XmlText` (its text block's only Y child) passes, y-prosemirror writing it as a delete set; anything else is refused and handed to the delete executor; what it does not take is told with a toast |
+ * | `full` | refused and handed to the delete executor; what it does not take is told with a toast |
  * | over the ceiling | deleting part of one `XmlText` is refused at once; anything else is handed to the executor |
  *
  * While full the filter sees transactions before the sync plugin writes them,
@@ -205,21 +205,6 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
     return true;
   };
 
-  // Whether the Yjs transaction whose observers are running now was made by
-  // this client, per document the binding writes.
-  const localNow = new WeakMap<Y.Doc, boolean>();
-
-  /**
-   * Starts telling, for a binding's document, whether a Yjs transaction is
-   * this client's own while y-prosemirror redraws from it.
-   * @param doc - The binding's document.
-   */
-  const watchOrigin = (doc: Y.Doc): void => {
-    if (localNow.has(doc)) return;
-    localNow.set(doc, false);
-    doc.on('beforeObserverCalls', (transaction: Y.Transaction) => localNow.set(doc, transaction.local));
-  };
-
   /**
    * After a redraw of this client's own Yjs write, writes what plugins
    * appended to the redraw: y-prosemirror holds its mutex through the redraw
@@ -234,7 +219,6 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
       _prosemirrorChanged: (doc: ProseMirrorNode) => void;
       _forceRerender: () => void;
     };
-    if (!localNow.get(binding.doc)) return;
     const appended = editorView.state.doc;
     queueMicrotask(() => {
       const name = options.docName();
@@ -333,22 +317,37 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
         }, 0);
       };
       editorView.dom.addEventListener('compositionend', onEnd);
-      /** Watches the binding's document once the sync plugin has made it. */
-      const watch = (): void => {
-        const binding = (options.syncKey.getState(editorView.state) as { binding?: SpaceDeleteWriteBinding | null } | undefined)?.binding;
-        if (binding) watchOrigin(binding.doc);
+      // Whether the Yjs transaction whose observers run now (y-prosemirror
+      // redraws from them) is this client's own.
+      let local = false;
+      /**
+       * Notes a Yjs transaction's origin before its observers run.
+       * @param transaction - The transaction.
+       */
+      const onBeforeObservers = (transaction: Y.Transaction): void => {
+        local = transaction.local;
       };
-      watch();
+      let yDoc: Y.Doc | null = null;
+      /** Listens on the binding's document once the sync plugin has made it. */
+      const attach = (): void => {
+        if (yDoc !== null) return;
+        const binding = (options.syncKey.getState(editorView.state) as { binding?: SpaceDeleteWriteBinding | null } | undefined)?.binding;
+        if (!binding) return;
+        yDoc = binding.doc;
+        yDoc.on('beforeObserverCalls', onBeforeObservers);
+      };
+      attach();
       return {
         update: (updated): void => {
-          watch();
+          attach();
           const redrawn = key.getState(updated.state) ?? null;
           if (redrawn === null || redrawn === handled || updated.state.doc === redrawn) return;
           handled = redrawn;
-          writeAppended(updated, redrawn);
+          if (local) writeAppended(updated, redrawn);
         },
         destroy: (): void => {
           editorView.dom.removeEventListener('compositionend', onEnd);
+          yDoc?.off('beforeObserverCalls', onBeforeObservers);
           view = null;
         },
       };
