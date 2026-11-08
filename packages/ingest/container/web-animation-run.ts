@@ -93,7 +93,7 @@ function compositionTemplate(job: WebAnimationRunBody): string {
     "<title>Web animation</title>",
     "<style>",
     "html, body { margin: 0; background: #000; overflow: hidden; }",
-    `#main { position: relative; width: ${width}px; height: ${height}px; overflow: hidden; font-family: "Noto Sans SC", "Noto Sans KR"; }`,
+    `#main { position: relative; width: ${width}px; height: ${height}px; overflow: hidden; font-family: "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR"; }`,
     "</style>",
     "</head>",
     "<body>",
@@ -133,7 +133,8 @@ function instructions(job: WebAnimationRunBody): string {
     "  runtime seeks them; the same time must always draw the same frame, seeking forward or backward. Never drive",
     "  visuals from timers, `requestAnimationFrame`, `Date.now()`, `performance.now()` or `Math.random()`.",
     `- Text uses only the font families ${families}, weights 100 to 900. Do not use any other font or a generic family alone.`,
-    "  Korean text needs \"Noto Sans KR\" in its `font-family` list; the other families carry almost no Hangul.",
+    "  Japanese text puts \"Noto Sans JP\" first in its `font-family` list, Traditional Chinese text puts \"Noto Sans TC\"",
+    "  first and Korean text needs \"Noto Sans KR\"; each carries characters the other families lack.",
     "- Load nothing: no external scripts, stylesheets, fonts, images, `fetch` or network access of any kind. Draw images",
     "  with inline SVG, CSS or `data:` URIs. No audio or video.",
     "- Write visible text in the language of the request.",
@@ -324,6 +325,13 @@ function connectCdp(url: string): Promise<Cdp> {
   });
 }
 
+/** Chromium's fixed flags; a container's /dev/shm is small, so shared memory goes to /tmp. */
+export const CHROMIUM_ARGS: readonly string[] = [
+  "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
+  "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", "--disable-sync",
+  "--hide-scrollbars", "--mute-audio", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
+];
+
 /**
  * Start Chromium headless and read its DevTools endpoint.
  * @param bin - The Chromium program.
@@ -331,11 +339,7 @@ function connectCdp(url: string): Promise<Cdp> {
  * @returns The process and its endpoint.
  */
 function startChromium(bin: string, profile: string): Promise<{ stop: () => void; endpoint: string }> {
-  const child = spawn(bin, [
-    "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-    "--disable-extensions", "--disable-background-networking", "--disable-sync", "--hide-scrollbars", "--mute-audio",
-    "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank",
-  ], { stdio: ["ignore", "ignore", "pipe"] });
+  const child = spawn(bin, [...CHROMIUM_ARGS, `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
   return new Promise((resolve, reject) => {
     let seen = "";
     child.stderr.on("data", (chunk: Buffer) => {
