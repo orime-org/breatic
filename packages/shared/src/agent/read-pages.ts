@@ -45,6 +45,8 @@ export interface ReadPageResult {
   kind?: "html" | "pdf";
   pages?: number;
   text?: string;
+  /** Present and true when the reader cut the text at its byte cap. */
+  truncated?: boolean;
 }
 
 /** What one call produced, with what the container used. */
@@ -93,6 +95,7 @@ export const readPageResultSchema: z.ZodType<ReadPageResult> = z.object({
   kind: z.enum(["html", "pdf"]).optional(),
   pages: z.number().int().nonnegative().optional(),
   text: z.string().optional(),
+  truncated: z.boolean().optional(),
 });
 
 /** The answer as the server reads it. */

@@ -395,7 +395,6 @@
         "noPermission": "你在這個 Project 裡沒有編輯權限",
         "notMember": "你已經不是這個 Project 的成員",
         "tooFrequent": "剛才取的連結太多，等一分鐘再試",
-        "linkNotInConversation": "只能讀對話裡出現過的連結",
         "pageNeedsLogin": "這個網頁需要登入",
         "pageRefused": "這個網站拒絕了讀取",
         "pageTooSlow": "網頁開啟太慢，沒能讀完",

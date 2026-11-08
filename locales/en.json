@@ -395,7 +395,6 @@
         "noPermission": "you don't have edit access in this Project",
         "notMember": "you're no longer a member of this Project",
         "tooFrequent": "too many links were fetched just now, wait a minute and try again",
-        "linkNotInConversation": "only links that appear in this conversation can be read",
         "pageNeedsLogin": "this page needs a login",
         "pageRefused": "this site refused to be read",
         "pageTooSlow": "the page took too long to open",

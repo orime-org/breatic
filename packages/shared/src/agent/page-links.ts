@@ -28,6 +28,9 @@ const LINK_START =
  */
 const CHINESE_ENDS = new Set("\uFF0C\u3002\u3001\uFF1B\uFF1A\uFF01\uFF1F\uFF09\u300B\u300D\u300F\u3011");
 
+/** Curly quotes and the ellipsis, which end a link in any language. */
+const QUOTE_ENDS = new Set("\u201C\u201D\u2018\u2019\u2026");
+
 /** Characters RFC 3986 never allows unencoded, which end a link. */
 const NEVER_IN_URL = new Set('"<>`{}|^');
 
@@ -59,7 +62,7 @@ function readLink(text: string, from: number): { link: string; end: number } {
       at += 2;
       continue;
     }
-    if (/\s/u.test(char) || CHINESE_ENDS.has(char) || NEVER_IN_URL.has(char)) break;
+    if (/\s/u.test(char) || CHINESE_ENDS.has(char) || QUOTE_ENDS.has(char) || NEVER_IN_URL.has(char)) break;
     link += char;
     at += 1;
   }
@@ -88,6 +91,10 @@ function trimEnd(link: string): string {
 
 /**
  * Every link written in a piece of text, in the order they appear.
+ *
+ * A link holding a non-ASCII character is followed by the same link cut at
+ * that character: a user who runs a link on into Chinese without a space
+ * still has the plain link, and a real non-ASCII path keeps its full spelling.
  * @param text - The text.
  * @returns The links, each cleaned of the punctuation around it.
  * @throws {never} Never.
@@ -107,7 +114,12 @@ export function pageLinksIn(text: string): string[] {
       end = found.index + opening.length;
     }
     link = trimEnd(link);
-    if (!hasScheme || link.length > opening.length) links.push(link);
+    if (!hasScheme || link.length > opening.length) {
+      links.push(link);
+      const nonAscii = link.search(/[\u0080-\u{10FFFF}]/u);
+      const cut = nonAscii < 0 ? "" : trimEnd(link.slice(0, nonAscii));
+      if (cut !== "" && (!hasScheme || cut.length > opening.length)) links.push(cut);
+    }
     start.lastIndex = Math.max(end, found.index + 1);
   }
   return links;
