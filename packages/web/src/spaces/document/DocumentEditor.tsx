@@ -30,6 +30,7 @@ import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
+import { DocumentAiDialog } from '@web/spaces/document/DocumentAiDialog';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
@@ -478,7 +479,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // drawn for one either.
   return (
     <DocumentMediaPicker files={readOnly ? null : files}>
-      {chrome}
+      {/* The AI output dialog, reached from the bubble bar's AI menu
+          (inner#1860). */}
+      <DocumentAiDialog editor={handle.editor} viewport={viewport}>
+        {chrome}
+      </DocumentAiDialog>
     </DocumentMediaPicker>
   );
 });
