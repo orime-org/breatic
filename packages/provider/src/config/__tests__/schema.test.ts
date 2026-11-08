@@ -73,6 +73,11 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("1");
   });
 
+  it("refuses a binding reject that reads a dotted body field", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { params: { duration: { field: "settings.duration" } }, rejects: [{ when: "settings.duration > 10", reason: "r" }] })]));
+    expect(problems).toEqual(['seedance: the binding to "wavespeed" rejects when "settings.duration > 10", which reads "settings.duration", a dotted field conditions do not read']);
+  });
+
   it("refuses a fal upstream without the billing address its costs are read from, naming the upstream", () => {
     const problems = problemsOf({ upstreams: { queue: { kind: "fal", base_url: "https://queue.fal.run", key_env: "FAL_KEY" } }, media: { models: {} } });
     expect(problems).toHaveLength(1);
@@ -279,6 +284,11 @@ describe("assertBindsCatalog", () => {
     expect(droppedValues({ values: ["1k"], equivalent: "measured" })).toEqual(["1k"]);
   });
 
+  it("reports a drop of a param the model does not have", () => {
+    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" }, aspect_ratio: { field: "aspect_ratio" } }, drops: { colour: "*" } })]);
+    expect(problems).toEqual(['seedance: "fal" drops param "colour", which the model does not have']);
+  });
+
   it("reports a catalog model that has no binding at all", () => {
     const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" } })], { models: [...catalog.models, { name: "kling", params: {} }] });
     expect(problems).toHaveLength(1);
@@ -350,6 +360,41 @@ describe("deployment overrides of LLM routes", () => {
     expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
     const leaked = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
     expect(order(leaked.llm.routes)).toEqual(["google", "openrouter"]);
+  });
+
+  describe("direct prices with effective dates", () => {
+    const now = { input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 };
+    const later = { input_cache_miss_per_mtok: 1.5, output_per_mtok: 7.5 };
+    const load = (entries: unknown[]): ProviderConfigInput => ({ upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, prices: { "google/gemini-3.8-flash": entries } } as unknown as ProviderConfigInput["llm"] });
+    const refusal = (entries: unknown[]): unknown => {
+      try {
+        createProvider({ config: load(entries), keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t });
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    };
+
+    it("loads a price that changes on a stated date", () => {
+      expect(problemsOf(load([now, { ...later, from: "2027-01-01T00:00:00Z" }]))).toEqual([]);
+    });
+
+    it("refuses a later price without a date, naming the model", () => {
+      const error = refusal([now, later]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/google\/gemini-3\.8-flash.*from/)]);
+    });
+
+    it("refuses dates that do not ascend, naming the model", () => {
+      const error = refusal([now, { ...later, from: "2027-01-01T00:00:00Z" }, { ...later, from: "2027-01-01T00:00:00Z" }]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/google\/gemini-3\.8-flash.*ascend/)]);
+    });
+
+    it("refuses an empty price list and a date that is not an ISO 8601 UTC time", () => {
+      expect(refusal([])).toBeInstanceOf(ProviderConfigError);
+      expect(refusal([now, { ...later, from: "January 1, 2027" }])).toBeInstanceOf(ProviderConfigError);
+    });
   });
 
   it("refuses an understand override naming a prefix no understand route has", () => {

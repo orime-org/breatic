@@ -14,6 +14,9 @@
  * prepared call is not pinned, so it is priced at that or less.
  */
 
+import { parseDocument } from "yaml";
+import { yamlText } from "./provider-yaml.mjs";
+
 /**
  * One per-token price OpenRouter states, as USD per million tokens.
  * @param {unknown} perToken - The stated price: USD per token, as a string.
@@ -70,4 +73,29 @@ export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
     prices[ours] = { input_cache_miss_per_mtok: fixed[0].input, output_per_mtok: fixed[0].output };
   }
   return { prices, problems };
+}
+
+/**
+ * `config/provider/llm.yaml` with `openrouter_prices` rewritten from OpenRouter's endpoints, its comments kept: for
+ * every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when set, within the
+ * quantizations and backend pins the file's values hold once read through `parse`, the schema createProvider reads it
+ * with (its defaults filled).
+ * @param {string} text - The file as it is.
+ * @param {(raw: unknown) => { prices: Record<string, unknown>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
+ * @param {(id: string) => Promise<readonly object[] | undefined>} fetchEndpoints - OpenRouter's endpoints of one model by its id there; undefined when it lists none (404).
+ * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[] }>} The file's new text, how many models were priced of how many asked, and a problem for each model given no price.
+ * @throws {Error} When `parse` refuses the file, or a read fails other than with a 404.
+ */
+export async function syncedLlmYaml(text, parse, fetchEndpoints) {
+  const doc = parseDocument(text);
+  const llm = parse(doc.toJS());
+  const ids = new Map(Object.keys(llm.prices).map((model) => [model, llm.vendor_ids[model]?.openrouter ?? model]));
+  const endpoints = new Map();
+  for (const id of new Set(ids.values())) {
+    const listed = await fetchEndpoints(id);
+    if (listed !== undefined) endpoints.set(id, listed);
+  }
+  const { prices, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, llm.openrouter_backends);
+  doc.set("openrouter_prices", doc.createNode(prices));
+  return { text: yamlText(doc, { lineWidth: 0 }), priced: Object.keys(prices).length, asked: ids.size, problems };
 }

@@ -8,7 +8,7 @@
  */
 
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, priceAt, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
@@ -163,7 +163,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
      * @returns Both prices; infinite when unknown.
      */
     const price = (c: Candidate): [number, number] => {
-      const p = kindOf(c.upstream) === "openrouter" ? config.llm.openrouter_prices[modelId] : config.llm.prices[modelId];
+      const p = kindOf(c.upstream) === "openrouter" ? config.llm.openrouter_prices[modelId] : priceAt(config.llm.prices[modelId], Date.now());
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
     const order = [...plan.order].sort((a, b) => {
@@ -196,12 +196,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * The OpenRouter `provider` object of one call: in cheapest mode, its endpoints cheapest first within the
    * quantizations the call takes (a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
    * understand call the model's backend pin, which is understand's alone.
+   * @param upstream - The upstream the call goes to; only an OpenRouter one gets the object.
    * @param modelId - Our model id.
    * @param chosen - The caller's mode.
    * @param pinned - Whether the call is held to the model's backend pin: an understand call is, a prepared call never.
-   * @returns The object, or undefined when it would be empty.
+   * @returns The object, or undefined when the upstream is not OpenRouter or the object would be empty.
    */
-  const openRouterRouting = (modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined => {
+  const openRouterRouting = (upstream: string, modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined => {
+    if (kindOf(upstream) !== "openrouter") return undefined;
     const routing: VendorOptions = {
       ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
       ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: config.llm.openrouter_quantizations } : {}),
@@ -222,7 +224,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
       // A prepared call is never pinned to a backend: the pin is understand's alone.
-      const provider = kindOf(upstream) === "openrouter" ? openRouterRouting(modelId, chosen, false) : undefined;
+      const provider = openRouterRouting(upstream, modelId, chosen, false);
       merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...(provider === undefined ? {} : { provider }) };
     }
     return merged;
@@ -253,7 +255,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         ? { state: "pending", lookup: { upstream: String(ref.upstream ?? upstream), generationId: ref.generationId } }
         : { state: "missing", reason: `${upstream} reported no cost and no generation id`, tokens };
     }
-    const price = config.llm.prices[finished.model];
+    const price = priceAt(config.llm.prices[finished.model], Date.now());
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
     const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
@@ -433,7 +435,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
             // Held to the model's backend pin, which is understand's alone, and in cheapest mode sorted by price as a prepared call is.
-            const provider = vendorOf(decl.kind).gateway ? openRouterRouting(request.model, chosen, true) : undefined;
+            const provider = openRouterRouting(c.upstream, request.model, chosen, true);
             let answered;
             try {
               answered = await adapter.ask({

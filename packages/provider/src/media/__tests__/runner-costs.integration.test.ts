@@ -435,11 +435,13 @@ describe("a run's billed predictions reach the caller once, however it ends (cri
 });
 
 describe("a run's billed answers on fal and SandBase reach the caller once, however it ends (critical path)", () => {
-  const FAL_SUBMITS = ["accept", "unreadable", "cut", "busy", "locked", "noModel"] as const;
+  const FAL_SUBMITS = ["accept", "unreadable", "cut", "busy", "locked", "noModel", "cut503", "cut429", "cut403Locked", "cut400"] as const;
   const FAL_STATUSES = ["inProgress", "completed", "completedWithError"] as const;
   const FAL_RESULTS = ["ok", "dataUri", "busyForAPoll", "refused"] as const;
   const FAL_BILLINGS = ["events", "none", "forbidden", "busy", "malformed"] as const;
-  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "cutEmptyTaskId", "emptyId", "emptyHeader", "busy", "balance", "noModel"] as const;
+  /** A refusal whose body breaks off, with and without an id header: billed by nobody. */
+  const CUT_REFUSALS = ["cut503", "cut503Named", "cut429", "cut429Named", "cut402", "cut402Named", "cut400", "cut400Named"] as const;
+  const SB_SUBMITS = ["accept", "finishNow", "finishNowDataUri", "finishNowNoId", "failedNow", "overLimitNamed", "overLimitUnnamed", "unreadable", "cutNamed", "cutUnnamed", "cutEmptyTaskId", "emptyId", "emptyHeader", "busy", "balance", "noModel", ...CUT_REFUSALS] as const;
   const SB_ASKS = ["running", "completed", "completedEmpty", "dataUri", "failed", "overLimit", "busy"] as const;
   const SB_COSTS = ["settled", "unsettled", "unknown", "busy", "malformed", "noCost"] as const;
   /** The caller's media limit here: a SandBase answer carrying a bigger inline file is over the read limit. */
@@ -561,6 +563,10 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
               return { status: 200, raw: "{\"request_id\":\"r", contentType: "application/json", cut: true };
             }
             if (next === "busy") return { status: 503, body: { detail: "busy" } };
+            if (next.startsWith("cut")) {
+              const raw = next === "cut403Locked" ? "{\"detail\":\"User is locked. Reason: Exhausted bal" : "{\"detail\":\"bu";
+              return { status: Number(next.slice(3, 6)), raw, contentType: "application/json", cut: true };
+            }
             if (next === "locked") return { status: 403, body: { detail: "User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing." } };
             return { status: 404, body: { detail: 'Application "mureka" not found' } };
           }
@@ -620,6 +626,10 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
               return { status: 200, body: done(next === "finishNowNoId" ? "https://out.example/no-id.mp3" : bigDataUri) };
             }
             if (next === "busy") return { status: 503, body: { error: "busy" } };
+            if ((CUT_REFUSALS as readonly string[]).includes(next)) {
+              const headers = next.endsWith("Named") ? { "x-task-id": `refused${n}`, "x-request-id": `refused${n}` } : undefined;
+              return { status: Number(next.slice(3, 6)), raw: "{\"error\":\"insufficient bal", contentType: "application/json", headers, cut: true };
+            }
             if (next === "balance") return { status: 402, body: { error: "insufficient balance" } };
             return { status: 404, body: { error: "model not found: mureka/song" } };
           }
@@ -691,6 +701,31 @@ describe("a run's billed answers on fal and SandBase reach the caller once, howe
       }),
       { numRuns: 60 },
     );
+  });
+
+  it.each([
+    ["fal", 503, false, true],
+    ["fal", 429, false, true],
+    ["fal", 400, false, false],
+    ["sandbase", 503, false, true],
+    ["sandbase", 503, true, true],
+    ["sandbase", 429, false, true],
+    ["sandbase", 429, true, true],
+    ["sandbase", 402, false, true],
+    ["sandbase", 402, true, true],
+    ["sandbase", 400, false, false],
+    ["sandbase", 400, true, false],
+  ] as const)("a %s submit answered %i whose body breaks off (id header: %s) is that status, nothing billed; moves on: %s", async (first, status, named, moves) => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const refuse = (): Reply => ({ status, raw: "{\"error\":\"insufficient bal", contentType: "application/json", headers: named ? { "x-task-id": "t1", "x-request-id": "t1" } : undefined, cut: true });
+    (first === "fal" ? a : b).answer(({ method }) => (method === "POST" ? refuse() : undefined));
+    const keys: Record<string, string> = { FAL_KEY: "fal-key", SANDBASE_API_KEY: "sb-key" };
+    const p = createProvider({ config: resellers(first === "fal"), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const r = createMediaRunner(p, { mediaLimits: { maxMediaBytes: MAX_MEDIA_BYTES }, pollIntervalMs: 0 });
+    const planned = expectState(await r.plan("song", song, DEFAULT, options), "send");
+    const answer = await r.send(stored(planned.ticket), live());
+    if (moves) expect(expectState(answer, "send").warnings.map((w) => w.code)).toContain("upstream_switched");
+    else expect(expectState(answer, "failed").costs).toEqual([]);
   });
 });
 

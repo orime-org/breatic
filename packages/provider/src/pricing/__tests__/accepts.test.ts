@@ -8,6 +8,7 @@ import { createMediaRunner } from "../../media/runner.js";
 import { createProvider } from "../../provider.js";
 import { planRoute, type Candidate } from "../../routing/route.js";
 import { rejectedInput, estimateCost, orderByPrice, parsePricingRules, type EstimateInput } from "../estimate.js";
+import { clipArb, overVendorLimit, vendorAudioLimit, vendorMaxArb } from "./vendor-limit.js";
 
 const pricing = (base: number): Record<string, unknown> => ({ kind: "formula", base_price: base, formula: "", discount_rate: 100 });
 
@@ -31,7 +32,7 @@ function bound(prices: readonly number[] = [300, 100, 200], configured: readonly
       media: {
         models: {
           m: {
-            ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
+            ...vendorAudioLimit(vendorMax),
             upstreams: [
               { upstream: "wavespeed", weight: 1, model_id: "m", params: { duration: { field: "duration" }, voice_id: { field: "voice" }, web: { field: "web" } }, pricing: pricing(prices[0]!) },
               {
@@ -152,8 +153,6 @@ describe("estimates skip an upstream that cannot take the run", () => {
     const valueArb = fc.record({ duration: fc.constantFrom(5, 10, 15, null), voice_id: fc.constantFrom("Alicia", "Warren", null), web: fc.constantFrom(true, false, null) });
     const flags = fc.array(fc.boolean(), { minLength: 3, maxLength: 3 });
     const prices = fc.array(fc.integer({ min: 0, max: 1000 }), { minLength: 3, maxLength: 3 });
-    const vendorMaxArb = fc.option(fc.integer({ min: 1, max: 30 }), { nil: null });
-    const clipArb = fc.option(fc.integer({ min: 1, max: 40 }), { nil: null });
     await fc.assert(fc.asyncProperty(valueArb, flags, prices, fc.constantFrom("default", "cheapest"), vendorMaxArb, clipArb, async (params, configured, cost, mode, vendorMax, clip) => {
       const p = bound(cost, configured, vendorMax);
       const rules = p.pricingRules("m");
@@ -175,7 +174,7 @@ describe("estimates skip an upstream that cannot take the run", () => {
         first = undefined;
       }
       expect(estimate?.upstream).toBe(first);
-      if (vendorMax !== null && clip !== null && clip > vendorMax) expect(estimate).toBeNull();
+      if (overVendorLimit(vendorMax, clip)) expect(estimate).toBeNull();
     }));
   });
 });

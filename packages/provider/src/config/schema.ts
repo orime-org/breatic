@@ -137,6 +137,22 @@ const llmPriceSchema = z.strictObject({
   output_per_mtok: z.number().min(0),
 });
 
+/** One direct price and when it took effect (an ISO 8601 UTC time); only a model's first price may leave `from` out. */
+const datedLlmPriceSchema = llmPriceSchema.extend({ from: z.iso.datetime().optional() });
+
+/** One LLM token price, as a call is charged at it. */
+export type LlmPrice = z.infer<typeof llmPriceSchema>;
+
+/**
+ * The price in effect at a moment: the last one that took effect at or before it.
+ * @param entries - A model's prices, their `from` ascending, or none.
+ * @param at - The moment, in epoch ms.
+ * @returns The price, or undefined when none is in effect yet or the model has none.
+ */
+export function priceAt(entries: readonly z.infer<typeof datedLlmPriceSchema>[] | undefined, at: number): LlmPrice | undefined {
+  return entries?.findLast((entry) => entry.from === undefined || Date.parse(entry.from) <= at);
+}
+
 /** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
 const GEMINI_INLINE_MAX_BYTES = 20_000_000;
 
@@ -155,8 +171,11 @@ const llmSchema = z.strictObject({
   understand_routes: z.array(llmRouteSchema).optional(),
   vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
-  /** Direct token prices in USD per million tokens, by our model id. */
-  prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * Direct token prices in USD per million tokens, by our model id: a list whose first price may have no `from` and each
+   * later one takes effect at its `from` (strictly ascending), so a price the vendor has announced is in place before its day.
+   */
+  prices: z.record(z.string(), z.array(datedLlmPriceSchema).min(1)).optional(),
   /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
@@ -380,7 +399,6 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
           if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
           if (step.kind === "speak" && (binding.reused_by === undefined || step.at !== "after")) problems.push(`${model}: the binding to "${upstream}" has a speak step that does not follow its own voice call (it needs reused_by and at: after)`);
         }
-        if (binding.reused_by !== undefined && adapter.steps.voice === undefined) problems.push(`${model}: the binding to "${upstream}" clones a voice (reused_by), which the ${kind} adapter has no voice step for`);
       }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
       if (kind !== undefined && kind !== "fal" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal binding reads`);
@@ -443,6 +461,10 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   };
   checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
   checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
+  for (const [model, entries] of Object.entries(llm.prices)) {
+    if (entries.slice(1).some((entry) => entry.from === undefined)) problems.push(`${model}: every direct price after the first needs a from date`);
+    else if (entries.some((entry, i) => i > 0 && entries[i - 1]!.from !== undefined && Date.parse(entry.from!) <= Date.parse(entries[i - 1]!.from!))) problems.push(`${model}: the from dates of its direct prices do not ascend`);
+  }
   if (problems.length > 0) throw new ProviderConfigError(problems);
   return { upstreams: raw.upstreams, models, rejects, llm };
 }

@@ -6,6 +6,7 @@ import fc from "fast-check";
 import { createProvider } from "../../provider.js";
 import type { MediaBinding } from "../../config/schema.js";
 import { estimateCost, orderByPrice, parsePricingRules, type EstimateInput } from "../estimate.js";
+import { clipArb, overVendorLimit, vendorAudioLimit, vendorMaxArb } from "./vendor-limit.js";
 
 const input: EstimateInput = { params: {}, prompt: "a fox", durations: {}, placeholders: [], durationsMissing: [] };
 const NAMES = ["up_a", "up_b", "up_c"] as const;
@@ -24,7 +25,7 @@ function priced(prices: readonly number[], configured: readonly boolean[] = [tru
       media: {
         models: {
           m: {
-            ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
+            ...vendorAudioLimit(vendorMax),
             upstreams: NAMES.map((upstream, i) => ({
               upstream,
               weight: i + 1,
@@ -75,8 +76,6 @@ describe("orderByPrice and estimateCost", () => {
   });
 
   it("property: the browser's estimate equals the server's for every route, the model vendor's limits included", async () => {
-    const vendorMaxArb = fc.option(fc.integer({ min: 1, max: 30 }), { nil: null });
-    const clipArb = fc.option(fc.integer({ min: 1, max: 40 }), { nil: null });
     await fc.assert(fc.asyncProperty(pricesArb, configuredArb, fc.constantFrom(...NAMES), vendorMaxArb, clipArb, async (prices, configured, named, vendorMax, clip) => {
       const p = priced(prices, configured, vendorMax);
       const run: EstimateInput = clip === null ? input : { ...input, params: { audio: "https://a/a.mp3" }, durations: { audio: [clip] } };
@@ -84,7 +83,7 @@ describe("orderByPrice and estimateCost", () => {
         const rules = parsePricingRules(JSON.parse(JSON.stringify(p.pricingRules("m"))) as unknown);
         const server = await p.estimate("m", run, route);
         expect(await estimateCost(rules, p.availability("m"), run, route)).toEqual(server);
-        if (vendorMax !== null && clip !== null && clip > vendorMax) expect(server).toBeNull();
+        if (overVendorLimit(vendorMax, clip)) expect(server).toBeNull();
       }
     }));
   });

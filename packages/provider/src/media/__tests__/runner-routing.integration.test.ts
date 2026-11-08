@@ -6,6 +6,7 @@ import fc from "fast-check";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { NoUpstreamAvailable, SendNotAccepted } from "../../errors.js";
 import { estimateCost, orderByPrice, rejectedInput } from "../../pricing/estimate.js";
+import { overVendorLimit, vendorAudioLimit, vendorMaxArb } from "../../pricing/__tests__/vendor-limit.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaTicket, type PlanOptions } from "../runner.js";
@@ -130,7 +131,7 @@ describe("a run is sent only where its input can go (critical path)", () => {
         // Before which sends the process restarts, the ticket read back by a new provider instance.
         fc.array(fc.boolean(), { maxLength: 4 }),
         // The model vendor's own audio limit, checked on every upstream before any binding's: none, or the longest clip it takes.
-        fc.option(fc.integer({ min: 1, max: 30 }), { nil: null }),
+        vendorMaxArb,
         async (shipped, keyed, limits, prices, params, audioSeconds, answers, route, overrides, restarts, vendorMax) => {
           const weights = NAMES.map((_, i) => overrides[i] ?? shipped[i]!);
           const overridden = Object.fromEntries(NAMES.flatMap((n, i) => (overrides[i] === undefined ? [] : [[n, overrides[i]]])));
@@ -139,7 +140,7 @@ describe("a run is sent only where its input can go (critical path)", () => {
             media: {
               models: {
                 m: {
-                  ...(vendorMax === null ? {} : { rejects: [{ when: `get_duration(audio) > ${vendorMax}`, reason: "vendor audio limit", source: "https://vendor.example/limits" }] }),
+                  ...vendorAudioLimit(vendorMax),
                   upstreams: NAMES.map((n, i) => binding(n, shipped[i]!, limits[i]!, prices[i]!)),
                 },
               },
@@ -193,7 +194,7 @@ describe("a run is sent only where its input can go (critical path)", () => {
           }
 
           const estimate = await estimateCost(rules, provider.availability("m"), prepared, route);
-          if (vendorMax !== null && params.audio !== null && audioSeconds > vendorMax) {
+          if (overVendorLimit(vendorMax, params.audio === null ? null : audioSeconds)) {
             // Past the vendor's limit no upstream takes the run: nothing is sent, and each configured upstream the route
             // reads refuses it, with the vendor's reason unless a value it cannot take was found first.
             expect(expected).toEqual([]);

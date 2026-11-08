@@ -384,7 +384,6 @@ describe("the limits a reseller states beyond its schema", () => {
   // Each row: model, upstream, a run the upstream's own words refuse beyond the model vendor's, the nearest run it takes
   // (each sent with the catalog's defaults), and words of the reason; every binding reject has one.
   const STATED: [string, string, Partial<EstimateInput>, Partial<EstimateInput>, string][] = [
-    ["mureka-v9.5-generate-song", "wavespeed", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "WaveSpeed prompt"],
     ["krea-v2-large-text-to-image", "wavespeed", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "5000"],
     ["minimax-h3-reference-to-video", "wavespeed", { prompt: "a fox", params: { duration: 5, audios: [URL_A] }, durations: { audios: [5] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A], images: [URL_A] }, durations: { audios: [5] } }, "alone"],
     ["infinitetalk-video-to-video", "wavespeed", { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [601] } }, { prompt: "talk", params: { audio: URL_A, video: URL_A }, durations: { audio: [600] } }, "10 minutes"],
@@ -510,7 +509,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A }, durations: { audio: [2.9] } }, { prompt: "rain", params: { audio: URL_A }, durations: { audio: [3] } }, "at least 3 seconds"],
     ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 0.9 }, durations: { audio: [5] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 1 }, durations: { audio: [5] } }, "min 1000"],
     ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 58 }, durations: { audio: [3] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 57 }, durations: { audio: [3] } }, "max 57000"],
-    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 11 }, durations: { audio: [50] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 10 }, durations: { audio: [50] } }, "capped at 60 seconds"],
+    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 11 }, durations: { audio: [50] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 10 }, durations: { audio: [50] } }, "Mirelo extend: the result is capped at 60 seconds"],
     ["sfx-1.6-extend-audio", { prompt: "x".repeat(5001), params: { audio: URL_A }, durations: { audio: [5] } }, { prompt: "x".repeat(5000), params: { audio: URL_A }, durations: { audio: [5] } }, "5000"],
     ["recraft-v4-style-text-to-image", { prompt: "x".repeat(10001) }, { prompt: "x".repeat(10000) }, "10,000"],
     ["pro-upscaler", { params: { image: URL_A, creativity: 11 } }, { params: { image: URL_A, creativity: 10 } }, "between -10 and 10"],
@@ -597,7 +596,6 @@ describe("the limits a reseller states beyond its schema", () => {
   // Each entry: a model on an upstream whose own reject, stricter than the vendor's limit on the same field, refuses the
   // nearest run the vendor takes, keyed "<model> on <upstream>", with that reject's exact reason.
   const STRICTER: Readonly<Record<string, string>> = {
-    "mureka-v9.5-generate-song on wavespeed": "WaveSpeed prompt: Official limit: up to 1024 characters",
     "kling-v3.0-4k-text-to-video on fal": "fal prompt maxLength 2500",
     "kling-video-o3-4k-image-to-video on fal": "fal prompt maxLength 2500",
     "kling-video-o3-4k-image-to-video on sandbase": "SandBase prompt maxLength 2500",

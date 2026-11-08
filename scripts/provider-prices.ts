@@ -23,7 +23,8 @@
  * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
  * against WaveSpeed's own price for sample params, writing what WaveSpeed
  * charged for each sample to `packages/provider/test/fixtures/three-d-prices.json`
- * (`three-d-prices.test.ts` prices the samples against it); for every other model it
+ * (`three-d-prices.test.ts` prices the samples against it), which is left as it
+ * is when any sample could not be priced; for every other model it
  * lists where the live base price differs from the binding's, and where the
  * binding's price for the catalog's default run differs from what WaveSpeed's
  * `/model/price` charges for it (`discounted_price`), without rewriting it.
@@ -53,9 +54,9 @@ import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
 import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
-import { servedDocuments } from "./provider-endpoint-docs.mjs";
-import { openRouterPrices } from "./provider-llm-prices.mjs";
-import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
+import { servedDocuments, syncFalBindings } from "./provider-endpoint-docs.mjs";
+import { syncedLlmYaml } from "./provider-llm-prices.mjs";
+import { priceFactDrift, statedPrice, threeDSampleCheck } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
@@ -234,7 +235,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 
   const differences: string[] = [];
-  const threeDCharged = new Map<string, { inputs: Record<string, unknown>; usd: number }[]>();
+  const samples: { id: string; model: string; inputs: Record<string, unknown>; usd: number | string; local: number }[] = [];
   for (const { modality, model, index, binding } of list) {
     const live = byId.get(binding.model_id);
     const threeD = THREE_D[binding.model_id];
@@ -248,10 +249,8 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
           usd = `not priced (${(error as Error).message.slice(0, 120)})`;
         }
         const local = await priceUsd({ basePrice: threeD.base_price, formula: threeD.formula, discountRate: 100 }, inputs, {});
-        const line = `${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}`;
-        process.stdout.write(`${line}\n`);
-        if (typeof usd !== "number" || Math.abs(usd - local) > 1e-9) problems.push(`price mismatch: ${line}`);
-        if (typeof usd === "number") threeDCharged.set(binding.model_id, [...(threeDCharged.get(binding.model_id) ?? []), { inputs, usd }]);
+        process.stdout.write(`${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}\n`);
+        samples.push({ id: binding.model_id, model, inputs, usd, local });
       }
       continue;
     }
@@ -266,8 +265,11 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
       if (Math.round(usd * MICRO) !== pricing.base_price) differences.push(`${model} ${endpoint}: live base_price ${Math.round(usd * MICRO)}, binding ${pricing.base_price}`);
     }
   }
-  // Written whole each run, in THREE_D order, so a sample dropped from THREE_D leaves the fixture with it.
-  writeJson(THREE_D_PRICES, Object.fromEntries(Object.keys(THREE_D).flatMap((id) => (threeDCharged.has(id) ? [[id, threeDCharged.get(id)]] : []))));
+  // Written whole each run, in THREE_D order, so a sample dropped from THREE_D leaves the fixture with it; left as it is
+  // when a sample went unpriced, so a failed price call does not drop that sample's check.
+  const checked = threeDSampleCheck(samples, Object.keys(THREE_D));
+  problems.push(...checked.problems);
+  if (checked.charged !== undefined) writeJson(THREE_D_PRICES, checked.charged);
   process.stdout.write(`${upstream}: ${differences.length} live base prices differ from the binding's\n${differences.map((d) => `  ${d}\n`).join("")}`);
 
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
@@ -325,39 +327,28 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
   const key = keyOf(upstream);
   if (key === undefined) return;
   let written = 0;
-  for (const { modality, model, index, binding } of list) {
-    const endpoints = [binding.model_id, ...(binding.extra_steps ?? []).map((s) => s.endpoint)];
-    const read = await servedDocuments(model, endpoints, (endpoint) => json(`${FAL_OPENAPI}?endpoint_id=${endpoint}`, {}, { absentOn404: true }), "fal no longer serves");
-    problems.push(...read.problems);
-    for (const [endpoint, doc] of read.served) {
+  problems.push(...await syncFalBindings(list, {
+    fetchDoc: (endpoint) => json(`${FAL_OPENAPI}?endpoint_id=${endpoint}`, {}, { absentOn404: true }),
+    fetchPrice: async (endpoint) => at(await json(`${FAL_PRICING}?endpoint_id=${endpoint}`, { headers: { Authorization: `Key ${key}` } }, { absentOn404: true }), "prices") as { endpoint_id: string; unit_price: number; unit: string }[] | undefined,
+    onDoc: ({ model }, endpoint, doc) => {
       const source = `${FAL_OPENAPI}?endpoint_id=${endpoint}`;
       const input = at(doc, "paths", `/${endpoint}`, "post", "requestBody", "content", "application/json", "schema");
       const output = at(doc, "paths", `/${endpoint}/requests/{request_id}`, "get", "responses", "200", "content", "application/json", "schema");
       if (input === undefined) {
         problems.push(`${model}: fal's OpenAPI for ${endpoint} has no input schema`);
-        continue;
+        return;
       }
       writeSnapshot(upstream, endpoint, { ...snapshotOf(input, { root: doc, source }), outputs: snapshotOf(output, { root: doc, source }).fields });
       written += 1;
-    }
-    const priced: [string, (string | number)[]][] = [
-      [binding.model_id, ["pricing"]],
-      ...(binding.extra_steps ?? []).flatMap((s, i): [string, (string | number)[]][] => (s.pricing === undefined ? [] : [[s.endpoint, ["extra_steps", i, "pricing"]]])),
-    ];
-    for (const [endpoint, path] of priced) {
-      const price = (at(await json(`${FAL_PRICING}?endpoint_id=${endpoint}`, { headers: { Authorization: `Key ${key}` } }), "prices") as { endpoint_id: string; unit_price: number; unit: string }[])
-        .find((p) => p.endpoint_id === endpoint);
-      if (price === undefined) {
-        problems.push(`${model}: fal has no price for ${endpoint}`);
-        continue;
-      }
+    },
+    onPrice: ({ modality, model, index }, endpoint, path, price) => {
       process.stdout.write(`${model} ${endpoint} on ${upstream}: ${price.unit_price} USD per ${price.unit}\n`);
       // A base price in a new unit would be multiplied by the quantity the formula counts in the old one.
       const source = `${FAL_PRICING}?endpoint_id=${endpoint}`;
-      if (!priceFactKept(upstream, endpoint, `${model} ${endpoint} on ${upstream}: unit`, "unit", { source, unit: price.unit })) continue;
+      if (!priceFactKept(upstream, endpoint, `${model} ${endpoint} on ${upstream}: unit`, "unit", { source, unit: price.unit })) return;
       docs.get(modality)!.setIn(["models", model, "upstreams", index, ...path, "base_price"], Math.round(price.unit_price * MICRO));
-    }
-  }
+    },
+  }));
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 }
 
@@ -407,23 +398,17 @@ async function syncSandBase(upstream: string, list: typeof bindings): Promise<vo
  * @throws {Error} When OpenRouter's endpoints list answers other than 2xx or 404.
  */
 async function syncOpenRouterPrices(): Promise<void> {
-  // Values are read through the schema, as createProvider reads them; the file is written back through `doc`, comments kept.
-  const doc = parseDocument(readFileSync(LLM, "utf8"));
-  const { llm } = parseProviderConfig({ upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: {} }, llm: doc.toJS() as ProviderConfigInput["llm"] });
-  const ids = new Map(Object.keys(llm.prices).map((model) => [model, llm.vendor_ids[model]?.openrouter ?? model]));
-  type Endpoint = { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } };
-  const endpoints = new Map<string, Endpoint[]>();
-  for (const id of new Set(ids.values())) {
+  const before = readFileSync(LLM, "utf8");
+  // Values are read through the schema, as createProvider reads them; the file is written back with its comments.
+  const synced = await syncedLlmYaml(
+    before,
+    (raw) => parseProviderConfig({ upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: {} }, llm: raw as ProviderConfigInput["llm"] }).llm,
     // A model OpenRouter does not list answers 404; openRouterPrices names it.
-    const answer = await json(`${OPENROUTER_MODELS}/${id}/endpoints`, {}, { absentOn404: true });
-    if (answer !== undefined) endpoints.set(id, at(answer, "data", "endpoints") as Endpoint[]);
-  }
-  const { prices, problems: unpriced } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, llm.openrouter_backends);
-  problems.push(...unpriced);
-  doc.set("openrouter_prices", doc.createNode(prices));
-  const text = yamlText(doc, { lineWidth: 0 });
-  if (text !== readFileSync(LLM, "utf8")) writeFileSync(LLM, text);
-  process.stdout.write(`openrouter: ${Object.keys(prices).length} of ${ids.size} token prices written\n`);
+    async (id) => at(await json(`${OPENROUTER_MODELS}/${id}/endpoints`, {}, { absentOn404: true }), "data", "endpoints") as object[] | undefined,
+  );
+  problems.push(...synced.problems);
+  if (synced.text !== before) writeFileSync(LLM, synced.text);
+  process.stdout.write(`openrouter: ${synced.priced} of ${synced.asked} token prices written\n`);
 }
 
 const SYNC: Readonly<Record<string, (upstream: string, list: typeof bindings) => Promise<void>>> = { wavespeed: syncWaveSpeed, fal: syncFal, sandbase: syncSandBase };

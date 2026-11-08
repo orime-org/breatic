@@ -3,7 +3,8 @@
 
 /**
  * How `scripts/provider-prices.ts` reads each bound endpoint's document from fal and SandBase (inner#1743): an
- * endpoint the upstream no longer serves answers 404, which is listed as a problem while the sync reads the rest.
+ * endpoint the upstream no longer serves answers 404, which is listed as a problem while the sync reads the rest;
+ * fal's prices are asked only for the endpoints it still serves.
  */
 
 /**
@@ -27,4 +28,40 @@ export async function servedDocuments(model, endpoints, fetchDoc, gone) {
     else served.push([endpoint, doc]);
   }
   return { served, problems };
+}
+
+/**
+ * Sync fal's bindings one after another: each endpoint's document, then the price of each priced endpoint fal still
+ * serves (the binding's own and each extra step with a `pricing`). An endpoint fal answers 404 for, or states no price
+ * for, is a problem, and the next binding is read all the same.
+ * @template {{ model: string; binding: { model_id: string; extra_steps?: readonly { endpoint: string; pricing?: unknown }[] } }} E
+ * @param {readonly E[]} list - The fal bindings, each with its model.
+ * @param {object} io - How the sync reads fal and writes what it read.
+ * @param {(endpoint: string) => Promise<unknown>} io.fetchDoc - Reads one endpoint's OpenAPI document; undefined when fal answers 404.
+ * @param {(endpoint: string) => Promise<readonly { endpoint_id: string; unit_price: number; unit: string }[] | undefined>} io.fetchPrice - Reads fal's prices for one endpoint; undefined when fal answers 404.
+ * @param {(entry: E, endpoint: string, doc: unknown) => unknown} io.onDoc - Writes one served endpoint's document.
+ * @param {(entry: E, endpoint: string, path: (string | number)[], price: { endpoint_id: string; unit_price: number; unit: string }) => unknown} io.onPrice - Writes one endpoint's price at its path in the binding.
+ * @returns {Promise<string[]>} The problems.
+ * @throws {Error} When a read fails other than with a 404.
+ */
+export async function syncFalBindings(list, { fetchDoc, fetchPrice, onDoc, onPrice }) {
+  /** @type {string[]} */
+  const problems = [];
+  for (const entry of list) {
+    const { model, binding } = entry;
+    const steps = binding.extra_steps ?? [];
+    const read = await servedDocuments(model, [binding.model_id, ...steps.map((s) => s.endpoint)], fetchDoc, "fal no longer serves");
+    problems.push(...read.problems);
+    for (const [endpoint, doc] of read.served) await onDoc(entry, endpoint, doc);
+    const served = new Set(read.served.map(([endpoint]) => endpoint));
+    /** @type {[string, (string | number)[]][]} */
+    const priced = [[binding.model_id, ["pricing"]], ...steps.flatMap((s, i) => (s.pricing === undefined ? [] : [[s.endpoint, ["extra_steps", i, "pricing"]]]))];
+    for (const [endpoint, path] of priced) {
+      if (!served.has(endpoint)) continue;
+      const price = (await fetchPrice(endpoint))?.find((p) => p.endpoint_id === endpoint);
+      if (price === undefined) problems.push(`${model}: fal has no price for ${endpoint}`);
+      else await onPrice(entry, endpoint, path, price);
+    }
+  }
+  return problems;
 }

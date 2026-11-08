@@ -78,9 +78,6 @@ models:
               base_price: 7500000
               formula: ""
               discount_rate: 100
-        rejects:
-          - when: $length(prompt) > 1024
-            reason: "WaveSpeed prompt: Official limit: up to 1024 characters"
         pricing:
           kind: formula
           base_price: 225000
@@ -403,7 +400,7 @@ models:
         reason: "Mirelo sfx-1.6 extend append_duration_ms: max 57000"
         source: https://mirelo.ai/api-docs.md
       - when: get_duration(audio) + append_duration > 60
-        reason: "Mirelo extend: your source must be at least 3 seconds long, and the result is capped at 60 seconds"
+        reason: "Mirelo extend: the result is capped at 60 seconds"
         source: https://api.mirelo.ai/v3/openapi.json
       - when: $length(prompt) > 5000
         reason: Mirelo sfx-1.6 max_prompt_chars 5000

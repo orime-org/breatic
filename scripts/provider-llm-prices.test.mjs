@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { openRouterPrices } from "./provider-llm-prices.mjs";
+import { openRouterPrices, syncedLlmYaml } from "./provider-llm-prices.mjs";
 
 /** One endpoint of OpenRouter's `/api/v1/models/{author}/{slug}/endpoints`: USD per token, as strings. */
 const endpoint = (tag, prompt, completion, quantization = "fp8") => ({ tag, quantization, pricing: { prompt, completion, input_cache_read: "0.0000001" } });
@@ -64,4 +64,27 @@ test("ranks a pinned model only over the endpoints of the providers it is pinned
   const { prices, problems } = openRouterPrices(endpoints, new Map([["m", "m"]]), TAKEN, { m: { only: ["google-vertex"], allow_fallbacks: false } });
   assert.deepEqual(prices, { m: { input_cache_miss_per_mtok: 0.3, output_per_mtok: 3 } });
   assert.deepEqual(problems, []);
+});
+
+test("rewrites openrouter_prices from the values the schema reads, its defaults filled, and keeps the file's comments", async () => {
+  const text = "# Where LLM calls go.\nprices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\nvendor_ids:\n  m:\n    openrouter: vendor/m\n";
+  const asked = [];
+  // The schema fills openrouter_quantizations, which the file leaves out, and nothing else: a raw read has none.
+  const parse = (raw) => ({ openrouter_backends: {}, ...raw, openrouter_quantizations: ["fp8"] });
+  const synced = await syncedLlmYaml(text, parse, async (id) => {
+    asked.push(id);
+    return [endpoint("cheap/fp4", "0.0000001", "0.0000002", "fp4"), endpoint("kept/fp8", "0.000001", "0.000002")];
+  });
+  assert.deepEqual(asked, ["vendor/m"]);
+  assert.deepEqual(synced.problems, []);
+  assert.equal(synced.asked, 1);
+  assert.equal(synced.priced, 1);
+  assert.match(synced.text, /^# Where LLM calls go\.\n/);
+  assert.match(synced.text, /openrouter_prices:\n  m:\n    input_cache_miss_per_mtok: 1\n    output_per_mtok: 2\n/);
+});
+
+test("names a model OpenRouter answers 404 for", async () => {
+  const synced = await syncedLlmYaml("prices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n", (raw) => ({ vendor_ids: {}, openrouter_backends: {}, ...raw, openrouter_quantizations: ["fp8"] }), async () => undefined);
+  assert.equal(synced.priced, 0);
+  assert.deepEqual(synced.problems, ["m: OpenRouter lists no endpoint of m"]);
 });

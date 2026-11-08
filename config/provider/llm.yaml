@@ -61,27 +61,31 @@ openrouter_backends:
     allow_fallbacks: false
 prices:
   deepseek/deepseek-v4-pro:
-    input_cache_hit_per_mtok: 0.044
-    input_cache_miss_per_mtok: 1.32
-    output_per_mtok: 3.96
+    - input_cache_hit_per_mtok: 0.044
+      input_cache_miss_per_mtok: 1.32
+      output_per_mtok: 3.96
   deepseek/deepseek-v4.1-flash-1017:
-    input_cache_hit_per_mtok: 0.006
-    input_cache_miss_per_mtok: 0.3
-    output_per_mtok: 1.2
+    - input_cache_hit_per_mtok: 0.006
+      input_cache_miss_per_mtok: 0.3
+      output_per_mtok: 1.2
   anthropic/claude-opus-5.5:
-    input_cache_hit_per_mtok: 0.2
-    input_cache_miss_per_mtok: 4
-    input_cache_write_5m_per_mtok: 5
-    input_cache_write_1h_per_mtok: 8
-    output_per_mtok: 20
+    - input_cache_hit_per_mtok: 0.2
+      input_cache_miss_per_mtok: 4
+      input_cache_write_5m_per_mtok: 5
+      input_cache_write_1h_per_mtok: 8
+      output_per_mtok: 20
   google/gemini-2.5-flash:
-    input_cache_hit_per_mtok: 0.03
-    input_cache_miss_per_mtok: 0.3
-    output_per_mtok: 2.5
+    - input_cache_hit_per_mtok: 0.03
+      input_cache_miss_per_mtok: 0.3
+      output_per_mtok: 2.5
   google/gemini-3.8-flash:
-    input_cache_hit_per_mtok: 0.075
-    input_cache_miss_per_mtok: 0.75
-    output_per_mtok: 3.75
+    - input_cache_hit_per_mtok: 0.075
+      input_cache_miss_per_mtok: 0.75
+      output_per_mtok: 3.75
+    - from: "2027-01-01T00:00:00Z"
+      input_cache_hit_per_mtok: 0.15
+      input_cache_miss_per_mtok: 1.5
+      output_per_mtok: 7.5
 gemini_inline_max_bytes: 20000000
 gemini_file_poll_ms: 5000
 openrouter_quantizations:

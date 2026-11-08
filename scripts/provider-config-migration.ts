@@ -122,11 +122,6 @@ const WAVESPEED: Readonly<Record<string, {
   "minimax-h3-reference-to-video": {
     rejects: [{ when: "$exists(reference_audios) and $not($exists(reference_images) or $exists(reference_videos))", reason: "WaveSpeed reference_audios: Audio cannot be provided alone" }],
   },
-  "mureka-v9.5-generate-song": {
-    rejects: [
-      { when: "$length(prompt) > 1024", reason: "WaveSpeed prompt: Official limit: up to 1024 characters" },
-    ],
-  },
   "krea-v2-large-text-to-image": { rejects: [{ when: "$length(prompt) > 5000", reason: "WaveSpeed prompt: Supports 1-5000 characters" }] },
   "gemini-omni-1.1-flash-reference-to-video": { mentions: { images: "<IMAGE_REF_{i}>", videos: "<VIDEO_REF_{i}>" } },
   "infinitetalk-video-to-video": { rejects: [{ when: "get_duration(audio) > 600", reason: "WaveSpeed audio: Max clip length per job: 10 minutes" }] },
@@ -390,12 +385,17 @@ const usagePricing = yaml<{ models: Record<string, Record<string, number>> }>("c
 
 /**
  * Direct prices of models that usage-pricing.yaml does not list because today
- * they are reached through OpenRouter only. Gemini 3.8 Flash reads media for
- * the element step; Google's paid-tier price through 2026-12-31 (it doubles
- * on 2027-01-01): https://ai.google.dev/gemini-api/docs/pricing
+ * they are reached through OpenRouter only, each a list whose later entries
+ * take effect at their `from`. Gemini 3.8 Flash reads media for the element
+ * step; Google's paid-tier price is "$0.75 through December 31, 2026. $1.50
+ * starting January 1, 2027." (input; output and cached input double the same
+ * way): https://ai.google.dev/gemini-api/docs/pricing
  */
-const DIRECT_PRICES: Readonly<Record<string, Record<string, number>>> = {
-  "google/gemini-3.8-flash": { input_cache_hit_per_mtok: 0.075, input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 },
+const DIRECT_PRICES: Readonly<Record<string, readonly Record<string, number | string>[]>> = {
+  "google/gemini-3.8-flash": [
+    { input_cache_hit_per_mtok: 0.075, input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 },
+    { from: "2027-01-01T00:00:00Z", input_cache_hit_per_mtok: 0.15, input_cache_miss_per_mtok: 1.5, output_per_mtok: 7.5 },
+  ],
 };
 const flash = capture(llmSource, /modelId === "([^"]+)" \? "[^"]+"/);
 const flashOnDeepseek = capture(llmSource, /modelId === "[^"]+" \? "([^"]+)"/);
@@ -426,7 +426,7 @@ uploaded file is asked about until it is ready.
   openrouter_backends: {
     [describe.model]: { only: [capture("packages/domain/src/understand/types.ts", /backend: "([^"]+)"/)], allow_fallbacks: false },
   },
-  prices: { ...usagePricing.models, ...DIRECT_PRICES },
+  prices: { ...Object.fromEntries(Object.entries(usagePricing.models).map(([model, price]) => [model, [price]])), ...DIRECT_PRICES },
   gemini_inline_max_bytes: 20_000_000,
   gemini_file_poll_ms: 5_000,
 }));

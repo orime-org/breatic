@@ -33,3 +33,30 @@ export function statedPrice(answer) {
   const usd = typeof price === "number" || (typeof price === "string" && price.trim() !== "") ? Number(price) : Number.NaN;
   return Number.isFinite(usd) ? usd : `no discounted_price (${String(JSON.stringify(data ?? answer)).slice(0, 120)})`;
 }
+
+/**
+ * What WaveSpeed's charges for the 3D samples decide: the content of `three-d-prices.json`, by model id in fixture
+ * order, or none when any sample went unpriced (the fixture is then left as it is, so no sample's check is lost to a
+ * failed price call), and the problems: each unpriced sample, and each charge our formula does not match.
+ * @param {readonly { id: string; model: string; inputs: Record<string, unknown>; usd: number | string; local: number }[]} samples - Each sample: its WaveSpeed model id, our model, its inputs, WaveSpeed's charge (or why there is none) and our formula's price.
+ * @param {readonly string[]} order - The 3D model ids in the fixture's order.
+ * @returns {{ charged: Record<string, { inputs: Record<string, unknown>; usd: number }[]> | undefined; problems: string[] }} The fixture's content or none, and the problems.
+ */
+export function threeDSampleCheck(samples, order) {
+  /** @type {string[]} */
+  const problems = [];
+  /** @type {Map<string, { inputs: Record<string, unknown>; usd: number }[]>} */
+  const charged = new Map();
+  let unpriced = false;
+  for (const { id, model, inputs, usd, local } of samples) {
+    const line = `${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}`;
+    if (typeof usd !== "number") {
+      unpriced = true;
+      problems.push(`three-d-prices.json not rewritten: ${line}`);
+      continue;
+    }
+    if (Math.abs(usd - local) > 1e-9) problems.push(`price mismatch: ${line}`);
+    charged.set(id, [...(charged.get(id) ?? []), { inputs, usd }]);
+  }
+  return { charged: unpriced ? undefined : Object.fromEntries(order.flatMap((id) => (charged.has(id) ? [[id, charged.get(id)]] : []))), problems };
+}

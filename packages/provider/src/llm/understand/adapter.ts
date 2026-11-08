@@ -11,6 +11,7 @@ import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import { HttpStatus } from "@provider/http/errors.js";
 import { answerText, deliver, isSuccess, parsed, type OutgoingRequest } from "@provider/http/request.js";
+import type { VendorOptions } from "@provider/llm/vendors.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
 export interface UploadedFile {
@@ -37,7 +38,7 @@ export interface UnderstandCall {
   media: { bytes: Uint8Array; contentType: string }[];
   maxOutputTokens: number;
   /** OpenRouter's `provider` object for the call, sent as given: the model's backend pin and, for a cheapest call, the price sort. */
-  provider?: Record<string, unknown>;
+  provider?: VendorOptions;
   deadlineAt: number;
   signal: AbortSignal;
   /** The size past which Gemini takes media through its Files API, in bytes. */

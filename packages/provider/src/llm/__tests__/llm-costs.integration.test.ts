@@ -109,13 +109,13 @@ describe("costOf by the price table, to the cent (critical path)", () => {
    */
   const priced = (cacheTtl: "5m" | "1h"): unknown => {
     const config = llmConfig(fakes);
-    config.llm!.prices!["anthropic/claude-priced"] = {
+    config.llm!.prices!["anthropic/claude-priced"] = [{
       input_cache_miss_per_mtok: 3,
       input_cache_hit_per_mtok: 0.3,
       input_cache_write_5m_per_mtok: 3.75,
       input_cache_write_1h_per_mtok: 6,
       output_per_mtok: 15,
-    };
+    }];
     const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
     return provider.llm.costOf({
       model: "anthropic/claude-priced",
@@ -136,6 +136,51 @@ describe("costOf by the price table, to the cent (critical path)", () => {
 
   it("charges the write at the one-hour price for a one-hour cache", () => {
     expect((priced("1h") as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 6 + 10 * 15) / 1_000_000, 12);
+  });
+});
+
+describe("a direct price that changes on a stated date (critical path)", () => {
+  const CHANGES_AT = Date.parse("2027-01-01T00:00:00Z");
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * The shipped LLM config with Google's Gemini 3.8 Flash price, which doubles on 2027-01-01.
+   * @returns The raw configuration.
+   */
+  const dated = (): ReturnType<typeof llmConfig> => {
+    const config = llmConfig(fakes);
+    config.llm!.prices!["google/gemini-3.8-flash"] = [
+      { input_cache_hit_per_mtok: 0.075, input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 },
+      { from: "2027-01-01T00:00:00Z", input_cache_hit_per_mtok: 0.15, input_cache_miss_per_mtok: 1.5, output_per_mtok: 7.5 },
+    ];
+    return config;
+  };
+
+  it.each([
+    [CHANGES_AT - 1, (11 * 0.75 + 3 * 3.75) / 1_000_000],
+    [CHANGES_AT, (11 * 1.5 + 3 * 7.5) / 1_000_000],
+  ])("books a direct Gemini call finished at %i at the price in effect then", (at, usd) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: at });
+    const provider = createProvider({ config: dated(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+    const cost = provider.llm.costOf({ model: "google/gemini-3.8-flash", usage, providerMetadata: { breatic: { upstream: "google" } } });
+    expect(cost).toMatchObject({ state: "known", source: "price_table" });
+    expect((cost as { usd: number }).usd).toBeCloseTo(usd, 12);
+  });
+
+  it.each([
+    [CHANGES_AT - 1, "google"],
+    [CHANGES_AT, "openrouter"],
+  ])("ranks a cheapest call at %i by the direct price in effect then", async (at, first) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: at });
+    const config = dated();
+    config.llm!.openrouter_prices = { "google/gemini-3.8-flash": { input_cache_miss_per_mtok: 1, output_per_mtok: 5 } };
+    const provider = createProvider({ config, keyOf: (name) => ({ GOOGLE_API_KEY: "g", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false }, { mode: "cheapest" });
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe(first);
   });
 });
 
@@ -669,12 +714,12 @@ describe("cheapest mode for LLM calls", () => {
   };
 
   it("serves OpenRouter first when its unit price for the model is below the direct one", async () => {
-    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
+    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]![0]!;
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok / 2, output_per_mtok: direct.output_per_mtok })).toBe("openrouter");
   });
 
   it("asks OpenRouter to try its endpoints cheapest first, the endpoint its unit price is taken from", async () => {
-    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
+    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]![0]!;
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok / 2, output_per_mtok: direct.output_per_mtok })).toBe("openrouter");
     expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations: ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"] });
   });
@@ -697,13 +742,13 @@ describe("cheapest mode for LLM calls", () => {
   });
 
   it("serves the direct upstream first when OpenRouter's unit price is higher", async () => {
-    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
+    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]![0]!;
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok, output_per_mtok: direct.output_per_mtok * 2 })).toBe("deepseek");
     expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 
   it("keeps the weight order between equal unit prices", async () => {
-    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]!;
+    const direct = llmConfig(fakes).llm!.prices!["deepseek/deepseek-v4-pro"]![0]!;
     expect(await cheapestOn({ input_cache_miss_per_mtok: direct.input_cache_miss_per_mtok, output_per_mtok: direct.output_per_mtok })).toBe("deepseek");
   });
 
