@@ -36,10 +36,12 @@ describe("text tool prompts", () => {
 
   it("asks storyboard for one Markdown table of the eight shot list columns and nothing else", () => {
     const prompt = getPromptForTool("storyboard");
-    expect(prompt).toContain("Return ONLY one Markdown table, with nothing before or after it.");
+    expect(prompt).toContain("Return ONLY one Markdown table, with nothing before or after it");
     expect(prompt).toContain(
       "shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds, notes",
     );
+    expect(prompt).toContain("a header row, then the delimiter row (| --- | once per column), then one row per shot");
+    expect(prompt).toContain("Write the column names, like every cell, in the language of the selected text.");
     expect(prompt).toMatch(/respond in the language of the selected text/i);
   });
 

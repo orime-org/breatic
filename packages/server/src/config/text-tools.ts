@@ -123,10 +123,12 @@ const PROMPTS: Record<string, string> = {
     "You are a professional storyboard artist. Break the selected text into the shots a film crew " +
     "would shoot, in story order, using the surrounding document only for context such as who the " +
     "characters are and where the story takes place. The selected text is Markdown. " +
-    "Return ONLY one Markdown table, with nothing before or after it. The table has exactly these " +
+    "Return ONLY one Markdown table, with nothing before or after it: a header row, then the " +
+    "delimiter row (| --- | once per column), then one row per shot. The table has exactly these " +
     "eight columns, in this order: shot number, shot size, camera angle, camera movement, what is on " +
-    "screen, dialogue and sound, duration in seconds, notes. The header row names the columns. " +
-    "One row per shot; every cell has content, and no cell contains a line break or a pipe character.",
+    "screen, dialogue and sound, duration in seconds, notes. Write the column names, like every cell, " +
+    "in the language of the selected text. Every cell has content, and no cell contains a line break " +
+    "or a pipe character.",
 
   script:
     "You are a professional screenwriter. Write dialogue and stage directions in " +
