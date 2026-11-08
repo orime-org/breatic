@@ -129,6 +129,17 @@ describe("bindLater", () => {
     expect(await sql`select 1 from referral_bindings where user_id = ${userId}`).toHaveLength(1);
   });
 
+  it("still expires the other full-price checkouts when one expire fails", async () => {
+    const { code } = await promoter();
+    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
+    stripe.checkout.sessions.list.mockResolvedValue({
+      data: [{ id: "cs_team", mode: "subscription", discounts: [] }, { id: "cs_pro", mode: "subscription", discounts: [] }],
+    });
+    stripe.checkout.sessions.expire.mockRejectedValueOnce(new Error("Stripe timeout"));
+    expect(await bindLater(userId, code)).toEqual({ ok: true });
+    expect(stripe.checkout.sessions.expire.mock.calls.map((c) => c[0])).toEqual(["cs_team", "cs_pro"]);
+  });
+
   it("touches no checkout when the code is refused", async () => {
     const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
     expect(await bindLater(userId, "NOSUCHCODE")).toEqual({ ok: false, reason: "invalid_code" });
