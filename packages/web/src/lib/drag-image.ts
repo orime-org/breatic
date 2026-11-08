@@ -3,8 +3,9 @@
 
 /**
  * The image that follows the pointer while content is dragged out of an
- * editor: the prompt box, the Agent input and the document body all put
- * theirs on the page here, so each is drawn the same way (inner#1515).
+ * editor: the prompt box, the Agent input, a canvas text node and the
+ * document body all put theirs on the page here, so each is drawn the same
+ * way (inner#1515).
  *
  * It is drawn at full strength, as every editor that draws its own drag image
  * does (BlockNote, Tiptap's drag handle, Lexical, Plate, AFFiNE, Outline,

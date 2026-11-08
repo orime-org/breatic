@@ -616,7 +616,8 @@ body {
 
   /* ---- A drag image ----
      The image that follows the pointer while content is dragged out of the
-     prompt box, the Agent input or the document body (`lib/drag-image.ts`).
+     prompt box, the Agent input, a canvas text node or the document body
+     (`lib/drag-image.ts`).
      A document preview is a copy of the body's own content inside copies of
      the elements it sits in in the body (`document-preview-styles.ts`), so it
      already has the body's type and spacing.
