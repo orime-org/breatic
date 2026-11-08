@@ -40,7 +40,8 @@ const NEVER_IN_URL = new Set('"<>`{}|^');
 /**
  * The ASCII punctuation a URL may hold (RFC 3986 reserved and unreserved
  * marks, and `%`). A backslash before one of them is a Markdown escape, which
- * turndown writes for `(`, `)` and `_`; before anything else it ends the link.
+ * turndown writes for `(`, `)` and `_`, and two backslashes before one are
+ * that escape JSON-encoded; before anything else a backslash ends the link.
  */
 const URL_PUNCTUATION = new Set("-._~:/?#[]@!$&'()*+,;=%");
 
@@ -63,6 +64,12 @@ function readLink(text: string, from: number): { link: string | null; end: numbe
     const char = text[at] as string;
     if (char === "\\") {
       const next = text[at + 1];
+      const after = text[at + 2];
+      if (next === "\\" && after !== undefined && URL_PUNCTUATION.has(after)) {
+        link += after;
+        at += 3;
+        continue;
+      }
       if (next === undefined || !URL_PUNCTUATION.has(next)) break;
       link += next;
       at += 2;
@@ -88,7 +95,7 @@ function countOf(text: string, char: string): number {
 }
 
 /**
- * Drop the punctuation a sentence put after a link: trailing marks, and a
+ * Drop the punctuation a sentence put after a link: trailing marks, a
  * closing parenthesis that closes nothing opened inside the link (GFM).
  * @param link - The link as read.
  * @returns The link.
