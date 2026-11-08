@@ -146,9 +146,9 @@ function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
     methods[method] = (options: unknown): Promise<unknown> => {
       const name = docNameOf(doc);
       if (name === null) return write(options);
-      const { phase, overCeiling } = readDocSize(name);
+      const { phase } = readDocSize(name);
       // A full Space deletes the comment's map, or the whole thread when it was the last, without `updatedAt`.
-      if (method === 'deleteComment' && (phase === 'full' || overCeiling)) {
+      if (method === 'deleteComment' && phase === 'full') {
         const target = options as CommentDelete;
         let entry: CommentEntry;
         try {

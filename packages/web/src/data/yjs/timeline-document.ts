@@ -21,7 +21,7 @@ export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords 
  * @returns Its canonical name, or an empty name.
  * @throws {never} Never.
  */
-export function timelineSizeName(doc: Y.Doc): string {
+function timelineSizeName(doc: Y.Doc): string {
   return docNameOf(doc) ?? '';
 }
 
@@ -34,8 +34,8 @@ export function timelineSizeName(doc: Y.Doc): string {
  * @throws {never} Never.
  */
 export function timelineSizeHolds(name: string): boolean {
-  const { phase, overCeiling } = readDocSize(name);
-  return phase === 'full' || phase === 'resyncing' || overCeiling;
+  const { phase } = readDocSize(name);
+  return phase === 'full' || phase === 'resyncing';
 }
 
 /**

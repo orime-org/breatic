@@ -54,7 +54,7 @@ export type HistoryCommand = 'undo' | 'redo';
 
 /**
  * What became of a posted proposal: placed, failed, or refused by the size
- * cap because the Space is full or has only `room` bytes left (inner#1790).
+ * cap because the Space is full, over its ceiling or resyncing (inner#1790).
  */
 export type ProposalOutcome = 'placed' | 'failed' | SpaceRefusal;
 
