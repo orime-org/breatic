@@ -76,7 +76,7 @@ export interface FetchedPage {
   text?: string;
   links: string[];
   index?: number;
-  /** Present and true when the reader cut the page at its byte cap. */
+  /** Present and true when the reader cut the page at its text cap. */
   truncated?: boolean;
 }
 
@@ -194,9 +194,11 @@ function label(name: string, value: string | number | undefined): string[] {
 function renderPage(page: FetchedPage): string {
   const total = page.chars_total ?? 0;
   const end = page.end ?? total;
+  // A page the reader cut at its cap ends where the reading stopped, not where the page does.
+  const ending = page.truncated === true ? "this is the end of what was read" : "this is the end of the page";
   const showing =
     page.next_start === null || page.next_start === undefined
-      ? `characters ${String(page.start ?? 0)} to ${String(end)} of ${String(total)}; this is the end of the page`
+      ? `characters ${String(page.start ?? 0)} to ${String(end)} of ${String(total)}; ${ending}`
       : `characters ${String(page.start ?? 0)} to ${String(end)} of ${String(total)}; ` +
         `to read on, call again with this url and start=${String(page.next_start)}`;
   return [
@@ -208,9 +210,6 @@ function renderPage(page: FetchedPage): string {
     ...label("kind", page.kind),
     ...label("pages", page.pages),
     `chars_total: ${String(total)}`,
-    ...(page.truncated === true
-      ? ["truncated: the reader cut this page at its read limit; the text past chars_total was not read"]
-      : []),
     `showing: ${showing}`,
     "<text>",
     keepInside(page.text ?? ""),
