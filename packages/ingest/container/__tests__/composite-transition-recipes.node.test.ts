@@ -425,12 +425,11 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
   // The erase shape (mask, grid and matte) is pinned in erase-expand-recipes.node.test.ts EC01–EC07.
   it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by presentation time', async () => {
     const displayRect = { x: 16, y: 20, width: 64, height: 36 };
-    // Window 0 covers presentation [0, 8/25), window 1 [4/25, 2/5): an overlap of frames 4 to 7; consumed [0, 6/25) and [6/25, 2/5).
+    // Window 0 covers presentation [0, 8/25), window 1 [4/25, 2/5): an overlap of frames 4 to 7.
     const recipe = {
       kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))],
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(8, 25) } }, { inputId: BACKGROUNDS[1], window: { start: r(4, 25), end: r(2, 5) } }],
-      ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(6, 25) } }, { overlap: r(4, 25), consumed: { start: r(6, 25), end: r(2, 5) } }],
     };
     const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4'), [BACKGROUNDS[0]!]: join(dir, 'bg0.mp4'), [BACKGROUNDS[1]!]: join(dir, 'bg1.mp4') }, [recipe]);
     const video = (await probe(file!)).streams.find(stream => stream.codec_type === 'video')!;
@@ -467,7 +466,6 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
       kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))],
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(2, 5) }, crop: roi }],
-      ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(2, 5) } }],
     };
     const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4'), [BACKGROUNDS[0]!]: join(dir, 'bg-frame.mp4') }, [recipe]);
     const video = (await probe(file!)).streams.find(stream => stream.codec_type === 'video')!;
