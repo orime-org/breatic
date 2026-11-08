@@ -57,6 +57,27 @@ vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
   };
 });
 
+/** Every frame the preview put around a table, and whether it was taken down. */
+const framed = vi.hoisted(() => ({ roots: [] as { unmounted: boolean }[] }));
+
+vi.mock('@web/spaces/document/document-table-nodes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/document/document-table-nodes')>();
+  return {
+    ...actual,
+    frameStaticTable: (table: HTMLTableElement) => {
+      const root = actual.frameStaticTable(table);
+      const seen = { unmounted: false };
+      const unmount = root.unmount.bind(root);
+      root.unmount = () => {
+        seen.unmounted = true;
+        unmount();
+      };
+      framed.roots.push(seen);
+      return root;
+    },
+  };
+});
+
 let toastError: MockInstance<typeof toast.error>;
 
 beforeEach(() => {
@@ -65,6 +86,7 @@ beforeEach(() => {
   // Shown at once unless a case is about the reading pace.
   config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
   calls = fakeStreams(stream);
+  framed.roots = [];
   toastError = vi.spyOn(toast, 'error').mockImplementation(() => '');
 });
 
@@ -869,6 +891,66 @@ describe('the preview', () => {
     expect(preview.querySelector(`.doc-preview-shell.${BODY_SURFACE_CLASS}`)).not.toBeNull();
     expect(preview.querySelectorAll('.bn-block-content').length).toBeGreaterThanOrEqual(2);
     expect(preview.textContent).toContain('item one');
+  });
+
+  it('puts a table in the body\'s own frame, which scrolls it sideways, the block attributes on the frame', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['A line.\n\n| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('table')).not.toBeNull();
+    });
+    const table = preview.querySelector('table')!;
+    const frame = table.closest('.doc-table');
+    expect(frame).not.toBeNull();
+    expect(frame!.getAttribute('data-node-type')).toBe('docTable');
+    expect(table.hasAttribute('data-node-type')).toBe(false);
+    expect(table.closest('.doc-table-scroller [data-radix-scroll-area-viewport]')).not.toBeNull();
+    expect(preview.textContent).toContain('A line.');
+  });
+
+  it('keeps where a table was scrolled to sideways when the preview is drawn again', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const first = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    first.scrollLeft = 120;
+
+    // A change anywhere in the body draws the preview again.
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 2));
+    });
+
+    await waitFor(() => {
+      const now = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]');
+      expect(now).not.toBe(first);
+      expect(now!.scrollLeft).toBe(120);
+    });
+  });
+
+  it('takes down the frames it drew once they are drawn again and once the dialog closes', async () => {
+    const { call } = await polishing();
+    await streams(call, ['| Shot |\n| --- |\n| 1 |']);
+    await streams(call, ['\n| 2 |'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-preview').textContent).toContain('2');
+    });
+    expect(framed.roots.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(framed.roots.every((root) => root.unmounted)).toBe(true);
+    });
   });
 
   it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {

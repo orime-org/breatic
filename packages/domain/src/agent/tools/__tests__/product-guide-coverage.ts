@@ -1068,7 +1068,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.captionReadOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.captionRetained": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.commands.ai_illustrate": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_storyboard": { excluded: REASONS.NOT_OPEN },
   "spaces.document.ai.close": { excluded: REASONS.SCREEN_READER, look: /An X at the top right of the panel/ },
   "spaces.document.ai.customTitle": { described: /titled with the command/ },
   "spaces.document.ai.instruction": { described: /the instruction\s+then stays as a line above the result/ },

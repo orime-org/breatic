@@ -308,7 +308,16 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Hovering a button with no arrow shows its name, greyed or not: "Bold"/);
     expect(doc).not.toMatch(/show no name on hover/);
     expect(doc).toMatch(/The speech bubble starts a comment/);
-    expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
+    expect(doc).toMatch(/One of the AI menu's commands looks available but does nothing yet: .*, for an illustration\./);
+  });
+
+  it("says what the shot list command writes and that it is no longer missing", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(
+      /"Draft a shot list" turns the selection into a shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes/,
+    );
+    expect(doc).toMatch(/Not available yet: the AI command that illustrates a passage/);
+    expect(doc).not.toMatch(/draft a shot list or illustrate/);
   });
 
   it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {

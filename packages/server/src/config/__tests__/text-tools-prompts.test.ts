@@ -34,6 +34,15 @@ describe("text tool prompts", () => {
     expect(getPromptForTool("expand")).toMatch(/several paragraphs/i);
   });
 
+  it("asks storyboard for one Markdown table of the eight shot list columns and nothing else", () => {
+    const prompt = getPromptForTool("storyboard");
+    expect(prompt).toContain("Return ONLY one Markdown table, with nothing before or after it.");
+    expect(prompt).toContain(
+      "shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds, notes",
+    );
+    expect(prompt).toMatch(/respond in the language of the selected text/i);
+  });
+
   it.each([...FIXED_TOOLS, "custom", "summarize", "continue", "generate", "character", "storyboard", "script"])("asks %s for no unit tags", (tool) => {
     expect(getPromptForTool(tool)).not.toContain("<u id=");
   });
