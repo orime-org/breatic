@@ -71,7 +71,6 @@ function copyScopeType(type: Y.AbstractType<unknown> | Y.Doc, real: Y.Doc, copy:
  * @throws {Error} When the copy's store lacks an item.
  */
 function copyRedone(real: Y.Doc, copy: Y.Doc): void {
-  // eslint-disable-next-line breatic/space-doc-write-gateway -- writes the throwaway copy, not a Space document.
   copy.transact((tr) => {
     real.store.clients.forEach((structs) => {
       for (const struct of structs) {
@@ -124,7 +123,6 @@ function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): HistoryStep 
     copyManager.redoStack = manager.redoStack.map(copyEntry);
     const updates: Uint8Array[] = [];
     copy.on('update', (update: Uint8Array) => { updates.push(update); });
-    // eslint-disable-next-line breatic/space-doc-write-gateway -- the trial runs on the throwaway copy, not a Space document.
     copyManager[direction]();
     copyManager.destroy();
     if (updates.length === 0) return NO_EFFECT;

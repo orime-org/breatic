@@ -391,6 +391,16 @@ export default [
               function: 'writeProposalPrompt',
               reason: 'Only called inside the placeProposalAt batch.',
             },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'copyRedone',
+              reason: 'Writes only the throwaway copy the undo/redo trial runs on, never a Space document.',
+            },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'trial',
+              reason: 'Runs undo/redo only on the throwaway copy, never a Space document.',
+            },
           ],
         },
       ],

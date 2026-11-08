@@ -37,13 +37,18 @@ const TEMPORARY: ReadonlyArray<readonly [string, string]> = [
   ["src/spaces/timeline/TimelineSpace.tsx", "TimelineEditor"],
 ];
 
-/** The five exceptions the table had before the merge; the final table is a subset. */
+/**
+ * The five exceptions the table had before the merge, plus the undo/redo copy
+ * trial v2 adds (design section 5.2); the final table is a subset.
+ */
 const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/canvas-space.ts", "writeSnapshotNodes"],
   ["src/data/yjs/canvas-space.ts", "landHandlingContent"],
   ["src/spaces/canvas/generate/proposal-prompt.ts", "writeProposalPrompt"],
   ["src/data/yjs/scene-document.ts", "applySceneCommand"],
   ["src/data/yjs/scene-session.ts", "historyStep"],
+  ["src/data/yjs/history-step.ts", "copyRedone"],
+  ["src/data/yjs/history-step.ts", "trial"],
 ];
 
 /**
@@ -158,13 +163,13 @@ describe("C-02 the final exception table in the web config", () => {
     expect(temporaryReasons, "entries whose reason still starts with Temporary").toEqual([]);
   }, 60_000);
 
-  it("C-02 is a subset of the five long-term exceptions, each with a reason", async () => {
+  it("C-02 is a subset of the long-term exceptions, each with a reason", async () => {
     const exceptions = await webExceptions();
     const allowed = new Set(LONG_TERM.map(([file, fn]) => keyOf(file, fn)));
     const extra = exceptions
       .map((exception) => keyOf(exception.file, exception.function))
       .filter((key) => !allowed.has(key));
-    expect(extra, "entries outside the five long-term exceptions").toEqual([]);
+    expect(extra, "entries outside the long-term exceptions").toEqual([]);
     const keys = exceptions.map((exception) => keyOf(exception.file, exception.function));
     expect(new Set(keys).size, "an entry is listed twice").toBe(keys.length);
     for (const exception of exceptions) {
