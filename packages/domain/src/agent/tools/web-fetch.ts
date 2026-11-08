@@ -65,8 +65,16 @@ export class ReadPagesRefused extends Error {
   }
 }
 
-/** How one page of a call ended, including a link the conversation does not hold. */
-export type FetchStatus = ReadPageStatus | "not_in_conversation";
+/**
+ * How one page of a call ended as only this tool knows it: a link the
+ * conversation does not hold, or a page not read because the reader was
+ * refused (`too_frequent`) or did not answer (`not_read`) while other pages
+ * of the call were handed over. None of them reaches the user as a line.
+ */
+type ToolOnlyStatus = "not_in_conversation" | "too_frequent" | "not_read";
+
+/** How one page of a call ended. */
+export type FetchStatus = ReadPageStatus | ToolOnlyStatus;
 
 /** One page of a call, as the model and the panel read it. */
 export interface FetchedPage {
@@ -152,6 +160,8 @@ const WHAT_FAILED: Readonly<Record<Exclude<FetchStatus, "ok">, string>> = {
     "in, or send a screenshot or a PDF of it, even when a search finds content about the page (you may say what it " +
     "found); if you found it yourself, use another source.",
   busy: "the site was busy or failing; reading it once more may work.",
+  too_frequent: "not read: too many page reads in a short time; do not read it again in this turn.",
+  not_read: "not read: the page reader did not answer; reading it once more may work.",
   too_slow: "the page took too long to open.",
   unsupported_type: "the address is not a page of text; for an image, audio or video link use understand_media.",
   too_large: "the file is larger than this tool reads.",
@@ -160,10 +170,10 @@ const WHAT_FAILED: Readonly<Record<Exclude<FetchStatus, "ok">, string>> = {
 
 /**
  * Which cause a user is shown when every page of a call the reader was asked
- * for ended the same way. A link the conversation does not hold has none:
- * only the model is told.
+ * for ended the same way. A status only this tool knows has none: only the
+ * model is told.
  */
-const USER_LINE: Readonly<Record<Exclude<FetchStatus, "ok" | "not_in_conversation">, FailureLine>> = {
+const USER_LINE: Readonly<Record<Exclude<FetchStatus, "ok" | ToolOnlyStatus>, FailureLine>> = {
   unreachable: FAILURE_LINES.pageUnreachable,
   needs_login: FAILURE_LINES.pageNeedsLogin,
   refused: FAILURE_LINES.pageRefused,
@@ -463,10 +473,11 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
         toRead.push(url);
       });
 
-      const outcomes = new Map<string, ReadPageResult>();
+      const outcomes = new Map<string, FetchStatus>();
       if (toRead.length > 0) {
         const startedAt = Date.now();
         let answer: ReadPagesAnswer | undefined;
+        let readFailure: "too_frequent" | "not_read" | undefined;
         try {
           answer = await context.readPages(
             {
@@ -481,6 +492,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
           );
         } catch (err: unknown) {
           const refused = err instanceof ReadPagesRefused;
+          readFailure = refused ? "too_frequent" : "not_read";
           // The container may have run: it is charged for the time the call took,
           // unless the server refused to read, the Worker refused the call (a 4xx)
           // or it said its reader never started.
@@ -490,8 +502,8 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
             recordRun(context.usage, { wallMs: Date.now() - startedAt, cpuUsec: null });
           }
           if (isStop(err, abortSignal)) throw stoppedByUser();
-          // A page the turn already holds is still handed over; only the pages
-          // this read was for end as busy.
+          // A page the turn already holds is still handed over; the pages this
+          // read was for were never asked of their sites, so they end as not read.
           const heldInTurn = asked.some((_, i) => stored[i] !== undefined && read.has(keys[i] as string));
           if (!heldInTurn && refused) {
             throw toolFailed(
@@ -509,12 +521,12 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
           }
         }
         if (answer === undefined) {
-          for (const url of toRead) outcomes.set(pageLinkKey(url), { url, status: "busy" });
+          for (const url of toRead) outcomes.set(pageLinkKey(url), readFailure ?? "not_read");
         } else {
           recordRun(context.usage, answer.usage);
           for (const result of answer.pages) {
             const key = pageLinkKey(result.url);
-            outcomes.set(key, result);
+            outcomes.set(key, result.status);
             if (result.status === "ok") read.set(key, inFull(result));
           }
         }
@@ -555,7 +567,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
         }
         const full = read.get(key);
         if (full === undefined) {
-          pages.push({ url: page.url, status: outcomes.get(key)?.status ?? "unreachable", links: [] });
+          pages.push({ url: page.url, status: outcomes.get(key) ?? "unreachable", links: [] });
           return;
         }
         pages.push(sliceOf(page.url, full, page.start, share, next));
@@ -565,9 +577,7 @@ export function makeFetchTool(numbers: CitationNumbers, pageUrlFor: PageUrlFor):
       if (readCount === 0) {
         const said = `None of these pages could be read:\n${failedLines(pages.filter((_, i) => isFirst(i)))}`;
         const statuses = new Set(
-          pages.flatMap((page) =>
-            page.status === "not_in_conversation" ? [] : [page.status as keyof typeof USER_LINE],
-          ),
+          pages.flatMap((page) => (page.status in USER_LINE ? [page.status as keyof typeof USER_LINE] : [])),
         );
         // Every link was one the conversation does not hold: only the model is told.
         if (statuses.size === 0) throw turnedAway(said);
