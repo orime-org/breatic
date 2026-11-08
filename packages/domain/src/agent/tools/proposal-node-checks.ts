@@ -175,7 +175,7 @@ function typedMarks(node: ProposalNode): TypedMark[] {
 const SEGMENT_FORMS: Record<NonNullable<PromptSegment["slot"]>["kind"], string> = {
   asset: '{"ref": <index>} for a node',
   note: '{"slot": {"kind": "note", "label": "…"}} for a note',
-  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes',
+  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template\'s blank, which is filled before sending',
 };
 
 /**

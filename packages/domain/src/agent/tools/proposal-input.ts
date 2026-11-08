@@ -54,7 +54,7 @@ const promptSegment = z.union([
       slot: z.union([
         z
           .object({
-            kind: z.literal("tweak").describe("Words only the user can write"),
+            kind: z.literal("tweak").describe("A blank a template wrote; fill it before sending"),
             label: z.string().trim().min(1).describe("What to write"),
             note: z
               .string()
