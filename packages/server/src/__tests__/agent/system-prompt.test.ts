@@ -20,7 +20,8 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { USER_LANGUAGE_REMINDER } from "@server/agent/user-turn.js";
-import { TOOL_MAP, instructionsForAgentMemory, instructionsText } from "@breatic/domain";
+import { TOOL_MAP, instructionsForAgentMemory, instructionsText, modelCatalog } from "@breatic/domain";
+import { SpaceTypeSchema } from "@breatic/shared";
 
 describe("the system prompt", () => {
   // The template is hard-wrapped, so any phrase long enough to be worth
@@ -89,6 +90,12 @@ describe("the system prompt", () => {
     // The other half: a reply that quietly leaves out what failed is the
     // failure mode where the user never learns anything went wrong.
     expect(wording()).toMatch(/say so in your reply/i);
+  });
+
+  it("introduces the Agent as making work together with the user, not as a creative collaborator", () => {
+    expect(wording()).toContain("You make work together with the user.");
+    expect(wording()).not.toMatch(/You are a creative collaborator/);
+    expect(wording()).not.toMatch(/You are not a task dispatcher/);
   });
 
   it("names none of the product's tools, in the whole prompt the model is sent (#1363)", () => {
@@ -168,8 +175,17 @@ describe("what the prompt says the model's job is", () => {
   // then wrote a web page for the user to screenshot (#1366).
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 
-  it("says the job is to help the user make what they set out to make, with what Breatic can do", () => {
-    expect(wording()).toMatch(/Your job is to help the user make what they set out to make, with what Breatic can do/);
+  it("says the job is to help the user with their own work, with what Breatic can do", () => {
+    expect(wording()).toMatch(/Your job is to help the user with their own work, with what Breatic can do\./);
+  });
+
+  it("says the work is done here only when the user wants something made, not for every message", () => {
+    // The old opening said every user comes with a problem about their own
+    // work and wants it done; a question then got a piece of work back
+    // (breatic#1361).
+    expect(wording()).toMatch(/When they want something made, the answer they want is that work done here, in this Project/);
+    expect(wording()).not.toMatch(/They come with a concrete problem about their own work/);
+    expect(wording()).not.toMatch(/Your job is to help the user make what they set out to make/);
   });
 
   it("keeps work Breatic does inside Breatic", () => {
@@ -199,55 +215,23 @@ describe("what the prompt says the model's job is", () => {
     expect(wording()).toMatch(/which node, which menu row, which button, what value, and what they will see when it worked/);
   });
 
-  it("asks to carry the work through, judge Breatic by what the user will see and hear, and name where it falls short, with the nearest result", () => {
-    expect(wording()).toMatch(/Carry it through to the result they want/);
-    expect(wording()).toContain("Judge what Breatic can do by what the user will see and hear, not by how a studio would make it.");
-    expect(wording()).toMatch(/Where Breatic falls short of the result they asked for, say so plainly and give the nearest result it can give/);
-    expect(wording()).not.toMatch(/falls short of what they asked/);
-  });
-
-  // Two failures pull this rule in opposite directions. Asked for a character
-  // "3D like the donghua X", the Agent guessed whether the user had material
-  // of their own and what the existing work looks like, and read "3D" one way
-  // without asking (breatic#1361). Told instead to settle everything that
-  // would change the result, it asked the user for an age, colours, a
-  // silhouette and a name -- choices a skilled maker settles for them. Told
-  // to settle an age itself, asked for the female lead of the user's own game
-  // it picked her age without asking, though only the user knows who their
-  // own character is.
-  it("asks only what the user alone can tell, settles the rest itself and says what it chose", () => {
-    expect(wording()).toContain(
-      "- Before you make something, check what the user's words leave open. " +
-        "Ask, in one questionnaire and saying why, only what they alone can tell you: whether they have material of their own, the look of work that already exists, their brand, the style they want when they have not named one, and who a character of theirs is (age, gender, role in their story) when their words leave it open. " +
-        "Where their words could mean two things (a 3D look, or a 3D production), confirm which before you act on either. " +
-        "Everything else a skilled maker would settle for them (a build, colours, a costume, a pose), settle yourself and say what you chose. " +
-        "Do not hand your own legwork to the user.",
+  it("carries the work through only when the user wants something made", () => {
+    const text = wording();
+    expect(text).toContain(
+      "When they want something made, carry it through to the result they want: check the whole path, its limits and what each step can and cannot do.",
     );
-    expect(wording()).not.toMatch(/Ask only for what only they can tell you/);
-    expect(wording()).not.toMatch(/their taste/);
-    expect(wording()).not.toMatch(/settles everything that would change the result/);
-    expect(wording()).not.toMatch(/\(an age, a build, colours, a costume, a name\)/);
+    // No unconditional form left anywhere: every "carry it through" is the
+    // conditional one.
+    const all = [...text.matchAll(/carry it through to the result they want/gi)];
+    expect(all.length).toBeGreaterThan(0);
+    for (const m of all) {
+      expect(text.slice(Math.max(0, m.index - "When they want something made, ".length), m.index)).toBe("When they want something made, ");
+    }
   });
 
-  // Asked only "what style is this?" with an image, the Agent answered and
-  // then kept going for over a thousand characters: an unasked tie-in to the
-  // user's project, a review of their earlier choices and a next step it
-  // picked for them, reasoning that a collaborator connects everything to the
-  // project (breatic#1361). Told to answer what was asked and stop, it
-  // decided the real question was "could this be our style?" and answered
-  // that guessed question instead, with the same tie-in and a decision for
-  // the user.
-  it("answers the question in the user's own words and adds nothing unasked unless the next step would go wrong", () => {
-    const bullet =
-      "- Answer the question in the user's own words, not one you guess lies behind it: asked what something is, say what it is; how it bears on their work is theirs to ask. " +
-      "A question gets its answer at the length it needs, a request to make something gets the work. " +
-      "Add something they did not ask about only when, without it, their next step would go wrong, and say it in one sentence. " +
-      "Do not review their earlier choices, decide for them or plan their next step unless they ask.";
-    expect(wording()).toContain(bullet);
-    expect(wording()).not.toMatch(/Answer what the user asked, first, and stop there/);
-    const at = wording().indexOf(bullet);
-    expect(at).toBeGreaterThan(wording().indexOf("- Before you make something, check what the user's words leave open."));
-    expect(at).toBeLessThan(wording().indexOf("Answer with the result, not with reasons it might fail."));
+  it("drops the two bullets the How You Co-create section replaces (breatic#1361)", () => {
+    expect(wording()).not.toMatch(/Before you make something, check what the user's words leave open/);
+    expect(wording()).not.toMatch(/Answer the question in the user's own words/);
   });
 
   it("asks for the result, not the reasons it might fail", () => {
@@ -320,5 +304,186 @@ describe("the prompt says nothing about any one tool", () => {
   it("carries none of the canvas guidance", () => {
     expect(wording()).not.toMatch(/canvas is where models are run/i);
     expect(wording()).not.toMatch(/rather than half in your reply/i);
+  });
+});
+
+/** Collapses runs of whitespace so assertions do not depend on line breaks. */
+const flat = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/**
+ * The raw prompt text from a heading up to the next heading of the same or a
+ * higher level, or "" when the heading is absent.
+ */
+const section = (heading: string): string => {
+  const prompt = buildSystemPrompt();
+  const at = prompt.indexOf(`\n${heading}\n`);
+  if (at < 0) return "";
+  const level = heading.indexOf(" ");
+  const rest = prompt.slice(at + heading.length + 2);
+  const next = rest.search(new RegExp(`\\n#{1,${level}} `));
+  return next < 0 ? rest : rest.slice(0, next);
+};
+
+describe("how the prompt says to co-create (breatic#1361)", () => {
+  // Asked "what style is this?", the Agent answered and then reviewed the
+  // user's choices and planned their next step; asked for a character, it
+  // either guessed what only the user knows or asked for what a skilled maker
+  // settles. The section sorts a message before acting on it and sorts what a
+  // request to make leaves open, each kind with its own answer.
+  const text = (): string => flat(section("## How You Co-create"));
+
+  it("has a How You Co-create section", () => {
+    expect(buildSystemPrompt()).toContain("\n## How You Co-create\n");
+  });
+
+  it("says the work is the user's: they decide, the Agent brings the craft", () => {
+    expect(text()).toContain("The work is the user's.");
+    expect(text()).toContain("they decide what it is and how it looks or sounds, and you bring the craft and do the making");
+  });
+
+  it("sorts a message into a question, a change to something that exists, or something to make", () => {
+    expect(text()).toContain("Tell which of three things a message asks for before you act on it.");
+    expect(text()).toContain("- A question (what something is, how to do something, why something happened, what you think)");
+    expect(text()).toContain("- A change to something that exists: change only what they named and keep the original.");
+    expect(text()).toContain("- Something to make: settle what is open, then make it.");
+  });
+
+  it("answers a question in the words it was asked and stops, without making, proposing, planning or reviewing", () => {
+    expect(text()).toContain("answer it in the words it was asked, at the length it needs, and stop.");
+    expect(text()).toContain("Do not make, propose, plan their next step or review their earlier choices.");
+    expect(text()).toContain("only when their next step would go wrong without it");
+  });
+
+  it("notes another problem in a change in one sentence without fixing it", () => {
+    expect(text()).toContain("Another problem you notice goes in one sentence; do not fix it.");
+  });
+
+  it("sorts what a request to make leaves open into three kinds, each with its own answer", () => {
+    expect(text()).toContain("What a request to make leaves open is one of three kinds, each with its own answer.");
+  });
+
+  it("asks what only the user knows, including who a character of theirs is, all at once and saying why", () => {
+    expect(text()).toContain("- What only the user knows: material of their own");
+    expect(text()).toContain("who a character of theirs is (age, gender, role in their story)");
+    expect(text()).toContain("Look first in what they sent, the Space they have open and your memory.");
+    expect(text()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask.");
+    expect(text()).toContain("A small point you can assume, assume and say so.");
+  });
+
+  it("answers taste with two or three clearly different takes and builds on the one picked", () => {
+    expect(text()).toContain("- Taste with no right answer");
+    expect(text()).toContain("make two or three clearly different takes at the first step where it decides the result");
+    expect(text()).toContain("build the later steps on the one they pick");
+    expect(text()).toContain("Ask it in words only when no take can be made without it.");
+  });
+
+  it("keeps the craft as the Agent's own, done completely and visible before anything is spent", () => {
+    expect(text()).toContain("- The craft: every prompt written in full");
+    expect(text()).toContain("This is yours: do it completely, where they can see and change it before anything is spent.");
+  });
+
+  it("confirms which of two readings is meant before acting on either", () => {
+    expect(text()).toContain("(a 3D look, or a 3D model), confirm which before you act on either.");
+  });
+
+  it("shows several steps with what each makes and costs before anything is spent", () => {
+    expect(text()).toContain("Work of several steps: show the steps, what each makes and what it costs, before anything is spent.");
+  });
+
+  it("tries things cheaply and makes full quality from the picked take or when asked", () => {
+    expect(text()).toContain("Try things cheaply.");
+    expect(text()).toContain("the lowest resolution, the shortest length, a fast and cheap model");
+    expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
+  });
+
+  it("chooses a model that can do the step and names a model's limit as the model's, not Breatic's", () => {
+    expect(text()).toContain("Choose for each step a model that can do what it asks.");
+    expect(text()).toContain("say that it is this model's limit, not Breatic's, and name a model that does it better.");
+  });
+
+  it("recommends and leaves the decision to the user", () => {
+    expect(text()).toContain("Recommend; they decide.");
+    expect(text()).toContain("show it to them rather than settling it quietly");
+  });
+
+  it("judges Breatic by what the user will see and hear, with the nearest result where it falls short", () => {
+    expect(text()).toContain("Judge what Breatic can do by what the user will see and hear, not by how a studio would make it.");
+    expect(text()).toContain("Where it falls short of what they asked, say so plainly and give the nearest result it can give.");
+  });
+});
+
+describe("what the prompt says per medium (breatic#1361)", () => {
+  const MEDIA = ["Pictures", "Video", "Audio", "Writing in a Document", "Timeline", "3D"] as const;
+  const FIELDS = ["Ask:", "Takes:", "Craft:", "Keep:", "Reach:"] as const;
+
+  /** Each paragraph under By medium, keyed by the name it opens with. */
+  const paragraphs = (): Map<string, string> => {
+    const out = new Map<string, string>();
+    for (const raw of section("### By medium").split(/\n\s*\n/)) {
+      const para = flat(raw);
+      const name = /^(.+?)\. Ask:/.exec(para)?.[1];
+      if (name !== undefined) out.set(name, para);
+    }
+    return out;
+  };
+
+  it("has a By medium section inside How You Co-create", () => {
+    expect(section("## How You Co-create")).toContain("\n### By medium\n");
+  });
+
+  it("has one paragraph per medium, each with Ask, Takes, Craft, Keep and Reach in that order", () => {
+    const found = paragraphs();
+    expect([...found.keys()]).toEqual([...MEDIA]);
+    for (const medium of MEDIA) {
+      const para = found.get(medium) ?? "";
+      const at = FIELDS.map((field) => para.indexOf(field));
+      for (const [i, field] of FIELDS.entries()) expect(at[i], `${medium} lacks ${field}`).toBeGreaterThan(-1);
+      expect(at, `${medium} fields out of order`).toEqual([...at].sort((a, b) => a - b));
+    }
+  });
+
+  it("says in the 3D Reach that Breatic does not make 3D models yet", () => {
+    const reach = (paragraphs().get("3D") ?? "").split("Reach:")[1] ?? "";
+    expect(reach).toContain("Breatic does not make 3D models yet");
+  });
+
+  it("says in the Timeline Reach that a timeline holds video clips", () => {
+    const reach = (paragraphs().get("Timeline") ?? "").split("Reach:")[1] ?? "";
+    expect(reach).toContain("a timeline holds video clips");
+  });
+
+  // The template guard: a new Space type or a new model medium has to be
+  // given a paragraph here, or this fails. The table is written out rather
+  // than derived so adding a type forces someone to decide where it goes.
+  const SPACE_TYPE_TO_MEDIA: Record<string, readonly string[]> = {
+    canvas: ["Pictures", "Video", "Audio"],
+    document: ["Writing in a Document"],
+    timeline: ["Timeline"],
+    "3d": ["3D"],
+  };
+  const MODALITY_TO_MEDIUM: Record<string, string> = {
+    image: "Pictures",
+    video: "Video",
+    audio: "Audio",
+    tts: "Audio",
+    three_d: "3D",
+  };
+
+  it("maps every Space type to a medium paragraph the prompt has", () => {
+    const found = paragraphs();
+    for (const type of SpaceTypeSchema.options) {
+      const media = SPACE_TYPE_TO_MEDIA[type];
+      expect(media, `Space type "${type}" has no medium paragraph mapped`).toBeDefined();
+      for (const medium of media ?? []) expect(found.has(medium), `"${medium}" (for ${type}) missing from the prompt`).toBe(true);
+    }
+  });
+
+  it("maps every model modality to a medium paragraph the prompt has", () => {
+    const found = paragraphs();
+    for (const modality of modelCatalog.MODALITIES) {
+      const medium = MODALITY_TO_MEDIUM[modality];
+      expect(medium, `modality "${modality}" has no medium paragraph mapped`).toBeDefined();
+      expect(found.has(medium ?? ""), `"${medium}" (for ${modality}) missing from the prompt`).toBe(true);
+    }
   });
 });
