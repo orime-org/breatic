@@ -639,6 +639,10 @@ describe('the keyboard', () => {
 });
 
 describe('the custom instruction', () => {
+  // Words with space and a line break at the ends: Enter and start both send
+  // the instruction exactly as the box shows it.
+  const SPACED = '  Make it rhyme\n';
+
   /**
    * Opens the dialog on a custom instruction and writes one.
    * @param words - What the user writes.
@@ -667,7 +671,7 @@ describe('the custom instruction', () => {
   });
 
   it('start does what Enter does once there are words', async () => {
-    await writing('Make it rhyme');
+    await writing(SPACED);
 
     expect(isDisabled('doc-ai-start')).toBe(false);
     await act(async () => {
@@ -677,14 +681,14 @@ describe('the custom instruction', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: 'Make it rhyme' });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: SPACED });
     expect(screen.getByTestId('doc-ai-instruction').textContent).toContain('Make it rhyme');
     expect(screen.queryByTestId('doc-ai-instructions')).toBeNull();
     expect(screen.queryByTestId('doc-ai-start')).toBeNull();
   });
 
-  it('start stays unpressable over words that are only spaces and starts nothing', async () => {
-    await writing('   ');
+  it('start stays unpressable over words that are only spaces and line breaks and starts nothing', async () => {
+    await writing(' \n ');
 
     expect(isDisabled('doc-ai-start')).toBe(true);
     await act(async () => {
@@ -695,7 +699,7 @@ describe('the custom instruction', () => {
   });
 
   it('Enter starts it with the instruction; the title stays and the instruction stays on as a read-only line', async () => {
-    const box = await writing('Make it rhyme');
+    const box = await writing(SPACED);
     const title = screen.getByTestId('doc-ai-title').textContent;
 
     await act(async () => {
@@ -705,7 +709,7 @@ describe('the custom instruction', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: 'Make it rhyme' });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: SPACED });
     expect(screen.getByTestId('doc-ai-title').textContent).toBe(title);
     expect(title).not.toContain('spaces.document');
     const line = screen.getByTestId('doc-ai-instruction');
