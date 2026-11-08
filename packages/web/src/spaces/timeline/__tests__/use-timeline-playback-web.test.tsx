@@ -31,6 +31,7 @@ const SRC = '80000000-0000-4000-8000-000000000001';
 const TIMEOUT_MS = 1000;
 const MAIN = 'visual-1';
 const V2 = 'v2';
+const V3 = 'v3';
 
 const VIDEO_SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: '20000000-0000-4000-8000-000000000001',
@@ -67,7 +68,7 @@ function web(id: number, startFrame: number, durationFrames: number, sourceInFra
  * @throws {never} Never.
  */
 function documentOf(clips: Array<TimelineVideoClip | TimelineWebAnimationClip>): TimelineDocumentV1 {
-  const tracks: TimelineTrack[] = [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }];
+  const tracks: TimelineTrack[] = [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }, { id: V3, kind: 'visual', order: 2 }];
   return {
     schemaVersion: 1,
     settings: { width: 1920, height: 1080, fps: FPS },
@@ -171,6 +172,8 @@ function answerLast(fixture: PlayerFixture): void {
 let now = 0;
 let nextFrameId = 0;
 let queuedFrames = new Map<number, FrameRequestCallback>();
+// Every frame the hook reported through onFrame, in order.
+let reported: number[] = [];
 
 /**
  * Run the queued animation frames at the given clock.
@@ -188,6 +191,7 @@ beforeEach(() => {
   now = 0;
   nextFrameId = 0;
   queuedFrames = new Map();
+  reported = [];
   vi.spyOn(performance, 'now').mockImplementation(() => now);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     nextFrameId += 1;
@@ -221,7 +225,7 @@ interface HarnessProps {
 function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, HarnessProps> {
   return renderHook((input: HarnessProps): PlaybackResult => {
     const [frame, setFrame] = React.useState(input.initialFrame);
-    const onFrame = React.useCallback((value: number): void => setFrame(value), []);
+    const onFrame = React.useCallback((value: number): void => { reported.push(value); setFrame(value); }, []);
     const layersNow = input.layersAt(frame);
     const signature = JSON.stringify(layersNow.map((layer) => [layer.key, layer.clip, layer.fps]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
@@ -459,5 +463,162 @@ describe('ready barrier', () => {
     runFrames(1500);
     expect(hook.result.current.frame).toBeGreaterThan(24);
     expect(hook.result.current.state).toBe('playing');
+  });
+});
+
+/** A video element stand-in whose native facts the test sets, recording every currentTime it is given. */
+interface VideoFixture {
+  media: HTMLVideoElement;
+  facts: { paused: boolean; currentTime: number; seeking: boolean; ended: boolean; readyState: number; error: null };
+  seeks: number[];
+}
+
+/**
+ * Build a video stand-in: play and pause flip `paused`, and assigning a different currentTime starts a seek.
+ * @param currentTime - Where the video stands at first.
+ * @returns The element, its facts and the recorded currentTime assignments.
+ * @throws {never} Never.
+ */
+function videoFixture(currentTime: number): VideoFixture {
+  const media = document.createElement('video');
+  const facts: VideoFixture['facts'] = { paused: true, currentTime, seeking: false, ended: false, readyState: 4, error: null };
+  const seeks: number[] = [];
+  for (const key of ['paused', 'seeking', 'ended', 'readyState', 'error'] as const) {
+    Object.defineProperty(media, key, { configurable: true, get: () => facts[key] });
+  }
+  Object.defineProperty(media, 'currentTime', {
+    configurable: true,
+    get: () => facts.currentTime,
+    set: (value: number) => {
+      seeks.push(value);
+      if (value !== facts.currentTime) facts.seeking = true;
+      facts.currentTime = value;
+    },
+  });
+  Object.defineProperty(media, 'play', { configurable: true, value: vi.fn(() => { facts.paused = false; return Promise.resolve(); }) });
+  Object.defineProperty(media, 'pause', { configurable: true, value: vi.fn(() => { facts.paused = true; }) });
+  return { media, facts, seeks };
+}
+
+/**
+ * Deliver a native media event after setting the facts it reports.
+ * @param fixture - The video.
+ * @param event - The event name.
+ * @param facts - The facts at that moment.
+ * @throws {never} Never.
+ */
+function videoEvent(fixture: VideoFixture, event: string, facts: Partial<VideoFixture['facts']> = {}): void {
+  act(() => {
+    Object.assign(fixture.facts, facts);
+    fixture.media.dispatchEvent(new Event(event));
+  });
+}
+
+/**
+ * Let the video's play promise settle.
+ * @throws {Error} When an update fails.
+ */
+async function settle(): Promise<void> {
+  await act(async () => { await Promise.resolve(); });
+}
+
+describe('holding at a boundary while a web instance is not ready', () => {
+  // The rAF clock leads the decoded video: when the clock reaches the boundary the video shows three frames earlier.
+  const LAG_FRAMES = 3;
+
+  /**
+   * Play over a video from frame 0 until the clock reaches a web copy starting at frame 24 whose instance has just
+   * attached, with the video lagging behind the clock.
+   * @returns The hook, the copy's player, the video and how many frames were reported before the boundary.
+   * @throws {Error} When rendering fails.
+   */
+  async function reachNewCopy(): Promise<{ hook: RenderHookResult<PlaybackResult, HarnessProps>; fixture: PlayerFixture; video: VideoFixture; before: number }> {
+    const fixture = playerFixture();
+    const video = videoFixture(0);
+    const clip = web(1, 24, 48);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, clip]), layersAt: single(clip, fixture),
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 0,
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    video.facts.currentTime = (24 - LAG_FRAMES) / 24;
+    const before = reported.length;
+    runFrames(1000);
+    return { hook, fixture, video, before };
+  }
+
+  it('stays on the frame where the copy became visible, with the video paused on that frame, and plays on once it answers', async () => {
+    const { hook, fixture, video, before } = await reachNewCopy();
+    expect(reported.slice(before)[0]).toBe(24);
+    expect(reported.slice(before).filter((frame) => frame < 24)).toEqual([]);
+    expect(hook.result.current.frame).toBe(24);
+    expect(hook.result.current.state).toBe('waiting');
+    expect(video.facts.paused).toBe(true);
+    expect(video.seeks.at(-1)).toBe(1);
+
+    bridgeReady(fixture);
+    expect(lastSeek(fixture).time).toBe(0);
+    answerLast(fixture);
+    videoEvent(video, 'seeked', { seeking: false });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(1500);
+    expect(reported.slice(before).filter((frame) => frame < 24)).toEqual([]);
+    expect(hook.result.current.frame).toBeGreaterThan(24);
+  });
+
+  it('stays on the handover frame where a later copy takes over the instance of an earlier one, and passes it once that instance answers', async () => {
+    const first = playerFixture();
+    const second = playerFixture();
+    const earlier = web(1, 0, 48);
+    const later = { ...web(2, 24, 48), trackId: V3 };
+    // Bottom-up ordinals per source, as the Timeline body keys them: alone, the later copy takes the earlier one's instance.
+    const layersAt = (frame: number): TimelineWebLayer[] => [earlier, later]
+      .filter((item) => frame >= item.startFrame && frame < item.startFrame + item.durationFrames)
+      .map((item, ordinal) => ({ key: `${SRC}:${ordinal}`, clip: item, fps: FPS, player: ordinal === 0 ? first.player : second.player }));
+    const video = videoFixture(30 / 24);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, earlier, later]), layersAt,
+      video: { clip: VIDEO, source: VIDEO_SOURCE, media: video.media }, initialFrame: 30,
+    });
+    bridgeReady(first);
+    bridgeReady(second);
+    act(() => hook.result.current.toggle());
+    answerLast(first);
+    answerLast(second);
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+
+    video.facts.currentTime = (48 - LAG_FRAMES) / 24;
+    const before = reported.length;
+    runFrames(1000);
+    expect(reported.slice(before)[0]).toBe(48);
+    expect(reported.slice(before).filter((frame) => frame < 48)).toEqual([]);
+    expect(hook.result.current.frame).toBe(48);
+    expect(hook.result.current.state).toBe('waiting');
+    expect(video.facts.paused).toBe(true);
+    expect(video.seeks.at(-1)).toBe(2);
+    // The reused instance is sent the later copy's time at the handover frame: (48 - 24) / 24.
+    expect(lastSeek(first).time).toBe(1);
+
+    answerLast(first);
+    videoEvent(video, 'seeked', { seeking: false });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    runFrames(1500);
+    expect(reported.slice(before).filter((frame) => frame < 48)).toEqual([]);
+    expect(hook.result.current.frame).toBeGreaterThan(48);
+  });
+
+  it('keeps the boundary frame when the user pauses while held there', async () => {
+    const { hook, video, before } = await reachNewCopy();
+    act(() => hook.result.current.toggle());
+    videoEvent(video, 'pause', { paused: true });
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+    expect(hook.result.current.frame).toBe(24);
+    expect(reported.slice(before).filter((frame) => frame < 24)).toEqual([]);
   });
 });
