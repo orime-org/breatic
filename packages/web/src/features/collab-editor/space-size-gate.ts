@@ -51,7 +51,7 @@ import {
   applySpaceDelete,
   planNodeRemoval,
   planSpaceDelete,
-  textDeletionInOneText,
+  deletesPartOfOneText,
   type SpaceDeletePlan,
   type SpaceDeleteWriteBinding,
 } from '@web/features/collab-editor/space-delete-executor';
@@ -240,8 +240,6 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
       if (view === null || state !== view.state) return false;
       if (onlyMarks(tr, options.derivedMarks ?? [])) return false;
       const binding = bindingOf(view);
-      const text = textDeletionInOneText(tr, binding);
-      if (text !== null && !size.overCeiling) return true;
       /**
        * Refuses the transaction with a toast, unless a machine made it
        * (`addToHistory: false`) or a composition already refused has said so.
@@ -254,7 +252,7 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
         return false;
       };
       // Step 7 before any planning: part of one XmlText.
-      if (text === 'part') return refuse(spaceRefusalMessage('add', 'over_ceiling'));
+      if (size.overCeiling && deletesPartOfOneText(tr, binding)) return refuse(spaceRefusalMessage('add', 'over_ceiling'));
       const plan = planSpaceDelete(tr, binding, { syncKey: options.syncKey, overCeiling: size.overCeiling, deleteTriggered });
       if (plan.ok) {
         execute(view, name, plan, tr.before, tr.getMeta('addToHistory') !== false);

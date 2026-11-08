@@ -242,36 +242,36 @@ function yPath(doc: ProseMirrorNode, pos: number, binding: SpaceDeleteBinding): 
 }
 
 /**
- * The deletion a transaction makes inside one `XmlText`, if that is all it
- * does: every step deletes text only, in one text block whose Y element holds
- * that single `XmlText` (design 5.3). y-prosemirror writes such a deletion as
- * a delete set alone.
+ * Whether a transaction only deletes part of the text of one `XmlText`:
+ * every step deletes text only, in one text block whose Y element holds that
+ * single `XmlText`, and text is left in it. Past the hard ceiling only whole
+ * types go, so the gate refuses it before planning (design 5.3 step 7).
  * @param tr - The transaction.
  * @param binding - The editor's sync binding.
- * @returns `part` when text is left in the block, `all` when none is, or null for any other transaction.
+ * @returns True for such a deletion.
  */
-export function textDeletionInOneText(tr: Transaction, binding: SpaceDeleteBinding): 'part' | 'all' | null {
-  if (tr.steps.length === 0 || !tr.steps.every((step) => step instanceof ReplaceStep && step.from < step.to && step.slice.size === 0)) return null;
+export function deletesPartOfOneText(tr: Transaction, binding: SpaceDeleteBinding): boolean {
+  if (tr.steps.length === 0 || !tr.steps.every((step) => step instanceof ReplaceStep && step.from < step.to && step.slice.size === 0)) return false;
   const doc = tr.before;
   let block: number | null = null;
   let deleted = 0;
   for (const { from, to } of removedRanges(tr)) {
     const $from = doc.resolve(from);
-    if (!$from.parent.isTextblock || doc.resolve(to).parent !== $from.parent) return null;
-    if (block !== null && block !== $from.before()) return null;
+    if (!$from.parent.isTextblock || doc.resolve(to).parent !== $from.parent) return false;
+    if (block !== null && block !== $from.before()) return false;
     block = $from.before();
     let inline = false;
     doc.nodesBetween(from, to, (node) => {
       if (node.isInline && !node.isText) inline = true;
       return !inline;
     });
-    if (inline) return null;
+    if (inline) return false;
     deleted += to - from;
   }
-  if (block === null) return null;
+  if (block === null) return false;
   const element = yPath(doc, block, binding)?.at(-1)?.[0];
-  if (element === undefined || element.length !== 1 || !(element.get(0) instanceof Y.XmlText)) return null;
-  return deleted < doc.nodeAt(block)!.content.size ? 'part' : 'all';
+  if (element === undefined || element.length !== 1 || !(element.get(0) instanceof Y.XmlText)) return false;
+  return deleted < doc.nodeAt(block)!.content.size;
 }
 
 /**
@@ -846,8 +846,6 @@ export function applySpaceDelete(
         continue;
       }
       binding.mapping.set(type, node);
-      // A text block's text nodes are rendered afresh, as the redraw does.
-      if (node.isTextblock) for (const child of (type as YParent).toArray()) if (child instanceof Y.XmlText) binding.mapping.delete(child);
     }
     tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(plan.at, -1)), -1));
     view.dispatch(tr.setMeta(syncKey, { isChangeOrigin: true }).setMeta('addToHistory', false));
