@@ -706,6 +706,64 @@ test('a picture that is the first block takes its width from any corner (A8)', a
   }
 });
 
+/**
+ * Presses a selected block's bottom-right knob, holds it still for longer than
+ * Chromium's macOS text-drag delay (150 ms, none on Windows), then drags right
+ * step by step, as a user who pauses on the knob does (#1396).
+ * @param p - The page.
+ * @param block - The media block's selector.
+ * @returns The frame's width after each step, and whether one more media frame
+ *   than the page held at the press (a row drag's preview) showed up along the way.
+ */
+async function dragHeldKnob(p: Page, block: string): Promise<{ widths: number[]; rowDragged: boolean }> {
+  const frame = p.locator(`${block} [data-media-frame]`);
+  const box = (await p.locator(`${block} [data-testid="doc-media-resize-se"]`).boundingBox())!;
+  const widths = [Math.round((await frame.boundingBox())!.width)];
+  const frames = await p.getByTestId('doc-media-frame').count();
+  let rowDragged = false;
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.mouse.down();
+  await p.waitForTimeout(300);
+  for (let step = 1; step <= 10; step += 1) {
+    await p.mouse.move(box.x + box.width / 2 + step * 8, box.y + box.height / 2);
+    widths.push(Math.round((await frame.boundingBox())!.width));
+    rowDragged ||= (await p.getByTestId('doc-media-frame').count()) > frames;
+  }
+  await p.mouse.up();
+  return { widths, rowDragged };
+}
+
+test('a corner held still before the pointer moves follows the pointer and moves no row (#1396)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'video', {
+    name: 'held.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  await expect(page.locator(`${VIDEO} video`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const below = (await page.locator(VIDEO).boundingBox())!;
+  await page.mouse.click(below.x + 4, below.y + below.height + 12);
+  await page.keyboard.type('Between');
+  await pasteFile(page, await pngBytes(page, 300, 200), 'held.png', 'image/png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const order = await types(page);
+  expect(order.slice(0, 3)).toEqual(['video', 'paragraph', 'image']);
+
+  for (const block of [IMAGE, VIDEO]) {
+    if (block === IMAGE) await img.click();
+    else await selectFromBelow(page, VIDEO);
+    const { widths, rowDragged } = await dragHeldKnob(page, block);
+    expect(rowDragged, `${block}: a row drag started`).toBe(false);
+    for (let step = 1; step < widths.length; step += 1) {
+      expect(widths[step], `${block}: width after step ${step} of ${widths.join(',')}`).toBeGreaterThan(widths[step - 1]!);
+    }
+    await expect(page.locator(block)).toHaveAttribute('data-preview-width', String(widths.at(-1)));
+    expect(await types(page)).toEqual(order);
+    await expect(page.locator(`${EDITOR} .bn-block-outer[draggable="true"]`)).toHaveCount(0);
+  }
+});
+
 test('the keys on a player button are the button\'s: Space and Enter play and pause, and the document stays as it is (A7, A10)', async () => {
   await openFreshDocument(page);
   await pickFromPlus(page, 'video', {
