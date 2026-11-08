@@ -177,7 +177,7 @@ SOFTWARE.
 | What | The rigged mannequin a 3D Space adds as its built-in figure |
 | Where it lives here | [packages/web/src/spaces/three-d/viewport/assets/figure.glb](./packages/web/src/spaces/three-d/viewport/assets/figure.glb) |
 | Copied from | `godot/assets/3d/mannequiny/mannequiny-0.3.0.glb` of https://github.com/GDQuest/godot-3d-mannequin at commit `d48a4fdb49a3930f38cdbeb854cf5be3ae4b6b2a` (SHA-256 `8005cc2ab9221ad605be2d1cbb89eea894583e72bd5f50a5fbe40243a64f0493`) |
-| Changes | Animations, vertex colours and texture coordinates removed and the mesh quantized (`KHR_mesh_quantization`) with `@gltf-transform`; geometry, skin and bones unchanged |
+| Changes | Animations, vertex colours and texture coordinates removed and the mesh quantized (`KHR_mesh_quantization`) with `@gltf-transform`; each joint's transform set to its bind pose from the skin's inverse bind matrices, and the root scaled to 1.75 m tall with the soles at the origin; geometry, skin weights and bone hierarchy unchanged |
 | Licence | The project's art assets are **CC-BY-4.0**, attributed to "GDQuest and contributors (https://www.gdquest.com/)"; its code is **MIT**. This entry is the attribution CC-BY-4.0 asks for, and the MIT notice follows |
 
 ```
