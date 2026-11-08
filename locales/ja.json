@@ -395,10 +395,10 @@
         "noPermission": "この Project の編集権限がありません",
         "notMember": "この Project のメンバーではなくなりました",
         "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
-        "pageNeedsLogin": "このページはログインが必要です",
-        "pageRefused": "このサイトに読み込みを拒否されました",
+        "pageNeedsLogin": "ログインが必要です",
+        "pageRefused": "サイトに読み込みを拒否されました",
         "pageTooSlow": "ページの表示に時間がかかりすぎ、読み込めませんでした",
-        "pageEmpty": "このページには読める文字がありません",
+        "pageEmpty": "ページに読める文字がありません",
         "pagesUnreadable": "どのページも読み込めませんでした",
         "declined": "サービスがこの内容の処理を拒否しました",
         "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
