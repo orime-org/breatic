@@ -259,7 +259,7 @@ function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, H
  */
 function single(clip: TimelineWebAnimationClip, fixture: PlayerFixture): (frame: number) => TimelineWebLayer[] {
   return (frame) => (frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames
-    ? [{ key: `${SRC}:0`, clip, fps: FPS, player: fixture.player }] : []);
+    ? [{ key: `${SRC}:0`, clip, fps: FPS, role: 'visible' as const, player: fixture.player }] : []);
 }
 
 describe('bridge handshake', () => {
@@ -396,7 +396,7 @@ describe('a Space tab hidden while an instance loads', () => {
   it('attaches the instance again with one new hello when shown, and ends ready without reloading its page', () => {
     const fixture = playerFixture();
     const clip = web(1, 0, 48);
-    const layers = [{ key: `${SRC}:0`, clip, fps: FPS, player: fixture.player }];
+    const layers = [{ key: `${SRC}:0`, clip, fps: FPS, role: 'visible' as const, player: fixture.player }];
     const document = documentOf([clip]);
     const readyClipIds = new Set([clip.id]);
     const result: { current: ReturnType<typeof useTimelinePlayback> | null } = { current: null };
@@ -503,7 +503,7 @@ describe('ready barrier', () => {
     const right = web(2, 24, 24, 24);
     const layersAt = (frame: number): TimelineWebLayer[] => {
       const shown = [left, right].find((item) => frame >= item.startFrame && frame < item.startFrame + item.durationFrames);
-      return shown === undefined ? [] : [{ key: `${SRC}:0`, clip: shown, fps: FPS, player: fixture.player }];
+      return shown === undefined ? [] : [{ key: `${SRC}:0`, clip: shown, fps: FPS, role: 'visible' as const, player: fixture.player }];
     };
     const hook = renderPlayback({ document: documentOf([left, right]), layersAt, video: null, initialFrame: 0 });
     bridgeReady(fixture);
@@ -633,7 +633,7 @@ describe('holding at a boundary while a web instance is not ready', () => {
     // Bottom-up ordinals per source, as the Timeline body keys them: alone, the later copy takes the earlier one's instance.
     const layersAt = (frame: number): TimelineWebLayer[] => [earlier, later]
       .filter((item) => frame >= item.startFrame && frame < item.startFrame + item.durationFrames)
-      .map((item, ordinal) => ({ key: `${SRC}:${ordinal}`, clip: item, fps: FPS, player: ordinal === 0 ? first.player : second.player }));
+      .map((item, ordinal) => ({ key: `${SRC}:${ordinal}`, clip: item, fps: FPS, role: 'visible' as const, player: ordinal === 0 ? first.player : second.player }));
     const video = videoFixture(30 / 24);
     const hook = renderPlayback({
       document: documentOf([VIDEO, earlier, later]), layersAt,

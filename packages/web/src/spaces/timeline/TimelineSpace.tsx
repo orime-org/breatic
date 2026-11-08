@@ -291,9 +291,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const idleInstancesMax = webLimits?.idleInstancesMax ?? 0;
   // The instances the playback failed, as of its last report; a failed one is unloaded once its copy leaves.
   const [failedKeys, setFailedKeys] = React.useState<ReadonlySet<string>>(NO_KEYS);
+  // Instances that can register no player until a retry: their address was refused or the player module failed.
+  const [unregistrable, setUnregistrable] = React.useState<ReadonlySet<string>>(() => new Set());
+  // Either kind of failure unloads the instance once its copy leaves, so the next copy asks for its page again.
+  const unloadKeys = React.useMemo(() => unregistrable.size === 0 ? failedKeys : new Set([...failedKeys, ...unregistrable]), [failedKeys, unregistrable]);
   const [heldPool, setHeldPool] = React.useState(EMPTY_WEB_INSTANCE_POOL);
-  const pool = React.useMemo(() => allocateWebInstances(heldPool, { document, readyClipIds: readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys }),
-    [heldPool, document, readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys]);
+  const pool = React.useMemo(() => allocateWebInstances(heldPool, { document, readyClipIds: readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys: unloadKeys }),
+    [heldPool, document, readyIds, frame, premountFrames, idleInstancesMax, sourceOf, unloadKeys]);
   // Allocation is idempotent, so holding its result settles in one extra render.
   if (pool !== heldPool) setHeldPool(pool);
   const webEntries = React.useMemo(() => {
@@ -312,11 +316,12 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const clip = pool.lastClips[assignment.key];
       const resolved = web.sources[assignment.sourceVersionId];
       if (assignment.role === 'visible' || clip === undefined || resolved === undefined) return [];
-      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, instance: { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: assignment.role }, status: null }];
+      const instance = { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: assignment.role };
+      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, status: null,
+        instance: assignment.targetFrame === null ? instance : { ...instance, targetFrame: assignment.targetFrame } }];
     });
     return [...shown, ...hidden];
   }, [visible, web, labels, pool]);
-  const targetFrames = React.useMemo(() => new Map(pool.assignments.map((assignment) => [assignment.key, assignment.targetFrame])), [pool]);
   const [players, setPlayers] = React.useState<ReadonlyMap<string, WebAnimationPlayerElement>>(() => new Map());
   const registerPlayer = React.useCallback((key: string, player: WebAnimationPlayerElement | null): void => setPlayers((current) => {
     if ((current.get(key) ?? null) === player) return current;
@@ -325,8 +330,6 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     else next.set(key, player);
     return next;
   }), []);
-  // Instances that can register no player until a retry: their address was refused or the player module failed.
-  const [unregistrable, setUnregistrable] = React.useState<ReadonlySet<string>>(() => new Set());
   const reportUnavailable = React.useCallback((key: string, unavailable: boolean): void => setUnregistrable((current) => {
     if (current.has(key) === unavailable) return current;
     const next = new Set(current);
@@ -336,8 +339,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }), []);
   const layerSpecs = webEntries.flatMap((entry) => {
     if (entry.instance === null) return [];
-    const targetFrame = targetFrames.get(entry.instance.key) ?? null;
-    return [{ key: entry.instance.key, clip: entry.clip, fps: entry.instance.fps, role: entry.instance.role ?? 'visible', ...(targetFrame === null ? {} : { targetFrame }) }];
+    const { key, fps, role, targetFrame } = entry.instance;
+    return [{ key, clip: entry.clip, fps, role, ...(targetFrame === undefined ? {} : { targetFrame }) }];
   });
   // A visible copy whose player has not registered yet holds play like a loading instance (inner#1711 design §7.2);
   // premounted and idle instances never hold it.

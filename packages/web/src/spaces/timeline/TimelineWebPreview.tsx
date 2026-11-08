@@ -89,7 +89,7 @@ export interface TimelineWebEntry {
    * The instance serving it, keyed by source version and its pool ordinal, with its pool role (absent means visible);
    * an idle instance's entry carries the copy it last showed.
    */
-  instance: { key: string; sourceVersionId: string; fps: TimelineRate; role?: WebInstanceRole } | null;
+  instance: { key: string; sourceVersionId: string; fps: TimelineRate; role: WebInstanceRole; targetFrame?: number } | null;
   /** What a copy without a picture waits for, when known. */
   status: TimelineExecutionStatus | null;
 }
@@ -149,7 +149,7 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
 const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, sharing, onPlayer, onRetry, onPlayerRetry, onUnavailable }: WebInstanceProps): React.JSX.Element {
   const t = useTranslation();
   const { key, sourceVersionId } = entry.instance;
-  const shown = (entry.instance.role ?? 'visible') === 'visible';
+  const shown = entry.instance.role === 'visible';
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId, sharing);
   const { refresh } = preview;
   const [element, setElement] = React.useState<HTMLElement | null>(null);

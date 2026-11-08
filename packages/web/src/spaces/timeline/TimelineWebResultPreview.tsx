@@ -59,7 +59,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   const drawn = useWebInstanceDrawn(state);
   React.useEffect(() => host.listen(), [host]);
   React.useEffect(() => {
-    host.sync(defined && element !== null ? [{ key: sourceVersionId, clip, fps, player: element as WebAnimationPlayerElement }] : []);
+    host.sync(defined && element !== null ? [{ key: sourceVersionId, clip, fps, role: 'visible', player: element as WebAnimationPlayerElement }] : []);
     // A detached or newly attached instance changes state without the host saying so.
     setState(host.states().get(sourceVersionId));
   }, [host, defined, element, sourceVersionId, clip, fps]);

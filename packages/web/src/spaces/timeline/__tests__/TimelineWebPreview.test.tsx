@@ -53,7 +53,7 @@ const FPS = { num: 24, den: 1 };
 const PREVIEW_URL = 'https://preview.example/web-animation/token/index.html';
 const LOADING_NOTE = `${TRACK}: web animation loading…`;
 const ENTRY: TimelineWebEntry = {
-  clip: webClip(COPY, 'v2', 0, 48, boundTo(SRC_A)), track: TRACK, z: 2, instance: { key: KEY, sourceVersionId: SRC_A, fps: FPS }, status: null,
+  clip: webClip(COPY, 'v2', 0, 48, boundTo(SRC_A)), track: TRACK, z: 2, instance: { key: KEY, sourceVersionId: SRC_A, fps: FPS, role: 'visible' }, status: null,
 };
 const ENTRIES = [ENTRY];
 

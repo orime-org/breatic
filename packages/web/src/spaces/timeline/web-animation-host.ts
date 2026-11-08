@@ -18,6 +18,7 @@
  */
 
 import type { TimelineRate, TimelineWebAnimationClip } from '@breatic/shared';
+import type { WebInstanceRole } from '@web/spaces/timeline/web-instance-pool';
 
 /** The player element the preview mounts: it exposes the iframe its page runs in. */
 export type WebAnimationPlayerElement = HTMLElement & { readonly iframeElement: HTMLIFrameElement | null };
@@ -29,7 +30,7 @@ export interface TimelineWebLayer {
   fps: TimelineRate;
   player: WebAnimationPlayerElement;
   /** Its pool role (inner#1711 design §7.4); absent means visible. */
-  role?: 'visible' | 'premount' | 'idle';
+  role: WebInstanceRole;
   /** A premounted instance's target: the copy's first visible frame. */
   targetFrame?: number;
 }
@@ -85,16 +86,6 @@ interface Instance {
 
 // Sessions are unique across every preview of the page, so a reply can never match another preview's session.
 let lastSession = 0;
-
-/**
- * A layer's pool role.
- * @param layer - The layer.
- * @returns Its role; a layer without one is visible.
- * @throws {never} Never.
- */
-function roleOf(layer: TimelineWebLayer): 'visible' | 'premount' | 'idle' {
-  return layer.role ?? 'visible';
-}
 
 /**
  * Whether a layer change moves what the copy shows at a frame.
@@ -153,7 +144,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
    */
   const timeOf = (instance: Instance): number => {
     const { layer } = instance;
-    const frame = roleOf(layer) === 'premount' ? layer.targetFrame ?? options.frame() : options.frame();
+    const frame = layer.role === 'premount' ? layer.targetFrame ?? options.frame() : options.frame();
     return webAnimationSourceSeconds(layer, frame, options.timelineFps());
   };
   /**
@@ -263,23 +254,23 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
         if (instance === undefined) { attach(layer); continue; }
         const before = instance.layer;
         instance.layer = layer;
-        const role = roleOf(layer);
+        const role = layer.role;
         if (role === 'premount') positionPremount(instance);
         else if (role === 'visible') {
           // An instance turning visible keeps what it was last sent when that is this frame's time.
-          const moved = roleOf(before) === 'visible' ? mappingChanged(before, layer) : instance.session === null || instance.sentTime !== timeOf(instance);
+          const moved = before.role === 'visible' ? mappingChanged(before, layer) : instance.session === null || instance.sentTime !== timeOf(instance);
           if (moved) bump(instance);
         }
       }
     },
     reposition() {
-      for (const instance of instances.values()) if (roleOf(instance.layer) === 'visible') bump(instance);
+      for (const instance of instances.values()) if (instance.layer.role === 'visible') bump(instance);
     },
     sendFrame() {
       const frame = options.frame();
       for (const instance of instances.values()) {
         const { clip } = instance.layer;
-        if (roleOf(instance.layer) === 'visible' && instance.session !== null && instance.state !== 'failed' && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames) sendSeek(instance);
+        if (instance.layer.role === 'visible' && instance.session !== null && instance.state !== 'failed' && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames) sendSeek(instance);
       }
     },
     retry(key) {
@@ -300,7 +291,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
           instance.sentTime = null;
           instance.state = 'waiting';
           // An idle instance is sent nothing until a copy takes it.
-          if (roleOf(instance.layer) !== 'idle') sendSeek(instance);
+          if (instance.layer.role !== 'idle') sendSeek(instance);
           options.onChange();
         } else if (type === 'breatic-frame-ready' && instance.state === 'waiting' && session === instance.session && sequence === instance.sequence) {
           instance.state = 'ready';
@@ -313,7 +304,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
       return new Map([...instances].map(([key, instance]) => [key, instance.state]));
     },
     ready() {
-      return [...instances.values()].every((instance) => roleOf(instance.layer) !== 'visible' || instance.state === 'ready' || instance.state === 'failed');
+      return [...instances.values()].every((instance) => instance.layer.role !== 'visible' || instance.state === 'ready' || instance.state === 'failed');
     },
     listen() {
       /**
