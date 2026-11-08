@@ -16,8 +16,9 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, formatCredits, isMemberLeave, pageLinksIn, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
+import { FAILURE_LINES, formatCredits, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
+import { pageLinksIn } from "@domain/agent/page-links.js";
 import { cutMarker, keptText, messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import {

@@ -17,7 +17,8 @@
  * words and the language note), so reading all of it is reading the user.
  */
 import type { ModelMessage } from "ai";
-import { pageLinkKey, pageLinksIn } from "@breatic/shared";
+import { pageLinkKey } from "@breatic/shared";
+import { pageLinksIn } from "@breatic/domain/page-links";
 
 import { conversationService } from "@server/modules";
 import type { ReplayRow } from "@server/agent/history-replay.js";

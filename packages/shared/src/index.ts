@@ -637,8 +637,8 @@ export {
   TURNED_AWAY,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
-// Links a conversation holds and the pages the Agent reads (inner#1664).
-export { pageLinksIn, pageLinkKey } from "@shared/agent/page-links.js";
+// The key two spellings of a page share, and the pages the Agent reads (inner#1664).
+export { pageLinkKey } from "@shared/agent/page-links.js";
 export {
   READ_PAGE_STATUSES,
   READ_PAGE_MAX_URL_CHARS,

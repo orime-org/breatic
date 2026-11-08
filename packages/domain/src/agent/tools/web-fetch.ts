@@ -15,7 +15,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
-import { FAILURE_LINES, UploadHttpError, pageLinkKey, pageLinksIn, webPageUrlSchema } from "@breatic/shared";
+import { FAILURE_LINES, UploadHttpError, pageLinkKey, webPageUrlSchema } from "@breatic/shared";
 import type {
   ContainerUsage,
   FailureLine,
@@ -27,6 +27,7 @@ import type {
 
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
+import { pageLinksIn } from "@domain/agent/page-links.js";
 import { publisherOf, type CitationNumbers } from "@domain/agent/tools/citation.js";
 import { usageRecorderSchema } from "@domain/agent/tools/usage-context.js";
 import {
