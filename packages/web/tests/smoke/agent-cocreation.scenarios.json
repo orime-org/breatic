@@ -104,7 +104,7 @@
     "lang": "zh-CN",
     "text": "做一段 15 秒的产品宣传视频，产品是一款白色保温杯。",
     "user": "A small brand owner. No product photo to share; no brand guidelines. It will be posted on Douyin (vertical). Answers in Simplified Chinese.",
-    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots are short and on a fast model. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
+    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots run at the lowest settings on a fast, cheap model, keeping the length the user named. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
   },
   {
     "id": "timeline-cut",
@@ -178,8 +178,8 @@
     "chips": [
       {
         "id": "still-2",
-        "name": "海报初稿",
-        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+        "name": "插画初稿",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/6/69/Big_Buck_Bunny_-_forest.jpg"
       }
     ],
     "user": "Happy with everything in the picture except the daytime background. Answers in Simplified Chinese.",
@@ -251,8 +251,8 @@
     "chips": [
       {
         "id": "take-2",
-        "name": "方向二 · 药师",
-        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+        "name": "方向二",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Character_Sintel-portrait-young.png"
       }
     ],
     "user": "Picked this direction from earlier takes for their game heroine; wants the same character in front, side and back views. Answers in Simplified Chinese.",
@@ -266,7 +266,7 @@
       {
         "id": "frame-1",
         "name": "关键帧 B",
-        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+        "url": "https://upload.wikimedia.org/wikipedia/commons/9/94/SpringOpenMovie-aplha.jpg"
       }
     ],
     "user": "Picked this key frame from earlier directions for a promo; wants the final 5-second shot from it, no other changes. Answers in Simplified Chinese.",
