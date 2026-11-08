@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import { newId as createId, type TimelineVideoSource } from '@breatic/shared';
+import { newId as createId, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
 } from '@breatic/shared/space-content';
 
-import { EMPTY_TIMELINE_WEB_RESOLUTION, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords } from '@breatic/shared/space-content';

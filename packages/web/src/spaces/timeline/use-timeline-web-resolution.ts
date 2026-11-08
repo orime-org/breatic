@@ -3,12 +3,12 @@
 
 import * as React from 'react';
 import { keepPreviousData, useQuery, type Query } from '@tanstack/react-query';
-import type { TimelineDocumentV1 } from '@breatic/shared';
+import type { TimelineDocumentV1, TimelineWebResolution } from '@breatic/shared';
 import { timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
-import { EMPTY_TIMELINE_WEB_RESOLUTION, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 
 const NO_IDS: readonly string[] = [];
 

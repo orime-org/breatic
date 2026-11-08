@@ -3,13 +3,12 @@
 
 import * as React from 'react';
 import { Check, CircleDashed, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
-import { formatCredits, getLocale, type TimelineExecutionStatus } from '@breatic/shared';
+import { formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
-import type { TimelineExecutionRow } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useRunning } from '@web/stores/task-actions-in-flight';

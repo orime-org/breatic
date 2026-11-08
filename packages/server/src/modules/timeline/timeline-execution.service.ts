@@ -25,7 +25,7 @@ import {
   timelineExecutionRepo,
 } from "@breatic/core";
 import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
-import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineRate } from "@breatic/shared";
+import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineExecutionRow, type TimelineWebResolution } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
   encodePreviewToken,
@@ -42,15 +42,6 @@ import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
 export interface AcceptedExecution {
   row: TimelineExecution;
   created: boolean;
-}
-
-/** A list row: the execution and the credits its usage rows add up to. */
-export type ListedExecution = TimelineExecution & { usageCredits: number };
-
-/** What a web clip's extent is resolved from (design §3.2). */
-export interface WebSourceResolution {
-  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
-  executions: Record<string, { status: TimelineExecution["status"]; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
 }
 
 /** The insert lost to a concurrent accept of the same action; the transaction is rolled back and the winner read. */
@@ -159,7 +150,7 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
  * @returns The rows.
  * @throws {NotFoundError} When the caller is not a member of the Project.
  */
-export async function list(userId: string, projectId: string, spaceId: string): Promise<ListedExecution[]> {
+export async function list(userId: string, projectId: string, spaceId: string): Promise<TimelineExecutionRow[]> {
   await projectService.assertAccess(projectId, userId, "viewer");
   const rows = await timelineExecutionRepo.listForSpace({ projectId, spaceId });
   const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
@@ -180,14 +171,14 @@ export async function resolveWebSources(
   projectId: string,
   sourceIds: readonly string[],
   executionIds: readonly string[],
-): Promise<WebSourceResolution> {
+): Promise<TimelineWebResolution> {
   await projectService.assertAccess(projectId, userId, "viewer");
   const [sources, executions] = await Promise.all([
     webAnimationSourceRepo.findByIds(sourceIds),
     timelineExecutionRepo.findByIds(executionIds),
   ]);
   const granted = await grantRepo.grantedExecutionIds(projectId, [...new Set([...sources.map((s) => s.executionId), ...executions.map((e) => e.id)])]);
-  const resolution: WebSourceResolution = { sources: {}, executions: {} };
+  const resolution: TimelineWebResolution = { sources: {}, executions: {} };
   for (const source of sources) {
     if (!granted.has(source.executionId)) continue;
     resolution.sources[source.id] = {

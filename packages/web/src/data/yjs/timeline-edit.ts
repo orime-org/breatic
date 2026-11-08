@@ -5,10 +5,10 @@ import { z } from 'zod';
 import {
   TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
   type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
-  type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding,
+  type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
 
-import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent } from '@web/data/yjs/timeline-arrangement';
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 import {
   timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow, timelineSourceRoom, type TimelineSourceExtent,

@@ -1,13 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineExecution } from '@breatic/shared';
+import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineExecution, TimelineExecutionRow, TimelineWebResolution } from '@breatic/shared';
 import type { TimelineExecutionCreateInput } from '@breatic/shared/space-content';
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
-
-/** One execution-list row: the execution and the credits its usage adds up to so far. */
-export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
 
 /** What the creation dialog submits: its frozen input, keyed by the Project, Space and action. */
 export type TimelineExecutionAcceptBody = TimelineExecutionCreateInput & { projectId: string };

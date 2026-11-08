@@ -3,10 +3,11 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient, type Query, type UseQueryResult } from '@tanstack/react-query';
+import type { TimelineExecutionRow } from '@breatic/shared';
 import { timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
-import { timelineApi, type TimelineExecutionRow } from '@web/data/api/timeline';
+import { timelineApi } from '@web/data/api/timeline';
 
 // The longest delay a browser timer keeps; a longer one would fire at once.
 const MAX_TIMER_MS = 2 ** 31 - 1;

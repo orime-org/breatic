@@ -6,7 +6,7 @@ import type * as Y from 'yjs';
 import { ArrowRightToLine, Code, Copy, Film, Link2, ListChecks, Magnet, Pause, Play, Plus, Redo2, Scissors, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineWebAnimationClip,
+  newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionRow, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { TimelineExecutionCreateInputSchema, timelineExecutionEnded, timelineExecutionFailed, webAnimationDurationFrames } from '@breatic/shared/space-content';
 import { resolveTimelineArrangement, timelineClipSource, timelineWebSourceOf, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
@@ -23,7 +23,7 @@ import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { serverMessage } from '@web/data/api/server-message';
-import { timelineApi, type TimelineExecutionRow } from '@web/data/api/timeline';
+import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';

@@ -14,6 +14,7 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { TimelineRate } from "@shared/timeline/time.js";
 import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
 
@@ -954,6 +955,19 @@ export interface TimelineExecution {
   billedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
+export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
+
+/**
+ * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
+ * design §3.2): the succeeded source versions and the executions placeholders wait for, as far as the Project holds a
+ * grant for them. A reference it leaves out is unresolved.
+ */
+export interface TimelineWebResolution {
+  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
 }
 
 /** The immutable source version a web-animation execution produced (inner#1711). `createdAt` is UTC ISO at microsecond precision. */

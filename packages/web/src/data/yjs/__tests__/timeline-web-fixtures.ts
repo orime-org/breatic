@@ -9,8 +9,7 @@
 import type {
   TimelineEditCommand, TimelineEditPlacement,
 } from '@web/data/yjs/timeline-edit';
-import type { TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
-import type { TimelineWebAnimationClip, TimelineWebAnimationContentBinding } from '@breatic/shared';
+import type { TimelineWebAnimationClip, TimelineWebAnimationContentBinding, TimelineWebResolution } from '@breatic/shared';
 
 import { FPS } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 

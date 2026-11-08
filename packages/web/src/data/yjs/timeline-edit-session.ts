@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import type { TimelineVideoSource } from '@breatic/shared';
+import type { TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -10,7 +10,7 @@ import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
   applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId,
 } from '@web/data/yjs/timeline-document';
-import { EMPTY_TIMELINE_WEB_RESOLUTION, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 

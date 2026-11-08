@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1 } from '@breatic/shared';
-import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineWebResolution } from '@breatic/shared';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent } from '@web/data/yjs/timeline-arrangement';
 import { timelineInsertionIndex, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { timelineHeadRoom, timelineSourceRoom, timelineTrimHead } from '@web/data/yjs/timeline-time';

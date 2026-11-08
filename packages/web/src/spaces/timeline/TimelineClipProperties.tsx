@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
-import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineArrangementReason, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineWebResolution } from '@breatic/shared';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 

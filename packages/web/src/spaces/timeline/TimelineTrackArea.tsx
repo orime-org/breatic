@@ -4,8 +4,8 @@
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { Code, Film, Trash2 } from 'lucide-react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecutionStatus } from '@breatic/shared';
-import { timelineClipSource, type TimelineWebResolution } from '@web/data/yjs/timeline-arrangement';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 

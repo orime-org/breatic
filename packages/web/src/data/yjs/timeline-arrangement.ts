@@ -1,20 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineClip, TimelineDocumentV1, TimelineExecutionStatus, TimelineRate, TimelineVideoSource } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, validateTimelineRange, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
-
-/**
- * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
- * design §3.2): the succeeded source versions and the executions placeholders wait for. A reference it leaves out is
- * unresolved.
- */
-export interface TimelineWebResolution {
-  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
-  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
-}
 
 /** A resolution that knows no reference. */
 export const EMPTY_TIMELINE_WEB_RESOLUTION: TimelineWebResolution = Object.freeze({ sources: Object.freeze({}), executions: Object.freeze({}) });
