@@ -117,7 +117,7 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 ### Drag preview styling
 
-**A drag preview clone copies font longhands (`fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `color`), never `computed.font`, and puts translucency on an inner element.** Chrome often returns an empty `font` shorthand (assigning it is a no-op and the clone falls back to body text), and Chrome ignores opacity on the drag image's root (Safari honours it). The drag image is drawn by the OS, so only a person looking at it can verify it.
+**Every editor's drag image is put on the page by `mountDragImage` (`lib/drag-image.ts`) and drawn at full strength; nothing in it sets an opacity.** Firefox and WebKit draw the root's own opacity into the image while Chrome leaves it out, so any opacity makes the engines disagree. A clone of editor text copies font longhands (`fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `color`), never `computed.font`: Chrome often returns an empty `font` shorthand, and the clone falls back to body text. The drag image is drawn by the OS, so only a person looking at it can verify how it looks.
 
 ## BlockNote document body
 
