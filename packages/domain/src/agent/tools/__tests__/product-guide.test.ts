@@ -302,10 +302,11 @@ describe("what the guide says", () => {
     expect(section("Mentions")).toMatch(/narrow the list, which shows up to eight rows/i);
   });
 
-  it("describes the selection bar by its icons, since its buttons show no name", () => {
+  it("describes the selection bar by its icons, comment last, and names what hovering a button shows", () => {
     const doc = section("Document spaces");
-    expect(doc).toMatch(/The other buttons show no name on hover/);
-    expect(doc).not.toMatch(/each nam(es|ing) itself when hovered/i);
+    expect(doc).toMatch(/and alone at the far right a speech-bubble icon \(comment\)/);
+    expect(doc).toMatch(/Hovering a button with no arrow shows its name, greyed or not: "Bold"/);
+    expect(doc).not.toMatch(/show no name on hover/);
     expect(doc).toMatch(/The speech bubble starts a comment/);
     expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
   });
