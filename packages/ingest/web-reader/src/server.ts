@@ -143,6 +143,20 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     } catch (err) {
       // A PDF navigates into a download, which the headless shell has no viewer for.
       if (err instanceof Error && /Download is starting/.test(err.message)) {
+        // A failure answer the browser turns into a download ends as its
+        // status says, without waiting for the file.
+        if (head !== undefined && !head.ok()) {
+          const failed = head;
+          const ended = statusOfResponse(
+            failed.status(),
+            failed.headers()["content-type"] ?? null,
+            failed.headers()[READER_UNREACHABLE_HEADER] === "1",
+          );
+          if (ended !== null) {
+            void downloaded.then((download) => download?.cancel()).catch(() => undefined);
+            return { url, status: ended, httpStatus: failed.status(), finalUrl: failed.url() };
+          }
+        }
         const download = await downloaded;
         if (download !== null) return await readDownload(url, download, head, request.maxBytes);
       }
