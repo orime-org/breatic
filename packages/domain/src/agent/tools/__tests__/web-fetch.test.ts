@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Tool } from "ai";
 import type { z } from "zod";
-import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
 import type { ReadPageResult, ReadPagesAnswer, ReadPagesRequest, ToolFailure } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
@@ -603,12 +603,12 @@ describe("where a slice is cut (plan §13.2 row 9)", () => {
     expect(answer.pages[0]).toMatchObject({ start: 0, end: 100, next_start: 100, text: full.slice(0, 100) });
   });
 
-  it("moves a cut at most READ_PAGE_MAX_URL_CHARS characters on", async () => {
+  it("cuts a long run that holds no link at its share", async () => {
     const full = `${"x".repeat(5000)} end`;
 
     const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
 
-    expect(answer.pages[0]).toMatchObject({ start: 0, end: 100 + READ_PAGE_MAX_URL_CHARS });
+    expect(answer.pages[0]).toMatchObject({ start: 0, end: 100, next_start: 100 });
   });
 });
 
