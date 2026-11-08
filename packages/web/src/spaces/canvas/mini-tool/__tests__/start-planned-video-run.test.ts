@@ -104,6 +104,40 @@ describe('planned frame and segment outputs', () => {
   });
 });
 
+// Canvas design §4 转场 row (组合新视频，当前节点与输入节点提供连线) and tools design §5 (结果连线取当前节点和输入节点): a
+// transitions result is linked from the current node and from the picked input's node, in the press's one undo batch.
+describe('a transitions result is linked from both of its videos', () => {
+  const PICKED_NODE = '10000000-0000-4000-8000-000000000007';
+  const CURRENT = '80000000-0000-4000-8000-000000000001'; const PICKED = '80000000-0000-4000-8000-000000000002';
+  const media = { width: 400, height: 200, duration: 5, mimeType: 'video/webm' };
+  /** A two-clip transitions draft of the host and the picked node. @param picked - The picked input's node. @returns The draft. */
+  const transitions = (picked: string | undefined = PICKED_NODE): VideoToolDraftById['video.transitions'] => ({
+    version: 1, draftId: draft().draftId, revision: draft().revision, source: { ...draft().source, mediaInfo: media },
+    inputs: [{ inputId: CURRENT, url: URL, mediaInfo: media, sourceNodeId: SOURCE },
+      { inputId: PICKED, url: 'https://assets.example.test/picked.webm', mediaInfo: media, ...(picked === undefined ? {} : { sourceNodeId: picked }) }],
+    params: { clips: [
+      { clipId: '90000000-0000-4000-8000-000000000011', inputId: CURRENT, in: 0, out: 4, transition: { kind: 'fade', duration: 0.5 } },
+      { clipId: '90000000-0000-4000-8000-000000000012', inputId: PICKED, in: 0, out: 4, transition: { kind: 'cut', duration: 0 } },
+    ] },
+  }) as VideoToolDraftById['video.transitions'];
+  const REF = { [CURRENT]: { toolInputId: 'a'.repeat(64), planSha256: 'd'.repeat(64) }, [PICKED]: { toolInputId: 'b'.repeat(64), planSha256: 'd'.repeat(64) } };
+
+  it('F24 adds an edge from the host and one from the picked input node to the result', async () => {
+    addNode(PROJECT, SPACE, { id: PICKED_NODE, type: 'video', position: { x: 0, y: 400 }, data: { content: 'https://assets.example.test/picked.webm', name: 'PICKED', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.transitions', draft: transitions(), presentationRef: REF as PlannedVideoRun['presentationRef'] }));
+    const output = body!.outputs[0]!.nodeId;
+    const edges = readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => ({ source: edge.source, target: edge.target, toolId: edge.toolId }));
+    expect(edges).toEqual(expect.arrayContaining([{ source: SOURCE, target: output, toolId: 'video.transitions' }, { source: PICKED_NODE, target: output, toolId: 'video.transitions' }]));
+    expect(edges).toHaveLength(2);
+  });
+
+  it('F25 adds no edge from a picked node that no longer exists', async () => {
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.transitions', draft: transitions(), presentationRef: REF as PlannedVideoRun['presentationRef'] }));
+    const output = body!.outputs[0]!.nodeId;
+    expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => edge.source + '>' + edge.target)).toEqual([`${SOURCE}>${output}`]);
+  });
+});
+
 describe('planned video press: independent frozen body and original graph', () => {
   it('F05 prepares one distinct video destination and a strict complete public request without touching its source', async () => {
     const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));

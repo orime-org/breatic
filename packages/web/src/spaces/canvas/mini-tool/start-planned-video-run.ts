@@ -5,7 +5,8 @@ import { newId, t } from '@breatic/shared';
 import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
-import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
+import { addEdge, addNode, nodeDataMap, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
+import { docName, getDoc } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
@@ -122,10 +123,14 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   });
   const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], frameTable: run.frameTable },
     nodes.map((node) => node.id));
+  // A transitions result is also linked from its picked input's node while that node is still on the canvas (canvas design §4).
+  const doc = getDoc(docName.canvasSpace(run.projectId, run.spaceId));
+  const linked = [source.id, ...new Set(held.inputs.flatMap((input) =>
+    input.sourceNodeId !== undefined && input.sourceNodeId !== source.id && run.toolId === 'video.transitions' && nodeDataMap(doc, input.sourceNodeId) !== null ? [input.sourceNodeId] : []))];
   runCanvasUndoBatch(run.projectId, run.spaceId, () => {
     for (const node of nodes) {
       addNode(run.projectId, run.spaceId, node);
-      addEdge(run.projectId, run.spaceId, { id: `${source.id}->${node.id}`, source: source.id, target: node.id, toolId: run.toolId });
+      for (const from of linked) addEdge(run.projectId, run.spaceId, { id: `${from}->${node.id}`, source: from, target: node.id, toolId: run.toolId });
     }
   });
   if (run.stillOpen()) run.onBuilt(nodes.map((node, index) => ({ id: node.id, position: node.position, width: placements[index]!.width, height: placements[index]!.height })));

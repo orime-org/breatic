@@ -142,8 +142,8 @@ function posted(path: string): Record<string, unknown>[] {
 }
 
 /**
- * Checks the run against the quote before it: the same body but `run_id`, and one new output node, behind the tool's edge,
- * carrying the quoted id.
+ * Checks the run against the quote before it: the same body but `run_id`, and one new output node, behind the tool's edges
+ * (a transitions result also from its picked node), carrying the quoted id.
  * @param tool - The tool.
  * @param before - The node ids before the press.
  * @returns Nothing.
@@ -160,7 +160,9 @@ async function expectRunMatchesQuote(tool: 'video.lip-sync' | 'video.transitions
   const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));
   const added = readNodes(doc).map((node) => node.id).filter((id) => !before.includes(id));
   expect(added).toEqual([outputId]);
-  expect(readEdges(doc).filter((edge) => edge.target === outputId)).toEqual([expect.objectContaining({ source: HOST, toolId: tool })]);
+  // A transitions result is also linked from the picked input's node (canvas design §4 转场 row).
+  const sources = tool === 'video.transitions' ? [HOST, PICKED_NODE] : [HOST];
+  expect(readEdges(doc).filter((edge) => edge.target === outputId)).toEqual(sources.map((source) => expect.objectContaining({ source, toolId: tool })));
 }
 
 beforeEach(() => {
