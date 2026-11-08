@@ -14,10 +14,6 @@
  * share of its runs rather than on every one.
  */
 
-/** The tools whose finished call puts a card on screen. */
-const PROPOSALS = new Set(['propose_canvas_action', 'propose_document_edit']);
-/** "Card" in Chinese, Japanese and Korean, or as a whole English word. */
-const CARD = /\u5361\u7247|\u30ab\u30fc\u30c9|\uce74\ub4dc|\bcard\b/i;
 /** The normal quantile of a two-sided 95% interval. */
 const Z = 1.96;
 /** The share of a row's runs that must pass: four in five. */
@@ -64,20 +60,15 @@ export interface Scenario {
   readonly pass: string;
 }
 
-/** A tool call of the run, as the stored conversation holds it. */
-export interface RunCall {
-  readonly tool: string;
-  readonly state: string;
-  readonly input: unknown;
-}
+/** One thing that happened in a run, in the order it happened. */
+export type RunStep =
+  | { readonly kind: 'call'; readonly tool: string; readonly state: string; readonly input: unknown }
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'answer'; readonly text: string };
 
-/** What one run of a scenario left behind, read off the stored conversation. */
+/** What one run of a scenario left behind: the agent's calls and words and the user's answers, in order. */
 export interface Run {
-  /** Every text part the agent wrote, in order. */
-  readonly reply: string;
-  readonly calls: readonly RunCall[];
-  /** Each answer the user gave to a question card or a request to read Spaces. */
-  readonly followed: readonly string[];
+  readonly steps: readonly RunStep[];
 }
 
 /** A judge's decision on one run. */
@@ -87,34 +78,19 @@ export interface Verdict {
 }
 
 /**
- * Whether the reply speaks of a card the run never placed. A card is named by
- * the word in Chinese, Japanese or Korean, or "card" as a whole English word
- * in any case; a proposal (`propose_canvas_action` or
- * `propose_document_edit`) counts as placed only when its call finished
- * (`output-available`).
- * @param run - The run.
- * @returns True when the reply names a card and no proposal call finished.
- */
-export function claimsUnplacedCard(run: Run): boolean {
-  const placed = run.calls.some((call) => PROPOSALS.has(call.tool) && call.state === 'output-available');
-  return !placed && CARD.test(run.reply);
-}
-
-/**
- * The run as the judge reads it: the user's first message, then in order the
- * agent's tool calls (name, state and input as JSON), its reply and each
- * answer the user gave.
+ * The run as the judge reads it: the user's first message, then each step in
+ * order, a tool call with its name, state and input as JSON, the agent's
+ * words, or an answer the user gave.
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The transcript.
  */
 export function transcriptOf(scenario: Scenario, run: Run): string {
-  return [
-    `USER: ${scenario.text}`,
-    ...run.calls.map((call) => `TOOL ${call.tool} (${call.state}): ${JSON.stringify(call.input) ?? ''}`),
-    `AGENT REPLY:\n${run.reply}`,
-    ...run.followed.map((answer) => `USER ANSWERED: ${answer}`),
-  ].join('\n\n');
+  const lines = run.steps.map((step) => {
+    if (step.kind === 'call') return `TOOL ${step.tool} (${step.state}): ${JSON.stringify(step.input) ?? ''}`;
+    return step.kind === 'text' ? `AGENT: ${step.text}` : `USER ANSWERED: ${step.text}`;
+  });
+  return [`USER: ${scenario.text}`, ...lines].join('\n\n');
 }
 
 /**
@@ -128,6 +104,12 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
   return [
     'You judge one run of an AI assistant inside a content-creation tool. Decide whether the run meets the criterion below. Judge only what the run shows; tool calls are listed with their inputs, and a proposal call in state output-available is a card the user sees.',
     `CRITERION:\n${scenario.pass}`,
+    'Whatever the criterion says, the run fails when the reply says a card or proposal is already on screen and no proposal call is in state output-available.',
+    'The run is listed in the order it happened: each answer the user gave comes right after the question card it answers.',
+    '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
+    'The agent writes in the language of the user\'s latest message.',
+    'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
+    'A TOOL line shows what the agent sent, not what came back; null means the input was not recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,
     'Answer with one JSON object {"pass": boolean, "reason": string} and nothing else; the reason is one sentence naming what decided it.',
   ].join('\n\n');

@@ -12,7 +12,7 @@
  * agent never sees (the scenario's `fixed` answers come first); a request to
  * read Spaces is answered by sharing the Space. A judge model, not the model
  * under test, then decides each run against the scenario's written criterion,
- * and a reply that speaks of a card no proposal placed fails outright. A row
+ * and fails a reply that says a card is on screen when no proposal placed one. A row
  * passes on four runs in five; the run also prints each model's overall pass
  * rate with its 95% interval, for comparing a change with the one before it.
  *
@@ -36,7 +36,6 @@ import { dataOf } from '../helpers/api';
 import { stateFile, test } from '../helpers/slot';
 import {
   agreement,
-  claimsUnplacedCard,
   fixedAnswers,
   judgePrompt,
   parseUserAnswers,
@@ -47,7 +46,7 @@ import {
   type CardAnswer,
   type CardQuestion,
   type Run,
-  type RunCall,
+  type RunStep,
   type Scenario,
   type Verdict,
 } from '../helpers/agent-eval';
@@ -134,7 +133,7 @@ async function send(api: APIRequestContext, scenario: Scenario, body: Record<str
  * @param studioId - The account's personal Studio.
  * @param scenario - The scenario.
  * @param model - The model to run on, or undefined for the default.
- * @returns What the run left behind.
+ * @returns What the run left behind, in order.
  */
 async function runOnce(api: APIRequestContext, helper: APIRequestContext, studioId: string, scenario: Scenario, model: string | undefined): Promise<Run> {
   const suffix = randomUUID().slice(0, 8);
@@ -164,7 +163,7 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
     const base = { project_id: project.id, conversation_id: conversation.id, time_zone: 'Asia/Shanghai', ...extra, ...(model === undefined ? {} : { model }) };
     const chips = (scenario.chips ?? []).map((chip) => ({ id: chip.id, type: 'image', name: chip.name, data_snapshot: { url: chip.url } }));
     await send(api, scenario, { ...base, message: scenario.text, attached_chips: chips });
-    const followed: string[] = [];
+    const answered = new Map<string, string>();
     for (let card = 0; card < FOLLOW_UPS; card += 1) {
       const pending = (await partsOf(api, conversation.id)).filter(
         (part) => (part.status ?? part.state) === 'input-available' && ['ask_user', 'request_space_content'].includes(toolOf(part) ?? ''),
@@ -177,14 +176,14 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         }));
         const fixed = scenario.fixed?.[card];
         const answers: CardAnswer[] = fixed !== undefined ? fixedAnswers(fixed, questions) : parseUserAnswers(await askHelper(helper, simulatedUserPrompt(scenario, questions)), questions);
-        followed.push(JSON.stringify(answers));
+        answered.set(pending.toolCallId ?? '', JSON.stringify(answers));
         await send(api, scenario, { ...base, message: '', answer: { toolCallId: pending.toolCallId, answers } });
       } else {
         const content = scenario.spaceContent ?? '(empty)';
         const detail = space.type === 'canvas'
           ? { detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }
           : {};
-        followed.push(`shared the Space: ${content}`);
+        answered.set(pending.toolCallId ?? '', `shared the Space: ${content}`);
         await send(api, scenario, {
           ...base,
           message: '',
@@ -192,12 +191,14 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         });
       }
     }
-    const parts = await partsOf(api, conversation.id);
-    const calls: RunCall[] = parts.flatMap((part) => {
+    const steps: RunStep[] = (await partsOf(api, conversation.id)).flatMap((part): RunStep[] => {
       const tool = toolOf(part);
-      return tool === undefined ? [] : [{ tool, state: part.status ?? part.state ?? '', input: part.input }];
+      if (tool === undefined) return part.type === 'text' ? [{ kind: 'text', text: part.text ?? '' }] : [];
+      const call: RunStep = { kind: 'call', tool, state: part.status ?? part.state ?? '', input: part.input };
+      const answer = answered.get(part.toolCallId ?? '');
+      return answer === undefined ? [call] : [call, { kind: 'answer', text: answer }];
     });
-    return { reply: parts.filter((part) => part.type === 'text').map((part) => part.text ?? '').join('\n\n'), calls, followed };
+    return { steps };
   } finally {
     await api.post(`/api/v1/projects/${project.id}/archive`);
   }
@@ -215,14 +216,13 @@ async function partsOf(api: APIRequestContext, conversationId: string): Promise<
 }
 
 /**
- * The judge's verdict on a run; a reply naming a card no proposal placed fails before it is asked.
+ * The judge's verdict on a run.
  * @param helper - A request context for the helper model.
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The verdict.
  */
 async function judge(helper: APIRequestContext, scenario: Scenario, run: Run): Promise<Verdict> {
-  if (claimsUnplacedCard(run)) return { pass: false, reason: 'The reply speaks of a card, but no proposal was placed.' };
   return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
 }
 
@@ -303,7 +303,8 @@ test('the comparison model co-creates as the scenarios say @needs-model @needs-i
 
 test('the judge agrees with hand labels @needs-model @needs-internet', async () => {
   test.setTimeout(60 * 60_000);
-  const labelled = JSON.parse(readFileSync(LABELS, 'utf8')) as { scenario: string; run: Run; human: boolean }[];
+  const only = SCENARIOS.map((one) => one.id);
+  const labelled = (JSON.parse(readFileSync(LABELS, 'utf8')) as { scenario: string; run: Run; human: boolean }[]).filter((one) => only.includes(one.scenario));
   const byId = new Map((JSON.parse(readFileSync(join(__dirname, 'agent-cocreation.scenarios.json'), 'utf8')) as Scenario[]).map((one) => [one.id, one]));
   const helper = await request.newContext();
   try {
@@ -311,10 +312,13 @@ test('the judge agrees with hand labels @needs-model @needs-internet', async () 
       labelled.map((one) => async () => {
         const scenario = byId.get(one.scenario);
         if (scenario === undefined) throw new Error(`no scenario ${one.scenario}`);
-        return { human: one.human, judge: (await judge(helper, scenario, one.run)).pass };
+        const verdict = await judge(helper, scenario, one.run);
+        return { scenario: one.scenario, human: one.human, judge: verdict.pass, reason: verdict.reason };
       }),
       AT_ONCE,
     );
+    mkdirSync(test.info().outputDir, { recursive: true });
+    writeFileSync(test.info().outputPath('agent-cocreation-judge.json'), JSON.stringify(judged, null, 2));
     const said = agreement(judged);
     console.warn(`judge against hand labels: passes ${String(said.truePass)} of ${String(said.passes)}, fails ${String(said.trueFail)} of ${String(said.fails)}`);
     expect(said.truePass ?? 0).toBeGreaterThanOrEqual(0.9);

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   agreement,
-  claimsUnplacedCard,
   fixedAnswers,
   judgePrompt,
   parseUserAnswers,
@@ -16,7 +15,7 @@ import {
   wilson,
   type CardQuestion,
   type Run,
-  type RunCall,
+  type RunStep,
   type Scenario,
 } from '../agent-eval';
 
@@ -29,14 +28,12 @@ const scenario: Scenario = {
 };
 
 /**
- * A run with the given reply and calls and no answers unless given.
- * @param reply - What the agent wrote.
- * @param calls - The tool calls of the run.
- * @param followed - The user's answers.
+ * A run made of the given steps, in order.
+ * @param steps - What happened in the run, in the order it happened.
  * @returns The run.
  */
-function runOf(reply: string, calls: readonly RunCall[] = [], followed: readonly string[] = []): Run {
-  return { reply, calls, followed };
+function runOf(...steps: RunStep[]): Run {
+  return { steps };
 }
 
 /**
@@ -54,83 +51,65 @@ function wilsonByFormula(passed: number, total: number): { low: number; high: nu
   return { low: centre - half, high: centre + half };
 }
 
-describe('claimsUnplacedCard', () => {
-  it('is true when the reply names a card in any product language and nothing was placed', () => {
-    for (const reply of ['已经放好卡片了', 'カードを置きました', '카드를 배치했습니다', 'Card placed', 'see the card below']) {
-      expect(claimsUnplacedCard(runOf(reply)), reply).toBe(true);
-    }
-  });
-
-  it('is true when another tool finished but no proposal did', () => {
-    const run = runOf('the card is ready', [{ tool: 'read_space', state: 'output-available', input: {} }]);
-    expect(claimsUnplacedCard(run)).toBe(true);
-  });
-
-  it('is false when a canvas proposal finished', () => {
-    const run = runOf('see the card below', [{ tool: 'propose_canvas_action', state: 'output-available', input: {} }]);
-    expect(claimsUnplacedCard(run)).toBe(false);
-  });
-
-  it('is false when a document proposal finished', () => {
-    const run = runOf('see the card below', [{ tool: 'propose_document_edit', state: 'output-available', input: {} }]);
-    expect(claimsUnplacedCard(run)).toBe(false);
-  });
-
-  it('is false when the reply names no card', () => {
-    expect(claimsUnplacedCard(runOf('which style do you want?'))).toBe(false);
-  });
-
-  it('does not count a refused proposal as placed', () => {
-    const run = runOf('see the card below', [{ tool: 'propose_canvas_action', state: 'output-error', input: {} }]);
-    expect(claimsUnplacedCard(run)).toBe(true);
-  });
-
-  it('does not count "cardboard" as naming a card', () => {
-    expect(claimsUnplacedCard(runOf('a cardboard box on the table'))).toBe(false);
-  });
-});
-
 describe('transcriptOf', () => {
-  const calls: RunCall[] = [
-    { tool: 'ask_user', state: 'output-available', input: { question: 'Q-ONE' } },
-    { tool: 'propose_canvas_action', state: 'output-error', input: { nodes: ['N-TWO'] } },
-  ];
-  const run = runOf('REPLY-TEXT here is my plan', calls, ['ANSWER-ONE watercolour', 'ANSWER-TWO you decide']);
+  const run = runOf(
+    { kind: 'call', tool: 'ask_user', state: 'output-available', input: { question: 'Q-ONE' } },
+    { kind: 'answer', text: 'ANSWER-ONE watercolour' },
+    { kind: 'call', tool: 'propose_canvas_action', state: 'output-error', input: { nodes: ['N-TWO'] } },
+    { kind: 'text', text: 'REPLY-TEXT here is my plan' },
+  );
+  const lines = {
+    first: `USER: ${scenario.text}`,
+    ask: 'TOOL ask_user (output-available): {"question":"Q-ONE"}',
+    answer: 'USER ANSWERED: ANSWER-ONE watercolour',
+    propose: 'TOOL propose_canvas_action (output-error): {"nodes":["N-TWO"]}',
+    reply: 'AGENT: REPLY-TEXT here is my plan',
+  };
 
-  it('holds the first message, each call with its state and input, the reply and each answer', () => {
+  it('starts with the first message and writes each step as its own line shape', () => {
     const text = transcriptOf(scenario, run);
-    expect(text).toContain(scenario.text);
-    for (const call of calls) {
-      expect(text).toContain(call.tool);
-      expect(text).toContain(call.state);
-      expect(text).toContain(JSON.stringify(call.input));
-    }
-    expect(text).toContain(run.reply);
-    for (const answer of run.followed) expect(text).toContain(answer);
+    expect(text.startsWith(lines.first)).toBe(true);
+    const textLines = text.split('\n');
+    for (const line of Object.values(lines)) expect(textLines).toContain(line);
   });
 
-  it('puts the first message, then the calls, then the reply, then the answers', () => {
+  it('keeps the steps in the order given, an answer between two calls staying between them', () => {
     const text = transcriptOf(scenario, run);
-    const order = [
-      scenario.text,
-      'ask_user',
-      'propose_canvas_action',
-      run.reply,
-      'ANSWER-ONE watercolour',
-      'ANSWER-TWO you decide',
-    ].map((part) => text.indexOf(part));
+    const order = [lines.first, lines.ask, lines.answer, lines.propose, lines.reply].map((part) => text.indexOf(part));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
 
 describe('judgePrompt', () => {
+  const run = runOf(
+    { kind: 'call', tool: 'ask_user', state: 'output-available', input: { q: 1 } },
+    { kind: 'answer', text: 'ANSWER' },
+    { kind: 'text', text: 'REPLY-TEXT' },
+  );
+
   it('holds the criterion, the transcript and the answer shape verbatim', () => {
-    const run = runOf('REPLY-TEXT', [{ tool: 'ask_user', state: 'output-available', input: { q: 1 } }], ['ANSWER']);
     const prompt = judgePrompt(scenario, run);
     expect(prompt).toContain(scenario.pass);
     expect(prompt).toContain(transcriptOf(scenario, run));
     expect(prompt).toContain('{"pass": boolean, "reason": string}');
+  });
+
+  it('fails a run that claims a card or proposal is on screen when none was placed', () => {
+    expect(judgePrompt(scenario, runOf({ kind: 'text', text: 'REPLY-TEXT' }))).toContain(
+      'Whatever the criterion says, the run fails when the reply says a card or proposal is already on screen and no proposal call is in state output-available.',
+    );
+  });
+
+  it('says the run is in the order it happened, what the lowest price settings mean and which language the agent writes in', () => {
+    const prompt = judgePrompt(scenario, run);
+    expect(prompt).toContain(
+      'The run is listed in the order it happened: each answer the user gave comes right after the question card it answers.',
+    );
+    expect(prompt).toContain(
+      '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
+    );
+    expect(prompt).toContain('The agent writes in the language of the user\'s latest message.');
   });
 });
 
