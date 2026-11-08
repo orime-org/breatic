@@ -10,6 +10,7 @@ export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/spa
 export {
   WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, TimelineExecutionCreateInputSchema,
   encodePreviewToken, decodePreviewToken, TimelineExecutionInputSchema, webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES,
+  TimelineExecutionStatusSchema, timelineExecutionEnded, timelineExecutionFailed,
   type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type TimelineExecutionCreateInput,
   type TimelineExecutionInput,
 } from "@shared/timeline/web-animation.js";

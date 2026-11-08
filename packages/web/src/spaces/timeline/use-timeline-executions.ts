@@ -3,25 +3,13 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient, type Query, type UseQueryResult } from '@tanstack/react-query';
-import type { TimelineExecutionStatus } from '@breatic/shared';
+import { timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi, type TimelineExecutionRow } from '@web/data/api/timeline';
 
-const TERMINAL: ReadonlySet<TimelineExecutionStatus> = new Set(['succeeded', 'failed', 'cancelled', 'expired']);
-
 // The longest delay a browser timer keeps; a longer one would fire at once.
 const MAX_TIMER_MS = 2 ** 31 - 1;
-
-/**
- * Whether an execution has not ended yet.
- * @param status - Its status.
- * @returns True until it succeeded, failed, was cancelled or expired.
- * @throws {never} Never.
- */
-export function timelineExecutionUnfinished(status: TimelineExecutionStatus): boolean {
-  return !TERMINAL.has(status);
-}
 
 /**
  * The key one Space's execution list is cached under: inside the Space-task key, so the page's Space-task signal
@@ -49,7 +37,7 @@ export function useTimelineExecutions(projectId: string, spaceId: string, refres
   const queryKey = React.useMemo(() => timelineExecutionsQueryKey(projectId, spaceId), [projectId, spaceId]);
   const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.listExecutions(projectId, spaceId, signal), [projectId, spaceId]);
   const refetchInterval = React.useCallback((query: Query<TimelineExecutionRow[]>): number | false =>
-    refreshMs !== undefined && query.state.data?.some((row) => timelineExecutionUnfinished(row.status)) === true ? refreshMs : false, [refreshMs]);
+    refreshMs !== undefined && query.state.data?.some((row) => !timelineExecutionEnded(row.status)) === true ? refreshMs : false, [refreshMs]);
   const list = useQuery({ queryKey, queryFn, refetchInterval });
   // Deadlines already read once; a row the server has not yet marked expired is not read again for the same deadline.
   const passed = React.useRef(new Set<string>());
@@ -58,7 +46,7 @@ export function useTimelineExecutions(projectId: string, spaceId: string, refres
     for (const row of list.data ?? []) {
       const key = `${row.id}:${row.deadlineAt}`;
       const at = new Date(row.deadlineAt).getTime();
-      if (!timelineExecutionUnfinished(row.status) || passed.current.has(key) || !Number.isFinite(at)) continue;
+      if (timelineExecutionEnded(row.status) || passed.current.has(key) || !Number.isFinite(at)) continue;
       if (earliest === null || at < earliest.at) earliest = { key, at };
     }
     return earliest;

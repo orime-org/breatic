@@ -4,10 +4,10 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import type { TimelineExecutionStatus, TimelineRate, TimelineWebAnimationClip } from '@breatic/shared';
+import { timelineExecutionFailed } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { timelineExecutionUnfinished } from '@web/spaces/timeline/use-timeline-executions';
 import type { WebAnimationPlayerElement, WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 
@@ -217,7 +217,7 @@ export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRet
     <div ref={setNotes} className='absolute right-3 top-3 flex flex-col items-end gap-1.5' style={notesStyle}>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status === null ? '' : t(`timeline.webAnimation.status.${entry.status}`);
-        const ended = entry.status !== null && !timelineExecutionUnfinished(entry.status) && entry.status !== 'succeeded';
+        const ended = entry.status !== null && timelineExecutionFailed(entry.status);
         return <WebNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
           text={t(ended ? 'timeline.webAnimation.preview.failed' : 'timeline.webAnimation.preview.pending', { track: entry.track, status })} />;
       })}

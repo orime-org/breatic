@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Check, CircleDashed, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
 import { formatCredits, getLocale, type TimelineExecutionStatus } from '@breatic/shared';
-import { TimelineExecutionInputSchema, type TimelineExecutionInput } from '@breatic/shared/space-content';
+import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
@@ -13,7 +13,6 @@ import type { TimelineExecutionRow } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useRunning } from '@web/stores/task-actions-in-flight';
-import { timelineExecutionUnfinished } from '@web/spaces/timeline/use-timeline-executions';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
 import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
 
@@ -98,7 +97,7 @@ function statusTone(status: TimelineExecutionStatus): string {
 const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, readOnly, onToggle, onCancel, onAdd, onRetry }: ExecutionRowProps): React.JSX.Element {
   const t = useTranslation();
   const input = timelineExecutionInput(row);
-  const unfinished = timelineExecutionUnfinished(row.status);
+  const unfinished = !timelineExecutionEnded(row.status);
   const cancelling = useRunning(timelineCancelIntent(row.id)) !== undefined;
   const toggle = React.useCallback((): void => onToggle(row.id), [onToggle, row.id]);
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
@@ -192,8 +191,8 @@ interface TimelineExecutionListProps extends RowActions {
 export function TimelineExecutionList({ projectId, rows, view, openId, readOnly, onView, onToggle, onClose, onCancel, onAdd, onRetry }: TimelineExecutionListProps): React.JSX.Element {
   const t = useTranslation();
   const changeView = React.useCallback((value: string): void => onView(value === 'completed' ? 'completed' : 'inProgress'), [onView]);
-  const inProgress = React.useMemo(() => (rows ?? []).filter((row) => timelineExecutionUnfinished(row.status)), [rows]);
-  const completed = React.useMemo(() => (rows ?? []).filter((row) => !timelineExecutionUnfinished(row.status)), [rows]);
+  const inProgress = React.useMemo(() => (rows ?? []).filter((row) => !timelineExecutionEnded(row.status)), [rows]);
+  const completed = React.useMemo(() => (rows ?? []).filter((row) => timelineExecutionEnded(row.status)), [rows]);
   /**
    * One view's rows, or its empty state once the list is read.
    * @param list - The rows.

@@ -16,6 +16,31 @@ import { WEB_ANIMATION_RUNTIME } from "@shared/timeline/web-animation-runtime.js
 export { WEB_ANIMATION_RUNTIME };
 
 const positiveInteger = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+
+/** Where a Timeline execution is (inner#1711); only `timelineExecutionRepo.transition` moves it. */
+export const TimelineExecutionStatusSchema = z.enum(["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"]);
+
+const ENDED: ReadonlySet<z.infer<typeof TimelineExecutionStatusSchema>> = new Set(["succeeded", "failed", "cancelled", "expired"]);
+
+/**
+ * Whether an execution has ended: it succeeded, failed, was cancelled or expired.
+ * @param status - Its status.
+ * @returns True once it can no longer change.
+ * @throws {never} Never.
+ */
+export function timelineExecutionEnded(status: z.infer<typeof TimelineExecutionStatusSchema>): boolean {
+  return ENDED.has(status);
+}
+
+/**
+ * Whether an execution ended without a result: it failed, was cancelled or expired.
+ * @param status - Its status.
+ * @returns True when it ended and did not succeed.
+ * @throws {never} Never.
+ */
+export function timelineExecutionFailed(status: z.infer<typeof TimelineExecutionStatusSchema>): boolean {
+  return status !== "succeeded" && ENDED.has(status);
+}
 const viewport = z.object({ width: positiveInteger, height: positiveInteger }).strict();
 
 /** The one Manifest shape a source package carries beside its `index.html`. */

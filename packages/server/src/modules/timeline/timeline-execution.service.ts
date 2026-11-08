@@ -53,8 +53,6 @@ export interface WebSourceResolution {
   executions: Record<string, { status: TimelineExecution["status"]; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
 }
 
-const TERMINAL: ReadonlySet<TimelineExecution["status"]> = new Set(["succeeded", "failed", "cancelled", "expired"]);
-
 /** The insert lost to a concurrent accept of the same action; the transaction is rolled back and the winner read. */
 class ActionTaken extends Error {
   /** The marker. */
@@ -227,7 +225,6 @@ export async function cancel(userId: string, executionId: string): Promise<Timel
   const row = await timelineExecutionRepo.findById(executionId);
   if (row === undefined) throw new NotFoundError(t("server.error.not_found"));
   await projectService.assertAccess(row.projectId, userId, "editor");
-  if (TERMINAL.has(row.status)) return row;
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
   await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);

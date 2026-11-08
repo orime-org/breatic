@@ -14,6 +14,8 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
 export interface UserEntity {
@@ -919,16 +921,8 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
-/** Where a Timeline execution is (inner#1711); only `timelineExecutionRepo.transition` moves it. */
-export type TimelineExecutionStatus =
-  | "awaiting_landing"
-  | "queued"
-  | "running"
-  | "cancelling"
-  | "succeeded"
-  | "failed"
-  | "cancelled"
-  | "expired";
+/** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
+export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
 
 /** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
 export interface TimelineExecution {

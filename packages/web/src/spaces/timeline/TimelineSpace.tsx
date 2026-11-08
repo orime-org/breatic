@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineWebAnimationClip,
 } from '@breatic/shared';
-import { TimelineExecutionCreateInputSchema, webAnimationDurationFrames } from '@breatic/shared/space-content';
+import { TimelineExecutionCreateInputSchema, timelineExecutionEnded, timelineExecutionFailed, webAnimationDurationFrames } from '@breatic/shared/space-content';
 import { resolveTimelineArrangement, timelineClipSource, timelineWebSourceOf, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import { removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
@@ -52,7 +52,7 @@ import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, ty
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationDialog } from '@web/spaces/timeline/TimelineWebAnimationDialog';
 import { TimelineWebPreview, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
-import { timelineExecutionUnfinished, useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
+import { useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/timeline/web-animation-creation-draft';
@@ -201,8 +201,7 @@ function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof time
   if (sourceId !== null && web.sources[sourceId] !== undefined) return { state: 'ready', prompt, status: null, phase: null };
   const execution = operationId === null ? undefined : web.executions[operationId];
   if (execution === undefined) return { state: 'unresolved', prompt, status: null, phase: null };
-  const ended = !timelineExecutionUnfinished(execution.status) && execution.status !== 'succeeded';
-  return { state: ended ? 'failed' : 'pending', prompt, status: execution.status, phase: row?.status === 'running' ? row.phase : null };
+  return { state: timelineExecutionFailed(execution.status) ? 'failed' : 'pending', prompt, status: execution.status, phase: row?.status === 'running' ? row.phase : null };
 }
 const MAGNET_ICON = <Magnet className='size-4' />;
 const SNAP_ICON = <ArrowRightToLine className='size-4' />;
@@ -455,7 +454,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const input = timelineExecutionInput(row);
     if (input !== null) openCreate({ prompt: input.prompt, engine: input.engine, aspect: input.aspect, durationSeconds: input.durationSeconds, addAtPlayhead: true });
   }, [openCreate]);
-  const inProgressCount = (rows ?? []).filter((row) => timelineExecutionUnfinished(row.status)).length;
+  const inProgressCount = (rows ?? []).filter((row) => !timelineExecutionEnded(row.status)).length;
 
   const needSelection = React.useCallback((): TimelineClip | null => {
     if (selected === undefined) { toast.warning(t('timeline.edit.selectFirst')); return null; }
