@@ -130,7 +130,10 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
   signal.addEventListener("abort", stop, { once: true });
   // A page whose headers declare more than the limit ends at its headers:
   // reading it whole would take its whole transfer, or crash the renderer.
+  // Judged only while the page itself is arriving: a download the page starts
+  // after it loaded leaves the page as it was read.
   let oversized = false;
+  let arriving = true;
   try {
     const page = await context.newPage();
     const downloaded = page.waitForEvent("download", { timeout: request.pageTimeoutMs }).catch(() => null);
@@ -141,7 +144,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       if (!answer.request().isNavigationRequest() || answer.frame() !== page.mainFrame()) return;
       head = answer;
       const length = Number(answer.headers()["content-length"]);
-      if (Number.isFinite(length) && length > request.maxBytes) {
+      if (arriving && Number.isFinite(length) && length > request.maxBytes) {
         oversized = true;
         void context.close();
       }
@@ -169,6 +172,8 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       }
       if (err instanceof errors.TimeoutError) return { url, status: "too_slow" };
       throw err;
+    } finally {
+      arriving = false;
     }
     if (response === null) return { url, status: "unreachable" };
     const httpStatus = response.status();
