@@ -33,11 +33,6 @@ import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from 
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /**
- * One model with what a run costs, when the catalog prices it: at its
- * defaults, or at the params the call named that it takes (`atParams`),
- * with the ones it does not take named (`rejected`).
- */
-/**
  * A model with its price: at the params a call gave (`atParams`) or its
  * defaults, the keys it turned away, and for each setting whose value moves
  * the price, the value it is lowest at.

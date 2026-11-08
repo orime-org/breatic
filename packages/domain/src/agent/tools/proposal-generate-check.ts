@@ -353,7 +353,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
  * @param node - The node.
  * @returns The labels, in the order they first appear.
  */
-export function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
+function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
   const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
   return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
 }
