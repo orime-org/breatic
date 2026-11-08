@@ -380,10 +380,14 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Do not make, propose, plan their next step or review their earlier choices. Do not offer to make anything. Something they did not ask goes in one sentence at the end, only when their next step would go wrong without it; an offer of more work is never that sentence.");
   });
 
-  it("ends both a reply to something told and an answer to a question by never closing with an offer", () => {
+  it("ends a reply to something told by never closing with an offer", () => {
     const NO_OFFER = "Never close with an offer (\"if you like, I can …\").";
     expect(bullet("- Something they tell you", "- A question").slice(-NO_OFFER.length)).toBe(NO_OFFER);
-    expect(bullet("- A question", "- A change to something that exists").slice(-NO_OFFER.length)).toBe(NO_OFFER);
+  });
+
+  it("ends an answer to a question by never closing with an offer, and tells how to make it in Breatic only when asked how", () => {
+    const END = "Never close with an offer (\"if you like, I can …\"). How to make it in Breatic is part of the answer only when they asked how.";
+    expect(bullet("- A question", "- A change to something that exists").slice(-END.length)).toBe(END);
   });
 
   it("notes another problem in a change in one sentence without fixing it", () => {
@@ -394,8 +398,8 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("What a request to make leaves open is one of three kinds, each with its own answer.");
   });
 
-  it("asks what only the user knows all at once and saying why", () => {
-    expect(text()).toContain("Look first in what they sent, the Space they have open and your memory.");
+  it("looks first, says what a Space holds only once read, and asks what only the user knows all at once saying why", () => {
+    expect(onlyTheUserKnows()).toContain("Look first in what they sent, the Space they have open and your memory; say what a Space holds only once you have read it.");
     expect(text()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask.");
     expect(text()).not.toContain("who a character of theirs is is never one");
   });
@@ -412,19 +416,20 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("A small point that changes little of the result, assume and say so; who a character is is never such a point.");
   });
 
-  it("asks only whether existing work exists and to see it, and treats the look with none as taste, never a list", () => {
-    const sentence = "Of work that already exists, ask only whether there is some and to see it; with none, the look is a taste, answered by takes, never by a list of looks to pick from.";
+  it("asks only whether existing work exists and to see it, and treats the look with none as taste, answered by takes", () => {
+    const sentence = "Of work that already exists, ask only whether there is some and to see it; with none, the look is a taste, answered by takes.";
     expect(text()).toContain(sentence);
+    expect(onlyTheUserKnows()).not.toContain("never by a list of looks to pick from");
     const at = text().indexOf(sentence);
     expect(at).toBeGreaterThan(text().indexOf("- What only the user knows:"));
     expect(at).toBeLessThan(text().indexOf("- Taste with no right answer"));
   });
 
-  it("answers taste with two or three clearly different takes and builds on the one picked", () => {
-    expect(text()).toContain("- Taste with no right answer");
-    expect(text()).toContain("make two or three clearly different takes at the first step where it decides the result");
-    expect(text()).toContain("build the later steps on the one they pick");
-    expect(text()).toContain("Ask it in words only when no take can be made without it.");
+  it("answers taste with two or three clearly different takes, proposes later steps only after the pick, never as a list of options", () => {
+    const taste = bullet("- Taste with no right answer", "- When what only the user knows and a taste");
+    expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result");
+    expect(taste).toContain("say how they differ, and propose the later steps only once they have picked one, never on the same card as the takes. A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).not.toContain("build the later steps on the one they pick");
   });
 
   it("counts a shape or build and a mood among the tastes", () => {
@@ -457,7 +462,8 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 
   it("chooses a model that can do the step and names a model's limit as the model's, not Breatic's", () => {
     expect(text()).toContain("Choose for each step a model that can do what it asks.");
-    expect(text()).toContain("say that it is this model's limit, not Breatic's, and name a model that does it better.");
+    expect(text()).toContain("name a model whose own description in the model list says it does this better; when none does, say so plainly.");
+    expect(text()).not.toContain("name a model that does it better");
   });
 
   it("recommends and leaves the decision to the user", () => {
