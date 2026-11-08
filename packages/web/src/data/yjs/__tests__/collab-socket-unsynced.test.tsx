@@ -170,7 +170,18 @@ function receiveStep1(name: string, provider: ProviderSpy): void {
 }
 
 /**
- * Completes the authenticated handshake input and lets receipt microtasks run.
+ * Lets the receipt timer run: the binding sends `sync:confirm` after the
+ * provider's send window, with real or fake timers.
+ * @returns Resolves once it has.
+ * @throws {never} Never.
+ */
+async function receiptWindow(): Promise<void> {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(5);
+  else await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
+/**
+ * Completes the authenticated handshake input and lets the receipt timer run.
  * @returns Nothing.
  * @throws {Error} When an event handler fails.
  */
@@ -180,7 +191,7 @@ async function handshake(name: string, provider: ProviderSpy): Promise<void> {
   await act(async () => {
     provider.emit('authenticated', { scope: 'read-write' });
     receiveStep1(name, provider);
-    await Promise.resolve();
+    await receiptWindow();
   });
 }
 
@@ -199,7 +210,7 @@ function requests(provider: ProviderSpy): Array<{ type: string; id: string }> {
  * @throws {Error} When an event handler fails.
  */
 async function confirm(provider: ProviderSpy, id: string, ok = true): Promise<void> {
-  await act(async () => { provider.emit('stateless', { payload: JSON.stringify({ type: 'sync:confirmed', id, ok }) }); await Promise.resolve(); });
+  await act(async () => { provider.emit('stateless', { payload: JSON.stringify({ type: 'sync:confirmed', id, ok }) }); await receiptWindow(); });
 }
 
 beforeEach(() => {
@@ -468,7 +479,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     expect(requests(item.provider)).toHaveLength(1);
     const first = requests(item.provider)[0].id;
     act(() => { item.doc.getText('body').insert(1, 'B'); });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await receiptWindow(); });
     expect(requests(item.provider)).toHaveLength(1);
     await confirm(item.provider, first);
     expect(blocked()).toBe(true);
@@ -489,7 +500,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     if (gate === 'socket') sockets[0].webSocket.readyState = 3;
     if (gate === 'authenticated') item.provider.isAuthenticated = false;
     if (gate === 'writable') item.provider.authorizedScope = 'readonly';
-    await act(async () => { item.doc.getText('body').insert(0, 'pending'); await Promise.resolve(); });
+    await act(async () => { item.doc.getText('body').insert(0, 'pending'); await receiptWindow(); });
     expect(requests(item.provider)).toEqual([]);
     expect(blocked()).toBe(true);
     item.provider.isAttached = true;
@@ -506,7 +517,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     expect(requests(item.provider)).toHaveLength(1);
     const id = requests(item.provider)[0].id;
     for (const payload of ['{', 'null', JSON.stringify({ type: 'activity:new' }), JSON.stringify({ type: 'sync:confirmed', id }), JSON.stringify({ type: 'sync:confirmed', id, ok: true, extra: 1 })]) {
-      await act(async () => { item.provider.emit('stateless', { payload }); await Promise.resolve(); });
+      await act(async () => { item.provider.emit('stateless', { payload }); await receiptWindow(); });
       expect(blocked()).toBe(true);
       expect(requests(item.provider)).toHaveLength(1);
     }
@@ -557,7 +568,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
       item.doc.getText('body').insert(0, 'pending');
       receiveStep1(item.name, item.provider);
       item.provider.emit('close', { event: { reason: '' } });
-      await Promise.resolve();
+      await receiptWindow();
     });
     expect(requests(item.provider)).toEqual([]);
     expect(blocked()).toBe(true);
@@ -574,7 +585,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     expect(blocked()).toBe(true);
     item.provider.authorizedScope = 'readonly';
     act(() => { item.doc.getText('body').insert(5, ' edit'); });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await receiptWindow(); });
     expect(requests(item.provider)).toHaveLength(1);
     item.provider.emit('close', { event: { reason: COLLAB_REAUTH_REASONS.permissionChanged } });
     await handshake(item.name, item.provider);
@@ -593,7 +604,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     act(() => { item.doc.getText('body').delete(0, 9); });
     expect(item.doc.getText('body').toString()).toBe('');
     expect(blocked()).toBe(true);
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await receiptWindow(); });
     expect(requests(item.provider)).toHaveLength(2);
     await confirm(item.provider, requests(item.provider)[1].id);
     expect(blocked()).toBe(false);
