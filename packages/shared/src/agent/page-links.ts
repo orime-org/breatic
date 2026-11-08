@@ -20,8 +20,13 @@
 const LINK_START =
   /https?:\/\/|(?<=^|[^A-Za-z0-9.\-_@/:%\\]|\\[ntr])(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}(?![A-Za-z0-9-])/gi;
 
-/** Chinese punctuation that ends a link. */
-const CHINESE_ENDS = new Set("，。、；：！？）》」』】");
+/**
+ * Chinese punctuation that ends a link: the full-width comma, full stop,
+ * enumeration comma, semicolon, colon, exclamation and question marks, and
+ * the closing parenthesis, double angle bracket, corner brackets and lenticular
+ * bracket.
+ */
+const CHINESE_ENDS = new Set("\uFF0C\u3002\u3001\uFF1B\uFF1A\uFF01\uFF1F\uFF09\u300B\u300D\u300F\u3011");
 
 /** Characters RFC 3986 never allows unencoded, which end a link. */
 const NEVER_IN_URL = new Set('"<>`{}|^');
