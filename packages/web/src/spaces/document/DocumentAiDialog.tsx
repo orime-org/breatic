@@ -979,8 +979,8 @@ function Preview({
   // stopped growing since and is yet to be drawn.
   const grew = React.useRef(false);
   const ended = React.useRef(false);
-  // Written as it scrolls: a node out of the document reads 0 for its
-  // scroll positions, so they cannot be read as the panel is taken down.
+  // Written as it scrolls: a node the browser does not lay out reads 0 for its
+  // scroll positions, so they cannot be read once its Space tab is hidden.
   // Capture, as a table frame's own scroll does not bubble.
   React.useEffect(() => {
     const outer = scroller.current;
