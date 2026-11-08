@@ -58,6 +58,9 @@ export interface ReadPagesAnswer {
 /** The longest link `web_fetch` takes; a contract bound, shared by both ends. */
 export const READ_PAGE_MAX_URL_CHARS = 2048;
 
+/** The longest page title the reader hands on, in UTF-16 code units; a contract bound. */
+export const READ_PAGE_MAX_TITLE_CHARS = 1024;
+
 /**
  * The header the Worker's outbound handler marks a send that failed with
  * (value `1`), so the reader tells a site that never answered from one that did.
