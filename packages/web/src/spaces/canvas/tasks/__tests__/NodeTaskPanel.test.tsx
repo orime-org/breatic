@@ -75,7 +75,7 @@ function renderPanel(
         now={NOW}
         isLoading={false}
         isError={false}
-        hasRetryFile={(): boolean => false}
+        canRetry={(): boolean => false}
         isWaiting={(): boolean => false}
         readOnly={false}
         onReload={(): void => {}}
@@ -206,7 +206,7 @@ describe('NodeTaskPanel', () => {
           settledAt: '2026-09-04T10:01:00.000Z',
         }),
       ],
-      hasRetryFile: (taskId: string): boolean => taskId === 'has-file',
+      canRetry: (taskId: string): boolean => taskId === 'has-file',
     });
 
     expect(screen.getAllByTestId('task-action-retry')).toHaveLength(1);
@@ -220,7 +220,7 @@ describe('NodeTaskPanel', () => {
         entry({ id: 'busy', status: 'failed', settledAt: '2026-09-04T10:01:00.000Z' }),
         entry({ id: 'idle', status: 'failed', label: 'second.mp4', settledAt: '2026-09-04T10:01:00.000Z' }),
       ],
-      hasRetryFile: (): boolean => true,
+      canRetry: (): boolean => true,
       isWaiting: (taskId: string, request: TaskActionRequest): boolean =>
         taskId === 'busy' && request === 'dismiss',
     });

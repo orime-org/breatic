@@ -49,8 +49,8 @@ export interface NodeTaskPanelProps {
   isLoading: boolean;
   /** Whether the fetch failed. */
   isError: boolean;
-  /** Whether this session still holds one task's File. */
-  hasRetryFile: (taskId: string) => boolean;
+  /** Whether one failed task can run again: a failed upload whose File this session still holds, or a planned output a retry can run again. */
+  canRetry: (taskId: string) => boolean;
   /** Whether one request on one task's row is still waiting for the server. */
   isWaiting: (taskId: string, request: TaskActionRequest) => boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
@@ -84,7 +84,7 @@ export interface NodeTaskPanelProps {
  * @param props.now - The reader's clock.
  * @param props.isLoading - Whether the list is still being fetched.
  * @param props.isError - Whether the fetch failed.
- * @param props.hasRetryFile - Whether this session holds one task's File.
+ * @param props.canRetry - Whether one failed task can run again.
  * @param props.isWaiting - Whether one request on one task's row is still waiting.
  * @param props.readOnly - Whether this reader may write.
  * @param props.medium - What the host node holds, for a refusal's format list.
@@ -103,7 +103,7 @@ export function NodeTaskPanel({
   now,
   isLoading,
   isError,
-  hasRetryFile,
+  canRetry,
   isWaiting,
   readOnly,
   medium,
@@ -191,7 +191,7 @@ export function NodeTaskPanel({
                 <TaskRow
                   entry={task}
                   now={now}
-                  hasRetryFile={hasRetryFile(task.id)}
+                  canRetry={canRetry(task.id)}
                   retrying={isWaiting(task.id, 'retry')}
                   dismissing={isWaiting(task.id, 'dismiss')}
                   readOnly={readOnly}

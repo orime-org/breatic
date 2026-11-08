@@ -232,7 +232,7 @@ function OpenNodeTaskPanel({
   const now = useTickingClock(counting);
 
   // A row offers Retry when this session holds its File, or when it is a planned output a retry can run again.
-  const holdsFile = React.useCallback(
+  const retryable = React.useCallback(
     (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId) || plannedRetryOf(taskId) !== null,
     [projectId, spaceId, plannedRetryOf],
   );
@@ -323,7 +323,7 @@ function OpenNodeTaskPanel({
         now={now}
         isLoading={query.isPending}
         isError={query.isLoadingError}
-        hasRetryFile={holdsFile}
+        canRetry={retryable}
         isWaiting={isWaiting}
         onReload={reload}
         onClose={closeActivePanel}

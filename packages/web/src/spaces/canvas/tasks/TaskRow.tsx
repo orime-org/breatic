@@ -51,8 +51,8 @@ export interface TaskRowProps {
   entry: NodeTaskEntry;
   /** The reader's clock, ticking in the panel above. */
   now: number;
-  /** Whether this session still holds the File this upload was carrying. */
-  hasRetryFile: boolean;
+  /** Whether a failed task can run again: a failed upload whose File this session still holds, or a planned output a retry can run again. */
+  canRetry: boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
   /** Whether this row's Retry is still waiting for the server. */
@@ -106,7 +106,7 @@ function settledNote(
  * @param props - The row inputs.
  * @param props.entry - The task, as the server last described it.
  * @param props.now - The reader's clock.
- * @param props.hasRetryFile - Whether this session holds the File.
+ * @param props.canRetry - Whether the failed task can run again.
  * @param props.readOnly - Whether this reader may write.
  * @param props.retrying - Whether this row's Retry is still waiting.
  * @param props.dismissing - Whether this row's Finish or Clear is still waiting.
@@ -120,7 +120,7 @@ function settledNote(
 export const TaskRow = React.memo(function TaskRow({
   entry,
   now,
-  hasRetryFile,
+  canRetry,
   readOnly,
   retrying,
   dismissing,
@@ -140,7 +140,7 @@ export const TaskRow = React.memo(function TaskRow({
   const actions = taskRowActions({
     status,
     hasResult: entry.content !== null,
-    hasRetryFile,
+    canRetry,
     readOnly,
   });
 
