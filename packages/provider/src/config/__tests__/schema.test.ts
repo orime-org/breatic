@@ -118,6 +118,22 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("typo");
   });
 
+  // inner#1692: the optional rig after a 3D generation.
+  const rigStep = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing };
+
+  it("loads an optional rig step after the model's own call, keeping its optional flag", () => {
+    const config = parseProviderConfig(input([bind("wavespeed", 1, { extra_steps: [rigStep] } as unknown as Partial<MediaBinding>)]));
+    expect(config.models.seedance?.[0]?.extra_steps).toEqual([rigStep]);
+  });
+
+  it.each([
+    ["an optional flag that is not a boolean", { ...rigStep, optional: "yes" }, "optional"],
+    ["a step kind no step runs", { ...rigStep, kind: "rigging" }, "kind"],
+  ])("refuses %s, naming it", (_what, step, key) => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]));
+    expect(problems.join("\n")).toContain(key);
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);

@@ -77,6 +77,70 @@ describe("the shipped provider configuration", () => {
     expect(() => provider.llm.assertModelsPriced([agent.default_model, agent.consolidation_model, ...describers])).not.toThrow();
   });
 
+  it("declares every catalog extra step on WaveSpeed as the catalog does, its optional flag included", () => {
+    interface CatalogStep { endpoint: string; at: string; for_param?: string; per_item?: boolean; reused?: boolean; optional?: boolean; pricing: { base_price: number; formula: string; discount_rate: number } }
+    const files = ["image", "video", "audio", "tts", "three_d"].map((m) => `models/${m}/models.yaml`);
+    const { models } = parseProviderConfig(shipped());
+    for (const file of files) {
+      for (const model of yaml<{ models: { name: string; extra_steps?: CatalogStep[] }[] }>(file).models) {
+        const declared = models[model.name]?.find((b) => b.upstream === "wavespeed")?.extra_steps ?? [];
+        const seen = declared.map((s) => ({ endpoint: s.endpoint, at: s.at, for_param: s.for_param, per_item: s.per_item, reused: s.reused, optional: s.optional, pricing: s.pricing }));
+        const wanted = (model.extra_steps ?? []).map((s) => ({
+          endpoint: s.endpoint,
+          at: s.at,
+          for_param: s.for_param,
+          per_item: s.per_item,
+          reused: s.reused,
+          optional: s.optional,
+          pricing: { kind: "formula", ...s.pricing },
+        }));
+        expect(seen, model.name).toEqual(wanted);
+      }
+    }
+  });
+
+  describe("the optional rig after a Tripo H3.1 generation (inner#1692)", () => {
+    const TRIPO = ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"];
+
+    it.each(TRIPO)("%s rigs on rig_skeleton as an optional step priced per run", (model) => {
+      const binding = parseProviderConfig(shipped()).models[model]?.find((b) => b.upstream === "wavespeed");
+      expect(binding?.extra_steps).toEqual([{
+        kind: "rig",
+        endpoint: "tripo3d/rig",
+        at: "after",
+        for_param: "rig_skeleton",
+        optional: true,
+        pricing: { kind: "formula", base_price: 300000, formula: "", discount_rate: 100 },
+      }]);
+    });
+
+    it.each(TRIPO)("%s never sends rig_skeleton to the generation: no field binds it", (model) => {
+      const binding = parseProviderConfig(shipped()).models[model]?.find((b) => b.upstream === "wavespeed");
+      expect(binding?.params).toBeDefined();
+      expect(Object.keys(binding?.params ?? {})).not.toContain("rig_skeleton");
+    });
+
+    it("binds no field to a param that switches on a step after the model's own call, on any model", () => {
+      const leaked = Object.entries(parseProviderConfig(shipped()).models).flatMap(([model, bindings]) =>
+        bindings.flatMap((b) => (b.extra_steps ?? [])
+          .filter((s) => s.at === "after" && s.for_param !== undefined && b.params?.[s.for_param] !== undefined)
+          .map((s) => `${model}.${s.for_param!}`)));
+      expect(leaked).toEqual([]);
+    });
+
+    it.each(TRIPO)("%s estimates the rig only when rig_skeleton is on", async (model) => {
+      const provider = createProvider({ config: shipped(), keyOf: (name) => (name === "WAVESPEED_API_KEY" ? "k" : undefined), llmMaxRetries: 0, cleanText: (t) => t });
+      const at = (params: Record<string, unknown>): Promise<number | undefined> =>
+        provider.estimate(model, { params, prompt: "a knight", durations: {}, placeholders: [], durationsMissing: [] }, { mode: "default" }).then((e) => e?.usd);
+      const absent = await at({});
+      const off = await at({ rig_skeleton: false });
+      const on = await at({ rig_skeleton: true });
+      expect(absent).toBeDefined();
+      expect(off).toBeCloseTo(absent!, 9);
+      expect(on! - absent!).toBeCloseTo(0.3, 9);
+    });
+  });
+
   it("ships the deployment override only as a template", () => {
     expect(existsSync(resolve(ROOT, "config/provider/routing.yaml.template"))).toBe(true);
     expect(() => parseProviderConfig({ ...shipped(), routing: yaml("provider/routing.yaml.template") ?? undefined })).not.toThrow();

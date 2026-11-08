@@ -27,7 +27,7 @@ models:
             field: texture_quality
           texture_version:
             field: texture_version
-            values:
+            values: &a1
               v3.0: v3.0-20250812
               v3.5: v3.5-20260815
           delight:
@@ -50,6 +50,17 @@ models:
             field: texture_seed
           negative_prompt:
             field: negative_prompt
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         pricing:
           kind: formula
           base_price: 120000
@@ -71,9 +82,7 @@ models:
             field: texture_quality
           texture_version:
             field: texture_version
-            values:
-              v3.0: v3.0-20250812
-              v3.5: v3.5-20260815
+            values: *a1
           delight:
             field: delight
           geometry_quality:
@@ -98,6 +107,17 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         pricing:
           kind: formula
           base_price: 240000
@@ -119,9 +139,7 @@ models:
             field: texture_quality
           texture_version:
             field: texture_version
-            values:
-              v3.0: v3.0-20250812
-              v3.5: v3.5-20260815
+            values: *a1
           delight:
             field: delight
           geometry_quality:
@@ -146,6 +164,17 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         pricing:
           kind: formula
           base_price: 240000

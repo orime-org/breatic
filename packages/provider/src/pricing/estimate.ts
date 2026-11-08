@@ -113,6 +113,16 @@ export function isPresent(value: unknown): boolean {
 }
 
 /**
+ * Whether a param asks for the extra step that names it: supplied, and not a
+ * switch turned off. A switch's `false` is still a value the user set.
+ * @param value - The value of the step's `for_param`.
+ * @returns True when the run takes the step.
+ */
+export function stepRequested(value: unknown): boolean {
+  return isPresent(value) && value !== false;
+}
+
+/**
  * Whether any formula calls `fn` on this field.
  * @param formulas - The formulas.
  * @param fn - `get_duration` or `$length`.
@@ -159,7 +169,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<
   const promptField = rule.prompt_field;
   const textPriced = promptField !== undefined && input.prompt === "" && billsBy(formulas, "$length", promptField);
   const ownReused = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
-  const stepReused = rule.steps.some((s) => s.reused === true && (s.for_param === undefined || isPresent(input.params[s.for_param])));
+  const stepReused = rule.steps.some((s) => s.reused === true && (s.for_param === undefined || stepRequested(input.params[s.for_param])));
 
   /**
    * The run's price with the prompt field set to one value.
@@ -173,7 +183,7 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<
     for (const step of rule.steps) {
       if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : input.params[step.for_param];
-      if (step.for_param !== undefined && !isPresent(source)) continue;
+      if (step.for_param !== undefined && !stepRequested(source)) continue;
       if (step.pricing === undefined) continue;
       const calls = step.per_item === true && Array.isArray(source) ? source.length : 1;
       usd += calls * (await priceUsd(contractOf(step.pricing), fields, durations));

@@ -28,7 +28,8 @@ describe("the estimate fixture prices every extra step with its param present", 
           if (c.model !== model) return false;
           const value = c.input.params[name];
           if (step.per_item === true) return Array.isArray(value) && value.length >= 2;
-          return value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0);
+          // A switch turned off asks for no step, so it samples nothing (inner#1692).
+          return value !== undefined && value !== null && value !== "" && value !== false && !(Array.isArray(value) && value.length === 0);
         });
         if (!filled) unsampled.push(`${model}.${name}`);
       }

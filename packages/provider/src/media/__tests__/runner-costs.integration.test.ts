@@ -47,6 +47,15 @@ const voiceClone: Partial<MediaBinding> = {
   extra_steps: [{ kind: "speak", endpoint: "minimax/speech-2.8-hd", at: "after" }],
 };
 
+// A Tripo generation with the optional rig after it (inner#1692); like the shipped
+// binding, no field carries rig_skeleton.
+const tripoRig: Partial<MediaBinding> = {
+  model_id: "tripo3d/h3.1/text-to-3d",
+  prompt_field: "prompt",
+  params: { texture: { field: "texture" } },
+  extra_steps: [{ kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing }],
+};
+
 /**
  * The configuration of these cases.
  * @returns The raw configuration.
@@ -61,6 +70,7 @@ function config(): ProviderConfigInput {
       models: {
         seedance: { upstreams: [bound("ws_a", 1, { prompt_field: "prompt" }), bound("ws_b", 2, { prompt_field: "prompt" })] },
         "voice-clone": { upstreams: [bound("ws_a", 1, voiceClone), bound("ws_b", 2, voiceClone)] },
+        tripo: { upstreams: [bound("ws_a", 1, tripoRig), bound("ws_b", 2, tripoRig)] },
       },
     },
   };
@@ -395,3 +405,262 @@ describe("a refusal whose body cannot be read is still its status", () => {
   });
 });
 
+
+describe("the optional rig after a 3D generation (inner#1692)", () => {
+  const MODEL = "https://out.example/model.glb";
+  const RIGGED = "https://out.example/rigged.glb";
+  const GENERATE = "/tripo3d/h3.1/text-to-3d";
+  const RIG = "/tripo3d/rig";
+  const knight = (params: Record<string, unknown>): { prompt: string; params: Record<string, unknown> } => ({ prompt: "a knight", params: { texture: true, ...params } });
+
+  /** How the rig ends: done with a model, failed, done with no output, refused at submit, or finished at once with no output. */
+  type RigEnd = "rigged" | "failed" | "empty" | "refused" | "emptyAtOnce";
+
+  /**
+   * A WaveSpeed fake for one Tripo run: the generation p-gen bills 0.4; the rig p-rig
+   * bills 0.3 when it rigged and is deducted and refunded when it did not.
+   * @param rig - How the rig ends.
+   * @param generation - How the generation ends.
+   * @returns The route.
+   */
+  const tripoUpstream = (rig: RigEnd, generation: "completed" | "failed" = "completed") =>
+    ({ method, path, body }: { method: string; path: string; body: unknown }): ReturnType<typeof accepted> => {
+      if (path === "/billings/search") {
+        const id = (body as { prediction_uuids: string[] }).prediction_uuids[0];
+        if (id === "p-gen") return billing([{ type: "deduct", price: 0.4 }]);
+        return rig === "rigged" ? billing([{ type: "deduct", price: 0.3 }]) : billing([{ type: "deduct", price: 0.3 }, { type: "refund", price: 0.3 }]);
+      }
+      if (method === "POST") {
+        if (path === GENERATE) return accepted("p-gen");
+        if (rig === "refused") return { status: 400, body: { message: "cannot rig this model" } };
+        if (rig === "emptyAtOnce") return finishedAtOnce("p-rig", []);
+        return accepted("p-rig");
+      }
+      if (path.includes("p-gen")) return generation === "completed" ? result("p-gen", "completed", [MODEL]) : result("p-gen", "failed", [], "boom");
+      if (rig === "failed") return result("p-rig", "failed", [], "rig failed");
+      // A submit that finished at once with no outputs is read as still running (adapter.ts), so it is asked again.
+      if (rig === "empty" || rig === "emptyAtOnce") return result("p-rig", "completed", []);
+      return result("p-rig", "completed", [RIGGED]);
+    };
+
+  /**
+   * Drive a run to its end as the caller does, sending and polling each stored ticket.
+   * @param r - The runner.
+   * @param first - The plan's answer.
+   * @returns The last answer.
+   */
+  async function drive(r: MediaRunner, first: MediaAnswer): Promise<MediaAnswer> {
+    let answer = first;
+    for (let turn = 0; turn < 8 && (answer.state === "send" || answer.state === "running"); turn++) {
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+    }
+    return answer;
+  }
+
+  /**
+   * The predictions a run's costs account for: each one either looked up later or billed now.
+   * @param costs - The answer's costs.
+   * @returns The prediction ids, sorted, one entry per time it is reported.
+   */
+  const reported = (costs: readonly Cost[]): string[] => [
+    ...costs.flatMap((c) => (c.state === "pending" && typeof c.lookup.predictionId === "string" ? [c.lookup.predictionId] : [])),
+    ...billedIds(a.seen),
+  ].sort();
+  const knownUsd = (costs: readonly Cost[]): number => costs.reduce((sum, c) => sum + (c.state === "known" ? c.usd : 0), 0);
+
+  it.each([
+    ["off", { rig_skeleton: false }],
+    ["absent", {}],
+  ])("asks for no rig when rig_skeleton is %s", async (_what, params) => {
+    a.answer(tripoUpstream("rigged"));
+    const r = runner();
+    const done = expectState(await drive(r, await r.plan("tripo", knight(params), DEFAULT, options)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBeUndefined();
+    expect(submits(a.seen).map((s) => s.path)).toEqual([GENERATE]);
+  });
+
+  it("sends the generation without the switch, then rigs the generated model for VRM bones", async () => {
+    a.answer(tripoUpstream("rigged"));
+    const r = runner();
+    const planned = expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send");
+    expect(planned.step.kind).toBe("generate");
+    const generating = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expect(submits(a.seen)[0]).toMatchObject({ path: GENERATE, body: { prompt: "a knight", texture: true } });
+    expect(submits(a.seen)[0]!.body).not.toHaveProperty("rig_skeleton");
+    const toRig = expectState(await r.poll(stored(generating.ticket), live()), "send");
+    expect(toRig.step.kind).toBe("rig");
+    const rigging = expectState(await r.send(stored(toRig.ticket), live()), "running");
+    expect(submits(a.seen)[1]).toMatchObject({ path: RIG });
+    expect(submits(a.seen)[1]!.body).toEqual({ model: MODEL, rig_type: "auto", spec: "vrm", out_format: "glb" });
+    const done = expectState(await r.poll(stored(rigging.ticket), live()), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: RIGGED }]);
+    expect(done.notice).toBeUndefined();
+    expect(reported(done.costs)).toEqual(["p-gen", "p-rig"]);
+    expect(knownUsd(done.costs)).toBeCloseTo(0.7, 9);
+  });
+
+  it.each<[string, RigEnd, string[]]>([
+    ["the rig prediction fails", "failed", ["p-gen", "p-rig"]],
+    ["the rig prediction finishes with no output", "empty", ["p-gen", "p-rig"]],
+    ["the rig submit finishes at once with no output", "emptyAtOnce", ["p-gen", "p-rig"]],
+    ["the rig submit is refused with a 400", "refused", ["p-gen"]],
+  ])("delivers the unrigged model with notice rig_failed when %s, every accepted prediction reported once", async (_what, rig, predictions) => {
+    a.answer(tripoUpstream(rig));
+    const r = runner();
+    const done = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(done.servedBy).toBe("ws_a");
+    expect(reported(done.costs)).toEqual(predictions);
+    // A rig that did not rig nets to zero on WaveSpeed: the run costs the generation.
+    expect(knownUsd(done.costs)).toBeCloseTo(0.4, 9);
+    expect(done.costs.filter((c) => c.state === "missing")).toEqual([]);
+    expect(submits(a.seen).map((s) => s.path)).toEqual([GENERATE, RIG]);
+  });
+
+  it("still fails the run when the generation fails, sending no rig", async () => {
+    a.answer(tripoUpstream("rigged", "failed"));
+    const r = runner();
+    const failed = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
+    expect(failed.costs).toEqual([lookupOf("p-gen")]);
+    expect(submits(a.seen).map((s) => s.path)).toEqual([GENERATE]);
+  });
+
+  it("keeps a rig submit answered 503 on the upstream for the caller to retry, and abandon hands back both steps", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    a.answer((req) => (req.method === "POST" && req.path === RIG ? { status: 503, body: {} } : tripoUpstream("rigged")(req)));
+    b.answer(() => accepted("p-b"));
+    const r = runner();
+    const generating = expectState(await r.send(stored(expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send").ticket), live()), "running");
+    const toRig = expectState(await r.poll(stored(generating.ticket), live()), "send");
+    await expect(r.send(stored(toRig.ticket), live())).rejects.toBeInstanceOf(SendNotAccepted);
+    expect(submits(b.seen)).toHaveLength(0);
+    expect(r.abandon(stored(toRig.ticket)).costs).toEqual([lookupOf("p-gen")]);
+  });
+
+  it("abandon of a ticket waiting on the rig hands back the generation and the rig", async () => {
+    a.answer(tripoUpstream("rigged"));
+    const r = runner();
+    const generating = expectState(await r.send(stored(expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send").ticket), live()), "running");
+    const toRig = expectState(await r.poll(stored(generating.ticket), live()), "send");
+    const rigging = expectState(await r.send(stored(toRig.ticket), live()), "running");
+    expect(r.abandon(stored(rigging.ticket)).costs).toEqual([lookupOf("p-gen"), lookupOf("p-rig")]);
+  });
+
+  it("continues a worker task whose rig already failed by delivering the generated model, as run-steps does", async () => {
+    a.answer(tripoUpstream("failed"));
+    const legacy = {
+      steps: [
+        { position: 0, kind: "generate" as const, endpoint: "tripo3d/h3.1/text-to-3d", itemIndex: null, status: "done" as const, predictionId: "p-gen", output: { urls: [MODEL], prediction: "p-gen" }, inlineCostUsd: 0 },
+        { position: 1, kind: "rig" as const, endpoint: "tripo3d/rig", itemIndex: null, status: "failed" as const, predictionId: "p-rig", output: { error: "rig failed" }, inlineCostUsd: 0 },
+      ],
+    };
+    const r = runner();
+    const done = expectState(await drive(r, await r.ticketFromLegacy("tripo", knight({ rig_skeleton: true }), DEFAULT, options, legacy)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(reported(done.costs)).toEqual(["p-gen", "p-rig"]);
+    expect(submits(a.seen)).toHaveLength(0);
+  });
+
+  describe("property (critical path): whatever the generation and the rig answer", () => {
+    const SUBMITS = ["accept", "finishNow", "finishEmpty", "busy", "refused", "unreadable"] as const;
+    const POLLS = ["processing", "completed", "empty", "failed"] as const;
+
+    it("every accepted prediction reaches the caller once, an optional rig never fails the run, and the outputs and notice follow the rig", async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.array(fc.constantFrom(...SUBMITS), { maxLength: 8 }),
+          fc.array(fc.constantFrom(...POLLS), { maxLength: 8 }),
+          fc.constantFrom<"on" | "off" | "absent">("on", "off", "absent"),
+          async (submitScript, pollScript, rigSwitch) => {
+            vi.spyOn(Math, "random").mockReturnValue(0);
+            let s = 0;
+            let p = 0;
+            let acceptedCount = 0;
+            let unreadable = 0;
+            let rigSubmits = 0;
+            // The rig's last final answer: rigged, or not rigged (failed, refused, no output).
+            let rigFate: "rigged" | "lost" | undefined;
+            const fake = ({ method, path }: { method: string; path: string }): ReturnType<typeof accepted> => {
+              if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
+              if (method !== "POST") {
+                const id = path.split("/")[2] ?? "";
+                const isRig = id.startsWith("rig-");
+                const next = pollScript[p++] ?? "completed";
+                if (next === "processing") return result(id, "processing");
+                if (next === "completed") {
+                  if (isRig) rigFate = "rigged";
+                  return result(id, "completed", [isRig ? RIGGED : MODEL]);
+                }
+                if (isRig) rigFate = "lost";
+                return next === "empty" ? result(id, "completed", []) : result(id, "failed", [], "boom");
+              }
+              const isRig = path === RIG;
+              if (isRig) rigSubmits++;
+              const next = submitScript[s++] ?? "accept";
+              const id = `${isRig ? "rig" : "gen"}-${s}`;
+              if (next === "accept" || next === "finishNow" || next === "finishEmpty") {
+                acceptedCount++;
+                if (next === "accept") return accepted(id);
+                if (isRig) rigFate = next === "finishNow" ? "rigged" : "lost";
+                return finishedAtOnce(id, next === "finishNow" ? [isRig ? RIGGED : MODEL] : []);
+              }
+              if (next === "unreadable") {
+                unreadable++;
+                return { status: 200, raw: "<html>", contentType: "text/html" };
+              }
+              if (next === "refused" && isRig) rigFate = "lost";
+              return next === "busy" ? { status: 503, body: {} } : { status: 400, body: { message: "bad" } };
+            };
+            a.answer(fake);
+            b.answer(fake);
+            const r = runner();
+            const reached: Cost[] = [];
+            const params = rigSwitch === "absent" ? {} : { rig_skeleton: rigSwitch === "on" };
+            let answer: MediaAnswer = await r.plan("tripo", knight(params), DEFAULT, options);
+            for (let turn = 0; turn < 24 && (answer.state === "send" || answer.state === "running"); turn++) {
+              const ticket = stored((answer as { ticket: MediaTicket }).ticket);
+              if (answer.state === "running") {
+                answer = await r.poll(ticket, live());
+                continue;
+              }
+              try {
+                answer = await r.send(ticket, live());
+              } catch (error) {
+                reached.push(...costsOf(error));
+                if (error instanceof NoAnswer) answer = await r.recover(ticket, live());
+                else if (!(error instanceof SendNotAccepted)) throw error;
+              }
+            }
+            if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
+            else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+
+            const billingEntries = reached.filter((c) => (c.state === "known" && c.source === "billing") || (c.state === "pending" && typeof c.lookup.predictionId === "string")).length;
+            expect(billingEntries).toBe(acceptedCount);
+            expect(reached.filter((c) => c.state === "missing")).toHaveLength(unreadable);
+            if (rigSwitch !== "on") expect(rigSubmits).toBe(0);
+            // Only the generation fails a run; a run that reached the rig ends done or still going.
+            if (answer.state === "failed") expect(rigSubmits).toBe(0);
+            if (answer.state === "done") {
+              if (rigSwitch === "on" && rigFate === "rigged") {
+                expect(answer.outputs).toEqual([{ kind: "url", url: RIGGED }]);
+                expect(answer.notice).toBeUndefined();
+              } else if (rigSwitch === "on") {
+                expect(rigFate).toBe("lost");
+                expect(answer.outputs).toEqual([{ kind: "url", url: MODEL }]);
+                expect(answer.notice).toBe("rig_failed");
+              } else {
+                expect(answer.outputs).toEqual([{ kind: "url", url: MODEL }]);
+                expect(answer.notice).toBeUndefined();
+              }
+            }
+          },
+        ),
+        { numRuns: 60 },
+      );
+    });
+  });
+});

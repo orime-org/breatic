@@ -9,7 +9,7 @@ import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, isServerError } from "@provider/http/request.js";
 import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
-import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
+import { isPresent, orderByPrice, stepRequested } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -26,7 +26,7 @@ export interface MediaTicket {
 }
 
 /** What one step of a run does. */
-export type StepKind = "generate" | "upload_reference" | "upload_melody" | "vocal" | "voice" | "speak" | "element" | "describe";
+export type StepKind = "generate" | "upload_reference" | "upload_melody" | "vocal" | "voice" | "speak" | "element" | "rig" | "describe";
 
 /** One output of a finished run. */
 export type MediaOutput =
@@ -62,9 +62,12 @@ export type MediaAnswer = AnswerCommon &
   (
     | { state: "send"; ticket: MediaTicket; step: { kind: StepKind } }
     | { state: "running"; ticket: MediaTicket; askAgainAt: number }
-    | { state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string }
+    | { state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string; notice?: MediaNotice }
     | { state: "failed"; reason: Error; costs: Cost[] }
   );
+
+/** Said beside a done run whose optional step failed: `rig_failed` when the rig did. */
+export type MediaNotice = "rig_failed";
 
 /** What the run is asked to make. */
 export interface MediaInput {
@@ -165,7 +168,8 @@ interface Step {
   /** The param the step serves. */
   param?: string;
   itemIndex: number | null;
-  status: "pending" | "submitted" | "done";
+  /** `failed` only on an optional step the run passed over. */
+  status: "pending" | "submitted" | "done" | "failed";
   predictionId?: string;
   output?: StepOutput;
   /** For an element step: what its describe step wrote. */
@@ -193,6 +197,9 @@ interface Ticket {
   /** Costs known outside billing: descriptions, inline costs of legacy steps. */
   costs: Cost[];
 }
+
+/** What a passed-over optional step tells the caller, by its kind. */
+const NOTICES: Readonly<Partial<Record<StepKind, MediaNotice>>> = { rig: "rig_failed" };
 
 /** What a done step of each kind reads off its outputs. */
 const UPLOAD_PURPOSE: Readonly<Partial<Record<StepKind, string>>> = { upload_reference: "reference", upload_melody: "melody" };
@@ -450,7 +457,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       for (const extra of (binding.extra_steps ?? []).filter((s) => s.at === at)) {
         const base = { kind: extra.kind, endpoint: extra.endpoint, ...(extra.for_param === undefined ? {} : { param: extra.for_param }), status: "pending" as const };
         const value = extra.for_param === undefined ? undefined : ticket.input.params[extra.for_param];
-        if (extra.for_param !== undefined && !isPresent(value)) continue;
+        if (extra.for_param !== undefined && !stepRequested(value)) continue;
         const items = extra.per_item === true && Array.isArray(value) ? value.map((_, i) => i) : [null];
         for (const itemIndex of items) add({ ...base, itemIndex }, extra.kind === "element" && extra.describe !== undefined);
       }
@@ -521,6 +528,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       case "speak":
         if (done.voiceId === undefined) throw new Error("No cloned voice to speak with");
         return { text: ticket.input.prompt, voice_id: done.voiceId };
+      case "rig": {
+        // The generated model goes to the rig by its address, asking for VRM bone names.
+        const model = done.urls?.[0];
+        if (model === undefined) throw new Error("No generated model to rig");
+        return { model, rig_type: "auto", spec: "vrm", out_format: "glb" };
+      }
       case "element": {
         const image = sourceOf(ticket, step);
         return { name: `Element ${(step.itemIndex ?? 0) + 1}`, description: step.description ?? "", image, element_refer_list: [image] };
@@ -556,6 +569,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       case "element":
         return { index: step.itemIndex ?? 0, elementId: outputField(outputs, "element_id"), ...billedAs };
       case "speak":
+      case "rig":
         return { urls: [outputUrls(outputs)[0]!], ...billedAs };
       default:
         return { urls: outputUrls(outputs), ...billedAs };
@@ -588,7 +602,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The step and its index, or undefined when every step is done.
    */
   const current = (ticket: Ticket): { step: Step; index: number } | undefined => {
-    const index = ticket.steps.findIndex((s) => s.status !== "done");
+    const index = ticket.steps.findIndex((s) => s.status !== "done" && s.status !== "failed");
     return index < 0 ? undefined : { step: ticket.steps[index]!, index };
   };
 
@@ -650,13 +664,45 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const costs = [...ticket.costs];
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
-    for (const prediction of done.predictions) {
+    // A passed-over step's prediction, when an upstream accepted one, is billed like any other.
+    const passedOver = ticket.steps.filter((s) => s.status === "failed");
+    const notice = passedOver.map((s) => NOTICES[s.kind]).find((n) => n !== undefined);
+    const lookups = [...done.predictions, ...passedOver.flatMap((s) => (s.predictionId === undefined ? [] : [s.predictionId]))];
+    for (const prediction of lookups) {
       // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
       const read = await billed(up, prediction, bounds, false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
-    return { state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, servedBy: ticket.upstream, ...common({ ...extra, warnings }) };
+    return {
+      state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, servedBy: ticket.upstream,
+      ...(notice === undefined ? {} : { notice }), ...common({ ...extra, warnings }),
+    };
+  };
+
+  /**
+   * Whether a step is an optional one the run may pass over.
+   * @param ticket - The ticket.
+   * @param step - The step.
+   * @returns True for a step its binding declares optional.
+   */
+  const isOptional = (ticket: Ticket, step: Step): boolean =>
+    bindingOf(ticket).extra_steps?.some((s) => s.kind === step.kind && s.endpoint === step.endpoint && s.optional === true) === true;
+
+  /**
+   * Pass over an optional step that failed for good: the run goes on, or
+   * finishes with what the steps before it made, and its prediction is still billed.
+   * @param ticket - The ticket.
+   * @param index - The step's place.
+   * @param bounds - The bounds a finish bills under.
+   * @param reason - Why it failed.
+   * @returns The next answer.
+   */
+  const passOver = async (ticket: Ticket, index: number, bounds: RequestBounds, reason: Error): Promise<MediaAnswer> => {
+    const steps = ticket.steps.map((s, i) => (i === index ? { ...s, status: "failed" as const, output: { error: reason.message } } : s));
+    const moved = next(ticket, { steps });
+    const warnings = [{ code: "optional_step_failed", detail: { upstream: ticket.upstream, step: ticket.steps[index]!.kind, error: reason.message } }];
+    return current(moved) === undefined ? finish(moved, bounds, { warnings }) : waiting(moved, { warnings });
   };
 
   /**
@@ -858,7 +904,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (decide(failure, "media_submit", 0, 0) === "stop") {
           const refusal = error instanceof HttpStatus ? { status: error.status, cause: error } : { cause: error };
           const said = (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "");
-          return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, said, [], refusal));
+          const rejected = new UpstreamRequestRejected(ticket.model, ticket.upstream, said, [], refusal);
+          if (isOptional(ticket, at.step)) return passOver(ticket, at.index, bounds, rejected);
+          return failed(ticket, rejected);
         }
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
@@ -879,6 +927,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         try {
           output = outputOf(ticket, at.step, answer.outputs, answer.predictionId);
         } catch (error) {
+          if (isOptional(accepted, at.step)) return passOver(accepted, at.index, bounds, error as Error);
           return failed(accepted, error as Error);
         }
         return completed(accepted, at.index, output, bounds, []);
@@ -907,11 +956,15 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         return waiting(ticket, { warnings: [{ code: "poll_request_failed", detail: { upstream: ticket.upstream, predictionId: at.step.predictionId, error: String(error) } }] });
       }
       if (asked.state === "running") return waiting(ticket);
-      if (asked.state === "failed") return failed(ticket, new UpstreamTaskFailed(ticket.upstream, asked.error));
+      if (asked.state === "failed") {
+        const reason = new UpstreamTaskFailed(ticket.upstream, asked.error);
+        return isOptional(ticket, at.step) ? passOver(ticket, at.index, bounds, reason) : failed(ticket, reason);
+      }
       let output: StepOutput;
       try {
         output = outputOf(ticket, at.step, asked.outputs, at.step.predictionId);
       } catch (error) {
+        if (isOptional(ticket, at.step)) return passOver(ticket, at.index, bounds, error as Error);
         return failed(ticket, error as Error);
       }
       return completed(ticket, at.index, output, bounds, []);
@@ -944,6 +997,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       for (const row of [...legacy.steps!].sort((a, b) => a.position - b.position)) {
         const param = binding.extra_steps?.find((s) => s.kind === row.kind && s.endpoint === row.endpoint)?.for_param;
         const output = row.output as StepOutput;
+        // An optional step the worker passed over stays passed over, its prediction still billed.
+        if (row.status === "failed" && binding.extra_steps?.some((s) => s.kind === row.kind && s.endpoint === row.endpoint && s.optional === true)) {
+          steps.push({ kind: row.kind, endpoint: row.endpoint, ...(param === undefined ? {} : { param }), itemIndex: row.itemIndex,
+            status: "failed", ...(row.predictionId === null ? {} : { predictionId: row.predictionId }), output });
+          continue;
+        }
         if (row.status === "failed") {
           return failed({ ...base, steps, costs }, new UpstreamTaskFailed(opened.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`));
         }

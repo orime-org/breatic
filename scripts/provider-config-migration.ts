@@ -30,7 +30,7 @@ interface RawParam {
   mention?: string;
   joins?: string;
 }
-interface RawStep { endpoint: string; at: "before" | "after"; for_param?: string; per_item?: boolean; reused?: boolean; pricing: RawPricing }
+interface RawStep { endpoint: string; at: "before" | "after"; for_param?: string; per_item?: boolean; reused?: boolean; optional?: boolean; pricing: RawPricing }
 interface RawModel {
   name: string;
   takes_prompt?: boolean;
@@ -104,6 +104,7 @@ function pricingOf(raw: RawPricing): Record<string, unknown> {
  * @throws {Error} When no step kind runs its endpoint.
  */
 function kindOf(step: RawStep): string {
+  if (step.endpoint === "tripo3d/rig") return "rig";
   if (step.at === "after") return "speak";
   if (step.endpoint === "mureka-ai/create-upload-id" && step.for_param === "song") return "upload_reference";
   if (step.endpoint === "mureka-ai/create-upload-id" && step.for_param === "melody") return "upload_melody";
@@ -141,7 +142,9 @@ const describe = {
 function bindingOf(model: RawModel): Record<string, unknown> {
   const provider = model.providers?.find((p) => p.name === "wavespeed");
   if (provider === undefined) throw new Error(`${model.name} has no WaveSpeed provider`);
-  const skipped = new Set(APP_PARAMS[model.name] ?? []);
+  // A param that switches on a call after the model's own is that call's input, not the model's.
+  const later = (model.extra_steps ?? []).flatMap((step) => (step.at === "after" && step.for_param !== undefined ? [step.for_param] : []));
+  const skipped = new Set([...(APP_PARAMS[model.name] ?? []), ...later]);
   const params: Record<string, Record<string, unknown>> = {};
   const mentions: Record<string, string> = {};
   for (const [name, spec] of Object.entries(model.params ?? {})) {
@@ -166,6 +169,7 @@ function bindingOf(model: RawModel): Record<string, unknown> {
       ...(step.for_param === undefined ? {} : { for_param: step.for_param }),
       ...(step.per_item === undefined ? {} : { per_item: step.per_item }),
       ...(step.reused === undefined ? {} : { reused: step.reused }),
+      ...(step.optional === undefined ? {} : { optional: step.optional }),
       ...(kind === "element" ? { describe } : {}),
       pricing: pricingOf(step.pricing),
     };
