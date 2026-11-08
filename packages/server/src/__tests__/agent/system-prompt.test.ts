@@ -379,7 +379,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 
   it("keeps the craft as the Agent's own, done completely and visible before anything is spent", () => {
     expect(text()).toContain("- The craft: every prompt written in full");
-    expect(text()).toContain("This is yours: do it completely, where they can see and change it before anything is spent.");
+    expect(text()).toContain("This is yours: do it completely, where they can look it over and change it before anything is spent.");
   });
 
   it("confirms which of two readings is meant before acting on either", () => {
