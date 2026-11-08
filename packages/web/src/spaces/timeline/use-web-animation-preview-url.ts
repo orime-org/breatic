@@ -11,7 +11,7 @@ export interface WebAnimationPreviewUrl { url: string | null; failed: boolean; r
 /**
  * Fetch a signed preview address for one source version, once per mount (inner#1711 design §7.3). The address only
  * loads the page, so a loaded page keeps working after it expires: it is not fetched again on window focus, on the
- * Space-task signal or at its expiry, only when `refresh` asks for a new one.
+ * Space-task signal, at its expiry or when a hidden Space tab is shown again, only when `refresh` asks for a new one.
  * @param projectId - The Project the page reads it through.
  * @param sourceVersionId - The source version.
  * @returns The address, whether the request failed, and a refresh.
@@ -21,12 +21,15 @@ export function useWebAnimationPreviewUrl(projectId: string, sourceVersionId: st
   const [attempt, setAttempt] = React.useState(0);
   const request = `${projectId}:${sourceVersionId}:${attempt}`;
   const [answer, setAnswer] = React.useState<{ request: string; url: string | null } | null>(null);
+  // A hidden Space tab re-runs this effect when shown; an address already answered keeps its page loading.
+  const answered = React.useRef<string | null>(null);
   React.useEffect(() => {
+    if (answered.current === request) return;
     const controller = new AbortController();
     timelineApi.previewUrl(projectId, sourceVersionId, controller.signal).then(
-      ({ url }) => { if (!controller.signal.aborted) setAnswer({ request, url }); },
+      ({ url }) => { if (!controller.signal.aborted) { answered.current = request; setAnswer({ request, url }); } },
       // The note under the preview says the copy is unavailable and offers a retry.
-      () => { if (!controller.signal.aborted) setAnswer({ request, url: null }); },
+      () => { if (!controller.signal.aborted) { answered.current = request; setAnswer({ request, url: null }); } },
     );
     return () => controller.abort();
   }, [projectId, sourceVersionId, request]);
