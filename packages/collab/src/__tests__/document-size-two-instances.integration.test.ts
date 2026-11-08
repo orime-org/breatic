@@ -29,7 +29,7 @@ import { seedCollabActivity } from "./helpers/account-activity-fixture.js";
 import { S, fill } from "./helpers/document-size-fixtures.js";
 import { V2_PUSH_KEYS, canvasOf, member, openDoc, openSocket, pushKeys, pushWhere, seed, settle, startInstance, stopInstance } from "./helpers/document-size-live.js";
 import type { Instance, SizeSocket } from "./helpers/document-size-live.js";
-import { waitFor } from "./helpers/live-hocuspocus.js";
+import { SYNC, waitFor } from "./helpers/live-hocuspocus.js";
 
 const { state } = vi.hoisted(() => ({
   state: {
@@ -147,5 +147,56 @@ describe("two instances on one Redis", () => {
 
     const push = await pushWhere(b, (p) => p.phase === "warning", "warning push from instance 2", fromB);
     expect(pushKeys(push)).toEqual(V2_PUSH_KEYS);
+  });
+
+  it("R7-34 on instance 2 the full push reaches B before the forwarded update that crossed the limit", async () => {
+    const prefix = `document-size-two-${randomUUID()}`;
+    const fixture = await seedCollabActivity();
+    const name = canvasOf(fixture);
+    const src = new Y.Doc();
+    const bytes = fill(src, 240_000);
+    expect(bytes).toBeGreaterThanOrEqual(S.W);
+    expect(bytes + 30_000).toBeGreaterThanOrEqual(S.L);
+    await seed(name, src);
+
+    vi.resetModules();
+    const coreFirst = await import("@breatic/core");
+    coreFirst.initCore(process.env);
+    coreFirst.loadLocales();
+    const { createCollabServer: createFirst } = await import("@collab/hocuspocus.js");
+    const first = await startInstance(createFirst, inject("REDIS_COLLAB_URL"), prefix);
+    running.push(first);
+    vi.resetModules();
+    const coreSecond = await import("@breatic/core");
+    coreSecond.initCore(process.env);
+    coreSecond.loadLocales();
+    const { createCollabServer: createSecond } = await import("@collab/hocuspocus.js");
+    const second = await startInstance(createSecond, inject("REDIS_COLLAB_URL"), prefix);
+    running.push(second);
+
+    const socketB = await openSocket(second.server.address.port, (await member(fixture, "editor")).cookie);
+    sockets.push(socketB);
+    const b = await openDoc(socketB, name);
+    await b.sync();
+    await pushWhere(b, () => true, "connected push");
+    const socketA = await openSocket(first.server.address.port, fixture.cookie);
+    sockets.push(socketA);
+    const a = await openDoc(socketA, name);
+    await a.sync();
+    const since = socketB.frames.length;
+
+    a.edit((d) => {
+      const t = d.getText("t");
+      t.insert(t.length, "y".repeat(30_000));
+    });
+    expect(await settle(a)).toEqual([]);
+    await waitFor(() => b.doc.getText("t").length === 30_000, "B received A's update through instance 2", 30_000);
+    const frames = socketB.frames.slice(since).filter((f) => f.documentName === name);
+    const pushAt = frames.findIndex((f) => f.stateless !== undefined && (JSON.parse(f.stateless) as { type?: unknown; phase?: unknown }).type === "doc:size"
+      && (JSON.parse(f.stateless) as { phase?: unknown }).phase === "full");
+    const updateAt = frames.findIndex((f) => f.syncSubType === SYNC.update && (f.payload?.byteLength ?? 0) >= 30_000);
+    expect(pushAt).toBeGreaterThanOrEqual(0);
+    expect(updateAt).toBeGreaterThanOrEqual(0);
+    expect(pushAt).toBeLessThan(updateAt);
   });
 });

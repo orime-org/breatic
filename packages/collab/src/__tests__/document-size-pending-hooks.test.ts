@@ -169,6 +169,8 @@ type FilterModule = typeof FilterModuleShape;
 
 /** The production hooks a case drives. */
 interface Hooks {
+  onConnect: (payload: unknown) => Promise<void>;
+  onDisconnect: (payload: unknown) => Promise<void>;
   beforeSync: (payload: unknown) => Promise<void>;
   afterHandleMessage: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
@@ -189,7 +191,8 @@ interface FakeConnection {
   close: ReturnType<typeof vi.fn>;
   messageAddress: string;
   document: Document;
-  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn> };
+  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
+  request: Request;
 }
 
 /** One booted module graph. */
@@ -268,16 +271,20 @@ function load(name: string, src?: Y.Doc): Promise<Document> {
   return runLoadHook(stored(name, src));
 }
 
+/** Spec 14b.0: the connection parameters every fake connection carries unless a case says otherwise. */
+const ACK_PARAMS = "size_ack=1";
+
 /**
  * A fake connection attached to the document's connection set.
  * @param doc - The document.
- * @param opts - Socket, user and read-only flag.
+ * @param opts - Socket, user, read-only flag and connection parameters.
  * @param opts.socketId - Socket id.
  * @param opts.userId - User id.
  * @param opts.readOnly - Read-only flag.
+ * @param opts.params - The query string the WebSocket was opened with (default `size_ack=1`).
  * @returns The connection.
  */
-function conn(doc: Document, opts: { socketId?: string; userId?: string; readOnly?: boolean } = {}): FakeConnection {
+function conn(doc: Document, opts: { socketId?: string; userId?: string; readOnly?: boolean; params?: string } = {}): FakeConnection {
   const connection: FakeConnection = {
     socketId: opts.socketId ?? "s1",
     readOnly: opts.readOnly ?? false,
@@ -287,7 +294,8 @@ function conn(doc: Document, opts: { socketId?: string; userId?: string; readOnl
     close: vi.fn(),
     messageAddress: doc.name,
     document: doc,
-    webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
+    webSocket: Object.assign(new EventEmitter(), { send: vi.fn(), close: vi.fn() }),
+    request: new Request(`http://collab.test/?${opts.params ?? ACK_PARAMS}`),
   };
   doc.addConnection(connection as unknown as Parameters<Document["addConnection"]>[0]);
   return connection;
@@ -610,14 +618,16 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     await boot();
     const doc = await load(CV);
     const state = Y.encodeStateAsUpdate(doc);
-    const cases: Array<[number, Uint8Array, string, string]> = [
-      [D.L, pendingStructs(777, 2000), "full", "s1"],
-      [D.CEIL, pendingStructs(777, 2000), "over_ceiling", "s2"],
-      [D.CEIL, beyondDs(4242, 100, 1), "over_ceiling", "s3"],
+    const knowing = conn(doc, { socketId: "s1" });
+    w.size.recordExact(CV, D.L);
+    await ack(doc, knowing, lastSeq(knowing));
+    const cases: Array<[number, Uint8Array, string, FakeConnection]> = [
+      [D.L, pendingStructs(777, 2000), "full", knowing],
+      [D.CEIL, pendingStructs(777, 2000), "over_ceiling", conn(doc, { socketId: "s2" })],
+      [D.CEIL, beyondDs(4242, 100, 1), "over_ceiling", conn(doc, { socketId: "s3" })],
     ];
-    for (const [current, u, step, socketId] of cases) {
+    for (const [current, u, step, a] of cases) {
       w.size.recordExact(CV, current);
-      const a = conn(doc, { socketId });
       await expectGateRefusal(doc, a, SYNC.update, u, step);
       expect(rec(CV)).toMatchObject({ current, heldSum: 0 });
       // Refused in beforeSync, so Hocuspocus never applies it.
@@ -625,6 +635,14 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
       expect(doc.store.pendingDs).toBeNull();
       expect(Buffer.from(Y.encodeStateAsUpdate(doc)).equals(Buffer.from(state))).toBe(true);
     }
+    w.size.recordExact(CV, D.L);
+    const unaware = conn(doc, { socketId: "s4" });
+    logger.warn.mockClear();
+    await send(doc, unaware, pendingStructs(777, 2000));
+    expect(doc.store.pendingStructs).toBeNull();
+    expect(doc.store.pendingDs).toBeNull();
+    expect(Buffer.from(Y.encodeStateAsUpdate(doc)).equals(Buffer.from(state))).toBe(true);
+    expect(refusalLogs().map((l) => l.step)).toEqual(["pending"]);
   });
 
   it("P-06 restores the stored pending content of a legacy document byte for byte", async () => {
@@ -992,10 +1010,10 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     w.size.recordExact(CV, 9_500_000);
     const arriving = conn(doc);
     await connected(doc, arriving);
-    const expected = { type: "doc:size", bytes: 9_500_000, limit: D.L, ceiling: D.CEIL, phase: "warning" };
+    const expected = { type: "doc:size", seq: expect.any(Number), bytes: 9_500_000, limit: D.L, ceiling: D.CEIL, phase: "warning" };
     expect(pushes(arriving)).toEqual([expected]);
     expect(DocSizeStatusSchema.parse(pushes(arriving)[0])).toEqual(expected);
-    expect(Object.keys(pushes(arriving)[0] ?? {}).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "type"]);
+    expect(Object.keys(pushes(arriving)[0] ?? {}).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "seq", "type"]);
   });
 
   it("L-12 connected pushes the current doc:size to a read-only connection too", async () => {
@@ -1004,7 +1022,7 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     w.size.recordExact(CV, 9_500_000);
     const viewer = conn(doc, { readOnly: true });
     await connected(doc, viewer);
-    expect(pushes(viewer)).toEqual([{ type: "doc:size", bytes: 9_500_000, limit: D.L, ceiling: D.CEIL, phase: "warning" }]);
+    expect(pushes(viewer)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: 9_500_000, limit: D.L, ceiling: D.CEIL, phase: "warning" }]);
   });
 
   it("L-13 connected pushes limit 0 to every Space type when max_document_bytes is 0 (Q9)", async () => {
@@ -1013,7 +1031,7 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
       const doc = await load(name);
       const arriving = conn(doc);
       await connected(doc, arriving);
-      expect(pushes(arriving)).toEqual([{ type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
+      expect(pushes(arriving)).toEqual([{ type: "doc:size", seq: 0, bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
     }
   });
 
@@ -1063,7 +1081,7 @@ describe("round 6: an admit, onChange or measure that crosses the hard ceiling p
     Y.applyUpdate(doc, first, { source: "local" });
     await change(doc, first, { source: "local" });
     expect(rec(CV).current).toBe(10_748_500);
-    const crossed = { type: "doc:size", bytes: 10_748_500, limit: D.L, ceiling: D.CEIL, phase: "full" };
+    const crossed = { type: "doc:size", seq: expect.any(Number), bytes: 10_748_500, limit: D.L, ceiling: D.CEIL, phase: "full" };
     expect(pushes(a)).toEqual([crossed]);
     expect(pushes(b)).toEqual([crossed]);
     // The shortest insert update is 11 bytes (one character).
@@ -1114,7 +1132,7 @@ async function unappliedIsCorrected(how: Unapplied): Promise<void> {
   }
   const admitted = rec(CV).current;
   expect(rec(CV).phase).toBe("full");
-  const full = { type: "doc:size", bytes: admitted, limit: S.L, ceiling: S.CEIL, phase: "full" };
+  const full = { type: "doc:size", seq: expect.any(Number), bytes: admitted, limit: S.L, ceiling: S.CEIL, phase: "full" };
   expect(pushes(a)).toEqual([full]);
   expect(pushes(b)).toEqual([full]);
 
@@ -1123,7 +1141,7 @@ async function unappliedIsCorrected(how: Unapplied): Promise<void> {
   vi.advanceTimersByTime(S_CONFIG.document_size_measure_interval_ms);
   expect(rec(CV)).toMatchObject({ exact: 229_989, current: 229_989, phase: "normal", heldSum: 0 });
   for (const c of [a, b]) {
-    expect(pushes(c).at(-1)).toEqual({ type: "doc:size", bytes: 229_989, limit: S.L, ceiling: S.CEIL, phase: "normal" });
+    expect(pushes(c).at(-1)).toEqual({ type: "doc:size", seq: expect.any(Number), bytes: 229_989, limit: S.L, ceiling: S.CEIL, phase: "normal" });
   }
   expect(doc.getMap("nodes").has("big")).toBe(false);
   // Round 6 cost: the message length.
@@ -1346,8 +1364,9 @@ function connected(doc: Document, c: FakeConnection): Promise<void> {
     instance: { documents: new Map([[doc.name, doc]]) },
     connection: c,
     connectionConfig: { readOnly: c.readOnly },
+    request: c.request,
     requestHeaders: new Headers(),
-    requestParameters: new URLSearchParams(),
+    requestParameters: new URL(c.request.url).searchParams,
   });
 }
 
@@ -1510,3 +1529,390 @@ function bigPending(): Uint8Array {
   src.destroy();
   return u;
 }
+
+/** What the record keeps per connection (design 4.1, round 7). */
+interface Seen {
+  changes: Array<{ seq: number; full: boolean }>;
+  knowsFull: boolean;
+}
+
+/** The round 7 record functions of design 4.1. */
+interface AckApi {
+  acknowledge: (name: string, connection: unknown, seq: number) => void;
+  knowsFull: (name: string, connection: unknown) => boolean;
+}
+
+/**
+ * The round 7 record functions, failing clearly while they do not exist.
+ * @returns `acknowledge` and `knowsFull` of the booted record module.
+ */
+function ackApi(): AckApi {
+  const mod = w.size as unknown as Record<string, unknown>;
+  expect(typeof mod.acknowledge, "services/document-size exports acknowledge").toBe("function");
+  expect(typeof mod.knowsFull, "services/document-size exports knowsFull").toBe("function");
+  return { acknowledge: mod.acknowledge as AckApi["acknowledge"], knowsFull: mod.knowsFull as AckApi["knowsFull"] };
+}
+
+/**
+ * Whether the record says a connection acknowledged a full push last.
+ * @param name - Document name.
+ * @param c - The connection.
+ * @returns The production `knowsFull`.
+ */
+function knows(name: string, c: FakeConnection): boolean {
+  return ackApi().knowsFull(name, c);
+}
+
+/**
+ * What the record keeps for one connection, read through `readDocSizeRecord`'s `seen`.
+ * @param name - Document name.
+ * @param c - The connection.
+ * @returns Its entry, or undefined with none.
+ * @throws {Error} When the document has no record or the record exposes no `seen`.
+ */
+function seenOf(name: string, c: FakeConnection): Seen | undefined {
+  const record = w.size.readDocSizeRecord(name) as unknown as { seen?: { get: (k: unknown) => unknown; has: (k: unknown) => boolean } } | undefined;
+  if (!record) throw new Error(`no size record for ${name}`);
+  if (!record.seen) throw new Error(`size record of ${name} exposes no seen: ${JSON.stringify(record)}`);
+  return record.seen.get(c) as Seen | undefined;
+}
+
+/**
+ * Spec 14b.0 `ack(conn, seq)`: a `doc:size-seen` sent through the production `onStateless`.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param seq - The acknowledged push.
+ * @returns The hook's promise.
+ */
+function ack(doc: Document, c: FakeConnection, seq: unknown): Promise<void> {
+  return stateless(doc, c, JSON.stringify({ type: "doc:size-seen", seq }));
+}
+
+/**
+ * Send a raw stateless payload through the production `onStateless`.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param payload - The payload.
+ * @returns The hook's promise.
+ */
+function stateless(doc: Document, c: FakeConnection, payload: string): Promise<void> {
+  return w.hooks.onStateless({ connection: c, documentName: doc.name, document: doc, payload });
+}
+
+/**
+ * Spec 14b.0 `lastSeq(conn)`: the `seq` of the last `doc:size` the connection received.
+ * @param c - The connection.
+ * @returns The seq.
+ * @throws {Error} When it received none.
+ */
+function lastSeq(c: FakeConnection): number {
+  const last = pushes(c).at(-1);
+  if (!last) throw new Error(`${c.socketId} received no doc:size`);
+  return last.seq as number;
+}
+
+/**
+ * The seqs of every `doc:size` a connection received.
+ * @param c - The connection.
+ * @returns The seqs, oldest first.
+ */
+function seqs(c: FakeConnection): unknown[] {
+  return pushes(c).map((p) => p.seq);
+}
+
+/**
+ * A connection arriving the way Hocuspocus brings it in: the production
+ * `onConnect` and `connected` with its connection parameters (spec 14b.0).
+ * @param doc - The document.
+ * @param c - The connection, already in the document.
+ * @returns Nothing.
+ */
+async function arrive(doc: Document, c: FakeConnection): Promise<void> {
+  await w.hooks.onConnect({
+    documentName: doc.name,
+    socketId: c.socketId,
+    context: c.context,
+    instance: { documents: new Map([[doc.name, doc]]) },
+    connectionConfig: { readOnly: c.readOnly },
+    request: c.request,
+    requestHeaders: new Headers(),
+    requestParameters: new URL(c.request.url).searchParams,
+  });
+  await connected(doc, c);
+}
+
+/**
+ * A connection leaving the way Hocuspocus closes it: out of the document, then the production `onDisconnect`.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @returns Nothing.
+ */
+async function leave(doc: Document, c: FakeConnection): Promise<void> {
+  doc.removeConnection(c as unknown as Parameters<Document["removeConnection"]>[0]);
+  await w.hooks.onDisconnect({
+    documentName: doc.name,
+    document: doc,
+    socketId: c.socketId,
+    context: c.context,
+    clientsCount: doc.getConnectionsCount(),
+    instance: { documents: new Map([[doc.name, doc]]) },
+    requestHeaders: new Headers(),
+    requestParameters: new URL(c.request.url).searchParams,
+  });
+}
+
+/**
+ * Spec SH-12 on a fresh client: a new node `n2` with `name: "abc"`.
+ * @param doc - The document.
+ * @param clientID - The new client's id.
+ * @returns The update.
+ */
+function insertNode(doc: Y.Doc, clientID: number): Uint8Array {
+  const client = syncedClient(doc, clientID);
+  return capture(client, () => {
+    const n2 = new Y.Map<unknown>();
+    client.getMap<Y.Map<unknown>>("nodes").set("n2", n2);
+    n2.set("name", "abc");
+  });
+}
+
+describe("round 7: push seq and acknowledgement (spec 14b.3)", () => {
+  it("R7-13 every push carries a seq one above the previous push of the document; one pushAll is one seq; documents count apart", async () => {
+    await boot();
+    const cv = await load(CV);
+    const other = await load(DOC);
+    const a = conn(cv, { socketId: "s1" });
+    const b = conn(cv, { socketId: "s2", userId: "u2" });
+    const d = conn(other, { socketId: "s3" });
+    await arrive(cv, a);
+    await arrive(other, d);
+    w.size.recordExact(CV, 9_000_000);
+    w.size.recordExact(DOC, 1000);
+    w.size.admit(CV, a, 500_000);
+    w.size.addApplied(DOC, 10);
+    w.size.recordExact(DOC, 2000);
+    w.size.addApplied(CV, 1_300_000);
+    await arrive(cv, b);
+    for (const c of [a, b, d]) {
+      for (const p of pushes(c)) expect(DocSizeStatusSchema.safeParse(p).success, JSON.stringify(p)).toBe(true);
+    }
+    expect(pushes(a).map((p) => p.phase)).toEqual(["normal", "normal", "warning", "full"]);
+    const first = lastSeq(a) - 3;
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(seqs(a)).toEqual([first, first + 1, first + 2, first + 3]);
+    expect(seqs(b)).toEqual([first + 1, first + 2, first + 3, first + 4]);
+    const dFirst = (seqs(d)[0] as number) ?? -1;
+    expect(seqs(d)).toEqual([dFirst, dFirst + 1, dFirst + 2]);
+  });
+
+  it("R7-14 acknowledge takes the last change at or below the seq and drops the ones before it; an older one then changes nothing", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    w.size.recordExact(CV, D.W);
+    w.size.recordExact(CV, D.L);
+    w.size.recordExact(CV, D.L + 5);
+    const [warning, full, fullAgain] = seqs(a) as number[];
+    expect(pushes(a).map((p) => p.phase)).toEqual(["warning", "full", "full"]);
+    const api = ackApi();
+    api.acknowledge(CV, a, full as number);
+    expect(api.knowsFull(CV, a)).toBe(true);
+    api.acknowledge(CV, a, warning as number);
+    expect(api.knowsFull(CV, a)).toBe(true);
+    api.acknowledge(CV, a, fullAgain as number);
+    expect(api.knowsFull(CV, a)).toBe(true);
+    expect(seenOf(CV, a)?.changes.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
+  it("R7-15 an out-of-order older acknowledgement does not bring back full", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    w.size.recordExact(CV, D.L);
+    w.size.recordExact(CV, D.W);
+    const [full, warning] = seqs(a);
+    await ack(doc, a, warning);
+    expect(knows(CV, a)).toBe(false);
+    await ack(doc, a, full);
+    expect(knows(CV, a)).toBe(false);
+  });
+
+  it("R7-16 acknowledging a seq past the connection's last push, or below its first, changes nothing", async () => {
+    await boot();
+    const doc = await load(CV);
+    const early = conn(doc, { socketId: "s0" });
+    await arrive(doc, early);
+    const a = conn(doc);
+    w.size.recordExact(CV, D.L);
+    const mine = lastSeq(a);
+    const other = conn(doc, { socketId: "s2", userId: "u2" });
+    await arrive(doc, other);
+    expect(lastSeq(other)).toBe(mine + 1);
+    expect(seqs(a)).toEqual([mine]);
+    const before = seenOf(CV, a)?.changes.length;
+    for (const seq of [999, mine + 1, mine - 1]) await ack(doc, a, seq);
+    expect(knows(CV, a)).toBe(false);
+    expect(seenOf(CV, a)?.changes.length).toBe(before);
+  });
+
+  it("R7-43 an acknowledgement of a seq sent only to another connection takes the connection's last change below it", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    w.size.recordExact(CV, D.W);
+    const other = conn(doc, { socketId: "s2", userId: "u2" });
+    await arrive(doc, other);
+    w.size.recordExact(CV, D.L);
+    const [warning, full] = seqs(a) as number[];
+    expect(lastSeq(other)).toBe((warning as number) + 1);
+    expect(full).toBe((warning as number) + 2);
+    await ack(doc, a, (warning as number) + 1);
+    expect(knows(CV, a)).toBe(false);
+    await ack(doc, a, full);
+    expect(knows(CV, a)).toBe(true);
+  });
+
+  it("R7-44 a connection that never acknowledges keeps a change list that grows with phase changes, not with pushes", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    w.size.recordExact(CV, 100);
+    const afterFirst = seenOf(CV, a)?.changes.length ?? 0;
+    expect(afterFirst).toBeLessThanOrEqual(1);
+    for (let i = 1; i < 1000; i++) w.size.recordExact(CV, 100 + i);
+    expect(pushes(a)).toHaveLength(1000);
+    expect(seenOf(CV, a)?.changes.length ?? 0).toBe(afterFirst);
+    for (let i = 0; i < 10; i++) w.size.recordExact(CV, i % 2 === 0 ? D.L : D.W);
+    expect(seenOf(CV, a)?.changes.length ?? 0).toBeLessThanOrEqual(afterFirst + 10);
+  });
+
+  it("R7-45 with max_document_bytes 0 the connected push has seq 0 and acknowledgements are ignored", async () => {
+    await boot({ max_document_bytes: 0 });
+    for (const name of [CV, DOC]) {
+      const doc = await load(name);
+      const a = conn(doc);
+      await arrive(doc, a);
+      expect(pushes(a)).toEqual([{ type: "doc:size", seq: 0, bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
+      a.sendStateless.mockClear();
+      await expect(ack(doc, a, 0)).resolves.toBeUndefined();
+      await expect(ack(doc, a, 5)).resolves.toBeUndefined();
+      expect(a.sendStateless).not.toHaveBeenCalled();
+      expect(w.size.readDocSizeRecord(name)).toBeUndefined();
+    }
+  });
+
+  it("R7-17 onStateless ignores malformed acknowledgements without answering and accepts one with an extra key", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    w.size.recordExact(CV, D.L);
+    const s = lastSeq(a);
+    a.sendStateless.mockClear();
+    logger.error.mockClear();
+    for (const payload of [
+      JSON.stringify({ type: "doc:size-seen" }),
+      JSON.stringify({ type: "doc:size-seen", seq: -1 }),
+      JSON.stringify({ type: "doc:size-seen", seq: 1.5 }),
+      JSON.stringify({ type: "doc:size-seen", seq: String(s) }),
+    ]) {
+      await expect(stateless(doc, a, payload)).resolves.toBeUndefined();
+    }
+    await expect(stateless(doc, a, "not json")).resolves.toBeUndefined();
+    expect(knows(CV, a)).toBe(false);
+    expect(a.sendStateless).not.toHaveBeenCalled();
+    await stateless(doc, a, JSON.stringify({ type: "doc:size-seen", seq: s, extra: 1 }));
+    expect(knows(CV, a)).toBe(true);
+    expect(a.sendStateless).not.toHaveBeenCalled();
+  });
+
+  it("R7-18 document, 3d and timeline Spaces take acknowledgements too; meta and an unparseable name ignore them", async () => {
+    await boot();
+    for (const name of [DOC, TD, TL]) {
+      const doc = await load(name);
+      const a = conn(doc);
+      w.size.recordExact(name, D.L);
+      const s = lastSeq(a);
+      a.sendStateless.mockClear();
+      await ack(doc, a, s);
+      expect(knows(name, a), name).toBe(true);
+      expect(a.sendStateless).not.toHaveBeenCalled();
+    }
+    for (const name of [META, ODD]) {
+      const doc = await load(name);
+      const a = conn(doc);
+      await expect(ack(doc, a, 0)).resolves.toBeUndefined();
+      expect(a.sendStateless).not.toHaveBeenCalled();
+    }
+  });
+
+  it("R7-19 a new connection on the same socket starts not knowing full, and the closed one's entry is gone", async () => {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc);
+    await arrive(doc, a);
+    w.size.recordExact(CV, D.L);
+    await ack(doc, a, lastSeq(a));
+    expect(knows(CV, a)).toBe(true);
+    await leave(doc, a);
+    const again = conn(doc);
+    await arrive(doc, again);
+    expect(knows(CV, again)).toBe(false);
+    expect(rec(CV).current).toBeGreaterThanOrEqual(D.L);
+    expect(rec(CV).current).toBeLessThan(D.CEIL);
+    await expect(beforeSync(doc, again, SYNC.update, insertNode(doc, 71))).resolves.toBeUndefined();
+    expect(seenOf(CV, a)).toBeUndefined();
+  });
+
+  it("R7-20 a reloaded document's record keeps no acknowledgement from before the unload", async () => {
+    await boot();
+    const first = await load(CV);
+    const a = conn(first);
+    await arrive(first, a);
+    w.size.recordExact(CV, D.L);
+    await ack(first, a, lastSeq(a));
+    expect(knows(CV, a)).toBe(true);
+    await w.hooks.afterUnloadDocument({ documentName: CV, instance: { documents: new Map() } });
+    const second = await load(CV);
+    const back = conn(second);
+    await arrive(second, back);
+    w.size.recordExact(CV, D.L);
+    expect(seenOf(CV, a)).toBeUndefined();
+    expect(knows(CV, a)).toBe(false);
+    expect(knows(CV, back)).toBe(false);
+  });
+});
+
+describe("round 7: an old page's socket is closed on a step 2a refusal (spec 14b.5 R7-46)", () => {
+  /**
+   * Spec P-01 for one connection: normal `CV`, A sends `pendingStructs(777, 2000)`,
+   * admitted, applied, refused at step 2a.
+   * @param params - A's connection parameters.
+   * @param outOfDocument - Take A out of the document before the update applies (R6-20).
+   * @returns A and whether the refusal marked its socket.
+   */
+  async function refusedAt2a(params: string, outOfDocument: boolean): Promise<{ a: FakeConnection; marked: boolean; doc: Document; state: Uint8Array }> {
+    await boot();
+    const doc = await load(CV);
+    const a = conn(doc, { params });
+    await arrive(doc, a);
+    const state = Y.encodeStateAsUpdate(doc);
+    const u = pendingStructs(777, 2000);
+    await expect(beforeSync(doc, a, SYNC.update, u)).resolves.toBeUndefined();
+    if (outOfDocument) doc.removeConnection(a as unknown as Parameters<Document["removeConnection"]>[0]);
+    logger.warn.mockClear();
+    applyFrom(doc, a, u);
+    return { a, marked: w.inbound.isRefused(a.socketId, CV), doc, state };
+  }
+
+  it("R7-46 closes the whole WebSocket only for a connection without size_ack=1 still in the document", async () => {
+    for (const [params, out, closes] of [["", false, 1], [ACK_PARAMS, false, 0], ["", true, 0]] as const) {
+      const { a, marked, doc, state } = await refusedAt2a(params, out);
+      const label = `params "${params}", out of document ${String(out)}`;
+      expect(doc.store.pendingStructs, label).toBeNull();
+      expect(Buffer.from(Y.encodeStateAsUpdate(doc)).equals(Buffer.from(state)), label).toBe(true);
+      expect(refusalLogs().map((l) => l.step), label).toEqual(["pending"]);
+      expect(a.webSocket.close, label).toHaveBeenCalledTimes(closes);
+      expect(marked, label).toBe(!out);
+    }
+  });
+});

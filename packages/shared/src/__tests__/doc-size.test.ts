@@ -15,16 +15,21 @@ import {
   isReauthCloseReason,
 } from "@shared/collab-close-reasons.js";
 
-const BASE = { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" } as const;
+const BASE = { type: "doc:size", seq: 0, bytes: 0, limit: 0, ceiling: 0, phase: "normal" } as const;
 
 describe("DocSizeStatusSchema", () => {
   it("S-01 accepts a push with no limit, a full push at the ceiling and a warning push, unchanged", () => {
     const inputs = [
       BASE,
-      { type: "doc:size", bytes: 10747904, limit: 10485760, ceiling: 10747904, phase: "full" },
-      { type: "doc:size", bytes: 9437184, limit: 10485760, ceiling: 10747904, phase: "warning" },
+      { type: "doc:size", seq: 1, bytes: 10747904, limit: 10485760, ceiling: 10747904, phase: "full" },
+      { type: "doc:size", seq: 2, bytes: 9437184, limit: 10485760, ceiling: 10747904, phase: "warning" },
     ];
     for (const input of inputs) expect(DocSizeStatusSchema.parse(input)).toEqual(input);
+    for (const input of inputs) {
+      const withoutSeq: Record<string, unknown> = { ...input };
+      delete withoutSeq.seq;
+      expect(DocSizeStatusSchema.safeParse(withoutSeq).success, JSON.stringify(withoutSeq)).toBe(false);
+    }
   });
 
   it("S-02 refuses a bad value in any field or a missing field", () => {
@@ -35,19 +40,24 @@ describe("DocSizeStatusSchema", () => {
       { ...BASE, phase: "over_ceiling" },
       { ...BASE, phase: "resyncing" },
       { ...BASE, type: "doc:sizes" },
+      { ...BASE, seq: -1 },
+      { ...BASE, seq: 1.5 },
+      { ...BASE, seq: "1" },
     ];
     const withoutCeiling: Record<string, unknown> = { ...BASE };
     delete withoutCeiling.ceiling;
     const withoutPhase: Record<string, unknown> = { ...BASE };
     delete withoutPhase.phase;
-    for (const input of [...bad, withoutCeiling, withoutPhase]) {
+    const withoutSeq: Record<string, unknown> = { ...BASE };
+    delete withoutSeq.seq;
+    for (const input of [...bad, withoutCeiling, withoutPhase, withoutSeq]) {
       expect(DocSizeStatusSchema.safeParse(input).success, JSON.stringify(input)).toBe(false);
     }
   });
 
   it("S-04 drops the v1 room fields a stale sender still adds", () => {
-    const parsed = DocSizeStatusSchema.parse({ type: "doc:size", bytes: 5, limit: 10, ceiling: 12, phase: "normal", room: 3, overwriteRoom: 1 });
-    expect(Object.keys(parsed).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "type"]);
+    const parsed = DocSizeStatusSchema.parse({ type: "doc:size", seq: 4, bytes: 5, limit: 10, ceiling: 12, phase: "normal", room: 3, overwriteRoom: 1 });
+    expect(Object.keys(parsed).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "seq", "type"]);
   });
 });
 
@@ -68,6 +78,9 @@ describe("shared size constants and close reason", () => {
     expect(typeof barrel.updateShape).toBe("function");
     expect(barrel.COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe("Document size limit reached");
     expect("SPACE_DELETE_MIN_BYTES" in barrel).toBe(false);
+    const entry = barrel as Record<string, unknown>;
+    expect(entry.DocSizeSeenSchema).toBeDefined();
+    expect(entry.DOC_SIZE_ACK_PARAM).toBe("size_ack");
   });
 
   it("S-07 the built entry other packages load exports updateShape", async () => {

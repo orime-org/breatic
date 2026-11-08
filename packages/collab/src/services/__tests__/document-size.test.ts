@@ -115,6 +115,7 @@ interface Rec {
 /** A pushed `doc:size` message. */
 interface Push {
   type: "doc:size";
+  seq: number;
   bytes: number;
   limit: number;
   ceiling: number;
@@ -131,7 +132,8 @@ interface FakeConnection {
   close: ReturnType<typeof vi.fn>;
   messageAddress: string;
   document: Document;
-  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn> };
+  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
+  request: Request;
 }
 
 /** The production hooks a case uses. */
@@ -228,7 +230,8 @@ function conn(doc: Document, socketId = "s1"): FakeConnection {
     close: vi.fn(),
     messageAddress: doc.name,
     document: doc,
-    webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
+    webSocket: Object.assign(new EventEmitter(), { send: vi.fn(), close: vi.fn() }),
+    request: new Request("http://collab.test/?size_ack=1"),
   };
   doc.addConnection(connection as unknown as Parameters<Document["addConnection"]>[0]);
   return connection;
@@ -257,7 +260,7 @@ function must(name: string): Rec {
 
 /**
  * The `doc:size` pushes a connection received; each must carry exactly the
- * five v2 keys (X-02).
+ * six keys of design 3 (X-02) and a non-negative integer `seq`.
  * @param c - The connection.
  * @returns The parsed pushes, oldest first.
  */
@@ -266,10 +269,20 @@ function pushes(c: FakeConnection): Push[] {
   for (const [payload] of c.sendStateless.mock.calls as Array<[string]>) {
     const parsed = JSON.parse(payload) as Push;
     if (parsed.type !== "doc:size") continue;
-    expect(Object.keys(parsed).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "type"]);
+    expect(Object.keys(parsed).sort()).toEqual(["bytes", "ceiling", "limit", "phase", "seq", "type"]);
+    expect(Number.isInteger(parsed.seq) && parsed.seq >= 0, `seq ${String(parsed.seq)}`).toBe(true);
     out.push(parsed);
   }
   return out;
+}
+
+/**
+ * Expect the pushes a connection received to carry consecutive `seq`s.
+ * @param c - The connection; every push of its document reached it.
+ */
+function expectConsecutiveSeqs(c: FakeConnection): void {
+  const seqs = pushes(c).map((p) => p.seq);
+  expect(seqs).toEqual(seqs.map((_, i) => (seqs[0] ?? 0) + i));
 }
 
 /**
@@ -547,7 +560,7 @@ describe("measure and the record (spec section 4)", () => {
     await at(12_000);
     expect(must(CV)).toMatchObject({ exact: m, current: m, heldSum: 0, phase: "normal" });
     for (const x of [a, b]) {
-      expect(pushes(x)).toEqual([{ type: "doc:size", bytes: m, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
+      expect(pushes(x)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: m, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
     }
     expect(admitted).toBe(m + c);
   });
@@ -639,8 +652,9 @@ describe("doc:size pushes (spec section 8)", () => {
     const b = conn(doc, "sb");
     size.admit(CV, a, 184);
     for (const c of [a, b]) {
-      expect(pushes(c)).toEqual([{ type: "doc:size", bytes: 9_437_184, limit: D.L, ceiling: D.CEIL, phase: "warning" }]);
+      expect(pushes(c)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: 9_437_184, limit: D.L, ceiling: D.CEIL, phase: "warning" }]);
     }
+    expect(pushes(a)[0]?.seq).toBe(pushes(b)[0]?.seq);
   });
 
   it("PU-02 admit and addApplied inside one phase, and full below the ceiling, push nothing", async () => {
@@ -675,8 +689,9 @@ describe("doc:size pushes (spec section 8)", () => {
     const current = must(CV).current;
     expect(current).toBe(size.measure(doc));
     for (const c of [a, b]) {
-      expect(pushes(c)).toEqual([{ type: "doc:size", bytes: current, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
+      expect(pushes(c)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: current, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
     }
+    expect(pushes(a)[0]?.seq).toBe(pushes(b)[0]?.seq);
   });
 
   it("PU-04 addApplied crossing from warning to full pushes full at once", async () => {
@@ -686,7 +701,7 @@ describe("doc:size pushes (spec section 8)", () => {
     expect(must(CV).phase).toBe("warning");
     const a = conn(doc);
     size.addApplied(CV, D.L - D.W);
-    expect(pushes(a)).toEqual([{ type: "doc:size", bytes: D.L, limit: D.L, ceiling: D.CEIL, phase: "full" }]);
+    expect(pushes(a)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: D.L, limit: D.L, ceiling: D.CEIL, phase: "full" }]);
   });
 
   it("PU-05 pushes reach only the connections of the document whose phase changed", async () => {
@@ -715,6 +730,7 @@ describe("doc:size pushes (spec section 8)", () => {
     size.addApplied(CV, 2_000_000);
     expect(pushes(a).at(-1)?.bytes).toBe(must(CV).current);
     expect(pushes(a).length).toBeGreaterThanOrEqual(3);
+    expectConsecutiveSeqs(a);
     for (const p of pushes(a)) {
       expect(p.limit).toBe(D_CONFIG.max_document_bytes);
       expect(p.ceiling).toBe(D_CONFIG.max_document_bytes + D_CONFIG.document_size_delete_headroom_bytes);
@@ -727,12 +743,12 @@ describe("doc:size pushes (spec section 8)", () => {
     size.recordExact(CV, D.CEIL + 10);
     await settle();
     const last = pushes(a).at(-1);
-    expect(last).toEqual({ type: "doc:size", bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" });
+    expect(last).toEqual({ type: "doc:size", seq: expect.any(Number), bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" });
     size.recordExact(CV, D.CEIL - 10);
     await settle();
     a.sendStateless.mockClear();
     size.admit(CV, a, 20);
-    expect(pushes(a)).toEqual([{ type: "doc:size", bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" }]);
+    expect(pushes(a)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: D.CEIL + 10, limit: D.L, ceiling: D.CEIL, phase: "full" }]);
   });
 
   it("R6-04 crossing the hard ceiling pushes even with the phase unchanged; staying over does not; a measure always pushes", async () => {
@@ -752,7 +768,7 @@ describe("doc:size pushes (spec section 8)", () => {
     const expectBoth = (bytes: number, count: number): void => {
       for (const c of [a, b]) {
         expect(pushes(c)).toHaveLength(count);
-        expect(pushes(c).at(-1)).toEqual({ type: "doc:size", bytes, limit: D.L, ceiling: D.CEIL, phase: "full" });
+        expect(pushes(c).at(-1)).toEqual({ type: "doc:size", seq: expect.any(Number), bytes, limit: D.L, ceiling: D.CEIL, phase: "full" });
       }
     };
     size.admit(CV, a, 1500);
@@ -767,6 +783,8 @@ describe("doc:size pushes (spec section 8)", () => {
     size.admit(CV, a, 200_000);
     expect(must(CV).current).toBe(10_801_510);
     expectBoth(10_801_510, 3);
+    expectConsecutiveSeqs(a);
+    expect(pushes(b).map((p) => p.seq)).toEqual(pushes(a).map((p) => p.seq));
   });
 });
 
@@ -791,7 +809,7 @@ describe("what the second version removes (spec section 14)", () => {
       expect(parsed).not.toHaveProperty("room");
       expect(parsed).not.toHaveProperty("overwriteRoom");
     }
-    expect(pushes(a)).toEqual([{ type: "doc:size", bytes: must(CV).current, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
-    expect(pushes(b)).toEqual([{ type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
+    expect(pushes(a)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: must(CV).current, limit: D.L, ceiling: D.CEIL, phase: "normal" }]);
+    expect(pushes(b)).toEqual([{ type: "doc:size", seq: expect.any(Number), bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
   });
 });

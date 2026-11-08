@@ -82,6 +82,7 @@ import {
   DOC_SIZE_EVENT_BYTES,
   DocSizeStatusSchema,
 } from "@breatic/shared";
+import * as shared from "@breatic/shared";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { filter, markRefused } from "@collab/infra/inbound-filter.js";
 import { recordExact } from "@collab/services/document-size.js";
@@ -113,6 +114,7 @@ interface Hooks {
   onPeerError: (peer: FakePeer, error: unknown) => void;
   beforeSync: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
+  onStateless: (payload: unknown) => Promise<void>;
 }
 
 let hooks: Hooks;
@@ -202,8 +204,9 @@ const frames = {
 
 /**
  * Load `D` through the production load hook, bring its record to the limit
- * (`full`, spec G-06's situation) and run the production `beforeSync` on an
- * insert from `socketId`, which step 4 must refuse.
+ * (`full`, spec G-06's situation), let the connection acknowledge that full
+ * push, and run the production `beforeSync` on an insert from `socketId`,
+ * which step 4 must refuse.
  * @param socketId - The connection's socket.
  * @returns Nothing.
  */
@@ -215,10 +218,20 @@ async function refuseThroughBeforeSync(socketId: string): Promise<void> {
     instance: { documents: new Map([[D, document]]) },
     context: { user: { id: "u1" } },
   });
-  recordExact(D, S.L);
-  const connection = { socketId, readOnly: false, context: { user: { id: "u1" } }, sendStateless: vi.fn() };
+  const connection = {
+    socketId,
+    readOnly: false,
+    context: { user: { id: "u1" } },
+    sendStateless: vi.fn(),
+    webSocket: { close: vi.fn(), send: vi.fn() },
+    request: new Request("http://collab.test/?size_ack=1"),
+  };
   // A refusal marks only a connection still in the document (design 4.2).
   document.addConnection(connection as never);
+  recordExact(D, S.L);
+  const [pushed] = connection.sendStateless.mock.calls.at(-1) as [string];
+  const { seq } = JSON.parse(pushed) as { seq?: unknown };
+  await hooks.onStateless({ connection, documentName: D, document, payload: JSON.stringify({ type: "doc:size-seen", seq }) });
   await expect(
     hooks.beforeSync({
       clientsCount: 1,
@@ -341,9 +354,12 @@ describe("the shared entry as collab reads it", () => {
   it("S-06 exposes the v2 size contract through @breatic/shared", () => {
     expect(COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe("Document size limit reached");
     expect(DOC_SIZE_EVENT_BYTES).toBe(32);
-    const push = { type: "doc:size", bytes: 0, limit: 10485760, ceiling: 10747904, phase: "normal" };
+    const push = { type: "doc:size", seq: 0, bytes: 0, limit: 10485760, ceiling: 10747904, phase: "normal" };
     const parsed = DocSizeStatusSchema.safeParse(push);
     expect(parsed.success).toBe(true);
     expect(parsed.data).toEqual(push);
+    const entry = shared as Record<string, unknown>;
+    expect(entry.DocSizeSeenSchema).toBeDefined();
+    expect(entry.DOC_SIZE_ACK_PARAM).toBe("size_ack");
   });
 });

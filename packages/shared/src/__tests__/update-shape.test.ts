@@ -7,9 +7,26 @@
  * SH-01 to SH-16, R6-03 and R6-29).
  */
 
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { updateShape } from "@shared/doc-size.js";
+import { DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@shared/doc-size.js";
+
+/** The round 7 shape: `coversLive` is read off the result whether or not the type has it yet. */
+type Shape7 = UpdateShape & { coversLive?: boolean };
+
+/**
+ * Design 4.1 cost (round 7): the message length plus 32 per split endpoint
+ * and beyond-clock range; 0 for a pure delete covering no live item, with
+ * neither.
+ * @param update - The update.
+ * @param shape - Its shape.
+ * @returns Bytes.
+ */
+function costOf(update: Uint8Array, shape: Shape7): number {
+  if (shape.pureDelete && shape.coversLive === false && shape.splitEndpoints === 0 && shape.beyondClockRanges === 0) return 0;
+  return update.byteLength + DOC_SIZE_EVENT_BYTES * (shape.splitEndpoints + shape.beyondClockRanges);
+}
 
 /** A client document and a server copy kept in step by applying every update. */
 function pair(clientID: number): { client: Y.Doc; server: Y.Doc } {
@@ -169,7 +186,9 @@ describe("updateShape", () => {
     client.getMap("nodes").delete("n1");
     const step2 = Y.encodeStateAsUpdate(client, Y.encodeStateVector(server));
     expect(step2.byteLength).toBe(6);
-    expect(updateShape(step2, server.store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    const shape = updateShape(step2, server.store);
+    expect(shape).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true, coversLive: false });
+    expect(costOf(step2, shape)).toBe(0);
   });
 
   it("SH-11 a delete together with a write is not a pure delete", () => {
@@ -224,8 +243,8 @@ describe("updateShape", () => {
     expect(store.pendingDs).toBeNull();
   });
 
-  it("R6-03 the result has exactly four keys and no structBytes", () => {
-    const keys = ["beyondClockRanges", "pureDelete", "splitEndpoints", "wholeTypesOnly"];
+  it("R6-03 the result has exactly five keys and no structBytes", () => {
+    const keys = ["beyondClockRanges", "coversLive", "pureDelete", "splitEndpoints", "wholeTypesOnly"];
     const ins = pair(7);
     const insert = capture(ins.client, ins.server, () => {
       const n2 = new Y.Map<unknown>();
@@ -252,3 +271,233 @@ describe("updateShape", () => {
     expect(updateShape(repeated, server.store).beyondClockRanges).toBe(1000);
   });
 });
+
+describe("updateShape coversLive and the zero cost of deletes covering only deleted content (spec 14b.2)", () => {
+  it("R7-07 truth table of coversLive and the design 4.1 cost", () => {
+    // (a) SH-10: the handshake delete set covers only the deleted n1.
+    const a = nodeDoc();
+    a.client.getMap("nodes").delete("n1");
+    const step2 = Y.encodeStateAsUpdate(a.client, Y.encodeStateVector(a.server));
+    const sa: Shape7 = updateShape(step2, a.server.store);
+    expect(sa).toMatchObject({ pureDelete: true, coversLive: false, splitEndpoints: 0, beyondClockRanges: 0 });
+    expect(costOf(step2, sa)).toBe(0);
+
+    // (b) SH-02: deleting the live `locked` entry.
+    const b = nodeDoc();
+    const sh02 = capture(b.client, b.server, () => b.data.delete("locked"));
+    const sb: Shape7 = updateShape(sh02.update, sh02.store);
+    expect(sb.coversLive).toBe(true);
+    expect(costOf(sh02.update, sb)).toBe(6);
+
+    // (c) SH-14: covers the overwritten name and the live `color` entry.
+    const c = nodeDoc();
+    const sh14 = capture(c.client, c.server, () => c.data.delete("color"));
+    const withOld = Y.encodeStateAsUpdate(c.client, Y.encodeStateVector(c.server));
+    expect((updateShape(withOld, sh14.store) as Shape7).coversLive).toBe(true);
+
+    // (d) SH-03: deleting inside a text.
+    const d = nodeDoc();
+    const sh03 = capture(d.client, d.server, () => d.text.delete(2, 3));
+    const sd: Shape7 = updateShape(sh03.update, sh03.store);
+    expect(sd.coversLive).toBe(true);
+    expect(costOf(sh03.update, sd)).toBe(70);
+
+    // (e) SH-08: a beyond-clock range is not free.
+    const beyond = beyondDs(4242, 100, 1);
+    const se: Shape7 = updateShape(beyond, new Y.Doc().store);
+    expect(se).toMatchObject({ coversLive: false, beyondClockRanges: 1 });
+    expect(costOf(beyond, se)).toBe(7 + 32);
+
+    // (f) SH-12: insert only.
+    const f = pair(7);
+    const sh12 = capture(f.client, f.server, () => {
+      const n2 = new Y.Map<unknown>();
+      f.client.getMap("nodes").set("n2", n2);
+      n2.set("name", "abc");
+    });
+    const sf: Shape7 = updateShape(sh12.update, sh12.store);
+    expect(sf).toMatchObject({ pureDelete: false, coversLive: false });
+    expect(costOf(sh12.update, sf)).toBe(32);
+
+    // (g) structs plus a delete set covering only deleted content.
+    const g = nodeDoc();
+    const svBefore = Y.encodeStateVector(g.server);
+    g.client.getMap("nodes").delete("n1");
+    g.client.getMap("nodes").set("n2", new Y.Map<unknown>());
+    const mixed = Y.encodeStateAsUpdate(g.client, svBefore);
+    const sg: Shape7 = updateShape(mixed, g.server.store);
+    expect(g.server.getMap("nodes").has("n1")).toBe(false);
+    expect(sg.pureDelete).toBe(false);
+    expect(costOf(mixed, sg)).toBe(mixed.byteLength);
+
+    // (h) a pure delete with an empty delete set.
+    const empty = new Uint8Array([0, 0]);
+    const sh: Shape7 = updateShape(empty, new Y.Doc().store);
+    expect(sh.coversLive).toBe(false);
+    expect(costOf(empty, sh)).toBe(0);
+  });
+
+  it("R7-08 a delete covering only characters already deleted covers nothing live, splits nothing and costs 0", () => {
+    const { client, server, t } = alt2000(11);
+    t.delete(10, 10);
+    const again = dsUpdate(11, [[10, 10]]);
+    const shape: Shape7 = updateShape(again, server.store);
+    expect(shape).toMatchObject({ coversLive: false, splitEndpoints: 0 });
+    expect(costOf(again, shape)).toBe(0);
+    const before = Y.encodeStateAsUpdate(server).byteLength;
+    Y.applyUpdate(server, again);
+    expect(Y.encodeStateAsUpdate(server).byteLength).toBe(before);
+    client.destroy();
+  });
+
+  it("R7-09 a range from a deleted item into a live one covers live content and splits once", () => {
+    const { client, server, t } = alt2000(11);
+    t.delete(10, 10);
+    const across = dsUpdate(11, [[15, 10]]);
+    const shape: Shape7 = updateShape(across, server.store);
+    expect(shape).toMatchObject({ coversLive: true, splitEndpoints: 1 });
+    expect(costOf(across, shape)).toBe(across.byteLength + 32);
+    client.destroy();
+  });
+});
+
+/** One level of the R7-05 nesting: the container kind and how many values it holds. */
+interface Level {
+  kind: "map" | "array" | "xml";
+  values: number;
+}
+
+/**
+ * Build the R7-05 nesting on client 7, one transaction per write so values
+ * stay separate items, and sync it to a server copy.
+ * @param levels - The levels, outermost first.
+ * @returns The server copy.
+ */
+function nested(levels: readonly Level[]): Y.Doc {
+  const src = new Y.Doc();
+  src.clientID = 7;
+  let parent: Y.Map<unknown> | Y.Array<unknown> | Y.XmlElement = src.getMap<unknown>("root");
+  let nth = 0;
+  for (const level of levels) {
+    const kind: Level["kind"] = parent instanceof Y.XmlElement ? "xml" : level.kind;
+    const child: Y.Map<unknown> | Y.Array<unknown> | Y.XmlElement =
+      kind === "map" ? new Y.Map<unknown>() : kind === "array" ? new Y.Array<unknown>() : new Y.XmlElement("p");
+    const holder = parent;
+    if (holder instanceof Y.Map) holder.set(`c${nth}`, child);
+    else if (holder instanceof Y.Array) holder.push([child]);
+    else holder.insert(0, [child as Y.XmlElement]);
+    for (let i = 0; i < level.values; i++) {
+      if (child instanceof Y.Map) child.set(`v${i % 7}`, `value ${i}`);
+      else if (child instanceof Y.Array) child.insert(i % 3 === 0 ? 0 : child.length, [`v${i}`]);
+      else if (i % 2 === 0) child.setAttribute(`a${i % 5}`, `${i}`);
+      else child.insert(0, [new Y.XmlText(`t${i}`)]);
+    }
+    parent = child;
+    nth += 1;
+  }
+  const server = new Y.Doc();
+  Y.applyUpdate(server, Y.encodeStateAsUpdate(src));
+  src.destroy();
+  return server;
+}
+
+/**
+ * The same update with its delete set merged by yjs (`Y.mergeDeleteSets`).
+ * @param update - A pure-delete update.
+ * @returns The update rewritten with the merged ranges.
+ */
+function mergedUpdate(update: Uint8Array): Uint8Array {
+  const merged = Y.mergeDeleteSets([Y.decodeUpdate(update).ds]);
+  const bytes = [0, ...varUint(merged.clients.size)];
+  merged.clients.forEach((items, client) => {
+    bytes.push(...varUint(client), ...varUint(items.length));
+    for (const item of items) bytes.push(...varUint(item.clock), ...varUint(item.len));
+  });
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Design 4.1 `wholeTypesOnly`, judged naively: for every live item a merged
+ * range covers, walk its whole parent chain and look for an ancestor type
+ * item some range covers whole, by a fresh binary search each time.
+ * @param update - A pure-delete update.
+ * @param store - The store.
+ * @returns Whether every covered live item is removable whole.
+ */
+function naiveWholeTypesOnly(update: Uint8Array, store: Y.Doc["store"]): boolean {
+  const merged = Y.mergeDeleteSets([Y.decodeUpdate(update).ds]);
+  /**
+   * Whether one merged range covers an item whole.
+   * @param item - The item.
+   * @returns True when it does.
+   */
+  const coveredWhole = (item: Y.Item): boolean => {
+    const ranges = merged.clients.get(item.id.client) ?? [];
+    let lo = 0;
+    let hi = ranges.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const r = ranges[mid];
+      if (r === undefined) return false;
+      if (r.clock > item.id.clock) hi = mid - 1;
+      else if (r.clock + r.len <= item.id.clock) lo = mid + 1;
+      else return item.id.clock + item.length <= r.clock + r.len;
+    }
+    return false;
+  };
+  let all = true;
+  merged.clients.forEach((ranges, client) => {
+    for (const struct of store.clients.get(client) ?? []) {
+      if (!(struct instanceof Y.Item) || struct.deleted) continue;
+      const start = struct.id.clock;
+      const end = start + struct.length;
+      const range = ranges.find((r) => r.clock < end && r.clock + r.len > start);
+      if (range === undefined) continue;
+      const whole = range.clock <= start && range.clock + range.len >= end;
+      let ok = whole && (struct.content instanceof Y.ContentType || struct.parentSub !== null);
+      for (let p = struct.parent instanceof Y.AbstractType ? struct.parent._item : null; p !== null; p = p.parent instanceof Y.AbstractType ? p.parent._item : null) {
+        if (coveredWhole(p)) ok = true;
+      }
+      if (!ok) all = false;
+    }
+  });
+  return all;
+}
+
+describe("updateShape on random nesting (spec 14b.1 R7-05)", () => {
+  it("R7-05 property: wholeTypesOnly equals a naive per-item walk, and the other facts equal those of the merged delete set", () => {
+    const level = fc.record({ kind: fc.constantFrom<Level["kind"]>("map", "array", "xml"), values: fc.integer({ min: 0, max: 30 }) });
+    const pick = fc.tuple(fc.constantFrom("type", "value", "span"), fc.nat(), fc.nat({ max: 60 }));
+    fc.assert(
+      fc.property(fc.array(level, { minLength: 1, maxLength: 40 }), fc.array(pick, { minLength: 1, maxLength: 40 }), (levels, picks) => {
+        const server = nested(levels);
+        const structs = (server.store.clients.get(7) ?? []).filter((st): st is Y.Item => st instanceof Y.Item);
+        const types = structs.filter((it) => it.content instanceof Y.ContentType);
+        const state = Y.getState(server.store, 7);
+        const ranges = picks.map(([kind, a, len]): readonly [number, number] => {
+          if (kind === "type" && types.length > 0) {
+            const t = types[a % types.length] as Y.Item;
+            return [t.id.clock, t.length];
+          }
+          if (kind === "value" && structs.length > 0) {
+            const v = structs[a % structs.length] as Y.Item;
+            return [v.id.clock, v.length];
+          }
+          return [a % (state + 1), len + 1];
+        });
+        const update = dsUpdate(7, ranges);
+        const shape: Shape7 = updateShape(update, server.store);
+        const mergedShape: Shape7 = updateShape(mergedUpdate(update), server.store);
+        expect(shape.wholeTypesOnly).toBe(naiveWholeTypesOnly(update, server.store));
+        expect({ pureDelete: shape.pureDelete, splitEndpoints: shape.splitEndpoints, coversLive: shape.coversLive }).toEqual({
+          pureDelete: mergedShape.pureDelete,
+          splitEndpoints: mergedShape.splitEndpoints,
+          coversLive: mergedShape.coversLive,
+        });
+        server.destroy();
+      }),
+      { numRuns: 200 },
+    );
+  }, 120_000);
+});
+

@@ -82,7 +82,7 @@ describe("max_document_bytes 0", () => {
     const tab = await openDoc(socket, name);
     await tab.sync();
     await pushWhere(tab, () => true, "connected push");
-    expect(tab.sizePushes()).toEqual([{ type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
+    expect(tab.sizePushes()).toEqual([{ type: "doc:size", seq: 0, bytes: 0, limit: 0, ceiling: 0, phase: "normal" }]);
 
     tab.edit((d) => {
       const t = d.getText("t");

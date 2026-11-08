@@ -43,7 +43,7 @@ import {
   startInstance,
   stopInstance,
 } from "./helpers/document-size-live.js";
-import type { Instance, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
+import type { Instance, SizeAckOptions, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
 import { SYNC, WIRE, authFrame, waitFor } from "./helpers/live-hocuspocus.js";
 
 const { state } = vi.hoisted(() => ({
@@ -95,10 +95,11 @@ function refusals(name: string): Array<Record<string, unknown>> {
 /**
  * A new socket carrying a fixture's session, closed after the file.
  * @param fixture - Whose session.
+ * @param opts - How it acknowledges size pushes (the current web client by default).
  * @returns The socket.
  */
-async function socketFor(fixture: ActivityCollabFixture): Promise<SizeSocket> {
-  const socket = await openSocket(active.server.address.port, fixture.cookie);
+async function socketFor(fixture: ActivityCollabFixture, opts: SizeAckOptions = {}): Promise<SizeSocket> {
+  const socket = await openSocket(active.server.address.port, fixture.cookie, opts);
   sockets.push(socket);
   return socket;
 }
@@ -108,10 +109,11 @@ async function socketFor(fixture: ActivityCollabFixture): Promise<SizeSocket> {
  * @param fixture - Whose session.
  * @param name - Document name.
  * @param doc - The client copy to bring.
+ * @param opts - How the socket acknowledges size pushes.
  * @returns The synced client.
  */
-async function syncedOn(fixture: ActivityCollabFixture, name: string, doc?: Y.Doc): Promise<SizeDocClient> {
-  const client = await openDoc(await socketFor(fixture), name, { doc });
+async function syncedOn(fixture: ActivityCollabFixture, name: string, doc?: Y.Doc, opts: SizeAckOptions = {}): Promise<SizeDocClient> {
+  const client = await openDoc(await socketFor(fixture, opts), name, { doc });
   await client.sync();
   return client;
 }
@@ -230,6 +232,35 @@ describe("a mixed update and the messages queued behind it", () => {
   });
 });
 
+describe("a mixed update from a client without size_ack", () => {
+  it("I-09 without size_ack the server closes the whole WebSocket after the 2a refusal and the queued updates never apply", async () => {
+    const fixture = await seedCollabActivity();
+    const name = canvasOf(fixture);
+    await seedPlain(name);
+    const b = await syncedOn(await member(fixture, "editor"), name);
+    const c = await syncedOn(fixture, name, undefined, { sizeAck: false });
+
+    const writer = new Y.Doc();
+    writer.clientID = 900;
+    const integrated = capture(writer, () => writer.getText("body").insert(0, "INTEGRATED"));
+    const queued2 = capture(writer, () => writer.getText("body").insert(0, "QUEUED2 "));
+    const queued3 = capture(writer, () => writer.getText("body").insert(0, "QUEUED3 "));
+    c.sendSync(SYNC.update, Y.mergeUpdates([integrated, pendingStructs(777, 2000)]));
+    c.sendSync(SYNC.update, queued2);
+    c.sendSync(SYNC.update, queued3);
+    await refusedFor(c);
+    await waitFor(() => c.socket.closedByServer(), "the server closes C's WebSocket", 10_000);
+
+    const server = serverDoc(name);
+    expect(server.getText("body").toString()).toContain("INTEGRATED");
+    expect(server.getText("body").toString()).not.toContain("QUEUED");
+    expect(server.store.pendingStructs).toBeNull();
+    await b.confirm();
+    expect(b.doc.getText("body").toString()).not.toContain("QUEUED");
+    expect(refusals(name)[0]).toMatchObject({ step: "pending" });
+  });
+});
+
 describe("documents that already hold pending content", () => {
   it("I-11 honest members typing, deleting, going offline and reconnecting together are never refused", async () => {
     const fixture = await seedCollabActivity();
@@ -275,13 +306,18 @@ describe("documents that already hold pending content", () => {
 });
 
 describe("a forged client sending content that pends", () => {
-  it("I-14 pending structs on a fresh document are refused and leave no pending content, stored or loaded", async () => {
+  it.each([
+    ["with size_ack", true],
+    ["without size_ack", false],
+  ])("I-14 %s pending structs on a fresh document are refused and leave no pending content, stored or loaded", async (_label, sizeAck) => {
     const fixture = await seedCollabActivity();
     const name = canvasOf(fixture);
     await seedPlain(name);
-    const c = await syncedOn(fixture, name);
+    const c = await syncedOn(fixture, name, undefined, { sizeAck });
     c.sendSync(SYNC.update, pendingStructs(333, 2000));
     await refusedFor(c);
+    if (sizeAck) expect(c.socket.closedByServer()).toBe(false);
+    else await waitFor(() => c.socket.closedByServer(), "the server closes C's WebSocket", 10_000);
 
     const server = serverDoc(name);
     expect(server.store.pendingStructs).toBeNull();
@@ -310,9 +346,30 @@ describe("a forged client sending content that pends", () => {
       c.sendSync(SYNC.update, pendingStructs(10_000 + i, 4000));
       await refusedFor(c);
     }
+    expect(socket.closedByServer()).toBe(false);
     expect(enc(serverDoc(name))).toBe(start);
     expect(refusals(name)).toEqual(Array(30).fill(
       { documentName: name, userId: fixture.userId, current: expect.any(Number), limit: S.L, ceiling: S.CEIL, step: "pending", pendingBefore: expect.anything(), pendingAfter: expect.anything() },
     ));
+  });
+
+  it("I-15 without size_ack thirty rounds, each on a new socket the server closes after the refusal, leave the document as it was", async () => {
+    const fixture = await seedCollabActivity();
+    const name = canvasOf(fixture);
+    await seed(name, legacyDoc());
+    await syncedOn(await member(fixture, "editor"), name);
+    const start = enc(serverDoc(name));
+
+    for (let i = 0; i < 30; i++) {
+      const socket = await socketFor(fixture, { sizeAck: false });
+      const c = await openDoc(socket, name, { answerServerStep1: false });
+      c.sendSync(SYNC.step1, Y.encodeStateVector(new Y.Doc()));
+      c.sendSync(SYNC.step2, Y.encodeStateAsUpdate(new Y.Doc()));
+      c.sendSync(SYNC.update, pendingStructs(20_000 + i, 4000));
+      await refusedFor(c);
+      await waitFor(() => socket.closedByServer(), `the server closes round ${i}'s WebSocket`, 10_000);
+    }
+    expect(enc(serverDoc(name))).toBe(start);
+    expect(refusals(name).map((r) => r.step)).toEqual(Array(30).fill("pending"));
   });
 });

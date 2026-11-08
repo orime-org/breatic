@@ -49,6 +49,7 @@ import {
   settle,
   startInstance,
   stopInstance,
+  untilKnowsFull,
 } from "./helpers/document-size-live.js";
 import type { Instance, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
 import { waitFor } from "./helpers/live-hocuspocus.js";
@@ -257,6 +258,7 @@ describe("below the limit and at full", () => {
     expect(bytes).toBeLessThan(S.CEIL);
     const a = await syncedOn(fixture, name);
     const b = await syncedOn(await member(fixture, "editor"), name);
+    await untilKnowsFull(active, size, name, fixture.userId);
 
     a.edit((d) => addNode(d, "n-abc", "abc"));
     await refusedFor(a);
@@ -282,6 +284,7 @@ describe("below the limit and at full", () => {
     await b.confirm();
     expect(nodesOf(serverDoc(name)).has("f1")).toBe(false);
     expect(nodesOf(b.doc).has("f1")).toBe(false);
+    await untilKnowsFull(active, size, name, fixture.userId);
 
     a.edit((d) => nodesOf(d).get("p1")!.set("position", { x: 5, y: 5 }));
     await refusedFor(a);

@@ -36,6 +36,7 @@ import {
   C,
   D,
   NAMES,
+  S_CONFIG,
   alt2000,
   beyondDs,
   capture,
@@ -163,6 +164,9 @@ interface SizeRecord {
 
 /** The production hooks a case drives. */
 interface Hooks {
+  onConnect: (payload: unknown) => Promise<void>;
+  connected: (payload: unknown) => Promise<void>;
+  onStateless: (payload: unknown) => Promise<void>;
   beforeSync: (payload: unknown) => Promise<void>;
   afterLoadDocument: (payload: unknown) => Promise<void>;
   receiveFrame: (peer: unknown, message: unknown) => Uint8Array | undefined;
@@ -179,7 +183,8 @@ interface FakeConnection {
   close: ReturnType<typeof vi.fn>;
   messageAddress: string;
   document: Document;
-  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn> };
+  webSocket: EventEmitter & { send: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
+  request: Request;
 }
 
 /** One booted module graph. */
@@ -316,6 +321,9 @@ function updateFramePasses(socketId: string, name: string): boolean {
   return frame(socketId, syncFrame(name, WIRE.sync, SYNC.update, new Uint8Array([0, 0]))) !== undefined;
 }
 
+/** Spec 14b.0: the connection parameters every fake connection carries unless a case says otherwise. */
+const ACK_PARAMS = "size_ack=1";
+
 /**
  * A fake connection attached to the document, handshaken through the filter.
  * @param doc - The document.
@@ -324,11 +332,12 @@ function updateFramePasses(socketId: string, name: string): boolean {
  * @param opts.userId - User id (default `"u1"`).
  * @param opts.readOnly - Read-only flag.
  * @param opts.handshake - Whether to handshake the document on the socket first (default true).
+ * @param opts.params - The query string the WebSocket was opened with (default `size_ack=1`).
  * @returns The connection.
  */
 function conn(
   doc: Document,
-  opts: { socketId?: string; userId?: string; readOnly?: boolean; handshake?: boolean } = {},
+  opts: { socketId?: string; userId?: string; readOnly?: boolean; handshake?: boolean; params?: string } = {},
 ): FakeConnection {
   const connection: FakeConnection = {
     socketId: opts.socketId ?? "s1",
@@ -339,7 +348,8 @@ function conn(
     close: vi.fn(),
     messageAddress: doc.name,
     document: doc,
-    webSocket: Object.assign(new EventEmitter(), { send: vi.fn() }),
+    webSocket: Object.assign(new EventEmitter(), { send: vi.fn(), close: vi.fn() }),
+    request: new Request(`http://collab.test/?${opts.params ?? ACK_PARAMS}`),
   };
   doc.addConnection(connection as unknown as Parameters<Document["addConnection"]>[0]);
   if (opts.handshake !== false) handshake(connection.socketId, doc.name);
@@ -713,7 +723,7 @@ describe("beforeSync step 3: below the limit", () => {
     expect(k).toBe(big.byteLength);
     expect(rec(CV).current).toBe(L - 1 + big.byteLength);
     expect(rec(CV).phase).toBe("full");
-    const expected = { type: "doc:size", bytes: L - 1 + big.byteLength, limit: L, ceiling: CEIL, phase: "full" };
+    const expected = { type: "doc:size", seq: expect.any(Number), bytes: L - 1 + big.byteLength, limit: L, ceiling: CEIL, phase: "full" };
     expect(pushes(a)).toEqual([expected]);
     expect(pushes(b)).toEqual([expected]);
   });
@@ -748,12 +758,17 @@ describe("beforeSync step 4: between the limit and the hard ceiling", () => {
     const doc = await load(CV, src);
     setCur(CV, L);
     const c = conn(doc);
+    await confirmFull(doc, c);
     const move = capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 }));
     await refuses(doc, c, SYNC.update, move, "full");
     reauth(c, CV);
     await refuses(doc, c, SYNC.update, sh11(doc, 52), "full");
     reauth(c, CV);
     await refuses(doc, c, SYNC.update, sh12(doc, 53), "full");
+    const unaware = conn(doc, { socketId: "s2", userId: "u2" });
+    await accepts(doc, unaware, SYNC.update, move);
+    await accepts(doc, unaware, SYNC.update, sh11(doc, 56));
+    await accepts(doc, unaware, SYNC.update, sh12(doc, 57));
   });
 
   it("G-07 admits a split delete one byte under the hard ceiling (still step 4)", async () => {
@@ -823,7 +838,10 @@ describe("beforeSync step 2: split endpoints", () => {
     const doc = await load(CV, src);
     setCur(CV, L);
     const c = conn(doc);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, splits, "splits");
+    const unaware = conn(doc, { socketId: "s2", userId: "u2" });
+    expect(await accepts(doc, unaware, SYNC.update, splits)).toBe(2941 + 1999 * C);
   });
 
   it("G-11 at the limit admits 1024 split endpoints and refuses 1025; one byte under the limit admits 1025", async () => {
@@ -836,6 +854,7 @@ describe("beforeSync step 2: split endpoints", () => {
     const doc = await load(CV, src);
     setCur(CV, L);
     const c = conn(doc);
+    await confirmFull(doc, c);
     expect(updateShape(at1024, doc.store).splitEndpoints).toBe(1024);
     expect(updateShape(at1025, doc.store).splitEndpoints).toBe(1025);
     await accepts(doc, c, SYNC.update, at1024);
@@ -852,17 +871,23 @@ describe("beforeSync step 2: split endpoints", () => {
     const { alt, src } = combo();
     const doc = await load(CV, src);
     const c = conn(doc);
+    const unaware = conn(doc, { socketId: "s2", userId: "u2" });
     const splits = deleteAt(alt.t, oddIndices());
     setCur(CV, L);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, splits, "splits");
     reauth(c, CV);
     setCur(CV, CEIL);
     await refuses(doc, c, SYNC.update, splits, "splits");
+    setCur(CV, L);
+    await accepts(doc, unaware, SYNC.update, splits);
+    setCur(CV, CEIL);
+    await refuses(doc, unaware, SYNC.update, splits, "splits");
   });
 });
 
 describe("beforeSync: handshakes and concurrent writers", () => {
-  it("G-13 admits a handshake SyncStep2 holding only a delete set at the limit and at the hard ceiling, adding its length (6)", async () => {
+  it("G-13 admits a handshake SyncStep2 holding only a delete set at the limit and at the hard ceiling, adding nothing", async () => {
     await boot();
     const nd = nodeDoc();
     Y.applyUpdate(nd.server, capture(nd.client, () => nd.nodes.delete("n1")));
@@ -873,38 +898,46 @@ describe("beforeSync: handshakes and concurrent writers", () => {
     for (const at of [L, CEIL]) {
       setCur(CV, at);
       const before = rec(CV).current;
-      expect(await accepts(doc, c, SYNC.step2, step2)).toBe(6);
-      expect(rec(CV).current).toBe(before + 6);
+      expect(await accepts(doc, c, SYNC.step2, step2)).toBe(0);
+      expect(rec(CV).current).toBe(before);
     }
   });
 
   it("G-14 B-02 judges a second connection on the sum after the first, while the first's activity write hangs", async () => {
-    await boot();
-    const { src } = combo();
-    const doc = await load(CV, src);
-    setCur(CV, 10_485_000);
-    const a = conn(doc);
-    const b = conn(doc, { socketId: "s2", userId: "u2" });
-    const uA = insertOnly(doc, 61, 2000);
-    const uB = insertOnly(doc, 62, 10);
-    const kA = cost(uA, doc);
-    expect(kA).toBeGreaterThan(760);
-    const hold = deferred();
-    activity.hold = hold.promise;
+    for (const knowing of [true, false]) {
+      await boot();
+      const { src } = combo();
+      const doc = await load(CV, src);
+      setCur(CV, 10_485_000);
+      const a = conn(doc);
+      const b = conn(doc, { socketId: "s2", userId: "u2" });
+      const uA = insertOnly(doc, 61, 2000);
+      const uB = insertOnly(doc, 62, 10);
+      const kA = cost(uA, doc);
+      expect(kA).toBeGreaterThan(760);
+      const hold = deferred();
+      activity.hold = hold.promise;
 
-    const pA = beforeSync(doc, a, SYNC.update, uA);
-    await flush();
-    expect(activity.spy).toHaveBeenCalledTimes(1);
-    expect(rec(CV).current).toBe(10_485_000 + kA);
-    expect(rec(CV).current).toBeGreaterThanOrEqual(L);
-    // B-02: past the limit by at most one message.
-    expect(rec(CV).current - L).toBeLessThanOrEqual(uA.byteLength);
+      const pA = beforeSync(doc, a, SYNC.update, uA);
+      await flush();
+      expect(activity.spy).toHaveBeenCalledTimes(1);
+      expect(rec(CV).current).toBe(10_485_000 + kA);
+      expect(rec(CV).current).toBeGreaterThanOrEqual(L);
+      // B-02: past the limit by at most one message.
+      expect(rec(CV).current - L).toBeLessThanOrEqual(uA.byteLength);
 
-    await refuses(doc, b, SYNC.update, uB, "full");
-    expect(w.filter.isRefused("s1", CV)).toBe(false);
+      if (knowing) {
+        await ack(doc, b, lastSeq(b));
+        await refuses(doc, b, SYNC.update, uB, "full");
+      } else {
+        activity.hold = undefined;
+        await accepts(doc, b, SYNC.update, uB);
+      }
+      expect(w.filter.isRefused("s1", CV)).toBe(false);
 
-    hold.resolve();
-    await expect(pA).resolves.toBeUndefined();
+      hold.resolve();
+      await expect(pA).resolves.toBeUndefined();
+    }
   });
 
   it("G-15 runs the size judgement before the activity write: none on a refusal, once after an admit", async () => {
@@ -913,6 +946,7 @@ describe("beforeSync: handshakes and concurrent writers", () => {
     const doc = await load(CV, src);
     setCur(CV, L);
     const c = conn(doc);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
     reauth(c, CV);
 
@@ -1073,7 +1107,7 @@ describe("design 4.2 bounds", () => {
     expect(rec(CV).current).toBe(10_747_884);
     await accepts(doc, a, SYNC.update, deletes[14] as Uint8Array);
     expect(rec(CV).current).toBe(10_747_954);
-    const crossed = { type: "doc:size", bytes: 10_747_954, limit: L, ceiling: CEIL, phase: "full" };
+    const crossed = { type: "doc:size", seq: expect.any(Number), bytes: 10_747_954, limit: L, ceiling: CEIL, phase: "full" };
     expect(pushes(a)).toEqual([crossed]);
     expect(pushes(b)).toEqual([crossed]);
 
@@ -1119,6 +1153,7 @@ describe("refusal log fields", () => {
 
     // Round 6: split endpoints are checked from the limit on (G-10 at the limit).
     setCur(CV, L);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, deleteAt(alt.t, oddIndices()), "splits");
     expect(Object.keys(lastLog()).sort()).toEqual(fields);
     reauth(c, CV);
@@ -1138,6 +1173,7 @@ describe("refusal log fields", () => {
     reauth(c, CV);
 
     setCur(CV, L);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
     expect(Object.keys(lastLog()).sort()).toEqual(fields);
     reauth(c, CV);
@@ -1174,6 +1210,7 @@ describe("the inbound filter after a beforeSync refusal", () => {
     const doc = await load(CV, src);
     setCur(CV, L);
     const c = conn(doc, { handshake: false });
+    await confirmFull(doc, c);
     const move = capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 }));
     expect(frame("s1", authFrame(CV, "token"))).toBeDefined();
     expect(frame("s1", syncFrame(CV, WIRE.sync, SYNC.step2, new Uint8Array([0, 0])))).toBeDefined();
@@ -1215,6 +1252,7 @@ describe("first-version steps are gone", () => {
     const doc = await load(CV, src);
     const c = conn(doc);
     setCur(CV, L);
+    await confirmFull(doc, c);
     await refuses(doc, c, SYNC.update, sh12(doc, 91), "full");
     reauth(c, CV);
     await refuses(doc, c, SYNC.update, capture(nd.client, () => nd.n1.set("position", { x: 1, y: 2 })), "full");
@@ -1297,7 +1335,7 @@ describe("round 6: cost is the message length plus 32 per event (spec 14a.1)", (
     fb.sendStateless.mockClear();
     expect(await accepts(full, fa, SYNC.update, cut)).toBe(91_750);
     expect(rec(CV).current).toBe(10_791_750);
-    const crossed = { type: "doc:size", bytes: 10_791_750, limit: L, ceiling: CEIL, phase: "full" };
+    const crossed = { type: "doc:size", seq: expect.any(Number), bytes: 10_791_750, limit: L, ceiling: CEIL, phase: "full" };
     expect(pushes(fa)).toEqual([crossed]);
     expect(pushes(fb)).toEqual([crossed]);
   }, 60_000);
@@ -1331,12 +1369,13 @@ describe("round 6: split endpoints are checked only from the limit on (spec 14a.
   it("R6-11 a reconnecting member's 600 offline deletes (1200 split endpoints) are admitted below the limit and refused from it", async () => {
     const od = offlineDeletes();
     const member = od.memberAfter(600);
-    for (const [at, admitted] of [[undefined, true], [L - 1, true], [L, false], [CEIL, false]] as const) {
+    for (const [at, admitted, knowing] of [[undefined, true, false], [L - 1, true, false], [L, false, true], [L, true, false], [CEIL, false, false]] as const) {
       await boot();
       const doc = await load(DOC, od.author);
       expect(enc(doc)).toBe(40_607);
       if (at !== undefined) setCur(DOC, at);
       const c = conn(doc);
+      if (knowing) await confirmFull(doc, c);
       const step2 = reconnectStep2(member, doc);
       expect(step2.byteLength).toBe(2157);
       expect(updateShape(step2, doc.store)).toMatchObject({ pureDelete: true, splitEndpoints: 1200 });
@@ -1368,6 +1407,7 @@ describe("round 6: no refusal mark for a connection no longer in the document (s
     const doc = await load(CV, combo().src);
     setCur(CV, L);
     const a = conn(doc);
+    await confirmFull(doc, a);
     doc.removeConnection(asConnection(a));
     await refusesUnmarked(doc, a, sh12(doc, 92), "full");
     expect(updateFramePasses("s1", CV)).toBe(true);
@@ -1378,9 +1418,434 @@ describe("round 6: no refusal mark for a connection no longer in the document (s
     const doc = await load(CV, combo().src);
     setCur(CV, L);
     const a = conn(doc);
+    await confirmFull(doc, a);
     w.hooks.onPeerClose(peerOf("s1"), {});
     // Hocuspocus's handleClose runs after onPeerClose and removes the connection.
     doc.removeConnection(asConnection(a));
     await refusesUnmarked(doc, a, sh12(doc, 93), "full");
   });
 });
+
+/** The round 7 record functions of design 4.1. */
+interface AckApi {
+  acknowledge: (name: string, connection: unknown, seq: number) => void;
+  knowsFull: (name: string, connection: unknown) => boolean;
+}
+
+/**
+ * The production `knowsFull`, failing clearly while it does not exist.
+ * @param name - Document name.
+ * @param c - The connection.
+ * @returns Whether the connection acknowledged a full push last.
+ */
+function knows(name: string, c: FakeConnection): boolean {
+  const mod = w.size as unknown as Record<string, unknown>;
+  expect(typeof mod.knowsFull, "services/document-size exports knowsFull").toBe("function");
+  return (mod.knowsFull as AckApi["knowsFull"])(name, c);
+}
+
+/**
+ * Spec 14b.0 `ack(conn, seq)`: a `doc:size-seen` sent through the production `onStateless`.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @param seq - The acknowledged push.
+ * @returns The hook's promise.
+ */
+function ack(doc: Document, c: FakeConnection, seq: unknown): Promise<void> {
+  return w.hooks.onStateless({ connection: c, documentName: doc.name, document: doc, payload: JSON.stringify({ type: "doc:size-seen", seq }) });
+}
+
+/**
+ * Spec 14b.0 `lastSeq(conn)`: the `seq` of the last `doc:size` the connection received.
+ * @param c - The connection.
+ * @returns The seq, as received.
+ * @throws {Error} When it received none.
+ */
+function lastSeq(c: FakeConnection): unknown {
+  const last = pushes(c).at(-1);
+  if (!last) throw new Error(`${c.socketId} received no doc:size`);
+  return last.seq;
+}
+
+/**
+ * Spec 14b.0 "confirm full": push the record's current size to every
+ * connection (a measure at the same size; nothing may be held) and let `c`
+ * acknowledge that full push.
+ * @param doc - The document.
+ * @param c - The connection.
+ * @returns Nothing.
+ * @throws {Error} When costs are held, or the push is not full.
+ */
+async function confirmFull(doc: Document, c: FakeConnection): Promise<void> {
+  const r = rec(doc.name);
+  if (r.heldSum !== 0) throw new Error("confirmFull needs nothing held");
+  w.size.recordExact(doc.name, r.current);
+  const last = pushes(c).at(-1);
+  if (last?.phase !== "full") throw new Error(`last push to ${c.socketId} is not full: ${JSON.stringify(last)}`);
+  await ack(doc, c, last.seq);
+}
+
+/**
+ * A connection arriving the way Hocuspocus brings it in: the production
+ * `onConnect` and `connected` with its connection parameters (spec 14b.0).
+ * @param doc - The document.
+ * @param c - The connection, already in the document.
+ * @returns Nothing.
+ */
+async function arrive(doc: Document, c: FakeConnection): Promise<void> {
+  const payload = {
+    documentName: doc.name,
+    socketId: c.socketId,
+    context: c.context,
+    instance: { documents: new Map([[doc.name, doc]]) },
+    connectionConfig: { readOnly: c.readOnly },
+    request: c.request,
+    requestHeaders: new Headers(),
+    requestParameters: new URL(c.request.url).searchParams,
+  };
+  await w.hooks.onConnect(payload);
+  await w.hooks.connected({ ...payload, connection: c });
+}
+
+/**
+ * A connection that arrived through `onConnect` / `connected` with its parameters.
+ * @param doc - The document.
+ * @param opts - As for `conn`.
+ * @returns The connection.
+ */
+async function arrived(doc: Document, opts: Parameters<typeof conn>[1] = {}): Promise<FakeConnection> {
+  const c = conn(doc, opts);
+  await arrive(doc, c);
+  return c;
+}
+
+/** Spec 14b.1 `DEEP(d, n)` on a stored copy. */
+interface Deep {
+  src: Y.Doc;
+  /** The "full cover delete": every value of the deepest array, none of the nested types. */
+  cover: Uint8Array;
+}
+
+/**
+ * Spec 14b.1 `DEEP(d, n)`: client 7 nests `d` maps under `nodes.n0`, puts
+ * a `Y.Array` `items` in the deepest and inserts `n` `"x"` one by one at
+ * index 0; with it the hand-written delete of all `n` values.
+ * @param d - Nesting depth.
+ * @param n - How many values.
+ * @returns The stored document and the delete.
+ */
+function deep(d: number, n: number): Deep {
+  const src = new Y.Doc();
+  src.clientID = 7;
+  let first = 0;
+  src.transact(() => {
+    let level = new Y.Map<unknown>();
+    src.getMap<Y.Map<unknown>>("nodes").set("n0", level);
+    for (let i = 1; i < d; i++) {
+      const next = new Y.Map<unknown>();
+      level.set("c", next);
+      level = next;
+    }
+    const items = new Y.Array<string>();
+    level.set("items", items);
+    first = Y.getState(src.store, 7);
+    for (let i = 0; i < n; i++) items.insert(0, ["x"]);
+  });
+  return { src, cover: beyondDs(7, first, Y.getState(src.store, 7) - first) };
+}
+
+/**
+ * Spec R7-10: a canvas where 500 nodes were made and deleted, each between
+ * two live characters so the delete set keeps 500 ranges; and a member who
+ * holds the same state.
+ * @returns The stored document and the member's copy.
+ */
+function deletedNodes(): { src: Y.Doc; member: Y.Doc } {
+  const src = new Y.Doc();
+  src.clientID = 21;
+  const nodes = src.getMap<Y.Map<unknown>>("nodes");
+  const keep = src.getText("keep");
+  for (let i = 0; i < 500; i++) {
+    nodes.set(`d${i}`, new Y.Map<unknown>());
+    keep.insert(keep.length, "k");
+  }
+  for (let i = 0; i < 500; i++) nodes.delete(`d${i}`);
+  return { src, member: syncedClient(src, 22) };
+}
+
+describe("round 7: deep nesting through beforeSync (spec 14b.1)", () => {
+  it("R7-06 an 11-byte unknown sub-type delete of 200 000 values 3000 levels deep is judged in under 500 ms and admitted", async () => {
+    const { src, cover } = deep(3000, 200_000);
+    expect(cover.byteLength).toBeLessThanOrEqual(12);
+    await boot({ ...S_CONFIG, max_document_bytes: 100_000_000 });
+    const doc = await load(CV, src);
+    const c = conn(doc);
+    expect(rec(CV).phase).toBe("normal");
+    logger.warn.mockClear();
+    const t0 = performance.now();
+    await expect(beforeSync(doc, c, 3, cover)).resolves.toBeUndefined();
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(refusalLogs()).toEqual([]);
+  }, 120_000);
+});
+
+describe("round 7: deletes covering only deleted content cost nothing (spec 14b.2)", () => {
+  it("R7-10 a member's handshake delete set on a warning document changes neither current nor phase and pushes nothing; the next insert is admitted", async () => {
+    await boot();
+    const { src, member } = deletedNodes();
+    const doc = await load(CV, src);
+    setCur(CV, L - 100);
+    const a = await arrived(doc);
+    const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+    const step2 = handshakeStep2(doc, member);
+    expect(step2.byteLength).toBeGreaterThan(100);
+    a.sendStateless.mockClear();
+    b.sendStateless.mockClear();
+    await expect(beforeSync(doc, b, SYNC.step2, step2)).resolves.toBeUndefined();
+    expect(rec(CV)).toMatchObject({ current: L - 100, phase: "warning" });
+    expect(pushes(a)).toEqual([]);
+    expect(pushes(b)).toEqual([]);
+    await accepts(doc, a, SYNC.update, sh12(doc, 101));
+  });
+
+  it("R7-12 the same handshake delete set over the hard ceiling is admitted at step 5 and adds nothing", async () => {
+    await boot();
+    const { src, member } = deletedNodes();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
+    const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+    const step2 = handshakeStep2(doc, member);
+    await expect(beforeSync(doc, b, SYNC.step2, step2)).resolves.toBeUndefined();
+    expect(rec(CV).current).toBe(CEIL);
+    expect(refusalLogs()).toEqual([]);
+  });
+});
+
+describe("round 7: judged by the phase the connection acknowledged (spec 14b.4)", () => {
+  /**
+   * Spec R7-21 / R7-22 set-up: `cur = L - 1`, A and B arrived; A's 50 000
+   * character insert crosses the limit and pushes full to both.
+   * @returns The document, A, B and the full push's seq.
+   */
+  async function crossed(): Promise<{ doc: Document; a: FakeConnection; b: FakeConnection; n: unknown }> {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, L - 1);
+    const a = await arrived(doc);
+    const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+    await accepts(doc, a, SYNC.update, insertOnly(doc, 111, 50_000));
+    expect(pushes(a).at(-1)?.phase).toBe("full");
+    expect(pushes(b).at(-1)?.phase).toBe("full");
+    const n = lastSeq(a);
+    expect(lastSeq(b)).toBe(n);
+    return { doc, a, b, n };
+  }
+
+  it("R7-21 after crossing the limit the same connection's next insert is admitted until it acknowledges full, then refused", async () => {
+    const { doc, a, n } = await crossed();
+    await accepts(doc, a, SYNC.update, insertOnly(doc, 112));
+    await ack(doc, a, n);
+    expect(knows(CV, a)).toBe(true);
+    await refuses(doc, a, SYNC.update, insertOnly(doc, 113), "full");
+    expect(w.filter.isRefused("s1", CV)).toBe(true);
+  });
+
+  it("R7-22 a peer that has not acknowledged full is admitted; once it acknowledges, refused", async () => {
+    const { doc, a, b, n } = await crossed();
+    await ack(doc, a, n);
+    await accepts(doc, b, SYNC.update, insertOnly(doc, 114));
+    await ack(doc, b, n);
+    expect(knows(CV, b)).toBe(true);
+    await refuses(doc, b, SYNC.update, insertOnly(doc, 115), "full");
+  });
+
+  it("R7-23 over the hard ceiling acknowledgement makes no difference: inserts and splitting deletes refused, a whole-node delete admitted", async () => {
+    await boot();
+    const { nd, src } = combo();
+    const doc = await load(CV, src);
+    setCur(CV, CEIL);
+    const a = await arrived(doc);
+    const sh03 = capture(nd.client, () => nd.text.delete(2, 3));
+    const sh01 = capture(nd.client, () => nd.nodes.delete("n1"));
+    for (const round of ["unacknowledged", "acknowledged"]) {
+      if (round === "acknowledged") {
+        await ack(doc, a, lastSeq(a));
+        expect(knows(CV, a)).toBe(true);
+      }
+      await refuses(doc, a, SYNC.update, sh12(doc, 121), "over_ceiling");
+      reauth(a, CV);
+      await refuses(doc, a, SYNC.update, sh03, "over_ceiling");
+      reauth(a, CV);
+      await accepts(doc, a, SYNC.update, sh01);
+    }
+  });
+
+  it("R7-24 a connection that never acknowledges is admitted while current is under the hard ceiling, and refused once past it", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, CEIL - 100);
+    const a = await arrived(doc);
+    a.sendStateless.mockClear();
+    const big = insertOnly(doc, 131, 5000);
+    expect(big.byteLength).toBeGreaterThan(100);
+    await accepts(doc, a, SYNC.update, big);
+    expect(rec(CV).current).toBeGreaterThanOrEqual(CEIL);
+    expect(pushes(a)).toEqual([expect.objectContaining({ bytes: rec(CV).current, phase: "full" })]);
+    await refuses(doc, a, SYNC.update, insertOnly(doc, 132), "over_ceiling");
+  });
+
+  it("R7-25 split endpoints are checked at the limit only for a connection that acknowledged full, and over the hard ceiling for every connection", async () => {
+    const { alt, src } = combo();
+    const splits = deleteAt(alt.t, oddIndices());
+    await boot();
+    const doc = await load(CV, src);
+    setCur(CV, L);
+    const a = await arrived(doc);
+    expect(await accepts(doc, a, SYNC.update, splits)).toBe(66_909);
+    expect(rec(CV).current).toBe(L + 66_909);
+    await ack(doc, a, lastSeq(a));
+    expect(knows(CV, a)).toBe(true);
+    await refuses(doc, a, SYNC.update, splits, "splits");
+
+    for (const knowing of [false, true]) {
+      await boot();
+      const over = await load(CV, src);
+      setCur(CV, CEIL);
+      const c = await arrived(over);
+      if (knowing) await ack(over, c, lastSeq(c));
+      await refuses(over, c, SYNC.update, splits, "splits");
+    }
+  });
+
+  it("R7-26 below the limit an insert is admitted whatever the connection last acknowledged, and knowsFull stays until it acknowledges the warning", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, L);
+    const a = await arrived(doc);
+    await ack(doc, a, lastSeq(a));
+    expect(knows(CV, a)).toBe(true);
+    setCur(CV, L - 1000);
+    expect(pushes(a).at(-1)?.phase).toBe("warning");
+    const m = lastSeq(a);
+    await accepts(doc, a, SYNC.update, sh12(doc, 141));
+    expect(knows(CV, a)).toBe(true);
+    await ack(doc, a, m);
+    expect(knows(CV, a)).toBe(false);
+  });
+
+  it("R7-27 after acknowledging the warning, a new full push binds the connection only once it acknowledges that one", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, L);
+    const a = await arrived(doc);
+    const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+    await ack(doc, a, lastSeq(a));
+    setCur(CV, L - 1000);
+    await ack(doc, a, lastSeq(a));
+    expect(knows(CV, a)).toBe(false);
+    await accepts(doc, b, SYNC.update, insertOnly(doc, 151, 2000));
+    expect(pushes(a).at(-1)?.phase).toBe("full");
+    const next = lastSeq(a);
+    await accepts(doc, a, SYNC.update, insertOnly(doc, 152));
+    await ack(doc, a, next);
+    await refuses(doc, a, SYNC.update, insertOnly(doc, 153), "full");
+  });
+
+  it("R7-28 G-14 with B's last acknowledgement a warning: B is admitted; with it full: refused", async () => {
+    for (const lastAcked of ["warning", "full"] as const) {
+      await boot();
+      const doc = await load(CV, combo().src);
+      setCur(CV, L);
+      const a = await arrived(doc);
+      const b = await arrived(doc, { socketId: "s2", userId: "u2" });
+      await ack(doc, b, lastSeq(b));
+      setCur(CV, 10_485_000);
+      if (lastAcked === "warning") await ack(doc, b, lastSeq(b));
+      expect(knows(CV, b)).toBe(lastAcked === "full");
+      const uA = insertOnly(doc, 161, 2000);
+      expect(cost(uA, doc)).toBeGreaterThan(760);
+      const hold = deferred();
+      activity.hold = hold.promise;
+      const pA = beforeSync(doc, a, SYNC.update, uA);
+      await flush();
+      expect(rec(CV).current).toBeGreaterThanOrEqual(L);
+      activity.hold = undefined;
+      const uB = insertOnly(doc, 162, 10);
+      if (lastAcked === "warning") await accepts(doc, b, SYNC.update, uB);
+      else await refuses(doc, b, SYNC.update, uB, "full");
+      hold.resolve();
+      await expect(pA).resolves.toBeUndefined();
+    }
+  });
+
+  it("R7-29 a read-only connection's acknowledgement is recorded and its insert is not checked", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, CEIL);
+    const viewer = await arrived(doc, { readOnly: true });
+    await ack(doc, viewer, lastSeq(viewer));
+    expect(knows(CV, viewer)).toBe(true);
+    await notChecked(doc, viewer, SYNC.update, sh12(doc, 171));
+  });
+});
+
+describe("round 7: the size_ack connection parameter (spec 14b.5)", () => {
+  it("R7-35 over the hard ceiling a connection without size_ack=1 is refused and its whole WebSocket closed", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, CEIL);
+    const a = await arrived(doc, { params: "" });
+    await refuses(doc, a, SYNC.update, sh12(doc, 181), "over_ceiling");
+    expect(a.webSocket.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("R7-36 with size_ack=1 the same refusal leaves the WebSocket to Hocuspocus", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, CEIL);
+    const a = await arrived(doc);
+    await refuses(doc, a, SYNC.update, sh12(doc, 182), "over_ceiling");
+    expect(a.webSocket.close).not.toHaveBeenCalled();
+  });
+
+  it("R7-37 a step 0 refusal and an unexpected exception close the WebSocket of a connection without size_ack=1 only", async () => {
+    for (const [params, closes] of [["", 1], [ACK_PARAMS, 0]] as const) {
+      await boot();
+      const doc = await load(CV, combo().src);
+      setCur(CV, 1000);
+      const a = await arrived(doc, { params });
+      w.filter.markRefused("s1", CV);
+      await refuses(doc, a, SYNC.update, sh12(doc, 183), "after_refusal");
+      expect(a.webSocket.close, `step 0, params "${params}"`).toHaveBeenCalledTimes(closes);
+      reauth(a, CV);
+      a.webSocket.close.mockClear();
+      await refuses(doc, a, SYNC.update, new Uint8Array([1]), "error");
+      expect(a.webSocket.close, `error, params "${params}"`).toHaveBeenCalledTimes(closes);
+    }
+  });
+
+  it("R7-38 only a size_ack that URLSearchParams reads as exactly 1 keeps the WebSocket open", async () => {
+    for (const params of ["size_ack=1", "size_ack=0", "size_ack=true", "", "size_ack=1&size_ack=0"]) {
+      await boot();
+      const doc = await load(CV, combo().src);
+      setCur(CV, CEIL);
+      const a = await arrived(doc, { params });
+      await refuses(doc, a, SYNC.update, sh12(doc, 184), "over_ceiling");
+      const keeps = new URLSearchParams(params).get("size_ack") === "1";
+      expect(a.webSocket.close, `params "${params}"`).toHaveBeenCalledTimes(keeps ? 0 : 1);
+    }
+  });
+
+  it("R7-39 a closed, removed connection without size_ack=1 is refused unmarked and its WebSocket left alone", async () => {
+    await boot();
+    const doc = await load(CV, combo().src);
+    setCur(CV, CEIL);
+    const a = await arrived(doc, { params: "" });
+    doc.removeConnection(asConnection(a));
+    const again = await arrived(doc, { params: "", handshake: false });
+    expect(again.socketId).toBe(a.socketId);
+    await refusesUnmarked(doc, a, sh12(doc, 185), "over_ceiling");
+    expect(a.webSocket.close).not.toHaveBeenCalled();
+  });
+});
+

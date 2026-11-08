@@ -26,10 +26,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as core from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, spaceContentDocName } from "@breatic/shared";
 import type { createCollabServer } from "@collab/hocuspocus.js";
+import type * as SizeModuleShape from "@collab/services/document-size.js";
 import { storeDocumentNow } from "@collab/services/persistence.js";
 import { armTimedStore, releaseTimedStoreArm } from "@collab/services/store-tracker.js";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import * as decoding from "lib0/decoding";
+import { expect } from "vitest";
 import WebSocket from "ws";
 import * as Y from "yjs";
 
@@ -38,6 +40,8 @@ import { authFrame, statelessFrame, SYNC, syncFrame, waitFor, WIRE } from "./liv
 
 /** One decoded server → client frame. */
 export interface SizeFrame {
+  /** The whole message key. */
+  key: string;
   /** Document name, the part of the key before the first NUL. */
   documentName: string;
   /** Outer type. */
@@ -65,7 +69,7 @@ function decodeFrame(bytes: Uint8Array): SizeFrame {
   const decoder = decoding.createDecoder(bytes);
   const key = decoding.readVarString(decoder);
   const nul = key.indexOf("\0");
-  const frame: SizeFrame = { documentName: nul === -1 ? key : key.slice(0, nul), type: decoding.readVarUint(decoder) };
+  const frame: SizeFrame = { key, documentName: nul === -1 ? key : key.slice(0, nul), type: decoding.readVarUint(decoder) };
   if (frame.type === WIRE.sync || frame.type === WIRE.syncReply) {
     frame.syncSubType = decoding.readVarUint(decoder);
     frame.payload = decoding.readVarUint8Array(decoder);
@@ -90,6 +94,18 @@ export interface SizeSocket {
   send(bytes: Uint8Array): void;
   /** Terminate the socket. */
   close(): void;
+  /** Whether the server closed the socket (a close this side did not start). */
+  closedByServer(): boolean;
+  /** The `seq` of every `doc:size-seen` this socket sent, oldest first, with the message key. */
+  acks: Array<{ key: string; seq: unknown }>;
+}
+
+/** How a socket speaks the size cap's acknowledgement (design 3, 5.1). */
+export interface SizeAckOptions {
+  /** Whether the socket URL carries `size_ack=1` (default true: the current web client). */
+  sizeAck?: boolean;
+  /** Whether each `doc:size` is answered with `doc:size-seen` in the same callback (default: as `sizeAck`). */
+  autoAck?: boolean;
 }
 
 /** One document opened on a socket. */
@@ -118,28 +134,58 @@ export interface SizeDocClient {
   sendSync(subType: number, payload: Uint8Array, outerType?: number): void;
   /** Ask for `sync:confirmed` and wait for it. */
   confirm(): Promise<Record<string, unknown>>;
+  /** Send `doc:size-seen` for a push `seq`. */
+  ack(seq: unknown): void;
+}
+
+/**
+ * Send `doc:size-seen` for a push on a socket and remember it.
+ * @param socket - The socket.
+ * @param key - The document's message key.
+ * @param seq - The push's `seq`.
+ */
+function sendAck(socket: SizeSocket, key: string, seq: unknown): void {
+  socket.acks.push({ key, seq });
+  socket.send(statelessFrame(key, JSON.stringify({ type: "doc:size-seen", seq })));
 }
 
 /**
  * Open a WebSocket carrying the fixture's session cookie.
  * @param port - The instance's port.
  * @param cookie - Session cookie header value.
+ * @param opts - How the socket acknowledges size pushes; by default as the current web client does.
  * @returns The socket.
  * @throws {Error} When the socket cannot open.
  */
-export async function openSocket(port: number, cookie: string): Promise<SizeSocket> {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/`, { headers: { cookie } });
+export async function openSocket(port: number, cookie: string, opts: SizeAckOptions = {}): Promise<SizeSocket> {
+  const sizeAck = opts.sizeAck ?? true;
+  const autoAck = opts.autoAck ?? sizeAck;
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/${sizeAck ? "?size_ack=1" : ""}`, { headers: { cookie } });
+  let closedHere = false;
+  let closed = false;
   const socket: SizeSocket = {
     ws,
     frames: [],
+    acks: [],
     send: (bytes: Uint8Array): void => ws.send(bytes),
-    close: (): void => ws.terminate(),
+    close: (): void => {
+      closedHere = true;
+      ws.terminate();
+    },
+    closedByServer: (): boolean => closed && !closedHere,
   };
   ws.on("error", () => {});
+  ws.on("close", () => {
+    closed = true;
+  });
   ws.on("message", (data) => {
     const bytes = Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
     if (typeof bytes === "string") return;
-    socket.frames.push(decodeFrame(new Uint8Array(bytes)));
+    const frame = decodeFrame(new Uint8Array(bytes));
+    socket.frames.push(frame);
+    if (!autoAck || frame.stateless === undefined) return;
+    const message = JSON.parse(frame.stateless) as Record<string, unknown>;
+    if (message.type === "doc:size") sendAck(socket, frame.key, message.seq);
   });
   await new Promise<void>((resolve, reject) => {
     ws.once("open", () => resolve());
@@ -245,6 +291,7 @@ export async function openDoc(
       }, `sync:confirmed for ${key}`, 30_000);
       return reply!;
     },
+    ack: (seq: unknown): void => sendAck(socket, key, seq),
   };
   return client;
 }
@@ -371,7 +418,7 @@ export async function refusedFor(client: SizeDocClient, timeoutMs = 10_000): Pro
 }
 
 /** The keys of a v2 `doc:size` push (design 3), sorted. */
-export const V2_PUSH_KEYS: readonly string[] = ["bytes", "ceiling", "limit", "phase", "type"];
+export const V2_PUSH_KEYS: readonly string[] = ["bytes", "ceiling", "limit", "phase", "seq", "type"];
 
 /**
  * The keys of a push, sorted, for comparing against {@link V2_PUSH_KEYS}.
@@ -420,4 +467,42 @@ export async function settle(client: SizeDocClient, timeoutMs = 10_000): Promise
   client.socket.send(statelessFrame(client.key, JSON.stringify({ type: "sync:confirm", id })));
   await waitFor(() => client.closeReasons().length > 0 || client.frames().some((f) => f.stateless !== undefined && f.stateless.includes(id)), `confirmation or close of ${client.key}`, timeoutMs);
   return client.closeReasons();
+}
+
+/** The size module of one module graph, as a case reads `knowsFull` from it. */
+type SizeModule = typeof SizeModuleShape;
+
+/**
+ * Whether the instance's record says a user's connection of a document has
+ * acknowledged a `full` push (design 4.1 `knowsFull`), read through the
+ * production export. Throws while the export is missing, so a case waiting
+ * on it fails with that reason.
+ * @param instance - The instance holding the document.
+ * @param sizeModule - The size module of the instance's module graph.
+ * @param name - Document name.
+ * @param userId - Whose connection; the case's users each hold one.
+ * @returns The production answer.
+ * @throws {Error} When `knowsFull` is not exported, or the user has no connection of the document there.
+ */
+export function serverKnowsFull(instance: Instance, sizeModule: SizeModule, name: string, userId: string): boolean {
+  const knowsFull = (sizeModule as unknown as Record<string, unknown>).knowsFull;
+  if (typeof knowsFull !== "function") throw new Error("document-size.ts exports no knowsFull");
+  const connection = instance.hocuspocus.documents.get(name)?.getConnections()
+    .find((c) => (c.context as { user?: { id?: string } } | undefined)?.user?.id === userId);
+  if (!connection) throw new Error(`${userId} has no connection of ${name}`);
+  return (knowsFull as (n: string, c: unknown) => boolean)(name, connection) === true;
+}
+
+/**
+ * Wait until the instance says a user's connection knows the document is full.
+ * @param instance - The instance holding the document.
+ * @param sizeModule - The size module of the instance's module graph.
+ * @param name - Document name.
+ * @param userId - Whose connection.
+ * @param timeoutMs - How long to wait.
+ * @throws {Error} When `knowsFull` is missing or never turns true.
+ */
+export async function untilKnowsFull(instance: Instance, sizeModule: SizeModule, name: string, userId: string, timeoutMs = 10_000): Promise<void> {
+  expect(typeof (sizeModule as unknown as Record<string, unknown>).knowsFull, "document-size.ts exports knowsFull").toBe("function");
+  await waitFor(() => serverKnowsFull(instance, sizeModule, name, userId), `knowsFull(${name}, ${userId})`, timeoutMs);
 }

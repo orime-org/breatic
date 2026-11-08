@@ -10,6 +10,10 @@
  *
  * Kept apart from `update-shape.test.ts` because the current walk takes
  * seconds on these inputs; each case carries a long vitest timeout.
+ *
+ * Round 7 (spec 14b.1, R7-01 to R7-04): deep nesting. Design 4.1 keeps the
+ * ancestor conclusion per parent type, so every type is judged at most once
+ * and the time does not grow with the nesting depth.
  */
 
 import fc from "fast-check";
@@ -228,3 +232,158 @@ describe("updateShape time bound (design 4.1 walk, design 8)", () => {
     );
   }, 600_000);
 });
+
+/** Spec 14b.1 `DEEP(d, n)` on a server copy. */
+interface Deep {
+  /** The server copy. */
+  server: Y.Doc;
+  /** Clock of the deepest `items` array's own item. */
+  itemsClock: number;
+  /** Clock of the first value inserted into `items`. */
+  firstValue: number;
+  /** Client 7's clock on the server. */
+  state: number;
+}
+
+/**
+ * Spec 14b.1 `DEEP(d, n)`: client 7 nests `d` maps under `nodes.n0` (each
+ * level under key `c` of the one above), puts a `Y.Array` `items` in the
+ * deepest, inserts `n` `"x"` one by one at index 0 (structs do not merge)
+ * and syncs to a server copy.
+ * @param d - Nesting depth.
+ * @param n - How many values.
+ * @returns The server copy and the clocks the cases cut at.
+ * @throws {Error} When the deepest map is missing.
+ */
+function deep(d: number, n: number): Deep {
+  const src = new Y.Doc();
+  src.clientID = 7;
+  let itemsClock = 0;
+  let firstValue = 0;
+  src.transact(() => {
+    let level = new Y.Map<unknown>();
+    src.getMap<Y.Map<unknown>>("nodes").set("n0", level);
+    for (let i = 1; i < d; i++) {
+      const next = new Y.Map<unknown>();
+      level.set("c", next);
+      level = next;
+    }
+    itemsClock = Y.getState(src.store, 7);
+    const items = new Y.Array<string>();
+    level.set("items", items);
+    firstValue = Y.getState(src.store, 7);
+    for (let i = 0; i < n; i++) items.insert(0, ["x"]);
+  });
+  const server = new Y.Doc();
+  Y.applyUpdate(server, Y.encodeStateAsUpdate(src));
+  src.destroy();
+  return { server, itemsClock, firstValue, state: Y.getState(server.store, 7) };
+}
+
+/**
+ * A fresh copy of a document.
+ * @param doc - The source.
+ * @returns The copy.
+ */
+function copyOf(doc: Y.Doc): Y.Doc {
+  const copy = new Y.Doc();
+  Y.applyUpdate(copy, Y.encodeStateAsUpdate(doc));
+  return copy;
+}
+
+/**
+ * The median of five numbers or more.
+ * @param xs - The samples.
+ * @returns The median.
+ */
+function median(xs: readonly number[]): number {
+  const sorted = [...xs].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
+}
+
+/**
+ * Time `updateShape` five times on one update and store, stopping after a
+ * call over two seconds (the median is then far past every bound).
+ * @param update - The update.
+ * @param store - The store.
+ * @returns The last result and the median milliseconds.
+ */
+function shapeMedian(update: Uint8Array, store: Y.Doc["store"]): { shape: UpdateShape; ms: number } {
+  const samples: number[] = [];
+  let shape: UpdateShape | undefined;
+  for (let i = 0; i < 5; i++) {
+    const r = timed(update, store);
+    shape = r.shape;
+    samples.push(r.ms);
+    if (r.ms > 2000) break;
+  }
+  if (!shape) throw new Error("no sample");
+  return { shape, ms: median(samples) };
+}
+
+/**
+ * Time `Y.applyUpdate` of one update on five fresh copies of a document.
+ * @param doc - The document copied.
+ * @param update - The update.
+ * @returns The median milliseconds.
+ */
+function applyMedian(doc: Y.Doc, update: Uint8Array): number {
+  const copies = Array.from({ length: 5 }, () => copyOf(doc));
+  const samples = copies.map((copy) => {
+    const t0 = performance.now();
+    Y.applyUpdate(copy, update);
+    return performance.now() - t0;
+  });
+  for (const copy of copies) copy.destroy();
+  return median(samples);
+}
+
+describe("updateShape on deep nesting (spec 14b.1, design 4.1 per-type conclusion)", () => {
+  it("R7-01 a delete of 200 000 values 3000 levels deep is judged within 3x the time yjs takes to apply it and under 500 ms", () => {
+    warmUp();
+    const d = deep(3000, 200_000);
+    const update = dsUpdate(7, [[d.firstValue, d.state - d.firstValue]]);
+    expect(update.byteLength).toBeLessThanOrEqual(12);
+    const { shape, ms } = shapeMedian(update, d.server.store);
+    const applyMs = applyMedian(d.server, update);
+    expect(ms, `updateShape ${ms} ms, applyUpdate ${applyMs} ms`).toBeLessThanOrEqual(3 * applyMs);
+    expect(ms).toBeLessThan(500);
+    expect(shape).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: false, coversLive: true });
+  }, 600_000);
+
+  it("R7-02 the same delete 3000 levels deep takes no more than twice the time 30 levels deep plus 20 ms, with the same result", () => {
+    warmUp();
+    const shallow = deep(30, 200_000);
+    const shallowUpdate = dsUpdate(7, [[shallow.firstValue, shallow.state - shallow.firstValue]]);
+    const s = shapeMedian(shallowUpdate, shallow.server.store);
+    shallow.server.destroy();
+    const deeper = deep(3000, 200_000);
+    const deepUpdate = dsUpdate(7, [[deeper.firstValue, deeper.state - deeper.firstValue]]);
+    const dd = shapeMedian(deepUpdate, deeper.server.store);
+    expect(dd.shape).toEqual(s.shape);
+    expect(dd.ms, `3000 levels ${dd.ms} ms, 30 levels ${s.ms} ms`).toBeLessThanOrEqual(2 * s.ms + 20);
+  }, 600_000);
+
+  it("R7-03 deleting the deepest array's own item together with its values is whole types only, within the R7-01 bound", () => {
+    warmUp();
+    const d = deep(3000, 200_000);
+    expect(d.firstValue).toBe(d.itemsClock + 1);
+    const update = dsUpdate(7, [[d.itemsClock, d.state - d.itemsClock]]);
+    const { shape, ms } = shapeMedian(update, d.server.store);
+    expect(shape.wholeTypesOnly).toBe(true);
+    const applyMs = applyMedian(d.server, update);
+    expect(ms, `updateShape ${ms} ms, applyUpdate ${applyMs} ms`).toBeLessThanOrEqual(3 * applyMs);
+    expect(ms).toBeLessThan(500);
+  }, 600_000);
+
+  it("R7-04 a parent's conclusion lasts one call: whole types after deleting the parent, not whole types for the values alone next", () => {
+    const d = deep(50, 1000);
+    const before = Y.encodeStateAsUpdate(d.server);
+    const withParent = dsUpdate(7, [[d.itemsClock, d.state - d.itemsClock]]);
+    const valuesOnly = dsUpdate(7, [[d.firstValue, d.state - d.firstValue]]);
+    expect(updateShape(withParent, d.server.store).wholeTypesOnly).toBe(true);
+    expect(updateShape(valuesOnly, d.server.store).wholeTypesOnly).toBe(false);
+    expect(Buffer.from(Y.encodeStateAsUpdate(d.server)).equals(Buffer.from(before))).toBe(true);
+  });
+});
+

@@ -66,14 +66,17 @@ export function enc(doc: Y.Doc): number {
 }
 
 /**
- * Design 4.1 cost of an update against a document as it is now (round 6):
- * the message length plus `C` per split endpoint and per beyond-clock range.
+ * Design 4.1 cost of an update against a document as it is now (round 7):
+ * the message length plus `C` per split endpoint and per beyond-clock range;
+ * 0 for a pure delete covering no live item, with no split endpoint and no
+ * beyond-clock range.
  * @param update - The V1 update.
  * @param doc - The server document before the update.
  * @returns Bytes counted against the record.
  */
 export function cost(update: Uint8Array, doc: Y.Doc): number {
-  const s = updateShape(update, doc.store);
+  const s = updateShape(update, doc.store) as ReturnType<typeof updateShape> & { coversLive?: boolean };
+  if (s.pureDelete && s.coversLive === false && s.splitEndpoints === 0 && s.beyondClockRanges === 0) return 0;
   return update.byteLength + C * (s.splitEndpoints + s.beyondClockRanges);
 }
 

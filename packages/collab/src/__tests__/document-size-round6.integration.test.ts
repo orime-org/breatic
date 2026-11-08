@@ -48,7 +48,7 @@ import {
   startInstance,
   stopInstance,
 } from "./helpers/document-size-live.js";
-import type { Instance, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
+import type { Instance, SizeAckOptions, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
 import { SYNC, waitFor } from "./helpers/live-hocuspocus.js";
 
 /** A connection as the activity hook sees it. */
@@ -131,10 +131,11 @@ function refusals(name: string): Array<Record<string, unknown>> {
 /**
  * Open a socket for a fixture's session.
  * @param fixture - Whose session.
+ * @param opts - How it acknowledges size pushes (the current web client by default).
  * @returns The socket.
  */
-async function socketOf(fixture: ActivityCollabFixture): Promise<SizeSocket> {
-  const socket = await openSocket(active.server.address.port, fixture.cookie);
+async function socketOf(fixture: ActivityCollabFixture, opts: SizeAckOptions = {}): Promise<SizeSocket> {
+  const socket = await openSocket(active.server.address.port, fixture.cookie, opts);
   sockets.push(socket);
   return socket;
 }
@@ -286,11 +287,14 @@ describe("round 6 on a live instance", () => {
     expect(paragraphs(await persisted(active, name))).toEqual(expected);
   });
 
-  it("R6-23 messages still queued when the socket closes drain without leaving a refusal mark behind", async () => {
+  it.each([
+    ["acknowledged the full push before U2", true],
+    ["never acknowledged the full push", false],
+  ])("R6-23 messages still queued when the socket closes drain without leaving a refusal mark behind; C %s", async (_label, acknowledges) => {
     const fixture = await seedCollabActivity();
     const name = canvasOf(fixture);
     await seedNormal(name);
-    const socket = await socketOf(fixture);
+    const socket = await socketOf(fixture, { autoAck: false });
     const c = await openDoc(socket, name);
     await c.sync();
 
@@ -306,16 +310,26 @@ describe("round 6 on a live instance", () => {
       nodesOf(d).set("c", small);
       small.set("name", "z");
     });
+    const from = c.sizePushes().length;
     c.sendSync(SYNC.update, u1);
-    c.sendSync(SYNC.update, u2);
     await waitFor(() => state.held !== undefined, "U1's activity write is waiting", 10_000);
+    const full = await pushWhere(c, (p) => p.phase === "full", "full push after U1's admit", from);
+    if (acknowledges) c.ack(full.seq);
+    c.sendSync(SYNC.update, u2);
     const old = state.held as HeldConnection;
     socket.close();
     await waitFor(() => !(active.hocuspocus.documents.get(name)?.getConnections() ?? []).some((x) => x.socketId === old.socketId), "the closed socket's connection leaves the document", 10_000);
     hold.resolve();
 
-    await waitFor(() => refusals(name).length > 0, "U2's refusal", 10_000);
-    expect(refusals(name).map((r) => r.step)).toEqual(["full"]);
+    if (acknowledges) {
+      await waitFor(() => refusals(name).length > 0, "U2's refusal", 10_000);
+      expect(refusals(name).map((r) => r.step)).toEqual(["full"]);
+      expect(nodesOf(serverDoc(name)).has("c")).toBe(false);
+    } else {
+      await waitFor(() => nodesOf(serverDoc(name)).has("c") || refusals(name).length > 0, "U2 applied or refused", 10_000);
+      expect(refusals(name).filter((r) => r.step === "full")).toEqual([]);
+      expect(nodesOf(serverDoc(name)).has("c")).toBe(true);
+    }
     expect(nodesOf(serverDoc(name)).has("u1")).toBe(true);
     expect(isRefused(old.socketId, name)).toBe(false);
   });
