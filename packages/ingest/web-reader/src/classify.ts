@@ -7,8 +7,7 @@
  */
 import type { ReadPageStatus } from "@breatic/shared";
 
-/** Types whose body is text a page can be read from, besides `text/*`. */
-const READABLE = new Set(["application/pdf", "application/xhtml+xml", "application/xml", "application/json"]);
+import { isTextType, mediaTypeOf } from "./body-text.js";
 
 /**
  * How reading a page ends, judged from its response's status and type.
@@ -32,6 +31,7 @@ export function statusOfResponse(
   if (httpStatus === 429 || httpStatus >= 500) return "busy";
   if (httpStatus >= 400) return "unreachable";
   if (contentType === null) return null;
-  const type = (contentType.split(";")[0] ?? "").trim().toLowerCase();
-  return type === "" || type.startsWith("text/") || READABLE.has(type) ? null : "unsupported_type";
+  const type = mediaTypeOf(contentType);
+  // HTML, a PDF or any text type (`isTextType`) is read on.
+  return type === "" || type === "application/pdf" || isTextType(type) ? null : "unsupported_type";
 }

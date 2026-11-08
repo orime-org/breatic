@@ -20,9 +20,10 @@ import { READER_SERVICE_PORT, READER_UNREACHABLE_HEADER, readPagesRequestSchema 
 import type { ReadPageResult, ReadPagesRequest, ReaderServiceAnswer } from "@shared/agent/read-pages.js";
 
 import { articleOf } from "./article.js";
+import { recoverUtf8, textOfDownload } from "./body-text.js";
 import { statusOfResponse } from "./classify.js";
 import { cpuUsecOf } from "./cpu-usage.js";
-import { readPdf } from "./pdf-page.js";
+import { isPdf, readPdf } from "./pdf-page.js";
 import { readAll } from "./read-all.js";
 import { capPageText, perPageTextUnits } from "./text-cap.js";
 import { toMarkdown } from "./to-markdown.js";
@@ -35,9 +36,9 @@ const USER_AGENT =
 const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozilla/readability/Readability.js"), "utf8");
 
 /**
- * Download types that are never a PDF, so the file is not fetched: media.
- * Any other type, text included (a site may send a PDF with any type), is
- * read, and `readPdf` decides from the bytes.
+ * Download types that are never read, so the file is not fetched: media.
+ * Any other type is fetched: a file that starts `%PDF-` is read as a PDF
+ * whatever its type, and otherwise as text when its type is text.
  */
 const NOT_PDF_TYPE = /^(?:image|audio|video)\//;
 
@@ -59,10 +60,27 @@ function theBrowser(): Promise<Browser> {
 }
 
 /**
- * Read a page that arrived as a download: a PDF, or a file of another type.
+ * A page read as text: ok, or empty when the text is only whitespace.
+ * @param url - The page asked for.
+ * @param where - Its HTTP status when known, its final address and its title.
+ * @param text - The text read from it.
+ * @returns The page.
+ */
+function textPage(
+  url: string,
+  where: { httpStatus?: number; finalUrl: string; title?: string },
+  text: string,
+): ReadPageResult {
+  if (text.trim() === "") return { url, status: "empty", ...where, kind: "html" };
+  return { url, status: "ok", ...where, kind: "html", text };
+}
+
+/**
+ * Read a page that arrived as a download: a PDF, a text file, or a file of
+ * another type, which is not read.
  *
  * The navigation's headers are judged before the file is waited for, so an
- * oversized file or one of another type is cancelled rather than downloaded.
+ * oversized file or a media file is cancelled rather than downloaded.
  * @param url - The page asked for.
  * @param download - The download.
  * @param head - The navigation's response, when one arrived.
@@ -89,7 +107,11 @@ async function readDownload(
   }
   const path = await download.path();
   if (statSync(path).size > maxBytes) return { url, status: "too_large", finalUrl };
-  return readPdf(url, finalUrl, new Uint8Array(readFileSync(path)));
+  const bytes = new Uint8Array(readFileSync(path));
+  if (isPdf(bytes)) return readPdf(url, finalUrl, bytes);
+  const text = textOfDownload(bytes, headers["content-type"] ?? null);
+  if (text === null) return { url, status: "unsupported_type", finalUrl };
+  return textPage(url, { ...(head !== undefined && { httpStatus: head.status() }), finalUrl }, text);
 }
 
 /**
@@ -140,18 +162,22 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     if (ended !== null) return { url, status: ended, httpStatus, finalUrl: page.url() };
 
     await page.waitForLoadState("networkidle", { timeout: request.settleMs }).catch(() => undefined);
-    // A document that is not HTML (XML, plain text, JSON) is read as the body
-    // the site sent: what the browser renders of it is not the file.
-    // Chromium hands a text body over already decoded in the charset its
-    // content-type names (re-encoded as UTF-8), so it is read as UTF-8 here;
-    // decoding those bytes in the named charset again garbles every non-UTF-8
-    // page. Readability goes only into HTML.
-    const [contentType, documentTitle] = await page.evaluate(() => [document.contentType, document.title]);
+    // A document that is not HTML is judged again by the type the browser
+    // saw (an image sent with no type is still an image), and a text one is
+    // read as the body the site sent: what the browser renders of it is not
+    // the file. Chromium hands a text body over already decoded in the charset
+    // its content-type names, or as windows-1252 when it names none, which
+    // `recoverUtf8` undoes for UTF-8. Readability goes only into HTML.
+    const [contentType, characterSet, documentTitle] = await page.evaluate(() => [
+      document.contentType,
+      document.characterSet,
+      document.title,
+    ]);
     if (contentType !== "text/html" && contentType !== "application/xhtml+xml") {
-      const text = await response.text();
-      const finalUrl = page.url();
-      if (text.trim() === "") return { url, status: "empty", httpStatus, finalUrl, title: documentTitle, kind: "html" };
-      return { url, status: "ok", httpStatus, finalUrl, title: documentTitle, kind: "html", text };
+      const seen = statusOfResponse(httpStatus, contentType);
+      if (seen !== null) return { url, status: seen, httpStatus, finalUrl: page.url() };
+      const text = recoverUtf8(await response.text(), headers["content-type"] ?? null, characterSet);
+      return textPage(url, { httpStatus, finalUrl: page.url(), title: documentTitle }, text);
     }
     await page.addScriptTag({ content: READABILITY }).catch(() => undefined);
     const evaluated: unknown = await page.evaluate(() => {
@@ -173,9 +199,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     const article = articleOf(evaluated);
     const plain = (evaluated as { text?: unknown } | null)?.text;
     const text = typeof plain === "string" ? plain : toMarkdown(article.html);
-    const title = article.title;
-    if (text.trim() === "") return { url, status: "empty", httpStatus, finalUrl: page.url(), title, kind: "html" };
-    return { url, status: "ok", httpStatus, finalUrl: page.url(), title, kind: "html", text };
+    return textPage(url, { httpStatus, finalUrl: page.url(), title: article.title }, text);
   } catch (err) {
     if (err instanceof errors.TimeoutError) return { url, status: "too_slow" };
     throw err;
