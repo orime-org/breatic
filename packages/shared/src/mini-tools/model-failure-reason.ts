@@ -41,7 +41,7 @@ export function modelFailureRetryable(reason: unknown): boolean {
 
 /**
  * Whether a planned run's failed output can be retried, the one decision the terminal commit's pin release, retry
- * admission and the node share (execution design §9.4, §10.5 last paragraph; frames-split §7.15 可重试结束): never for a
+ * admission and the node share (execution design §9.4, §10.5 last paragraph; frames-split §7.15 end of retryability): never for a
  * tool without retry (transitions); a lip-sync, erase or expand reason by its own rule; any other failure, such as a
  * frames or split output's, is retryable.
  * @param tool - The run's tool.

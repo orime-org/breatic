@@ -90,7 +90,7 @@ export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [remova
 export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema>;
 
 /**
- * The planned tools whose failed output can be retried (frames-split §7.15 可重试结束): the retry request takes exactly
+ * The planned tools whose failed output can be retried (frames-split §7.15 end of retryability): the retry request takes exactly
  * these, and a failed output of any other tool (transitions) is never retryable.
  */
 export const MINI_TOOL_RETRY_TOOLS = ["video.remove-bg", "video.extract-frames", "video.split", "video.lip-sync", "video.erase", "video.expand"] as const;

@@ -195,7 +195,7 @@ function OpenNodeTaskPanel({
     return reason === null ? [] : [[runId, reason] as const];
   })), [parentRunIds, runs]);
   // A failed output an admitted retry took over accepts no further retry; the next one starts from that retry's run
-  // (frames-split §7.15 可重试结束). Lip-sync, erase and expand runs have one output.
+  // (frames-split §7.15 end of retryability). Lip-sync, erase and expand runs have one output.
   const takenOverRuns = React.useMemo(() => new Set(parentRunIds.filter((_runId, at) => runs[at]?.data?.outputs[0]?.takenOver === true)), [parentRunIds, runs]);
   const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
     retryPlannedVideoRun({ projectId, spaceId, tool, runId, outputIndex, onDone: () => { void query.refetch(); } }), [projectId, spaceId, query]);
