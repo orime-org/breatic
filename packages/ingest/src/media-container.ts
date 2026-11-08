@@ -31,12 +31,11 @@ import { preparePresentation, VideoPresentationStore, type VideoPresentationAdmi
   type PresentationChunkUnit, type PresentationContainerPort, type PresentationJobIdentity, type PresentationJobRef, type PresentationReport, type PresentationView,
   type SourceLedgerDeclaration, type SourceLedgerMeasurement, type SourceLedgerWriteClaim, type PresentationCarrierMeasurement } from '@ingest/video-presentation-store.js';
 import { writeVideoSourceLedger } from '@ingest/video-source-ledger-write.js';
-import { SOURCE_LEDGER_HANDLER } from '@ingest/alpha-run-contract.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
 import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
 import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
 import { PRESENTATION_RUN_PATH, type PresentationRunRequest } from '@ingest/presentation-run-contract.js';
-import { PRESENTATION_CARRIER_HANDLER, PRESENTATION_CARRIER_HOST, SOURCE_LEDGER_WRITE_HOST } from '@ingest/presentation-run-types.js';
+import { PRESENTATION_CARRIER_HANDLER, PRESENTATION_CARRIER_HOST, SOURCE_LEDGER_HANDLER, SOURCE_LEDGER_WRITE_HOST } from '@ingest/presentation-run-types.js';
 import { hashStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 import {
   UPRIGHT_HEIGHT_HEADER,

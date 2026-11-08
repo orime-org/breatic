@@ -17,7 +17,6 @@ export interface RepairVideoPresentationInput extends ResolveVideoPresentationIn
 export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean; conditional?: boolean }
 /** The queue retains the accepted source and job identity; the deadline lives in the DO admission record (design §5.1 step 1). */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string }
-export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
 interface AdmissionOptions { parentDeadlineAt?: number; knownAlpha?: boolean; repair?: boolean; requestId?: string; userId?: string; projectId?: string; expect?: 'first' | 'readmit' }
 /** Automatic metadata preparation has no user task or credit hold. */

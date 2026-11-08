@@ -58,7 +58,8 @@ export type PresentationCarrierAnswer = { kind: 'carrier'; receipts: Presentatio
 /** The outbound hosts the container writes through. */
 export const SOURCE_LEDGER_WRITE_HOST = 'source-ledger.local';
 export const PRESENTATION_CARRIER_HOST = 'presentation-carrier.local';
-/** The outbound handler the carrier host maps to. */
+/** The outbound handlers the source ledger and carrier hosts map to. */
+export const SOURCE_LEDGER_HANDLER = 'writeSourceLedgerPresentation';
 export const PRESENTATION_CARRIER_HANDLER = 'writePresentationCarrier';
 
 /** The route facts the probe can know; the DO adds the selected version, the copy margin and the basic disk. */

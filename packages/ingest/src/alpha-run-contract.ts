@@ -5,17 +5,6 @@ import type { VideoPresentation, VideoPresentationRect, VideoPresentationProcess
 
 /** One synchronous container request remains active through cleanup and reporting. */
 export const ALPHA_RUN_PATH = '/alpha';
-/** The container can report only through its canonical-key owner's handler. */
-export const ALPHA_REPORT_HOST = 'alpha-report.local';
-/** Packed bytes have one independently authorized outbound destination. */
-export const ALPHA_PACKED_HOST = 'alpha-packed.local';
-/** Outbound handler names are owned protocol, unrelated to mini-tool recipes. */
-export const ALPHA_REPORT_HANDLER = 'reportAlphaPresentation';
-export const ALPHA_PACKED_HANDLER = 'writeAlphaPresentation';
-/** The source ledger and its compact table arrive in one write through their own outbound destination. */
-export const SOURCE_LEDGER_HOST = 'source-ledger.local';
-export const SOURCE_LEDGER_HANDLER = 'writeSourceLedgerPresentation';
-
 /** Fixed source identity and resource limits, with no backend addresses or credentials. */
 export interface AlphaRunBody {
   jobId: string;

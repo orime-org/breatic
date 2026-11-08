@@ -59,8 +59,6 @@ export const presentationProbeAnswerSchema = z.discriminatedUnion('kind', [
     ctx.addIssue({ code: 'custom', path: ['routeInput', 'plan', 'planSha256'], message: 'The route facts belong to another plan' });
   }
 });
-/** A parsed probe answer. */
-export type PresentationProbeAnswerParsed = z.infer<typeof presentationProbeAnswerSchema>;
 
 const failed = z.strictObject({ kind: z.literal('failed'), code: z.string().regex(/^[a-z][a-z0-9_]*$/) });
 /** The ledger action's answer: written, or a stable failure code. */

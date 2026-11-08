@@ -11,7 +11,7 @@ import { defaultAdjustValue } from "@shared/adjust-value.js";
 import { defaultDynamicsValue } from "@shared/audio-dynamics.js";
 import { defaultEqValue } from "@shared/audio-eq.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
-import type { MiniToolParam, MiniToolSpec, ModelToolSpec, PlannedToolSpec, SizeTier } from "@shared/mini-tools/types.js";
+import type { MiniToolParam, MiniToolSpec, ModelToolSpec, SizeTier } from "@shared/mini-tools/types.js";
 import type { EstimateInput } from "@shared/pricing/estimate.js";
 import type { ModelCatalog, ModelEntry, ParamDescriptor } from "@shared/types/model-catalog.js";
 import { paramValueAllowed } from "@shared/types/param-values.js";
@@ -96,16 +96,6 @@ export function servedMiniToolsFor(type: string, catalog: ModelCatalog | undefin
  */
 export function isModelTool(spec: MiniToolSpec): spec is ModelToolSpec {
   return spec.run.kind === "model";
-}
-
-/**
- * Whether a tool requires a complete typed execution plan.
- * @param spec - The declared tool.
- * @returns Whether the legacy single-source route cannot execute it.
- * @throws {never} Never.
- */
-export function isPlannedTool(spec: MiniToolSpec): spec is PlannedToolSpec {
-  return spec.run.kind === "planned";
 }
 
 /**

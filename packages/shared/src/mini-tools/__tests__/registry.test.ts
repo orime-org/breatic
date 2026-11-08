@@ -7,7 +7,6 @@ import {
   MINI_TOOLS,
   defaultParamsOf,
   isModelTool,
-  isPlannedTool,
   outputTemplateOf,
   miniToolById,
   miniToolEstimateInput,
@@ -97,8 +96,9 @@ describe("MINI_TOOLS registry", () => {
 
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
-      if (isPlannedTool(tool)) {
-        expect(outputTemplateOf(tool)).toEqual(tool.outputs[0]);
+      if (tool.run.kind === "planned") {
+        expect(tool.outputs?.length).toBeGreaterThan(0);
+        expect(outputTemplateOf(tool)).toEqual(tool.outputs?.[0]);
         expect(() => outputsOf(tool, {})).toThrow("execution plan");
       } else expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
     }

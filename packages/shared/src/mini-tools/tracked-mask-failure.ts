@@ -10,8 +10,6 @@ export type TrackedMaskFailureCode = (typeof TRACKED_MASK_FAILURE_CODES)[number]
 
 /** The error a failed tracking analysis stores: its code and the step it failed at. */
 export const trackedMaskErrorSchema = z.strictObject({ code: z.enum(TRACKED_MASK_FAILURE_CODES), step: z.enum(["prepare", "track", "join"]) });
-/** A parsed tracking failure. */
-export type TrackedMaskError = z.infer<typeof trackedMaskErrorSchema>;
 
 /**
  * Whether tracking again with the same frozen input can succeed: not when the selection found nothing or the model refused it.

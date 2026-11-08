@@ -119,7 +119,6 @@ export type VideoToolDraft = VideoToolDraftById[VideoToolId];
 export type VideoToolDraftFields = { [K in VideoToolId as `miniToolDraft:${K}`]?: VideoToolDraftById[K] };
 export type VideoToolSourceRef = z.infer<typeof videoToolSourceRefSchema>;
 export type VideoToolInput = z.infer<typeof videoToolInputSchema>;
-export type VideoToolExpansionFrame = z.infer<typeof videoToolExpansionFrameSchema>;
 export type VideoToolDialogueRow = z.infer<typeof videoToolDialogueRowSchema>;
 export type VideoToolSyncMode = z.infer<typeof videoToolSyncModeSchema>;
 export type VideoToolTimelineClip = z.infer<typeof videoToolTimelineClipSchema>;
