@@ -318,4 +318,18 @@ describe('useWebAnimationPreviewUrl sharing one address per source version (inne
     await waitFor(() => expect(next.result.current.url).toBe(URL_2));
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
   });
+
+  it('does not share a refused request: a later mount within the window asks again', async () => {
+    const source = freshSource();
+    vi.mocked(timelineApi.previewUrl).mockReset().mockRejectedValueOnce(new Error('404')).mockResolvedValue({ url: URL_2 });
+    const { wrapper } = provider();
+    const refused = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(refused.result.current.failed).toBe(true));
+
+    vi.setSystemTime(T0 + 1_000);
+    const next = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    await waitFor(() => expect(next.result.current.url).toBe(URL_2));
+    expect(next.result.current.failed).toBe(false);
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
+  });
 });

@@ -765,6 +765,41 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.frame).toBe(24);
   });
 
+  it('holds the last frame when the element ends before the clip last frame starts, and plays on into the next clip', async () => {
+    // The extent is ceil(1.012 s x 24) = 25 frames; the element ends at 0.9995 s, while frame 23 still shows.
+    const shortSource = { ...SOURCE, durationSeconds: '1.012', extentFrames: 25 };
+    const shortClip = { ...CLIP, durationFrames: 25 };
+    const sourceB = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002' };
+    const next = { ...CLIP, id: '30000000-0000-4000-8000-000000000002', sourceId: sourceB.id, startFrame: 25, durationFrames: 24 };
+    const media = mediaFixture({ duration: 0.9995 });
+    const mediaB = mediaFixture();
+    const hook = renderPlayback(media, {
+      document: timelineDocument([shortClip, next], [shortSource, sourceB]),
+      media: new Map([[SOURCE.id, media.element], [sourceB.id, mediaB.element]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(990);
+    expect(hook.result.current.frame).toBe(23);
+    const before = hook.observedFrames.length;
+    now = 999.5;
+    mediaEvent(media, 'timeupdate', { currentTime: 0.9995, paused: true, ended: true });
+    mediaEvent(media, 'pause');
+    mediaEvent(media, 'ended');
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('playing');
+    tick(1020);
+    expect(hook.result.current.frame).toBe(24);
+    expect(hook.result.current.state).toBe('playing');
+    tick(1042);
+    await settle();
+    expect(hook.result.current.frame).toBe(25);
+    expect(Math.min(...hook.observedFrames.slice(before))).toBeGreaterThanOrEqual(23);
+    expect(mediaB.play).toHaveBeenCalled();
+    expect(hook.result.current.state).toBe('playing');
+  });
+
   it('plays the final frame bucket before stopping at the sequence end', async () => {
     const media = mediaFixture({ duration: 1 });
     const hook = renderPlayback(media, { document: timelineDocument([{ ...CLIP, durationFrames: 24 }]) });

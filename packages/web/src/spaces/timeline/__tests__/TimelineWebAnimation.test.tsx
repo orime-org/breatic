@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -569,6 +569,40 @@ describe('preview of web copies', () => {
     await userEvent.click(within(note).getByTestId(`timeline-web-retry-${copy}`));
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
+  });
+
+  it('unloads an instance whose preview address was refused once its copy leaves, so a later copy of its source gets a new instance that asks again', async () => {
+    rows = [SOURCE_A_ROW];
+    // With idle instances kept, only the failure decides that the refused instance is unloaded rather than idled.
+    vi.mocked(timelineApi.limits).mockResolvedValue({ ...LIMITS, webAnimation: { ...LIMITS.webAnimation, idleInstancesMax: 2 } } as never);
+    vi.mocked(timelineApi.previewUrl).mockRejectedValueOnce(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
+    const first = '30000000-0000-4000-8000-000000000106';
+    const later = '30000000-0000-4000-8000-000000000107';
+    seed([webClip(first, 'v2', 0, 48, boundTo(SRC_A)), webClip(later, 'v2', 96, 48, boundTo(SRC_A))]);
+    showTimeline();
+    // The creation control shows once the Timeline limits, and so the idle cap, have arrived.
+    await screen.findByTestId('timeline-create-web-animation');
+    const unavailable = t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) });
+    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable));
+    const seek = screen.getByRole('slider', { name: t('timeline.seek') });
+    // While its copy stays, the instance keeps its note and Retry and asks nothing more.
+    fireEvent.keyDown(seek, { key: 'ArrowRight' });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable);
+    expect(screen.getByTestId(`timeline-web-retry-${first}`)).toBeInTheDocument();
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(seek, { key: 'End' });
+    const player = await waitFor(() => {
+      const element = screen.getByTestId('timeline-preview').querySelector<HTMLElement>(`hyperframes-player[data-clip-id="${later}"]`);
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    expect(player.dataset.instanceKey).toBe(`${SRC_A}:1`);
+    expect(player).toHaveAttribute('src', PREVIEW_URL);
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId(`timeline-web-retry-${later}`)).toBeNull();
+    expect(screen.queryByText(unavailable)).toBeNull();
   });
 });
 
