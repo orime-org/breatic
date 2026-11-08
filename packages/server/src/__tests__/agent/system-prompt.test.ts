@@ -404,6 +404,10 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).not.toContain("who a character of theirs is is never one");
   });
 
+  it("waits for something the user says they will send before making what depends on it", () => {
+    expect(onlyTheUserKnows()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask. When they say they will send something, wait for it before making what depends on it.");
+  });
+
   it("opens what only the user knows with who a character of theirs is, robots and creatures having these too, never assumed", () => {
     expect(text()).toContain("- What only the user knows: who a character of theirs is (age, gender, role in their story; a robot or a creature has these too), which you never assume");
     expect(onlyTheUserKnows()).not.toContain("a robot or a creature too)");
