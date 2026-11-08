@@ -178,8 +178,7 @@ describe("timeline_executions table", () => {
       WHERE table_schema = current_schema() AND table_name = 'timeline_executions' ORDER BY column_name`;
     expect(rows.map((row) => row.column_name)).toEqual([
       "action_id", "actor_user_id", "attempt", "billed_at", "billed_credits", "created_at", "deadline_at", "deleted_at",
-      "dispatched_at", "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "next_dispatch_at",
-      "phase", "project_id", "result_source_version_id", "space_id", "status", "steps", "updated_at",
+      "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "phase", "project_id", "result_source_version_id", "space_id", "status", "steps", "updated_at",
     ]);
   });
 
@@ -358,6 +357,17 @@ describe("timelineExecutionRepo reads", () => {
     await accept({ ...other, spaceId });
     const listed = await timelineExecutionRepo.listForSpace({ projectId: fixture.projectId, spaceId });
     expect(listed.map((row) => row.id)).toEqual([newer.id, older.id]);
+  });
+
+  it("lists only a Space's rows in the asked status when given one", async () => {
+    const fixture = await seedProject();
+    const spaceId = randomUUID();
+    const waiting = await accept({ ...fixture, spaceId });
+    const landed = await accept({ ...fixture, spaceId });
+    const queued = await timelineExecutionRepo.transition({ id: landed.id, event: { type: "land", inputHash: landed.inputHash } });
+    expect(queued.applied).toBe(true);
+    const listed = await timelineExecutionRepo.listForSpace({ projectId: fixture.projectId, spaceId, status: "awaiting_landing" });
+    expect(listed.map((row) => row.id)).toEqual([waiting.id]);
   });
 
   it("offers every non-terminal row to the worker sweep and no terminal one", async () => {

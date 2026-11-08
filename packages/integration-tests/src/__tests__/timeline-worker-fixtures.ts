@@ -112,7 +112,6 @@ export async function seedExecution(sql: Sql, state: StartState): Promise<Execut
   let execution = inserted;
   if (state !== "awaiting_landing") {
     await step({ type: "land", inputHash: inserted.inputHash });
-    await sql`UPDATE timeline_executions SET next_dispatch_at = now() - interval '1 second' WHERE id = ${inserted.id}`;
     execution = await read(inserted.id);
   }
   if (state === "running" || state === "cancelling") execution = await step({ type: "claim" });

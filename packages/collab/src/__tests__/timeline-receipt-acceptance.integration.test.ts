@@ -210,13 +210,9 @@ async function read(id: string): Promise<TimelineExecution> {
 describe("acceptTimelineReceipts", () => {
   it("queues a matching receipt's execution, enqueues it once under its id and signals the Space once", async () => {
     const fx = await seed();
-    const before = Date.now();
     await storeAndAccept(fx.documentName, timelineState(receiptOf(fx.execution)));
     const row = await read(fx.execution.id);
     expect(row).toMatchObject({ status: "queued", attempt: 0, fence: null, deadlineAt: fx.execution.deadlineAt });
-    expect(row.nextDispatchAt).not.toBeNull();
-    expect(Date.parse(row.nextDispatchAt!)).toBeGreaterThanOrEqual(before - 1_000);
-    expect(Date.parse(row.nextDispatchAt!)).toBeLessThanOrEqual(Date.now() + 1_000);
     const job = await queue.getJob(fx.execution.id);
     expect(job?.id).toBe(fx.execution.id);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });

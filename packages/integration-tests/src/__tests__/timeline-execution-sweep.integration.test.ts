@@ -7,8 +7,7 @@
  * `sweepTimelineExecutions(queue)` runs on a schedule over executions that have not ended. An awaiting-landing row
  * past its original deadline expires; nothing was held at acceptance, so nothing is released. A deleted Space gets no
  * handling of its own, as with canvas tasks (deleting a Space is a restorable soft delete): its awaiting-landing row
- * is left alone until that same deadline. A queued row whose dispatch time has come, and every running or cancelling
- * row, must have a live job in the
+ * is left alone until that same deadline. Every queued, running or cancelling row must have a live job in the
  * `timeline` queue under its execution id: a missing, failed or completed job is removed and added again, because the
  * default retention would otherwise keep the old job id occupied.
  *
@@ -220,22 +219,13 @@ describe("sweeping rows that never landed", () => {
 });
 
 describe("sweeping rows that should have a job", () => {
-  it("adds the job of a queued row whose dispatch time has come", async () => {
+  it("adds the job of a queued row", async () => {
     const fx = await seed("queued");
     await sweepTimelineExecutions(queue);
     const job = await liveJob(fx.execution.id);
     expect(WAITING).toContain(job?.state);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });
     expect((await read(fx.execution.id)).status).toBe("queued");
-  });
-
-  it("leaves a queued row alone until its dispatch time", async () => {
-    const fx = await seed("queued");
-    await sql`UPDATE timeline_executions SET next_dispatch_at = now() + interval '1 hour' WHERE id = ${fx.execution.id}`;
-    const due = await seed("queued");
-    await sweepTimelineExecutions(queue);
-    expect(WAITING).toContain((await liveJob(due.execution.id))?.state);
-    expect(await liveJob(fx.execution.id)).toBeNull();
   });
 
   it.each(["running", "cancelling"] as const)("adds the missing job of a %s row", async (state) => {

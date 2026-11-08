@@ -102,7 +102,7 @@ function row(id: string, status: TimelineExecution['status'], fields: Partial<Li
     id, projectId: PROJECT, spaceId: SPACE, actorUserId: ME, kind: 'web_animation_create',
     actionId: `a${id.slice(1)}`, input: { prompt: `Prompt of ${status}`, engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps },
     inputHash: `sha256:${status}`, engine: 'deepseek', status, phase: status === 'running' ? 'writing' : null, steps: [],
-    attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(), nextDispatchAt: null, dispatchedAt: null,
+    attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
     resultSourceVersionId: null, failureReason: null, billedCredits: null, billedAt: null,
     createdAt: '2026-11-07T08:00:00.000000Z', updatedAt: '2026-11-07T08:00:00.000000Z', usageCredits: 0, ...fields,
   };

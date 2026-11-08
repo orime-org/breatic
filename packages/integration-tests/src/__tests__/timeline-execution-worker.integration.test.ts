@@ -44,8 +44,9 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
-import { createPgClient, env, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
+import { createPgClient, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
 import { toChargeCredits } from "@breatic/domain";
+import { spaceTasksChangedChannel } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
@@ -161,6 +162,17 @@ function modelRows(executionId: string): Record<string, unknown>[] {
 }
 
 /**
+ * How many Space task-list signals a spied publish sent for the execution's Project.
+ * @param publish - The spy on the stream Redis client's publish.
+ * @param fx - The execution.
+ * @returns The count.
+ */
+function signalsFor(publish: { mock: { calls: unknown[][] } }, fx: ExecutionFixture): number {
+  const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId);
+  return publish.mock.calls.filter(([published]) => published === channel).length;
+}
+
+/**
  * What the credit engine must be asked to charge: the recorded rows' credits, settled once.
  * @param fx - The execution.
  * @returns The charge input.
@@ -195,7 +207,10 @@ describe("picking up a queued execution", () => {
     expect(row.fence).toMatch(/^[0-9a-f-]{36}$/);
     const jobId = `timeline:${fx.execution.id}`;
     const deadlineAt = Date.parse(fx.execution.deadlineAt);
-    expect(row.steps).toContainEqual(expect.objectContaining({ jobId, containerClass: WEB_ANIMATION_CONTAINER_CLASS, deadlineAt }));
+    // The step holds the job once, as its request.
+    expect(row.steps).toEqual([
+      { kind: "container_job", request: expect.objectContaining({ jobId, containerClass: WEB_ANIMATION_CONTAINER_CLASS, deadlineAt }) },
+    ]);
     expect(ingest.calls.map((call) => call.route)).toEqual(["read", "submit"]);
     const config = getTimelineConfig().web_animation;
     // The raw body, not a parse of it: the request carries no spend ceiling, and a parse would strip one.
@@ -249,6 +264,30 @@ describe("picking up a running execution again", () => {
     ]);
   });
 
+  it("signals the Space nothing when a pickup finds the job in the phase it already noted", async () => {
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "running", { phase: "writing" }));
+    await pickUp(fx);
+    expect((await read(fx.execution.id)).phase).toBe("writing");
+    const publish = vi.spyOn(getStreamRedis(), "publish");
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 3, phase: "writing" });
+    expect(signalsFor(publish, fx)).toBe(0);
+  });
+
+  it("signals the Space once when a pickup finds the job in a new phase", async () => {
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "running", { phase: "writing" }));
+    await pickUp(fx);
+    const publish = vi.spyOn(getStreamRedis(), "publish");
+    ingest.read = () => json(report(fx, "running", { phase: "validating" }));
+    await pickUp(fx);
+    expect((await read(fx.execution.id)).phase).toBe("validating");
+    expect(signalsFor(publish, fx)).toBe(1);
+  });
+
   it("does not settle a report that has not ended", async () => {
     const fx = await seed("running");
     const ingest = installFakeIngest(fx);
@@ -259,6 +298,25 @@ describe("picking up a running execution again", () => {
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
     expect(chargesFor(fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
+  });
+
+  it("still submits the same job from a step stored with the job's fields beside its request", async () => {
+    const fx = await seed("queued");
+    const ingest = installFakeIngest(fx);
+    await pickUp(fx);
+    const [stored] = (await read(fx.execution.id)).steps as [{ request: Record<string, unknown> }];
+    const { jobId, containerClass, deadlineAt } = stored.request;
+    const older = [{ kind: "container_job", jobId, containerClass, deadlineAt, request: stored.request }];
+    await sql`UPDATE timeline_executions SET steps = ${sql.json(older)} WHERE id = ${fx.execution.id}`;
+    await pickUp(fx);
+    const submits = ingest.calls.filter((call) => call.route === "submit");
+    expect(ingest.calls.map((call) => [call.route, call.jobId])).toEqual([
+      ["read", `timeline:${fx.execution.id}`],
+      ["submit", `timeline:${fx.execution.id}`],
+      ["read", `timeline:${fx.execution.id}`],
+      ["submit", `timeline:${fx.execution.id}`],
+    ]);
+    expect(submits[1]!.body).toEqual(submits[0]!.body);
   });
 
   it("submits again on the next pickup after the Worker answered 503", async () => {
