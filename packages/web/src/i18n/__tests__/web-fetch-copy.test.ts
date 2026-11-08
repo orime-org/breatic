@@ -11,7 +11,7 @@
  * exact branch; the checks below ask what each locale renders, not which
  * branch name it used.
  *
- * Whether the six new failure lines exist in every locale is already asked
+ * Whether the five new failure lines exist in every locale is already asked
  * by `tool-failure-line-parity.test.ts`, which reads them off `FAILURE_LINES`;
  * here they are only formatted.
  */
@@ -30,7 +30,6 @@ const STEP = 'chat.tool.step.webFetch';
 
 /** The failure lines `web_fetch` adds, read off the table so they cannot drift. */
 const NEW_FAILURES = [
-  FAILURE_LINES.linkNotInConversation,
   FAILURE_LINES.pageNeedsLogin,
   FAILURE_LINES.pageRefused,
   FAILURE_LINES.pageTooSlow,
@@ -85,7 +84,7 @@ describe('the reading-pages line', () => {
 });
 
 describe('the rest of the web_fetch copy', () => {
-  it('renders in every locale, the step and the six failure lines included', () => {
+  it('renders in every locale, the step and the five failure lines included', () => {
     expectEveryLocaleRenders([
       { key: READING, params: { host: 'www.example.com', count: 1 } },
       { key: READING, params: { host: '', count: 0 } },
@@ -94,6 +93,13 @@ describe('the rest of the web_fetch copy', () => {
       ...NEW_FAILURES.map((key) => ({ key })),
     ]);
   });
+
+  it.each(LOCALE_CATALOGS)(
+    '%s has no line for a link the conversation does not hold, which only the model is told (plan §9 Y)',
+    (_tag, catalog) => {
+      expect(readPath(catalog, 'chat.tool.failure.linkNotInConversation')).toBeUndefined();
+    },
+  );
 
   it.each(LOCALE_CATALOGS)('%s carries the failed-step label as plain text', (_tag, catalog) => {
     const message = readPath(catalog, STEP);

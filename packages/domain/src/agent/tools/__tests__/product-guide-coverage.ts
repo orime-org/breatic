@@ -592,7 +592,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.failure.emptyFile": { described: /naming the step and why/ },
   "chat.tool.failure.fileTooLarge": { described: /a smaller file/ },
   "chat.tool.failure.linkUnreachable": { described: /another link/ },
-  "chat.tool.failure.linkNotInConversation": { described: /links the user gives in the conversation/ },
   "chat.tool.failure.pageNeedsLogin": { described: /need a\s+login/ },
   "chat.tool.failure.pageRefused": { described: /refuse to be read/ },
   "chat.tool.failure.pageTooSlow": { described: /naming the step and why/ },

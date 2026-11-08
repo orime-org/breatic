@@ -80,6 +80,20 @@ describe("readPagesAnswerSchema", () => {
     expect(readPagesAnswerSchema.parse(answer)).toEqual(answer);
   });
 
+  it("accepts a page the reader cut at its byte cap, marked truncated (plan §9 S)", () => {
+    const answer: ReadPagesAnswer = {
+      pages: [{ url: "https://example.com/long", status: "ok", kind: "html", text: "abc", truncated: true }],
+      usage: { wallMs: 1, cpuUsec: null },
+    };
+    expect(readPagesAnswerSchema.parse(answer)).toEqual(answer);
+  });
+
+  it("rejects a truncated flag that is not a boolean", () => {
+    expect(
+      readPageResultSchema.safeParse({ url: "https://example.com/a", status: "ok", truncated: "yes" }).success,
+    ).toBe(false);
+  });
+
   it("rejects a status it does not know", () => {
     expect(
       readPagesAnswerSchema.safeParse({
@@ -120,7 +134,6 @@ describe("readPageResultSchema", () => {
 
 describe("the failure lines web_fetch adds", () => {
   it.each([
-    "linkNotInConversation",
     "pageNeedsLogin",
     "pageRefused",
     "pageTooSlow",
@@ -128,5 +141,9 @@ describe("the failure lines web_fetch adds", () => {
     "pagesUnreadable",
   ] as const)("names %s under chat.tool.failure", (key) => {
     expect(FAILURE_LINES[key]).toBe(`chat.tool.failure.${key}`);
+  });
+
+  it("has no line for a link the conversation does not hold, which only the model is told (plan §9 Y)", () => {
+    expect(Object.keys(FAILURE_LINES)).not.toContain("linkNotInConversation");
   });
 });

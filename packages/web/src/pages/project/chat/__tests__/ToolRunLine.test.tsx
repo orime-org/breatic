@@ -6,8 +6,10 @@
  *
  * `web_fetch` declares `chat.tool.readingPages`, an ICU plural that names the
  * site when one page is being read and the count when several are. The line
- * reads both off the call's `pages` argument, which may still be arriving or
- * may not parse; then the count is 0 and the sentence names no site.
+ * reads both off the call's `pages` argument, which arrives as a half-built
+ * object while the model is still writing it, so the site shows up as its
+ * address does (plan §9 Z); until a first address parses, the count is 0 and
+ * the sentence names no site.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -84,12 +86,43 @@ describe('the line while web_fetch reads pages', () => {
     ['pages that is not a list', { pages: 'https://www.example.com/x' }],
     ['a first link that is not a URL', { pages: [{ url: 'not a url' }] }],
     ['a first entry with no link yet', { pages: [{}] }],
-    ['arguments that did not parse', '{"pages":[{"url":"https://www.exa'],
+    ['a first link cut before its host', { pages: [{ url: 'https:' }] }],
   ])('says neither site nor count for %s', (_label, args) => {
     render(<ToolRunLine call={running('web_fetch', args, READING)} />);
 
     const values = valuesFor(READING);
     expect({ host: values?.host, count: values?.count }).toEqual({ host: '', count: 0 });
+  });
+});
+
+describe('the line while the arguments of web_fetch are still arriving', () => {
+  it('names the site as far as its address has arrived, then the whole site', () => {
+    const { rerender } = render(
+      <ToolRunLine call={running('web_fetch', { pages: [{ url: 'https://www.exa' }] }, READING)} />,
+    );
+    expect({ host: valuesFor(READING)?.host, count: valuesFor(READING)?.count }).toEqual({
+      host: 'www.exa',
+      count: 1,
+    });
+
+    rerender(<ToolRunLine call={running('web_fetch', { pages: [{ url: 'https://www.example.com/x' }] }, READING)} />);
+    expect({ host: valuesFor(READING)?.host, count: valuesFor(READING)?.count }).toEqual({
+      host: 'www.example.com',
+      count: 1,
+    });
+  });
+
+  it('counts a second page as soon as its entry opens', () => {
+    render(
+      <ToolRunLine
+        call={running('web_fetch', { pages: [{ url: 'https://a.example.com/1' }, {}] }, READING)}
+      />,
+    );
+
+    expect({ host: valuesFor(READING)?.host, count: valuesFor(READING)?.count }).toEqual({
+      host: 'a.example.com',
+      count: 2,
+    });
   });
 });
 

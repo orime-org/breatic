@@ -36,9 +36,38 @@ const stand = vi.hoisted(() => {
   };
   /** Every instance constructed, newest last. */
   const instances: Recorded[] = [];
+  /**
+   * Class name to its outbound handlers, kept as `@cloudflare/containers`
+   * 0.3.7 keeps them (`container.js:285-296`): the static `outbound` is a
+   * getter and setter over this registry, so a class field or a static
+   * property of the subclass would register nothing.
+   */
+  const outboundHandlersRegistry = new Map<string, Record<string, unknown>>();
+  const defaultOutboundHandlerNameRegistry = new Map<string, string>();
 
   /** Stand-in for `@cloudflare/containers`' `Container`. */
   class Container {
+    /**
+     * The class's catch-all outbound handler, read from the registry.
+     * @returns The handler, or undefined when none was registered.
+     */
+    static get outbound(): unknown {
+      const handlerName = defaultOutboundHandlerNameRegistry.get(this.name);
+      if (handlerName === undefined) return undefined;
+      return outboundHandlersRegistry.get(this.name)?.[handlerName];
+    }
+
+    /**
+     * Register the class's catch-all outbound handler.
+     * @param handler - The handler.
+     */
+    static set outbound(handler: unknown) {
+      const key = "__outbound__";
+      const existing = outboundHandlersRegistry.get(this.name) ?? {};
+      outboundHandlersRegistry.set(this.name, { ...existing, [key]: handler });
+      defaultOutboundHandlerNameRegistry.set(this.name, key);
+    }
+
     recorded: Recorded = { events: [], scheduled: [], posted: [] };
     ctx: unknown;
     env: unknown;
@@ -113,7 +142,7 @@ const stand = vi.hoisted(() => {
     }
   }
 
-  return { behaviour, instances, Container };
+  return { behaviour, instances, outboundHandlersRegistry, defaultOutboundHandlerNameRegistry, Container };
 });
 
 vi.mock("@cloudflare/containers", () => ({ Container: stand.Container }));
@@ -249,6 +278,35 @@ describe("WebReaderContainer.read on failure", () => {
 
     expect(recorded.events).toEqual(["schedule", "start", "destroy"]);
   });
+
+  // Plan §9 row I: the route answers a start that failed with 503 and the
+  // failure code `reader_not_started`. Workers RPC carries an error's message
+  // across, not its class, so the message is what names it.
+  it("names a start that failed reader_not_started, keeping the reason", async () => {
+    stand.behaviour.start = (): Promise<void> => Promise.reject(new Error("no capacity"));
+    const { reader } = newReader();
+
+    const failure = await reader.read(REQUEST).then(
+      () => null,
+      (err: unknown) => err,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toMatch(/^reader_not_started\b/);
+    expect((failure as Error).message).toContain("no capacity");
+  });
+
+  it("does not name a failure after the start reader_not_started", async () => {
+    stand.behaviour.answer = (): Promise<Response> => Promise.reject(new Error("connection reset"));
+    const { reader } = newReader();
+
+    const failure = await reader.read(REQUEST).then(
+      () => null,
+      (err: unknown) => err,
+    );
+
+    expect((failure as Error).message).not.toMatch(/reader_not_started/);
+  });
 });
 
 describe("WebReaderContainer.stop: the caller has gone", () => {
@@ -278,7 +336,76 @@ describe("WebReaderContainer.stop: the caller has gone", () => {
   });
 });
 
+/**
+ * A start that settles only when the test says so.
+ * @returns The start to install, and its two settlers.
+ */
+function startHeldOpen(): { start: () => Promise<void>; resolve: () => void; reject: (reason: Error) => void } {
+  let resolve: () => void = () => undefined;
+  let reject: (reason: Error) => void = () => undefined;
+  const pending = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { start: () => pending, resolve, reject };
+}
+
+/**
+ * Let every queued promise callback run.
+ * @returns Nothing.
+ */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+
+// Plan §9 row H: destroying while `start()` is still on its way leaves the
+// start to finish after the destroy and the container running with nobody to
+// destroy it. The read's own `finally` is the one place that destroys, after
+// the start has an outcome; `stop` and `expireRead` only end the read and
+// wait for it to wrap up.
+describe.each([
+  ["stop", (reader: InstanceType<typeof WebReaderContainer>): Promise<void> => reader.stop()],
+  ["expireRead", (reader: InstanceType<typeof WebReaderContainer>): Promise<void> => reader.expireRead()],
+])("WebReaderContainer.%s while the container is still starting", (_name, end) => {
+  it.each([
+    ["the start then succeeds", (held: ReturnType<typeof startHeldOpen>): void => held.resolve()],
+    ["the start then fails", (held: ReturnType<typeof startHeldOpen>): void => held.reject(new Error("no capacity"))],
+  ])("destroys exactly once, only after the start settles, when %s, and the read rejects", async (_label, finish) => {
+    const held = startHeldOpen();
+    stand.behaviour.start = held.start;
+    const { reader, recorded } = newReader();
+    const outcome = reader.read(REQUEST).then(
+      () => "resolved",
+      () => "rejected",
+    );
+    await vi.waitFor(() => expect(recorded.events).toContain("start"));
+
+    let ended = false;
+    const ending = end(reader).then(() => {
+      ended = true;
+    });
+    await settle();
+
+    expect(recorded.events.filter((event) => event === "destroy")).toHaveLength(0);
+    expect(ended).toBe(false);
+
+    finish(held);
+    await ending;
+
+    expect(recorded.events.filter((event) => event === "destroy")).toHaveLength(1);
+    expect(recorded.events).not.toContain("fetch");
+    await expect(outcome).resolves.toBe("rejected");
+  });
+});
+
 describe("WebReaderContainer's way out", () => {
+  it("registers its handler in the library's outbound registry", () => {
+    expect(stand.defaultOutboundHandlerNameRegistry.get("WebReaderContainer")).toBe("__outbound__");
+    const handlers = stand.outboundHandlersRegistry.get("WebReaderContainer");
+    expect(typeof handlers?.["__outbound__"]).toBe("function");
+  });
+
+
   it("has no route to the internet but its outbound handler, over HTTPS too", () => {
     const { reader } = newReader();
 

@@ -42,11 +42,36 @@ describe("statusOfResponse", () => {
     expect(statusOfResponse(200, null)).toBeNull();
   });
 
-  it("answers every 5xx status with busy", () => {
+  it("answers every 5xx status but 530 with busy", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 500, max: 599 }), fc.constantFrom("text/html", "application/pdf", null), (httpStatus, contentType) => {
-        expect(statusOfResponse(httpStatus, contentType)).toBe("busy");
-      }),
+      fc.property(
+        fc.integer({ min: 500, max: 599 }).filter((httpStatus) => httpStatus !== 530),
+        fc.constantFrom("text/html", "application/pdf", null),
+        (httpStatus, contentType) => {
+          expect(statusOfResponse(httpStatus, contentType)).toBe("busy");
+        },
+      ),
     );
+  });
+
+  // Plan §9 row J: 530 is what Cloudflare answers when the origin's name does
+  // not resolve or the origin cannot be reached; the site is not busy, it is
+  // not there.
+  it("answers 530 with unreachable, whatever the body's type", () => {
+    expect(statusOfResponse(530, "text/html; charset=utf-8")).toBe("unreachable");
+    expect(statusOfResponse(530, null)).toBe("unreachable");
+  });
+
+  // Plan §9 row J: the Worker's outbound handler answers a send that threw
+  // with 502 and `x-breatic-unreachable: 1`; the caller passes whether the
+  // response carried that mark, and the mark wins over the status.
+  it("answers a response marked unreachable by the outbound handler with unreachable", () => {
+    expect(statusOfResponse(502, "text/plain", true)).toBe("unreachable");
+    expect(statusOfResponse(502, null, true)).toBe("unreachable");
+  });
+
+  it("answers an unmarked 502 with busy, as before", () => {
+    expect(statusOfResponse(502, "text/plain", false)).toBe("busy");
+    expect(statusOfResponse(502, "text/plain")).toBe("busy");
   });
 });

@@ -396,8 +396,83 @@ describe("how allows compares two spellings of one link", () => {
   });
 });
 
+describe("urlFor: the spelling the conversation recorded (plan §9 A)", () => {
+  it("answers the first spelling the set recorded for a link's key", () => {
+    const links = makePageLinks();
+    links.addUserMessage({ role: "user", content: "Read https://Docs.Example.com/guide/%E4%B8%AD%E6%96%87/ please" });
+    links.addToolResult("web_search", searchOutput("q", ["http://docs.example.com/guide/中文"]));
+
+    expect(links.urlFor("docs.example.com/guide/中文")).toBe("https://Docs.Example.com/guide/%E4%B8%AD%E6%96%87/");
+    expect(links.urlFor("http://docs.example.com/guide/中文#intro")).toBe(
+      "https://Docs.Example.com/guide/%E4%B8%AD%E6%96%87/",
+    );
+  });
+
+  it("never answers what the model added to a held link", () => {
+    const links = makePageLinks();
+    links.addUserMessage({ role: "user", content: "Read https://evil.com/p please" });
+
+    for (const asked of [
+      "https://evil.com/p#SECRET",
+      "https://SECRET:x@evil.com/p",
+      "https://evil.com/p///",
+      "https://evil.com/%70",
+    ]) {
+      expect(links.urlFor(asked), asked).toBe("https://evil.com/p");
+    }
+  });
+
+  it("adds https to a link the user wrote without a scheme", () => {
+    const links = makePageLinks();
+    links.addUserMessage({ role: "user", content: "看看 example.org/news/today 这篇" });
+
+    expect(links.urlFor("https://example.org/news/today")).toBe("https://example.org/news/today");
+    expect(links.urlFor("http://example.org/news/today")).toBe("https://example.org/news/today");
+  });
+
+  it("keeps the scheme a link was recorded with", () => {
+    const links = makePageLinks();
+    links.addToolResult("web_search", searchOutput("q", ["http://plain.example/a"]));
+
+    expect(links.urlFor("https://plain.example/a")).toBe("http://plain.example/a");
+  });
+
+  it("answers nothing for a link the set does not hold", () => {
+    const links = makePageLinks();
+    links.addUserMessage({ role: "user", content: "Open https://shop.example/item?id=1 now" });
+
+    expect(links.urlFor("https://shop.example/item?id=2")).toBeUndefined();
+    expect(makePageLinks().urlFor("https://anything.example/")).toBeUndefined();
+  });
+
+  it("agrees with allows", () => {
+    const links = makePageLinks();
+    links.addUserMessage({ role: "user", content: "Read https://a.example/x and b.example/y" });
+
+    for (const url of ["https://a.example/x", "http://B.example/y/", "https://c.example/z"]) {
+      expect(links.urlFor(url) !== undefined, url).toBe(links.allows(url));
+    }
+  });
+});
+
 describe("pageLinksForTurn", () => {
-  it("reads the whole conversation up to the turn, below the memory watermark too, and adds every row", async () => {
+  it("reads the conversation up to and including the memory watermark (plan §9 C)", async () => {
+    getMessagesForLlm.mockResolvedValue([userRow(`${CLOCK}\n\nOld turn: https://folded-into-memory.example/a`, 1)]);
+
+    const links = await pageLinksForTurn("c1", 3);
+
+    expect(getMessagesForLlm).toHaveBeenCalledTimes(1);
+    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 4);
+    expect(links.allows("https://folded-into-memory.example/a")).toBe(true);
+  });
+
+  it("reads from the first turn when nothing has been folded", async () => {
+    await pageLinksForTurn("c1", 0);
+
+    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 1);
+  });
+
+  it("adds every row it read", async () => {
     getMessagesForLlm.mockResolvedValue([
       userRow(`${CLOCK}\n\nOld turn: https://folded-into-memory.example/a`, 1),
       replyRow(
@@ -408,10 +483,8 @@ describe("pageLinksForTurn", () => {
       userRow(`${CLOCK}\n\nRecent turn: https://recent.example/c`, 6),
     ]);
 
-    const links = await pageLinksForTurn("c1", 7);
+    const links = await pageLinksForTurn("c1", 6);
 
-    expect(getMessagesForLlm).toHaveBeenCalledTimes(1);
-    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 7);
     expect(links.allows("https://folded-into-memory.example/a")).toBe(true);
     expect(links.allows("https://old-search.example/b")).toBe(true);
     expect(links.allows("https://recent.example/c")).toBe(true);
@@ -539,7 +612,10 @@ describe("the invariant (fast-check)", () => {
           const links = makePageLinks();
           for (const placement of chosen) place(placement, link.written, control, links);
 
-          for (const spelling of link.spellings) expect(links.allows(spelling)).toBe(false);
+          for (const spelling of link.spellings) {
+            expect(links.allows(spelling)).toBe(false);
+            expect(links.urlFor(spelling)).toBeUndefined();
+          }
           // The same calls did make the user's side readable, so the set was not just empty.
           expect(links.allows(control)).toBe(true);
         },

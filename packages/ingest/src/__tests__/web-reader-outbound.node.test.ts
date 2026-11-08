@@ -156,3 +156,30 @@ describe("webReaderOutbound sends public host names on", () => {
     expect(fetchStub.mock.calls[0]?.[1]).toEqual({ redirect: "manual" });
   });
 });
+
+// Plan §9 row J: a send that throws (the name does not resolve, the host does
+// not answer) must reach the browser as an answer the reader can recognise as
+// unreachable, rather than as an error the browser reports as its own.
+describe("webReaderOutbound when the send fails", () => {
+  it.each([
+    ["a DNS failure", new TypeError("fetch failed: getaddrinfo ENOTFOUND no-such-host.example")],
+    ["a refused connection", new Error("connect ECONNREFUSED")],
+  ])("answers 502 marked x-breatic-unreachable: 1 for %s", async (_label, error) => {
+    const send = vi.fn<SendOn>(() => Promise.reject(error));
+
+    const response = await webReaderOutbound(new Request("https://no-such-host.example/page"), send);
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-breatic-unreachable")).toBe("1");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("never marks an answer the site itself gave", async () => {
+    const send = sendRecording(() => new Response("bad gateway upstream", { status: 502 }));
+
+    const response = await webReaderOutbound(new Request("https://example.com/page"), send);
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("x-breatic-unreachable")).toBeNull();
+  });
+});

@@ -13,6 +13,7 @@
 
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
+import { INGEST_FAILURE_HEADER } from "@breatic/shared";
 import type { ReadPagesAnswer, ReadPagesRequest } from "@breatic/shared";
 
 import worker from "@ingest/index.js";
@@ -108,6 +109,32 @@ function readerUntilStopped(): StandInReader {
         },
       };
     },
+  };
+  return run;
+}
+
+/**
+ * A namespace whose every instance's `read` rejects with `error`.
+ * @param error - What `read` rejects with, as it arrives across RPC.
+ * @returns The namespace and what it was asked.
+ */
+function readerFailing(error: Error): StandInReader {
+  const run: StandInReader = { namespace: null, names: [], asked: [], stopped: [] };
+  run.namespace = {
+    idFromName: (name: string): { name: string } => {
+      run.names.push(name);
+      return { name };
+    },
+    get: (id: { name: string }) => ({
+      read: (request: unknown): Promise<ReadPagesAnswer> => {
+        run.asked.push(request);
+        return Promise.reject(error);
+      },
+      stop: (): Promise<void> => {
+        run.stopped.push(id.name);
+        return Promise.resolve();
+      },
+    }),
   };
   return run;
 }
@@ -233,5 +260,44 @@ describe("POST /read-pages when its caller goes (design §6.2)", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(ANSWER);
     expect(reader.stopped).toEqual([]);
+  });
+});
+
+// Plan §9 row I: a reader that never started read nothing and used nothing,
+// so the server must be able to tell it apart from a read that failed midway
+// and charge nothing for it. Workers RPC carries the error's message across.
+describe("POST /read-pages when the reader would not start", () => {
+  it("answers 503 naming reader_not_started", async () => {
+    const reader = readerFailing(new Error("reader_not_started: no capacity"));
+
+    const response = await askToRead(REQUEST, { WEB_READER: reader.namespace });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("reader_not_started");
+  });
+
+  it("does not name a failure after the start reader_not_started", async () => {
+    const reader = readerFailing(new Error("the page reader answered 500"));
+
+    const response = await askToRead(REQUEST, { WEB_READER: reader.namespace }).catch(() => null);
+
+    expect(response?.status).not.toBe(503);
+    expect(response?.headers.get(INGEST_FAILURE_HEADER) ?? null).not.toBe("reader_not_started");
+  });
+});
+
+// Plan §9 row L: the caller left before the route took an instance, so no
+// abort will ever fire for it and nothing would stop the instance.
+describe("POST /read-pages when its caller has already gone", () => {
+  it("answers 499 and takes no instance", async () => {
+    const reader = readerAnswering(ANSWER);
+    const caller = new AbortController();
+    caller.abort();
+
+    const response = await askToRead(REQUEST, { WEB_READER: reader.namespace }, true, caller.signal);
+
+    expect(response.status).toBe(499);
+    expect(reader.names).toEqual([]);
+    expect(reader.asked).toEqual([]);
   });
 });

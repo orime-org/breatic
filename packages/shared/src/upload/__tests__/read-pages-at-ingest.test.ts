@@ -131,6 +131,14 @@ describe("readPagesAtIngest", () => {
     expect(mockedRequest).toHaveBeenCalledTimes(1);
   });
 
+  it("carries reader_not_started when the Worker could not start a reader (plan §9 I)", async () => {
+    mockedRequest.mockResolvedValueOnce(answers(503, {}, "reader_not_started"));
+
+    const read = readPagesAtIngest(WORKER_URL, SECRET, requestDueIn(90_000));
+
+    await expect(read).rejects.toMatchObject({ status: 503, code: "reader_not_started" });
+  });
+
   it("throws UploadHttpError carrying the status when the Worker refuses", async () => {
     mockedRequest.mockResolvedValueOnce(answers(400, {}));
 

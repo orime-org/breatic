@@ -38,7 +38,7 @@ interface ToolPart {
   type: string;
   state?: string;
   errorText?: string;
-  output?: { sources?: Array<{ url: string }> };
+  output?: { sources?: Array<{ url: string }>; pages?: Array<{ url: string; status: string; text?: string }> };
 }
 
 /** What one turn left on screen and in the conversation. */
@@ -189,8 +189,15 @@ test('a page whose site refuses to be read is not a source, and the user is aske
 }) => {
   const turn = await askUntilRead(page, `Read this page and summarise it: ${REFUSING}`);
 
-  // The read step says why it stopped.
-  expect(turn.failures.some((line) => line.includes('this site refused to be read'))).toBe(true);
+  // The read recorded the refusal: a call that read nothing ended on the
+  // pageRefused line, or a call that read something else marked this page
+  // refused. Which one depends on what else the model asked for in the call,
+  // so the stored call is read rather than the line on screen (plan §9 X).
+  const refusedAll = turn.fetches.some((part) => part.errorText === 'chat.tool.failure.pageRefused');
+  const refusedPage = turn.fetches.some((part) =>
+    (part.output?.pages ?? []).some((p) => p.status === 'refused' && pageOf(p.url) === pageOf(REFUSING)),
+  );
+  expect(refusedAll || refusedPage, JSON.stringify(turn.fetches)).toBe(true);
   // The refused page is not a source. Other pages of the same site may be:
   // the model is free to search after the refusal, and a search can find them.
   expect(turn.sources.map(pageOf)).not.toContain(pageOf(REFUSING));
@@ -216,4 +223,37 @@ test('a page found by search is read, and both are sources the reply cites @need
   expect(turn.sources.length).toBeGreaterThan(1);
   expect(turn.chips).toBeGreaterThan(0);
   expect(turn.reply).toMatch(/\d{3}/);
+});
+
+/**
+ * Whether a reply repeats a run of a page's text: some stretch of `length`
+ * characters, spaces left out on both sides, appears in both.
+ * @param reply - The reply.
+ * @param text - The page's text as read.
+ * @param length - How long the shared stretch must be.
+ * @returns True when the reply quotes the page.
+ */
+function quotes(reply: string, text: string, length = 8): boolean {
+  const said = reply.replace(/\s+/g, '');
+  const page = text.replace(/\s+/g, '');
+  for (let at = 0; at + length <= said.length; at += 1) {
+    const stretch = said.slice(at, at + length);
+    if (/[\p{L}\p{N}]{4}/u.test(stretch) && page.includes(stretch)) return true;
+  }
+  return false;
+}
+
+test('a page that builds its text with scripts, the 36Kr newsflash list, is read and quoted @needs-model @needs-ingest @needs-internet', async ({
+  page,
+}) => {
+  const turn = await askUntilRead(
+    page,
+    'Read https://36kr.com/newsflashes and quote the first two newsflash headlines on it word for word.',
+  );
+
+  const read = turn.fetches.flatMap((part) => part.output?.pages ?? []).filter((p) => p.status === 'ok');
+  expect(read.length, JSON.stringify(turn.fetches)).toBeGreaterThan(0);
+  const pageText = read.map((p) => p.text ?? '').join('\n');
+  expect(quotes(turn.reply, pageText), turn.reply).toBe(true);
+  expect(turn.sources.some((url) => onHost(url, '36kr.com'))).toBe(true);
 });

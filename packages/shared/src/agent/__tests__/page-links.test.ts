@@ -67,6 +67,46 @@ describe("pageLinksIn: which links a piece of text holds", () => {
     },
   );
 
+  it.each(["\u201C", "\u201D", "\u2018", "\u2019", "\u2026"])(
+    "ends a link at the curly quote or ellipsis %s (plan §9 B)",
+    (mark) => {
+      expect(pageLinksIn(`链接https://example.com/p${mark}后面的文字`)).toEqual([
+        "https://example.com/p",
+      ]);
+      expect(pageLinksIn(`see example.com/p${mark}more`)).toEqual(["example.com/p"]);
+    },
+  );
+
+  it("reads a link out of curly quotes", () => {
+    expect(pageLinksIn("he said \u201Chttps://example.com/a\u201D twice")).toEqual(["https://example.com/a"]);
+    expect(pageLinksIn("\u2018example.com/a\u2019")).toEqual(["example.com/a"]);
+  });
+
+  it("also returns a link holding a non-ASCII character cut at that character, right after it (plan §9 B)", () => {
+    // A user who writes a link and runs on into Chinese without a space must
+    // still have the plain ASCII link in the set; the full spelling stays too,
+    // because a Chinese path is a real path.
+    expect(pageLinksIn("看https://example.com/a中文页面 then")).toEqual([
+      "https://example.com/a中文页面",
+      "https://example.com/a",
+    ]);
+    expect(pageLinksIn("看 example.com/news今天的")).toEqual(["example.com/news今天的", "example.com/news"]);
+  });
+
+  it("cleans the end of the cut spelling the same way", () => {
+    expect(pageLinksIn("see https://example.com/a.中文")).toEqual([
+      "https://example.com/a.中文",
+      "https://example.com/a",
+    ]);
+    const found = pageLinksIn("(see https://example.com/a)中文");
+    expect(found).toContain("https://example.com/a");
+    expect(found).not.toContain("https://example.com/a)");
+  });
+
+  it("returns a link with only ASCII characters once", () => {
+    expect(pageLinksIn("see https://example.com/a/b?q=1 now")).toEqual(["https://example.com/a/b?q=1"]);
+  });
+
   it.each([".", ",", ";", ":", "!", "?"])(
     "drops the English punctuation mark %s that ends a sentence after a link",
     (mark) => {
@@ -328,6 +368,26 @@ function spellingsOf(parts: LinkParts): string[] {
   return spellings;
 }
 
+/**
+ * What `pageLinksIn` answers for one link alone: the link, then, when it holds
+ * a non-ASCII character, the link cut at that character with its end cleaned
+ * (plan §9 B).
+ * @param link - The link.
+ * @returns The links expected.
+ */
+function expectedFor(link: string): string[] {
+  const at = link.search(/[\u0080-\u{10FFFF}]/u);
+  if (at < 0) return [link];
+  let cut = link.slice(0, at);
+  for (;;) {
+    const last = cut.at(-1);
+    if (last !== undefined && ".,;:!?*_~".includes(last)) cut = cut.slice(0, -1);
+    else if (last === ")" && cut.split(")").length > cut.split("(").length) cut = cut.slice(0, -1);
+    else break;
+  }
+  return [link, cut];
+}
+
 /** Words of text around a link, holding no link of their own. */
 const proseArb: fc.Arbitrary<string> = fc
   .array(fc.oneof(charsOf("abcdefghijklmnopqrstuvwxyzABC", 1, 8), charsOf(CHINESE, 1, 6)), {
@@ -352,6 +412,9 @@ const enderArb: fc.Arbitrary<string> = fc.constantFrom(
   "」",
   "』",
   "】",
+  "\u201D",
+  "\u2019",
+  "\u2026",
   ". ",
   ", ",
   "! ",
@@ -396,7 +459,7 @@ describe("pageLinkKey properties", () => {
           const link = spellings[pick % spellings.length] as string;
           const text = `${before} ${link}${ender}${after}`;
           const found = pageLinksIn(text);
-          expect(found, text).toEqual([link]);
+          expect(found, text).toEqual(expectedFor(link));
           expect(pageLinkKey(found[0] as string)).toBe(pageLinkKey(link));
         },
       ),
@@ -410,7 +473,7 @@ describe("pageLinkKey properties", () => {
         const spellings = spellingsOf(parts);
         const link = spellings[pick % spellings.length] as string;
         const text = JSON.stringify(`${before} ${link}\n${after}`);
-        expect(pageLinksIn(text), text).toEqual([link]);
+        expect(pageLinksIn(text), text).toEqual(expectedFor(link));
       }),
       { numRuns: 300 },
     );

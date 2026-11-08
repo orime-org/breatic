@@ -3,14 +3,17 @@
 
 /**
  * A turn hands its tools the links the conversation holds (inner#1664,
- * design 6.0), as `toolContext.pageUrlAllowed` on the config it builds.
+ * design 6.0), as `toolContext.pageUrlFor` on the config it builds: the
+ * spelling the conversation recorded for a link, or nothing when it holds
+ * none (plan §9 A).
  *
  * Driven through `MainAgent` with a scripted model, because the wiring is
- * the point: the set has to read the whole conversation (not the history
- * the memory watermark cuts), the message sent this turn (which is not in
- * that history), the paused reply a questionnaire answer resumes (one turn
- * further than a new message reads), and the results this turn's own tools
- * come back with.
+ * the point: the set has to read the whole conversation -- the turns the
+ * memory watermark folded away, read once up to and including the watermark
+ * (plan §9 C), and the turn's own history rows above it -- the message sent
+ * this turn (which is not in that history), the paused reply a questionnaire
+ * answer resumes (one turn further than a new message reads), and the results
+ * this turn's own tools come back with.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ModelMessage } from "ai";
@@ -142,16 +145,25 @@ const says = (text: string): ModelStreamPart[] => [
 ];
 
 /**
- * The turn's `pageUrlAllowed`, from the tool context it built its config with.
- * @returns The check.
- * @throws {Error} When the turn built no config or handed no check.
+ * The turn's `pageUrlFor`, from the tool context it built its config with.
+ * @returns The lookup.
+ * @throws {Error} When the turn built no config or handed no lookup.
  */
-function pageUrlAllowed(): (url: string) => boolean {
+function pageUrlFor(): (url: string) => string | undefined {
   const context = state.toolContexts.at(-1);
   if (context === undefined) throw new Error("the turn built no agent config");
-  const check = context.pageUrlAllowed;
-  expect(check).toEqual(expect.any(Function));
-  return check as (url: string) => boolean;
+  const lookup = context.pageUrlFor;
+  expect(lookup).toEqual(expect.any(Function));
+  return lookup as (url: string) => string | undefined;
+}
+
+/**
+ * Whether the turn's set holds a link.
+ * @param url - The link.
+ * @returns True when the turn would read it.
+ */
+function allowed(url: string): boolean {
+  return pageUrlFor()(url) !== undefined;
 }
 
 /**
@@ -194,12 +206,37 @@ describe("a turn opened by a message", () => {
 
     await chat("Now read https://this-message.example/post please");
 
-    const allowed = pageUrlAllowed();
     expect(allowed("https://this-message.example/post")).toBe(true);
     expect(allowed("https://folded.example/old")).toBe(true);
     expect(allowed("https://recent.example/new")).toBe(true);
     expect(allowed("https://never-said.example/x")).toBe(false);
-    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 5);
+  });
+
+  it("reads the conversation only up to and including the memory watermark, and takes the turns above it from the history (plan §9 C)", async () => {
+    state.history = [
+      userRow("Before the fold: https://folded.example/old please", 1),
+      userRow("After the fold: https://recent.example/new please", 4),
+    ];
+    state.perCall = [says("Sure.")];
+
+    await chat("hello");
+
+    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
+    expect(getMessagesForLlm).not.toHaveBeenCalledWith("c1", 0, 5);
+    // Turn 4 is above the watermark: only the history row can have added it.
+    expect(allowed("https://recent.example/new")).toBe(true);
+    expect(allowed("https://folded.example/old")).toBe(true);
+  });
+
+  it("answers the spelling the conversation recorded first, with https added to a bare host (plan §9 A)", async () => {
+    state.history = [userRow("Look at example.org/news/today please", 1)];
+    state.perCall = [says("Sure.")];
+
+    await chat("and https://Docs.Example.com/guide/ too");
+
+    expect(pageUrlFor()("http://EXAMPLE.org/news/today#secret")).toBe("https://example.org/news/today");
+    expect(pageUrlFor()("https://docs.example.com/guide#x")).toBe("https://Docs.Example.com/guide/");
+    expect(pageUrlFor()("https://never-said.example/x")).toBeUndefined();
   });
 
   it("allows the source of a web_search this turn ran, for a later web_fetch in the same turn, never its query", async () => {
@@ -212,7 +249,6 @@ describe("a turn opened by a message", () => {
 
     // The search ran and the model was asked again with its result.
     expect(state.calls).toBe(2);
-    const allowed = pageUrlAllowed();
     expect(allowed("https://found.example/brief")).toBe(true);
     expect(allowed("https://never-found.example/brief")).toBe(false);
   });
@@ -267,8 +303,8 @@ describe("a segment resumed by a questionnaire answer", () => {
 
     await answer(3);
 
-    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, 4);
-    const allowed = pageUrlAllowed();
+    // The paused turn is above the watermark: it reaches the set through the history.
+    expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
     expect(allowed("https://paused-search.example/ideas")).toBe(true);
     expect(allowed("https://never-found.example/ideas")).toBe(false);
   });

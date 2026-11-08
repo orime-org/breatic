@@ -55,7 +55,7 @@ vi.stubGlobal("fetch", () => {
   throw new Error("a real fetch escaped: the web tools must go through httpRequest or readPages");
 });
 
-import { BASELINE_TOOLS, TOOL_MAP, buildToolSet, type ToolContext } from "@domain/agent/tools/index.js";
+import { BASELINE_TOOLS, NO_TOOL_CONTEXT, TOOL_MAP, buildToolSet, type ToolContext } from "@domain/agent/tools/index.js";
 import { WEB_FETCH } from "@domain/agent/tools/tool-names.js";
 import { makeWebTools, publisherOf } from "@domain/agent/tools/web-tools.js";
 import type { FetchAnswer, ReadPages } from "@domain/agent/tools/web-fetch.js";
@@ -63,7 +63,7 @@ import { renderSearchForModel, type SearchAnswer } from "@domain/agent/tools/web
 import { usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 /** A turn's context in which every link is one the conversation holds. */
-const CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlAllowed: () => true };
+const CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: (url: string) => url };
 
 /**
  * A body shaped like Brave's LLM context endpoint.
@@ -158,13 +158,31 @@ describe("web_fetch in the registry", () => {
   });
 
   it("reads the turn's links through the context it was built with", async () => {
-    const allowed = vi.fn(() => false);
-    const set = buildToolSet(["web_fetch"], { mediaUrlAllowed: () => false, pageUrlAllowed: allowed });
+    const urlFor = vi.fn((_url: string): string | undefined => undefined);
+    const set = buildToolSet(["web_fetch"], { mediaUrlAllowed: () => false, pageUrlFor: urlFor });
 
     await fetchWith(set.web_fetch, ["https://example.com/a"]).catch(() => undefined);
 
-    expect(allowed).toHaveBeenCalledWith("https://example.com/a");
+    expect(urlFor).toHaveBeenCalledWith("https://example.com/a");
     expect(readPages).not.toHaveBeenCalled();
+  });
+
+  it("sends the reader the spelling the context recorded, not the model's (plan §9 A)", async () => {
+    const set = buildToolSet(["web_fetch"], {
+      mediaUrlAllowed: () => false,
+      pageUrlFor: (url: string) => (url.startsWith("https://example.com/a") ? "https://example.com/a" : undefined),
+    });
+
+    const answer = await fetchWith(set.web_fetch, ["https://example.com/a#secret"]);
+
+    expect(readPages).toHaveBeenCalledTimes(1);
+    expect(readPages.mock.calls[0]![0].urls).toEqual(["https://example.com/a"]);
+    expect(answer.pages[0]).toMatchObject({ url: "https://example.com/a#secret", status: "ok" });
+  });
+
+  it("holds no link when the turn knows no conversation", () => {
+    expect(NO_TOOL_CONTEXT.pageUrlFor?.("https://example.com/a")).toBeUndefined();
+    expect(NO_TOOL_CONTEXT).not.toHaveProperty("pageUrlAllowed");
   });
 });
 

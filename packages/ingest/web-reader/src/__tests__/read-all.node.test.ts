@@ -159,4 +159,80 @@ describe("readAll", () => {
     ]);
     expect(started).toEqual(["https://stuck.example/"]);
   });
+
+  // Plan §9 row O: one slow page must not hold its slot until the whole
+  // call's stop time. Each page's signal fires at whichever comes first, the
+  // call's stop or its own `pageTimeoutMs`, and a page stopped by its own
+  // timeout is recorded too_slow while the others read on.
+  it("stops a page at pageTimeoutMs, records it too_slow and reads the rest", async () => {
+    const urls = ["https://slow.example/", "https://queued.example/", "https://fast.example/"];
+    const signals = new Map<string, AbortSignal>();
+    const readOne = (url: string, signal: AbortSignal): Promise<ReadPageResult> => {
+      signals.set(url, signal);
+      if (url === "https://slow.example/") return hangUntilAborted(url, signal);
+      return new Promise((resolve) => setTimeout(() => resolve(okPage(url)), 100));
+    };
+
+    const answer = readAll(urls, { concurrency: 2, deadlineAt: Date.now() + 600_000, pageTimeoutMs: 1_000, readOne });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(signals.get("https://slow.example/")?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(signals.get("https://slow.example/")?.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(101);
+
+    await expect(answer).resolves.toEqual([
+      { url: "https://slow.example/", status: "too_slow" },
+      okPage("https://queued.example/"),
+      okPage("https://fast.example/"),
+    ]);
+    // The page timeout belongs to the slow page alone.
+    expect(signals.get("https://queued.example/")?.aborted).toBe(false);
+    expect(signals.get("https://fast.example/")?.aborted).toBe(false);
+  });
+
+  it("frees the slot of a timed-out page so a queued page is read with one slot", async () => {
+    const urls = ["https://slow.example/", "https://next.example/"];
+    const started: string[] = [];
+    const readOne = (url: string, signal: AbortSignal): Promise<ReadPageResult> => {
+      started.push(url);
+      if (url === "https://slow.example/") return hangUntilAborted(url, signal);
+      return Promise.resolve(okPage(url));
+    };
+
+    const answer = readAll(urls, { concurrency: 1, deadlineAt: Date.now() + 600_000, pageTimeoutMs: 1_000, readOne });
+    await vi.advanceTimersByTimeAsync(1_001);
+
+    expect(started).toEqual(["https://slow.example/", "https://next.example/"]);
+    await expect(answer).resolves.toEqual([{ url: "https://slow.example/", status: "too_slow" }, okPage("https://next.example/")]);
+  });
+
+  it("gives each page its own pageTimeoutMs, counted from when it starts", async () => {
+    const urls = ["https://first.example/", "https://second.example/"];
+    const signals = new Map<string, AbortSignal>();
+    const readOne = (url: string, signal: AbortSignal): Promise<ReadPageResult> => {
+      signals.set(url, signal);
+      // Each page takes 800 ms: under its own 1 000 ms, though the second
+      // finishes 1 600 ms after the call began.
+      return new Promise((resolve) => setTimeout(() => resolve(okPage(url)), 800));
+    };
+
+    const answer = readAll(urls, { concurrency: 1, deadlineAt: Date.now() + 600_000, pageTimeoutMs: 1_000, readOne });
+    await vi.advanceTimersByTimeAsync(1_601);
+
+    await expect(answer).resolves.toEqual([okPage("https://first.example/"), okPage("https://second.example/")]);
+    expect(signals.get("https://second.example/")?.aborted).toBe(false);
+  });
+
+  it("still stops every page at the call's stop time when that comes before pageTimeoutMs", async () => {
+    const deadlineAt = Date.now() + 10_000;
+    const urls = ["https://stuck.example/"];
+    const readOne = (url: string, signal: AbortSignal): Promise<ReadPageResult> => hangUntilAborted(url, signal);
+
+    const answer = readAll(urls, { concurrency: 1, deadlineAt, pageTimeoutMs: 30_000, readOne });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(answer).resolves.toEqual([{ url: "https://stuck.example/", status: "too_slow" }]);
+  });
 });
+

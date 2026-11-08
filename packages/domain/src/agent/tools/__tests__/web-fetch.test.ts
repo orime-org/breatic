@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Tool } from "ai";
 import type { z } from "zod";
-import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
 import type { ReadPageResult, ReadPagesAnswer, ReadPagesRequest, ToolFailure } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
@@ -83,12 +83,26 @@ interface FetchInput {
 type WebTools = { web_search: Tool; web_fetch: Tool };
 
 /**
- * A turn's web tools, with the conversation holding whatever `allowed` says.
+ * A turn's web tools, with the conversation holding whatever `allowed` says,
+ * each held link recorded in the spelling the model asks with.
  * @param allowed - Whether a link is one the conversation holds.
  * @returns The tools.
  */
 function turn(allowed: (url: string) => boolean = () => true): WebTools {
-  return makeWebTools({ mediaUrlAllowed: () => false, pageUrlAllowed: allowed });
+  return makeWebTools({ mediaUrlAllowed: () => false, pageUrlFor: (url: string) => (allowed(url) ? url : undefined) });
+}
+
+/**
+ * A turn's web tools whose conversation holds exactly one link, recorded in
+ * one spelling (plan §9 A: the set answers the spelling it recorded).
+ * @param stored - The spelling the conversation recorded.
+ * @returns The tools.
+ */
+function turnHolding(stored: string): WebTools {
+  return makeWebTools({
+    mediaUrlAllowed: () => false,
+    pageUrlFor: (url: string) => (pageLinkKey(url) === pageLinkKey(stored) ? stored : undefined),
+  });
 }
 
 /**
@@ -257,9 +271,42 @@ describe("a link the conversation does not hold", () => {
       fetchWith(makeWebTools(), { pages: [{ url: A }] }, readPages, { spy }),
     );
 
-    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.linkNotInConversation });
+    expect(failure).toMatchObject({ kind: "turned_away" });
+    expect(failure).not.toHaveProperty("userKey");
     expect(readPages).not.toHaveBeenCalled();
     expect(spy.serviceCalls).toEqual([]);
+  });
+});
+
+describe("the spelling the reader is sent (plan §9 A)", () => {
+  const STORED = "https://evil.com/p";
+
+  it.each([
+    ["a fragment", "https://evil.com/p#SECRET"],
+    ["credentials before the host", "https://SECRET:x@evil.com/p"],
+    ["trailing slashes", "https://evil.com/p///"],
+    ["a percent-encoded path", "https://evil.com/%70"],
+  ])("is the one the conversation recorded when the model adds %s", async (_label, asked) => {
+    const readPages = reader({ [STORED]: okPage("Body.") });
+
+    const answer = await fetchWith(turnHolding(STORED), { pages: [{ url: asked }] }, readPages);
+
+    expect(readPages).toHaveBeenCalledTimes(1);
+    expect(readPages.mock.calls[0]![0].urls).toEqual([STORED]);
+    expect(answer.pages[0]).toMatchObject({ url: asked, status: "ok" });
+  });
+
+  it("is never the model's spelling, whatever it put in the fragment", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.stringMatching(/^[A-Za-z0-9_-]{1,40}$/), async (secret) => {
+        const readPages = reader({ [STORED]: okPage("Body.") });
+
+        await fetchWith(turnHolding(STORED), { pages: [{ url: `${STORED}#${secret}` }] }, readPages);
+
+        expect(readPages.mock.calls[0]![0].urls).toEqual([STORED]);
+      }),
+      { numRuns: 50 },
+    );
   });
 });
 
@@ -350,6 +397,81 @@ describe("the turn's cache of pages read", () => {
     await fetchWith(turn(), { pages: [{ url: A }] }, readPages);
 
     expect(readPages).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("one page asked twice in one call (plan §9 D)", () => {
+  const full = filler(250);
+
+  it("answers a second spelling at the same start from the first, without a share or a number of its own", async () => {
+    const tools = turn();
+    const readPages = reader({ [A]: okPage(full) });
+
+    const answer = await fetchWith(
+      tools,
+      { pages: [{ url: A }, { url: "http://EXAMPLE.com/article/#top" }] },
+      readPages,
+    );
+
+    expect(readPages.mock.calls[0]![0].urls).toEqual([A]);
+    // The one page keeps the whole budget: the repeat takes no share.
+    expect(answer.pages[0]).toMatchObject({ status: "ok", start: 0, end: 100, index: 1, text: full.slice(0, 100) });
+    expect(answer.pages[1]).toMatchObject({ status: "ok", start: 0, end: 100, index: 1, text: full.slice(0, 100) });
+
+    // And the repeat took no number: the next page read is 2.
+    const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
+    expect(next.pages[0]!.index).toBe(2);
+  });
+
+  it("answers the same address asked twice at the same start once", async () => {
+    const answer = await fetchWith(
+      turn(),
+      { pages: [{ url: A }, { url: B }, { url: A }] },
+      reader({ [A]: okPage(full), [B]: okPage(filler(250).toUpperCase()) }),
+    );
+
+    // Two pages share the budget, not three.
+    expect(answer.pages.map((p) => [p.start, p.end, p.index])).toEqual([
+      [0, 50, 1],
+      [0, 50, 2],
+      [0, 50, 1],
+    ]);
+  });
+
+  it("treats one page at two starts as two parts, each with its share and number", async () => {
+    const answer = await fetchWith(
+      turn(),
+      { pages: [{ url: A }, { url: A, start: 100 }] },
+      reader({ [A]: okPage(full) }),
+    );
+
+    expect(answer.pages.map((p) => [p.start, p.end, p.index])).toEqual([
+      [0, 50, 1],
+      [100, 150, 2],
+    ]);
+  });
+});
+
+describe("a page the reader cut at its byte cap (plan §9 S)", () => {
+  it("is handed over marked truncated", async () => {
+    const answer = await fetchWith(
+      turn(),
+      { pages: [{ url: A }, { url: B }] },
+      reader({ [A]: okPage("Cut body.", { truncated: true }), [B]: okPage("Whole body.") }),
+    );
+
+    expect(answer.pages[0]).toMatchObject({ status: "ok", truncated: true });
+    expect(answer.pages[1]).not.toHaveProperty("truncated");
+  });
+
+  it("stays marked when it is continued from the turn's cache", async () => {
+    const tools = turn();
+    const readPages = reader({ [A]: okPage(filler(250), { truncated: true }) });
+
+    await fetchWith(tools, { pages: [{ url: A }] }, readPages);
+    const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
+
+    expect(next.pages[0]).toMatchObject({ start: 100, truncated: true });
   });
 });
 
@@ -569,10 +691,14 @@ describe("a call where no page could be read", () => {
     expect(failure).toMatchObject({ kind: "tool_failed", userKey });
   });
 
-  it("fails with linkNotInConversation when no link is one the conversation holds", async () => {
+  it("turns the model away, showing the user nothing, when no link is one the conversation holds (plan §9 Y)", async () => {
     const failure = await failureOf(fetchWith(turn(() => false), { pages: [{ url: A }, { url: B }] }, reader({})));
 
-    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.linkNotInConversation });
+    expect(failure).toMatchObject({ kind: "turned_away" });
+    expect(failure).not.toHaveProperty("userKey");
+    expect(failure.forModel).toContain("web_search");
+    expect(failure.forModel).toContain(A);
+    expect(failure.forModel).toContain(B);
   });
 
   it("fails with pagesUnreadable when the pages failed for different reasons", async () => {
@@ -587,7 +713,7 @@ describe("a call where no page could be read", () => {
     expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.pagesUnreadable });
   });
 
-  it("counts a link the conversation does not hold as one of the different reasons", async () => {
+  it("shows the user the reason the other pages failed when some links are not the conversation's (plan §9 Y)", async () => {
     const failure = await failureOf(
       fetchWith(
         turn((url) => url !== A),
@@ -596,7 +722,31 @@ describe("a call where no page could be read", () => {
       ),
     );
 
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.busy });
+  });
+
+  it("shows pagesUnreadable when the other pages failed for different reasons", async () => {
+    const failure = await failureOf(
+      fetchWith(
+        turn((url) => url !== A),
+        { pages: [{ url: A }, { url: B }, { url: C }] },
+        reader({ [B]: { status: "busy", httpStatus: 429 }, [C]: { status: "refused", httpStatus: 403 } }),
+      ),
+    );
+
     expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.pagesUnreadable });
+  });
+
+  it("still tells the model about the link the conversation does not hold", async () => {
+    const failure = await failureOf(
+      fetchWith(
+        turn((url) => url !== A),
+        { pages: [{ url: A }, { url: B }] },
+        reader({ [B]: { status: "busy", httpStatus: 429 } }),
+      ),
+    );
+
+    expect(failure.forModel).toContain("not_in_conversation");
   });
 });
 
@@ -727,6 +877,35 @@ describe("what a call costs", () => {
     expect(spy.serviceCalls).toEqual([row(10)]);
   });
 
+  it.each([400, 401, 503])(
+    "records nothing when the Worker answered %d, so no container ran (plan §9 I)",
+    async (status) => {
+      const spy = usageSpy();
+      const readPages = vi.fn<ReadPages>(async () => {
+        throw new UploadHttpError(status);
+      });
+
+      const failure = await failureOf(fetchWith(turn(), { pages: [{ url: A }] }, readPages, { spy }));
+
+      expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.unavailable });
+      expect(spy.serviceCalls).toEqual([]);
+    },
+  );
+
+  it("estimates from the time it took when the Worker answered 500, after a container may have run", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance"] });
+    vi.setSystemTime(1_800_000_000_000);
+    const readPages = vi.fn<ReadPages>(async () => {
+      vi.advanceTimersByTime(4_000);
+      throw new UploadHttpError(500);
+    });
+    const spy = usageSpy();
+
+    await failureOf(fetchWith(turn(), { pages: [{ url: A }] }, readPages, { spy }));
+
+    expect(spy.serviceCalls).toEqual([row(10)]);
+  });
+
   it("records nothing when the server refused to read", async () => {
     const spy = usageSpy();
     const readPages = vi.fn<ReadPages>(async () => {
@@ -807,6 +986,12 @@ describe("web_fetch says how to use it", () => {
     expect(said()).toMatch(/copy/i);
     expect(said()).toMatch(/screenshot/i);
     expect(said()).toMatch(/PDF/);
+  });
+
+  it("says a page whose text is a login form, a paywall or a verification or security check counts as needing a login or refused, even when it came back ok (plan §9 E)", () => {
+    expect(said()).toMatch(/paywall/i);
+    expect(said()).toMatch(/verification|security check/i);
+    expect(said()).toMatch(/\bok\b/);
   });
 
   it("says to find another source when a page it found itself needs a login or was refused", () => {

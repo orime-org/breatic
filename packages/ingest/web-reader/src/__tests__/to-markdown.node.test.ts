@@ -35,4 +35,22 @@ describe("toMarkdown", () => {
 
     expect(pageLinksIn(toMarkdown(html))).toEqual(["https://en.wikipedia.org/wiki/Fish_(food)"]);
   });
+
+  // Plan §9 row Q: the fallback hands turndown the whole body, and turndown
+  // keeps the text of elements it has no rule for, so code and styles would
+  // reach the Agent as page text.
+  it.each([
+    ["script", '<script>window.__STATE__ = {"token":"abc"};</script>'],
+    ["style", "<style>.hero { color: red; }</style>"],
+    ["noscript", "<noscript>Please enable JavaScript to view this site.</noscript>"],
+    ["template", "<template><p>Hidden template row</p></template>"],
+  ])("drops %s elements and their contents", (_tag, element) => {
+    const markdown = toMarkdown(`<p>Before.</p>${element}<p>After.</p>`);
+
+    expect(markdown).toBe("Before.\n\nAfter.");
+  });
+
+  it("drops a script inside an article paragraph", () => {
+    expect(toMarkdown("<p>Kept<script>var x = 1;</script> text.</p>")).toBe("Kept text.");
+  });
 });
