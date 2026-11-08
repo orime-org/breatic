@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { hashMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 
 const profileSchema = z.strictObject({
@@ -66,8 +67,9 @@ export function projectMiniToolAnalysisInput(input: MiniToolAnalysisInputSource)
     case "scene_cuts":
       return miniToolAnalysisInputSchema.parse({ ...common, range: input.params.range });
     case "tracked_mask": {
-      // Execution design §10.2: the prompt is trimmed, and an empty one is the profile's default, frozen into the fingerprint.
-      const prompt = typeof input.params.trackingPrompt === "string" ? input.params.trackingPrompt.trim() : input.params.trackingPrompt;
+      // Execution design §10.2: the prompt is cleaned as every AIGC prompt is (extractPromptText, which also trims), and an empty
+      // one is the profile's default, frozen into the fingerprint, so the web and the server fingerprint the same selection.
+      const prompt = typeof input.params.trackingPrompt === "string" ? extractPromptText(input.params.trackingPrompt) : input.params.trackingPrompt;
       const fallback = (input.profile as { params?: { default_prompt?: unknown } } | null)?.params?.default_prompt;
       const trackingPrompt = prompt === "" && typeof fallback === "string" ? fallback : prompt;
       return miniToolAnalysisInputSchema.parse({ ...common, range: input.params.range, anchor: input.params.anchor, region: input.params.region, trackingPrompt });

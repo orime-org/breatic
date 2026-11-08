@@ -591,7 +591,7 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
   // The current selection projected exactly as the analysis admission projected it (analysis.service.ts), so a matching
   // fingerprint means the tracking was made for this selection.
   const current = await fingerprintMiniToolAnalysisInput(projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: binding.canonicalURL },
-    profile: config.analyses.tracked_mask.profile, params: { ...params, trackingPrompt: extractPromptText(params.trackingPrompt) } }));
+    profile: config.analyses.tracked_mask.profile, params }));
   const tracking = await eraseTracking(request, request.project_id, current);
   const modelCredits = await estimateTaskCredits(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] });
   const rates = encoderRates(config);

@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { ceilToCreditCent, extractPromptText, readVideoPresentationLedger, t, videoPresentationLedgerReceiptSchema, type ConsentSnapshot } from "@breatic/shared";
+import { ceilToCreditCent, readVideoPresentationLedger, t, videoPresentationLedgerReceiptSchema, type ConsentSnapshot } from "@breatic/shared";
 import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, presentationFramesIn, trackingClips, videoToolSourceRefSchema, type VideoPresentationTable, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
@@ -306,8 +306,7 @@ async function freeze(body: MiniToolAnalysisRequest): Promise<{
   const { binding, sourceKey } = await resolveSource(body.source);
   const { versionId, receipt } = await selectedToolInput(body.presentationRef.source, binding, sourceKey, structuredClone(getMiniToolsConfig()));
   const profile = getMiniToolsConfig().analyses[body.kind].profile;
-  const params = body.kind === "tracked_mask" ? { ...body.params, trackingPrompt: extractPromptText(body.params.trackingPrompt) } : body.params;
-  const analysisInput = projectMiniToolAnalysisInput({ kind: body.kind, source: { canonicalURL: binding.canonicalURL }, profile, params });
+  const analysisInput = projectMiniToolAnalysisInput({ kind: body.kind, source: { canonicalURL: binding.canonicalURL }, profile, params: body.params });
   if (("range" in analysisInput && analysisInput.range.end > binding.mediaInfo.duration)
     || ("anchor" in analysisInput && analysisInput.anchor.pts > binding.mediaInfo.duration)) {
     throw new ValidationError(t("server.mini_tool.foreignSource"));

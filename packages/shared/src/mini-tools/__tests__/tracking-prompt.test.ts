@@ -27,4 +27,10 @@ describe("the frozen tracking prompt (execution design §10.2)", () => {
     expect(frozen("")).toBe("object");
     expect(frozen("   ")).toBe("object");
   });
+
+  it("TP03 freezes the prompt as extractPromptText cleans it, so the web and server fingerprints agree", () => {
+    expect(frozen("a  b")).toBe(frozen("a b"));
+    expect(frozen("<b>red</b> car​")).toBe("red car");
+    expect(frozen("<p> </p>")).toBe("object");
+  });
 });
