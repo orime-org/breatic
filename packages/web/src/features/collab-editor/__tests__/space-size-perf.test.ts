@@ -200,23 +200,44 @@ describe('21.4 timings on a 10 MiB body', () => {
     expect(vi.mocked(planSpaceDelete)).toHaveBeenCalledTimes(0);
   }, TEN_MINUTES);
 
-  it('PF-04: full select-all delete grows at most 8 times from BIG(4000) to BIG(16000)', async () => {
+  it('PF-04: the executor\'s own work for a full select-all delete grows at most 8 times from BIG(4000) to BIG(16000)', async () => {
     /**
-     * Times a full select-all delete on BIG(n).
+     * Times the executor's planning and Yjs write for a full select-all
+     * delete on BIG(n). The editor's DOM update is left out: jsdom rebuilds a
+     * parent's live childNodes list on every removal, which makes removing
+     * many blocks quadratic there and not in a browser (the warning path, which
+     * never reaches the executor, grows the same way).
      * @param n - Blocks.
      * @returns Milliseconds.
      */
+    const { planSpaceDelete: actualPlan } = await vi.importActual<typeof Executor>('@web/features/collab-editor/space-delete-executor');
     const measure = async (n: number): Promise<number> => {
       const body = openBig(n);
       enterState(DOCUMENT_NAME, 'F');
       select(body.view, charPos(body, 0, 1));
+      let planMs = 0;
+      vi.mocked(planSpaceDelete).mockImplementation((...args) => {
+        const start = performance.now();
+        const plan = actualPlan(...args);
+        planMs += performance.now() - start;
+        return plan;
+      });
+      let writeStart = 0;
+      let writeMs = 0;
+      const onBefore = (tr: Y.Transaction): void => { if (tr.local) writeStart = performance.now(); };
+      const onAfter = (tr: Y.Transaction): void => { if (tr.local) writeMs += performance.now() - writeStart; };
+      body.doc.on('beforeTransaction', onBefore);
+      body.doc.on('afterTransaction', onAfter);
       const cap = capture(body.doc);
-      const ms = await timed(() => { selectAllAndDelete(body); });
+      await timed(() => { selectAllAndDelete(body); });
+      body.doc.off('beforeTransaction', onBefore);
+      body.doc.off('afterTransaction', onAfter);
+      vi.mocked(planSpaceDelete).mockImplementation(actualPlan);
       expect(cap.updates).toHaveLength(1);
       expect(cap.shape()).toBe('R');
       cap.stop();
       resetHarness();
-      return ms;
+      return planMs + writeMs;
     };
     const small = await measure(4000);
     const large = await measure(16000);

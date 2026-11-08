@@ -16,7 +16,8 @@
  * |---|---|
  * | `unknown`, `normal`, `warning` | passes; the sync plugin writes Yjs as usual |
  * | `resyncing` | refused, no toast |
- * | `full`, over the ceiling | refused, and handed to the delete executor; what it does not take is told with a toast |
+ * | `full` | a deletion of text inside one `XmlText` (its text block's only Y child) passes, y-prosemirror writing it as a delete set; anything else is refused and handed to the delete executor; what it does not take is told with a toast |
+ * | over the ceiling | deleting part of one `XmlText` is refused at once; anything else is handed to the executor |
  *
  * While full the filter sees transactions before the sync plugin writes them,
  * so a refused one never reaches Yjs. A transaction a plugin appends after a
@@ -44,14 +45,15 @@ import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
-import { spaceRefusalMessage, writeSpaceDoc } from '@web/data/yjs/space-write';
+import { runHistoryStep } from '@web/data/yjs/history-step';
+import { spaceRefusalMessage } from '@web/data/yjs/space-write';
 import {
   applySpaceDelete,
   planNodeRemoval,
   planSpaceDelete,
-  type SpaceDeleteBinding,
+  textDeletionInOneText,
   type SpaceDeletePlan,
+  type SpaceDeleteWriteBinding,
 } from '@web/features/collab-editor/space-delete-executor';
 import { toast } from '@web/lib/toast';
 
@@ -157,14 +159,13 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
    * @param editorView - The view.
    * @returns The binding.
    */
-  const bindingOf = (editorView: EditorView): SpaceDeleteBinding =>
-    (options.syncKey.getState(editorView.state) as { binding: SpaceDeleteBinding }).binding;
+  const bindingOf = (editorView: EditorView): SpaceDeleteWriteBinding =>
+    (options.syncKey.getState(editorView.state) as { binding: SpaceDeleteWriteBinding }).binding;
 
   /**
    * Step 8: writes an accepted plan once the refused dispatch has returned
    * (writing Yjs inside the filter would re-enter dispatch), unless the
-   * document changed in between; the sync plugin then redraws the editor and
-   * the caret goes to where the deletion started.
+   * document changed in between.
    * @param editorView - The view.
    * @param name - The document name.
    * @param plan - The plan.
@@ -180,15 +181,7 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
   ): void => {
     queueMicrotask(() => {
       if (editorView.isDestroyed || editorView.state.doc !== before) return;
-      const binding = bindingOf(editorView);
-      const result = writeSpaceDoc(name, { kind: plan.kind }, () => {
-        binding.doc.transact((ytr) => {
-          applySpaceDelete(plan, ytr, addToHistory);
-        }, options.syncKey);
-      });
-      if (!result.ok) return;
-      const { doc } = editorView.state;
-      editorView.dispatch(editorView.state.tr.setSelection(TextSelection.near(doc.resolve(Math.min(plan.at, doc.content.size)), -1)));
+      applySpaceDelete(name, editorView, bindingOf(editorView), plan, options.syncKey, addToHistory);
     });
   };
 
@@ -246,21 +239,30 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
       // Step 0: appended after a root, or before the view exists.
       if (view === null || state !== view.state) return false;
       if (onlyMarks(tr, options.derivedMarks ?? [])) return false;
-      const plan = planSpaceDelete(tr, bindingOf(view), { syncKey: options.syncKey, overCeiling: size.overCeiling, deleteTriggered });
+      const binding = bindingOf(view);
+      const text = textDeletionInOneText(tr, binding);
+      if (text !== null && !size.overCeiling) return true;
+      /**
+       * Refuses the transaction with a toast, unless a machine made it
+       * (`addToHistory: false`) or a composition already refused has said so.
+       * @param message - The sentence.
+       * @returns False.
+       */
+      const refuse = (message: string | null): false => {
+        if (message !== null && tr.getMeta('addToHistory') !== false && !(composing && refusedComposition)) toast.warning(message);
+        if (composing) refusedComposition = true;
+        return false;
+      };
+      // Step 7 before any planning: part of one XmlText.
+      if (text === 'part') return refuse(spaceRefusalMessage('add', 'over_ceiling'));
+      const plan = planSpaceDelete(tr, binding, { syncKey: options.syncKey, overCeiling: size.overCeiling, deleteTriggered });
       if (plan.ok) {
         execute(view, name, plan, tr.before, tr.getMeta('addToHistory') !== false);
         return false;
       }
-      // A machine edit (`addToHistory: false`) is not something the user did,
-      // and a composition already refused once has said so.
-      if (tr.getMeta('addToHistory') !== false && !(composing && refusedComposition)) {
-        const message = size.overCeiling
-          ? spaceRefusalMessage('add', 'over_ceiling')
-          : spaceRefusalMessage(plan.refusal === 'compound' ? 'compound' : 'add', 'full');
-        if (message !== null) toast.warning(message);
-      }
-      if (composing) refusedComposition = true;
-      return false;
+      return refuse(size.overCeiling
+        ? spaceRefusalMessage('add', 'over_ceiling')
+        : spaceRefusalMessage(plan.refusal === 'compound' ? 'compound' : 'add', 'full'));
     },
     view: (editorView) => {
       view = editorView;
@@ -285,14 +287,15 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
 }
 
 /**
- * Runs an undo or redo if the Space's size allows what it does (design 5.2:
- * the kind comes from `nextHistoryStep`; a step with no effect still runs).
+ * Runs an undo or redo through `runHistoryStep` (design 5.2), which judges
+ * what it writes against the Space's size. An empty stack, or a document that
+ * is not a registered Space, runs the editor's own command.
  * @param name - The Space document's name, or null for an unregistered one.
  * @param manager - The undo manager the step comes from.
  * @param direction - Which stack.
- * @param run - The step itself.
- * @returns What `run` returned, or true when the step was refused (the press is handled).
- * @throws {Error} Whatever `run` throws.
+ * @param run - The editor's own command.
+ * @returns What `run` returned, or true once the step was judged (run or refused, the press is handled).
+ * @throws {Error} Whatever the step throws.
  */
 export function gatedHistoryStep(
   name: string | null,
@@ -302,11 +305,8 @@ export function gatedHistoryStep(
 ): boolean {
   const stack = direction === 'undo' ? manager.undoStack : manager.redoStack;
   if (name === null || stack.length === 0) return run();
-  let ran = false;
-  const result = writeSpaceDoc(name, { kind: nextHistoryStep(manager, direction).kind }, () => {
-    ran = run();
-  });
-  return result.ok ? ran : true;
+  runHistoryStep(name, manager, direction);
+  return true;
 }
 
 /**
