@@ -135,15 +135,16 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     }
 
     /**
-     * Freeze at the frame the current media actually reached.
+     * Freeze at the frame the current media actually reached, never before the frame this run of play started from:
+     * stepping back past a boundary would bring back what was visible before it. Held at a boundary, the frame stays.
      * @throws {never} Never.
      */
     function freezeMedia(): void {
-      if (media !== null && clip !== null && source !== null && !awaitingSeek && Number.isFinite(media.currentTime)) {
+      if (anchor !== null && media !== null && clip !== null && source !== null && !awaitingSeek && Number.isFinite(media.currentTime)) {
         const fps = latest.current.document.settings.fps;
         const sourceIn = clip.sourceInFrame * source.timebase.den / source.timebase.num;
         const frame = clip.startFrame + Math.floor((media.currentTime - sourceIn) * fps.num * clip.rate.den / (fps.den * clip.rate.num));
-        showFrame(Math.max(clip.startFrame, Math.min(clip.startFrame + clip.durationFrames - 1, frame)));
+        showFrame(Math.max(anchor.frame, clip.startFrame, Math.min(clip.startFrame + clip.durationFrames - 1, frame)));
       }
       anchor = null;
       cancelFrame();
