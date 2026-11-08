@@ -5,6 +5,9 @@
 import TurndownService from "turndown";
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
+// Turndown keeps the text of elements it has no rule for, so code and styles
+// would otherwise reach the Agent as page text.
+turndown.remove(["script", "style", "noscript", "template"]);
 
 /**
  * Convert an article's HTML to Markdown.

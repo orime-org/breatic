@@ -15,14 +15,16 @@
 import { readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import { chromium, errors, type Browser, type Download } from "playwright-core";
+import { chromium, errors, type Browser, type Download, type Response } from "playwright-core";
 import { READER_SERVICE_PORT, readPagesRequestSchema } from "@shared/agent/read-pages.js";
 import type { ReadPageResult, ReadPagesRequest, ReaderServiceAnswer } from "@shared/agent/read-pages.js";
 
+import { articleOf } from "./article.js";
 import { statusOfResponse } from "./classify.js";
 import { cpuUsecOf } from "./cpu-usage.js";
-import { pdfText } from "./pdf-text.js";
+import { readPdf } from "./pdf-page.js";
 import { readAll } from "./read-all.js";
+import { capPageText, perPageTextBytes } from "./text-cap.js";
 import { toMarkdown } from "./to-markdown.js";
 
 /** Who reads, said plainly, in the form ChatGPT-User and Claude-User use. */
@@ -31,6 +33,12 @@ const USER_AGENT =
 
 /** Readability's source, run inside each rendered page. */
 const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozilla/readability/Readability.js"), "utf8");
+
+/** The header the Worker's outbound handler marks a send that failed with. */
+const UNREACHABLE_HEADER = "x-breatic-unreachable";
+
+/** Download types that may be a PDF; any other is not read. */
+const PDF_TYPES = new Set(["application/pdf", "application/octet-stream"]);
 
 /** Where the container's cgroup reports its CPU time. */
 const CPU_STAT = "/sys/fs/cgroup/cpu.stat";
@@ -42,27 +50,45 @@ let browser: Promise<Browser> | undefined;
  * @returns The browser.
  */
 function theBrowser(): Promise<Browser> {
-  browser ??= chromium.launch({ args: ["--no-sandbox"] });
+  browser ??= chromium.launch({ args: ["--no-sandbox"] }).catch((err: unknown) => {
+    browser = undefined;
+    throw err;
+  });
   return browser;
 }
 
 /**
  * Read a page that arrived as a download: a PDF, or a file of another type.
+ *
+ * The navigation's headers are judged before the file is waited for, so an
+ * oversized file or one of another type is cancelled rather than downloaded.
  * @param url - The page asked for.
  * @param download - The download.
+ * @param head - The navigation's response, when one arrived.
  * @param maxBytes - The largest file read.
  * @returns The page.
  */
-async function readDownload(url: string, download: Download, maxBytes: number): Promise<ReadPageResult> {
-  const path = await download.path();
-  if (statSync(path).size > maxBytes) return { url, status: "too_large", finalUrl: download.url() };
-  const bytes = new Uint8Array(readFileSync(path));
-  if (new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") {
-    return { url, status: "unsupported_type", finalUrl: download.url() };
+async function readDownload(
+  url: string,
+  download: Download,
+  head: Response | undefined,
+  maxBytes: number,
+): Promise<ReadPageResult> {
+  const finalUrl = download.url();
+  const headers = head?.headers() ?? {};
+  const length = Number(headers["content-length"]);
+  if (Number.isFinite(length) && length > maxBytes) {
+    await download.cancel().catch(() => undefined);
+    return { url, status: "too_large", finalUrl };
   }
-  const { text, pages } = await pdfText(bytes);
-  if (text.trim() === "") return { url, status: "empty", finalUrl: download.url(), kind: "pdf", pages };
-  return { url, status: "ok", finalUrl: download.url(), kind: "pdf", pages, text };
+  const type = (headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (type !== "" && !PDF_TYPES.has(type)) {
+    await download.cancel().catch(() => undefined);
+    return { url, status: "unsupported_type", finalUrl };
+  }
+  const path = await download.path();
+  if (statSync(path).size > maxBytes) return { url, status: "too_large", finalUrl };
+  return readPdf(url, finalUrl, new Uint8Array(readFileSync(path)));
 }
 
 /**
@@ -78,6 +104,8 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     userAgent: USER_AGENT,
     acceptDownloads: true,
     ignoreHTTPSErrors: true,
+    // A page's CSP would otherwise refuse the Readability script.
+    bypassCSP: true,
   });
   const stop = (): void => {
     void context.close();
@@ -86,6 +114,12 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
   try {
     const page = await context.newPage();
     const downloaded = page.waitForEvent("download", { timeout: request.pageTimeoutMs }).catch(() => null);
+    // A navigation that turns into a download has no response from goto; its
+    // headers come from here.
+    let head: Response | undefined;
+    page.on("response", (answer) => {
+      if (answer.request().isNavigationRequest() && answer.frame() === page.mainFrame()) head = answer;
+    });
     let response;
     try {
       response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: request.pageTimeoutMs });
@@ -93,26 +127,40 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       // A PDF navigates into a download, which the headless shell has no viewer for.
       if (err instanceof Error && /Download is starting/.test(err.message)) {
         const download = await downloaded;
-        if (download !== null) return await readDownload(url, download, request.maxBytes);
+        if (download !== null) return await readDownload(url, download, head, request.maxBytes);
       }
       if (err instanceof errors.TimeoutError) return { url, status: "too_slow" };
       throw err;
     }
     if (response === null) return { url, status: "unreachable" };
     const httpStatus = response.status();
-    const ended = statusOfResponse(httpStatus, response.headers()["content-type"] ?? null);
+    const headers = response.headers();
+    const ended = statusOfResponse(httpStatus, headers["content-type"] ?? null, headers[UNREACHABLE_HEADER] === "1");
     if (ended !== null) return { url, status: ended, httpStatus, finalUrl: page.url() };
 
     await page.waitForLoadState("networkidle", { timeout: request.settleMs }).catch(() => undefined);
-    await page.addScriptTag({ content: READABILITY });
-    const article = await page.evaluate(() => {
-      const parsed = new (globalThis as unknown as { Readability: new (doc: Document) => { parse(): { title?: string | null; content?: string | null } | null } }).Readability(
-        document.cloneNode(true) as Document,
-      ).parse();
+    // An XML page cannot take a script tag; it is read as plain text below.
+    await page.addScriptTag({ content: READABILITY }).catch(() => undefined);
+    const evaluated: unknown = await page.evaluate(() => {
+      type Parsed = { title?: string | null; content?: string | null } | null;
+      const Readability = (globalThis as unknown as { Readability?: new (doc: Document) => { parse(): Parsed } })
+        .Readability;
+      // No Readability (the script could not run) or no body (XML): the text.
+      if (typeof Readability !== "function" || document.body === null) {
+        return { title: document.title, html: "", text: document.documentElement?.textContent ?? "" };
+      }
+      let parsed: Parsed = null;
+      try {
+        parsed = new Readability(document.cloneNode(true) as Document).parse();
+      } catch {
+        parsed = null;
+      }
       return { title: parsed?.title ?? document.title, html: parsed?.content ?? document.body.innerHTML };
     });
-    const text = toMarkdown(article.html);
-    const title = article.title ?? "";
+    const article = articleOf(evaluated);
+    const plain = (evaluated as { text?: unknown } | null)?.text;
+    const text = typeof plain === "string" ? plain : toMarkdown(article.html);
+    const title = article.title;
     if (text.trim() === "") return { url, status: "empty", httpStatus, finalUrl: page.url(), title, kind: "html" };
     return { url, status: "ok", httpStatus, finalUrl: page.url(), title, kind: "html", text };
   } catch (err) {
@@ -164,12 +212,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
   const request = parsed.data;
+  // Started before any page, so a browser that will not launch fails the call
+  // (500) rather than reading as every page being unreachable.
+  await theBrowser();
   const pages = await readAll(request.urls, {
     concurrency: request.concurrency,
     deadlineAt: request.deadlineAt,
+    pageTimeoutMs: request.pageTimeoutMs,
     readOne: (url, signal) => readOne(url, signal, request),
   });
-  const answer: ReaderServiceAnswer = { pages, cpuUsec: cpuUsec() };
+  const cap = perPageTextBytes(request.urls.length);
+  const answer: ReaderServiceAnswer = { pages: pages.map((page) => capPageText(page, cap)), cpuUsec: cpuUsec() };
   res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(answer));
 }
 
