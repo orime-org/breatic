@@ -128,6 +128,9 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     void context.close();
   };
   signal.addEventListener("abort", stop, { once: true });
+  // A page whose headers declare more than the limit ends at its headers:
+  // reading it whole would take its whole transfer, or crash the renderer.
+  let oversized = false;
   try {
     const page = await context.newPage();
     const downloaded = page.waitForEvent("download", { timeout: request.pageTimeoutMs }).catch(() => null);
@@ -135,12 +138,19 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     // headers come from here.
     let head: Response | undefined;
     page.on("response", (answer) => {
-      if (answer.request().isNavigationRequest() && answer.frame() === page.mainFrame()) head = answer;
+      if (!answer.request().isNavigationRequest() || answer.frame() !== page.mainFrame()) return;
+      head = answer;
+      const length = Number(answer.headers()["content-length"]);
+      if (Number.isFinite(length) && length > request.maxBytes) {
+        oversized = true;
+        void context.close();
+      }
     });
     let response;
     try {
       response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: request.pageTimeoutMs });
     } catch (err) {
+      if (oversized) return { url, status: "too_large" };
       // A PDF navigates into a download, which the headless shell has no viewer for.
       if (err instanceof Error && /Download is starting/.test(err.message)) {
         // A failure answer the browser turns into a download ends as its
@@ -209,6 +219,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     const text = typeof plain === "string" ? plain : toMarkdown(article.html);
     return textPage(url, { httpStatus, finalUrl: page.url(), title: article.title }, text);
   } catch (err) {
+    if (oversized) return { url, status: "too_large" };
     if (err instanceof errors.TimeoutError) return { url, status: "too_slow" };
     throw err;
   } finally {

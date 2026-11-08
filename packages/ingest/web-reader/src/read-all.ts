@@ -22,6 +22,20 @@ export interface ReadAllOptions {
   readOne: (url: string, signal: AbortSignal) => Promise<ReadPageResult>;
 }
 
+/** What Playwright says when a page's renderer crashed, as it does when a page outgrows its memory. */
+const CRASHED = /Page crashed|Target crashed/;
+
+/**
+ * How a page whose reader threw ended.
+ * @param err - What it threw.
+ * @param stopped - Whether the page had been told to stop.
+ * @returns `too_large` for a crashed renderer, `too_slow` for a stopped page, else `unreachable`.
+ */
+function failedStatus(err: unknown, stopped: boolean): ReadPageResult["status"] {
+  if (err instanceof Error && CRASHED.test(err.message)) return "too_large";
+  return stopped ? "too_slow" : "unreachable";
+}
+
 /**
  * Read every page, at most `concurrency` at once.
  *
@@ -33,7 +47,8 @@ export interface ReadAllOptions {
  * @param urls - The pages, in the caller's order.
  * @param options - Concurrency, deadline and the reader of one page.
  * @returns One result per url, in the order of `urls`.
- * @throws {never} Never; a page whose reader throws is recorded `unreachable`.
+ * @throws {never} Never; a page whose reader throws is recorded `unreachable`,
+ *   or `too_large` when its renderer crashed, which a page too big for it does.
  */
 export async function readAll(urls: string[], options: ReadAllOptions): Promise<ReadPageResult[]> {
   const { concurrency, deadlineAt, pageTimeoutMs, readOne } = options;
@@ -62,8 +77,8 @@ export async function readAll(urls: string[], options: ReadAllOptions): Promise<
       });
       try {
         results[i] = await Promise.race([readOne(url, pageStop.signal), timedOut]);
-      } catch {
-        if (!stop.signal.aborted) results[i] = { url, status: pageStop.signal.aborted ? "too_slow" : "unreachable" };
+      } catch (err) {
+        if (!stop.signal.aborted) results[i] = { url, status: failedStatus(err, pageStop.signal.aborted) };
       } finally {
         clearTimeout(pageTimer);
         stop.signal.removeEventListener("abort", onStop);
