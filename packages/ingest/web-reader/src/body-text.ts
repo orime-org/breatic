@@ -13,7 +13,7 @@
 /** Type families that are media, never text, whatever their suffix (`image/svg+xml`). */
 const MEDIA_TYPE = /^(?:image|audio|video)\//;
 
-/** Application types that are text though neither XML nor JSON: scripts, YAML, line-delimited JSON. */
+/** Application types that are text: XML, JSON, scripts, YAML and line-delimited JSON. */
 const TEXT_APPLICATION_TYPES: ReadonlySet<string> = new Set([
   "application/xml",
   "application/json",
