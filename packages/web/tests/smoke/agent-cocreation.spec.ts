@@ -107,13 +107,19 @@ function toolOf(part: StoredPart): string | undefined {
  * Ask a helper model one thing and read its words.
  * @param api - A request context for the model provider.
  * @param prompt - The prompt.
+ * @param asObject - Ask for one JSON object as the whole answer, as the judge answers.
  * @returns What the model wrote.
  * @throws {Error} When the provider refuses the call.
  */
-async function askHelper(api: APIRequestContext, prompt: string): Promise<string> {
+async function askHelper(api: APIRequestContext, prompt: string, asObject = false): Promise<string> {
   const res = await api.post('https://openrouter.ai/api/v1/chat/completions', {
     headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY ?? ''}` },
-    data: { model: HELPER_MODEL, temperature: 0, messages: [{ role: 'user', content: prompt }] },
+    data: {
+      model: HELPER_MODEL,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+      ...(asObject ? { response_format: { type: 'json_object' } } : {}),
+    },
     timeout: 120_000,
   });
   if (!res.ok()) throw new Error(`helper model: ${String(res.status())} ${await res.text()}`);
@@ -262,9 +268,9 @@ async function partsOf(api: APIRequestContext, conversationId: string): Promise<
 async function judge(helper: APIRequestContext, scenario: Scenario, run: Run): Promise<Verdict> {
   // A judge that answers with no verdict is asked again once; a second miss is the run's failure.
   try {
-    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
+    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run), true));
   } catch {
-    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
+    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run), true));
   }
 }
 
