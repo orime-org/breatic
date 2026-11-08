@@ -437,6 +437,31 @@ describe("urlFor: the spelling the conversation recorded (plan §9 A)", () => {
     expect(links.urlFor("https://plain.example/a")).toBe("http://plain.example/a");
   });
 
+  // Plan §13.2 rows 4 and 12: a spelling web_fetch's own input would refuse is
+  // never recorded, so it can never be the spelling a short link maps to.
+  it("does not record a web_search address longer than a page address may be", () => {
+    const links = makePageLinks();
+    links.addToolResult("web_search", searchOutput("q", [`https://a.com/x#${"f".repeat(2100)}`]));
+
+    expect(links.urlFor("https://a.com/x")).toBeUndefined();
+  });
+
+  it("records the next valid spelling of a page whose first spelling was too long", () => {
+    const links = makePageLinks();
+    links.addToolResult("web_search", searchOutput("q", [`https://a.com/x#${"f".repeat(2100)}`, "https://a.com/x"]));
+
+    expect(links.urlFor("https://a.com/x#top")).toBe("https://a.com/x");
+  });
+
+  it("does not record a percent-encoded spelling longer than a page address may be, nor answer its short decoded form", () => {
+    const encoded = `https://a.com/${"%E4%B8%AD".repeat(240)}`;
+    expect(encoded.length).toBeGreaterThan(2048);
+    const links = makePageLinks();
+    links.addToolResult("web_search", searchOutput("q", [encoded]));
+
+    expect(links.urlFor(`https://a.com/${"\u4e2d".repeat(240)}`)).toBeUndefined();
+  });
+
   it("answers nothing for a link the set does not hold", () => {
     const links = makePageLinks();
     links.addUserMessage({ role: "user", content: "Open https://shop.example/item?id=1 now" });

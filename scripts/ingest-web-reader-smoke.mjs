@@ -88,6 +88,19 @@ const PLAIN = `${PLAIN_LINES.join('\n')}\n`;
 // Four Chinese characters in GBK, written out because Node's TextEncoder only writes UTF-8.
 const GBK_TEXT = '\u4e2d\u6587\u6d4b\u8bd5';
 const GBK_BYTES = Buffer.from([0xd6, 0xd0, 0xce, 0xc4, 0xb2, 0xe2, 0xca, 0xd4]);
+// Plan section 13.1: one sample of each kind of body that is not HTML.
+// A 1x1 PNG sent with no content-type at all: the browser still sees an image.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+// UTF-8 Chinese sent as text/plain with no charset, which Chromium decodes as windows-1252.
+const UTF8_TEXT = '\u4e2d\u6587\u7f51\u9875\u7684\u6587\u5b57\n\u7b2c\u4e8c\u884c caf\u00e9\n';
+const FEED_ITEM = 'Harbour lights repaired before the winter storms';
+const RSS = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Harbour news</title>` +
+  `<item><title>${FEED_ITEM}</title><link>https://example.com/lights</link></item></channel></rss>`;
+// Chromium downloads a text/csv response rather than showing it.
+const CSV = 'pier,tide_m\nnorth,2.4\nsouth,1.9\n';
 const JSON_BODY = '{"name":"harbour","tides":[1,2,3],"note":"# not a heading"}';
 const BIG_BYTES = 30 * 1024 * 1024;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -123,6 +136,10 @@ const origin = createServer((req, res) => {
   else if (req.url === '/busy') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(BUSY);
   else if (req.url === '/big.bin') void sendBigDownload(res);
   else if (req.url === '/readme.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(PLAIN);
+  else if (req.url === '/pixel.png') res.writeHead(200, { 'content-length': PNG.length }).end(PNG);
+  else if (req.url === '/utf8.txt') res.writeHead(200, { 'content-type': 'text/plain' }).end(Buffer.from(UTF8_TEXT, 'utf8'));
+  else if (req.url === '/feed.rss') res.writeHead(200, { 'content-type': 'application/rss+xml' }).end(RSS);
+  else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
   else if (req.url === '/binary.pdf') {
     res.writeHead(200, { 'content-type': 'text/plain', 'content-length': BINARY_PDF.length }).end(BINARY_PDF);
@@ -245,10 +262,32 @@ try {
   assert.equal(busy.body.pages[0].status, 'too_slow', `busy page: too_slow, got ${busy.body.pages[0].status}`);
   assert.ok(busy.ms < 6000, `busy page: answered in ${busy.ms} ms`);
 
+  // Plan section 13.1: an image sent with no type is not read; text sent with
+  // no charset keeps its UTF-8; a feed is text; a CSV the browser downloads is
+  // read as the text it holds.
+  const { body: kinds2 } = await read(['/pixel.png', '/utf8.txt', '/feed.rss', '/tides.csv']);
+  const [pixel, utf8, feed, csv] = kinds2.pages;
+  assert.equal(pixel.status, 'unsupported_type', `png with no type: unsupported_type, got ${pixel.status}`);
+  assert.equal(utf8.status, 'ok', `utf-8 text with no charset: read, got ${utf8.status}`);
+  assert.equal(utf8.text, UTF8_TEXT, `utf-8 text with no charset: as sent, got ${JSON.stringify(utf8.text)}`);
+  assert.equal(feed.status, 'ok', `rss feed: read, got ${feed.status}`);
+  assert.ok(feed.text.includes(FEED_ITEM), `rss feed: the item title, got ${JSON.stringify(feed.text)}`);
+  assert.equal(csv.status, 'ok', `csv download: read, got ${csv.status}`);
+  assert.equal(csv.text, CSV, `csv download: the CSV as sent, got ${JSON.stringify(csv.text)}`);
+
+  // Plan section 13.2 row 1: the service's own failure says what went wrong.
+  const broken = await fetch('http://127.0.0.1:8080/read', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+    signal: AbortSignal.timeout(10000),
+  });
+  assert.equal(broken.status, 500, `malformed request: 500, got ${broken.status}`);
+  const brokenBody = await broken.text();
+  assert.ok(brokenBody.trim() !== '', 'malformed request: the 500 carries the error message');
+
   console.log('Web reader smoke passed: article to Markdown, redirect followed, two-page PDF read, 404 unreachable, ' +
     'CSP page, XML page, empty app shell, script-written page, plain text, GBK text, JSON, x-pdf download, ' +
-    'PDF sent as text, oversized download ' +
-    'and busy page.');
+    'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
+    'busy page and the service\'s own 500.');
   process.exit(0);
 } catch (error) {
   console.error(error);

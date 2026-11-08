@@ -38,6 +38,19 @@ describe("statusOfResponse", () => {
     },
   );
 
+  // Plan §13.1: a type outside the media families that ends in +xml or +json
+  // is text, a feed or structured data a page can be read from.
+  it.each(["application/rss+xml", "application/atom+xml", "application/ld+json", "application/rss+xml; charset=utf-8"])(
+    "reads on through a 200 of type %s",
+    (contentType) => {
+      expect(statusOfResponse(200, contentType)).toBeNull();
+    },
+  );
+
+  it("refuses an SVG image as unsupported_type, though its type ends in +xml", () => {
+    expect(statusOfResponse(200, "image/svg+xml")).toBe("unsupported_type");
+  });
+
   it("reads on through a 200 that names no type", () => {
     expect(statusOfResponse(200, null)).toBeNull();
   });

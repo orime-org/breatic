@@ -222,6 +222,23 @@ describe('one page reached by both tools', () => {
     expect(message.sources?.[0]?.title).toBe('First');
   });
 
+  it('orders the rows and each row\'s numbers by number, whatever order the parts came in', () => {
+    const P = 'https://p.example/page';
+    const Q = 'https://q.example/page';
+    const message = toChatMessage(
+      reply([
+        searched('s1', [{ url: Q, title: 'Q', publisher: 'Q', index: 2 }]),
+        fetched('f', [{ url: P, title: 'P', publisher: 'P', index: 3 }]),
+        searched('s2', [{ url: P, title: 'P', publisher: 'P', index: 1 }]),
+      ]),
+    );
+
+    expect(message.sources?.map((s) => [s.url, s.indexes])).toEqual([
+      [P, [1, 3]],
+      [Q, [2]],
+    ]);
+  });
+
   it('keeps two different pages on one site as two rows', () => {
     const message = toChatMessage(
       reply([
@@ -282,6 +299,11 @@ describe('the merged source row, for any mix of searches and reads', () => {
         }
         const firsts = rows.map((r) => r.indexes[0] ?? 0);
         expect(firsts).toEqual([...firsts].sort((a, b) => a - b));
+        for (const row of rows) {
+          expect(row.indexes).toEqual([...row.indexes].sort((a, b) => a - b));
+        }
+        const smallest = rows.map((r) => Math.min(...r.indexes));
+        expect(smallest).toEqual([...smallest].sort((a, b) => a - b));
       }),
     );
   });

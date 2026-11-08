@@ -68,6 +68,21 @@ describe("pageLinkKey: the key two spellings of a page share", () => {
     expect(pageLinkKey("https://example.com/a")).not.toBe(pageLinkKey("https://example.com/b"));
   });
 
+  // Plan §13.2 row 8: page text hands links over with turndown's Markdown
+  // escapes, once or, through a JSON-encoded body, with the backslash doubled.
+  it.each([
+    ["an escaped parenthesis", "https://en.wikipedia.org/wiki/Foo_\\(bar\\)", "https://en.wikipedia.org/wiki/Foo_(bar)"],
+    ["an escaped underscore", "https://example.com/x\\_y", "https://example.com/x_y"],
+    [
+      "an escape whose backslash JSON doubled",
+      "https://en.wikipedia.org/wiki/Foo_\\\\(bar\\\\)",
+      "https://en.wikipedia.org/wiki/Foo_(bar)",
+    ],
+    ["an underscore whose backslash JSON doubled", "https://example.com/x\\\\_y", "https://example.com/x_y"],
+  ])("gives a link with %s the key of the link without it", (_label, escaped, plain) => {
+    expect(pageLinkKey(escaped)).toBe(pageLinkKey(plain));
+  });
+
   it("gives two different hosts two keys", () => {
     expect(pageLinkKey("https://a.example.com/x")).not.toBe(pageLinkKey("https://b.example.com/x"));
   });

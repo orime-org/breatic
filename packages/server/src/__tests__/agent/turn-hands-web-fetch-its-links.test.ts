@@ -145,16 +145,26 @@ const says = (text: string): ModelStreamPart[] => [
 ];
 
 /**
- * The turn's `pageUrlFor`, from the tool context it built its config with.
+ * The turn's `pageUrlFor` as it was handed over, from the tool context it
+ * built its config with.
  * @returns The lookup.
  * @throws {Error} When the turn built no config or handed no lookup.
  */
-function pageUrlFor(): (url: string) => string | undefined {
+function handedLookup(): (url: string) => unknown {
   const context = state.toolContexts.at(-1);
   if (context === undefined) throw new Error("the turn built no agent config");
   const lookup = context.pageUrlFor;
   expect(lookup).toEqual(expect.any(Function));
-  return lookup as (url: string) => string | undefined;
+  return lookup as (url: string) => unknown;
+}
+
+/**
+ * The turn's `pageUrlFor`, awaited.
+ * @returns The lookup.
+ */
+function pageUrlFor(): (url: string) => Promise<string | undefined> {
+  const lookup = handedLookup();
+  return async (url) => (await lookup(url)) as string | undefined;
 }
 
 /**
@@ -162,8 +172,8 @@ function pageUrlFor(): (url: string) => string | undefined {
  * @param url - The link.
  * @returns True when the turn would read it.
  */
-function allowed(url: string): boolean {
-  return pageUrlFor()(url) !== undefined;
+async function allowed(url: string): Promise<boolean> {
+  return (await pageUrlFor()(url)) !== undefined;
 }
 
 /**
@@ -206,10 +216,10 @@ describe("a turn opened by a message", () => {
 
     await chat("Now read https://this-message.example/post please");
 
-    expect(allowed("https://this-message.example/post")).toBe(true);
-    expect(allowed("https://folded.example/old")).toBe(true);
-    expect(allowed("https://recent.example/new")).toBe(true);
-    expect(allowed("https://never-said.example/x")).toBe(false);
+    expect(await allowed("https://this-message.example/post")).toBe(true);
+    expect(await allowed("https://folded.example/old")).toBe(true);
+    expect(await allowed("https://recent.example/new")).toBe(true);
+    expect(await allowed("https://never-said.example/x")).toBe(false);
   });
 
   it("reads the conversation only up to and including the memory watermark, and takes the turns above it from the history (plan §9 C)", async () => {
@@ -220,12 +230,14 @@ describe("a turn opened by a message", () => {
     state.perCall = [says("Sure.")];
 
     await chat("hello");
+    // A link the turn's own context does not hold is what reads the folded turns.
+    await allowed("https://never-said.example/x");
 
     expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
     expect(getMessagesForLlm).not.toHaveBeenCalledWith("c1", 0, 5);
     // Turn 4 is above the watermark: only the history row can have added it.
-    expect(allowed("https://recent.example/new")).toBe(true);
-    expect(allowed("https://folded.example/old")).toBe(true);
+    expect(await allowed("https://recent.example/new")).toBe(true);
+    expect(await allowed("https://folded.example/old")).toBe(true);
   });
 
   it("answers the spelling the conversation recorded first, with https added to a bare host (plan §9 A)", async () => {
@@ -234,9 +246,9 @@ describe("a turn opened by a message", () => {
 
     await chat("and https://Docs.Example.com/guide/ too");
 
-    expect(pageUrlFor()("http://EXAMPLE.org/news/today#secret")).toBe("https://example.org/news/today");
-    expect(pageUrlFor()("https://docs.example.com/guide#x")).toBe("https://Docs.Example.com/guide/");
-    expect(pageUrlFor()("https://never-said.example/x")).toBeUndefined();
+    expect(await pageUrlFor()("http://EXAMPLE.org/news/today#secret")).toBe("https://example.org/news/today");
+    expect(await pageUrlFor()("https://docs.example.com/guide#x")).toBe("https://Docs.Example.com/guide/");
+    expect(await pageUrlFor()("https://never-said.example/x")).toBeUndefined();
   });
 
   it("allows the source of a web_search this turn ran, for a later web_fetch in the same turn, never its query", async () => {
@@ -249,8 +261,55 @@ describe("a turn opened by a message", () => {
 
     // The search ran and the model was asked again with its result.
     expect(state.calls).toBe(2);
-    expect(allowed("https://found.example/brief")).toBe(true);
-    expect(allowed("https://never-found.example/brief")).toBe(false);
+    expect(await allowed("https://found.example/brief")).toBe(true);
+    expect(await allowed("https://never-found.example/brief")).toBe(false);
+  });
+});
+
+// Plan §13.2 row 10: the turns under the memory watermark are read only when
+// web_fetch first meets a link the turn's own context does not hold.
+describe("when the folded turns are read", () => {
+  it("hands the tools a lookup that answers asynchronously", async () => {
+    state.perCall = [says("Sure.")];
+
+    await chat("Now read https://this-message.example/post please");
+
+    expect(handedLookup()("https://this-message.example/post")).toBeInstanceOf(Promise);
+  });
+
+  it("does not read them in a turn that never looks a link up", async () => {
+    state.history = [userRow("Before the fold: https://folded.example/old please", 1)];
+    state.perCall = [says("Sure.")];
+
+    await chat("hello");
+
+    expect(getMessagesForLlm).not.toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
+  });
+
+  it("does not read them for a link the turn's own context holds", async () => {
+    state.history = [
+      userRow("Before the fold: https://folded.example/old please", 1),
+      userRow("After the fold: https://recent.example/new please", 4),
+    ];
+    state.perCall = [says("Sure.")];
+
+    await chat("Now read https://this-message.example/post please");
+
+    expect(await allowed("https://this-message.example/post")).toBe(true);
+    expect(await allowed("https://recent.example/new")).toBe(true);
+    expect(getMessagesForLlm).not.toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
+  });
+
+  it("reads them once, on the first link the turn's own context misses", async () => {
+    state.history = [userRow("Before the fold: https://folded.example/old please", 1)];
+    state.perCall = [says("Sure.")];
+
+    await chat("Now read https://this-message.example/post please");
+
+    expect(await allowed("https://folded.example/old")).toBe(true);
+    expect(await allowed("https://never-said.example/x")).toBe(false);
+    const folded = getMessagesForLlm.mock.calls.filter(([, from, before]) => from === 0 && before === WATERMARK + 1);
+    expect(folded).toHaveLength(1);
   });
 });
 
@@ -304,8 +363,8 @@ describe("a segment resumed by a questionnaire answer", () => {
     await answer(3);
 
     // The paused turn is above the watermark: it reaches the set through the history.
+    expect(await allowed("https://paused-search.example/ideas")).toBe(true);
+    expect(await allowed("https://never-found.example/ideas")).toBe(false);
     expect(getMessagesForLlm).toHaveBeenCalledWith("c1", 0, WATERMARK + 1);
-    expect(allowed("https://paused-search.example/ideas")).toBe(true);
-    expect(allowed("https://never-found.example/ideas")).toBe(false);
   });
 });

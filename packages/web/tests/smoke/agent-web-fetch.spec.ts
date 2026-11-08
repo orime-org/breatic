@@ -19,6 +19,7 @@
  * real-model Agent spec does.
  */
 import { expect, type Page } from 'playwright/test';
+import { pageLinkKey } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
@@ -145,21 +146,6 @@ async function askUntilRead(page: Page, prompt: string): Promise<Turn> {
 }
 
 /**
- * One page however its address is spelled: host without `www.`, path without
- * a trailing slash.
- * @param url - The address.
- * @returns The page's key, or the address itself when it does not parse.
- */
-function pageOf(url: string): string {
-  try {
-    const { hostname, pathname } = new URL(url);
-    return `${hostname.replace(/^www\./, '')}${pathname.replace(/\/+$/, '')}`;
-  } catch {
-    return url;
-  }
-}
-
-/**
  * Whether an address is on this host.
  * @param url - The address.
  * @param host - The host, without `www.`.
@@ -184,7 +170,7 @@ test('a pasted page is read and listed as a source @needs-model @needs-ingest @n
   expect(read.length, JSON.stringify(turn.fetches)).toBeGreaterThan(0);
   expect(read.some((p) => onHost(p.url, 'example.com')), JSON.stringify(turn.fetches)).toBe(true);
   expect(turn.reply).toMatch(/Example Domain|illustrative examples|documentation examples|without (prior )?(coordination|permission)/i);
-  expect(turn.sources.map(pageOf)).toContain(pageOf(PASTED_PAGE));
+  expect(turn.sources.map(pageLinkKey)).toContain(pageLinkKey(PASTED_PAGE));
 });
 
 const PASTED_PDF = 'http://arxiv.org/pdf/1706.03762';
@@ -199,7 +185,7 @@ test('a pasted PDF is read and its title given @needs-model @needs-ingest @needs
     JSON.stringify(turn.fetches),
   ).toBe(true);
   expect(turn.reply).toMatch(/Attention Is All You Need/i);
-  expect(turn.sources.map(pageOf)).toContain(pageOf(PASTED_PDF));
+  expect(turn.sources.map(pageLinkKey)).toContain(pageLinkKey(PASTED_PDF));
 });
 
 const REFUSING = 'https://www.zhihu.com/question/19550225';
@@ -215,12 +201,12 @@ test('a page whose site refuses to be read is not a source, and the user is aske
   // so the stored call is read rather than the line on screen (plan §9 X).
   const refusedAll = turn.fetches.some((part) => part.errorText === 'chat.tool.failure.pageRefused');
   const refusedPage = turn.fetches.some((part) =>
-    (part.output?.pages ?? []).some((p) => p.status === 'refused' && pageOf(p.url) === pageOf(REFUSING)),
+    (part.output?.pages ?? []).some((p) => p.status === 'refused' && pageLinkKey(p.url) === pageLinkKey(REFUSING)),
   );
   expect(refusedAll || refusedPage, JSON.stringify(turn.fetches)).toBe(true);
   // The refused page is not a source. Other pages of the same site may be:
   // the model is free to search after the refusal, and a search can find them.
-  expect(turn.sources.map(pageOf)).not.toContain(pageOf(REFUSING));
+  expect(turn.sources.map(pageLinkKey)).not.toContain(pageLinkKey(REFUSING));
   expect(turn.reply).toMatch(/cop(y|ied)|paste|screenshot|PDF|(the|its|page'?s) text|贴|文字/i);
 });
 
@@ -239,13 +225,13 @@ test('a page found by search is read, and both are sources the reply cites @need
   expect(read.length).toBeGreaterThan(0);
   // The pages the read reached are lines in the box, beside the ones the
   // search found; a page both found and read is one line.
-  const rows = turn.sources.map(pageOf);
-  for (const url of read) expect(rows).toContain(pageOf(url));
+  const rows = turn.sources.map(pageLinkKey);
+  for (const url of read) expect(rows).toContain(pageLinkKey(url));
   expect(new Set(rows).size, JSON.stringify(turn.sources)).toBe(rows.length);
   // Each page read carries its number on the line for that page.
   expect(turn.marks).toHaveLength(rows.length);
   for (const source of readSources) {
-    const line = rows.indexOf(pageOf(source.url));
+    const line = rows.indexOf(pageLinkKey(source.url));
     expect(turn.marks[line], JSON.stringify({ source, sources: turn.sources, marks: turn.marks })).toContain(source.index);
   }
   expect(turn.sources.length).toBeGreaterThan(1);

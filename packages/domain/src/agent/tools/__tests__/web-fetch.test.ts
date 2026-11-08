@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Tool } from "ai";
 import type { z } from "zod";
-import { FAILURE_LINES, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
 import type { ReadPageResult, ReadPagesAnswer, ReadPagesRequest, ToolFailure } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
@@ -196,12 +196,14 @@ function reader(
 }
 
 /**
- * A text of a given length with no links in it.
+ * A text of a given length with no links in it: letters with a space after
+ * each, so every cut has a space on one side and no cut is moved to the end
+ * of a run of non-space characters (plan §13.2 row 9).
  * @param length - How many characters.
  * @returns The text.
  */
 function filler(length: number): string {
-  return Array.from({ length }, (_, i) => String.fromCharCode(97 + (i % 26))).join("");
+  return Array.from({ length }, (_, i) => (i % 2 === 1 ? " " : String.fromCharCode(97 + ((i / 2) % 26)))).join("");
 }
 
 beforeEach(() => {
@@ -294,6 +296,21 @@ describe("the spelling the reader is sent (plan §9 A)", () => {
     expect(readPages).toHaveBeenCalledTimes(1);
     expect(readPages.mock.calls[0]![0].urls).toEqual([STORED]);
     expect(answer.pages[0]).toMatchObject({ url: asked, status: "ok" });
+  });
+
+  // Plan §13.2 row 10: the set is built only when a link first misses it, so
+  // the lookup the turn hands over answers asynchronously.
+  it("is the one an asynchronous lookup answers", async () => {
+    const readPages = reader({ [STORED]: okPage("Body.") });
+    const tools = makeWebTools({
+      mediaUrlAllowed: () => false,
+      pageUrlFor: async (url: string) => (pageLinkKey(url) === pageLinkKey(STORED) ? STORED : undefined),
+    } as never);
+
+    const answer = await fetchWith(tools, { pages: [{ url: "https://evil.com/p#SECRET" }] }, readPages);
+
+    expect(readPages.mock.calls[0]?.[0].urls).toEqual([STORED]);
+    expect(answer.pages[0]).toMatchObject({ status: "ok" });
   });
 
   it("is never the model's spelling, whatever it put in the fragment", async () => {
@@ -485,6 +502,40 @@ describe("a page the reader cut at its byte cap (plan §9 S)", () => {
     const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
 
     expect(next.pages[0]).toMatchObject({ start: 100, truncated: true });
+  });
+});
+
+describe("where a slice is cut (plan §13.2 row 9)", () => {
+  const LINK = "https://example.com/guide/install";
+
+  it("moves a cut that falls inside a link to the link's end", async () => {
+    const before = `${"word ".repeat(18)}see `;
+    const full = `${before}${LINK} and then the rest of the page goes on for a while longer.`;
+    expect(before.length).toBeLessThan(100);
+    expect(before.length + LINK.length).toBeGreaterThan(100);
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+
+    const end = before.length + LINK.length;
+    expect(answer.pages[0]!.text?.endsWith(LINK)).toBe(true);
+    expect(answer.pages[0]).toMatchObject({ start: 0, end, next_start: end });
+    expect(answer.pages[0]!.links).toContain(LINK);
+  });
+
+  it("leaves a cut that has a space on one side where the share puts it", async () => {
+    const full = filler(250);
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+
+    expect(answer.pages[0]).toMatchObject({ start: 0, end: 100, next_start: 100, text: full.slice(0, 100) });
+  });
+
+  it("moves a cut at most READ_PAGE_MAX_URL_CHARS characters on", async () => {
+    const full = `${"x".repeat(5000)} end`;
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+
+    expect(answer.pages[0]).toMatchObject({ start: 0, end: 100 + READ_PAGE_MAX_URL_CHARS });
   });
 });
 
@@ -688,8 +739,8 @@ describe("the links a page carries", () => {
   const X = "https://a.example/one";
   const Y = "https://b.example/two";
   // Exactly one share (100 characters) each, so a slice holds one half.
-  const firstHalf = `Intro ${X} then`.padEnd(100, "-");
-  const secondHalf = `later ${Y} end`.padEnd(100, "-");
+  const firstHalf = `${`Intro ${X} then`.padEnd(99, "-")} `;
+  const secondHalf = `${`later ${Y} end`.padEnd(99, "-")} `;
 
   it("are only the links in the slice handed over, not the rest of the page", async () => {
     const answer = await fetchWith(
@@ -723,6 +774,16 @@ describe("the links a page carries", () => {
     expect(answer.pages[0]!.links).toEqual([X]);
   });
 
+  it("include a link written in the page's title", async () => {
+    const answer = await fetchWith(
+      turn(),
+      { pages: [{ url: A }] },
+      reader({ [A]: okPage("This page has moved.", { title: "Moved to example.org/new-docs" }) }),
+    );
+
+    expect(answer.pages[0]!.links).toContain("example.org/new-docs");
+  });
+
   it("are none on a repeat of a page asked twice at one start", async () => {
     const answer = await fetchWith(turn(), { pages: [{ url: A }, { url: A }] }, reader({ [A]: okPage(`See ${X} now`) }));
 
@@ -732,13 +793,36 @@ describe("the links a page carries", () => {
 });
 
 describe("a call where no page could be read", () => {
+  // Plan §13.2 row 6: a page, not a link the user gave, so two lines of its
+  // own; written as the keys themselves until the table carries them.
   it.each([
-    ["unreachable", 404, FAILURE_LINES.linkUnreachable],
+    ["unreachable", 404, "chat.tool.failure.pageUnreachable"],
+    ["unsupported_type", 200, "chat.tool.failure.pageUnsupportedType"],
+  ] as const)("fails with the page's own %s line when every page ended that way", async (status, httpStatus, userKey) => {
+    const failure = await failureOf(
+      fetchWith(turn(), { pages: [{ url: A }, { url: B }] }, reader({ [A]: { status, httpStatus }, [B]: { status, httpStatus } })),
+    );
+
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey });
+  });
+
+  it("names a page asked three times once among the pages not read", async () => {
+    const failure = await failureOf(
+      fetchWith(
+        turn(),
+        { pages: [{ url: B }, { url: B }, { url: B }] },
+        reader({ [B]: { status: "refused", httpStatus: 403 } }),
+      ),
+    );
+
+    expect(failure.forModel.split(`- ${B}:`).length - 1, failure.forModel).toBe(1);
+  });
+
+  it.each([
     ["needs_login", 401, FAILURE_LINES.pageNeedsLogin],
     ["refused", 403, FAILURE_LINES.pageRefused],
     ["busy", 503, FAILURE_LINES.busy],
     ["too_slow", undefined, FAILURE_LINES.pageTooSlow],
-    ["unsupported_type", 200, FAILURE_LINES.unsupportedType],
     ["too_large", 200, FAILURE_LINES.fileTooLarge],
     ["empty", 200, FAILURE_LINES.pageEmpty],
   ] as const)("fails with the %s line when every page ended that way", async (status, httpStatus, userKey) => {
@@ -810,6 +894,17 @@ describe("a call where no page could be read", () => {
 });
 
 describe("a call where some pages could not be read", () => {
+  it("names a page asked three times once in the Not read part of what the model reads", async () => {
+    const answer = await fetchWith(
+      turn(),
+      { pages: [{ url: A }, { url: B }, { url: B }, { url: B }] },
+      reader({ [A]: okPage("Body."), [B]: { status: "refused", httpStatus: 403 } }),
+    );
+
+    const rendered = renderFetchForModel(answer);
+    expect(rendered.split(`- ${B}:`).length - 1, rendered).toBe(1);
+  });
+
   it("answers normally, each failed page with how it ended", async () => {
     const answer = await fetchWith(
       turn(),
@@ -820,6 +915,43 @@ describe("a call where some pages could not be read", () => {
     expect(answer.pages.map((p) => p.status)).toEqual(["ok", "refused", "too_slow"]);
     expect(answer.pages[1]).toEqual({ url: B, status: "refused", links: [] });
     expect(answer.pages[2]).toEqual({ url: C, status: "too_slow", links: [] });
+  });
+});
+
+// Plan §13.2 row 5: a call that also continues a page the turn already holds
+// still hands that part over when the reader fails; only the pages it had to
+// read end as busy.
+describe("when the reader does not answer and the turn's cache holds part of the call", () => {
+  it.each([
+    ["the Worker answering 502", (): Error => new UploadHttpError(502)],
+    ["the server refusing to read", (): Error => new ReadPagesRefused("rate_limited")],
+  ])("returns the cached page's continuation and marks the page it had to read busy, on %s", async (_label, error) => {
+    const tools = turn();
+    const full = filler(250);
+    const first = await fetchWith(tools, { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
+    const nextStart = first.pages[0]!.next_start;
+    expect(nextStart).toBe(100);
+    const failing = vi.fn<ReadPages>(async () => {
+      throw error();
+    });
+
+    const answer = await fetchWith(tools, { pages: [{ url: A, start: nextStart! }, { url: B }] }, failing);
+
+    expect(failing.mock.calls[0]![0].urls).toEqual([B]);
+    expect(answer.pages[0]).toMatchObject({ url: A, status: "ok", start: 100, text: full.slice(100, 200) });
+    expect(answer.pages[1]).toMatchObject({ url: B, status: "busy" });
+  });
+
+  it("still fails the whole call when every page it asks for needs the reader", async () => {
+    const tools = turn();
+    await fetchWith(tools, { pages: [{ url: A }] }, reader({ [A]: okPage(filler(250)) }));
+    const failing = vi.fn<ReadPages>(async () => {
+      throw new UploadHttpError(502);
+    });
+
+    const failure = await failureOf(fetchWith(tools, { pages: [{ url: B }] }, failing));
+
+    expect(failure).toMatchObject({ kind: "tool_failed", userKey: FAILURE_LINES.unavailable });
   });
 });
 
