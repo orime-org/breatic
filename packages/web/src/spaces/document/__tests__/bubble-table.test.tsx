@@ -84,7 +84,7 @@ describe('the bubble bar over selected cells', () => {
     await waitForBar();
 
     expect(screen.getByTestId('doc-bubble-block-type').getAttribute('aria-disabled')).not.toBe('true');
-    expect((screen.getByTestId('doc-bubble-tool-link') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('turns the blocks of every selected cell into the type picked', async () => {

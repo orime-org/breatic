@@ -1492,9 +1492,13 @@ export function renderProductGuide(): string {
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
-      "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), a speech bubble with a plus (add " +
-      "to Agent), and a sparkle with the word " +
-      `${quoted(t("spaces.document.commands.ai"))} and an arrow. The other buttons show no name on hover. Hovering ` +
+      "icon, the letter A with an arrow (colour), a speech bubble with a plus (add to Agent), a sparkle with the word " +
+      `${quoted(t("spaces.document.commands.ai"))} and an arrow, and alone at the far right a speech-bubble icon ` +
+      "(comment). Hovering a button with no arrow shows its name, greyed or not: " +
+      `${quoted(t("spaces.document.commands.bold"))}, ${quoted(t("spaces.document.commands.italic"))}, ` +
+      `${quoted(t("spaces.document.commands.strike"))}, ${quoted(t("spaces.document.commands.underline"))}, ` +
+      `${quoted(t("spaces.document.commands.link"))}, ${quoted(t("spaces.document.commands.code"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("spaces.document.commands.comment"))}. Hovering ` +
       "the block type, alignment, colour or AI button opens its menu. The block type menu lists " +
       `${quoted(t("spaces.document.commands.paragraph"))}, ${quoted(t("spaces.document.commands.heading1"))}, ` +
       `${quoted(t("spaces.document.commands.heading2"))}, ${quoted(t("spaces.document.commands.heading3"))}, ` +
@@ -1622,7 +1626,8 @@ export function renderProductGuide(): string {
       "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
       "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
-      `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
+      `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. Clicking a picture or video ` +
+      "also shows a small square at each " +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
       "hover it to open a floating panel, or Tab to the video and press Enter. The icons, full " +
@@ -1684,9 +1689,9 @@ export function renderProductGuide(): string {
       "across cells selects them. With words selected inside a cell, or with cells selected, the text bar's block " +
       "type button changes the blocks in that cell or in every selected cell, and its colour menu has the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
-      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble with a plus that merges them into one, the blocks of every cell that held something one after " +
-      "another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
+      `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon ` +
+      `after the colour menu, named ${quoted(t("spaces.document.table.mergeCells"))} on hover, that merges them ` +
+      "into one, the blocks of every cell that held something one after another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
       "removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +

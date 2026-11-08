@@ -271,7 +271,7 @@ function cells(editor: HarnessEditor): number[] {
 }
 
 describe('the AI group over table cells', () => {
-  it('is not there, nor its separator, while cells are selected', async () => {
+  it('leaves while cells are selected; add to Agent keeps its group and Comment its own', async () => {
     const editor = openTable();
     const view = editor.prosemirrorView!;
     const at = cells(editor);
@@ -281,7 +281,11 @@ describe('the AI group over table cells', () => {
     await waitForBar();
 
     expect(screen.queryByTestId('doc-bubble-ai')).toBeNull();
-    expect(screen.queryByTestId('doc-bubble-sep-ai')).toBeNull();
+    const ids = [...document.querySelectorAll('[data-testid^="doc-bubble-"]')]
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => id === 'doc-bubble-sep-ai' || id === 'doc-bubble-tool-addToAgent'
+        || id === 'doc-bubble-sep-comment' || id === 'doc-bubble-tool-comment');
+    expect(ids).toEqual(['doc-bubble-sep-ai', 'doc-bubble-tool-addToAgent', 'doc-bubble-sep-comment', 'doc-bubble-tool-comment']);
   });
 
   it('is there over words selected inside one cell', async () => {

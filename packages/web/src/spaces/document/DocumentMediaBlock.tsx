@@ -234,7 +234,8 @@ function ToolButton({
           {children}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      {/* The toolbar hangs in the body's scroller, which would cut it off. */}
+      <TooltipContent portal>{label}</TooltipContent>
     </Tooltip>
   );
 }
