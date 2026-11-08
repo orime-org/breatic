@@ -7,7 +7,7 @@
  * tracking is billed, what it used.
  */
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
 import { canonicalMiniToolValue, planVideoFrames, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
@@ -36,8 +36,7 @@ export interface TrackingCostFacts {
  * @throws {never} Never.
  */
 export function useTrackingCost(facts: TrackingCostFacts): { estimate?: string; actual?: string } {
-  const { projectId, spaceId, nodeId, draft, frameTable, presentationRef, tracking } = facts;
-  const time = useDebounce(facts.presentedTime, facts.debounceMs);
+  const { projectId, spaceId, nodeId, draft, frameTable, presentationRef, tracking, presentedTime: time } = facts;
   const [runId] = React.useState(newId);
   const body = React.useMemo((): MiniToolAnalysisRequest | null => {
     if (draft === null || frameTable === null || presentationRef === undefined || time === null) return null;
@@ -48,9 +47,12 @@ export function useTrackingCost(facts: TrackingCostFacts): { estimate?: string; 
     return { analysisRunId: runId, projectId, spaceId, hostNodeId: nodeId, draftId: draft.draftId, revision: draft.revision, source: draft.source, presentationRef,
       kind: 'tracked_mask', params: { range, anchor: { frameIndex: frame.frameIndex, pts: frame.pts }, region, trackingPrompt } };
   }, [draft, frameTable, presentationRef, time, runId, projectId, spaceId, nodeId]);
-  // The run id is new per panel; the quote follows everything else the request says.
-  const key = body === null ? null : canonicalMiniToolValue({ ...body, analysisRunId: null });
-  const quote = useQuery({ queryKey: ['mini-tool-analysis-quote', key], queryFn: () => miniToolAnalysesApi.quote(body!), enabled: body !== null && tracking === undefined, retry: false });
+  // The run id is new per panel; the quote follows everything else the request says, once it has held still (the route is
+  // rate limited), and the last estimate stays on screen meanwhile.
+  const pending = React.useMemo(() => body === null ? null : { key: canonicalMiniToolValue({ ...body, analysisRunId: null }), body }, [body]);
+  const settled = useDebounce(pending, facts.debounceMs);
+  const quote = useQuery({ queryKey: ['mini-tool-analysis-quote', settled?.key ?? null], queryFn: () => miniToolAnalysesApi.quote(settled!.body),
+    enabled: settled !== null && tracking === undefined, placeholderData: keepPreviousData, retry: false });
   const used = tracking?.usage.flatMap((entry) => typeof entry.credits === 'number' ? [entry.credits] : []) ?? [];
   return {
     // A tracked selection shows no estimate; its use appears once its charge commits.

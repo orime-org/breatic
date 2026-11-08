@@ -354,7 +354,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     const byInput = current.inputs.map((input) => [input.inputId, inputRefs.get(input.inputId)] as const);
     return byInput.some(([, ref]) => ref === undefined) ? null : { projectId, spaceId, presentationRef: Object.fromEntries(byInput), analysisRefs: refs } as PlannedVideoFacts;
   }, [current, toolId, presentation?.presentationRef, frameTable, inputRefs, projectId, spaceId, refs, tracking]);
-  const quote = usePlannedVideoQuote(toolId, current, quoteFacts);
+  const quote = usePlannedVideoQuote(toolId, current, quoteFacts, models.quoteDebounceMs);
   const trackingCost = useTrackingCost({ projectId, spaceId, nodeId, draft: toolId === 'video.erase' ? current as VideoToolDraftById['video.erase'] | null : null,
     frameTable: presentation?.frameTable ?? null, presentationRef: presentation?.presentationRef, presentedTime: presentedTimeOf(presentation), tracking, debounceMs: models.quoteDebounceMs });
   const counts = 'taskCounts' in node.data ? node.data.taskCounts : undefined;

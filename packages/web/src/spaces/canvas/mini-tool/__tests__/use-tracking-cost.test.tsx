@@ -7,7 +7,7 @@
  */
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { MiniToolAnalysisRecord, VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
@@ -34,5 +34,35 @@ describe('useTrackingCost', () => {
     expect(view.result.current).toEqual({});
     view.rerender({ ...facts, tracking: tracked([{ credits: 6.25 }]) });
     expect(view.result.current).toEqual({ actual: formatCreditAmount(6.25) });
+  });
+
+  // The analysis quote route is rate limited: a prompt typed key by key is quoted once it holds still, the last price shown meanwhile.
+  it('quotes the last tracking prompt once it holds still, and keeps the last estimate while the next settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const quote = vi.spyOn(miniToolAnalysesApi, 'quote').mockResolvedValueOnce({ credits: 3 }).mockResolvedValueOnce({ credits: 5 });
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+      const typed = (trackingPrompt: string): TrackingCostFacts => ({ ...facts, debounceMs: 300, draft: { ...draft, params: { ...draft.params, trackingPrompt } } });
+      const view = renderHook((props: TrackingCostFacts) => useTrackingCost(props), { wrapper, initialProps: typed('c') });
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      expect(quote).toHaveBeenCalledTimes(1);
+      expect(view.result.current).toEqual({ estimate: formatCreditAmount(3) });
+      for (const prompt of ['ca', 'car']) {
+        view.rerender(typed(prompt));
+        await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+      }
+      expect(quote).toHaveBeenCalledTimes(1);
+      expect(view.result.current).toEqual({ estimate: formatCreditAmount(3) });
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      expect(quote).toHaveBeenCalledTimes(2);
+      // The answer reaches the hook on React Query's next notify tick.
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(quote.mock.calls[1]![0]).toMatchObject({ kind: 'tracked_mask', params: { trackingPrompt: 'car' } });
+      expect(view.result.current).toEqual({ estimate: formatCreditAmount(5) });
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
   });
 });

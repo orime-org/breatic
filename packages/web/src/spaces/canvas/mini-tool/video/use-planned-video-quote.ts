@@ -7,11 +7,12 @@
  * one per planned output (a split names one per segment), so the Run can name the same ones.
  */
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
 import { canonicalMiniToolValue, type MiniToolPlannedRequest, type VideoToolDraft, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { useDebounce } from '@web/lib/use-debounce';
 import { buildPlannedVideoRequest, plannedVideoRecipes, type PlannedVideoFacts } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 
 /**
@@ -19,10 +20,11 @@ import { buildPlannedVideoRequest, plannedVideoRecipes, type PlannedVideoFacts }
  * @param tool - The tool.
  * @param draft - The current draft, or null.
  * @param facts - The panel's request facts, or null while the selected input is not known.
+ * @param debounceMs - How long the request holds still before it is quoted (config `quote_debounce_ms`).
  * @returns The quoted credits as footer text, and the output node ids the quote named; no text while it has not answered.
  * @throws {never} Never.
  */
-export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | null, facts: PlannedVideoFacts | null): { text?: string; outputNodeIds: readonly string[] } {
+export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | null, facts: PlannedVideoFacts | null, debounceMs: number): { text?: string; outputNodeIds: readonly string[] } {
   const count = React.useMemo((): number => {
     if (draft === null || facts === null) return 1;
     try {
@@ -46,12 +48,15 @@ export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | 
       return null;
     }
   }, [tool, draft, facts, outputNodeIds]);
-  // The run id is new per build; the quote follows everything else the request says.
-  const key = body === null ? null : canonicalMiniToolValue({ ...body, run_id: null });
+  // The run id is new per build; the quote follows everything else the request says, once it has held still (the route is
+  // rate limited), and the last price stays on screen meanwhile.
+  const pending = React.useMemo(() => body === null ? null : { key: canonicalMiniToolValue({ ...body, run_id: null }), body }, [body]);
+  const settled = useDebounce(pending, debounceMs);
   const quote = useQuery({
-    queryKey: ['mini-tool-quote', key],
-    queryFn: () => miniToolsApi.quotePlannedVideoRun(body!),
-    enabled: body !== null,
+    queryKey: ['mini-tool-quote', settled?.key ?? null],
+    queryFn: () => miniToolsApi.quotePlannedVideoRun(settled!.body),
+    enabled: settled !== null,
+    placeholderData: keepPreviousData,
     retry: false,
   });
   return { ...(quote.data === undefined || body === null ? {} : { text: formatCreditAmount(quote.data.credits) }), outputNodeIds };
