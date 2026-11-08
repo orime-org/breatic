@@ -147,7 +147,7 @@ loads none of these modules into its own process.
 | Component | Licence | Source |
 |---|---|---|
 | headless-gl (`gl`) 8.1.6, with its bundled ANGLE | BSD-2-Clause; ANGLE BSD-3-Clause | https://github.com/stackgl/headless-gl/tree/v8.1.6 |
-| `gl-transition` 2.1.0 | MIT | https://github.com/gl-transitions/gl-transition |
+| `gl-transition` 2.1.0 | MIT | https://github.com/gre/gl-transition-libs |
 | `gl-transitions` 1.76.1 (the shaders; the same versions `packages/web/package.json` pins) | MIT | https://github.com/gl-transitions/gl-transitions |
 | Mesa 25.2 (`mesa-gl`, `mesa-dri-gallium`, the llvmpipe software renderer) | MIT AND SGI-B-2.0 AND BSL-1.0 | Alpine 3.23 `main/mesa` |
 | LLVM 21 libraries, pulled in by llvmpipe | Apache-2.0 (Alpine's package metadata) | Alpine 3.23 `main/llvm21` |
