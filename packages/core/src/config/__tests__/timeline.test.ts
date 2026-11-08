@@ -40,11 +40,11 @@ describe("web_animation.duration_seconds", () => {
 });
 
 describe("web_animation.font_set_version", () => {
-  it("defaults to 2, the set that carries Noto Sans KR", () => {
-    expect(timelineConfigSchema.parse({}).web_animation.font_set_version).toBe(2);
+  it("defaults to 3, the set that carries Noto Sans JP and Noto Sans TC", () => {
+    expect(timelineConfigSchema.parse({}).web_animation.font_set_version).toBe(3);
   });
 
-  it("reads 2 from the tracked yaml, so new packages name the set with Korean glyphs", () => {
-    expect(getTimelineConfig().web_animation.font_set_version).toBe(2);
+  it("reads 3 from the tracked yaml, so new packages name the set with Japanese and Traditional Chinese glyphs", () => {
+    expect(getTimelineConfig().web_animation.font_set_version).toBe(3);
   });
 });

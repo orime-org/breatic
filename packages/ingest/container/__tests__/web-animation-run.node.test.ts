@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runWebAnimation, type WebAnimationRunnerSettings } from "../web-animation-run.js";
+import { CHROMIUM_ARGS, runWebAnimation, type WebAnimationRunnerSettings } from "../web-animation-run.js";
 
 /** How long the run may take to report before the test calls it hung; well past anything the run does on its own. */
 const REPORT_WITHIN_MS = 5_000;
@@ -214,5 +214,11 @@ describe("Chromium going away during the package check", () => {
     const settings = await image(await serveFakeCdp("page_crashes"));
     expect(await runAndReport(settings)).toEqual({ ok: false, failureReason: "validation_failed", cpuUsec: expect.toSatisfy((v: unknown) => v === null || typeof v === "number") });
     expect(posts.map((post) => post.url)).not.toContain("http://r2.local/index.html");
+  });
+});
+
+describe("CHROMIUM_ARGS", () => {
+  it("launches headless without the sandbox and keeps shared memory off the container's small /dev/shm", () => {
+    expect(CHROMIUM_ARGS).toEqual(expect.arrayContaining(["--headless=new", "--no-sandbox", "--disable-dev-shm-usage"]));
   });
 });

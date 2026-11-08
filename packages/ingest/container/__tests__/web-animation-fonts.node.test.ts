@@ -63,4 +63,18 @@ describe("the laid-out font set", () => {
     );
     expect(missing).toEqual([]);
   });
+
+  it.each(["進捗管理 元気溌剌 蝋燭 鰯", "日本語の製品紹介動画"])("covers every Japanese character of %s", (text) => {
+    const missing = [...text.replace(/\s/g, "")].filter(
+      (char) => !faces.some((face) => rangeCovers(face.unicodeRange, char.codePointAt(0)!)),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it.each(["女媧 老嫗 慍怒 憤懣 臺灣", "產品介紹影片"])("covers every Traditional Chinese character of %s", (text) => {
+    const missing = [...text.replace(/\s/g, "")].filter(
+      (char) => !faces.some((face) => rangeCovers(face.unicodeRange, char.codePointAt(0)!)),
+    );
+    expect(missing).toEqual([]);
+  });
 });

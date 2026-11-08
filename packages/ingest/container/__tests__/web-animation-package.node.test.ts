@@ -53,8 +53,8 @@ describe("buildWebAnimationManifest", () => {
 });
 
 describe("the font set", () => {
-  it("allows exactly the design's three families and Noto Sans KR for Korean text", () => {
-    expect([...WEB_ANIMATION_FONT_FAMILIES]).toEqual(["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR"]);
+  it("allows exactly the design's three families and Noto Sans KR, JP and TC for Korean, Japanese and Traditional Chinese text", () => {
+    expect([...WEB_ANIMATION_FONT_FAMILIES]).toEqual(["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR", "Noto Sans JP", "Noto Sans TC"]);
   });
 
   it("declares only @font-face rules whose files resolve beside the package under the version's directory", () => {
@@ -171,6 +171,11 @@ describe("judgeWebAnimationCheck", () => {
 
   it("passes Korean text drawn in Noto Sans KR from the font set", () => {
     expect(judgeWebAnimationCheck({ ...passing, textFonts: [{ family: "Noto Sans KR", isCustomFont: true }] }, expected)).toBeNull();
+  });
+
+  it("passes Japanese text drawn in Noto Sans JP and Traditional Chinese text drawn in Noto Sans TC from the font set", () => {
+    expect(judgeWebAnimationCheck({ ...passing, textFonts: [{ family: "Noto Sans JP", isCustomFont: true }] }, expected)).toBeNull();
+    expect(judgeWebAnimationCheck({ ...passing, textFonts: [{ family: "Noto Sans TC", isCustomFont: true }] }, expected)).toBeNull();
   });
 
   it("accepts a package of exactly the size limit and a page with no text", () => {
