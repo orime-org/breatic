@@ -57,6 +57,7 @@ import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/timeline/web-animation-creation-draft';
 import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
+import { EMPTY_WEB_INSTANCE_POOL, allocateWebInstances } from '@web/spaces/timeline/web-instance-pool';
 
 /** The existing content document and its supported native projection. */
 interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
@@ -171,6 +172,7 @@ function TimelineSwitch({ testId, label, shortcut, pressed, icon, onToggle }: Ti
 }
 const PANEL = 'flex flex-col gap-2 rounded-chrome border border-border p-3 text-xs';
 const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /**
  * A configured aspect as the creation input names it.
@@ -277,20 +279,44 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return { bySource, byId };
   }, [rows]);
   const webClips = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'web-animation' ? [[clip.id, webClipView(clip, web, rowsBy)] as const] : [])), [clips, web, rowsBy]);
+  // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
+  // loaded pages no copy uses. It is allocated again whenever the frame, the document or the resolution changes, and
+  // without the Timeline limits it premounts and keeps nothing.
+  const sourceOf = React.useCallback((clip: TimelineWebAnimationClip): string | null => {
+    const sourceId = timelineWebSourceOf(web, clip);
+    return sourceId !== null && web.sources[sourceId] !== undefined ? sourceId : null;
+  }, [web]);
+  const premountMs = webLimits?.premountMs;
+  const premountFrames = premountMs === undefined ? 0 : Math.round(premountMs * document.settings.fps.num / document.settings.fps.den / 1000);
+  const idleInstancesMax = webLimits?.idleInstancesMax ?? 0;
+  // The instances the playback failed, as of its last report; a failed one is unloaded once its copy leaves.
+  const [failedKeys, setFailedKeys] = React.useState<ReadonlySet<string>>(NO_KEYS);
+  const [heldPool, setHeldPool] = React.useState(EMPTY_WEB_INSTANCE_POOL);
+  const pool = React.useMemo(() => allocateWebInstances(heldPool, { document, readyClipIds: readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys }),
+    [heldPool, document, readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys]);
+  // Allocation is idempotent, so holding its result settles in one extra render.
+  if (pool !== heldPool) setHeldPool(pool);
   const webEntries = React.useMemo(() => {
-    const ordinals = new Map<string, number>();
-    return visible.flatMap((clip, index): TimelineWebEntry[] => {
+    const assigned = new Map(pool.assignments.flatMap((assignment) => assignment.clipId === null ? [] : [[assignment.clipId, assignment] as const]));
+    const shown = visible.flatMap((clip, index): TimelineWebEntry[] => {
       if (clip.kind !== 'web-animation') return [];
-      const sourceId = timelineWebSourceOf(web, clip);
-      const resolved = sourceId === null ? undefined : web.sources[sourceId];
+      const assignment = assigned.get(clip.id);
+      const resolved = assignment === undefined ? undefined : web.sources[assignment.sourceVersionId];
       const track = labels.nameOf(clip.trackId) ?? clip.trackId;
       const status = clip.contentBinding.operationId === null ? null : web.executions[clip.contentBinding.operationId]?.status ?? null;
-      if (sourceId === null || resolved === undefined) return [{ clip, track, z: index + 1, instance: null, status }];
-      const ordinal = ordinals.get(sourceId) ?? 0;
-      ordinals.set(sourceId, ordinal + 1);
-      return [{ clip, track, z: index + 1, instance: { key: `${sourceId}:${ordinal}`, sourceVersionId: sourceId, fps: resolved.fps }, status }];
+      if (assignment === undefined || resolved === undefined) return [{ clip, track, z: index + 1, instance: null, status }];
+      return [{ clip, track, z: index + 1, instance: { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: 'visible' }, status }];
     });
-  }, [visible, web, labels]);
+    // Premounted and idle instances stay mounted, hidden; an idle one keeps the copy it last showed.
+    const hidden = pool.assignments.flatMap((assignment): TimelineWebEntry[] => {
+      const clip = pool.lastClips[assignment.key];
+      const resolved = web.sources[assignment.sourceVersionId];
+      if (assignment.role === 'visible' || clip === undefined || resolved === undefined) return [];
+      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, instance: { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: assignment.role }, status: null }];
+    });
+    return [...shown, ...hidden];
+  }, [visible, web, labels, pool]);
+  const targetFrames = React.useMemo(() => new Map(pool.assignments.map((assignment) => [assignment.key, assignment.targetFrame])), [pool]);
   const [players, setPlayers] = React.useState<ReadonlyMap<string, WebAnimationPlayerElement>>(() => new Map());
   const registerPlayer = React.useCallback((key: string, player: WebAnimationPlayerElement | null): void => setPlayers((current) => {
     if ((current.get(key) ?? null) === player) return current;
@@ -308,9 +334,14 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     else next.delete(key);
     return next;
   }), []);
-  const layerSpecs = webEntries.flatMap((entry) => entry.instance === null ? [] : [{ key: entry.instance.key, clip: entry.clip, fps: entry.instance.fps }]);
-  // A visible copy whose player has not registered yet holds play like a loading instance (inner#1711 design §7.2).
-  const webPending = layerSpecs.some((spec) => !players.has(spec.key) && !unregistrable.has(spec.key));
+  const layerSpecs = webEntries.flatMap((entry) => {
+    if (entry.instance === null) return [];
+    const targetFrame = targetFrames.get(entry.instance.key) ?? null;
+    return [{ key: entry.instance.key, clip: entry.clip, fps: entry.instance.fps, role: entry.instance.role ?? 'visible', ...(targetFrame === null ? {} : { targetFrame }) }];
+  });
+  // A visible copy whose player has not registered yet holds play like a loading instance (inner#1711 design §7.2);
+  // premounted and idle instances never hold it.
+  const webPending = layerSpecs.some((spec) => spec.role === 'visible' && !players.has(spec.key) && !unregistrable.has(spec.key));
   const layerSignature = JSON.stringify(layerSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the instances.
   const webLayers = React.useMemo((): TimelineWebLayer[] => layerSpecs.flatMap((spec) => {
@@ -326,6 +357,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     webLayers, webPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
   });
   const { seek, retry: retryPlayback, retryWeb } = playback;
+  const failedSignature = [...playback.webStates].flatMap(([key, state]) => state === 'failed' ? [key] : []).sort().join(' ');
+  React.useEffect(() => {
+    setFailedKeys(failedSignature === '' ? NO_KEYS : new Set(failedSignature.split(' ')));
+  }, [failedSignature]);
+  const previewTokenTtlMs = webLimits?.previewTokenTtlMs;
+  const playerLoadTimeoutMs = webLimits?.playerLoadTimeoutMs;
+  // Before the Timeline limits arrive every player asks for its own address.
+  const sharing = React.useMemo(() => previewTokenTtlMs === undefined || playerLoadTimeoutMs === undefined ? undefined : { previewTokenTtlMs, playerLoadTimeoutMs },
+    [previewTokenTtlMs, playerLoadTimeoutMs]);
   const { refetch: refetchResource } = resource;
   const duration = Math.max(0, ...clips.map((clip) => clip.startFrame + clip.durationFrames));
   const fps = document.settings.fps;
@@ -638,7 +678,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
             <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
           )}
-          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} />
+          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} />
           {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
           {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
           {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}
