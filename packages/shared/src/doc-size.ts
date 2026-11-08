@@ -17,11 +17,13 @@ const bytes = z.number().int().nonnegative();
 
 /**
  * The size of one Space document as collab counts it, pushed over the
- * document's stateless channel. `limit` 0 means the deployment sets no
- * limit; `bytes ≥ ceiling` means the document is past its hard ceiling.
+ * document's stateless channel. `seq` numbers the document's pushes on one
+ * collab instance; `limit` 0 means the deployment sets no limit; `bytes ≥
+ * ceiling` means the document is past its hard ceiling.
  */
 export const DocSizeStatusSchema = z.object({
   type: z.literal("doc:size"),
+  seq: bytes,
   bytes,
   limit: bytes,
   ceiling: bytes,
@@ -30,6 +32,24 @@ export const DocSizeStatusSchema = z.object({
 
 /** One parsed `doc:size` push. */
 export type DocSizeStatus = z.infer<typeof DocSizeStatusSchema>;
+
+/**
+ * The client's acknowledgement of a `doc:size` push, sent as soon as it is
+ * handled: collab judges the client's later messages by the phase it names.
+ */
+export const DocSizeSeenSchema = z.object({
+  type: z.literal("doc:size-seen"),
+  seq: bytes,
+});
+
+/** One parsed `doc:size-seen` acknowledgement. */
+export type DocSizeSeen = z.infer<typeof DocSizeSeenSchema>;
+
+/**
+ * The WebSocket parameter (value `1`) a client sets when it acknowledges
+ * `doc:size` pushes and handles the size-limit close.
+ */
+export const DOC_SIZE_ACK_PARAM = "size_ack";
 
 /** What an update holds, read against a document's struct store. */
 export interface UpdateShape {
@@ -45,6 +65,8 @@ export interface UpdateShape {
    * when the deletes cover no live item.
    */
   wholeTypesOnly: boolean;
+  /** The deletes cover at least one live item. */
+  coversLive: boolean;
 }
 
 /** One delete range. */
@@ -97,6 +119,7 @@ export function updateShape(update: Uint8Array, store: Y.Doc["store"]): UpdateSh
   let splitEndpoints = 0;
   let beyondClockRanges = 0;
   let wholeTypesOnly = true;
+  let coversLive = false;
 
   const mergedByClient = new Map<number, Range[]>();
   ds.clients.forEach((ranges, client) => {
@@ -125,6 +148,37 @@ export function updateShape(update: Uint8Array, store: Y.Doc["store"]): UpdateSh
     return false;
   };
 
+  // Per type: whether its own item or an ancestor's is deleted whole. Each
+  // type is judged once, so deep nesting costs no more than flat content.
+  const underDeleted = new Map<Y.AbstractType<unknown>, boolean>();
+
+  /**
+   * Whether this update deletes a type's item, or an ancestor type's, whole.
+   * @param parent - An item's parent.
+   * @returns True when the item sits under a type deleted whole.
+   */
+  const underDeletedType = (parent: Y.Item["parent"]): boolean => {
+    const path: Y.AbstractType<unknown>[] = [];
+    let verdict = false;
+    for (let type = parent; type instanceof Y.AbstractType; ) {
+      const known = underDeleted.get(type);
+      if (known !== undefined) {
+        verdict = known;
+        break;
+      }
+      path.push(type);
+      const item = type._item;
+      if (item === null) break;
+      if (deletedWhole(item)) {
+        verdict = true;
+        break;
+      }
+      type = item.parent;
+    }
+    for (const type of path) underDeleted.set(type, verdict);
+    return verdict;
+  };
+
   mergedByClient.forEach((ranges, client) => {
     const structs = store.clients.get(client) ?? [];
     const state = Y.getState(store, client);
@@ -138,25 +192,14 @@ export function updateShape(update: Uint8Array, store: Y.Doc["store"]): UpdateSh
         const struct = structs[i];
         if (struct === undefined || struct.id.clock >= end) break;
         if (struct.deleted || !(struct instanceof Y.Item)) continue;
+        coversLive = true;
         if (end < struct.id.clock + struct.length) splitEndpoints += 1;
         const whole = struct.id.clock >= range.clock && struct.id.clock + struct.length <= end;
-        let removable = whole && (struct.content instanceof Y.ContentType || struct.parentSub !== null);
-        for (let parent = typeItemOf(struct.parent); parent !== null && !removable; parent = typeItemOf(parent.parent)) {
-          if (deletedWhole(parent)) removable = true;
-        }
+        const removable = (whole && (struct.content instanceof Y.ContentType || struct.parentSub !== null)) || underDeletedType(struct.parent);
         if (!removable) wholeTypesOnly = false;
       }
     }
   });
 
-  return { pureDelete: startsWithZero(update), splitEndpoints, beyondClockRanges, wholeTypesOnly };
-}
-
-/**
- * The item a parent type is stored in, or null for a root type.
- * @param parent - An item's parent.
- * @returns The type's own item.
- */
-function typeItemOf(parent: Y.Item["parent"]): Y.Item | null {
-  return parent instanceof Y.AbstractType ? parent._item : null;
+  return { pureDelete: startsWithZero(update), splitEndpoints, beyondClockRanges, wholeTypesOnly, coversLive };
 }

@@ -61,6 +61,7 @@ import {
   parseDocName,
   SpaceRpcRequestSchema,
   SyncConfirmRequestSchema,
+  DocSizeSeenSchema,
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
@@ -90,8 +91,10 @@ import { createChangeTrackingExtension } from "@collab/services/change-tracking.
 import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
 import {
+  acknowledge,
   addApplied,
   forget as forgetDocSize,
+  forgetGoneConnections,
   openDocSizeRecord,
   pushDocSize,
   readDocSizeRecord,
@@ -656,6 +659,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // connection the framework has already torn down, and from holding its
       // document in memory until the browser tab itself closes.
       liveConnections.forget(socketId, documentName);
+      forgetGoneConnections(documentName);
       if (shouldTrackConnection(documentName)) {
         await connectionRegistry.unregister(documentName, socketId);
       }
@@ -718,6 +722,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         return;
       }
 
+      if (parsed.kind !== "meta") {
+        const seen = DocSizeSeenSchema.safeParse(json);
+        if (seen.success) {
+          acknowledge(documentName, connection, seen.data.seq);
+          return;
+        }
+      }
       if (parsed.kind === "canvas" || parsed.kind === "document") {
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;

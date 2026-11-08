@@ -22,12 +22,12 @@ import type { beforeSyncPayload, Connection, Document } from "@hocuspocus/server
 import { messageYjsSyncStep1 } from "y-protocols/sync";
 import * as Y from "yjs";
 import { createLogger } from "@breatic/core";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@breatic/shared";
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@breatic/shared";
 import { getCollabConfig } from "@collab/config.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
 import { userIdOf } from "@collab/hooks/presence-wiring.js";
 import { isRefused, markRefused } from "@collab/infra/inbound-filter.js";
-import { admit, readDocSizeRecord, release, scheduleMeasure } from "@collab/services/document-size.js";
+import { admit, knowsFull, readDocSizeRecord, release, scheduleMeasure } from "@collab/services/document-size.js";
 
 const logger = createLogger("document-size-gate");
 
@@ -79,7 +79,30 @@ function logRefusal(
  * @returns Bytes.
  */
 function costOf(update: Uint8Array, shape: UpdateShape): number {
-  return update.byteLength + DOC_SIZE_EVENT_BYTES * (shape.splitEndpoints + shape.beyondClockRanges);
+  const events = shape.splitEndpoints + shape.beyondClockRanges;
+  // A delete set covering only deleted content, such as a member's handshake
+  // SyncStep2, leaves the document as it was.
+  if (shape.pureDelete && !shape.coversLive && events === 0) return 0;
+  return update.byteLength + DOC_SIZE_EVENT_BYTES * events;
+}
+
+/**
+ * Whether a connection comes from a page that does not handle the
+ * size-limit close: it opened its WebSocket without `size_ack=1`.
+ * @param connection - The connection.
+ * @returns True for such a page.
+ */
+function isOldPage(connection: Connection): boolean {
+  return new URL(connection.request.url, "http://collab").searchParams.get(DOC_SIZE_ACK_PARAM) !== "1";
+}
+
+/**
+ * Close an old page's whole WebSocket after its document connection was
+ * closed with the size-limit reason, so its provider reconnects.
+ * @param connection - The refused connection.
+ */
+function closeOldPageSocket(connection: Connection): void {
+  if (isOldPage(connection)) connection.webSocket.close();
 }
 
 /**
@@ -97,7 +120,15 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
      * @throws {Error} Always, carrying the size-limit close reason.
      */
     const refuse = (step: RefusalStep): never => {
-      if (document.hasConnection(connection)) markRefused(connection.socketId, documentName);
+      if (document.hasConnection(connection)) {
+        markRefused(connection.socketId, documentName);
+        // Hocuspocus closes with the reason after the throw; the socket can
+        // close only once the reason is out.
+        if (isOldPage(connection)) {
+          connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
+          closeOldPageSocket(connection);
+        }
+      }
       logRefusal(documentName, userId, step);
       throw Object.assign(new Error("document size limit reached"), { reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
     };
@@ -115,8 +146,11 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     }
     const cfg = getCollabConfig();
     const { limit, ceiling } = limitAndCeiling();
-    if (record.current >= limit && shape.splitEndpoints > cfg.document_size_max_delete_splits) refuse("splits");
-    if (record.current >= limit && record.current < ceiling && !shape.pureDelete) refuse("full");
+    // A message is judged by the phase its connection had acknowledged when
+    // it sent it; the hard ceiling holds whatever the connection had seen.
+    const bound = record.current >= ceiling || (record.current >= limit && knowsFull(documentName, connection));
+    if (bound && shape.splitEndpoints > cfg.document_size_max_delete_splits) refuse("splits");
+    if (bound && record.current < ceiling && !shape.pureDelete) refuse("full");
     if (record.current >= ceiling && !(shape.pureDelete && shape.beyondClockRanges === 0 && shape.wholeTypesOnly)) {
       refuse("over_ceiling");
     }
@@ -219,6 +253,7 @@ export function watchDocumentSize(document: Document): void {
         if (document.hasConnection(connection)) {
           markRefused(connection.socketId, name);
           connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
+          closeOldPageSocket(connection);
         }
         logRefusal(name, (connection.context as AuthContext | undefined)?.user?.id, "pending", { pendingBefore, pendingAfter });
       }

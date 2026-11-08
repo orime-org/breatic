@@ -11,7 +11,8 @@
  * after transactions, at most once per measure interval, and correct the
  * current size. Each change of phase or of being over the hard ceiling, and
  * each measure, is pushed to this instance's connections of the document as
- * `doc:size`.
+ * `doc:size`, numbered by `seq`; a connection's acknowledgement of a push
+ * tells which phase it had seen when it sent what follows.
  */
 
 import { parseDocName, type DocSizeStatus } from "@breatic/shared";
@@ -21,6 +22,19 @@ import { getCollabConfig } from "@collab/config.js";
 
 /** The phase a size is in. */
 export type DocSizePhase = DocSizeStatus["phase"];
+
+/** What one connection has been pushed and has acknowledged. */
+interface Seen {
+  /** Unacknowledged pushes where `full` changed, oldest first, each with its seq. */
+  changes: Array<{ seq: number; full: boolean }>;
+  /** Whether the push it acknowledged last was full; false before any. */
+  knowsFull: boolean;
+  /** The seq of the last push it was sent. */
+  lastSeq: number;
+}
+
+/** A connection's channel for pushes. */
+type PushTarget = { sendStateless: (payload: string) => void };
 
 /** One loaded document's size record. */
 interface SizeRecord {
@@ -32,6 +46,9 @@ interface SizeRecord {
   over: boolean;
   /** Admitted costs not applied yet, oldest first, with the connection each came on. */
   held: Array<{ connection: unknown; cost: number }>;
+  /** The seq of the last push. */
+  seq: number;
+  seen: Map<unknown, Seen>;
   measuredAt: number;
   measureTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -84,19 +101,40 @@ function phaseOf(bytes: number): DocSizePhase {
  */
 function docSizeStatus(name: string): DocSizeStatus {
   const record = records.get(name);
-  if (!record) return { type: "doc:size", bytes: 0, limit: 0, ceiling: 0, phase: "normal" };
+  if (!record) return { type: "doc:size", seq: 0, bytes: 0, limit: 0, ceiling: 0, phase: "normal" };
   const l = lines();
-  return { type: "doc:size", bytes: record.current, limit: l.limit, ceiling: l.ceiling, phase: record.phase };
+  return { type: "doc:size", seq: record.seq, bytes: record.current, limit: l.limit, ceiling: l.ceiling, phase: record.phase };
+}
+
+/**
+ * Note that a connection was sent the record's latest push.
+ * @param record - The record.
+ * @param connection - The connection.
+ */
+function noteSent(record: SizeRecord, connection: unknown): void {
+  const full = record.phase === "full";
+  let seen = record.seen.get(connection);
+  if (!seen) {
+    seen = { changes: [], knowsFull: false, lastSeq: 0 };
+    record.seen.set(connection, seen);
+  }
+  const previous = seen.changes.at(-1)?.full ?? seen.knowsFull;
+  if (seen.changes.length === 0 || previous !== full) seen.changes.push({ seq: record.seq, full });
+  seen.lastSeq = record.seq;
 }
 
 /**
  * Send the document's `doc:size` to one connection.
  * @param name - The document name.
  * @param connection - The connection.
- * @param connection.sendStateless - Its stateless channel.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
-export function pushDocSize(name: string, connection: { sendStateless: (payload: string) => void }): void {
+export function pushDocSize(name: string, connection: PushTarget): void {
+  const record = records.get(name);
+  if (record) {
+    record.seq += 1;
+    noteSent(record, connection);
+  }
   connection.sendStateless(JSON.stringify(docSizeStatus(name)));
 }
 
@@ -107,8 +145,52 @@ export function pushDocSize(name: string, connection: { sendStateless: (payload:
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
 function pushAll(name: string, record: SizeRecord): void {
+  record.seq += 1;
   const payload = JSON.stringify(docSizeStatus(name));
-  for (const connection of record.document.getConnections()) connection.sendStateless(payload);
+  for (const connection of record.document.getConnections()) {
+    noteSent(record, connection);
+    connection.sendStateless(payload);
+  }
+}
+
+/**
+ * Take a connection's acknowledgement of the push numbered `seq`: the last
+ * full change at or below it says what the connection had seen.
+ * @param name - The document name.
+ * @param connection - The connection.
+ * @param seq - The acknowledged push.
+ */
+export function acknowledge(name: string, connection: unknown, seq: number): void {
+  const seen = records.get(name)?.seen.get(connection);
+  if (!seen || seq > seen.lastSeq) return;
+  let i = -1;
+  while (i + 1 < seen.changes.length && (seen.changes[i + 1]?.seq ?? Infinity) <= seq) i += 1;
+  const change = seen.changes[i];
+  if (change === undefined) return;
+  seen.knowsFull = change.full;
+  seen.changes.splice(0, i);
+}
+
+/**
+ * Whether a connection's last acknowledged push was full.
+ * @param name - The document name.
+ * @param connection - The connection.
+ * @returns False before any acknowledgement or with no record.
+ */
+export function knowsFull(name: string, connection: unknown): boolean {
+  return records.get(name)?.seen.get(connection)?.knowsFull ?? false;
+}
+
+/**
+ * Drop what the record keeps for connections no longer in the document.
+ * @param name - The document name.
+ */
+export function forgetGoneConnections(name: string): void {
+  const record = records.get(name);
+  if (!record) return;
+  for (const connection of record.seen.keys()) {
+    if (!record.document.hasConnection(connection as Parameters<Document["hasConnection"]>[0])) record.seen.delete(connection);
+  }
 }
 
 /**
@@ -156,6 +238,8 @@ export function openDocSizeRecord(document: Document): void {
     phase: phaseOf(bytes),
     over: bytes >= lines().ceiling,
     held: [],
+    seq: 0,
+    seen: new Map(),
     measuredAt: Date.now(),
     measureTimer: null,
   });
@@ -253,14 +337,17 @@ export function forget(name: string): void {
 /**
  * A document's record, as the size gate and tests read it.
  * @param name - The document name.
- * @returns Exact size, current size, phase and the held costs' sum, or undefined with no record.
+ * @returns Exact size, current size, phase, the held costs' sum and what each connection was pushed and acknowledged, or undefined with no record.
  */
-export function readDocSizeRecord(name: string): { exact: number; current: number; phase: DocSizePhase; heldSum: number } | undefined {
+export function readDocSizeRecord(
+  name: string,
+): { exact: number; current: number; phase: DocSizePhase; heldSum: number; seen: ReadonlyMap<unknown, Seen> } | undefined {
   const record = records.get(name);
   return record && {
     exact: record.exact,
     current: record.current,
     phase: record.phase,
     heldSum: record.held.reduce((sum, h) => sum + h.cost, 0),
+    seen: record.seen,
   };
 }
