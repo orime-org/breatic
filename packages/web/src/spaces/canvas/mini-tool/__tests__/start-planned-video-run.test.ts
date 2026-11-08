@@ -89,6 +89,14 @@ describe('planned frame and segment outputs', () => {
     expect(new Set(targets().map((node) => node.id))).toEqual(new Set(body!.outputs.map((output) => output.nodeId)));
   });
 
+  // Execution design §10.5 geometry row: the expand node is sized by shared videoExpandLayout, as the quote and the admission are.
+  it('F23 sizes an expand destination as the widened frame, each side rounded up to even', async () => {
+    const expandDraft: VideoToolDraftById['video.expand'] = { ...COMMON, params: { frame: { x: -0.25, y: -0.1, width: 1.5025, height: 1.2 }, ratio: 'free', prompt: '' } };
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.expand', draft: expandDraft }));
+    expect(body?.outputs.map((output) => output.recipe)).toEqual([{ kind: 'expand' }]);
+    expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[602, 240]]);
+  });
+
   it('F22 builds nothing for a frame or segment run without the source table', async () => {
     const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1] } };
     await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: null }))).rejects.toThrow();

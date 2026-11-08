@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId, t } from '@breatic/shared';
-import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -107,7 +107,9 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   const recipes = plannedVideoRecipes(run.toolId, held, run.frameTable);
   const spec = miniToolById(run.toolId);
   if (spec === undefined || spec.run.kind !== 'planned' || spec.outputs?.length !== 1) throw new Error('Planned video execution has no output descriptor');
-  const size = { width: held.source.mediaInfo.width, height: held.source.mediaInfo.height };
+  // An expansion's node takes the widened frame the quote and the admission size it to (execution design §10.5 geometry row).
+  const layout = run.toolId === 'video.expand' ? videoExpandLayout((held as VideoToolDraftById['video.expand']).params.frame, held.source.mediaInfo, Infinity) : held.source.mediaInfo;
+  const size = { width: layout.width, height: layout.height };
   const placements = plannedOutputPlacementOf(recipes.map(() => spec.outputs![0]!), recipes.map(() => size), source.name);
   const nodes = placements.map((placed, index) => {
     const node = createEmptyNode(placed.output.modality, {
