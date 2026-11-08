@@ -50,19 +50,24 @@ test('a button without a menu shows its name on hover, greyed or not (#1184)', a
   await page.keyboard.type('the quick brown fox');
   await selectFirstParagraph(page);
   const bold = page.getByTestId('doc-bubble-tool-bold');
+  // The pointer travels onto the button the way a hand moves it, in several
+  // moves: the tooltip opens on a pointer move over its button.
+  const reach = async (): Promise<void> => {
+    const box = (await bold.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  };
 
-  await bold.hover();
+  await reach();
   await expect(page.getByRole('tooltip')).toHaveText('Bold');
 
   // Inline code takes no other mark, so bold greys out over it; a greyed
   // button that a browser sends no pointer events would never show its name.
   await page.getByTestId('doc-bubble-tool-code').click();
   await expect(bold).toHaveAttribute('aria-disabled', 'true');
-  await page.mouse.move(0, 0);
+  await page.mouse.move(0, 0, { steps: 8 });
   await expect(page.getByRole('tooltip')).toHaveCount(0);
-  await bold.hover();
-  const tip = page.getByRole('tooltip');
-  await expect(tip).toHaveText('Bold');
+  await reach();
+  await expect(page.getByRole('tooltip')).toHaveText('Bold');
 });
 
 test('link: pressing a link in the body opens it in a new tab', async ({ page }) => {

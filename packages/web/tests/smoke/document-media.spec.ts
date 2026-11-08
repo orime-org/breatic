@@ -495,7 +495,9 @@ test('a toolbar button shows its name on hover, whole on screen, over a first-bl
   await img.hover();
   const download = page.locator(`${IMAGE} [data-testid="doc-media-download"]`);
   await expect(download).toBeVisible();
-  await download.hover();
+  // In several moves, the way a hand moves the pointer onto it.
+  const target = (await download.boundingBox())!;
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
 
   const tip = page.locator('[data-radix-popper-content-wrapper]').filter({ hasText: 'Download' });
   await expect(tip).toBeVisible();
