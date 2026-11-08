@@ -242,7 +242,7 @@ export function fitTransitions(clips: readonly VideoToolTimelineClip[], fps: Vid
 }
 
 /**
- * The clips after an edit inside the timeline Dialog (canvas design §4 转场): each junction keeps its type with its duration
+ * The clips after an edit inside the timeline Dialog (canvas design §4 transitions row): each junction keeps its type with its duration
  * held within `transitionDurationBounds` of the two clips it joins, or within half the shorter of them while the grid is
  * unknown; a junction no transition fits becomes a Cut, and the last clip carries no transition.
  * @param clips - The ordered clips.
