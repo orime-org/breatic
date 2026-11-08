@@ -145,6 +145,13 @@ describe("pageLinksIn: which links a piece of text holds", () => {
     ).toEqual(["https://a.org/1", "https://b.org/wiki/X_(y)"]);
   });
 
+  it("reads a parenthesised link back from the Markdown the page reader writes", () => {
+    // The exact turndown output pinned by the ingest web-reader to-markdown test.
+    expect(pageLinksIn("See [fish](https://en.wikipedia.org/wiki/Fish_\\(food\\)).")).toEqual([
+      "https://en.wikipedia.org/wiki/Fish_(food)",
+    ]);
+  });
+
   it("removes the backslashes Markdown escapes write inside a link", () => {
     // turndown writes the parentheses and underscores of a link as \( \) \_.
     expect(pageLinksIn("https://x.org/a\\(b\\) end")).toEqual(["https://x.org/a(b)"]);

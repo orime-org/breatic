@@ -3,8 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 
-import { pageLinksIn } from "@shared/agent/page-links.js";
-
 import { toMarkdown } from "../to-markdown.js";
 
 describe("toMarkdown", () => {
@@ -22,18 +20,12 @@ describe("toMarkdown", () => {
   });
 
   // turndown 7.2.0 escapes both parentheses inside a link's destination as
-  // `\(` and `\)`; the link set strips that escape before comparing (design
-  // §6.0), so this exact spelling is what the reader hands on.
+  // `\(` and `\)`; this exact spelling is what the reader hands on, and the
+  // domain page-links test reads it back as the plain link (design §6.0).
   it("escapes parentheses inside a link's URL the way turndown 7.2.0 does", () => {
     const html = '<p>See <a href="https://en.wikipedia.org/wiki/Fish_(food)">fish</a>.</p>';
 
     expect(toMarkdown(html)).toBe("See [fish](https://en.wikipedia.org/wiki/Fish_\\(food\\)).");
-  });
-
-  it("writes a parenthesised URL so that pageLinksIn recovers it unescaped", () => {
-    const html = '<p>See <a href="https://en.wikipedia.org/wiki/Fish_(food)">fish</a>.</p>';
-
-    expect(pageLinksIn(toMarkdown(html))).toEqual(["https://en.wikipedia.org/wiki/Fish_(food)"]);
   });
 
   // Plan §9 row Q: the fallback hands turndown the whole body, and turndown
