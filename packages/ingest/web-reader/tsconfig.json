@@ -1,0 +1,18 @@
+{
+  // The page reader's service runs on Node inside its own image (Chromium,
+  // Readability, turndown, unpdf), apart from both the Worker (workerd) and
+  // the media container, so it is typechecked on its own (inner#1664).
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // DOM because the shared types this service reads are typechecked with it
+    // (shared is browser-safe), and Readability runs inside the rendered page.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "baseUrl": "..",
+    "paths": {
+      "@shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "vitest.config.ts"]
+}

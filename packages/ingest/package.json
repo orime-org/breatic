@@ -13,7 +13,11 @@
   "dependencies": {
     "@breatic/shared": "workspace:*",
     "@cloudflare/containers": "0.3.7",
-    "@sentry/cloudflare": "catalog:"
+    "@sentry/cloudflare": "catalog:",
+    "@mozilla/readability": "0.6.0",
+    "playwright-core": "1.62.1",
+    "turndown": "7.2.0",
+    "unpdf": "1.1.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.12.21",
@@ -22,6 +26,7 @@
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "^4.127.1",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@types/turndown": "5.0.6"
   }
 }

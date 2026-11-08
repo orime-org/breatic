@@ -26,4 +26,13 @@ export class WebReaderContainer extends Container {
     void request;
     throw new Error("not implemented: WebReaderContainer.read");
   }
+
+  /**
+   * Stop reading and destroy the instance: the caller has gone.
+   * @returns Nothing.
+   * @throws {Error} Always, until implemented.
+   */
+  async stop(): Promise<void> {
+    throw new Error("not implemented: WebReaderContainer.stop");
+  }
 }
