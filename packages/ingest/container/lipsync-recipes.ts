@@ -16,7 +16,7 @@
 import { once } from "node:events";
 import { open, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
-import type { Readable, Writable } from "node:stream";
+import type { Writable } from "node:stream";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import {
   lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, type LipsyncTimeline,
@@ -232,16 +232,17 @@ interface FrameStream { next(): Promise<Picture | null> }
 
 /**
  * Read a program's raw 8-bit 4:2:0 stdout one frame at a time (execution design paragraph before §9.4): only the frame being
- * filled and the pipe's current chunk are held.
- * @param stdout - The stream.
+ * filled and the pipe's current chunk are held. Once the stdout ends the program's own end is awaited first, so a decode that
+ * failed part-way rejects with its exit, not as a short stream.
+ * @param decode - The running program; its stdout is read.
  * @param width - The frame width.
  * @param height - The frame height.
  * @param alpha - Whether each frame carries an alpha plane.
  * @returns The frames.
- * @throws {never} Never; `next` throws when the stream ends inside a frame.
+ * @throws {never} Never; `next` rejects with the program's failure, or throws when a clean stream ends inside a frame.
  */
-function frameStream(stdout: Readable, width: number, height: number, alpha: boolean): FrameStream {
-  const chunks = stdout[Symbol.asyncIterator]() as AsyncIterator<Buffer>;
+function frameStream(decode: PlanPipe, width: number, height: number, alpha: boolean): FrameStream {
+  const chunks = decode.stdout![Symbol.asyncIterator]() as AsyncIterator<Buffer>;
   /**
    * Ask for the next chunk. Asking at once also marks the stream as read: Node resumes an unread child stdout when the
    * child exits, and the frames it held would be lost.
@@ -261,6 +262,7 @@ function frameStream(stdout: Readable, width: number, height: number, alpha: boo
           const chunk = await ahead;
           if (chunk.done !== true) ahead = ask();
           if (chunk.done === true) {
+            await decode.done;
             if (filled === 0) return null;
             throw new Error("A raw frame stream ended inside a frame");
           }
@@ -482,7 +484,7 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
     encode = startEncode({ width: recipe.cropSize, height: recipe.cropSize, alpha: false }, { clock: grid.clock, tick: grid.step, end: grid.end },
       { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...CLIP_ENCODE, format: "mp4-h264" }, request.output, run);
     decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0", "-frames:v", String(highest + 1)], false, run);
-    const frames = frameStream(decode.stdout!, width, height, false);
+    const frames = frameStream(decode, width, height, false);
     let position = -1;
     let stored = 0;
     for (const s of sources) {
@@ -663,7 +665,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       const [faces, track, at] = await Promise.all([readFaces(local(request.inputs, person.faces)), readTrack(local(request.inputs, person.track)), seekTo(result, window.start, run)]);
       const decode = at === null ? null : startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
         "-map", "0:v:0", "-frames:v", String(length), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
-      persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode.stdout!, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
+      persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
     }
     if (shown.goesBack) {
       if ((shown.end - shown.start) * lipsyncPictureBytes(target.width, target.height, alpha) > recipe.rawDiskBytes) {
@@ -675,7 +677,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       if (held.count < shown.end - shown.start) throw new RangeError("The lip-sync composite's source ends before a frame it shows");
       if (held.count > shown.end - shown.start) throw new RangeError("The lip-sync composite's source decoded past the frames it shows");
     } else streamed = startDecode(sourceArgs, alpha, run);
-    const stream = streamed === null ? null : frameStream(streamed.stdout!, target.width, target.height, alpha);
+    const stream = streamed === null ? null : frameStream(streamed, target.width, target.height, alpha);
     encode = startEncode({ width: target.width, height: target.height, alpha }, { clock: recipe.timescale, tick, end: length * tick }, target, request.output, run);
     let [position, current]: [number, Picture | null] = [shown.start - 1, null];
     for (const s of sources) {

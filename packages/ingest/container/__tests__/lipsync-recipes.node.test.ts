@@ -314,6 +314,15 @@ async function fakeYuNet(request: AnalysisPipelineRequest): Promise<string> {
 }
 
 /**
+ * The error message the job logged for its failed output.
+ * @returns The message, or undefined.
+ */
+function failure(): string | undefined {
+  const call = vi.mocked(console.error).mock.calls.find(([event]) => event === 'mini_tool_plan_run_failed');
+  return (call?.[1] as { err?: string } | undefined)?.err;
+}
+
+/**
  * A source span of the 25 fps original over its whole [0, V) (§7.17 entries).
  * @returns The span.
  */
@@ -614,6 +623,52 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
   });
 });
 
+// A streamed decode that fails part-way reports its own exit (code and stderr tail), never the range error a clean early
+// end gives. The failing decode stands in for FFmpeg: it writes `bytes` of raw frames, a stderr line and exits 3.
+describe('a streamed lip-sync decode that fails mid-stream', () => {
+  /**
+   * Make the next decode whose input path matches `input` write `bytes` and fail.
+   * @param input - The decoded input's local path pattern.
+   * @param bytes - The raw bytes it writes first.
+   * @returns Nothing.
+   */
+  async function failDecode(input: RegExp, bytes: number): Promise<void> {
+    const actual = await vi.importActual<typeof PlanCommand>('@ingest/container/plan-command.js');
+    vi.mocked(startPlanCommand).mockImplementation((program, args, options, pipes) => {
+      const decodes = program === 'ffmpeg' && args.at(-1) === 'pipe:1' && args.some((arg, at) => args[at - 1] === '-i' && input.test(arg));
+      return decodes ? actual.startPlanCommand('sh', ['-c', `head -c ${bytes} /dev/zero; echo decode-broke >&2; exit 3`], options, pipes)
+        : actual.startPlanCommand(program, args, options, pipes);
+    });
+  }
+
+  it.each([
+    ['ends on a frame boundary', 2], ['ends inside a frame', 1.5],
+  ] as const)('LE01 the clip\'s prepared-video decode %s and the job carries its exit', async (_name, frames) => {
+    await failDecode(/source-0$/, Math.round(frames * W * H * 1.5));
+    const faces = await facesTable('fail-faces.json', n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
+    const mask = await track('fail-track.json', (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
+    const { report } = await runJob({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
+      [{ kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: 64, timeline: { duration: 0.32, videoDuration: V, syncMode: 'cut_off' }, table: TABLE }]);
+    expect([report.ok, report.outputs]).toEqual([false, []]);
+    expect(failure()).toMatch(/^sh exited 3: decode-broke/);
+  });
+
+  it.each([
+    ['the streamed source', /source-0$/, 2 * W * H * 1.5], ['a person\'s result', /source-1$/, 2 * 64 * 64 * 1.5],
+  ] as const)('LE02 the composite\'s decode of %s fails and the job carries its exit', async (_name, input, bytes) => {
+    await failDecode(input, bytes);
+    const timeline: LipsyncTimeline = { duration: V, videoDuration: V, syncMode: 'cut_off' };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(2, 25), displayStart: r(2, 25), displayEnd: r(9, 25), rate: r(1) }];
+    const recipe = { kind: 'lipsync_composite', inputId: ID.video, window: { start: 2, end: 9 }, timescale: FPS, entries, target: OPAQUE, timeline, table: TABLE,
+      rawDiskBytes: AMPLE_RAW_DISK_BYTES, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] };
+    const { report } = await runJob({ [ID.video]: join(dir, 'comp-source.mp4'), [ID.result1]: join(dir, 'person-1.mp4'),
+      [ID.faces1]: await facesTable('fail-comp-faces.json', () => ({ x: 16, y: 8, width: 48, height: 48 })),
+      [ID.track1]: await track('fail-comp-track.json', () => true) }, [recipe]);
+    expect([report.ok, report.outputs]).toEqual([false, []]);
+    expect(failure()).toMatch(/^sh exited 3: decode-broke/);
+  });
+});
+
 describe('lipsync_stem (§7.17 lipsync_stem row; execution design §9.2 声音时序)', () => {
   // Tolerance of an onset: 128 samples (2.7 ms). FFmpeg 7.1.1's AAC in MP4 compensates the 1024-sample priming through the
   // edit list, and a tone onset re-decoded from it was measured within 17 samples; an output whose priming is not removed
@@ -767,15 +822,6 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     const { report } = await runJob(await inputs('comp-source.mp4'), [{ ...job, rawDiskBytes: 4 * W * H * 1.5 - 1 }]);
     expect([report.ok, report.outputs]).toEqual([false, []]);
   });
-
-  /**
-   * The error message the job logged for its failed output.
-   * @returns The message, or undefined.
-   */
-  function failure(): string | undefined {
-    const call = vi.mocked(console.error).mock.calls.find(([event]) => event === 'mini_tool_plan_run_failed');
-    return (call?.[1] as { err?: string } | undefined)?.err;
-  }
 
   // A chunk that goes back reads its source window from a raw file; a source that decodes fewer frames than the window
   // fails as the streamed source does, never repeating its last frame in place of the missing ones.
