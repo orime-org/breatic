@@ -18,7 +18,7 @@ import { openFreshDocument, selectFirstParagraph, test } from '../helpers/bubble
 import { collapseAfterLinking, linkTheSelection } from '../helpers/link-panel';
 import { DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
-test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({ page }) => {
+test('bold and italic: pressing the bar buttons in a real browser changes the document', async ({ page }) => {
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox');
   await selectFirstParagraph(page);
@@ -31,13 +31,15 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({
           ?.innerHTML ?? '', VISIBLE_SPACE
     );
 
-  // 单测里的点击走的是 jsdom 的 `.click()`，它不移动焦点；真机点击会先把焦点
-  // 从正文拿走，而浮出条的显示恰恰依赖编辑器的焦点状态。这条走的就是那条路。
+  // A unit test clicks through jsdom's `.click()`, which does not move focus; a
+  // real click first takes focus away from the body, and the bar's visibility
+  // depends on the editor's focus state. This case walks that path.
   expect(await html()).not.toContain('<strong>');
   await page.getByTestId('doc-bubble-tool-bold').click();
   await expect.poll(html).toContain('<strong>');
 
-  // 按完之后条还在、选区还在，可以接着按第二个命令。
+  // After the press the bar and the selection are still there, so a second
+  // command can follow.
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
   await page.getByTestId('doc-bubble-tool-italic').click();
   await expect.poll(html).toContain('<em>');
