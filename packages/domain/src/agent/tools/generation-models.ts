@@ -311,17 +311,18 @@ function takenParams(model: ModelInfo, nodeType: GenerationNodeType, mode: strin
 }
 
 /**
- * For each setting a user picks from a list whose value moves the model's
- * price, the value it is lowest at, every other setting at its default; ties
- * go to the value listed first.
+ * For each setting whose value moves the model's price, the value it is
+ * lowest at, every other setting at its default; ties go to the value listed
+ * first. A setting given as a range is probed at its two ends.
  * @param model - The model.
  * @returns The settings that move the price, each with its cheapest value.
  */
 async function lowestValues(model: ModelInfo): Promise<Record<string, unknown>> {
-  const settable = Object.entries(model.params).filter(([, spec]) => spec.options !== undefined && spec.filledBySource !== true && spec.noControl !== true);
+  const settable = Object.entries(model.params).filter(([, spec]) => spec.filledBySource !== true && spec.noControl !== true);
   const found = await Promise.all(
     settable.map(async ([name, spec]) => {
-      const options = spec.options ?? [];
+      // ponytail: a range is probed at its ends only, which holds while range prices only rise or fall.
+      const options = spec.options ?? (spec.min !== undefined && spec.max !== undefined ? [spec.min, spec.max] : []);
       const credits = await Promise.all(options.map(async (value) => (await estimateModelCredits(model.name, { params: { [name]: value } }))?.credits));
       const known = credits.filter((one): one is number => one !== undefined);
       if (new Set(known).size <= 1) return [];
