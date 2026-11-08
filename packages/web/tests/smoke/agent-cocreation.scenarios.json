@@ -169,7 +169,7 @@
         "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
       }
     ],
-    "user": "Picked this take from earlier directions. Answers in Simplified Chinese.",
+    "user": "Picked this exact picture from earlier directions and wants this same picture at full quality, unchanged: not a new picture in its style. Answers in Simplified Chinese.",
     "pass": "The agent makes the full-quality version from the picked picture itself (using it as the source, or pointing to Upscale), so the result stays that same picture; it does not make a new picture from a prompt alone."
   },
   {
@@ -198,14 +198,14 @@
       }
     ],
     "user": "Posting on Instagram (square or portrait is fine). Wants cute, playful posts. Answers in Traditional Chinese.",
-    "pass": "The agent uses the attached photo as the source or reference for all three pictures; if the photo cannot be read, it says so plainly and leaves a place for the user to put it, without inventing the cat's look. It asks only what changes the result and cannot be seen in the photo (such as the platform, when that decides the ratio). Its replies are in Traditional Chinese unless the user switched language."
+    "pass": "The agent uses the attached photo (the chip's URL is the user's own photo of their cat; saving it from that URL is using it) as the source or reference for all three pictures; if the photo cannot be read, it says so plainly and leaves a place for the user to put it, without inventing the cat's look. It asks only what changes the result and cannot be seen in the photo (such as the platform, when that decides the ratio). Its replies are in Traditional Chinese unless the user switched language."
   },
   {
     "id": "brand",
     "lang": "ko",
     "text": "우리 카페 오픈 포스터 하나 만들어 줘.",
     "user": "Owns a small cafe called 'Moon Bean', opening on 1 December. Has a logo but no fixed brand colours. Answers in Korean.",
-    "pass": "The agent asks what only the user knows: the cafe's name, the opening date, and whether there is a logo or brand colours. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text."
+    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text."
   },
   {
     "id": "usage-unknown",

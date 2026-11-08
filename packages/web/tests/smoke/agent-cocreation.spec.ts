@@ -236,9 +236,15 @@ async function partsOf(api: APIRequestContext, conversationId: string): Promise<
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The verdict.
+ * @throws {Error} When the judge answers twice with no verdict.
  */
 async function judge(helper: APIRequestContext, scenario: Scenario, run: Run): Promise<Verdict> {
-  return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
+  // A judge that answers with no verdict is asked again once; a second miss is the run's failure.
+  try {
+    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
+  } catch {
+    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run)));
+  }
 }
 
 /**
