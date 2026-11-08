@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as Y from 'yjs';
 import type * as React from 'react';
@@ -207,6 +207,23 @@ function resizeGroupTo(rect: { x: number; y: number; width: number; height: numb
 }
 
 /**
+ * Selects one node and presses ArrowRight on it, so xyflow nudges it the way
+ * it does for a keyboard user.
+ * @param id - The node.
+ * @throws {Error} When the node is not drawn.
+ */
+function nudgeRight(id: string): void {
+  act(() => {
+    canvasGraphs.of(SID).getState().setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+  });
+  const element = document.querySelector(`.react-flow__node[data-id="${id}"]`);
+  if (!element) throw new Error(`node ${id} is not drawn`);
+  act(() => {
+    fireEvent.keyDown(element, { key: 'ArrowRight' });
+  });
+}
+
+/**
  * Selects Group g1 so its resize controls show.
  */
 function selectGroup(): void {
@@ -261,6 +278,34 @@ describe('E-11 a drag release is an edit batch', () => {
     const doc = mountAt('Z', () => seedImage('t1', 100, 100));
     const before = Y.encodeStateAsUpdate(doc);
     dragTo('t1', { x: 400, y: 300 });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(buffered('t1').position).toEqual({ x: 100, y: 100 });
+  });
+});
+
+describe('E-11 an arrow-key nudge is an edit batch', () => {
+  it('E-11 lands the nudge in the warning band [W]', () => {
+    const doc = mountAt('W', () => seedImage('t1', 100, 100));
+    nudgeRight('t1');
+    expect((stored(doc, 't1').position as { x: number }).x).toBeGreaterThan(100);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it.each(REFUSED)('E-11 refuses the nudge and puts the node back where Yjs has it [%s]', (code, sentence) => {
+    const doc = mountAt(code, () => seedImage('t1', 100, 100));
+    const before = Y.encodeStateAsUpdate(doc);
+    nudgeRight('t1');
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.warning).mock.calls[0][0]).toBe(sentence);
+    expect(buffered('t1').position).toEqual({ x: 100, y: 100 });
+  });
+
+  it('E-11 refuses the nudge without a toast while the document is rebuilt, and puts the node back [Z]', () => {
+    const doc = mountAt('Z', () => seedImage('t1', 100, 100));
+    const before = Y.encodeStateAsUpdate(doc);
+    nudgeRight('t1');
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(toast.warning).not.toHaveBeenCalled();
     expect(buffered('t1').position).toEqual({ x: 100, y: 100 });

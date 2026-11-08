@@ -1437,6 +1437,10 @@ function CanvasSpaceInner({
   const [localGestureIds, setLocalGestureIds] = React.useState<
     ReadonlySet<string>
   >(() => new Set());
+  // Bumped when the size cap refuses a move xyflow has already drawn. An
+  // arrow-key nudge holds no gesture whose release would rerun the merge, and
+  // the unchanged document never does (inner#1790).
+  const [refusedMoves, redrawFromDocument] = React.useReducer((n: number): number => n + 1, 0);
   // The nodes this browser is working on before the server has heard of it —
   // the same registry the tab-close guard reads, so the set is exactly the
   // uploads and extractions `trackOperation` registered.
@@ -1469,6 +1473,7 @@ function CanvasSpaceInner({
     localGestureIds,
     locallyBusyIds,
     setFlowNodes,
+    refusedMoves,
   ]);
 
 
@@ -3248,8 +3253,8 @@ function CanvasSpaceInner({
       // write and the Group's own geometry is all the expansion writes.
       let step: CanvasUndoStep | undefined;
       // An edit for the size cap; a refused move leaves the document as it
-      // was, and the release puts the nodes back where it has them.
-      runCanvasUndoBatch(
+      // was, and the nodes are drawn back where it has them.
+      const written = runCanvasUndoBatch(
         projectId,
         spaceId,
         { kind: 'edit', joinStep, onStep: (landed) => { step = landed; } },
@@ -3265,6 +3270,7 @@ function CanvasSpaceInner({
           }
         },
       );
+      if (!written.ok) redrawFromDocument();
       return step;
     },
     [projectId, spaceId, buffer, getInternalNode],
