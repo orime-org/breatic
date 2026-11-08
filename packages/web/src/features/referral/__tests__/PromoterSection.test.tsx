@@ -278,6 +278,34 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(screen.getByRole('checkbox')).not.toBeChecked();
   });
 
+  it('sends the terms version the box was ticked against, so terms that moved on after ticking ask for agreement again', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue(OPEN);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await fillForm(user);
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // The terms are republished while the dialog is closed.
+    api.get.mockResolvedValue({ ...OPEN, program: { open: true, termsVersion: '2026-12-01' } });
+    await act(async () => { await client.invalidateQueries(); });
+    api.apply.mockRejectedValueOnce(refusal409('terms_changed', { termsVersion: '2026-12-01' }));
+    await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(1));
+    expect(api.apply.mock.calls[0]![0]).toMatchObject({ termsVersion: '2026-11-07' });
+    expect(await screen.findByText('The promoter terms have been updated. Read them again, then agree.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+
+    api.apply.mockResolvedValueOnce({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T10:00:00.000Z' } });
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Submit application' }));
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(2));
+    expect(api.apply.mock.calls[1]![0]).toMatchObject({ termsVersion: '2026-12-01' });
+  });
+
   it('keeps what was filled in across closing and reopening the panel', async () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(OPEN);

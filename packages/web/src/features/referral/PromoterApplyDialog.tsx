@@ -44,7 +44,7 @@ interface FieldErrors {
 
 /**
  * The application form to become a promoter (inner#1868 §10, table 12.12).
- * @param props - Whether it is open, how it closes, and the terms version agreed to.
+ * @param props - Whether it is open, how it closes, and the terms version on screen.
  * @param props.open - The dialog is open.
  * @param props.onOpenChange - Opens or closes it.
  * @param props.termsVersion - The promoter terms version the panel read.
@@ -64,10 +64,10 @@ export function PromoterApplyDialog({
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
   // The draft and the answer live in the referral forms store: a waiting press
   // outlives this dialog when the panel closes.
-  const { country, channels, plan, agreed, termsNotice, answeredTerms } = useReferralForm('apply');
+  const { country, channels, plan, agreedTerms, termsNotice, answeredTerms } = useReferralForm('apply');
   const [errors, setErrors] = React.useState<FieldErrors>({});
-  // Agreeing again after a terms_changed answer agrees to the version it named.
-  const agreedTerms = answeredTerms ?? termsVersion;
+  // Ticking agrees to the version on screen now; after a terms_changed answer, the one it named.
+  const shownTerms = answeredTerms ?? termsVersion;
   const pressing = useRunning(APPLY_INTENT) !== undefined;
   useReferralFormOnScreen('apply', open);
   const countries = React.useMemo(() => countryOptions(getLocale()), []);
@@ -78,9 +78,9 @@ export function PromoterApplyDialog({
     if (country === '') next.country = t('membership.promoter.countryRequired');
     if (filled.length === 0) next.channels = t('membership.promoter.channelsRequired');
     if (plan.trim() === '') next.plan = t('membership.promoter.planRequired');
-    if (!agreed) next.agree = t('membership.promoter.agreeRequired');
+    if (agreedTerms === null) next.agree = t('membership.promoter.agreeRequired');
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (agreedTerms === null || Object.keys(next).length > 0) return;
     const form: PromoterApplicationForm = { country, channels: filled, plan: plan.trim(), termsVersion: agreedTerms };
     void runOnce(APPLY_INTENT, {
       scope: 'referral',
@@ -97,7 +97,7 @@ export function PromoterApplyDialog({
         if (err instanceof ApiException && err.reason === 'terms_changed') {
           void client.invalidateQueries({ queryKey: referralQueryKey(userId) });
           const named = err.details?.termsVersion;
-          editApplication({ agreed: false, termsNotice: true, ...(typeof named === 'string' ? { answeredTerms: named } : {}) });
+          editApplication({ agreedTerms: null, termsNotice: true, ...(typeof named === 'string' ? { answeredTerms: named } : {}) });
           if (!isReferralFormOnScreen('apply')) toast.warning(t('membership.promoter.termsChanged'));
           return;
         }
@@ -108,7 +108,7 @@ export function PromoterApplyDialog({
         }
       },
     });
-  }, [channels, country, plan, agreed, agreedTerms, t, client, userId, onOpenChange]);
+  }, [channels, country, plan, agreedTerms, t, client, userId, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -188,9 +188,9 @@ export function PromoterApplyDialog({
               <div className='flex flex-col gap-1'>
                 <label className='flex items-start gap-2 text-sm'>
                   <Checkbox
-                    checked={agreed}
+                    checked={agreedTerms !== null}
                     aria-invalid={!!errors.agree || undefined}
-                    onCheckedChange={(v) => { editApplication({ agreed: v === true, termsNotice: false }); setErrors((er) => ({ ...er, agree: undefined })); }}
+                    onCheckedChange={(v) => { editApplication({ agreedTerms: v === true ? shownTerms : null, termsNotice: false }); setErrors((er) => ({ ...er, agree: undefined })); }}
                   />
                   <span>
                     {t('membership.promoter.agreeLead')}{' '}

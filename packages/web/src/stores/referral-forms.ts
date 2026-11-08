@@ -29,10 +29,11 @@ export interface ApplicationDraft {
   country: string;
   channels: string[];
   plan: string;
-  agreed: boolean;
+  /** The terms version on screen when the box was ticked; null while unticked. It is what the press agrees to. */
+  agreedTerms: string | null;
   /** The terms changed under the last press; shown until the box is ticked again. */
   termsNotice: boolean;
-  /** The terms version that answer named, agreed to on the next press. */
+  /** The terms version that answer named, recorded when the box is ticked again. */
   answeredTerms: string | null;
 }
 
@@ -51,7 +52,7 @@ export const EMPTY_APPLICATION: Readonly<ApplicationDraft> = Object.freeze({
   country: '',
   channels: [''],
   plan: '',
-  agreed: false,
+  agreedTerms: null,
   termsNotice: false,
   answeredTerms: null,
 });

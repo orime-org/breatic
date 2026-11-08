@@ -34,9 +34,9 @@ afterEach(() => {
 describe('the referral forms (inner#1868 tables 12.10, 12.12)', () => {
   it('keeps both drafts until they are cleared', () => {
     editBind({ value: 'XYZ', error: 'refused' });
-    editApplication({ country: 'SG', plan: 'Tutorials', agreed: true });
+    editApplication({ country: 'SG', plan: 'Tutorials', agreedTerms: '2026-11-07' });
     expect(getReferralForms().bind).toEqual({ value: 'XYZ', error: 'refused' });
-    expect(getReferralForms().apply).toMatchObject({ country: 'SG', plan: 'Tutorials', agreed: true });
+    expect(getReferralForms().apply).toMatchObject({ country: 'SG', plan: 'Tutorials', agreedTerms: '2026-11-07' });
 
     clearReferralForm('bind');
     expect(getReferralForms().bind).toEqual({ value: null, error: null });
