@@ -237,6 +237,23 @@ describe('useWebAnimationPreviewUrl sharing one address per source version (inne
     expect(second.result.current.url).toBe(URL_1);
   });
 
+  it('shares one request still in flight with a second mount, and both get its address', async () => {
+    const source = freshSource();
+    let answer: (value: { url: string }) => void = () => {};
+    vi.mocked(timelineApi.previewUrl).mockReset()
+      .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
+      .mockResolvedValue({ url: URL_2 });
+    const { wrapper } = provider();
+    const first = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    vi.setSystemTime(T0 + 200);
+    const second = renderHook(() => useWebAnimationPreviewUrl(PROJECT, source, SHARING), { wrapper });
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+    await act(async () => { answer({ url: URL_1 }); await Promise.resolve(); });
+    await waitFor(() => expect(first.result.current.url).toBe(URL_1));
+    await waitFor(() => expect(second.result.current.url).toBe(URL_1));
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps addresses of different source versions and Projects apart', async () => {
     const source = freshSource();
     const other = freshSource();

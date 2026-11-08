@@ -889,4 +889,78 @@ describe('premounted and idle instances (inner#1711 design §7.4)', () => {
     runFrames(500);
     expect(seeks(fixture)).toEqual([]);
   });
+
+  it('replays into a copy whose kept instance re-attached after the Space tab was shown again, without pausing the video or freezing the clock', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(30 / 24);
+    const document = documentOf([VIDEO, LATER]);
+    const readyClipIds = new Set(Object.keys(document.clips));
+    const layersAt = pooled(LATER, fixture);
+    const result: { current: (ReturnType<typeof useTimelinePlayback> & { frame: number }) | null } = { current: null };
+
+    /**
+     * The Timeline body's use of the hook, as a Space tab renders it: the pool's layers follow the frame.
+     * @returns Nothing visible.
+     * @throws {never} Never.
+     */
+    function Body(): null {
+      const [frame, setFrame] = React.useState(30);
+      const layersNow = layersAt(frame);
+      const signature = JSON.stringify(layersNow.map((layer: PooledLayer) => [layer.key, layer.clip.id, layer.role, layer.targetFrame]));
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
+      const webLayers = React.useMemo(() => layersNow, [signature]);
+      const playback = useTimelinePlayback({
+        document, readyClipIds, frame, onFrame: setFrame, clip: VIDEO, source: VIDEO_SOURCE, media: video.media,
+        enabled: true, resourceState: 'ready', webLayers, webLoadTimeoutMs: TIMEOUT_MS,
+      });
+      result.current = { ...playback, frame };
+      return null;
+    }
+    const hellos = (): number => sent(fixture).filter((message) => message['type'] === 'breatic-hello').length;
+    const current = (): ReturnType<typeof useTimelinePlayback> & { frame: number } => {
+      if (result.current === null) throw new Error('not rendered');
+      return result.current;
+    };
+    const view = render(<React.Activity mode='visible'><Body /></React.Activity>);
+    // Premounted, loaded and positioned at its entry frame; then shown, and left back to idle before the start.
+    bridgeReady(fixture);
+    answerLast(fixture);
+    act(() => current().seek(100));
+    videoEvent(video, 'seeked', { seeking: false });
+    answerLast(fixture);
+    act(() => current().seek(0));
+    videoEvent(video, 'seeked', { seeking: false });
+    expect(current().frame).toBe(0);
+
+    view.rerender(<React.Activity mode='hidden'><Body /></React.Activity>);
+    view.rerender(<React.Activity mode='visible'><Body /></React.Activity>);
+    expect(hellos()).toBe(2);
+    // The page answers the new hello: a new session, and an idle instance is sent no position.
+    const before = seeks(fixture).length;
+    bridgeReady(fixture);
+    expect(seeks(fixture)).toHaveLength(before);
+
+    act(() => current().toggle());
+    await settle();
+    expect(current().state).toBe('playing');
+    runFrames(1000);
+    expect(current().frame).toBe(24);
+    expect(current().state).toBe('playing');
+    // Back in the lead, it is positioned once, in the new session, at its entry frame.
+    const fresh = seeks(fixture).slice(before);
+    expect(fresh.map((seek) => seek.time)).toEqual([0]);
+    expect(fresh[0]?.session).not.toEqual(seeks(fixture)[0]?.session);
+    answerLast(fixture);
+    const pauses = vi.mocked(video.media.pause).mock.calls.length;
+    runFrames(3000);
+    expect(current().frame).toBe(72);
+    expect(current().webStates.get(KEY)).toBe('ready');
+    expect(current().state).toBe('playing');
+    runFrames(3500);
+    expect(current().frame).toBe(84);
+    expect(current().state).toBe('playing');
+    expect(vi.mocked(video.media.pause).mock.calls.length).toBe(pauses);
+    expect(hellos()).toBe(2);
+    view.unmount();
+  });
 });

@@ -269,6 +269,31 @@ describe('Timeline preview of premounted and idle instances (inner#1711 design Â
     expect(element).toHaveAttribute('src', PREVIEW_URL);
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
   });
+
+  it('shows no loading note for a kept instance that re-attached after its Space tab was shown again, and draws it on entry', async () => {
+    const onPlayer = vi.fn();
+    const view = (mode: 'visible' | 'hidden', role: PoolRole, state: WebInstanceState): React.JSX.Element => <React.Activity mode={mode}>
+      <div className='relative' data-testid='preview'>
+        <TimelineWebPreview projectId={PROJECT} entries={[entryAs(role)]} states={new Map([[KEY, state]])} onPlayer={onPlayer} onRetry={vi.fn()} />
+      </div>
+    </React.Activity>;
+    const { rerender } = render(view('visible', 'idle', 'ready'));
+    const element = await player();
+    rerender(view('hidden', 'idle', 'ready'));
+    // Shown again, the playback re-attaches the instance, which loads its bridge in a new session.
+    rerender(view('visible', 'idle', 'loading'));
+    await act(async () => { await Promise.resolve(); });
+    expect(await player()).toBe(element);
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    rerender(view('visible', 'premount', 'waiting'));
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(element.style.opacity).toBe('0');
+    rerender(view('visible', 'visible', 'ready'));
+    expect(await player()).toBe(element);
+    expect(element.style.opacity).not.toBe('0');
+    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+  });
 });
 
 /** The result preview's player with an iframe window that records what the host posts. */
