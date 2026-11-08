@@ -15,7 +15,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
-import { FAILURE_LINES, UploadHttpError, pageLinkKey, webPageUrlSchema } from "@breatic/shared";
+import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, webPageUrlSchema } from "@breatic/shared";
 import type {
   ContainerUsage,
   FailureLine,
@@ -296,6 +296,15 @@ function isHighSurrogate(unit: number): boolean {
 }
 
 /**
+ * Whether a character is whitespace, where a cut leaves no word or link in two.
+ * @param char - The character, or undefined past either end.
+ * @returns True for whitespace.
+ */
+function isSpace(char: string | undefined): boolean {
+  return char !== undefined && /\s/u.test(char);
+}
+
+/**
  * The links a slice of page text holds, one per page key, each in the
  * spelling the slice first writes it.
  * @param text - The slice's text.
@@ -313,6 +322,10 @@ function linksOf(text: string): string[] {
 /**
  * The part of a page one call hands over, with the links its own text and
  * the page's title hold.
+ *
+ * A cut inside a run of non-space characters, such as a link, moves to the
+ * run's end, at most `READ_PAGE_MAX_URL_CHARS` further, so a link is never
+ * handed over in two halves.
  * @param url - The address asked for.
  * @param page - The page in full.
  * @param start - Where the model asked to start.
@@ -324,6 +337,10 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
   const total = page.text.length;
   const from = Math.min(start, total);
   let to = Math.min(from + share, total);
+  if (to > from && to < total && !isSpace(page.text[to - 1]) && !isSpace(page.text[to])) {
+    const furthest = Math.min(to + READ_PAGE_MAX_URL_CHARS, total);
+    while (to < furthest && !isSpace(page.text[to])) to += 1;
+  }
   // A cut between the two halves of a surrogate pair would hand over half a character.
   if (to < total && to > from && isHighSurrogate(page.text.charCodeAt(to - 1))) to += 1;
   const text = page.text.slice(from, to);
