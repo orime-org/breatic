@@ -340,16 +340,19 @@ describe("the contract", () => {
   });
 
   it("runs storyboard on a selection and refuses it without one, or in the shape it had before", async () => {
+    const accepted = await post(bodyFor("storyboard"));
+    await accepted.text();
     const { selection: _selection, ...withoutSelection } = bodyFor("storyboard");
     const { document: _document, ...withoutDocument } = bodyFor("storyboard");
     const before = await post({ tool: "storyboard", instructions: "a chase", project_id: PID });
     const noSelection = await post(withoutSelection);
     const noDocument = await post(withoutDocument);
 
+    expect(accepted.status).toBe(200);
     expect(before.status).toBe(422);
     expect(noSelection.status).toBe(422);
     expect(noDocument.status).toBe(422);
-    expect(model.calls).toHaveLength(0);
+    expect(model.calls).toHaveLength(1);
   });
 
   it("runs shorten", async () => {

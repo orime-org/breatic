@@ -96,8 +96,22 @@ import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-edi
 /** How often, at most, the preview parses the result while it streams. */
 const PREVIEW_THROTTLE_MS = 80;
 
+/** Each block's id in serialised HTML, which every parse makes anew. */
+const BLOCK_ID = / data-id="[^"]*"/g;
+
 /** How far the panel stands off the line it follows. */
 const GAP_FROM_ANCHOR_PX = 8;
+
+/** Where one opening's preview was scrolled to, down and each table sideways. */
+interface PreviewScroll {
+  /** The opening it belongs to. */
+  readonly key: number;
+  readonly top: number;
+  readonly lefts: readonly number[];
+}
+
+/** The frame viewport of every table in a preview. */
+const FRAME_VIEWPORT = '.doc-table [data-radix-scroll-area-viewport]';
 
 /** What one opening of the dialog took from the body. */
 interface Opened {
@@ -193,6 +207,9 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const sessionRef = React.useRef<AiSession | null>(null);
   const [opened, setOpened] = React.useState<Opened | null>(null);
   const openedRef = React.useRef<Opened | null>(null);
+  // Held here, outside the panel: a hidden Space tab takes the body's viewport
+  // away, which takes the panel down, and it is drawn anew when the tab shows.
+  const previewScroll = React.useRef<PreviewScroll | null>(null);
   const openings = React.useRef(0);
   const requests = React.useRef(new Map<number, AbortController>());
   // What the last failure said, when the server said something for this user.
@@ -369,6 +386,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           insertBlockPresent={insertBlockPresent}
           writable={writeAccess === 'granted'}
           dispatch={dispatch}
+          previewScroll={previewScroll}
         />
       )}
     </DocumentAiLaunchContext.Provider>
@@ -384,6 +402,8 @@ interface AiPanelProps {
   /** Whether the connection may write; the editor's own editability is read at the press. */
   writable: boolean;
   dispatch: (event: AiSessionEvent) => void;
+  /** Where the preview was scrolled to, kept while the panel is taken down. */
+  previewScroll: React.RefObject<PreviewScroll | null>;
 }
 
 /**
@@ -422,6 +442,7 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
  * @param props.insertBlockPresent - Whether the insert block is in the body.
  * @param props.writable - Whether the connection may write.
  * @param props.dispatch - Sends the session an event.
+ * @param props.previewScroll - Where the preview was scrolled to, kept while the panel is taken down.
  * @returns The panel.
  */
 function AiPanel({
@@ -432,6 +453,7 @@ function AiPanel({
   insertBlockPresent,
   writable,
   dispatch,
+  previewScroll,
 }: AiPanelProps): React.JSX.Element {
   const t = useTranslation();
   // The model sends its text in bursts; the user sees it at a reading pace
@@ -615,6 +637,8 @@ function AiPanel({
               streaming={session.state === 'streaming' || !isComplete}
               running={session.state === 'streaming'}
               shotList={session.command.id === 'storyboard'}
+              scroll={previewScroll}
+              openingKey={opened.key}
             />
           </>
         )}
@@ -867,6 +891,8 @@ function useOurMediaPrefix(): string | null {
  * @param props.streaming - Whether the text is still growing.
  * @param props.running - Whether the request is still running; the Agent's dot shows until it has drawn words.
  * @param props.shotList - Whether the answer is a shot list: its columns are sized, and once it is written the preview goes back to its header.
+ * @param props.scroll - Where the preview was scrolled to, written as it scrolls and read as it is drawn.
+ * @param props.openingKey - The opening the preview belongs to.
  * @returns The preview.
  */
 function Preview({
@@ -877,6 +903,8 @@ function Preview({
   streaming,
   running,
   shotList,
+  scroll,
+  openingKey,
 }: {
   editor: ViewedEditor;
   ourPrefix: string | null;
@@ -885,6 +913,8 @@ function Preview({
   streaming: boolean;
   running: boolean;
   shotList: boolean;
+  scroll: React.RefObject<PreviewScroll | null>;
+  openingKey: number;
 }): React.JSX.Element {
   // One parser for the session, made and taken down with the panel.
   const [parser, setParser] = React.useState<ViewedEditor | null>(null);
@@ -914,7 +944,11 @@ function Preview({
       const shown = latest.current;
       const read = aiAnswer(parser, editor.prosemirrorState, shown, ourPrefix, insertBlockId);
       const blocks = (shotList ? withShotListWidths(read) : read).preview;
-      setHtml(blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never));
+      const next = blocks.length === 0 ? '' : parser.blocksToFullHTML(blocks as never);
+      // Every parse gives the blocks new ids, so a body change elsewhere (a
+      // collaborator typing) reads the same answer as new HTML. The same
+      // answer keeps the drawing it has, and the table frames in it.
+      setHtml((before) => (before.replace(BLOCK_ID, '') === next.replace(BLOCK_ID, '') ? before : next));
     };
     if (!streaming) {
       if (timer.current !== null) window.clearTimeout(timer.current);
@@ -936,14 +970,34 @@ function Preview({
   // stopped growing since and is yet to be drawn.
   const grew = React.useRef(false);
   const ended = React.useRef(false);
+  // Where this opening's preview was left, when the panel is drawn anew after
+  // its Space tab was hidden: put back at the first drawing with words.
+  const kept = React.useRef(scroll.current?.key === openingKey ? scroll.current : null);
+  // Written as it scrolls: a node out of the document reads 0 for its
+  // scroll positions, so they cannot be read as the panel is taken down.
+  // Capture, as a table frame's own scroll does not bubble.
+  React.useEffect(() => {
+    const outer = scroller.current;
+    const element = host.current;
+    if (outer === null || element === null) return undefined;
+    /** Notes where the preview and each table frame are scrolled to. */
+    const note = (): void => {
+      scroll.current = {
+        key: openingKey,
+        top: outer.scrollTop,
+        lefts: [...element.querySelectorAll<HTMLElement>(FRAME_VIEWPORT)].map((viewport) => viewport.scrollLeft),
+      };
+    };
+    outer.addEventListener('scroll', note, true);
+    return () => {
+      outer.removeEventListener('scroll', note, true);
+    };
+  }, [scroll, openingKey]);
   React.useEffect(() => {
     if (grew.current && !streaming) ended.current = true;
     grew.current = streaming;
     const element = host.current;
     if (element === null) return undefined;
-    // Every draw puts new frames round the tables; each starts where the
-    // user had scrolled the one before it sideways.
-    const lefts = [...element.querySelectorAll<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')].map((viewport) => viewport.scrollLeft);
     element.replaceChildren();
     if (html === '') return undefined;
     const template = document.createElement('template');
@@ -958,19 +1012,22 @@ function Preview({
     content.contentEditable = 'false';
     // A table scrolls sideways in its own frame, as in the body, and the
     // words around it keep the preview's width.
+    const lefts = scroll.current?.key === openingKey ? scroll.current.lefts : [];
     const frames = [...content.querySelectorAll('table')].map((table, index) => frameStaticTable(table, lefts[index] ?? 0));
     if (streaming) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
     // The preview follows a shot list down as it is written, which leaves its
     // last rows on screen with no column names above them.
     else if (ended.current && shotList) scroller.current?.scrollTo({ top: 0 });
+    else if (kept.current !== null && scroller.current !== null) scroller.current.scrollTop = kept.current.top;
     if (!streaming) ended.current = false;
+    kept.current = null;
     return () => {
       // React refuses a synchronous unmount while it is rendering.
       queueMicrotask(() => {
         for (const frame of frames) frame.unmount();
       });
     };
-  }, [html, editor, streaming, shotList]);
+  }, [html, editor, streaming, shotList, scroll, openingKey]);
 
   return (
     <ScrollArea viewportRef={scroller} className='min-h-16' viewportClassName='max-h-56 px-3 py-2.5'>

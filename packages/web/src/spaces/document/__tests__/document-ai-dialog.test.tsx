@@ -919,7 +919,7 @@ describe('the preview', () => {
     expect(preview.textContent).toContain('A line.');
   });
 
-  it('keeps where a table was scrolled to sideways when the preview is drawn again', async () => {
+  it('leaves a table and where it was scrolled sideways alone when the body changes elsewhere', async () => {
     const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
     await streams(call, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
     const preview = screen.getByTestId('doc-ai-preview');
@@ -929,27 +929,72 @@ describe('the preview', () => {
     const first = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
     first.scrollLeft = 120;
 
-    // A change anywhere in the body draws the preview again.
+    // A collaborator's edit anywhere in the body reads the answer again.
     const view = editor.prosemirrorView!;
     act(() => {
       view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 2));
     });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    const now = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]');
+    expect(now).toBe(first);
+    expect(now!.scrollLeft).toBe(120);
+  });
+
+  it('keeps where the preview and its table were scrolled while its Space tab is hidden and shown again', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const frame = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    const outer = preview.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    frame.scrollLeft = 120;
+    fireEvent.scroll(frame);
+    outer.scrollTop = 40;
+    fireEvent.scroll(outer);
+
+    act(() => {
+      setHidden(true);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      setHidden(false);
+    });
 
     await waitFor(() => {
-      const now = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]');
-      expect(now).not.toBe(first);
-      expect(now!.scrollLeft).toBe(120);
+      const shown = screen.getByTestId('doc-ai-preview');
+      expect(shown.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')?.scrollLeft).toBe(120);
+      expect(shown.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollTop).toBe(40);
     });
   });
 
   it('takes down the frames it drew once they are drawn again and once the dialog closes', async () => {
     const { call } = await polishing();
     await streams(call, ['| Shot |\n| --- |\n| 1 |']);
+    await waitFor(() => {
+      expect(framed.roots).toHaveLength(1);
+    });
     await streams(call, ['\n| 2 |'], true);
     await waitFor(() => {
       expect(screen.getByTestId('doc-ai-preview').textContent).toContain('2');
     });
-    expect(framed.roots.length).toBeGreaterThan(0);
+    expect(framed.roots.length).toBeGreaterThan(1);
+    // Each draw holds one table: every frame but the latest is already gone.
+    await waitFor(() => {
+      expect(framed.roots.slice(0, -1).every((root) => root.unmounted)).toBe(true);
+    });
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('doc-ai-close'));

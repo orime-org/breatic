@@ -49,9 +49,10 @@ export function getTextToolsConfig(): TextToolsConfig {
 }
 
 /**
- * How the document AI menu's fixed commands read the selection and write the
- * answer (inner#1860, design §5.1): the selection comes as one piece of
- * Markdown and the whole answer goes back as Markdown of the same shape.
+ * How the commands under "Rewrite the selection" in the document AI menu read
+ * the selection and write the answer (inner#1860, design §5.1): the selection
+ * comes as one piece of Markdown and the whole answer goes back as Markdown of
+ * the same shape.
  */
 const MARKDOWN_SHAPE =
   "The selected text is Markdown. Return Markdown with the same structure " +
