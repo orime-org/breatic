@@ -652,18 +652,18 @@ export const PromptEditor = React.forwardRef<
   // A chip only picks from the pool (design §2.1) and shows its source's live
   // name and thumbnail; these two effects keep it so for whatever reaches the
   // pool, remote writes included.
-  // While the Space is full the size gate drops these machine edits, so a
-  // peer's rename shows the old name until the phase leaves full; they run
-  // again then (inner#1790 design 5.3).
-  const sizePhase = useDocSize(docNameOf(fragment.doc) ?? '').phase;
-  const editsHeld = sizePhase === 'full' || sizePhase === 'resyncing';
+  // While the Space is full, over its ceiling or resyncing, the size gate
+  // drops what these machine edits cannot write, so a peer's rename shows the
+  // old name until the size state changes; they run again then (inner#1790
+  // design 5.3).
+  const { phase: sizePhase, overCeiling } = useDocSize(docNameOf(fragment.doc) ?? '');
   React.useEffect(() => {
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
     clearStaleChips(editor, (id) => !poolIds.has(id));
-  }, [editor, references, editsHeld]);
+  }, [editor, references, sizePhase, overCeiling]);
   React.useEffect(() => {
     syncChipDisplay(editor, references);
-  }, [editor, references, editsHeld]);
+  }, [editor, references, sizePhase, overCeiling]);
   // A local canvas write that changes the pool (rename, cut edge, delete
   // source, remove crop, undo of a connect) gets its chip follow-up in the same
   // task, so both leave as one Update message: collab judges the size cap per
