@@ -218,7 +218,9 @@ interface ClipboardText {
  */
 async function readClipboard(): Promise<ClipboardText | null> {
   try {
-    const items = await navigator.clipboard.read({ unsanitized: ['text/html'] } as ClipboardUnsanitizedFormats);
+    // `unsanitized` is in the Clipboard API spec but not yet in TypeScript's DOM types.
+    const read = navigator.clipboard.read.bind(navigator.clipboard) as (options: { unsanitized: readonly string[] }) => Promise<ClipboardItems>;
+    const items = await read({ unsanitized: ['text/html'] });
     let html = '';
     let plain = '';
     for (const item of items) {
@@ -291,6 +293,22 @@ export async function pasteTableLines(editor: LineEditor, cellPos: number, side:
   } finally {
     held.release();
   }
+}
+
+/**
+ * The first cell of a table block, for the table menu's copy and cut.
+ * @param doc - The document.
+ * @param blockId - The table block's id.
+ * @returns The position before the cell, or null when no such table is there.
+ */
+export function firstCellOf(doc: PMNode, blockId: string): number | null {
+  let found: number | null = null;
+  doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.spec['tableRole'] === 'table' && node.attrs['id'] === blockId) found = pos + 2;
+    return found === null;
+  });
+  return found;
 }
 
 /**

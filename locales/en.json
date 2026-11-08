@@ -2135,7 +2135,16 @@
         "cellMenu": "Cell options",
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
-        "textHighlight": "Highlight"
+        "textHighlight": "Highlight",
+        "cut": "Cut",
+        "pasteAbove": "Paste above",
+        "pasteBelow": "Paste below",
+        "pasteLeft": "Paste left",
+        "pasteRight": "Paste right",
+        "splitMergedFirst": "Split merged cells first",
+        "noTableToPaste": "The clipboard holds no table to insert",
+        "clipboardNotAllowed": "Clipboard access is not allowed",
+        "copyFailed": "Could not copy to the clipboard"
       },
       "paste": {
         "unsupportedInCell": "This format cannot be pasted here"

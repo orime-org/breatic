@@ -27,10 +27,13 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   ArrowUpToLine,
+  ClipboardCopy,
+  ClipboardPaste,
   GripHorizontal,
   GripVertical,
   PanelLeft,
   PanelTop,
+  Scissors,
 } from 'lucide-react';
 import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
@@ -46,6 +49,17 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
+import { attachToChat } from '@web/stores/attach-to-chat';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { canDragFrom } from '@web/spaces/document/document-table-drag';
+import {
+  copyTableLine,
+  cutTableLine,
+  pasteTableLines,
+  tableLineItem,
+  type PasteSide,
+} from '@web/spaces/document/document-table-line-clipboard';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
@@ -92,6 +106,9 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
+
+/** The Add to Agent row's icon and words, shared with the block handle's menu. */
+const AGENT_ROW = BLOCK_MENU_ROWS.find((row) => row.id === 'addToAgent')!;
 
 /** Where a handle is drawn against its table's scroll frame. */
 interface FramePlace {
@@ -170,6 +187,8 @@ interface HeaderFaces {
   readonly reachable: boolean;
   /** Whether it is on. */
   readonly on: boolean;
+  /** Whether no merged cell reaches out of the row (or column): copy, cut, paste and Add to Agent need it. */
+  readonly whole: boolean;
 }
 
 /**
@@ -193,14 +212,44 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         return {
           reachable: row ? at.top === 0 : at.left === 0,
           on: headerOn(state.doc, pos, row ? 'row' : 'column'),
+          whole: canDragFrom(state.doc, pos, row ? 'row' : 'column'),
         };
       },
       [row],
     ),
-    (a, b) => a === b || (a !== null && b !== null && a.reachable === b.reachable && a.on === b.on),
+    (a, b) => a === b || (a !== null && b !== null && a.reachable === b.reachable && a.on === b.on && a.whole === b.whole),
   );
+  const projectId = useDocumentProjectId();
 
   if (header === null) return <></>;
+
+  const scope = row ? 'row' : 'column';
+  /**
+   * Says a merged cell keeps the row (or column) from being copied, cut, pasted beside or handed over.
+   */
+  const refuseMerged = (): void => {
+    toast.warning(t('spaces.document.table.splitMergedFirst'));
+  };
+  const clipRows = [
+    ['copy', 'canvas.contextMenu.copy', ClipboardCopy, (pos: number) => {
+      void copyTableLine(editor as never, pos, scope).then((outcome) => {
+        if (outcome === 'failed') toast.error(t('spaces.document.table.copyFailed'));
+      });
+    }],
+    ['cut', 'spaces.document.table.cut', Scissors, (pos: number) => {
+      void cutTableLine(editor as never, pos, scope).then((outcome) => {
+        if (outcome === 'failed') toast.error(t('spaces.document.table.copyFailed'));
+      });
+    }],
+    ...((row ? [['pasteAbove', 'above'], ['pasteBelow', 'below']] : [['pasteLeft', 'left'], ['pasteRight', 'right']]) as readonly [string, PasteSide][]).map(
+      ([id, side]) => [id, `spaces.document.table.${id}`, ClipboardPaste, (pos: number) => {
+        void pasteTableLines(editor as never, pos, side).then((outcome) => {
+          if (outcome === 'no-table') toast.warning(t('spaces.document.table.noTableToPaste'));
+          if (outcome === 'unreadable') toast.warning(t('spaces.document.table.clipboardNotAllowed'));
+        });
+      }] as const,
+    ),
+  ] as const;
 
   const insertRows = row
     ? ([
@@ -227,6 +276,19 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         </DropdownMenuItem>
       ))}
       <DropdownMenuSeparator className='my-0' />
+      {clipRows.map(([id, labelKey, Icon, run]) => (
+        <DropdownMenuItem
+          key={id}
+          data-testid={`${stem}${id}`}
+          {...itemWithin(header.whole, () => {
+            onTargetCell(editor, run);
+          }, refuseMerged)}
+        >
+          <Icon />
+          {t(labelKey)}
+        </DropdownMenuItem>
+      ))}
+      <DropdownMenuSeparator className='my-0' />
       <DropdownMenuItem
         data-testid={`${stem}header`}
         data-ticked={header.on ? 'true' : undefined}
@@ -244,6 +306,23 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
       </DropdownMenuItem>
       <CellAttributeMenus editor={editor} scope={row ? 'row' : 'column'} stem={stem} />
       <DropdownMenuSeparator className='my-0' />
+      {projectId === null ? null : (
+        <>
+          <DropdownMenuItem
+            data-testid={`${stem}addToAgent`}
+            {...itemWithin(header.whole, () => {
+              onTargetCell(editor, (pos) => {
+                const item = tableLineItem(editor as never, pos, scope);
+                if (item !== null) void attachToChat(projectId, [item]);
+              });
+            }, refuseMerged)}
+          >
+            <AGENT_ROW.Icon />
+            {t(AGENT_ROW.labelKey)}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className='my-0' />
+        </>
+      )}
       <DropdownMenuItem
         data-testid={`${stem}delete`}
         className='text-status-error-foreground'
