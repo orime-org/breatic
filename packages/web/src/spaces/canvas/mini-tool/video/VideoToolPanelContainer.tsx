@@ -70,8 +70,8 @@ export interface VideoToolPresentation {
   onSeek?: (time: number) => void;
   /** Whether the selected version presents with transparency, which erase and expand do not take (execution design §10.4). */
   transparent?: boolean;
-  /** The selected version's display size, the sample aspect ratio applied, which admission lays an expansion out on (§10.5). */
-  display?: { width: number; height: number };
+  /** The selected version's display size, the sample aspect ratio applied, and its duration in seconds, which admission lays out and limits an expansion by (§10.5). */
+  display?: { width: number; height: number; duration: number };
 }
 
 /**
@@ -147,17 +147,18 @@ function eraseBlock(range: TrackingTimeRange, anchor: TrackingAnchor, table: Vid
  * the limit, or a target whose long side passes it.
  * @param draft - The expand draft.
  * @param size - The source's display size.
+ * @param duration - The presented duration in seconds, the stored one while the presentation is unknown.
  * @param expand - The expand limits, absent while unknown.
  * @param transparent - Whether the source is transparent.
  * @param t - The translator.
  * @returns The reason, or undefined.
  * @throws {never} Never.
  */
-function expandBlock(draft: VideoToolDraftById['video.expand'], size: PixelSize, expand: CanvasExpandLimits | undefined, transparent: boolean,
+function expandBlock(draft: VideoToolDraftById['video.expand'], size: PixelSize, duration: number, expand: CanvasExpandLimits | undefined, transparent: boolean,
   t: (key: string, params?: Record<string, string | number>) => string): string | undefined {
   if (transparent) return t('canvas.miniTool.videoUI.transparentSource');
   if (expand === undefined) return undefined;
-  if (draft.source.mediaInfo.duration > expand.maxDurationSeconds) return t('canvas.miniTool.videoUI.expandTooLong', { max: expand.maxDurationSeconds });
+  if (duration > expand.maxDurationSeconds) return t('canvas.miniTool.videoUI.expandTooLong', { max: expand.maxDurationSeconds });
   return videoExpandLayout(draft.params.frame, size, expand.maxTargetSide).overSide ? t('canvas.miniTool.videoUI.expandTooLarge', { max: expand.maxTargetSide }) : undefined;
 }
 
@@ -548,7 +549,8 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const runBlockedReason = awaitingInput ? t('canvas.generatePanel.errorNoSourceVideo') : !canRun ? undefined
     : toolId === 'video.lip-sync' ? (lipSync !== undefined && presentation.frameTable !== null ? lipSyncRangeBlock(current as VideoToolDraftById['video.lip-sync'], presentation.frameTable, lipSync, t) : undefined)
       : eraseDraft !== null ? eraseBlock(eraseDraft.params.range, eraseDraft.params.anchor, presentation.frameTable, eraseLimits, transparent, t)
-        : toolId === 'video.expand' ? expandBlock(current as VideoToolDraftById['video.expand'], displaySize ?? current.source.mediaInfo, expandLimits, transparent, t)
+        : toolId === 'video.expand' ? expandBlock(current as VideoToolDraftById['video.expand'], displaySize ?? current.source.mediaInfo,
+          presentation.display?.duration ?? current.source.mediaInfo.duration, expandLimits, transparent, t)
           // More planned outputs than one run creates are refused here, before any node is made (frames-split §10.7).
           : toolId === 'video.split' && maxOutputs !== undefined && presentation.frameTable !== null
             && planVideoSplit(presentation.frameTable, (current as VideoToolDraftById['video.split']).params.cuts).length > maxOutputs

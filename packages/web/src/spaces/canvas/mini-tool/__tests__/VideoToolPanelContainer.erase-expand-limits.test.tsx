@@ -63,7 +63,7 @@ const EXPAND = { maxDurationSeconds: 180, maxTargetSide: 4096 };
  * @returns Nothing.
  */
 function mount(toolId: Extract<VideoToolId, 'video.erase' | 'video.expand'>, params: Record<string, unknown>,
-  options: { erase?: object; expand?: object; transparent?: boolean; presentedTime?: number; mediaInfo?: typeof mediaInfo; display?: { width: number; height: number }; onRunVideo?: () => Promise<unknown> } = {}): void {
+  options: { erase?: object; expand?: object; transparent?: boolean; presentedTime?: number; mediaInfo?: typeof mediaInfo; display?: { width: number; height: number; duration?: number }; onRunVideo?: () => Promise<unknown> } = {}): void {
   const stored = options.mediaInfo ?? mediaInfo;
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
@@ -149,6 +149,21 @@ describe('expand limits on Run (execution design §10.5)', () => {
   it('refuses a source longer than maxDurationSeconds', () => {
     mount('video.expand', WIDER, { expand: { ...EXPAND, maxDurationSeconds: 4 } });
     expectRefused(screen.getByTestId('mini-tool-run'), t('canvas.miniTool.videoUI.expandTooLong', { max: 4 }));
+  });
+
+  // Admission measures the presented duration (ledger plan.display.duration), not the stored one.
+  it('judges the duration by the presentation once it is known', () => {
+    mount('video.expand', WIDER, { expand: { ...EXPAND, maxDurationSeconds: 4 }, mediaInfo: { ...mediaInfo, duration: 3 }, display: { width: 960, height: 540, duration: 4.5 } });
+    expectRefused(screen.getByTestId('mini-tool-run'), t('canvas.miniTool.videoUI.expandTooLong', { max: 4 }));
+  });
+
+  it('runs a source whose stored duration passes the limit while its presented duration does not', () => {
+    const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
+    mount('video.expand', WIDER, { expand: { ...EXPAND, maxDurationSeconds: 4 }, display: { width: 960, height: 540, duration: 3.5 }, onRunVideo });
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).not.toHaveAttribute('aria-disabled', 'true');
+    act(() => run.click());
+    expect(onRunVideo).toHaveBeenCalledOnce();
   });
 
   it('refuses a target whose long side passes maxTargetSide', () => {
