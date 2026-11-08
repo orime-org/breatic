@@ -53,8 +53,8 @@ describe("buildWebAnimationManifest", () => {
 });
 
 describe("the font set", () => {
-  it("allows exactly the three families the design names", () => {
-    expect([...WEB_ANIMATION_FONT_FAMILIES]).toEqual(["Noto Sans SC", "Noto Serif SC", "Inter"]);
+  it("allows exactly the design's three families and Noto Sans KR for Korean text", () => {
+    expect([...WEB_ANIMATION_FONT_FAMILIES]).toEqual(["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR"]);
   });
 
   it("declares only @font-face rules whose files resolve beside the package under the version's directory", () => {
@@ -167,6 +167,10 @@ describe("judgeWebAnimationCheck", () => {
     ["a package over the size limit", { packageBytes: 5_000_001 }, "package_too_large"],
   ])("fails a package with %s", (_label, change, reason) => {
     expect(judgeWebAnimationCheck({ ...passing, ...change }, expected)).toBe(reason);
+  });
+
+  it("passes Korean text drawn in Noto Sans KR from the font set", () => {
+    expect(judgeWebAnimationCheck({ ...passing, textFonts: [{ family: "Noto Sans KR", isCustomFont: true }] }, expected)).toBeNull();
   });
 
   it("accepts a package of exactly the size limit and a page with no text", () => {

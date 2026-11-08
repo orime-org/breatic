@@ -38,3 +38,13 @@ describe("web_animation.duration_seconds", () => {
     expect(getTimelineConfig().web_animation.duration_seconds.default).toBe(4);
   });
 });
+
+describe("web_animation.font_set_version", () => {
+  it("defaults to 2, the set that carries Noto Sans KR", () => {
+    expect(timelineConfigSchema.parse({}).web_animation.font_set_version).toBe(2);
+  });
+
+  it("reads 2 from the tracked yaml, so new packages name the set with Korean glyphs", () => {
+    expect(getTimelineConfig().web_animation.font_set_version).toBe(2);
+  });
+});
