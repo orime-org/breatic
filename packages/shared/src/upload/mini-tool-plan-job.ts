@@ -181,31 +181,22 @@ const recipeUnion = z.discriminatedUnion("kind", [
     result: inputId.optional(), rle: inputId.optional(), table: presentationTableSchema.optional(), range: windowRef.optional(), grid: modelGrid.optional(),
     matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }).optional(), rleSize: frameSize.optional(),
     backgrounds: z.array(z.strictObject({ inputId, window: interval, crop: pixelRect.optional() })).optional(),
-    ledger: z.array(z.strictObject({ overlap: time, consumed: interval })).optional(),
   }).superRefine((recipe, ctx) => {
     if (recipe.mode === "erase") {
-      if ([recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte, recipe.rleSize].some((value) => value === undefined) || recipe.backgrounds !== undefined || recipe.ledger !== undefined) {
+      if ([recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte, recipe.rleSize].some((value) => value === undefined) || recipe.backgrounds !== undefined) {
         ctx.addIssue({ code: "custom", message: "An erase composite names its result, mask, range, grid and matte only" });
       }
       return;
     }
-    const { backgrounds, ledger } = recipe;
+    const { backgrounds } = recipe;
     const eraseKeys = [recipe.result, recipe.rle, recipe.table, recipe.range, recipe.grid, recipe.matte, recipe.rleSize].some((value) => value !== undefined);
-    if (backgrounds === undefined || ledger === undefined || eraseKeys || backgrounds.length === 0 || ledger.length !== backgrounds.length) {
-      ctx.addIssue({ code: "custom", message: "An expand composite names one ledger row per background window" });
+    if (backgrounds === undefined || eraseKeys || backgrounds.length === 0) {
+      ctx.addIssue({ code: "custom", message: "An expand composite names its background windows only" });
       return;
     }
     backgrounds.forEach((background, at) => {
-      const row = ledger[at]!;
       const previous = backgrounds[at - 1];
-      const overlap = previous === undefined ? ZERO : { numerator: String(BigInt(previous.window.end.numerator) * BigInt(background.window.start.denominator) - BigInt(background.window.start.numerator) * BigInt(previous.window.end.denominator)),
-        denominator: String(BigInt(previous.window.end.denominator) * BigInt(background.window.start.denominator)) };
       if (previous !== undefined && compare(background.window.start, previous.window.start) <= 0n) ctx.addIssue({ code: "custom", path: ["backgrounds", at], message: "Windows run in order" });
-      if (compare(row.overlap, overlap) !== 0n) ctx.addIssue({ code: "custom", path: ["ledger", at, "overlap"], message: "The overlap is the previous window's tail" });
-      if (compare(row.consumed.start, background.window.start) < 0n || compare(row.consumed.end, background.window.end) > 0n) {
-        ctx.addIssue({ code: "custom", path: ["ledger", at, "consumed"], message: "The consumed interval lies in its window" });
-      }
-      if (at > 0 && compare(row.consumed.start, ledger[at - 1]!.consumed.end) !== 0n) ctx.addIssue({ code: "custom", path: ["ledger", at, "consumed"], message: "Consumed intervals run end to end" });
     });
   }),
   // The lip-sync steps (§7.17 lipsync rows, §97 D20-1): every object is a bound input named by its inputId.

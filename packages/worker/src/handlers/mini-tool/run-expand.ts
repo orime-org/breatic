@@ -144,17 +144,13 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     position.current = { shared: "composite" };
     const output: MiniToolPlanTarget & { format?: "mp4-h264" | "webm-vp9" } = { ...encoded, width: plan.layout.width, height: plan.layout.height,
       displayRect: { x: plan.layout.sourceX, y: plan.layout.sourceY, width: display.width, height: display.height } };
-    const last = plan.windows.length - 1;
     const chunks = await advanceChunks(run, plan.composite.map((chunk, c) => {
       const [from, to] = [presentationFrameAt(table, chunk.start).pts, presentationFrameAt(table, chunk.end - 1).displayEnd];
       const shown = plan.windows.flatMap((window, k) => (window.span.start < to && window.span.end > from ? [k] : []));
-      // §8.1 ledger: each window is consumed from its start to the next window's start, the last to its end.
-      const ledgerRows = shown.map((k, at) => ({ overlap: at === 0 ? { numerator: "0", denominator: "1" } : minus(spans[shown[at - 1]!]!.end, spans[k]!.start),
-        consumed: { start: spans[k]!.start, end: k < last ? spans[k + 1]!.start : spans[k]!.end } }));
       return { stepKey: keyOf(plan, `composite:${c}`), contentType: "video/mp4", failed: () => ({ failed: "failed" }),
         build: () => Promise.resolve({ recipe: { kind: "model_composite" as const, mode: "expand" as const, inputId: SOURCE, window: chunk, timescale: table.timescale,
           entries: windowEntries(ledger, chunk), target: { ...output, format: undefined },
-          backgrounds: shown.map((k) => ({ inputId: backgroundOf(k), window: spans[k]!, crop: plan.targetRoi })), ledger: ledgerRows },
+          backgrounds: shown.map((k) => ({ inputId: backgroundOf(k), window: spans[k]!, crop: plan.targetRoi })) },
         inputs: [{ inputId: SOURCE, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
     }), deadlineAt);
     if (!("keys" in chunks)) return fail({ step: "composite", category: "failed" });

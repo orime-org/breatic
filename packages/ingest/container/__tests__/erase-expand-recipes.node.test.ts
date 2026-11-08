@@ -664,7 +664,6 @@ describe('model_composite expand (execution design §10.5 composite row and fail
       kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 250 }, timescale: 25, entries: [span(r(0), r(10))],
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUND, window: { start: r(0), end: r(10) } }],
-      ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(10) } }],
     };
     const file = await produce({ [SOURCE]: join(dir, 'long.mp4'), [BACKGROUND]: join(dir, 'bg159.mp4') }, recipe);
     expect(await packets(file)).toHaveLength(250);

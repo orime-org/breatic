@@ -169,12 +169,11 @@ export type MiniToolPlanModelWindow = {
 export interface MiniToolPlanModelWindowMask { kind: "model_window_mask"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect; span: MiniToolPlanInterval }
 /** The PNG of a video's frame closest to `time`, the earlier on a tie (§10.5 condition step). */
 export interface MiniToolPlanFrameAt { kind: "frame_at"; inputId: string; time: MiniToolPlanExact; target: { width: number; height: number } }
-/** An expand composite chunk: the background windows and how much of each is overlap and consumed (§97 D15-8, execution design §8.1). */
+/** An expand composite chunk: the background windows, in order, that cover it (§97 D15-8, execution design §8.1). */
 export type MiniToolPlanExpandComposite = {
   kind: "model_composite"; mode: "expand";
   /** Each window's model output; `crop` names the product ROI in the output's own pixels when it is a whole model frame (§97 D20-2). */
   backgrounds: { inputId: string; window: MiniToolPlanInterval; crop?: MiniToolPlanPixelRect }[];
-  ledger: { overlap: MiniToolPlanExact; consumed: MiniToolPlanInterval }[];
 } & MiniToolPlanWindowRecipe;
 
 /** One person's face per prepared frame (§7.17 lipsync_faces row): detected on the whole frame, kept inside the person's track. */

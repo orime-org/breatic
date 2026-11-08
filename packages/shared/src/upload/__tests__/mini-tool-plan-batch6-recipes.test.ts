@@ -19,8 +19,7 @@
  *   profile }`; `audio` is the existing audio entry, null for a clip without audio (silence over its span); `crossfade` is
  *   null for a Cut.
  * - `model_composite`, by `mode`: erase `{ ...windowRecipe, result, rle, table, range, grid, matte }` (execution design §10.4); expand `{ ...windowRecipe, backgrounds:
- *   [{ inputId, window }], ledger: [{ overlap, consumed }] }`, one ledger row per background, whose own `window` is that
- *   window's presentation interval (§8.1: per-window interval, overlap, consumed interval inside the window).
+ *   [{ inputId, window }] }`, whose own `window` is that window's presentation interval, in order.
  */
 import { describe, expect, it } from "vitest";
 import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from "@shared/upload/mini-tool-plan-job.js";
@@ -65,7 +64,6 @@ const erase = (): Recipe => ({ kind: "model_composite", mode: "erase", ...window
 const expand = (): Recipe => ({
   kind: "model_composite", mode: "expand", ...windowShape,
   backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(5, 4) } }, { inputId: BACKGROUNDS[1], window: { start: r(1), end: r(2) } }],
-  ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(9, 8) } }, { overlap: r(1, 4), consumed: { start: r(9, 8), end: r(2) } }],
 });
 
 /**
@@ -228,11 +226,9 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
     ["erase without its grid", erase, { grid: undefined }],
     ["erase with expand's backgrounds", erase, { backgrounds: expand().backgrounds }],
     ["expand with erase's result", expand, { result: RESULT }],
-    ["expand without backgrounds", expand, { backgrounds: [], ledger: [] }],
-    ["a ledger row short", expand, { ledger: [(expand().ledger as unknown[])[0]] }],
-    ["a consumed interval outside its window", expand, { "ledger.0.consumed": { start: r(0), end: r(3, 2) } }],
-    ["consumed intervals with a gap", expand, { "ledger.1.consumed": { start: r(5, 4), end: r(2) } }],
-    ["an overlap that is not the previous window's tail", expand, { "ledger.1.overlap": r(1, 8) }],
+    ["expand without backgrounds", expand, { backgrounds: [] }],
+    // The container blends each frame from the windows' own intervals, so a recipe carries no consumption ledger.
+    ["expand with a ledger", expand, { ledger: [{ overlap: r(0), consumed: { start: r(0), end: r(9, 8) } }, { overlap: r(1, 4), consumed: { start: r(9, 8), end: r(2) } }] }],
     ["backgrounds out of order", expand, { backgrounds: [...(expand().backgrounds as unknown[])].reverse() }],
     ["no segment target", erase, { target: undefined }],
   ] as const)("BM02 refuses %s", (_name, recipe, edits) => {
