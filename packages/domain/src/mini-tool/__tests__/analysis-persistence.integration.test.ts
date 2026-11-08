@@ -141,14 +141,14 @@ function assertPreserved(before: Snapshot, after: Snapshot): void {
   expect({ step: after.step, node: after.node, holds: after.holds, usage: after.usage, ledger: after.ledger }).toEqual({ step: before.step, node: before.node, holds: before.holds, usage: before.usage, ledger: before.ledger });
 }
 
-/** Submit the independent result without generating a new identity. */
-function record(f: Fixture, result: unknown = f.result): Promise<MiniToolAnalysisRecord> {
-  return domain.miniToolAnalysisService.recordMiniToolAnalysis(f.taskId, result);
+/** Submit the independent result through the worker's entry without generating a new identity or closing the call set. */
+async function record(f: Fixture, result: unknown = f.result, taskId: string = f.taskId): Promise<MiniToolAnalysisRecord> {
+  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(taskId, { kind: "result", result, consumptionSet: "uncertain" })).record;
 }
 
-/** Submit one known application failure. */
-function fail(f: Fixture, error: unknown = ERROR): Promise<MiniToolAnalysisRecord> {
-  return domain.miniToolAnalysisService.failMiniToolAnalysis(f.taskId, error);
+/** Submit one known application failure through the worker's entry. */
+async function fail(f: Fixture, error: unknown = ERROR): Promise<MiniToolAnalysisRecord> {
+  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error, consumptionSet: "uncertain" })).record;
 }
 
 /** Select a fresh people payload for the frozen-field mutation matrix. */
@@ -521,7 +521,7 @@ describe("persistent analysis results", () => {
 
   it.each([{ label: "null", value: null }, { label: "nonfinite JSON", value: { cost: NaN } }, { label: "missing", value: undefined }])("refuses a $label failure without changing task state", async ({ value }) => {
     const f = await seed(); const before = await snapshot(f);
-    await expect(domain.miniToolAnalysisService.failMiniToolAnalysis(f.taskId, value)).rejects.toBeInstanceOf(z.ZodError);
+    await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: value, consumptionSet: "uncertain" })).rejects.toBeInstanceOf(z.ZodError);
     expect(await snapshot(f)).toEqual(before);
   });
 
@@ -546,7 +546,7 @@ describe("persistent analysis results", () => {
 
   it("rejects a missing task and a non-analysis task", async () => {
     const f = await seed();
-    await expect(domain.miniToolAnalysisService.recordMiniToolAnalysis(crypto.randomUUID(), f.result)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(record(f, f.result, crypto.randomUUID())).rejects.toBeInstanceOf(NotFoundError);
     await pg`UPDATE tasks SET task_type='video' WHERE id=${f.taskId}`;
     const before = await snapshot(f); await expect(record(f)).rejects.toBeInstanceOf(NotFoundError); expect(await snapshot(f)).toEqual(before);
   });
@@ -567,11 +567,11 @@ describe("persistent analysis results", () => {
       if (kind === "scene_cuts") await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at)
         SELECT studio_id,${f.userId},${body.analysisRunId},1,'held','2099-01-01T00:00:00Z' FROM projects WHERE id=${body.projectId}`;
       const identity = accepted.record;
-      committed = await domain.miniToolAnalysisService.recordMiniToolAnalysis(body.analysisRunId, {
+      committed = await record(f, {
         ...f.result, schemaVersion: identity.schemaVersion, draftId: identity.draftId, revision: identity.revision,
         analysisRunId: identity.analysisRunId, acceptedAt: identity.acceptedAt, kind: identity.kind,
         binding: identity.binding, analysisInput: identity.analysisInput, inputFingerprint: identity.inputFingerprint,
-      });
+      }, body.analysisRunId);
       throw new Error("fixture_queue_acknowledgement_failed");
     })).rejects.toThrow("fixture_queue_acknowledgement_failed");
     expect(await domain.miniToolAnalysisService.get(body.analysisRunId, f.userId)).toEqual(committed);

@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { miniToolPlanLimitsSchema, readVideoPresentationLedger, x264PresetSchema, videoPresentationLedgerReceiptSchema, type TaskEntity, type VideoPresentationLedger } from "@breatic/shared";
-import { getMiniToolsConfig } from "@breatic/core";
+import { miniToolPlanLimitsSchema, x264PresetSchema, videoPresentationLedgerReceiptSchema, type TaskEntity } from "@breatic/shared";
 import {
   canonicalMiniToolValue, hashMiniToolValue, miniToolExecutionRecipeSchema, miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema,
-  miniToolPresentationRefSchema, miniToolSourceBindingSchema, videoToolAnalysisRefSchema, videoToolDraftSchema, type MiniToolSourceBinding,
+  miniToolPresentationRefSchema, miniToolSourceBindingSchema, videoToolAnalysisRefSchema, videoToolDraftSchema,
 } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
@@ -169,31 +168,4 @@ function frozenInputsMatch(execution: AcceptedMiniToolExecution): boolean {
   const ids = Object.keys(execution.presentationRef);
   return ids.length === 2 && ids.every((id) => execution.ledgerReceipts[id]?.toolInputId === execution.presentationRef[id]!.toolInputId
     && execution.ledgerReceipts[id]?.sourceFingerprint === execution.bindings[id]?.contentHash && execution.sourceKeys[id] !== undefined && execution.versionIds[id] !== undefined);
-}
-
-/** One frozen tool input resolved for execution (§5.3): never the currently selected version. */
-export interface ResolvedVideoToolInput {
-  originalBinding: MiniToolSourceBinding;
-  selectedVersion: { versionId: string; toolInputId: string };
-  toolInputId: string;
-  validatedFullLedger: VideoPresentationLedger;
-}
-
-/**
- * The version-resolution exit (§5.3): resolve one input of a frozen plan from its own presentationRef and receipt only,
- * reading and validating the full ledger the receipt names; the presentation DO is never asked.
- * @param plan - The frozen execution plan.
- * @param inputId - The input id, `source` for single-input tools.
- * @param bound - The read deadline and optional cancellation.
- * @param bound.deadlineAt - The absolute read deadline in epoch milliseconds.
- * @param bound.signal - The caller's cancellation.
- * @returns The original binding, the frozen version, the toolInputId and the validated full ledger.
- * @throws {Error} When the plan names no such input or the full object no longer matches its receipt.
- */
-export async function resolveVideoToolInput(plan: AcceptedMiniToolExecution, inputId: string, bound: { deadlineAt: number; signal?: AbortSignal }): Promise<ResolvedVideoToolInput> {
-  if (plan.tool === "video.remove-bg" || plan.tool === "video.transitions" || inputId !== "source") throw new Error(`The plan names no frozen tool input ${inputId}`);
-  const ref = plan.presentationRef.source;
-  const receipt = plan.ledgerReceipts.source;
-  const validatedFullLedger = await readVideoPresentationLedger(receipt, { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes }, bound);
-  return { originalBinding: plan.binding, selectedVersion: { versionId: plan.versionIds.source, toolInputId: ref.toolInputId }, toolInputId: ref.toolInputId, validatedFullLedger };
 }

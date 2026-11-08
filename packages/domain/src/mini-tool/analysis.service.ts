@@ -425,22 +425,6 @@ function replay(task: taskRepo.AnalysisTaskRow, body: MiniToolAnalysisRequest, u
 }
 
 /**
- * Persist a matching typed result under the original task identity.
- * @param taskId - The immutable accepted task.
- * @param result - The detector result to validate against frozen dependencies.
- * @returns The committed public analysis record.
- * @throws {Error} When validation, identity or persistence fails.
- */
-export async function recordMiniToolAnalysis(taskId: string, result: unknown): Promise<MiniToolAnalysisRecord> {
-  const incoming = miniToolAnalysisResultSchema.parse(result);
-  return db.transaction(async (tx) => {
-    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
-    if (task === null) throw new NotFoundError(t("server.error.not_found"));
-    return recordLockedAnalysis(task, incoming, tx);
-  });
-}
-
-/**
  * Apply matching result metadata while the shared completion owner holds its task lock.
  * @param task - Current accepted facts under the parent lock.
  * @param incoming - The validated detector result.
@@ -467,22 +451,6 @@ async function recordLockedAnalysis(task: taskRepo.AnalysisTaskRow, incoming: Mi
   }, tx);
   await presentationPinService.release({ holderKind: "analysis", holderId: task.id }, tx);
   return recordFromTask(updated);
-}
-
-/**
- * Persist an application failure while preserving any committed result.
- * @param taskId - The immutable accepted task.
- * @param error - A JSON error reported by the application entry.
- * @returns The committed public analysis record.
- * @throws {Error} When validation or persistence fails.
- */
-export async function failMiniToolAnalysis(taskId: string, error: unknown): Promise<MiniToolAnalysisRecord> {
-  const failure = z.record(z.string(), z.json()).parse(error);
-  return db.transaction(async (tx) => {
-    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
-    if (task === null) throw new NotFoundError(t("server.error.not_found"));
-    return failLockedAnalysis(task, failure, tx);
-  });
 }
 
 /**

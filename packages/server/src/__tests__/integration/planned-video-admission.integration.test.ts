@@ -26,7 +26,6 @@ import {
   creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, openMiniToolConsumption, readMiniToolExecutionPlan,
   recordMiniToolConsumption, settleMiniToolCharge, upstreamStepRepo,
 } from "@breatic/domain";
-import * as domain from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { ledgerKeys } from "./presentation-fixtures.js";
@@ -873,63 +872,7 @@ describe("the pre-roll from the selected source keyframe (§93 D6-1; design §5.
   });
 });
 
-describe("E3 version-resolution exit (inner#1306 §90 E3-7; design §5.3)", () => {
-  type Exit = (plan: unknown, inputId: string, bound: { deadlineAt: number }) => Promise<{ originalBinding: unknown; selectedVersion: unknown; toolInputId: string; validatedFullLedger: unknown }>;
-
-  /**
-   * The exit under test, read at call time so a missing export fails each case on its own.
-   * @returns It.
-   */
-  function exit(): Exit {
-    const fn = (domain as Record<string, unknown>).resolveVideoToolInput;
-    expect(fn, "resolveVideoToolInput is exported from @breatic/domain").toBeTypeOf("function");
-    return fn as Exit;
-  }
-
-  it("E3-V01 resolves the frozen input: original binding, frozen version, toolInputId and the validated full ledger, without asking ingest", async () => {
-    const f = await seed(); await accept(f);
-    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
-    outside.ingest.mockClear(); outside.reads.length = 0;
-    // A newer version is selected after admission; the exit still answers the frozen one.
-    (outside.snapshots.get(f.sourceKey) as { presentation: Record<string, unknown> }).presentation.versionId = "b".repeat(64);
-    const resolved = await exit()(plan, "source", { deadlineAt: Date.now() + 60_000 });
-    expect(resolved).toEqual({
-      originalBinding: plan.binding, selectedVersion: { versionId: f.versionId, toolInputId: f.body.presentation_ref.source.toolInputId },
-      toolInputId: f.body.presentation_ref.source.toolInputId, validatedFullLedger: f.full,
-    });
-    expect(outside.ingest).not.toHaveBeenCalled();
-    expect(outside.reads).toEqual([f.receipt.url]);
-  });
-
-  it("E3-V02 refuses a full object that no longer matches the frozen receipt", async () => {
-    const f = await seed(); await accept(f);
-    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
-    outside.bodies.set(f.receipt.url, JSON.stringify({ ...f.full, encoding: { ...ENCODE_FACTS, codedHeight: 541 } }));
-    await expect(exit()(plan, "source", { deadlineAt: Date.now() + 60_000 })).rejects.toThrow();
-  });
-
-  it("E3-V03 refuses an input id the plan does not name", async () => {
-    const f = await seed(); await accept(f);
-    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
-    await expect(exit()(plan, "clip-b", { deadlineAt: Date.now() + 60_000 })).rejects.toThrow();
-  });
-});
-
-
 describe("E4 ledger objects per toolInputId (inner#1306 §90 E4-7; design §5.1 step 5, §7.15)", () => {
-  type Exit = (plan: unknown, inputId: string, bound: { deadlineAt: number }) => Promise<{ validatedFullLedger: unknown }>;
-  const other = "f".repeat(64);
-
-  /**
-   * The resolve exit, read at call time.
-   * @returns It.
-   */
-  function exit(): Exit {
-    const fn = (domain as Record<string, unknown>).resolveVideoToolInput;
-    expect(fn, "resolveVideoToolInput is exported from @breatic/domain").toBeTypeOf("function");
-    return fn as Exit;
-  }
-
   it("E4-K01 the frozen receipt names the full and compact objects of the plan's own toolInputId", async () => {
     const f = await seed(); await accept(f);
     const toolInputId = f.body.presentation_ref.source.toolInputId;
@@ -949,19 +892,6 @@ describe("E4 ledger objects per toolInputId (inner#1306 §90 E4-7; design §5.1 
     (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
     expect((await post(f)).ok).toBe(false);
     expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-  });
-
-  it("E4-K03 the frozen execution still resolves after another plan of the same source writes its own ledger", async () => {
-    const f = await seed(); await accept(f);
-    const plan = (await readMiniToolExecutionPlan(f.body.run_id)).execution;
-    const keys = ledgerKeys(f.sourceKey, other);
-    // Another plan's L(t'), different bytes, written where that plan's toolInputId puts them.
-    outside.bodies.set(publicUrl(keys.full), JSON.stringify({ ...f.full, toolInputId: other, planSha256: other }));
-    outside.bodies.set(publicUrl(keys.table), JSON.stringify({ toolInputId: other }));
-    outside.reads.length = 0;
-    const resolved = await exit()(plan, "source", { deadlineAt: Date.now() + 60_000 });
-    expect(resolved.validatedFullLedger).toEqual(f.full);
-    expect(outside.reads).toEqual([f.receipt.url]);
   });
 });
 

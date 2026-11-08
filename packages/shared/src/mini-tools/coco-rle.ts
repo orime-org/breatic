@@ -10,9 +10,6 @@ export interface CocoRleMask {
 /** A mask's pixel size. */
 export interface CocoMaskSize { width: number; height: number }
 
-/** A range of frame indices, [start, end). */
-export interface CocoFrameRange { start: number; end: number }
-
 /**
  * Decodes COCO's signed variable-length counts into row-major VOID mask bytes.
  * @param rle - Column-major COCO mask, with dimensions ordered height then width.
@@ -63,23 +60,4 @@ export function decodeCocoRleMask(rle: CocoRleMask, expected: CocoMaskSize): Uin
     }
   }
   return bytes;
-}
-
-/**
- * Whether a person's SAM3 track has no foreground on any frame of the used
- * source range (execution design §9.4 `no_face` row). The RLE file holds one
- * mask per prepared frame in order, so the array index is the frame index; a
- * frame without a mask counts as empty. A decoded VOID mask marks foreground 0.
- * @param masks - The track's masks, one per prepared frame.
- * @param range - The used frame range, `[start, end)`.
- * @param expected - The prepared video's size.
- * @returns True when no frame in the range has a foreground pixel.
- * @throws {RangeError} When a mask in the range is malformed.
- */
-export function trackedForegroundEmpty(masks: readonly (CocoRleMask | null)[], range: CocoFrameRange, expected: CocoMaskSize): boolean {
-  for (let frame = range.start; frame < Math.min(range.end, masks.length); frame++) {
-    const mask = masks[frame];
-    if (mask && decodeCocoRleMask(mask, expected).includes(0)) return false;
-  }
-  return true;
 }

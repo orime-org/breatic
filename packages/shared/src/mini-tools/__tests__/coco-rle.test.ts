@@ -43,29 +43,3 @@ describe("COCO compressed RLE to VOID gray8 mask", () => {
     expect(() => api.decodeCocoRleMask({ size: [3, 2], counts: "213" }, { width: 3, height: 2 })).toThrow();
   });
 });
-
-// inner#1306 test plan §97 D17-7 (a) (execution design §9.4 no_face row: 「track在用到的源区间内整段都是空前景」): on top of the
-// decoder, `trackedForegroundEmpty(masks, range, expected)` says whether a person's SAM3 track has no foreground pixel on
-// any frame in the used source range [start, end); a frame without a mask counts as empty. §97 D18-3: the SAM3 RLE file is a
-// JSON array of compressed counts, one per frame of the prepared video in order (a measured 150-frame SAM3 track holds 150
-// entries and no explicit frame index), so the array index is the frame index;
-// the container builds each mask from the counts and the prepared video's size. `lipsync_faces` then reports
-// `empty_foreground`.
-describe("an empty tracked foreground over the used range (§97 D17-7)", () => {
-  type Empty = (masks: readonly (api.CocoRleMask | null)[], range: { start: number; end: number }, expected: { width: number; height: number }) => boolean;
-  const empty = (api as unknown as { trackedForegroundEmpty?: Empty }).trackedForegroundEmpty;
-  const SIZE = { width: 3, height: 2 };
-  const background: api.CocoRleMask = { size: [2, 3], counts: "6" };
-  const foreground: api.CocoRleMask = { size: [2, 3], counts: "213" };
-
-  it.each([
-    ["every frame in the range is background", [background, background, background], { start: 0, end: 3 }, true],
-    ["one frame in the range has foreground", [background, foreground, background], { start: 0, end: 3 }, false],
-    ["foreground only outside the range", [foreground, background, background, foreground], { start: 1, end: 3 }, true],
-    ["frames without a mask in the range", [background, null, null], { start: 1, end: 3 }, true],
-    ["a frame without a mask beside one with foreground", [null, foreground], { start: 0, end: 2 }, false],
-  ] as const)("RL01 %s", (_name, masks, range, expected) => {
-    expect(empty, "trackedForegroundEmpty is exported from coco-rle").toBeTypeOf("function");
-    expect(empty!(masks, range, SIZE)).toBe(expected);
-  });
-});
