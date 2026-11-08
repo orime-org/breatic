@@ -18,6 +18,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { useRunning } from '@web/stores/task-actions-in-flight';
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
@@ -62,6 +63,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   lipSyncFailure?: LipsyncFailureReason | null;
   /** Retries the failed items of the last lip-sync run. */
   onRetryFailed?: () => void;
+  /** That retry's press intent, which its button waits on. */
+  retryIntent?: string;
   /** Why "Track selection" cannot track this selection now; a press shows it (execution design §10.2, §10.4). */
   trackBlockedReason?: string;
   /** The source's display size an expansion's ratio frames wrap (the presentation's, sample aspect ratio applied). */
@@ -190,7 +193,7 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
     }} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
     {props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <div className='flex items-center gap-1.5'><ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0].name} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} /></div>}
     <ParamOptionGroup label={t('canvas.miniTool.videoUI.syncMode')} options={[{ value: 'cut_off', label: 'Cut off' }, { value: 'silence', label: 'Silence' }, { value: 'loop', label: 'Loop' }, { value: 'bounce', label: 'Bounce' }, { value: 'remap', label: 'Remap' }].map((option) => ({ ...option, disabled: props.disabled }))} value={draft.params.syncMode} testIdPrefix='video-sync' onSelect={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} />
-    {props.lipSyncFailure ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} onRedetect={() => props.onAnalyse('people')} /> : null}
+    {props.lipSyncFailure ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} retryIntent={props.retryIntent} onRedetect={() => props.onAnalyse('people')} /> : null}
   </section>;
 }
 
@@ -207,12 +210,14 @@ const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedF
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
  * @param props.onRetry - Retries the failed items.
+ * @param props.retryIntent - The retry's press intent, which the button waits on.
  * @param props.onRedetect - Identifies the people again, where the people are identified (the host's panel).
  * @returns The failure block.
  * @throws {z.ZodError} When the reason is malformed.
  */
-export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; onRedetect?: () => void }): React.JSX.Element {
+export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; retryIntent?: string; onRedetect?: () => void }): React.JSX.Element {
   const t = useTranslation();
+  const retrying = Boolean(useRunning(props.retryIntent ?? ''));
   const { persons, shared } = props.reason;
   const blocker = persons.find((person) => person.category === 'no_face' || person.category === 'model_rejected')?.detectionNumber;
   const retryable = lipsyncFailureRetryable(props.reason);
@@ -227,7 +232,7 @@ export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: 
       {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[shared.category]}`)}</span></li>}
     </ul>
     {retryable || (noFace && props.onRedetect !== undefined) ? <div className='flex justify-end'>{retryable
-      ? <Button variant='outline' size='compact' disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
+      ? <Button variant='outline' size='compact' loading={retrying} disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
       : <Button variant='outline' size='compact' disabled={props.disabled} onClick={props.onRedetect}>{t('canvas.miniTool.videoUI.redetectPeople')}</Button>}</div> : null}
   </div>;
 }

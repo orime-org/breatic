@@ -129,6 +129,19 @@ describe('erase and expand output nodes list their failure and retry what can be
     expect(miniToolExecutionRequestSchema.safeParse(sent).success).toBe(true);
   });
 
+  // The node's retry and the tool panel's share one intent per run (`plannedRetryIntent`), so either one waiting shows on both.
+  it('shows the retry waiting while it is sent, under the run\'s one retry intent', async () => {
+    TOOL.current = 'video.erase';
+    serve({ kind: 'erase', step: 'mask', category: 'timeout' });
+    http.post.mockReturnValue(new Promise(() => undefined));
+    mount();
+    const retry = await screen.findByRole('button', { name: ui('retryFailedItems') });
+    expect(retry).not.toHaveAttribute('aria-busy');
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('button', { name: ui('retryFailedItems') })).toHaveAttribute('aria-busy', 'true'));
+    expect(useTaskActionsInFlight.getState().running.has(`planned-retry:${RUN}:0`)).toBe(true);
+  });
+
   it('an expand lists each window that did not succeed, a stopped window naming the one that stopped it, and retries', async () => {
     TOOL.current = 'video.expand';
     serve({ kind: 'expand', windows: [{ windowIndex: 2, step: 'generate', category: 'timeout' }, { windowIndex: 3, step: 'generate', category: 'stopped' }], shared: null });

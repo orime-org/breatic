@@ -60,6 +60,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { resetRunOnceForTests, useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -264,7 +265,7 @@ function ui(key: string, params?: Record<string, string | number>): string {
 }
 
 beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); catalog = CATALOG; mounted = presentation; });
-afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); vi.restoreAllMocks(); });
+afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); resetRunOnceForTests(); vi.restoreAllMocks(); });
 
 describe('the lip-sync panel reads its models and ranges from the canvas limits (§97; canvas design §4 对口型)', () => {
   it('lists exactly the configured models in order, the first chosen', async () => {
@@ -325,6 +326,17 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
     expect(body.run_id).not.toBe(failedRunId);
     expect(miniToolExecutionRequestSchema.safeParse(body).success).toBe(true);
     expect(sent).toHaveBeenCalledExactlyOnceWith(body, expect.any(String));
+  });
+
+  it('shows the retry waiting while it is sent, under the run\'s one retry intent', async () => {
+    serve(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }), reason);
+    http.post.mockReturnValue(new Promise(() => undefined));
+    await mount(true);
+    const retry = await screen.findByRole('button', { name: ui('retryFailedPeople') });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('button', { name: ui('retryFailedPeople') })).toHaveAttribute('aria-busy', 'true'));
+    expect(useTaskActionsInFlight.getState().running.has(`planned-retry:${failedRunId}:0`)).toBe(true);
   });
 
   it('offers no retry when the reason is not retryable (a person with no face)', async () => {

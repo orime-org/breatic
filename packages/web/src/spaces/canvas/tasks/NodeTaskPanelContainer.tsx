@@ -23,7 +23,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { plannedRetryIntent, plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { LipSyncFailure } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { ModelRunFailure } from '@web/spaces/canvas/mini-tool/video/ModelRunFailure';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
@@ -196,7 +196,7 @@ function OpenNodeTaskPanel({
     return reason === null ? [] : [[runId, reason] as const];
   })), [parentRunIds, runs]);
   const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
-    runOnce(`${tool === 'video.lip-sync' ? 'lip-sync' : tool}-retry:${runId}:${outputIndex}`, {
+    runOnce(plannedRetryIntent(runId, outputIndex), {
       scope: 'mini-tool',
       prepare: () => ({ tool, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId, outputIndexes: [outputIndex] } }),
       send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
@@ -220,11 +220,11 @@ function OpenNodeTaskPanel({
     if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
       const tool = entry.label;
       const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(plannedFailureRetryable(failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
     }
     const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
     return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} {...(plannedFailureRetryable(reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
+      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
   }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.

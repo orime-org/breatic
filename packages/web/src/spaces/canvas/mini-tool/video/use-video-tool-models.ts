@@ -17,8 +17,7 @@ import { readEdges, type CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { miniToolIntent } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
-import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { plannedRetryIntent, plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import type { LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 
@@ -29,6 +28,8 @@ export interface VideoToolModels {
   expand?: CanvasExpandLimits;
   lipSyncFailure: LipsyncFailureReason | null;
   onRetryFailed?: () => void;
+  /** The press intent of that retry, which its button waits on. */
+  retryIntent?: string;
   /** How long the priced inputs hold still before the panel asks for a quote (config `quote_debounce_ms`). */
   quoteDebounceMs: number;
   /** The most outputs one run of this tool creates (config `executions[tool].max_outputs`), absent while unknown. */
@@ -93,14 +94,15 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const failureKey = React.useMemo(() => ['lip-sync-failure', projectId, spaceId, ...outputs], [projectId, spaceId, outputs]);
   const failure = useQuery({ queryKey: failureKey, queryFn: () => lastLipSyncFailure(projectId, spaceId, outputs), enabled: outputs.length > 0 }).data ?? null;
   const onRetryFailed = React.useMemo(() => failure === null ? undefined : (): void => {
-    void runOnce(miniToolIntent(spaceId, nodeId, 'video.lip-sync'), {
+    void runOnce(plannedRetryIntent(failure.runId), {
       scope: 'mini-tool',
       prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId: failure.runId, outputIndexes: [0] } }),
       send: (key, body) => miniToolsApi.retryPlannedVideoRun(body, key),
       onDone: () => { void queryClient.invalidateQueries({ queryKey: failureKey }); return undefined; },
       onFailure: (error) => { toast.error(plannedRunRefusalText(error, t)); },
     });
-  }, [failure, spaceId, nodeId, projectId, queryClient, t, failureKey]);
-  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null, ...(onRetryFailed === undefined ? {} : { onRetryFailed }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0,
+  }, [failure, spaceId, projectId, queryClient, t, failureKey]);
+  return { ...(lipSync === undefined ? {} : { lipSync }), ...(erase === undefined ? {} : { erase }), ...(expand === undefined ? {} : { expand }), lipSyncFailure: failure?.reason ?? null,
+    ...(onRetryFailed === undefined || failure === null ? {} : { onRetryFailed, retryIntent: plannedRetryIntent(failure.runId) }), quoteDebounceMs: limits?.quoteDebounceMs ?? 0,
     ...(limits?.maxOutputs?.[toolId] === undefined ? {} : { maxOutputs: limits.maxOutputs[toolId] }) };
 }

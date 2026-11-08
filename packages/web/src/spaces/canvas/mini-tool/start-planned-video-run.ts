@@ -32,6 +32,18 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   display?: { width: number; height: number };
 }
 
+/**
+ * The one press intent of retrying a planned run's failed output, shared by the output node's task panel and the host's tool
+ * panel, so a retry waiting in either shows on both and is never sent twice.
+ * @param runId - The failed run.
+ * @param outputIndex - The output retried.
+ * @returns The intent id.
+ * @throws {never} Never.
+ */
+export function plannedRetryIntent(runId: string, outputIndex = 0): string {
+  return `planned-retry:${runId}:${outputIndex}`;
+}
+
 /** What the panel knows besides the draft that a planned request names (§97 D27-1). */
 export interface PlannedVideoFacts {
   projectId: string;

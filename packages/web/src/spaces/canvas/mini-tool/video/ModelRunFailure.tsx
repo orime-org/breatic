@@ -5,6 +5,7 @@ import * as React from 'react';
 import { modelFailureRetryable, type EraseFailureReason, type ExpandFailureReason } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useRunning } from '@web/stores/task-actions-in-flight';
 
 const CATEGORY_KEYS = { model_rejected: 'personFailRejected', model_output_mismatch: 'failOutputMismatch', timeout: 'personFailTimeout', failed: 'personFailFailed', stopped: 'personFailStopped' } as const;
 const ERASE_NEXT_KEYS = { model_rejected: 'eraseRejectedNext', model_output_mismatch: 'eraseMismatchNext', timeout: 'personFailRetryNext', failed: 'personFailRetryNext' } as const;
@@ -18,11 +19,13 @@ const EXPAND_NEXT_KEYS = { model_rejected: 'expandRejectedNext', timeout: 'perso
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
  * @param props.onRetry - Retries the failed items.
+ * @param props.retryIntent - The retry's press intent, which the button waits on.
  * @returns The failure block.
  * @throws {z.ZodError} When the reason is malformed.
  */
-export function ModelRunFailure(props: { reason: EraseFailureReason | ExpandFailureReason; disabled: boolean; onRetry?: () => void }): React.JSX.Element {
+export function ModelRunFailure(props: { reason: EraseFailureReason | ExpandFailureReason; disabled: boolean; onRetry?: () => void; retryIntent?: string }): React.JSX.Element {
   const t = useTranslation();
+  const retrying = Boolean(useRunning(props.retryIntent ?? ''));
   const { reason } = props;
   /**
    * One step's line.
@@ -48,6 +51,6 @@ export function ModelRunFailure(props: { reason: EraseFailureReason | ExpandFail
   }
   return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-model-run-failure'>
     <ul className='grid min-w-0 gap-1.5'>{lines}</ul>
-    {modelFailureRetryable(reason) ? <div className='flex justify-end'><Button variant='outline' size='compact' disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedItems')}</Button></div> : null}
+    {modelFailureRetryable(reason) ? <div className='flex justify-end'><Button variant='outline' size='compact' loading={retrying} disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedItems')}</Button></div> : null}
   </div>;
 }
