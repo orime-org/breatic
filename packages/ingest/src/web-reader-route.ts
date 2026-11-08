@@ -5,7 +5,7 @@
  * `POST /read-pages` (inner#1664): our server asks for a set of pages, and a
  * reader instance of the call's own reads them.
  */
-import { readPagesRequestSchema } from "@breatic/shared";
+import { INGEST_FAILURE_HEADER, readPagesRequestSchema } from "@breatic/shared";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import type { WebReaderContainer } from "@ingest/web-reader-container.js";
@@ -24,13 +24,16 @@ export interface WebReaderEnv {
  * @param request - The request.
  * @param env - The bindings.
  * @returns 200 with the pages, 401 without the secret, 400 for a body that is
- *   not a read-pages request, 499 when the caller went before the answer.
+ *   not a read-pages request, 503 naming `reader_not_started` when the
+ *   container would not start, 499 when the caller went before the answer.
  * @throws {Error} When the reader failed while the caller was still waiting.
  */
 export async function readPages(request: Request, env: WebReaderEnv): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
   const parsed = readPagesRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a read-pages request", { status: 400 });
+  // Gone already: no abort would ever fire to stop an instance taken now.
+  if (request.signal.aborted) return new Response("The caller left", { status: 499 });
 
   const reader = env.WEB_READER.get(env.WEB_READER.idFromName(crypto.randomUUID()));
   const stop = (): void => {
@@ -42,6 +45,13 @@ export async function readPages(request: Request, env: WebReaderEnv): Promise<Re
   } catch (err) {
     // Nobody is waiting for this answer, and the reader ended because of it.
     if (request.signal.aborted) return new Response("The caller left", { status: 499 });
+    // Nothing ran, so nothing is charged: the server reads the code.
+    if (err instanceof Error && err.message.startsWith("reader_not_started")) {
+      return new Response("The page reader would not start", {
+        status: 503,
+        headers: { [INGEST_FAILURE_HEADER]: "reader_not_started" },
+      });
+    }
     throw err;
   } finally {
     request.signal.removeEventListener("abort", stop);
