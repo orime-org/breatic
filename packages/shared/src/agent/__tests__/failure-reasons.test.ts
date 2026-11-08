@@ -42,12 +42,19 @@ const REASONS = [
   "noPermission",
   "notMember",
   "tooFrequent",
+  // Added by web_fetch (inner#1664).
+  "linkNotInConversation",
+  "pageNeedsLogin",
+  "pageRefused",
+  "pageTooSlow",
+  "pageEmpty",
+  "pagesUnreadable",
   "declined",
   "ourFault",
 ];
 
 describe("the reasons a user is shown", () => {
-  it("are the sixteen causes, each its own key, beside the line for a stop", () => {
+  it("are the twenty-two causes, each its own key, beside the line for a stop", () => {
     const { stopped, ...reasons } = FAILURE_LINES;
     expect(Object.keys(reasons).sort()).toEqual([...REASONS].sort());
     expect(Object.values(reasons)).toEqual(Object.keys(reasons).map((key) => `chat.tool.failure.${key}`));

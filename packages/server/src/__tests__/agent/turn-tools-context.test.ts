@@ -71,6 +71,23 @@ describe("turnToolsContext", () => {
   });
 });
 
+describe("turnToolsContext for web_fetch (inner#1664)", () => {
+  const readPages = async () => ({ pages: [], usage: { wallMs: 0, cpuUsec: null } });
+  // Held in a variable, not written inline: the turn argument gains
+  // `readPages` with the implementation, and an inline literal would not
+  // compile against the argument as it is declared today.
+  const turn = { saveToStorage, studioId: "s1", openDocument: null, records, memory, readPages };
+  const context = turnToolsContext({ web_search: {}, web_fetch: {} }, usage, turn);
+
+  it("hands web_fetch the turn's page read beside its usage recorder", () => {
+    expect(context.web_fetch).toEqual({ usage, readPages });
+  });
+
+  it("gives web_search nothing more than its usage recorder", () => {
+    expect(context.web_search).toEqual({ usage });
+  });
+});
+
 describe("openDocumentOf", () => {
   const blocks = [{ id: "b1", type: "paragraph", text: "x", lossy: false, partial: false }];
   const base = { id: "d1", name: "Storyboard", kind: "document" as const };
