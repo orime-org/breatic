@@ -589,6 +589,35 @@ describe('how long a session lives', () => {
     expect(shownButtons()).toContain('doc-ai-replace');
   });
 
+  it('shows its answer and buttons as they were, not written out again, after its tab was hidden and shown again', async () => {
+    // At a reading pace a panel drawn anew would write the answer out again
+    // and offer insert only once it had.
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 40 });
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['Hi there.'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    act(() => {
+      setHidden(true);
+    });
+    act(() => {
+      setHidden(false);
+    });
+
+    expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi there.');
+    }, { timeout: 100 });
+  });
+
   it('keeps drawing the words that come after its tab was hidden and shown again', async () => {
     const editor = openSharedBody('<p>hello world</p>');
     const setHidden = mountDocumentEditor(editor, false, 'project-1', true);

@@ -207,9 +207,18 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const sessionRef = React.useRef<AiSession | null>(null);
   const [opened, setOpened] = React.useState<Opened | null>(null);
   const openedRef = React.useRef<Opened | null>(null);
-  // Held here, outside the panel: a hidden Space tab takes the body's viewport
-  // away, which takes the panel down, and it is drawn anew when the tab shows.
+  // Where the preview was scrolled to, written as it scrolls: a hidden Space
+  // tab hides the panel, and the browser drops the scroll positions of what
+  // it does not lay out.
   const previewScroll = React.useRef<PreviewScroll | null>(null);
+  // The body's viewport as the panel last saw it. A hidden Space tab hands the
+  // viewport ref null while React.Activity keeps the same element, so the
+  // panel stays up, its answer and its reading pace as they were.
+  const [heldViewport, setHeldViewport] = React.useState<HTMLElement | null>(viewport);
+  React.useEffect(() => {
+    if (viewport !== null) setHeldViewport(viewport);
+  }, [viewport]);
+  const panelViewport = viewport ?? heldViewport;
   const openings = React.useRef(0);
   const requests = React.useRef(new Map<number, AbortController>());
   // What the last failure said, when the server said something for this user.
@@ -376,11 +385,11 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   return (
     <DocumentAiLaunchContext.Provider value={launch}>
       {children}
-      {session !== null && session.state !== 'closed' && opened !== null && viewport !== null && (
+      {session !== null && session.state !== 'closed' && opened !== null && panelViewport !== null && (
         <AiPanel
           key={opened.key}
           editor={editor}
-          viewport={viewport}
+          viewport={panelViewport}
           opened={opened}
           session={session}
           insertBlockPresent={insertBlockPresent}
@@ -402,7 +411,7 @@ interface AiPanelProps {
   /** Whether the connection may write; the editor's own editability is read at the press. */
   writable: boolean;
   dispatch: (event: AiSessionEvent) => void;
-  /** Where the preview was scrolled to, kept while the panel is taken down. */
+  /** Where the preview was scrolled to, kept while its Space tab is hidden. */
   previewScroll: React.RefObject<PreviewScroll | null>;
 }
 
@@ -442,7 +451,7 @@ function anchorBox(editor: ViewedEditor, opened: Opened): DOMRect | null {
  * @param props.insertBlockPresent - Whether the insert block is in the body.
  * @param props.writable - Whether the connection may write.
  * @param props.dispatch - Sends the session an event.
- * @param props.previewScroll - Where the preview was scrolled to, kept while the panel is taken down.
+ * @param props.previewScroll - Where the preview was scrolled to, kept while its Space tab is hidden.
  * @returns The panel.
  */
 function AiPanel({
@@ -970,9 +979,6 @@ function Preview({
   // stopped growing since and is yet to be drawn.
   const grew = React.useRef(false);
   const ended = React.useRef(false);
-  // Where this opening's preview was left, when the panel is drawn anew after
-  // its Space tab was hidden: put back at the first drawing with words.
-  const kept = React.useRef(scroll.current?.key === openingKey ? scroll.current : null);
   // Written as it scrolls: a node out of the document reads 0 for its
   // scroll positions, so they cannot be read as the panel is taken down.
   // Capture, as a table frame's own scroll does not bubble.
@@ -1018,9 +1024,10 @@ function Preview({
     // The preview follows a shot list down as it is written, which leaves its
     // last rows on screen with no column names above them.
     else if (ended.current && shotList) scroller.current?.scrollTo({ top: 0 });
-    else if (kept.current !== null && scroller.current !== null) scroller.current.scrollTop = kept.current.top;
+    // Where it was left: the same place for a redraw, and back from 0 when
+    // its Space tab shows again.
+    else if (scroll.current?.key === openingKey && scroller.current !== null) scroller.current.scrollTop = scroll.current.top;
     if (!streaming) ended.current = false;
-    kept.current = null;
     return () => {
       // React refuses a synchronous unmount while it is rendering.
       queueMicrotask(() => {
