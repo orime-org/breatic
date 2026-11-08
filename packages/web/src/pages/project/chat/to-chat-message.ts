@@ -605,10 +605,14 @@ export function toChatMessage(
   // numbers, and the prose can carry either: one line answers to both, and
   // both numbers resolve to that line. Two spellings of one link are one page
   // (`pageLinkKey`). Rebuilt rather than pushed to as the loop goes, so no
-  // line is ever handed out before it knows every number it answers to. The
-  // first title stands, unless it is empty and a later source has one.
+  // line is ever handed out before it knows every number it answers to.
+  // Sources are taken by number rather than by when the page turned up: two
+  // searches in one step take their numbers when their answers arrive, and
+  // the parts arrive in the order the model asked. So each line is the source
+  // with its smallest number (its address and title, unless that title is
+  // empty and a later source has one), its numbers rise, and the lines follow
+  // the numbers in the prose.
   const byUrl = new Map<string, ChatSource>();
-  // Taken in number order, so each line's numbers and its first title follow the numbers.
   for (const [index, source] of [...found].sort(([a], [b]) => a - b)) {
     const key = pageLinkKey(source.url);
     const kept = byUrl.get(key);
@@ -619,11 +623,7 @@ export function toChatMessage(
         : { ...kept, title: kept.title || source.title, indexes: [...kept.indexes, index] },
     );
   }
-  // By number rather than by when the page turned up: two searches in one
-  // step take their numbers when their answers arrive, and the parts arrive
-  // in the order the model asked. Reading down the list follows the numbers
-  // in the prose.
-  const sources = [...byUrl.values()].sort((a, b) => (a.indexes[0] ?? 0) - (b.indexes[0] ?? 0));
+  const sources = [...byUrl.values()];
   const citations: Record<number, ChatSource> = {};
   for (const line of sources) for (const n of line.indexes) citations[n] = line;
 
