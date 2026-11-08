@@ -14,6 +14,9 @@
  */
 
 import { cleanHTMLToMarkdown, getNodeById, selectedFragmentToHTML } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Selection } from '@tiptap/pm/state';
+import type { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { MessageSquarePlus } from 'lucide-react';
 
@@ -22,7 +25,7 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
+import { cellsBlocks, tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -56,11 +59,11 @@ function textItem(id: string, name: string, text: string): TrayItem {
  * The words the selection covers, one stretch per range in document order:
  * over table cells that is the selected cells only. A cell selection lists the
  * cell the drag ended on first, so the ranges are sorted.
- * @param view - The editor's view.
+ * @param doc - The document.
+ * @param selection - The selection.
  * @returns The words, a line per stretch.
  */
-function selectedWords(view: EditorView): string {
-  const { doc, selection } = view.state;
+function selectedWords(doc: PMNode, selection: Selection): string {
   return [...selection.ranges]
     .sort((a, b) => a.$from.pos - b.$from.pos)
     .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
@@ -97,8 +100,31 @@ function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
 export function selectionItem(editor: ToolEditor): TrayItem {
   const view = editor.prosemirrorView;
   if (view === null) throw new Error('the document editor is not mounted');
-  const markdown = selectionMarkdown(editor, view);
-  return textItem(`document-selection-${hashOf([markdown])}`, nameFrom(selectedWords(view)), markdown);
+  return selectedItem(selectionMarkdown(editor, view), selectedWords(view.state.doc, view.state.selection));
+}
+
+/**
+ * Some cells, as an item for the tray: the item the user's selection gives
+ * with those cells selected (inner#1239 A11).
+ * @param editor - The document editor, mounted.
+ * @param cells - The cells.
+ * @returns The item.
+ * @throws {Error} When the editor is not mounted.
+ */
+export function cellsItem(editor: ToolEditor, cells: CellSelection): TrayItem {
+  const view = editor.prosemirrorView;
+  if (view === null) throw new Error('the document editor is not mounted');
+  return selectedItem(blocksMarkdown(editor, cellsBlocks(view, cells).blocks).trimEnd(), selectedWords(view.state.doc, cells));
+}
+
+/**
+ * A selection's item, keyed by its content.
+ * @param markdown - What is sent.
+ * @param words - The words it covers, for its name.
+ * @returns The item.
+ */
+function selectedItem(markdown: string, words: string): TrayItem {
+  return textItem(`document-selection-${hashOf([markdown])}`, nameFrom(words), markdown);
 }
 
 /**
@@ -134,7 +160,7 @@ export const addToAgentTool: ToolDef = {
    */
   canRun: (editor: ToolEditor): boolean => {
     const view = editor.prosemirrorView;
-    return view !== null && selectedWords(view).trim() !== '';
+    return view !== null && selectedWords(view.state.doc, view.state.selection).trim() !== '';
   },
 
   /**
