@@ -235,12 +235,46 @@ export function transitionDurationBounds(clips: readonly VideoToolTimelineClip[]
  * @throws {RangeError} When the frame rate is not positive.
  */
 export function fitTransitions(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate | null): VideoToolTimelineClip[] {
+  return junctions(clips, fps, (clip, bounds) => {
+    const { duration } = clip.transition;
+    return bounds !== null && duration >= bounds.min && duration <= bounds.max ? clip.transition : CUT;
+  });
+}
+
+/**
+ * The clips after an edit inside the timeline Dialog (canvas design §4 转场): each junction keeps its type with its duration
+ * held within `transitionDurationBounds` of the two clips it joins, or within half the shorter of them while the grid is
+ * unknown; a junction no transition fits becomes a Cut, and the last clip carries no transition.
+ * @param clips - The ordered clips.
+ * @param fps - The output frame rate, or null while it is unknown.
+ * @returns The clips, each junction held or made a Cut.
+ * @throws {z.ZodError} When clip data is invalid.
+ * @throws {RangeError} When the frame rate is not positive.
+ */
+export function clampTransitions(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate | null): VideoToolTimelineClip[] {
+  return junctions(clips, fps, (clip, bounds) => bounds === null || bounds.max <= 0 ? CUT
+    : { kind: clip.transition.kind, duration: Math.min(bounds.max, Math.max(bounds.min, clip.transition.duration)) });
+}
+
+const CUT: VideoToolTimelineClip["transition"] = { kind: "cut", duration: 0 };
+
+/**
+ * Decide every junction from its duration bounds, the last clip and every Cut carrying a Cut.
+ * @param clips - The ordered clips.
+ * @param fps - The output frame rate, or null while it is unknown (half the shorter clip then bounds it).
+ * @param decide - The junction's next transition from its bounds.
+ * @returns The clips with the decided transitions.
+ * @throws {z.ZodError} When clip data is invalid.
+ * @throws {RangeError} When the frame rate is not positive.
+ */
+function junctions(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate | null,
+  decide: (clip: VideoToolTimelineClip, bounds: { min: number; max: number } | null) => VideoToolTimelineClip["transition"]): VideoToolTimelineClip[] {
   return clips.map((clip, index) => {
     const next = clips[index + 1];
-    if (clip.transition.kind === "cut" || next === undefined) return { ...clip, transition: { kind: "cut", duration: 0 } };
+    if (clip.transition.kind === "cut" || next === undefined) return { ...clip, transition: CUT };
     const pair = [clip, next];
     const bounds = fps === null ? { min: 0, max: Math.min(...pair.map((item) => item.out - item.in)) / 2 } : transitionDurationBounds(pair, fps);
-    const { duration } = clip.transition;
-    return bounds !== null && duration >= bounds.min && duration <= bounds.max ? clip : { ...clip, transition: { kind: "cut", duration: 0 } };
+    const transition = decide(clip, bounds);
+    return transition === clip.transition ? clip : { ...clip, transition };
   });
 }

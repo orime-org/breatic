@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import { ArrowLeftRight, Film, Pause, Play } from 'lucide-react';
-import { fitTransitions, planVideoTimelineSeconds, presentationOutputFps, transitionDurationBounds, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { clampTransitions, planVideoTimelineSeconds, presentationOutputFps, transitionDurationBounds, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -37,16 +37,17 @@ export interface VideoTimelineDialogProps {
 const TRANSITION_KEYS = { cut: 'transitionCut', fade: 'transitionFade', wipeLeft: 'transitionWipeLeft', wipeRight: 'transitionWipeRight' } as const;
 
 /**
- * The clips with a junction that no longer fits its duration range turned into a Cut, on the output grid of the first
- * clip's table (frames-split §7.17), or by half the shorter clip while that table is unknown (shared `fitTransitions`).
+ * The clips after a Dialog edit, each junction keeping its type with its length held within its duration range on the output
+ * grid of the first clip's table (frames-split §7.17), or by half the shorter clip while that table is unknown, and made a
+ * Cut only when no transition fits (shared `clampTransitions`).
  * @param clips - The full ordered source clip sequence.
  * @param tables - Each input's selected presentation table, by input id.
- * @returns The clips, each junction kept or made a Cut.
+ * @returns The clips, each junction held or made a Cut.
  * @throws {never} Never.
  */
 function normalize(clips: readonly VideoToolTimelineClip[], tables: ReadonlyMap<string, VideoPresentationTable> | undefined): VideoToolTimelineClip[] {
   const table = clips[0] === undefined ? undefined : tables?.get(clips[0].inputId);
-  return fitTransitions(clips, table === undefined ? null : presentationOutputFps(table));
+  return clampTransitions(clips, table === undefined ? null : presentationOutputFps(table));
 }
 
 /**

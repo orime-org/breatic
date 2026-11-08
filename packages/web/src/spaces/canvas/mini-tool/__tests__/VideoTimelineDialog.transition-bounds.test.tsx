@@ -154,6 +154,28 @@ describe('transition types follow the shared duration bounds (§97; canvas desig
   });
 });
 
+describe('an edit inside the Dialog keeps the chosen type and clamps its length to the new bounds (canvas design §4 转场)', () => {
+  /**
+   * The two-clip draft with a shorter second clip; the real shared bounds of the Dialog's normalisation decide here.
+   * @param out - Where B's clip ends.
+   * @returns The draft with a 1.4 s Crossfade.
+   */
+  function shortened(out: number): VideoToolDraftById['video.transitions'] {
+    const draft = draftWith('fade', 1.4);
+    return { ...draft, params: { clips: [draft.params.clips[0], { ...draft.params.clips[1], out }] } };
+  }
+
+  it('an edit over a 2 s second clip keeps Crossfade at half that clip', async () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1 });
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    open(shortened(2), onChange);
+    await user.click(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.swapClips') }));
+    const last = onChange.mock.calls.at(-1)![0] as VideoToolDraftById['video.transitions'];
+    expect(last.params.clips[0].transition).toEqual({ kind: 'fade', duration: 1 });
+  });
+});
+
 describe('the transition duration input clamps to the shared bounds (§97; canvas design §4 转场)', () => {
   it.each([
     ['above the maximum', '5', 1.2],

@@ -44,8 +44,31 @@ describe("transition duration bounds (§97 D11-3; canvas design §4, frames-spli
   });
 });
 
-// frames-split §5.4 (前后端用同一个校验函数): the panel's pick and the timeline Dialog's edits keep a junction only while
-// it fits the bounds above, otherwise it becomes a Cut; the last clip carries no transition.
+// Canvas design §4 转场: an edit inside the timeline Dialog keeps the chosen type and holds its length within the bounds;
+// only a junction no transition fits becomes a Cut.
+describe("a Dialog edit clamps a junction to its bounds (canvas design §4 转场)", () => {
+  const api2 = miniTools as unknown as { clampTransitions: (clips: readonly Clip[], fps: Rational | null) => Clip[] };
+
+  it.each([
+    ["over the maximum to it", 1.4, 1],
+    ["under the minimum to it", 0.01, 0.04],
+    ["inside the bounds as it is", 0.5, 0.5],
+  ] as const)("TR07 holds a length %s and keeps its type", (_name, duration, held) => {
+    const [first, second] = clips(4, 2);
+    expect(api2.clampTransitions([{ ...first!, transition: { kind: "wipeRight", duration } }, second!], fps(25)).map((clip) => clip.transition))
+      .toEqual([{ kind: "wipeRight", duration: held }, { kind: "cut", duration: 0 }]);
+  });
+
+  it("TR08 makes a junction no transition fits a Cut, and without a frame rate holds by half the shorter clip", () => {
+    const [first, second] = clips(4, 0.06);
+    expect(api2.clampTransitions([first!, second!], fps(25))[0]!.transition).toEqual({ kind: "cut", duration: 0 });
+    const [a, b] = clips(4, 2);
+    expect(api2.clampTransitions([{ ...a!, transition: { kind: "fade", duration: 1.6 } }, b!], null)[0]!.transition).toEqual({ kind: "fade", duration: 1 });
+  });
+});
+
+// frames-split §5.4 (前后端用同一个校验函数): the panel's pick keeps a junction only while it fits the bounds above,
+// otherwise it becomes a Cut; the last clip carries no transition.
 describe("a junction fits its bounds or becomes a Cut (frames-split §5.4; canvas design §4 转场)", () => {
   const cut = { kind: "cut", duration: 0 } as const;
 
