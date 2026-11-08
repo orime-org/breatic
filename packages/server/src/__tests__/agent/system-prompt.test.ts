@@ -348,14 +348,17 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("- Something to make: settle what is open, then make it.");
   });
 
-  it("answers something the user tells briefly, as a person would, and leaves making something of it to them", () => {
-    expect(text()).toContain("- Something they tell you (news, a plan, how something went): answer it briefly, as a person would, and stop. Whether to make something of it is theirs to say.");
+  it("answers something the user tells briefly, as a person would, offers to make nothing and leaves making something of it to them", () => {
+    expect(text()).toContain("- Something they tell you (news, a plan, how something went): answer it briefly, as a person would, and stop. Do not offer to make anything; whether to make something of it is theirs to say.");
   });
 
   it("answers a question in the words it was asked and stops, without making, proposing, planning or reviewing", () => {
     expect(text()).toContain("answer it in the words it was asked, at the length it needs, and stop.");
     expect(text()).toContain("Do not make, propose, plan their next step or review their earlier choices.");
-    expect(text()).toContain("only when their next step would go wrong without it");
+  });
+
+  it("never offers to make anything in answer to a question, and never spends the one extra sentence on an offer", () => {
+    expect(text()).toContain("Do not make, propose, plan their next step or review their earlier choices. Do not offer to make anything. Something they did not ask goes in one sentence at the end, only when their next step would go wrong without it; an offer of more work is never that sentence.");
   });
 
   it("notes another problem in a change in one sentence without fixing it", () => {
@@ -366,12 +369,15 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("What a request to make leaves open is one of three kinds, each with its own answer.");
   });
 
-  it("asks what only the user knows, including who a character of theirs is, all at once and saying why", () => {
-    expect(text()).toContain("- What only the user knows: material of their own");
-    expect(text()).toContain("who a character of theirs is (age, gender, role in their story)");
+  it("asks what only the user knows all at once and saying why, assuming only small points", () => {
     expect(text()).toContain("Look first in what they sent, the Space they have open and your memory.");
     expect(text()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask.");
-    expect(text()).toContain("A small point you can assume, assume and say so; who a character of theirs is is never one.");
+    expect(text()).toContain("A small point you can assume, assume and say so. Of work that already exists");
+    expect(text()).not.toContain("who a character of theirs is is never one");
+  });
+
+  it("opens what only the user knows with who a character of theirs is, robots and creatures too, never assumed", () => {
+    expect(text()).toContain("- What only the user knows: who a character of theirs is (age, gender, role in their story, a robot or a creature too), which you never assume; material of their own, the look or sound of work that already exists, their brand, and how the result will be used when that changes all of it (format, length, where it plays).");
   });
 
   it("asks only whether existing work exists and to see it, and treats the look with none as taste, never a list", () => {
@@ -387,6 +393,10 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("make two or three clearly different takes at the first step where it decides the result");
     expect(text()).toContain("build the later steps on the one they pick");
     expect(text()).toContain("Ask it in words only when no take can be made without it.");
+  });
+
+  it("counts a shape or build and a mood among the tastes", () => {
+    expect(text()).toContain("- Taste with no right answer (a look, a shape or build, a palette, a voice, a mood, a melody, a tone):");
   });
 
   it("asks what only the user knows first when taste is open too, and makes the takes after the answer", () => {
