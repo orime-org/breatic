@@ -6,7 +6,7 @@ import { watchFile, unwatchFile } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runPlanCommand } from "@ingest/container/plan-command.js";
+import { runPlanCommand, startPlanCommand } from "@ingest/container/plan-command.js";
 
 const OPTIONS = { signal: new AbortController().signal, stdoutBytes: 1024, stderrTailBytes: 64 };
 
@@ -40,6 +40,17 @@ describe("planned command lifetime with actual Node children", () => {
     const controller = new AbortController();
     controller.abort();
     await expect(runPlanCommand("/does-not-exist/plan-command", [], { ...OPTIONS, signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])("refuses a stderr tail bound of %s before spawning a streamed command", (stderrTailBytes) => {
+    expect(() => startPlanCommand("/does-not-exist/plan-command", [], { ...OPTIONS, stderrTailBytes }, { stdout: true })).toThrow(RangeError);
+  });
+
+  it("keeps only the bounded stderr tail of a streamed command's nonzero exit", async () => {
+    const pipe = startPlanCommand(process.execPath, ["-e", "require('node:fs').writeSync(2,'HEAD'+'A'.repeat(10000)+'TAIL');process.exit(3)"], OPTIONS, {});
+    const error = await pipe.done.then(() => undefined, (failure: unknown) => failure);
+    expect(String(error)).toMatch(/3.*TAIL/s);
+    expect(String(error)).not.toContain("HEAD");
   });
 
   it("waits until its actual child PID is reaped after cancellation", async () => {

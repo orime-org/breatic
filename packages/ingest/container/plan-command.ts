@@ -24,64 +24,31 @@ export interface PlanCommandOptions { signal: AbortSignal; stdoutBytes: number; 
  * @param options - The original lifetime and frozen IO limits.
  * @returns Its complete bounded stdout, including valid empty output.
  * @throws {PlanCommandExit} When the program exits with a non-zero code.
+ * @throws {RangeError} When an IO bound is not a positive safe integer.
  * @throws {Error} When spawn or IO bounds fail, or a signal ends the program.
  * @throws {DOMException} When the original job lifetime is cancelled.
  */
 export async function runPlanCommand(program: string, args: readonly string[], options: PlanCommandOptions): Promise<Buffer> {
-  if (options.signal.aborted) throw new DOMException("Planned command was cancelled", "AbortError");
-  if (![options.stdoutBytes, options.stderrTailBytes].every((value) => Number.isSafeInteger(value) && value > 0)) {
-    throw new RangeError("Planned process IO bounds must be positive safe integers");
-  }
-  const child = spawn(program, [...args], { stdio: ["ignore", "pipe", "pipe"], shell: false });
+  const pipe = startPlanCommand(program, args, options, { stdout: true });
   const stdout: Buffer[] = [];
   let stdoutBytes = 0;
-  let stderr = Buffer.alloc(0);
-  let firstFailure: unknown;
-
+  // The first failure seen while reading: the stdout bound or a read error; it outranks the exit the stop then causes.
+  let failure: unknown;
   /**
-   * Preserve the first cause and stop only this invocation's own process.
-   * @param error - The observed failure.
+   * Keep the first read failure and stop the program.
+   * @param error - The failure.
    * @throws {never} Never.
    */
-  const fail = (error: unknown): void => {
-    if (firstFailure !== undefined) return;
-    firstFailure = error;
-    if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  };
-  /**
-   * Apply only the caller's original lifetime to the owned process.
-   * @throws {never} Never.
-   */
-  const onAbort = (): void => { fail(new DOMException("Planned command was cancelled", "AbortError")); };
-
-  child.stdout.on("data", (chunk: Buffer) => {
-    if (firstFailure !== undefined) return;
+  const fail = (error: unknown): void => { failure ??= error; pipe.stop(); };
+  pipe.stdout!.on("data", (chunk: Buffer) => {
+    if (failure !== undefined) return;
     stdoutBytes += chunk.length;
     if (stdoutBytes > options.stdoutBytes) fail(new Error(`${program} stdout exceeded its frozen byte limit`));
     else stdout.push(Buffer.from(chunk));
   });
-  child.stderr.on("data", (chunk: Buffer) => {
-    const limit = options.stderrTailBytes;
-    stderr = Buffer.from(chunk.length >= limit ? chunk.subarray(-limit) : Buffer.concat([stderr, chunk]).subarray(-limit));
-  });
-  child.stdout.on("error", fail);
-  child.stderr.on("error", fail);
-  child.on("error", fail);
-  options.signal.addEventListener("abort", onAbort, { once: true });
-  try {
-    if (options.signal.aborted) onAbort();
-    await new Promise<void>((resolve) => {
-      child.once("close", (code, signal) => {
-        if (code !== 0 && firstFailure === undefined) {
-          firstFailure = code === null ? new Error(`${program} exited ${signal}: ${stderr.toString("utf8")}`) : new PlanCommandExit(program, code, stderr.toString("utf8"));
-        }
-        resolve();
-      });
-    });
-  } finally {
-    options.signal.removeEventListener("abort", onAbort);
-  }
-  if (firstFailure !== undefined) throw firstFailure;
+  pipe.stdout!.on("error", fail);
+  await pipe.done.catch((error: unknown) => { throw failure ?? error; });
+  if (failure !== undefined) throw failure;
   return Buffer.concat(stdout, stdoutBytes);
 }
 
@@ -93,18 +60,23 @@ export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; don
  * §9.4: lip-sync frames move through pipes, never all at once).
  * @param program - A repository-selected executable.
  * @param args - Its owned argument vector.
- * @param options - The original lifetime and the stderr tail bound.
+ * @param options - The original lifetime and the IO bounds.
  * @param options.signal - The lifetime; aborting kills the program.
  * @param options.stderrTailBytes - The stderr tail kept for the exit error.
+ * @param options.stdoutBytes - The stdout bound a caller collecting stdout enforces, checked here with the tail bound.
  * @param pipes - Which of stdin and stdout the caller streams.
  * @param pipes.stdin - Whether the caller writes its stdin.
  * @param pipes.stdout - Whether the caller reads its stdout.
  * @returns The streams, `done` (rejected with PlanCommandExit, an AbortError or the spawn error) and `stop`, which kills it.
  * @throws {DOMException} When the lifetime is already cancelled.
+ * @throws {RangeError} When an IO bound is not a positive safe integer.
  */
-export function startPlanCommand(program: string, args: readonly string[], options: { signal: AbortSignal; stderrTailBytes: number },
+export function startPlanCommand(program: string, args: readonly string[], options: { signal: AbortSignal; stderrTailBytes: number; stdoutBytes?: number },
   pipes: { stdin?: boolean; stdout?: boolean }): PlanPipe {
   if (options.signal.aborted) throw new DOMException("Planned command was cancelled", "AbortError");
+  if (![options.stderrTailBytes, options.stdoutBytes ?? 1].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new RangeError("Planned process IO bounds must be positive safe integers");
+  }
   const child = spawn(program, [...args], { stdio: [pipes.stdin === true ? "pipe" : "ignore", pipes.stdout === true ? "pipe" : "ignore", "pipe"], shell: false });
   let stderr = Buffer.alloc(0);
   let failure: unknown;
@@ -127,6 +99,7 @@ export function startPlanCommand(program: string, args: readonly string[], optio
     stderr = Buffer.from(chunk.length >= limit ? chunk.subarray(-limit) : Buffer.concat([stderr, chunk]).subarray(-limit));
   });
   child.on("error", (error) => { failure ??= error; });
+  child.stderr?.on("error", (error) => { failure ??= error; });
   // The caller sees a broken pipe through its own write or read; the exit below carries the cause.
   child.stdin?.on("error", () => undefined);
   options.signal.addEventListener("abort", onAbort, { once: true });
