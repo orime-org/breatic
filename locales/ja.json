@@ -116,7 +116,9 @@
       "unavailable": "この環境ではクレジットを販売していません。"
     },
     "text_tool": {
-      "already_running": "別のテキストツールが実行中です。お待ちください。"
+      "selection_too_long": "選択範囲が長すぎて AI で処理できません：{actual} 文字（上限 {limit} 文字）。",
+      "document_too_long": "選択範囲と一緒に送る文脈が長すぎます：{actual} 文字（上限 {limit} 文字）。",
+      "failed": "AI がこのリクエストを完了できませんでした。もう一度お試しください。"
     },
     "conversation": {
       "not_found": "会話が見つかりません",
@@ -2003,7 +2005,6 @@
         "code": "インラインコード",
         "comment": "コメント",
         "ai": "AI",
-        "comingLabel": "{name}（未提供）",
         "link": "リンク",
         "blockType": "ブロックの種類",
         "paragraph": "本文",
@@ -2033,6 +2034,28 @@
         "ai_storyboard": "絵コンテを作る",
         "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
+      },
+      "ai": {
+        "customTitle": "カスタム指示",
+        "tone": {
+          "professional": "よりプロフェッショナルに",
+          "casual": "よりカジュアルに",
+          "straightforward": "より率直に",
+          "confident": "より自信を持って",
+          "friendly": "より親しみやすく"
+        },
+        "close": "閉じる",
+        "stop": "停止",
+        "retry": "再試行",
+        "start": "開始",
+        "insert": "挿入",
+        "replace": "置換",
+        "instructionsPlaceholder": "選択したテキストを AI にどうしてほしいか入力。Enter で開始、Shift+Enter で改行",
+        "instruction": "指示：{text}",
+        "rangeGone": "選択したテキストは削除されました",
+        "blockGone": "元の段落は削除されました",
+        "notWritable": "現在は編集できません",
+        "selectionTooLong": "選択した内容が多すぎます。範囲を減らしてもう一度お試しください"
       },
       "comment": {
         "placeholder": "コメントを書く",

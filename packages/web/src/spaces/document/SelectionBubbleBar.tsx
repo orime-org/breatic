@@ -99,7 +99,7 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
+import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
@@ -147,6 +147,11 @@ interface BubbleGroup {
     openId: string | null;
     onOpenChange: (id: string, open: boolean) => void;
   }>;
+  /**
+   * Whether the group belongs on the bar over a selection of table cells; its
+   * separator goes with it. Left out, it does.
+   */
+  overCells?: boolean;
 }
 
 /**
@@ -176,7 +181,11 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     slot: ColorSlot,
     after: [commentTool, addToAgentTool, mergeCellsTool],
   },
-  { key: 'ai', tools: [], panels: [], slot: AiSlot },
+  // The AI commands rewrite words, and a selection of several cells is not
+  // words (inner#1860 design §5.2): Notion offers only its autofill over
+  // cells, Word Copilot rewrites plain paragraphs only. Words selected inside
+  // one cell are an ordinary text selection and keep the group.
+  { key: 'ai', tools: [], panels: [], slot: AiSlot, overCells: false },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -528,6 +537,16 @@ function BubbleBar({
   // defect — it is the initial value meaning what the name says.)
   const wasSelectAllRef = React.useRef(
     editor.prosemirrorState.selection instanceof AllSelection,
+  );
+  // Which groups the bar carries: one that does not act on table cells stands
+  // down, separator and all, while cells are selected.
+  const overCells = useEditorSnapshot(
+    editor,
+    (current) => current.prosemirrorState.selection instanceof CellSelection,
+  );
+  const groups = React.useMemo(
+    () => (overCells ? BUBBLE_GROUPS.filter((group) => group.overCells !== false) : BUBBLE_GROUPS),
+    [overCells],
   );
 
   /**
@@ -1136,7 +1155,7 @@ function BubbleBar({
             && 'invisible pointer-events-none',
         )}
       >
-        {BUBBLE_GROUPS.map((group, index) => (
+        {groups.map((group, index) => (
           <React.Fragment key={group.key}>
             {index > 0 ? (
               <Separator
