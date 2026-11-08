@@ -9,8 +9,9 @@
  * by a connection belong to updates admitted but not applied yet, which a
  * measure taken meanwhile cannot see, so they stay on top of it. Measures run
  * after transactions, at most once per measure interval, and correct the
- * current size. Each change of phase, and each measure, is pushed to this
- * instance's connections of the document as `doc:size`.
+ * current size. Each change of phase or of being over the hard ceiling, and
+ * each measure, is pushed to this instance's connections of the document as
+ * `doc:size`.
  */
 
 import { parseDocName, type DocSizeStatus } from "@breatic/shared";
@@ -27,6 +28,8 @@ interface SizeRecord {
   exact: number;
   current: number;
   phase: DocSizePhase;
+  /** Whether `current ≥ ceiling` at the last push. */
+  over: boolean;
   /** Admitted costs not applied yet, oldest first, with the connection each came on. */
   held: Array<{ connection: unknown; cost: number }>;
   measuredAt: number;
@@ -109,15 +112,19 @@ function pushAll(name: string, record: SizeRecord): void {
 }
 
 /**
- * Recompute the phase from the current size and push when it changed.
+ * Recompute the phase and whether the size is over the hard ceiling, and
+ * push when either changed or `always` is set.
  * @param name - The document name.
  * @param record - Its record.
+ * @param always - Push even when nothing changed (after a measure).
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
-function settlePhase(name: string, record: SizeRecord): void {
+function settlePhase(name: string, record: SizeRecord, always = false): void {
   const phase = phaseOf(record.current);
-  if (phase === record.phase) return;
+  const over = record.current >= lines().ceiling;
+  if (!always && phase === record.phase && over === record.over) return;
   record.phase = phase;
+  record.over = over;
   pushAll(name, record);
 }
 
@@ -143,7 +150,14 @@ export function openDocSizeRecord(document: Document): void {
   forget(document.name);
   const bytes = measure(document);
   records.set(document.name, {
-    document, exact: bytes, current: bytes, phase: phaseOf(bytes), held: [], measuredAt: Date.now(), measureTimer: null,
+    document,
+    exact: bytes,
+    current: bytes,
+    phase: phaseOf(bytes),
+    over: bytes >= lines().ceiling,
+    held: [],
+    measuredAt: Date.now(),
+    measureTimer: null,
   });
 }
 
@@ -160,9 +174,8 @@ export function recordExact(name: string, bytes: number): void {
   record.measureTimer = null;
   record.exact = bytes;
   record.current = bytes + record.held.reduce((sum, h) => sum + h.cost, 0);
-  record.phase = phaseOf(record.current);
   record.measuredAt = Date.now();
-  pushAll(name, record);
+  settlePhase(name, record, true);
 }
 
 /**
@@ -198,12 +211,15 @@ export function addApplied(name: string, cost: number): void {
  * Drop a connection's oldest held cost: its update was applied, or will not be.
  * @param name - The document name.
  * @param connection - The connection.
+ * @returns True when a held cost was dropped.
  */
-export function release(name: string, connection: unknown): void {
+export function release(name: string, connection: unknown): boolean {
   const record = records.get(name);
-  if (!record) return;
+  if (!record) return false;
   const i = record.held.findIndex((h) => h.connection === connection);
-  if (i !== -1) record.held.splice(i, 1);
+  if (i === -1) return false;
+  record.held.splice(i, 1);
+  return true;
 }
 
 /**

@@ -96,6 +96,7 @@ import {
   pushDocSize,
   readDocSizeRecord,
   release as releaseDocSize,
+  scheduleMeasure as scheduleDocSizeMeasure,
 } from "@collab/services/document-size.js";
 import { createDocumentSizeGate, watchDocumentSize } from "@collab/hooks/document-size-gate.js";
 import { fetchDocData } from "@collab/services/yjs-documents.repo.js";
@@ -386,9 +387,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
     // Runs after every message, applied or not: an admitted update that was
     // never applied (the connection turned read-only meanwhile, or the
-    // activity record threw) stops being held.
+    // activity record threw) stops being held. An applied one was already
+    // released by its transaction, so a release here means its cost is still
+    // in current, and a measure takes it out.
     afterHandleMessage: async ({ documentName, connection }) => {
-      releaseDocSize(documentName, connection);
+      if (releaseDocSize(documentName, connection)) scheduleDocSizeMeasure(documentName);
     },
 
     extensions,

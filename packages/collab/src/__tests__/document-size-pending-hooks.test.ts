@@ -1066,10 +1066,11 @@ describe("round 6: an admit, onChange or measure that crosses the hard ceiling p
     const crossed = { type: "doc:size", bytes: 10_748_500, limit: D.L, ceiling: D.CEIL, phase: "full" };
     expect(pushes(a)).toEqual([crossed]);
     expect(pushes(b)).toEqual([crossed]);
-    const second = updateOfLength(10, 88);
+    // The shortest insert update is 11 bytes (one character).
+    const second = updateOfLength(11, 88);
     Y.applyUpdate(doc, second, { source: "local" });
     await change(doc, second, { source: "local" });
-    expect(rec(CV).current).toBe(10_748_510);
+    expect(rec(CV).current).toBe(10_748_511);
     expect(pushes(a)).toEqual([crossed]);
     expect(pushes(b)).toEqual([crossed]);
   });

@@ -12,12 +12,15 @@
  * before them added. A refused message is not applied and Hocuspocus closes
  * that document's connection with the error's reason; the inbound filter then
  * drops, and step 0 refuses, what the client had already queued behind it
- * until it authenticates the document again.
+ * until it authenticates the document again. A connection already out of the
+ * document (closed meanwhile, its queue still draining) is refused unmarked:
+ * the mark is per socket and document, so it would land on the socket's next
+ * connection to the document, or outlive a closed socket.
  */
 
 import type { beforeSyncPayload, Connection, Document } from "@hocuspocus/server";
 import { messageYjsSyncStep1 } from "y-protocols/sync";
-import type * as Y from "yjs";
+import * as Y from "yjs";
 import { createLogger } from "@breatic/core";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@breatic/shared";
 import { getCollabConfig } from "@collab/config.js";
@@ -41,26 +44,42 @@ function limitAndCeiling(): { limit: number; ceiling: number } {
   return { limit: cfg.max_document_bytes, ceiling: cfg.max_document_bytes + cfg.document_size_delete_headroom_bytes };
 }
 
+/** The clocks a store's pending content covers, structs and delete set apart. */
+interface PendingCoverage {
+  structs: number;
+  ds: number;
+}
+
 /**
- * Log one refusal with the fields design 4.2 names.
+ * Log one refusal with the fields design 4.2 names; a step 2a refusal adds
+ * the pending coverage before and after the transaction.
  * @param documentName - The document.
  * @param userId - Whose message it was.
  * @param step - Why.
+ * @param pending - The pending coverage before and after, for step 2a.
+ * @param pending.pendingBefore - Before the transaction.
+ * @param pending.pendingAfter - After it.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
-function logRefusal(documentName: string, userId: string | undefined, step: RefusalStep): void {
+function logRefusal(
+  documentName: string,
+  userId: string | undefined,
+  step: RefusalStep,
+  pending?: { pendingBefore: PendingCoverage; pendingAfter: PendingCoverage },
+): void {
   const { limit, ceiling } = limitAndCeiling();
   const current = readDocSizeRecord(documentName)?.current ?? 0;
-  logger.warn({ documentName, userId, current, limit, ceiling, step }, "document_size_limit_refused");
+  logger.warn({ documentName, userId, current, limit, ceiling, step, ...pending }, "document_size_limit_refused");
 }
 
 /**
  * What an update costs the record (design 4.1).
- * @param shape - The update's shape.
+ * @param update - The update.
+ * @param shape - Its shape.
  * @returns Bytes.
  */
-function costOf(shape: UpdateShape): number {
-  return shape.structBytes + DOC_SIZE_EVENT_BYTES * (shape.splitEndpoints + shape.beyondClockRanges);
+function costOf(update: Uint8Array, shape: UpdateShape): number {
+  return update.byteLength + DOC_SIZE_EVENT_BYTES * (shape.splitEndpoints + shape.beyondClockRanges);
 }
 
 /**
@@ -78,7 +97,7 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
      * @throws {Error} Always, carrying the size-limit close reason.
      */
     const refuse = (step: RefusalStep): never => {
-      markRefused(connection.socketId, documentName);
+      if (document.hasConnection(connection)) markRefused(connection.socketId, documentName);
       logRefusal(documentName, userId, step);
       throw Object.assign(new Error("document size limit reached"), { reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
     };
@@ -96,21 +115,57 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     }
     const cfg = getCollabConfig();
     const { limit, ceiling } = limitAndCeiling();
-    if (shape.splitEndpoints > cfg.document_size_max_delete_splits) refuse("splits");
+    if (record.current >= limit && shape.splitEndpoints > cfg.document_size_max_delete_splits) refuse("splits");
     if (record.current >= limit && record.current < ceiling && !shape.pureDelete) refuse("full");
     if (record.current >= ceiling && !(shape.pureDelete && shape.beyondClockRanges === 0 && shape.wholeTypesOnly)) {
       refuse("over_ceiling");
     }
-    admit(documentName, connection, costOf(shape));
+    admit(documentName, connection, costOf(payload, shape));
   };
 }
 
 /** The pending content of a store, kept by value before a transaction. */
 interface PendingSnapshot {
   structs: { update: Uint8Array; missing: Map<number, number> } | null;
-  structsLength: number;
   ds: Uint8Array | null;
-  dsLength: number;
+}
+
+/**
+ * The clocks pending structs cover: their lengths, `Skip` gaps excluded.
+ * @param update - `pendingStructs.update` (V2), or null.
+ * @returns Clocks.
+ * @throws {Error} When the update cannot be decoded.
+ */
+function structsCoverage(update: Uint8Array | null): number {
+  if (update === null) return 0;
+  return Y.decodeUpdateV2(update).structs.reduce((sum, st) => sum + (st instanceof Y.Skip ? 0 : st.length), 0);
+}
+
+/**
+ * The clocks a pending delete set covers: the sum of its ranges' lengths.
+ * @param ds - `pendingDs` (V2), or null.
+ * @returns Clocks.
+ * @throws {Error} When the update cannot be decoded.
+ */
+function dsCoverage(ds: Uint8Array | null): number {
+  if (ds === null) return 0;
+  let n = 0;
+  Y.decodeUpdateV2(ds).ds.clients.forEach((ranges) => {
+    for (const r of ranges) n += r.len;
+  });
+  return n;
+}
+
+/**
+ * Whether two byte arrays hold the same bytes.
+ * @param a - One, or null.
+ * @param b - The other, or null.
+ * @returns True when both are null or byte for byte equal.
+ */
+function sameBytes(a: Uint8Array | null, b: Uint8Array | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a.byteLength !== b.byteLength) return false;
+  return a.every((byte, i) => byte === b[i]);
 }
 
 /**
@@ -125,9 +180,9 @@ function connectionOf(origin: unknown): Connection | null {
 
 /**
  * Watch a recorded document's transactions: a client update that left the
- * store's pending content longer than before is refused by value (design
- * 4.2 step 2a), every applied client update releases its held cost, and
- * every transaction schedules a measure.
+ * store's pending content covering more clocks than before is refused by
+ * value (design 4.2 step 2a), every applied client update releases its
+ * held cost, and every transaction schedules a measure.
  * @param document - The loaded document; its record must exist.
  */
 export function watchDocumentSize(document: Document): void {
@@ -138,9 +193,7 @@ export function watchDocumentSize(document: Document): void {
     const { pendingStructs, pendingDs } = document.store;
     before.set(transaction, {
       structs: pendingStructs ? { update: pendingStructs.update, missing: new Map(pendingStructs.missing) } : null,
-      structsLength: pendingStructs?.update.byteLength ?? 0,
       ds: pendingDs,
-      dsLength: pendingDs?.byteLength ?? 0,
     });
   });
   document.on("afterTransaction", (transaction: Y.Transaction) => {
@@ -148,14 +201,26 @@ export function watchDocumentSize(document: Document): void {
     const snapshot = before.get(transaction);
     if (connection !== null && snapshot !== undefined) {
       const { store } = document;
-      const grew = (store.pendingStructs?.update.byteLength ?? 0) > snapshot.structsLength
-        || (store.pendingDs?.byteLength ?? 0) > snapshot.dsLength;
-      if (grew) {
+      // yjs replaces `update` whenever it merges into the pending structs and
+      // writes a fresh `pendingDs` on every transaction, so an unchanged value
+      // is told apart without decoding; a changed one is compared by the
+      // clocks it covers, as yjs re-encodes it with absolute clocks.
+      const structsBefore = snapshot.structs?.update ?? null;
+      const structsAfter = store.pendingStructs?.update ?? null;
+      const structs = structsAfter === structsBefore ? null : [structsCoverage(structsBefore), structsCoverage(structsAfter)] as const;
+      const ds = sameBytes(store.pendingDs, snapshot.ds) ? null : [dsCoverage(snapshot.ds), dsCoverage(store.pendingDs)] as const;
+      if ((structs !== null && structs[1] > structs[0]) || (ds !== null && ds[1] > ds[0])) {
+        const sameStructs = structs === null ? structsCoverage(structsAfter) : 0;
+        const sameDs = ds === null ? dsCoverage(snapshot.ds) : 0;
+        const pendingBefore = { structs: structs?.[0] ?? sameStructs, ds: ds?.[0] ?? sameDs };
+        const pendingAfter = { structs: structs?.[1] ?? sameStructs, ds: ds?.[1] ?? sameDs };
         store.pendingStructs = snapshot.structs;
         store.pendingDs = snapshot.ds;
-        markRefused(connection.socketId, name);
-        connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
-        logRefusal(name, (connection.context as AuthContext | undefined)?.user?.id, "pending");
+        if (document.hasConnection(connection)) {
+          markRefused(connection.socketId, name);
+          connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
+        }
+        logRefusal(name, (connection.context as AuthContext | undefined)?.user?.id, "pending", { pendingBefore, pendingAfter });
       }
       release(name, connection);
     }

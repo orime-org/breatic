@@ -65,7 +65,8 @@ document_size_warn_ratio: 0.9
 # Hard ceiling = limit + this. Past the limit a delete may still land up to here.
 document_size_delete_headroom_bytes: 262144  # 256 KiB
 # Most delete range ends one update may place inside an existing item (each
-# splits it and grows the document); a larger update is refused at any size.
+# splits it and grows the document). Checked only once the document has
+# reached max_document_bytes; below it every update is accepted.
 document_size_max_delete_splits: 1024
 # Fewest milliseconds between two exact measures of one document.
 document_size_measure_interval_ms: 2000

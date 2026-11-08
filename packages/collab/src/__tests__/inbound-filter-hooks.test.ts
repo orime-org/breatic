@@ -217,6 +217,8 @@ async function refuseThroughBeforeSync(socketId: string): Promise<void> {
   });
   recordExact(D, S.L);
   const connection = { socketId, readOnly: false, context: { user: { id: "u1" } }, sendStateless: vi.fn() };
+  // A refusal marks only a connection still in the document (design 4.2).
+  document.addConnection(connection as never);
   await expect(
     hooks.beforeSync({
       clientsCount: 1,
