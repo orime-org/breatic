@@ -16,7 +16,7 @@
  * `config/provider/llm.yaml` and `config/provider/routing.yaml.template`,
  * merging into the files already there (`scripts/provider-config-merge.mjs`):
  * it replaces only each model's WaveSpeed binding and its own upstream and LLM
- * entries, so reseller bindings and the 3D prices `pnpm provider:prices` wrote
+ * entries, so reseller bindings and the prices `pnpm provider:prices` wrote
  * survive a rerun.
  * It is a one-off: run it again when the catalog changes before the
  * application moves to the provider package, and delete it with the old
@@ -83,11 +83,9 @@ const IGNORED = "WaveSpeed has no such field and ignores it, probed 2026-11-01";
  * `drops`: params WaveSpeed has no field for and ignores, written as the
  * binding's `drops`: whatever the value, or only for the listed values when
  * another value asks for what WaveSpeed cannot do (a switch turned on that
- * fal serves). `noPrompt`: its schema has no prompt, and one sent is ignored.
+ * fal serves).
  * `delisted`: WaveSpeed no longer serves the model, so it gets no WaveSpeed
- * binding (fal serves it). `modelId`: the id WaveSpeed lists the model under
- * when it is not the catalog's. `spellings`: a param's `values` and
- * `absent_value` where WaveSpeed's field takes other values than ours.
+ * binding (fal serves it).
  * `rejects`: the limits WaveSpeed states beyond the model vendor's own (the
  * vendor's are the model's `rejects`), written as the binding's `rejects`. `mentions`: how WaveSpeed's schema names a
  * param's references in the prompt where the catalog's mention differs.
@@ -96,10 +94,7 @@ const WAVESPEED: Readonly<Record<string, {
   renames?: Readonly<Record<string, string>>;
   refuses?: Readonly<Record<string, readonly (string | number | boolean)[]>>;
   drops?: Readonly<Record<string, readonly (string | number | boolean)[] | { all_values: string }>>;
-  noPrompt?: true;
   delisted?: true;
-  modelId?: string;
-  spellings?: Readonly<Record<string, { values?: Readonly<Record<string, string>>; absent_value?: string | number | boolean }>>;
   rejects?: readonly { when: string; reason: string }[];
   mentions?: Readonly<Record<string, string>>;
 }>> = {
@@ -109,9 +104,6 @@ const WAVESPEED: Readonly<Record<string, {
   "wan-3.0-image-to-video": { renames: { enable_audio: "generate_audio" } },
   "wan-3.0-reference-to-video": { renames: { enable_audio: "generate_audio" } },
   "wan-3.0-video-edit": { rejects: [{ when: "duration < 2 or duration > 15", reason: "WaveSpeed duration: Range: 2-15" }] },
-  "hunyuan3d-v3": { refuses: { generate_type: ["LowPoly"] } },
-  "hunyuan3d-v3-i23d": { refuses: { generate_type: ["LowPoly"] }, noPrompt: true },
-  "hunyuan3d-v3.1-rapid": { noPrompt: true },
   "nano-banana-2-relight": { refuses: { output_format: ["webp"] } },
   "nano-banana-2-quick-edit": { refuses: { output_format: ["webp"] } },
   "elevenlabs-v3": { drops: { similarity: { all_values: IGNORED } } },
@@ -133,17 +125,11 @@ const WAVESPEED: Readonly<Record<string, {
   },
   "seedvr2-video": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: Max clip length per job: up to 10 minutes" }] },
   "rife-interpolation": { rejects: [{ when: "get_duration(video) > 600", reason: "WaveSpeed video: The maximum supported video duration is 10 minutes" }] },
-  // Relisted as meshy/v6/text-to-3d (/api/v3/models, 2026-11-03); the old id stays delisted.
-  "meshy6-t23d": {
-    modelId: "meshy/v6/text-to-3d",
-    renames: { ta_pose: "pose_mode" },
-    spellings: { ta_pose: { values: { true: "t-pose" }, absent_value: false } },
-    drops: { art_style: { all_values: "WaveSpeed's schema has no such field; Meshy deprecated art_style (docs.meshy.ai/en/api/text-to-3d)" } },
-    rejects: [{ when: "$length(prompt) > 600", reason: "WaveSpeed prompt maxLength 600" }],
-  },
+  // The catalog takes a face limit from 1; WaveSpeed's schema from 48. Only a number is compared: the frozen estimate
+  // cases (upstream-estimate.json) fill a param without a default with text, which today's WaveSpeed price never reads.
+  ...Object.fromEntries(["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"].map((model) => [model, { rejects: [{ when: "$type(face_limit) = \"number\" and face_limit < 48", reason: "WaveSpeed face_limit: minimum 48" }] }])),
   "veed-clean-audio": { delisted: true },
   "recraft-v4-style-text-to-image": { delisted: true },
-  "sfx-1.6-extend-audio": { delisted: true },
 };
 
 /** Params whose value the upstream takes in its own shape. */
@@ -264,7 +250,6 @@ function bindingOf(model: RawModel): Record<string, unknown> {
       ...(spec.item_key === undefined ? {} : { item_key: spec.item_key }),
       ...(spec.absent_value === undefined ? {} : { absent_value: spec.absent_value }),
       ...(transform === undefined ? {} : { transform }),
-      ...facts.spellings?.[name],
     };
   }
   const steps = (model.extra_steps ?? []).map((step) => {
@@ -284,7 +269,7 @@ function bindingOf(model: RawModel): Record<string, unknown> {
   return {
     upstream: "wavespeed",
     weight: 1,
-    model_id: facts.modelId ?? provider.model_id,
+    model_id: provider.model_id,
     ...(model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
     ...(Object.keys(drops).length === 0 ? {} : { drops }),
@@ -340,7 +325,7 @@ for (const [modality, files] of sources) {
     }
   }
   const path = `media/${modality}.yaml`;
-  const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models, {});
+  const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models);
   write(path, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models: merged });
 }
 

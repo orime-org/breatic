@@ -23,27 +23,17 @@ function isObject(value) {
  * Merge the generated WaveSpeed bindings into the existing media models: each
  * model's WaveSpeed binding is replaced in place (or added first), every other
  * binding, the model's own entries (its vendor's `rejects`) and every model the
- * catalog no longer generates are kept. A generated
- * binding without `pricing` keeps the existing WaveSpeed binding's, else takes
- * the model's placeholder.
+ * catalog no longer generates are kept.
  * @param {Record<string, { upstreams: Record<string, unknown>[] }> | undefined} existing - The models in the file now.
  * @param {Record<string, { upstreams: Record<string, unknown>[] }>} generated - The models generated from the catalog.
- * @param {Record<string, unknown>} placeholders - A stand-in price by model, for one with no price anywhere.
  * @returns {Record<string, { upstreams: Record<string, unknown>[] }>} The merged models.
- * @throws {Error} When a model has no price from any source.
  */
-export function mergeMediaModels(existing, generated, placeholders) {
+export function mergeMediaModels(existing, generated) {
   const out = { ...existing };
-  for (const [model, { upstreams }] of Object.entries(generated)) {
+  for (const [model, { upstreams: own }] of Object.entries(generated)) {
     const kept = out[model]?.upstreams ?? [];
     const at = kept.findIndex((b) => b.upstream === OWNED);
     // The generator writes only WaveSpeed bindings.
-    const own = upstreams.map((binding) => {
-      if (binding.pricing !== undefined) return binding;
-      const pricing = kept[at]?.pricing ?? placeholders[model];
-      if (pricing === undefined) throw new Error(`${model} has no price`);
-      return { ...binding, pricing };
-    });
     const others = kept.filter((b) => b.upstream !== OWNED);
     out[model] = { ...out[model], upstreams: at < 0 ? [...own, ...others] : [...kept.slice(0, at), ...own, ...kept.slice(at + 1)] };
   }

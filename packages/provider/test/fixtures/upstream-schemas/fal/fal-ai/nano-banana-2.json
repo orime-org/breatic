@@ -33,6 +33,43 @@
         "type": "array",
         "items": {
           "fields": {
+            "thought": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "text": [
+              {
+                "type": "string"
+              }
+            ],
             "thought_signature": [
               {
                 "type": "string",
@@ -99,43 +136,6 @@
                 ]
               }
             ],
-            "thought": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "text": [
-              {
-                "type": "string"
-              }
-            ],
             "": [
               {
                 "type": "object",
@@ -179,11 +179,6 @@
                 "type": "string"
               }
             ],
-            "file_url": [
-              {
-                "type": "string"
-              }
-            ],
             "mime_type": [
               {
                 "type": "string",
@@ -191,6 +186,11 @@
                   "application/pdf",
                   "text/plain"
                 ]
+              }
+            ],
+            "file_url": [
+              {
+                "type": "string"
               }
             ],
             "video_url": [
@@ -226,6 +226,49 @@
                 "minItems": 1,
                 "items": {
                   "fields": {
+                    "thought": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "text": [
+                      {
+                        "type": "string"
+                      }
+                    ],
                     "thought_signature": [
                       {
                         "type": "string",
@@ -305,49 +348,6 @@
                         ]
                       }
                     ],
-                    "thought": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ],
-                    "text": [
-                      {
-                        "type": "string"
-                      }
-                    ],
                     "": [
                       {
                         "type": "object",
@@ -398,11 +398,6 @@
                         "type": "string"
                       }
                     ],
-                    "file_url": [
-                      {
-                        "type": "string"
-                      }
-                    ],
                     "mime_type": [
                       {
                         "type": "string",
@@ -410,6 +405,11 @@
                           "application/pdf",
                           "text/plain"
                         ]
+                      }
+                    ],
+                    "file_url": [
+                      {
+                        "type": "string"
                       }
                     ],
                     "video_url": [
@@ -609,6 +609,49 @@
                         "minItems": 1,
                         "items": {
                           "fields": {
+                            "thought": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "text": [
+                              {
+                                "type": "string"
+                              }
+                            ],
                             "thought_signature": [
                               {
                                 "type": "string",
@@ -688,49 +731,6 @@
                                 ]
                               }
                             ],
-                            "thought": [
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "type": "boolean"
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ],
-                            "text": [
-                              {
-                                "type": "string"
-                              }
-                            ],
                             "": [
                               {
                                 "type": "object",
@@ -781,11 +781,6 @@
                                 "type": "string"
                               }
                             ],
-                            "file_url": [
-                              {
-                                "type": "string"
-                              }
-                            ],
                             "mime_type": [
                               {
                                 "type": "string",
@@ -793,6 +788,11 @@
                                   "application/pdf",
                                   "text/plain"
                                 ]
+                              }
+                            ],
+                            "file_url": [
+                              {
+                                "type": "string"
                               }
                             ],
                             "video_url": [
@@ -884,9 +884,9 @@
                 "type": "null"
               }
             ],
-            "file_size": [
+            "content_type": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -900,12 +900,9 @@
                 "type": "null"
               }
             ],
-            "content_type": [
+            "url": [
               {
                 "type": "string"
-              },
-              {
-                "type": "null"
               }
             ],
             "file_name": [
@@ -916,9 +913,12 @@
                 "type": "null"
               }
             ],
-            "url": [
+            "file_size": [
               {
-                "type": "string"
+                "type": "integer"
+              },
+              {
+                "type": "null"
               }
             ],
             "": [

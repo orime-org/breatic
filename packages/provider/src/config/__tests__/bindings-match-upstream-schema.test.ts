@@ -11,7 +11,7 @@ import { buildBody } from "@provider/media/body.js";
 import type { StepContext } from "@provider/media/adapter.js";
 import { rejectedInput, type EstimateInput } from "@provider/pricing/estimate.js";
 import { createProvider } from "@provider/provider.js";
-import { ROOT, catalog, disjuncts, shipped } from "./shipped.js";
+import { ROOT, catalog, disjuncts, rangeEnds, resolvedParams, shipped, type CatalogBound } from "./shipped.js";
 import { RESELLER_LACKS, WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
 /** One param of our catalog as its yaml writes it. */
@@ -23,13 +23,18 @@ interface CatalogParam {
   default?: unknown;
   type?: string;
   fields?: Record<string, { type?: string; values?: (string | number | boolean)[]; max_chars?: number }>;
-  /** The longest text a text param takes. */
+  /** The longest text a text param takes (`max_length` in the 3D catalog). */
   max_chars?: number;
+  max_length?: number;
+  /** Ranges that replace `min` and `max` while their condition holds. */
+  bounds?: CatalogBound[];
   /** For shots: the line each is written into the prompt as, when they are not sent as a list. */
   into_prompt?: string;
   remote_source?: string;
   /** The media kind of a single-file param. */
   accepts?: string;
+  /** The fewest items a list param takes. */
+  min_items?: number;
 }
 
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
@@ -73,8 +78,8 @@ function everyStep(param: CatalogParam): number[] {
 
 /**
  * The sample values of one of our params that this binding sends: every offered value,
- * a range's ends and default (every step when the binding respells it or the upstream
- * types it differently), less those `supported` keeps out.
+ * the ends a range reaches (`rangeEnds`) and its default (every step when the binding respells
+ * it or the upstream types it differently), less those `supported` keeps out.
  * @param name - The param.
  * @param param - The catalog's param.
  * @param binding - The binding.
@@ -89,9 +94,9 @@ function samplesOf(name: string, param: CatalogParam, binding: MediaBinding, sna
   else if (param.values !== undefined) values = param.values;
   else if (param.min !== undefined && param.max !== undefined) {
     const numeric = (snapshot.fields[bound.field] ?? []).some((leaf) => leaf.type === "number" || leaf.type === "integer");
-    values = bound.values !== undefined || bound.as !== undefined || !numeric ? everyStep(param) : [param.min, param.max, param.default ?? param.min];
+    values = bound.values !== undefined || bound.as !== undefined || !numeric ? everyStep(param) : [...new Set([...rangeEnds(param), param.default ?? param.min])];
   } else if (param.type === "items") values = [[sampleItem(param), sampleItem(param)]];
-  else if (param.type === "list") values = [[SAMPLE_URL]];
+  else if (param.type === "list") values = [Array<string>(param.min_items ?? 1).fill(SAMPLE_URL)];
   else if (param.accepts !== undefined) values = [SAMPLE_URL];
   else if (param.default !== undefined && param.default !== null) values = [param.default];
   else if (param.remote_source === undefined) values = [SAMPLE_TEXT];
@@ -259,6 +264,7 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
 
 const config = shipped();
 const models = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, CatalogParam>]));
+const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /**
@@ -287,7 +293,7 @@ function inOurNames(binding: MediaBinding, when: string): string {
 }
 
 /** The longest prompt each catalog model takes, where it states one. */
-const promptLimits = new Map(catalog().models.flatMap((m) => (m.max_input_chars === undefined ? [] : [[m.name, m.max_input_chars] as const])));
+const promptLimits = new Map(catalog().models.flatMap((m) => { const limit = m.max_input_chars ?? m.prompt_max_length; return limit === undefined ? [] : [[m.name, limit] as const]; }));
 
 /**
  * The endpoints one binding's runs reach: the model's own, and each extra step's.
@@ -390,7 +396,7 @@ function textFields(model: string, binding: MediaBinding, snapshot: SchemaSnapsh
   for (const [name, param] of Object.entries(models.get(model) ?? {})) {
     const bound = binding.params?.[name];
     if (bound === undefined) continue;
-    if (param.type === "text") out.push({ where: bound.field, named: bound.field, inList: false, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars, param: name });
+    if (param.type === "text") out.push({ where: bound.field, named: bound.field, inList: false, leaves: snapshot.fields[bound.field] ?? [], ours: param.max_chars ?? param.max_length, param: name });
     if (param.type !== "items") continue;
     const items = (snapshot.fields[bound.field] ?? []).find((leaf) => leaf.type === "array")?.items;
     for (const [sub, spec] of Object.entries(param.fields ?? {})) {
@@ -413,8 +419,9 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
 }
 
 /**
- * A run this binding takes, as the application sends one: every param at its catalog default (null left unset),
- * and a param whose default the binding refuses at the first of its sample values the binding takes.
+ * A run this binding takes, as the application sends one: every param at its catalog default (null left unset), and a
+ * param whose default the binding refuses at the first of its sample values the binding takes, each run resolved as the
+ * application resolves it (`resolvedParams`).
  * @param model - The model.
  * @param binding - The binding.
  * @param snapshot - The upstream's schema.
@@ -422,12 +429,12 @@ function sampleRun(params: Record<string, unknown>, prompt: string): EstimateInp
  */
 async function takenRun(model: string, binding: MediaBinding, snapshot: SchemaSnapshot): Promise<Record<string, unknown>> {
   const rules = provider.pricingRules(model);
+  const entry = catalogModels.get(model)!;
   const params = Object.entries(models.get(model) ?? {});
-  // A param whose catalog default is null is sent unset, as the application sends it.
-  let taken: Record<string, unknown> = Object.fromEntries(params.map(([name, param]) => [name, param.default]).filter(([, v]) => v !== undefined));
+  let taken = resolvedParams(entry, {});
   for (const [name, param] of params) {
     for (const value of [taken[name], ...samplesOf(name, param, binding, snapshot)]) {
-      const trial = { ...taken, [name]: value };
+      const trial = resolvedParams(entry, { ...taken, [name]: value });
       if ((await rejectedInput(rules, binding.upstream, sampleRun(trial, SAMPLE_TEXT))) === undefined) {
         taken = trial;
         break;
@@ -453,7 +460,6 @@ const SANDBASE_ON_FAL: Readonly<Record<string, string>> = {
   "ideogram-ai/ideogram-v3": "fal-ai/ideogram/v3",
   "meigen/infinitetalk/video-to-video": "fal-ai/infinitalk/video-to-video",
   "sync/lipsync/3.0/video-to-video": "fal-ai/sync-lipsync/v3",
-  "tencent/hunyuan-3d/3.0/image-to-3d": "fal-ai/hunyuan3d-v3/image-to-3d",
 };
 
 /** A field a binding leaves at its upstream's default that needs a reviewed entry, and why it was found. */

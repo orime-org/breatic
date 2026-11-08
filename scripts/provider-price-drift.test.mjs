@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { priceFactDrift, statedPrice, threeDSampleCheck } from "./provider-price-drift.mjs";
+import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 
 test("stores a price fact seen for the first time and reports nothing", () => {
   assert.deepEqual(priceFactDrift(undefined, "1 minutes", "m fal-ai/x on fal: unit"), { store: true, problem: undefined });
@@ -38,29 +38,4 @@ test("answers why an answer states no price, so the sync lists it", () => {
     assert.match(read, /discounted_price/);
   }
   assert.equal(typeof statedPrice({ code: 4005, message: "Failed to retrieve model pricing." }), "string");
-});
-
-test("writes every 3D sample's charge in fixture order when WaveSpeed priced them all, reporting a mismatch", () => {
-  const samples = [
-    { id: "b/model", model: "b", inputs: { x: 1 }, usd: 0.5, local: 0.5 },
-    { id: "a/model", model: "a", inputs: { y: 2 }, usd: 0.3, local: 0.2 },
-    { id: "b/model", model: "b", inputs: { x: 2 }, usd: 0.6, local: 0.6 },
-  ];
-  const { charged, problems } = threeDSampleCheck(samples, ["a/model", "b/model", "c/model"]);
-  assert.deepEqual(Object.keys(charged), ["a/model", "b/model"]);
-  assert.deepEqual(charged["b/model"], [{ inputs: { x: 1 }, usd: 0.5 }, { inputs: { x: 2 }, usd: 0.6 }]);
-  assert.deepEqual(problems, ['price mismatch: a {"y":2}: WaveSpeed 0.3, local 0.2']);
-});
-
-test("leaves the 3D fixture as it is when any sample went unpriced, naming each one", () => {
-  const samples = [
-    { id: "a/model", model: "a", inputs: { y: 1 }, usd: 0.2, local: 0.2 },
-    { id: "a/model", model: "a", inputs: { y: 2 }, usd: "not priced (GET x answered 503)", local: 0.4 },
-    { id: "b/model", model: "b", inputs: { x: 1 }, usd: "no discounted_price ({})", local: 0.5 },
-  ];
-  const { charged, problems } = threeDSampleCheck(samples, ["a/model", "b/model"]);
-  assert.equal(charged, undefined);
-  assert.equal(problems.length, 2);
-  assert.match(problems[0], /three-d-prices\.json not rewritten.*a \{"y":2\}.*answered 503/);
-  assert.match(problems[1], /three-d-prices\.json not rewritten.*b \{"x":1\}/);
 });

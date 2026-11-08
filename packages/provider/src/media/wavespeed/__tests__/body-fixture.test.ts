@@ -102,10 +102,8 @@ const DELISTED_WAVESPEED_IDS: ReadonlySet<string> = new Set([
   "reve/2.1/text-to-image",
   "topaz/image/enhance",
   "wavespeed-ai/rife/video-interpolation",
-  "wavespeed-ai/meshy6/text-to-3d",
   "veed/clean-audio",
   "recraft-ai/recraft-v4-style/text-to-image",
-  "mirelo-ai/sfx-1.6/extend-audio",
 ]);
 
 describe("WaveSpeed bindings stay live", () => {

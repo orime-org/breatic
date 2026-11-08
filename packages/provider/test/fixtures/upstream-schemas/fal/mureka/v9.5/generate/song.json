@@ -163,14 +163,47 @@
         "type": "array",
         "items": {
           "fields": {
+            "section_type": [
+              {
+                "type": "string",
+                "enum": [
+                  "intro",
+                  "verse",
+                  "pre-chorus",
+                  "chorus",
+                  "bridge",
+                  "break",
+                  "outro"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "start": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "end": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "lines": [
               {
                 "type": "array",
                 "items": {
                   "fields": {
-                    "end": [
+                    "text": [
                       {
-                        "type": "integer"
+                        "type": "string"
                       },
                       {
                         "type": "null"
@@ -184,9 +217,9 @@
                         "type": "null"
                       }
                     ],
-                    "text": [
+                    "end": [
                       {
-                        "type": "string"
+                        "type": "integer"
                       },
                       {
                         "type": "null"
@@ -197,9 +230,9 @@
                         "type": "array",
                         "items": {
                           "fields": {
-                            "end": [
+                            "text": [
                               {
-                                "type": "integer"
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -213,9 +246,9 @@
                                 "type": "null"
                               }
                             ],
-                            "text": [
+                            "end": [
                               {
-                                "type": "string"
+                                "type": "integer"
                               },
                               {
                                 "type": "null"
@@ -242,39 +275,6 @@
                   },
                   "required": []
                 }
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "end": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "start": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "section_type": [
-              {
-                "type": "string",
-                "enum": [
-                  "intro",
-                  "verse",
-                  "pre-chorus",
-                  "chorus",
-                  "bridge",
-                  "break",
-                  "outro"
-                ]
               },
               {
                 "type": "null"

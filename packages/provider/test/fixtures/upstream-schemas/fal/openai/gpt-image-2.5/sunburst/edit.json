@@ -152,7 +152,20 @@
                 "type": "null"
               }
             ],
-            "file_size": [
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "width": [
               {
                 "type": "integer"
               },
@@ -160,7 +173,7 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "file_size": [
               {
                 "type": "integer"
               },
@@ -174,19 +187,6 @@
               },
               {
                 "type": "null"
-              }
-            ],
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "url": [
-              {
-                "type": "string"
               }
             ],
             "": [

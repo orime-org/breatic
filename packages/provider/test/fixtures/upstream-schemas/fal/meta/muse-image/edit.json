@@ -69,14 +69,6 @@
         "type": "array",
         "items": {
           "fields": {
-            "height": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "file_size": [
               {
                 "type": "integer"
@@ -85,14 +77,25 @@
                 "type": "null"
               }
             ],
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
             "content_type": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
               },
               {
                 "type": "null"
@@ -106,12 +109,9 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "url": [
               {
-                "type": "integer"
-              },
-              {
-                "type": "null"
+                "type": "string"
               }
             ],
             "": [

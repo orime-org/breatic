@@ -218,11 +218,11 @@
       {
         "type": "object",
         "default": {
-          "vol": 1,
+          "pitch": 0,
+          "speed": 1,
           "voice_id": "Wise_Woman",
           "english_normalization": false,
-          "pitch": 0,
-          "speed": 1
+          "vol": 1
         }
       }
     ],

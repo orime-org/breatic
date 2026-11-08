@@ -5,9 +5,9 @@
   "runs": [
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "neutral",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -21,9 +21,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "happy",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -37,9 +37,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "sad",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -53,9 +53,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "angry",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -69,9 +69,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "disgusted",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -85,9 +85,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "surprised",
         "model_mode": "face",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -101,9 +101,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "neutral",
         "model_mode": "lips",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",
@@ -117,9 +117,9 @@
     },
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "emotion": "neutral",
         "model_mode": "head",
-        "audio": "https://example.com/audio.mp3",
         "video": "https://example.com/video.mp4"
       },
       "prompt": "",

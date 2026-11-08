@@ -52,11 +52,6 @@
         "type": "array",
         "items": {
           "fields": {
-            "prompt": [
-              {
-                "type": "string"
-              }
-            ],
             "duration": [
               {
                 "type": "string",
@@ -78,6 +73,11 @@
                   "15"
                 ],
                 "default": "5"
+              }
+            ],
+            "prompt": [
+              {
+                "type": "string"
               }
             ],
             "": [

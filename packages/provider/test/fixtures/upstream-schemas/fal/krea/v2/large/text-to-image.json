@@ -165,12 +165,23 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
+            "content_type": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
               }
             ],
-            "height": [
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
               {
                 "type": "integer"
               },
@@ -178,7 +189,7 @@
                 "type": "null"
               }
             ],
-            "width": [
+            "height": [
               {
                 "type": "integer"
               },
@@ -194,20 +205,9 @@
                 "type": "null"
               }
             ],
-            "content_type": [
+            "url": [
               {
                 "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "file_name": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
               }
             ],
             "": [

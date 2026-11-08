@@ -12,6 +12,12 @@
         "default": "auto"
       }
     ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
     "language_code": [
       {
         "type": "string"

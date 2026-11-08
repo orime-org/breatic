@@ -130,11 +130,6 @@
         "type": "array",
         "items": {
           "fields": {
-            "url": [
-              {
-                "type": "string"
-              }
-            ],
             "file_size": [
               {
                 "type": "integer"
@@ -143,7 +138,12 @@
                 "type": "null"
               }
             ],
-            "content_type": [
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "file_name": [
               {
                 "type": "string"
               },
@@ -151,7 +151,7 @@
                 "type": "null"
               }
             ],
-            "file_name": [
+            "content_type": [
               {
                 "type": "string"
               },

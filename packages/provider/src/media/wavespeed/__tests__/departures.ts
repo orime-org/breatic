@@ -6,7 +6,7 @@ import { isPresent } from "../../../pricing/estimate.js";
 /** Where the WaveSpeed bindings depart from what today's code sends, for the fixture tests that compare the two. */
 
 /** Models WaveSpeed no longer serves (absent from `/api/v3/models`, rechecked on 2026-11-02): they carry no WaveSpeed binding. */
-export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "recraft-v4-style-text-to-image", "sfx-1.6-extend-audio"]);
+export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "recraft-v4-style-text-to-image"]);
 
 /**
  * Where a binding departs from today's body on purpose, by model: a field renamed to the
@@ -24,11 +24,6 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
   "wan-3.0-reference-to-video": { rename: { enable_audio: "generate_audio" } },
   "elevenlabs-v3": { omit: ["similarity"] },
   "sfx-1.6-text-to-audio": { omit: ["ambience", "double_output"] },
-  "hunyuan3d-v3-i23d": { omit: ["prompt"] },
-  "hunyuan3d-v3.1-rapid": { omit: ["prompt"] },
-  // Relisted as meshy/v6/text-to-3d, whose schema has no art_style and spells ta_pose as pose_mode "t-pose":
-  // today's body sends both under the old id. Each value the binding writes is checked against the schema.
-  "meshy6-t23d": { omit: ["art_style", "ta_pose"] },
 };
 
 /**
@@ -37,8 +32,6 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
  * bindings keep them out (`supported`, or `drops: [false]`), so a run holding one is never sent to WaveSpeed.
  */
 export const REFUSED: Readonly<Record<string, Readonly<Record<string, readonly unknown[]>>>> = {
-  "hunyuan3d-v3": { generate_type: ["LowPoly"] },
-  "hunyuan3d-v3-i23d": { generate_type: ["LowPoly"] },
   "nano-banana-2-relight": { output_format: ["webp"] },
   "nano-banana-2-quick-edit": { output_format: ["webp"] },
   "muse-image-edit": { aspect_ratio: ["9:21"] },

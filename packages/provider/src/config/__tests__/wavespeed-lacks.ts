@@ -37,12 +37,7 @@ export const WAVESPEED_LACKS: Readonly<Record<string, string>> = {
   "fal fal-ai/hunyuan-video-foley guidance_scale": "4.5 is the reference default (Tencent-Hunyuan/HunyuanVideo-Foley infer.py), which WaveSpeed, with no such field, runs.",
   "fal fal-ai/hunyuan-video-foley negative_prompt": "\"noisy, harsh\" is the reference DEFAULT_NEGATIVE_PROMPT (Tencent-Hunyuan/HunyuanVideo-Foley constants.py), which WaveSpeed, with no such field, runs.",
   "fal fal-ai/hunyuan-video-foley num_inference_steps": "50 is the reference default (Tencent-Hunyuan/HunyuanVideo-Foley infer.py), which WaveSpeed, with no such field, runs.",
-  "fal fal-ai/hunyuan3d-v3/image-to-3d polygon_type": "WaveSpeed serves only Normal and Geometry, and fal ignores polygon_type outside LowPoly. So the field is inert for every run WaveSpeed could serve, and WaveSpeed's exemplar records triangle as well.",
-  "fal fal-ai/hunyuan3d-v3/text-to-3d polygon_type": "Every run WaveSpeed can serve is Normal or Geometry, and fal ignores polygon_type in those modes. LowPoly runs have no WaveSpeed result to match.",
   "fal fal-ai/lyria3/pro negative_prompt": "An empty negative prompt sends nothing, and the model does not support negative prompts anyway. On both upstreams, exclusions travel only in the prompt.",
-  "fal fal-ai/meshy/v6/text-to-3d enable_prompt_expansion": "WaveSpeed sends the prompt as given; its 'Prompt Enhancer' is a playground button, not an API field. Its own exemplar records expansion off, which matches fal's default.",
-  "fal fal-ai/meshy/v6/text-to-3d is_a_t_pose": "Our binding already sends the pose through pose_mode (t-pose when ta_pose is true), exactly as on WaveSpeed. The deprecated flag left at false forces no pose.",
-  "fal fal-ai/meshy/v6/text-to-3d model_type": "WaveSpeed offers quad topology and up to 300000 faces. Only standard does that: the smart-topology types are triangle-only with a 30000 cap. So WaveSpeed runs standard.",
   "fal fal-ai/minimax/speech-2.8-hd output_format": "The field only sets how MiniMax hands content to fal. fal still answers with an audio File URL, which is what our adapter reads. The audio codec is set by audio_setting.format (default mp3), not by this field.",
   "fal fal-ai/nano-banana-2 limit_generations": "WaveSpeed charges one flat price per run and talks about one image. fal's default gives exactly one image per run, and fal bills per image. Setting false would let a prompt that asks for several images return several.",
   "fal fal-ai/nano-banana-2 num_images": "Both upstreams return one image per run, which is also our one-result-per-generation contract.",
@@ -87,7 +82,6 @@ export const WAVESPEED_LACKS: Readonly<Record<string, string>> = {
   "sandbase minimax/h3/reference-to-video aigc_watermark": "WaveSpeed's output carries no MiniMax AIGC watermark, and SandBase's default of false also adds none.",
   "sandbase minimax/h3/text-to-video aigc_watermark": "The default adds no MiniMax AIGC watermark, and WaveSpeed's H3 outputs carry none.",
   "sandbase sync/lipsync/3.0/video-to-video sync_mode": "WaveSpeed's example ends at the shorter input, which is cut_off, SandBase's default.",
-  "sandbase tencent/hunyuan-3d/3.0/image-to-3d polygon_type": "Every run WaveSpeed can serve is Normal or Geometry, and SandBase ignores polygon_type in those modes. LowPoly runs have no WaveSpeed result to match.",
   "sandbase xai/grok-imagine-image/2.0/text-to-image output_format": "WaveSpeed returns this model's image as JPEG (measured), SandBase's default.",
 };
 
@@ -96,8 +90,6 @@ export const WAVESPEED_LACKS: Readonly<Record<string, string>> = {
  * run gives the same result. Keyed `WaveSpeed endpoint field on upstream endpoint`.
  */
 export const RESELLER_LACKS: Readonly<Record<string, string>> = {
-  "meshy/v6/text-to-3d auto_size on fal fal-ai/meshy/v6/text-to-3d": "Meshy's own default is false (docs.meshy.ai text-to-3d: 'auto_size ... default false'), which a fal run without the field gets.",
-  "meshy/v6/text-to-3d texture_resolution on fal fal-ai/meshy/v6/text-to-3d": "Meshy's own default is 2k (docs.meshy.ai text-to-3d: 'texture_resolution ... default 2k'), which a fal run without the field gets.",
   "minimax/speech-2.8-hd pitch on fal fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.pitch defaults to 0, as WaveSpeed's pitch does.",
   "speak:minimax/speech-2.8-hd pitch on fal speak:fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.pitch defaults to 0, as WaveSpeed's pitch does.",
   "speak:minimax/speech-2.8-hd volume on fal speak:fal-ai/minimax/speech-2.8-hd": "fal's voice_setting.vol defaults to 1, as WaveSpeed's volume does.",

@@ -5,9 +5,9 @@
   "runs": [
     {
       "params": {
+        "audio": "https://example.com/audio.mp3",
         "model": "speech-2.8-hd",
-        "need_noise_reduction": true,
-        "audio": "https://example.com/audio.mp3"
+        "need_noise_reduction": true
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {

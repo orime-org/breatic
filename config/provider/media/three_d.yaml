@@ -26,6 +26,10 @@
 
 models:
   tripo-h3.1-t23d:
+    rejects:
+      - when: generate_parts = true and smart_low_poly = true
+        reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
+        source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -63,12 +67,117 @@ models:
             field: texture_seed
           negative_prompt:
             field: negative_prompt
+        rejects:
+          - when: $type(face_limit) = "number" and face_limit < 48
+            reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula
           base_price: 120000
           formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: tripo3d/h3.1/text-to-3d
+        prompt_field: prompt
+        output_field: model_mesh
+        params:
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          negative_prompt:
+            field: negative_prompt
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: fal has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: fal has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+        rejects:
+          - when: face_limit < 1000
+            reason: "fal face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * (((texture or pbr) ? (texture_quality = "detailed" ? 30 : 20) : 10) + (geometry_quality = "detailed" ? 20 : 0))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: tripo3d/tripo-h3.1/text-to-3d
+        prompt_field: prompt
+        fixed:
+          mode: async
+        params:
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          model_seed:
+            field: seed
+          negative_prompt:
+            field: negative_prompt
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: SandBase has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: SandBase has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+          auto_size:
+            - false
+          texture_seed: []
+        rejects:
+          - when: face_limit < 1000
+            reason: "SandBase face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 120000
+          formula: '{"total_price": base_price + ((texture or pbr) ? (texture_quality = "detailed" ? 240000 : 120000) : 0) + (geometry_quality = "detailed" ? 240000 : 0)}'
+          discount_rate: 100
   tripo-h3.1-i23d:
+    rejects:
+      - when: generate_parts = true and smart_low_poly = true
+        reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
+        source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -111,12 +220,131 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        rejects:
+          - when: $type(face_limit) = "number" and face_limit < 48
+            reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula
           base_price: 240000
           formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: tripo3d/h3.1/image-to-3d
+        output_field: model_mesh
+        params:
+          image:
+            field: image_url
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: fal has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: fal has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+          enable_image_autofix:
+            - false
+        rejects:
+          - when: face_limit < 1000
+            reason: "fal face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * (((texture or pbr) ? (texture_quality = "detailed" ? 40 : 30) : 20) + (geometry_quality = "detailed" ? 20 : 0))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: tripo3d/tripo-h3.1/image-to-3d
+        fixed:
+          mode: async
+        params:
+          image:
+            field: image
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          model_seed:
+            field: seed
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: SandBase has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: SandBase has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+          auto_size:
+            - false
+          texture_seed: []
+          texture_alignment:
+            values:
+              - original_image
+            equivalent: SandBase has no texture_alignment field; Tripo's own default is original_image (developers.tripo3d.com image-to-model, texture_alignment)
+          orientation:
+            values:
+              - default
+            equivalent: SandBase has no orientation field; Tripo's own default is default (developers.tripo3d.com image-to-model, orientation)
+          enable_image_autofix:
+            - false
+        rejects:
+          - when: face_limit < 1000
+            reason: "SandBase face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 240000
+          formula: '{"total_price": base_price + ((texture or pbr) ? (texture_quality = "detailed" ? 240000 : 120000) : 0) + (geometry_quality = "detailed" ? 240000 : 0)}'
+          discount_rate: 100
   tripo-h3.1-multiview:
+    rejects:
+      - when: generate_parts = true and smart_low_poly = true
+        reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
+        source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -159,8 +387,123 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        rejects:
+          - when: $type(face_limit) = "number" and face_limit < 48
+            reason: "WaveSpeed face_limit: minimum 48"
         pricing:
           kind: formula
           base_price: 240000
           formula: '{"total_price": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = "detailed" ? 240000 : (texture_quality = "extreme" ? 360000 : 120000)) : 0) + (geometry_quality = "detailed" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: tripo3d/h3.1/multiview-to-3d
+        output_field: model_mesh
+        params:
+          images:
+            field: image_urls
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          auto_size:
+            field: auto_size
+          model_seed:
+            field: model_seed
+          texture_seed:
+            field: texture_seed
+          texture_alignment:
+            field: texture_alignment
+          orientation:
+            field: orientation
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: fal has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: fal has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+          enable_image_autofix:
+            - false
+        rejects:
+          - when: face_limit < 1000
+            reason: "fal face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * (((texture or pbr) ? (texture_quality = "detailed" ? 40 : 30) : 20) + (geometry_quality = "detailed" ? 20 : 0))}'
+          discount_rate: 100
+      - upstream: sandbase
+        weight: 3
+        model_id: tripo3d/tripo-h3.1/multiview-to-3d
+        fixed:
+          mode: async
+        params:
+          images:
+            field: images
+          texture:
+            field: texture
+          pbr:
+            field: pbr
+          texture_quality:
+            field: texture_quality
+            supported:
+              - standard
+              - detailed
+          geometry_quality:
+            field: geometry_quality
+          face_limit:
+            field: face_limit
+          model_seed:
+            field: seed
+        drops:
+          texture_version:
+            values:
+              - v3.0
+            equivalent: SandBase has no texture_version field; Tripo derives texture v3.0-20250812 from the v3.x geometry model when none is sent (developers.tripo3d.com text-to-model, texture_version)
+          delight: []
+          smart_low_poly:
+            - false
+          generate_parts:
+            - false
+          export_uv:
+            values:
+              - true
+            equivalent: SandBase has no export_uv field; Tripo's own default is true (developers.tripo3d.com text-to-model, export_uv)
+          auto_size:
+            - false
+          texture_seed: []
+          texture_alignment:
+            values:
+              - original_image
+            equivalent: SandBase has no texture_alignment field; Tripo's own default is original_image (developers.tripo3d.com image-to-model, texture_alignment)
+          orientation:
+            values:
+              - default
+            equivalent: SandBase has no orientation field; Tripo's own default is default (developers.tripo3d.com image-to-model, orientation)
+          enable_image_autofix:
+            - false
+        rejects:
+          - when: face_limit < 1000
+            reason: "SandBase face_limit: minimum 1000"
+        pricing:
+          kind: formula
+          base_price: 240000
+          formula: '{"total_price": base_price + ((texture or pbr) ? (texture_quality = "detailed" ? 240000 : 120000) : 0) + (geometry_quality = "detailed" ? 240000 : 0)}'
           discount_rate: 100

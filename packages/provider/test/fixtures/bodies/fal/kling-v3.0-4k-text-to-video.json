@@ -247,8 +247,6 @@
       "params": {
         "aspect_ratio": "16:9",
         "duration": 5,
-        "auto_shots": false,
-        "generate_audio": false,
         "multi_prompt": [
           {
             "prompt": "sample",
@@ -258,7 +256,9 @@
             "prompt": "sample",
             "duration": 4
           }
-        ]
+        ],
+        "auto_shots": false,
+        "generate_audio": false
       },
       "prompt": "",
       "body": {
@@ -282,9 +282,9 @@
       "params": {
         "aspect_ratio": "16:9",
         "duration": 5,
+        "shot_type": "customize",
         "auto_shots": false,
-        "generate_audio": false,
-        "shot_type": "customize"
+        "generate_audio": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {
@@ -318,8 +318,8 @@
         "aspect_ratio": "16:9",
         "duration": 5,
         "auto_shots": false,
-        "generate_audio": false,
-        "negative_prompt": "sample text"
+        "negative_prompt": "sample text",
+        "generate_audio": false
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {

@@ -20,14 +20,10 @@
  * rewritten by hand and the stored fact updated with it.
  * fal: writes each binding's and extra step's `base_price` from fal's
  * `unit_price`, except where the unit changed.
- * WaveSpeed: writes the 3D models' prices (`THREE_D` below) and checks them
- * against WaveSpeed's own price for sample params, writing what WaveSpeed
- * charged for each sample to `packages/provider/test/fixtures/three-d-prices.json`
- * (`three-d-prices.test.ts` prices the samples against it), which is left as it
- * is when any sample could not be priced; for every other model it
- * lists where the live base price differs from the binding's, and where the
- * binding's price for the catalog's default run differs from what WaveSpeed's
- * `/model/price` charges for it (`discounted_price`), without rewriting it.
+ * WaveSpeed: lists where the live base price differs from the binding's, and
+ * where the binding's price for the catalog's default run differs from what
+ * WaveSpeed's `/model/price` charges for it (`discounted_price`), without
+ * rewriting either.
  * SandBase: each snapshot also records who serves the model (`owned_by` in
  * SandBase's model list).
  * OpenRouter: after the media upstreams, writes `openrouter_prices` in
@@ -45,8 +41,7 @@
  * catalog param shares, the list a planned lint rule will keep out of
  * non-provider code (nothing reads it yet).
  *
- * Every problem (a model the upstream no longer has, a 3D sample WaveSpeed
- * prices differently from its formula, a changed price fact) is listed at the
+ * Every problem (a model the upstream no longer has, a changed price fact) is listed at the
  * end and makes the run exit non-zero; whatever could be synced is written
  * first. The WaveSpeed base-price and default-run differences are only printed.
  */
@@ -60,11 +55,10 @@ import { openRouterLevels, parseProviderConfig, type ProviderConfigInput } from 
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
-import { priceUsd } from "../packages/provider/src/pricing/evaluate.js";
 import { createProvider } from "../packages/provider/src/provider.js";
 import { servedDocuments, syncFalBindings } from "./provider-endpoint-docs.mjs";
 import { syncedLlmYaml } from "./provider-llm-prices.mjs";
-import { priceFactDrift, statedPrice, threeDSampleCheck } from "./provider-price-drift.mjs";
+import { priceFactDrift, statedPrice } from "./provider-price-drift.mjs";
 import { yamlText } from "./provider-yaml.mjs";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
@@ -92,43 +86,9 @@ const FAL_PRICING = "https://api.fal.ai/v1/models/pricing";
 const SANDBASE_MODELS = "https://api.sandbase.ai/v1/models";
 const OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models";
 const LLM = resolve(ROOT, "config/provider/llm.yaml");
-const THREE_D_PRICES = resolve(ROOT, "packages/provider/test/fixtures/three-d-prices.json");
 
-/** A sample input whose clip or file WaveSpeed's price endpoint does not read. */
-const SAMPLE_IMAGE = "https://example.com/sample.png";
 /** The prompt of a default run. */
 const SAMPLE_PROMPT = "a red fox running through fresh snow at dawn";
-
-/**
- * The 3D models' WaveSpeed prices, written by hand from the model pages and checked
- * against `/model/price` for each sample. Hunyuan3D V3 charges Geometry 0.45 USD,
- * Normal (textured) 0.18 more, PBR 0.18 more, and on image-to-3D any extra view
- * 0.18 more; face count does not change the price, and an empty view is no view.
- */
-const THREE_D: Readonly<Record<string, { base_price: number; formula: string; samples: Record<string, unknown>[] }>> = (() => {
-  const tiers = ["Normal", "Geometry"].flatMap((generate_type) => [false, true].map((enable_pbr) => ({ generate_type, enable_pbr })));
-  const textured = '(generate_type = "Geometry" ? 0 : 180000) + (enable_pbr = true ? 180000 : 0)';
-  const views = [{}, { back_image: SAMPLE_IMAGE }, { back_image: SAMPLE_IMAGE, left_image: SAMPLE_IMAGE, right_image: SAMPLE_IMAGE }, { back_image: "", left_image: "", right_image: "" }];
-  return {
-    "wavespeed-ai/hunyuan3d-v3/text-to-3d": {
-      base_price: 450_000,
-      formula: `{"total_price": base_price + ${textured}}`,
-      samples: [{ prompt: "x" }, ...tiers.flatMap((tier) => [40_000, 1_500_000].map((face_count) => ({ prompt: "x", ...tier, face_count })))],
-    },
-    "wavespeed-ai/hunyuan3d-v3/image-to-3d": {
-      base_price: 450_000,
-      formula: `{"total_price": base_price + ${textured} + ((back_image or left_image or right_image) ? 180000 : 0)}`,
-      samples: [{ image: SAMPLE_IMAGE }, ...tiers.flatMap((tier) => views.map((view) => ({ image: SAMPLE_IMAGE, ...tier, ...view })))],
-    },
-    "wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid": { base_price: 270_000, formula: "", samples: [{ image: SAMPLE_IMAGE }] },
-    // Meshy 6 charges 1.44 USD whatever the fields the binding sends; only mode, texture_resolution and rigging, which it never sends, change it.
-    "meshy/v6/text-to-3d": {
-      base_price: 1_440_000,
-      formula: "",
-      samples: [{ prompt: "x" }, { prompt: "" }, { prompt: "x", topology: "quad", target_polycount: 300_000, enable_pbr: true, symmetry_mode: "off", pose_mode: "t-pose" }],
-    },
-  };
-})();
 
 const problems: string[] = [];
 
@@ -218,7 +178,7 @@ function keyOf(upstream: string): string | undefined {
 }
 
 /**
- * Sync the WaveSpeed bindings: snapshots, the 3D prices and their check, and the live price differences.
+ * Sync the WaveSpeed bindings: snapshots and the live price differences.
  * @param upstream - The upstream's name.
  * @param list - Its bindings.
  */
@@ -243,29 +203,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   process.stdout.write(`${upstream}: ${written} schema snapshots written\n`);
 
   const differences: string[] = [];
-  const samples: { id: string; model: string; inputs: Record<string, unknown>; usd: number | string; local: number }[] = [];
-  for (const { modality, model, index, binding } of list) {
-    const live = byId.get(binding.model_id);
-    const threeD = THREE_D[binding.model_id];
-    if (threeD !== undefined) {
-      docs.get(modality)!.setIn(["models", model, "upstreams", index, "pricing"], { kind: "formula", base_price: threeD.base_price, formula: threeD.formula, discount_rate: 100 });
-      for (const inputs of threeD.samples) {
-        let usd: number | string;
-        try {
-          usd = statedPrice(await json(`${WAVESPEED}/model/price`, { method: "POST", headers, body: JSON.stringify({ model_id: binding.model_id, inputs }) }));
-        } catch (error) {
-          usd = `not priced (${(error as Error).message.slice(0, 120)})`;
-        }
-        const local = await priceUsd({ basePrice: threeD.base_price, formula: threeD.formula, discountRate: 100 }, inputs, {});
-        process.stdout.write(`${model} ${JSON.stringify(inputs)}: WaveSpeed ${usd}, local ${local}\n`);
-        samples.push({ id: binding.model_id, model, inputs, usd, local });
-      }
-      continue;
-    }
-    if (modality === "three_d") {
-      if (live === undefined) problems.push(`${model}: no real 3D price could be written; WaveSpeed lists no ${binding.model_id}`);
-      else problems.push(`${model}: no hand-written 3D price for ${binding.model_id} in THREE_D`);
-    }
+  for (const { model, binding } of list) {
     const priced: [string, Pricing | undefined][] = [[binding.model_id, binding.pricing], ...(binding.extra_steps ?? []).map((s): [string, Pricing | undefined] => [s.endpoint, s.pricing])];
     for (const [endpoint, pricing] of priced) {
       const usd = byId.get(endpoint)?.base_price;
@@ -273,11 +211,6 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
       if (Math.round(usd * MICRO) !== pricing.base_price) differences.push(`${model} ${endpoint}: live base_price ${Math.round(usd * MICRO)}, binding ${pricing.base_price}`);
     }
   }
-  // Written whole each run, in THREE_D order, so a sample dropped from THREE_D leaves the fixture with it; left as it is
-  // when a sample went unpriced, so a failed price call does not drop that sample's check.
-  const checked = threeDSampleCheck(samples, Object.keys(THREE_D));
-  problems.push(...checked.problems);
-  if (checked.charged !== undefined) writeJson(THREE_D_PRICES, checked.charged);
   process.stdout.write(`${upstream}: ${differences.length} live base prices differ from the binding's\n${differences.map((d) => `  ${d}\n`).join("")}`);
 
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
@@ -285,8 +218,7 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   const provider = createProvider({ config: { upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: media } }, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
   const defaults = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { default?: unknown }>]));
   const charged: string[] = [];
-  for (const { modality, model } of list) {
-    if (modality === "three_d") continue;
+  for (const { model } of list) {
     const binding = provider.config.models[model]?.find((b) => b.upstream === upstream);
     if (binding === undefined) continue;
     const params = Object.fromEntries(Object.entries(defaults.get(model) ?? {}).map(([name, p]) => [name, p.default]).filter(([, v]) => v !== undefined && v !== null));

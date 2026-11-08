@@ -294,7 +294,6 @@
     {
       "params": {
         "language": "English (United States)",
-        "voice_id": "Kore",
         "speakers": [
           {
             "speaker": "sample",
@@ -304,7 +303,8 @@
             "speaker": "sample",
             "voice": "Achernar"
           }
-        ]
+        ],
+        "voice_id": "Kore"
       },
       "prompt": "a red fox running through fresh snow at dawn",
       "body": {

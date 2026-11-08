@@ -9,7 +9,7 @@ import { estimateCost, orderByPrice, rejectedInput, type EstimateInput } from ".
 import { createProvider } from "../../provider.js";
 import { droppedValues, type MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
-import { ROOT, catalog, disjuncts, shipped } from "./shipped.js";
+import { ROOT, catalog, disjuncts, resolvedParams, shipped } from "./shipped.js";
 
 /**
  * The reseller each catalog model is bound to and its id there: a model on fal or
@@ -27,7 +27,6 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "hunyuan-video-foley": { fal: "fal-ai/hunyuan-video-foley" },
   "vocal-remover": {},
   "veed-clean-audio": { fal: "veed/clean-audio" },
-  "sfx-1.6-extend-audio": { fal: "mirelo-ai/sfx1.6/extend-audio" },
   "gpt-image-2.5-sunburst-text-to-image": { fal: "openai/gpt-image-2.5/sunburst/text-to-image", sandbase: "openai/gpt-image-2.5-sunburst" },
   "grok-imagine-image-v2.0-text-to-image": { fal: "xai/grok-imagine-image/v2.0/text-to-image", sandbase: "xai/grok-imagine-image/2.0/text-to-image" },
   "nano-banana-2": { fal: "fal-ai/nano-banana-2", sandbase: "google/nano-banana-2" },
@@ -51,11 +50,9 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "bria-eraser": { fal: "fal-ai/bria/eraser" },
   // fal offers no output format and its example edit is a PNG, where WaveSpeed returns JPEG (inner#1859).
   "seedream-v4.5-edit": { sandbase: "bytedance/seedream/4.5/edit" },
-  "meshy6-t23d": { fal: "fal-ai/meshy/v6/text-to-3d" },
-  "hunyuan3d-v3": { fal: "fal-ai/hunyuan3d-v3/text-to-3d" },
-  "hunyuan3d-v3-i23d": { fal: "fal-ai/hunyuan3d-v3/image-to-3d", sandbase: "tencent/hunyuan-3d/3.0/image-to-3d" },
-  // fal makes this model textured only as OBJ, and our 3D takes GLB.
-  "hunyuan3d-v3.1-rapid": {},
+  "tripo-h3.1-t23d": { fal: "tripo3d/h3.1/text-to-3d", sandbase: "tripo3d/tripo-h3.1/text-to-3d" },
+  "tripo-h3.1-i23d": { fal: "tripo3d/h3.1/image-to-3d", sandbase: "tripo3d/tripo-h3.1/image-to-3d" },
+  "tripo-h3.1-multiview": { fal: "tripo3d/h3.1/multiview-to-3d", sandbase: "tripo3d/tripo-h3.1/multiview-to-3d" },
   "realtime-tts-2": {},
   "gemini-3.1-flash-text-to-speech": { fal: "fal-ai/gemini-3.1-flash-tts", sandbase: "google/gemini-3.1-flash-tts" },
   "minimax-speech-2.8-hd": { fal: "fal-ai/minimax/speech-2.8-hd", sandbase: "minimax/speech/2.8/hd" },
@@ -138,6 +135,25 @@ function premadeVoices(model = "elevenlabs-v3"): { name: string; id: string }[] 
   });
 }
 
+describe("a run as the application resolves it", () => {
+  const tripo = catalogModels.get("tripo-h3.1-t23d")!;
+
+  it("fills the defaults and leaves out a blank param and one whose condition does not hold", () => {
+    const params = resolvedParams(tripo, { face_limit: "" });
+    expect(params).toMatchObject({ texture: true, pbr: true, texture_quality: "standard", texture_version: "v3.0", export_uv: true });
+    expect(params).not.toHaveProperty("face_limit");
+    expect(params).not.toHaveProperty("delight");
+  });
+
+  it("applies forced values until nothing changes, then drops what they switch off", () => {
+    const parts = resolvedParams(tripo, { generate_parts: true, auto_size: true });
+    expect(parts).toMatchObject({ generate_parts: true, texture: false, pbr: false });
+    for (const name of ["texture_quality", "texture_version", "delight", "auto_size"]) expect(parts).not.toHaveProperty(name);
+    expect(resolvedParams(tripo, { texture: false })).toMatchObject({ texture: true, pbr: true });
+    expect(resolvedParams(tripo, { texture_quality: "fast" })).toMatchObject({ texture_version: "v3.5", delight: true });
+  });
+});
+
 describe("the reseller upstreams", () => {
   it("declares fal and SandBase", () => {
     expect(config.upstreams.fal).toEqual({ kind: "fal", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
@@ -171,8 +187,9 @@ describe("the reseller bindings that serve only part of a model, or always send 
     expect(String((bindingOf("minimax-voice-clone", "fal")?.drops?.model as { all_values?: string } | undefined)?.all_values)).not.toMatch(/no such field/);
   });
 
-  it("returns sfx-1.6 extend-audio on fal as MP3, as WaveSpeed returned SFX 1.6", () => {
-    expect(bindingOf("sfx-1.6-extend-audio", "fal")?.fixed).toMatchObject({ upload_audio_format: "mp3" });
+  it.each([["fal", "image_urls"], ["sandbase", "images"]])("sends Tripo H3.1's views on %s in its own list, front, left, back, right", (upstream, field) => {
+    const views = ["https://a/front.png", "https://a/left.png", "https://a/back.png", "https://a/right.png"];
+    expect(buildBody(bindingOf("tripo-h3.1-multiview", upstream)!, { prompt: "", params: { images: views } })[field]).toEqual(views);
   });
 
   it("speaks MiniMax Speech 2.8 HD on fal without loudness normalization, as WaveSpeed does", () => {
@@ -265,12 +282,6 @@ describe("SandBase runs", () => {
       if (modes.includes("async") && binding.fixed?.mode !== "async") sync.push(model);
     }
     expect(sync).toEqual([]);
-  });
-});
-
-describe("the WaveSpeed binding a relisted model gets back", () => {
-  it("serves meshy6-t23d on WaveSpeed under the id it is listed under again, ahead of fal", () => {
-    expect(bindingOf("meshy6-t23d", "wavespeed")).toMatchObject({ model_id: "meshy/v6/text-to-3d", weight: 1 });
   });
 });
 
@@ -383,16 +394,12 @@ describe("the limits a reseller states beyond its schema", () => {
   });
 
   /**
-   * A row's run as the application sends it: every param the catalog gives a default at that default, then the row's.
+   * A row's run as the application sends it: the row's params resolved over the catalog's defaults (`resolvedParams`).
    * @param model - The model.
    * @param input - The row's run.
    * @returns The run.
    */
-  const withDefaults = (model: string, input: Partial<EstimateInput>): Partial<EstimateInput> => {
-    const params = (catalogModels.get(model)?.params ?? {}) as Record<string, { default?: unknown }>;
-    const defaults = Object.fromEntries(Object.entries(params).flatMap(([name, p]) => (p.default === undefined || p.default === null ? [] : [[name, p.default] as const])));
-    return { ...input, params: { ...defaults, ...input.params } };
-  };
+  const withDefaults = (model: string, input: Partial<EstimateInput>): Partial<EstimateInput> => ({ ...input, params: resolvedParams(catalogModels.get(model)!, input.params ?? {}) });
 
   // Each row: model, upstream, a run the upstream's own words refuse beyond the model vendor's, the nearest run it takes
   // (each sent with the catalog's defaults), and words of the reason; every binding reject has one.
@@ -454,8 +461,15 @@ describe("the limits a reseller states beyond its schema", () => {
     ["gemini-3.1-flash-text-to-speech", "sandbase", { prompt: "x".repeat(50001) }, { prompt: "x".repeat(50000) }, "maxLength 50000"],
     ["gemini-3.1-flash-text-to-speech", "sandbase", { prompt: "Host: hi.", params: { speakers: [{ speaker: "Al ice", voice: "Charon" }] } }, { prompt: "Host: hi.", params: { speakers: [{ speaker: "Host_1", voice: "Charon" }] } }, "speaker"],
     ["minimax-speech-2.8-hd", "sandbase", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "maxLength 5000"],
-    ["meshy6-t23d", "wavespeed", { prompt: "x".repeat(601) }, { prompt: "x".repeat(600) }, "maxLength 600"],
-    ["meshy6-t23d", "fal", { prompt: "x".repeat(601) }, { prompt: "x".repeat(600) }, "maxLength 600"],
+    ["tripo-h3.1-t23d", "wavespeed", { prompt: "a fox", params: { face_limit: 47 } }, { prompt: "a fox", params: { face_limit: 48 } }, "minimum 48"],
+    ["tripo-h3.1-t23d", "fal", { prompt: "a fox", params: { face_limit: 999 } }, { prompt: "a fox", params: { face_limit: 1000 } }, "minimum 1000"],
+    ["tripo-h3.1-t23d", "sandbase", { prompt: "a fox", params: { face_limit: 999 } }, { prompt: "a fox", params: { face_limit: 1000 } }, "minimum 1000"],
+    ["tripo-h3.1-i23d", "wavespeed", { params: { image: URL_A, face_limit: 47 } }, { params: { image: URL_A, face_limit: 48 } }, "minimum 48"],
+    ["tripo-h3.1-i23d", "fal", { params: { image: URL_A, face_limit: 999 } }, { params: { image: URL_A, face_limit: 1000 } }, "minimum 1000"],
+    ["tripo-h3.1-i23d", "sandbase", { params: { image: URL_A, face_limit: 999 } }, { params: { image: URL_A, face_limit: 1000 } }, "minimum 1000"],
+    ["tripo-h3.1-multiview", "wavespeed", { params: { images: [URL_A, URL_A], face_limit: 47 } }, { params: { images: [URL_A, URL_A], face_limit: 48 } }, "minimum 48"],
+    ["tripo-h3.1-multiview", "fal", { params: { images: [URL_A, URL_A], face_limit: 999 } }, { params: { images: [URL_A, URL_A], face_limit: 1000 } }, "minimum 1000"],
+    ["tripo-h3.1-multiview", "sandbase", { params: { images: [URL_A, URL_A], face_limit: 999 } }, { params: { images: [URL_A, URL_A], face_limit: 1000 } }, "minimum 1000"],
   ];
 
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
@@ -473,7 +487,6 @@ describe("the limits a reseller states beyond its schema", () => {
     // Measured on WaveSpeed (2026-11-07): lyrics, prompt and melody failed; lyrics and melody completed.
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
     ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
-    ["hunyuan3d-v3", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "300 seconds"],
     ["dreamactor-v2", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
     ["minimax-voice-clone", { prompt: "hi", params: { audio: URL_A }, durations: { audio: [9] } }, { prompt: "hi", params: { audio: URL_A }, durations: { audio: [10] } }, "10 seconds"],
@@ -520,25 +533,10 @@ describe("the limits a reseller states beyond its schema", () => {
     ["veed-clean-audio", { params: { audio: URL_A }, durations: { audio: [1801] } }, { params: { audio: URL_A }, durations: { audio: [1800] } }, "30 minutes"],
     ["veed-clean-audio", { params: { audio: URL_A, strength: 1.05 }, durations: { audio: [60] } }, { params: { audio: URL_A, strength: 1 }, durations: { audio: [60] } }, "maximum 1"],
     ["veed-clean-audio", { params: { audio: URL_A, strength: -0.05 }, durations: { audio: [60] } }, { params: { audio: URL_A, strength: 0 }, durations: { audio: [60] } }, "minimum 0"],
-    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A }, durations: { audio: [2.9] } }, { prompt: "rain", params: { audio: URL_A }, durations: { audio: [3] } }, "at least 3 seconds"],
-    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 0.9 }, durations: { audio: [5] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 1 }, durations: { audio: [5] } }, "min 1000"],
-    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 58 }, durations: { audio: [3] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 57 }, durations: { audio: [3] } }, "max 57000"],
-    ["sfx-1.6-extend-audio", { prompt: "rain", params: { audio: URL_A, append_duration: 11 }, durations: { audio: [50] } }, { prompt: "rain", params: { audio: URL_A, append_duration: 10 }, durations: { audio: [50] } }, "Mirelo extend: the result is capped at 60 seconds"],
-    ["sfx-1.6-extend-audio", { prompt: "x".repeat(5001), params: { audio: URL_A }, durations: { audio: [5] } }, { prompt: "x".repeat(5000), params: { audio: URL_A }, durations: { audio: [5] } }, "5000"],
     ["recraft-v4-style-text-to-image", { prompt: "x".repeat(10001) }, { prompt: "x".repeat(10000) }, "10,000"],
     ["pro-upscaler", { params: { image: URL_A, creativity: 11 } }, { params: { image: URL_A, creativity: 10 } }, "between -10 and 10"],
     ["pro-upscaler", { params: { image: URL_A, creativity: -11 } }, { params: { image: URL_A, creativity: -10 } }, "between -10 and 10"],
     ["pro-upscaler", { params: { image: URL_A, target_megapixels: 65 } }, { params: { image: URL_A, target_megapixels: 64 } }, "64 MP"],
-    ["meshy6-t23d", { prompt: "x".repeat(801) }, { prompt: "x".repeat(800) }, "800 characters"],
-    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 300001 } }, { prompt: "a fox", params: { target_polycount: 300000 } }, "100 to 300000"],
-    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 99 } }, { prompt: "a fox", params: { target_polycount: 100 } }, "100 to 300000"],
-    ["meshy6-t23d", { prompt: "a fox", params: { target_polycount: 1000.5 } }, { prompt: "a fox", params: { target_polycount: 1000 } }, "integer"],
-    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 1500001 } }, { prompt: "a fox", params: { face_count: 1500000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 2999 } }, { prompt: "a fox", params: { face_count: 40000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3", { prompt: "a fox", params: { face_count: 40000.5 } }, { prompt: "a fox", params: { face_count: 40000 } }, "Integer"],
-    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 1500001 } }, { params: { image: URL_A, face_count: 1500000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 2999 } }, { params: { image: URL_A, face_count: 40000 } }, "[3000, 1500000]"],
-    ["hunyuan3d-v3-i23d", { params: { image: URL_A, face_count: 40000.5 } }, { params: { image: URL_A, face_count: 40000 } }, "Integer"],
     ["realtime-tts-2", { prompt: "hi", params: { speed: 1.55 } }, { prompt: "hi", params: { speed: 1.5 } }, "[0.5, 1.5]"],
     ["realtime-tts-2", { prompt: "hi", params: { speed: 0.45 } }, { prompt: "hi", params: { speed: 0.5 } }, "[0.5, 1.5]"],
     ["minimax-speech-2.8-hd", { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2.05 } }, { prompt: "hi", params: { voice_id: "Wise_Woman", speed: 2 } }, "[0.5, 2]"],
@@ -595,6 +593,9 @@ describe("the limits a reseller states beyond its schema", () => {
     ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10] } }, "up to 10 s"],
     ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "up to 30 s"],
     ["omnihuman-1.5", { params: { image: URL_A, audio: URL_A }, durations: { audio: [60] } }, { params: { image: URL_A, audio: URL_A }, durations: { audio: [59.9] } }, "less than 60 seconds"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { generate_parts: true, smart_low_poly: true } }, { prompt: "a fox", params: { generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-i23d", { params: { image: URL_A, generate_parts: true, smart_low_poly: true } }, { params: { image: URL_A, generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], generate_parts: true, smart_low_poly: true } }, { params: { images: [URL_A, URL_A], generate_parts: true } }, "Not compatible with smart_low_poly"],
   ];
 
   // Each entry: a model on an upstream that cannot take a row's param, or the row's value of it, so it refuses the row's
@@ -606,6 +607,12 @@ describe("the limits a reseller states beyond its schema", () => {
     "seedance-2.5-text-to-video on sandbase: videos": "SandBase's text-to-video endpoint takes no reference video",
     "sfx-1.6-text-to-audio on wavespeed: loop": "WaveSpeed offers no loop control",
     "kling-video-o3-4k-image-to-video on sandbase: multi_prompt": "SandBase serves the model only as a single shot",
+    "tripo-h3.1-t23d on fal: smart_low_poly": "fal has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-t23d on sandbase: smart_low_poly": "SandBase has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-i23d on fal: smart_low_poly": "fal has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-i23d on sandbase: smart_low_poly": "SandBase has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-multiview on fal: smart_low_poly": "fal has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-multiview on sandbase: smart_low_poly": "SandBase has no smart_low_poly field and serves only runs without it",
   };
 
   // Each entry: a model on an upstream whose own reject, stricter than the vendor's limit on the same field, refuses the
@@ -617,8 +624,6 @@ describe("the limits a reseller states beyond its schema", () => {
     "happyhorse-1.1-reference-to-video on fal": "fal prompt: Max 2500 characters",
     "happyhorse-1.1-reference-to-video on sandbase": "SandBase prompt: Max 2500 characters",
     "minimax-speech-2.8-hd on sandbase": "SandBase text maxLength 5000",
-    "meshy6-t23d on wavespeed": "WaveSpeed prompt maxLength 600",
-    "meshy6-t23d on fal": "fal prompt maxLength 600",
   };
 
   /**
@@ -751,12 +756,7 @@ describe("the limits a reseller states beyond its schema", () => {
     "wan-3.0-video-edit: (duration ? duration : 6) + get_duration(video) > 30": "the application always sends duration (the catalog default is 5), so the fallback is never read",
     "wan-3.0-video-edit: (duration ? duration : 4) + get_duration(video) > 30": "the application always sends duration (the catalog default is 5), so the fallback is never read",
     "wan-3.0-video-edit: (duration ? duration : 5) + get_duration(video) > 31": "the catalog's duration is at most 15 and the vendor's source video at most 15 s, so no run passes 30",
-    "sfx-1.6-extend-audio: append_duration > 58": "the vendor's source is at least 3 s, so more than 57 s appended passes the 60 s cap, which refuses it anyway",
-    "meshy6-t23d: $length(prompt) > 801": "both upstreams refuse a prompt past 600 characters, before the vendor's 800",
-    "meshy6-t23d: $length(prompt) > 799": "both upstreams refuse a prompt past 600 characters, before the vendor's 800",
     "sfx-1.6-text-to-audio: loop = true and duration > 599": "the catalog caps duration at 60, and fal, the only upstream with loop, takes at most 60, before the vendor's 600",
-    "hunyuan3d-v3: face_count < 3001 or face_count > 1500000": "every upstream takes face_count from 40000, above the vendor's 3000, and the catalog sends 500000",
-    "hunyuan3d-v3-i23d: face_count < 3001 or face_count > 1500000": "every upstream takes face_count from 40000, above the vendor's 3000, and the catalog sends 500000",
   };
 
   /**
@@ -842,16 +842,8 @@ describe("the limits a reseller states beyond its schema", () => {
   });
 
   // Mirelo's /v3/models states max_prompt_chars 5000, and WaveSpeed refused 5001 characters (probed 2026-11-06).
-  it.each(["sfx-1.6-text-to-audio", "sfx-1.6-extend-audio"])("caps a %s prompt at Mirelo's 5000 characters on every upstream", (model) => {
-    expect(catalog().models.find((m) => m.name === model)?.max_input_chars).toBe(5000);
-  });
-
-  // fal doubles the output itself ("concatenate the loop with itself for a 2x-length output") and does not say which
-  // seconds it bills, so a doubled run is priced at twice the appended seconds until a funded run shows (inner#1859).
-  it.each([[false, 1], [true, 2]])("prices a fal SFX 1.6 extend run with double_output %s at %s times the appended seconds", async (double, times) => {
-    const input = run({ prompt: "rain", params: { audio: URL_A, append_duration: 10, num_samples: 1, ambience: true, double_output: double }, durations: { audio: [5] } });
-    const estimate = await estimateCost(provider.pricingRules("sfx-1.6-extend-audio"), provider.availability("sfx-1.6-extend-audio"), input, { mode: "upstream", upstream: "fal" });
-    expect(estimate?.usd).toBeCloseTo(0.01 * 10 * times, 6);
+  it("caps a sfx-1.6-text-to-audio prompt at Mirelo's 5000 characters on every upstream", () => {
+    expect(catalog().models.find((m) => m.name === "sfx-1.6-text-to-audio")?.max_input_chars).toBe(5000);
   });
 
   // fal: "rounded to whole seconds, then up to full minutes".

@@ -1,4 +1,0 @@
-{
-  "source": "https://api.sandbase.ai/v1/models/tencent/hunyuan-3d/3.0/image-to-3d",
-  "price_formula": "((params.generate_type ?? \"Normal\") == \"LowPoly\" ? 0.72 : (params.generate_type ?? \"Normal\") == \"Geometry\" ? 0.45 : 0.63) + ((params.enable_pbr ?? false) && (params.generate_type ?? \"Normal\") != \"Geometry\" ? 0.18 : 0.0) + (((params.back_image ?? \"\") != \"\" || (params.left_image ?? \"\") != \"\" || (params.right_image ?? \"\") != \"\") ? 0.18 : 0.0)"
-}

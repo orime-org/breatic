@@ -6,11 +6,11 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -27,11 +27,11 @@
     {
       "params": {
         "aspect_ratio": "1:1",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -49,11 +49,11 @@
     {
       "params": {
         "aspect_ratio": "1:2",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -71,11 +71,11 @@
     {
       "params": {
         "aspect_ratio": "2:1",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -93,11 +93,11 @@
     {
       "params": {
         "aspect_ratio": "1:3",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -115,11 +115,11 @@
     {
       "params": {
         "aspect_ratio": "3:1",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -137,11 +137,11 @@
     {
       "params": {
         "aspect_ratio": "2:3",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -159,11 +159,11 @@
     {
       "params": {
         "aspect_ratio": "3:2",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -181,11 +181,11 @@
     {
       "params": {
         "aspect_ratio": "3:4",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -203,11 +203,11 @@
     {
       "params": {
         "aspect_ratio": "4:3",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -225,11 +225,11 @@
     {
       "params": {
         "aspect_ratio": "4:5",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -247,11 +247,11 @@
     {
       "params": {
         "aspect_ratio": "5:4",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -269,11 +269,11 @@
     {
       "params": {
         "aspect_ratio": "9:16",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -291,11 +291,11 @@
     {
       "params": {
         "aspect_ratio": "16:9",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -313,11 +313,11 @@
     {
       "params": {
         "aspect_ratio": "9:21",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -335,11 +335,11 @@
     {
       "params": {
         "aspect_ratio": "21:9",
-        "quality": "medium",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -357,18 +357,18 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "low",
-        "resolution": "1k",
-        "images": [
-          "https://example.com/images.png"
-        ]
-      },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
-      "body": {
         "images": [
           "https://example.com/images.png"
         ],
         "quality": "low",
+        "resolution": "1k"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "quality": "low",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
         "mode": "async",
@@ -378,18 +378,18 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "high",
-        "resolution": "1k",
-        "images": [
-          "https://example.com/images.png"
-        ]
-      },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
-      "body": {
         "images": [
           "https://example.com/images.png"
         ],
         "quality": "high",
+        "resolution": "1k"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "quality": "high",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
         "mode": "async",
@@ -399,18 +399,18 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "xhigh",
-        "resolution": "1k",
-        "images": [
-          "https://example.com/images.png"
-        ]
-      },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
-      "body": {
         "images": [
           "https://example.com/images.png"
         ],
         "quality": "xhigh",
+        "resolution": "1k"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "quality": "xhigh",
         "resolution": "1k",
         "prompt": "a red fox running through fresh snow at dawn image 1",
         "mode": "async",
@@ -420,11 +420,11 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "max",
-        "resolution": "1k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "max",
+        "resolution": "1k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -441,11 +441,11 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "medium",
-        "resolution": "2k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "2k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
@@ -462,11 +462,11 @@
     {
       "params": {
         "aspect_ratio": "auto",
-        "quality": "medium",
-        "resolution": "4k",
         "images": [
           "https://example.com/images.png"
-        ]
+        ],
+        "quality": "medium",
+        "resolution": "4k"
       },
       "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
       "body": {
