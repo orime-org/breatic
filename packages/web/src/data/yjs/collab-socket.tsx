@@ -163,6 +163,18 @@ class SpaceProvider extends HocuspocusProvider {
     super.pageHide();
     this.flushPendingUpdates();
   }
+
+  /**
+   * Sends the buffered updates, then the stateless message. Stateless
+   * messages skip the provider's batching, and collab reads a receipt request
+   * or a `doc:size-seen` as coming after every update written before it
+   * (inner#1790).
+   * @param payload - The message.
+   */
+  override sendStateless(payload: string): void {
+    this.flushPendingUpdates();
+    super.sendStateless(payload);
+  }
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
