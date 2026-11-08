@@ -224,14 +224,28 @@ describe("pageLinksIn: links longer than a page address may be", () => {
     expect(pageLinksIn(`see ${link} now`)).toEqual([link]);
   });
 
-  it("trims a run of 20000 closing parentheses in linear time, keeping the one balanced pair", () => {
+  it("drops a link that runs past READ_PAGE_MAX_URL_CHARS while being read, without reading the rest of it", () => {
     const text = `https://a.com/(${")".repeat(20000)}`;
     const started = performance.now();
     const found = pageLinksIn(text);
     const elapsed = performance.now() - started;
 
-    expect(found).toEqual(["https://a.com/()"]);
+    expect(found).toEqual([]);
     expect(elapsed).toBeLessThan(200);
+  });
+
+  it("trims the closing parentheses of links within the cap in linear time, keeping each one balanced pair", () => {
+    // Each link is 2015 characters. A trim that re-counts the parentheses for
+    // every one it drops took about 9 s on this text; a linear one about 10 ms.
+    const link = `https://a.com/(${")".repeat(2000)}`;
+    expect(link.length).toBeLessThan(READ_PAGE_MAX_URL_CHARS);
+    const text = Array.from({ length: 500 }, () => link).join(" ");
+    const started = performance.now();
+    const found = pageLinksIn(text);
+    const elapsed = performance.now() - started;
+
+    expect(found).toEqual(Array.from({ length: 500 }, () => "https://a.com/()"));
+    expect(elapsed).toBeLessThan(300);
   });
 });
 
