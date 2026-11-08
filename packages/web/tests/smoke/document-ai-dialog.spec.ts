@@ -276,6 +276,25 @@ test('a custom instruction goes out with Enter', async ({ page }) => {
   await expect(page.getByTestId('doc-ai-instruction')).toContainText('Make it a haiku');
 });
 
+test('a custom instruction goes out with the start button, which waits for words', async ({ page }) => {
+  const sent = await answerTextTool(page, { status: 200, body: streamOf('A haiku.'), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('alpha bravo');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'custom');
+  const start = page.getByTestId('doc-ai-start');
+  await expect(start).toBeDisabled();
+  await page.keyboard.type('Make it a haiku');
+  await expect(start).toBeEnabled();
+  await start.click();
+
+  await expect(page.getByTestId('doc-ai-preview')).toContainText('A haiku.', { timeout: 10_000 });
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({ tool: 'custom', instructions: 'Make it a haiku' });
+  await expect(page.getByTestId('doc-ai-instruction')).toContainText('Make it a haiku');
+});
+
 test('a refusal (402) says so and leaves close and retry', async ({ page }) => {
   await answerTextTool(page, {
     status: 402,

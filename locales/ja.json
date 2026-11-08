@@ -2047,6 +2047,7 @@
         "close": "閉じる",
         "stop": "停止",
         "retry": "再試行",
+        "start": "開始",
         "insert": "挿入",
         "replace": "置換",
         "instructionsPlaceholder": "選択したテキストを AI にどうしてほしいか入力。Enter で開始、Shift+Enter で改行",

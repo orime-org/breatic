@@ -73,7 +73,7 @@ afterEach(() => {
   closeShared();
 });
 
-const BUTTONS = ['doc-ai-close', 'doc-ai-stop', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace'] as const;
+const BUTTONS = ['doc-ai-close', 'doc-ai-start', 'doc-ai-stop', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace'] as const;
 
 /**
  * The dialog's buttons that are on screen.
@@ -658,10 +658,39 @@ describe('the custom instruction', () => {
     expect(box.maxLength).toBe(TEXT_TOOL_INSTRUCTIONS_MAX);
   });
 
-  it('starts with only the box and close', async () => {
+  it('starts with the box, close, and a start that cannot be pressed until there are words', async () => {
     await writing('');
 
-    expect(shownButtons()).toEqual(['doc-ai-close']);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-start']);
+    expect(isDisabled('doc-ai-start')).toBe(true);
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('start does what Enter does once there are words', async () => {
+    await writing('Make it rhyme');
+
+    expect(isDisabled('doc-ai-start')).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-start'));
+    });
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: 'Make it rhyme' });
+    expect(screen.getByTestId('doc-ai-instruction').textContent).toContain('Make it rhyme');
+    expect(screen.queryByTestId('doc-ai-instructions')).toBeNull();
+    expect(screen.queryByTestId('doc-ai-start')).toBeNull();
+  });
+
+  it('start stays unpressable over words that are only spaces and starts nothing', async () => {
+    await writing('   ');
+
+    expect(isDisabled('doc-ai-start')).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-start'));
+    });
+
     expect(stream).not.toHaveBeenCalled();
   });
 

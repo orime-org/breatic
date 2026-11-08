@@ -736,8 +736,9 @@ const WriteButton = React.memo(function WriteButton({
 });
 
 /**
- * The custom instruction box: Enter starts, Shift+Enter makes a new line, and
- * the Enter that confirms an input method's candidate is the input method's.
+ * The custom instruction box: Enter or the start button starts, Shift+Enter
+ * makes a new line, and the Enter that confirms an input method's candidate is
+ * the input method's.
  * @param props - The box.
  * @param props.dispatch - Sends the session the instruction.
  * @param props.shown - Whether the panel is on screen yet.
@@ -761,36 +762,50 @@ function Composer({
     if (shown) box.current?.focus();
   }, [shown]);
   return (
-    <div className='p-3'>
-      <Textarea
-        ref={box}
-        rows={3}
-        data-testid='doc-ai-instructions'
-        autoComplete='off'
-        maxLength={TEXT_TOOL_INSTRUCTIONS_MAX}
-        value={text}
-        placeholder={t('spaces.document.ai.instructionsPlaceholder')}
-        className='resize-none'
-        onChange={(event) => {
-          setText(event.currentTarget.value);
-        }}
-        onCompositionEnd={() => {
-          composition.mark();
-        }}
-        onKeyDown={(event) => {
-          // The input method's own Escape cancels its candidates; it is not
-          // the user asking to close the dialog.
-          if (event.key === 'Escape' && keyBelongsToInputMethod(event.nativeEvent, composition)) {
-            event.stopPropagation();
-            return;
-          }
-          if (event.key !== 'Enter' || event.shiftKey) return;
-          if (keyBelongsToInputMethod(event.nativeEvent, composition)) return;
-          event.preventDefault();
-          dispatch({ type: 'submit', instructions: event.currentTarget.value });
-        }}
-      />
-    </div>
+    <>
+      <div className='p-3'>
+        <Textarea
+          ref={box}
+          rows={3}
+          data-testid='doc-ai-instructions'
+          autoComplete='off'
+          maxLength={TEXT_TOOL_INSTRUCTIONS_MAX}
+          value={text}
+          placeholder={t('spaces.document.ai.instructionsPlaceholder')}
+          className='resize-none'
+          onChange={(event) => {
+            setText(event.currentTarget.value);
+          }}
+          onCompositionEnd={() => {
+            composition.mark();
+          }}
+          onKeyDown={(event) => {
+            // The input method's own Escape cancels its candidates; it is not
+            // the user asking to close the dialog.
+            if (event.key === 'Escape' && keyBelongsToInputMethod(event.nativeEvent, composition)) {
+              event.stopPropagation();
+              return;
+            }
+            if (event.key !== 'Enter' || event.shiftKey) return;
+            if (keyBelongsToInputMethod(event.nativeEvent, composition)) return;
+            event.preventDefault();
+            dispatch({ type: 'submit', instructions: event.currentTarget.value });
+          }}
+        />
+      </div>
+      <div className='flex shrink-0 items-center justify-end gap-2 border-t border-border px-2 py-1.5'>
+        <Button
+          size='sm'
+          data-testid='doc-ai-start'
+          disabled={text.trim() === ''}
+          onClick={() => {
+            dispatch({ type: 'submit', instructions: text });
+          }}
+        >
+          {t('spaces.document.ai.start')}
+        </Button>
+      </div>
+    </>
   );
 }
 

@@ -2047,6 +2047,7 @@
         "close": "关闭",
         "stop": "停止",
         "retry": "重试",
+        "start": "开始",
         "insert": "插入",
         "replace": "替换",
         "instructionsPlaceholder": "写下你要 AI 对选中文字做什么，回车开始，Shift+回车换行",

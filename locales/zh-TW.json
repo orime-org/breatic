@@ -2047,6 +2047,7 @@
         "close": "關閉",
         "stop": "停止",
         "retry": "重試",
+        "start": "開始",
         "insert": "插入",
         "replace": "取代",
         "instructionsPlaceholder": "寫下你要 AI 對選取的文字做什麼，按 Enter 開始，Shift+Enter 換行",

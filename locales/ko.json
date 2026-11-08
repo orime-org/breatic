@@ -2047,6 +2047,7 @@
         "close": "닫기",
         "stop": "중지",
         "retry": "다시 시도",
+        "start": "시작",
         "insert": "삽입",
         "replace": "바꾸기",
         "instructionsPlaceholder": "선택한 텍스트를 AI가 어떻게 할지 적어 주세요. Enter로 시작, Shift+Enter로 줄 바꿈",

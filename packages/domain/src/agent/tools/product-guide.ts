@@ -1540,7 +1540,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
       `${quoted(t("spaces.document.ai.rangeGone"))}; if their block is deleted too, both are greyed with ` +
       `${quoted(t("spaces.document.ai.blockGone"))}. ${quoted(t("spaces.document.commands.ai_custom"))} first ` +
-      "shows a box to write the instruction in: Enter starts, Shift+Enter starts a new line, and the instruction " +
+      "shows a box to write the instruction in: Enter or the " +
+      `${quoted(t("spaces.document.ai.start"))} button under it starts (it is greyed until something is written), ` +
+      "Shift+Enter starts a new line, and the instruction " +
       "then stays as a line above the result. An X at the top right of the panel, or Escape, closes it and stops " +
       "the run; clicking elsewhere does not. A run that fails shows a message and leaves only the X and " +
       `${quoted(t("spaces.document.ai.retry"))}. Picking another AI command while the panel is open closes it and ` +
