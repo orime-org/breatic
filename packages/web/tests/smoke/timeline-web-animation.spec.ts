@@ -127,6 +127,15 @@ async function seekPreview(page: Page, frame: number): Promise<void> {
 }
 
 /**
+ * Wait until every web copy in the preview has answered its latest position, so a screenshot shows its picture.
+ * @throws {Error} When a copy does not answer.
+ */
+async function copiesAnswered(preview: Locator): Promise<void> {
+  await expect(preview.locator('hyperframes-player')).not.toHaveCount(0);
+  await expect(preview.locator('hyperframes-player:not([data-web-state="ready"])')).toHaveCount(0, { timeout: 30_000 });
+}
+
+/**
  * Screenshot a region once two shots taken apart are identical, so no frame is still being painted.
  * @throws {Error} When the region keeps changing.
  */
@@ -306,9 +315,11 @@ test('one real web animation is created, reused as three copies over a video, se
     await test.step('seek: forward, backward and a fast out-of-order burst end on the latest position', async () => {
       await seekPreview(page, late);
       await expect(playerOf(copies[0])).toHaveCount(1);
+      await copiesAnswered(preview);
       lateShot = await settledShot(preview);
       const slider = previewSlider(page);
       await stepSlider(slider, late, early);
+      await copiesAnswered(preview);
       const earlyShot = await settledShot(preview);
       expect(earlyShot.equals(lateShot), 'two moments of the animation must look different').toBe(false);
       // Back and forth without waiting for any frame: late, early, late.
@@ -316,6 +327,7 @@ test('one real web animation is created, reused as three copies over a video, se
       await stepSlider(slider, late, early, false);
       await stepSlider(slider, early, late, false);
       await expect(slider).toHaveAttribute('aria-valuenow', String(late));
+      await copiesAnswered(preview);
       await expect.poll(async () => (await preview.screenshot()).equals(lateShot), { timeout: 30_000 }).toBe(true);
       expect((await settledShot(preview)).equals(lateShot)).toBe(true);
       await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
@@ -353,8 +365,16 @@ test('one real web animation is created, reused as three copies over a video, se
       const frames = samples.map((text) => frameOf(text, nominal));
       expect(frames[0]).toBeGreaterThanOrEqual(from);
       expect(frames[0]).toBeLessThan(second);
-      const back = frames.findIndex((frame, index) => index > 0 && frame < frames[index - 1]);
-      expect(back, `the clock stepped back: ${samples.join(' ')}`).toBe(-1);
+      // While the video buffers the clock rests on the frame the video decoded, which may be a frame behind; it never
+      // goes back past a copy's start or end it has crossed, where what is visible changes.
+      const edges = [third, second, third + copyFrames, second + copyFrames];
+      let reached = frames[0];
+      const back = frames.findIndex((frame) => {
+        const crossed = Math.max(-1, ...edges.filter((edge) => edge <= reached));
+        reached = Math.max(reached, frame);
+        return frame < crossed;
+      });
+      expect(back, `the clock stepped back past a copy edge: ${samples.join(' ')}`).toBe(-1);
       // It went past the end of the first copy, where the second continues the same source, and on to the end.
       expect(frames.some((frame) => frame > second && frame < 2 * second)).toBe(true);
       expect(frames[frames.length - 1]).toBe(end - 1);
