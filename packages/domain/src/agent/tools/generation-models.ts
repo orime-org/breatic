@@ -15,6 +15,7 @@ import {
   PANEL_EDITOR_PARAM,
   STATIC_SHOT,
   type GenerationNodeType,
+  type ProposalNode,
 } from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
@@ -26,14 +27,17 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
+import { nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /**
  * One model with what a run costs, when the catalog prices it: at its
- * defaults, or at the params the call named (`atParams`).
+ * defaults, or at the params the call named that it takes (`atParams`),
+ * with the ones it does not take named (`rejected`).
  */
-export type PricedModelInfo = ModelInfo & { price?: CreditEstimate; atParams?: true };
+export type PricedModelInfo = ModelInfo & { price?: CreditEstimate; atParams?: true; rejected?: string[] };
 
 /** The tool's answer: the mode's models, each priced. */
 export type PricedModelsForMode = ModelsForMode<PricedModelInfo>;
@@ -155,7 +159,9 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
  * @returns Its name, what it is for, what it costs, and its parameters.
  */
 function renderModel(model: PricedModelInfo): string {
-  const price = model.price ? `${renderPrice(model.price, model.atParams ? "at the params given" : undefined)}, ` : "";
+  const at = model.atParams ? (model.rejected === undefined ? "at the params given" : "at the params it takes") : undefined;
+  const refused = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not priced: not a setting or value it takes)`;
+  const price = model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
   const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
   const cap =
     model.maxInputChars !== undefined
@@ -274,6 +280,27 @@ export function renderGenerationModelsForModel(answer: PricedModelsForMode): str
   return answer.models.map(renderModel).join("\n");
 }
 
+/**
+ * The params a model takes out of the ones a call named, judged one by one
+ * the way a proposal's are, so a price is never computed from a value the
+ * model's controls would not offer.
+ * @param model - The model.
+ * @param nodeType - The node type the call named.
+ * @param mode - The mode the call named.
+ * @param params - The params the call named.
+ * @returns The ones it takes, and the names of the rest.
+ */
+function takenParams(model: ModelInfo, nodeType: GenerationNodeType, mode: string, params: Readonly<Record<string, unknown>>): { kept: Record<string, unknown>; rejected: string[] } {
+  const kept: Record<string, unknown> = {};
+  const rejected: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    const node: ProposalNode = { role: "generate", type: nodeType, name: model.name, mode, model: model.name, params: { ...kept, [key]: value } };
+    if (checkParams(model, node, nodeLabel([node], 0)).ok) kept[key] = value;
+    else rejected.push(key);
+  }
+  return { kept, rejected };
+}
+
 export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsForMode> = tool({
   description:
     "List the models behind one mode of one generation node, with what each " +
@@ -302,9 +329,15 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     if (!answer.available) return answer;
     const models = await Promise.all(
       answer.models.map(async (model): Promise<PricedModelInfo> => {
-        const price = await estimateModelCredits(model.name, { params: params ?? {} });
-        if (price === undefined) return model;
-        return params === undefined ? { ...model, price } : { ...model, price, atParams: true };
+        if (params === undefined) {
+          const price = await estimateModelCredits(model.name, { params: {} });
+          return price === undefined ? model : { ...model, price };
+        }
+        const { kept, rejected } = takenParams(model, nodeType, mode, params);
+        const price = await estimateModelCredits(model.name, { params: kept });
+        const named = rejected.length === 0 ? {} : { rejected };
+        if (price === undefined) return { ...model, ...named };
+        return Object.keys(kept).length === 0 ? { ...model, price, ...named } : { ...model, price, atParams: true as const, ...named };
       }),
     );
     return { available: true, models };
