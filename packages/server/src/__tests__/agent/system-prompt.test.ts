@@ -374,6 +374,14 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("A small point you can assume, assume and say so; who a character of theirs is is never one.");
   });
 
+  it("asks only whether existing work exists and to see it, and treats the look with none as taste, never a list", () => {
+    const sentence = "Of work that already exists, ask only whether there is some and to see it; with none, the look is a taste, answered by takes, never by a list of looks to pick from.";
+    expect(text()).toContain(sentence);
+    const at = text().indexOf(sentence);
+    expect(at).toBeGreaterThan(text().indexOf("- What only the user knows:"));
+    expect(at).toBeLessThan(text().indexOf("- Taste with no right answer"));
+  });
+
   it("answers taste with two or three clearly different takes and builds on the one picked", () => {
     expect(text()).toContain("- Taste with no right answer");
     expect(text()).toContain("make two or three clearly different takes at the first step where it decides the result");
