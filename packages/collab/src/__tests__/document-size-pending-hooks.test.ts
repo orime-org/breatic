@@ -896,7 +896,7 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     src.clientID = 62;
     src.getText("t").insert(0, "y".repeat(1980));
     const second = await load(CV, src);
-    expect(rec(CV)).toEqual({ exact: enc(second), current: enc(second), phase: "normal", heldSum: 0 });
+    expect(rec(CV)).toEqual({ exact: enc(second), current: enc(second), phase: "normal", heldSum: 0, seen: new Map() });
   });
 
   it("L-04 onChange adds update.byteLength for every non-connection origin", async () => {
@@ -1764,7 +1764,7 @@ describe("round 7: push seq and acknowledgement (spec 14b.3)", () => {
     await arrive(doc, other);
     w.size.recordExact(CV, D.L);
     const [warning, full] = seqs(a) as number[];
-    expect(lastSeq(other)).toBe((warning as number) + 1);
+    expect(seqs(other)[0]).toBe((warning as number) + 1);
     expect(full).toBe((warning as number) + 2);
     await ack(doc, a, (warning as number) + 1);
     expect(knows(CV, a)).toBe(false);

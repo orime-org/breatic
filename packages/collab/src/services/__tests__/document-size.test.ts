@@ -369,7 +369,7 @@ describe("measure and the record (spec section 4)", () => {
     src.getText("t").insert(5, "x".repeat(950));
     const doc = await load(CV, src);
     const bytes = enc(doc);
-    expect(rec(CV)).toEqual({ exact: bytes, current: bytes, phase: "normal", heldSum: 0 });
+    expect(rec(CV)).toEqual({ exact: bytes, current: bytes, phase: "normal", heldSum: 0, seen: new Map() });
   });
 
   // Unchanged from the first version: no record for meta, unparseable names or limit 0.
@@ -387,7 +387,7 @@ describe("measure and the record (spec section 4)", () => {
     for (const name of [DOC, TD, TL]) {
       const doc = await load(name, smallDoc().src);
       const bytes = size.measure(doc);
-      expect(rec(name), name).toEqual({ exact: bytes, current: bytes, phase: "normal", heldSum: 0 });
+      expect(rec(name), name).toEqual({ exact: bytes, current: bytes, phase: "normal", heldSum: 0, seen: new Map() });
     }
   });
 
@@ -453,7 +453,7 @@ describe("measure and the record (spec section 4)", () => {
     open(CV, smallDoc().src);
     size.recordExact(CV, 1000);
     size.addApplied(CV, 500);
-    expect(must(CV)).toEqual({ exact: 1000, current: 1500, phase: "normal", heldSum: 0 });
+    expect(must(CV)).toEqual({ exact: 1000, current: 1500, phase: "normal", heldSum: 0, seen: new Map() });
   });
 
   it("R-12 every record function is a no-op on a document without a record", () => {
