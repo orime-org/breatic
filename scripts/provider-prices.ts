@@ -411,7 +411,7 @@ async function syncOpenRouterPrices(): Promise<void> {
   );
   problems.push(...synced.problems);
   if (synced.text !== before) writeFileSync(LLM, synced.text);
-  process.stdout.write(`openrouter: ${synced.priced} of ${synced.asked} token prices written\n`);
+  process.stdout.write(`openrouter: ${synced.priced} of ${synced.asked} token prices written\n${synced.notices.map((n) => `  ${n}\n`).join("")}`);
 }
 
 const SYNC: Readonly<Record<string, (upstream: string, list: typeof bindings) => Promise<void>>> = { wavespeed: syncWaveSpeed, fal: syncFal, sandbase: syncSandBase };

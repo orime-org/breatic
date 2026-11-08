@@ -320,17 +320,7 @@ export class SwitchingModel implements ModelV4 {
    * @throws {unknown} As `attempt` throws.
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
-    // Each try overwrites it, so the finish carries the moment of the request that served the call.
-    let sentAt = 0;
-    const { value, servedBy } = await this.attempt(async (c) => {
-      /**
-       * The call on this upstream.
-       * @returns What it answered.
-       */
-      const run = async (): Promise<GenerateResult> => {
-        sentAt = Date.now();
-        return this.setup.modelFor(c).doGenerate(options);
-      };
+    const { value: { answer, sentAt }, servedBy } = await this.attempt(async (c) => {
       const tracks = this.setup.tracksGenerations(c.upstream);
       // The answer's status, and a copy of its body when a 2xx may name a generation; any other copy
       // is cancelled at once. The SDK fetches once per call (its own retries are off).
@@ -345,9 +335,11 @@ export class SwitchingModel implements ModelV4 {
         last = { status: copy.status, copy: needed ? copy : undefined };
       };
       try {
-        const answer = await tapAnswers(keep, run);
+        // The moment of the request that served the call, which its finish carries.
+        const sentAt = Date.now();
+        const answer = await tapAnswers(keep, async () => this.setup.modelFor(c).doGenerate(options));
         void last?.copy?.body?.cancel().catch(() => undefined);
-        return answer;
+        return { answer, sentAt };
       } catch (error) {
         // A 2xx that arrived was billed, however the call then ended (its SDK refused the body, it
         // was cut, the caller stopped): by the generation it names, else missing.
@@ -359,9 +351,9 @@ export class SwitchingModel implements ModelV4 {
         throw error;
       }
     }, options.abortSignal);
-    const id = isGenerationId(value.response?.id) ? value.response.id : undefined;
-    const breatic = this.finished(servedBy.upstream, id, value.providerMetadata, sentAt);
-    return { ...value, providerMetadata: { ...value.providerMetadata, breatic: breatic as Record<string, never> } };
+    const id = isGenerationId(answer.response?.id) ? answer.response.id : undefined;
+    const breatic = this.finished(servedBy.upstream, id, answer.providerMetadata, sentAt);
+    return { ...answer, providerMetadata: { ...answer.providerMetadata, breatic: breatic as Record<string, never> } };
   }
 
   /**

@@ -65,6 +65,17 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
 }
 
 /**
+ * The direct price entry in effect at a moment: the last that took effect at or before it, else the first.
+ * @param entries - A model's direct prices, their `from` ascending.
+ * @param at - The moment, in epoch ms.
+ * @returns The entry; its `from` is set when a later price is in effect.
+ */
+function entryAt(entries: ProviderConfig["llm"]["prices"][string], at: number): ProviderConfig["llm"]["prices"][string][number] & { from?: string } {
+  const [first, ...later] = entries;
+  return later.findLast((e) => Date.parse(e.from) <= at) ?? first;
+}
+
+/**
  * The direct price in effect at a moment: the last that took effect at or before it (the first is in effect from the
  * start), every per-million-token price times its off-peak factor when the moment is outside the price's peak hours
  * (a UTC weekday of one window, a UTC time in `[from, to)`, a UTC date not among its holidays).
@@ -74,8 +85,7 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
  */
 function priceAt(entries: ProviderConfig["llm"]["prices"][string] | undefined, at: number): LlmPrice | undefined {
   if (entries === undefined) return undefined;
-  const [first, ...later] = entries;
-  const entry = later.findLast((e) => Date.parse(e.from) <= at) ?? first;
+  const entry = entryAt(entries, at);
   const offPeak = entry.off_peak;
   const moment = new Date(at);
   const time = moment.toISOString().slice(11, 16);
@@ -181,14 +191,21 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     // Cheapest by unit price: input first, then output, then weight; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
     // One moment for the whole ranking: the direct price in effect when the call is planned.
-    const direct = priceAt(config.llm.prices[modelId], Date.now());
+    const at = Date.now();
+    const entries = config.llm.prices[modelId];
+    const direct = priceAt(entries, at);
+    // OpenRouter's prices read before the direct price in effect took effect (or at a moment the file does not state)
+    // are another moment's prices: unknown, so OpenRouter ranks last.
+    const changedAt = entries === undefined ? undefined : entryAt(entries, at).from;
+    const readAt = config.llm.openrouter_prices_at === undefined ? -Infinity : Date.parse(config.llm.openrouter_prices_at);
+    const stale = changedAt !== undefined && Date.parse(changedAt) > readAt;
     /**
      * An upstream's input and output unit prices.
      * @param c - The upstream.
      * @returns Both prices; infinite when unknown.
      */
     const price = (c: Candidate): [number, number] => {
-      const p = kindOf(c.upstream) === "openrouter" ? config.llm.openrouter_prices[modelId] : direct;
+      const p = kindOf(c.upstream) === "openrouter" ? (stale ? undefined : config.llm.openrouter_prices[modelId]) : direct;
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
     const order = [...plan.order].sort((a, b) => {
@@ -282,6 +299,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     }
     // Priced when the request that served the call was sent, which provider stamped on its finish.
     if (typeof breatic?.sentAt !== "number") return { state: "missing", reason: `the call of ${finished.model} on ${upstream} names no send time`, tokens };
+    // A finish with no token counts at all (a stream closed before its usage chunk) is unknown, never free; one count
+    // alone is priced, as Gemini answers a blocked prompt with its input tokens only.
+    if (usage.inputTokens === undefined && usage.outputTokens === undefined) return { state: "missing", reason: `${upstream} reported no token usage for ${finished.model}`, tokens };
     const price = priceAt(config.llm.prices[finished.model], breatic.sentAt);
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
     const { input, cachedInput } = tokens;

@@ -82,31 +82,44 @@ export function openRouterPrices(endpoints, ids, quantizations, backends = {}) {
  * before. The dates belong in the migration, which rewrites llm.yaml's `prices`.
  * @param {Readonly<Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
  * @param {number} now - The run's moment, in epoch ms.
- * @returns {string[]} A problem for each such model and year.
+ * @returns {string[]} A problem for each such model.
  */
 export function offPeakHolidayProblems(prices, now) {
   const today = new Date(now);
-  const years = [today.getUTCFullYear(), ...(today.getUTCMonth() === 11 ? [today.getUTCFullYear() + 1] : [])];
-  return Object.entries(prices).flatMap(([model, entries]) => {
-    const lists = entries
+  const year = today.getUTCFullYear() + (today.getUTCMonth() === 11 ? 1 : 0);
+  return Object.entries(prices)
+    .filter(([, entries]) => entries
       .filter((e, i) => i + 1 === entries.length || Date.parse(entries[i + 1].from) > now)
-      .flatMap((e) => (e.off_peak === undefined ? [] : [e.off_peak.holidays ?? []]));
-    return years
-      .filter((year) => lists.some((holidays) => !holidays.some((d) => Number(d.slice(0, 4)) >= year)))
-      .map((year) => `${model}: off-peak holidays list no date in ${year} (add them to OFF_PEAK in scripts/provider-config-migration.ts and rerun it)`);
+      .some((e) => e.off_peak !== undefined && !(e.off_peak.holidays ?? []).some((d) => Number(d.slice(0, 4)) >= year)))
+    .map(([model]) => `${model}: off-peak holidays list no date in ${year} (add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)`);
+}
+
+/**
+ * The direct prices that change after OpenRouter's prices are read: a cheapest call ranks OpenRouter only against a
+ * direct price that took effect before its prices were read, so from that change OpenRouter is unranked until the
+ * sync runs again.
+ * @param {Readonly<Record<string, readonly { from?: string }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
+ * @param {number} now - The run's moment, in epoch ms, when OpenRouter's prices are read.
+ * @returns {string[]} A notice for each model whose direct price changes later, naming its next change.
+ */
+export function directPriceChangeNotices(prices, now) {
+  return Object.entries(prices).flatMap(([model, entries]) => {
+    const next = entries.find((e) => e.from !== undefined && Date.parse(e.from) > now);
+    return next === undefined ? [] : [`${model}: its direct price changes at ${next.from}; rerun pnpm provider:prices after then so OpenRouter's price is read at the same time`];
   });
 }
 
 /**
- * `config/provider/llm.yaml` with `openrouter_prices` rewritten from OpenRouter's endpoints, its comments kept: for
+ * `config/provider/llm.yaml` with `openrouter_prices` rewritten from OpenRouter's endpoints and `openrouter_prices_at`
+ * set to the run's moment, its comments kept: for
  * every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when set, within the
  * quantizations and backend pins the file's values hold once read through `parse`, the schema createProvider reads it
  * with (its defaults filled).
  * @param {string} text - The file as it is.
- * @param {(raw: unknown) => { prices: Record<string, readonly { off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
+ * @param {(raw: unknown) => { prices: Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
  * @param {(id: string) => Promise<readonly object[] | undefined>} fetchEndpoints - OpenRouter's endpoints of one model by its id there; undefined when it lists none (404).
- * @param {number} [now] - The run's moment, in epoch ms, for `offPeakHolidayProblems`.
- * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[] }>} The file's new text, how many models were priced of how many asked, and a problem for each model given no price or whose off-peak holidays run out.
+ * @param {number} [now] - The run's moment, in epoch ms: when OpenRouter's prices are read, and for `offPeakHolidayProblems` and `directPriceChangeNotices`.
+ * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[]; notices: string[] }>} The file's new text, how many models were priced of how many asked, a problem for each model given no price or whose off-peak holidays run out, and a notice for each model whose direct price changes later.
  * @throws {Error} When `parse` refuses the file, or a read fails other than with a 404.
  */
 export async function syncedLlmYaml(text, parse, fetchEndpoints, now = Date.now()) {
@@ -120,5 +133,12 @@ export async function syncedLlmYaml(text, parse, fetchEndpoints, now = Date.now(
   }
   const { prices, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, llm.openrouter_backends);
   doc.set("openrouter_prices", doc.createNode(prices));
-  return { text: yamlText(doc, { lineWidth: 0 }), priced: Object.keys(prices).length, asked: ids.size, problems: [...problems, ...offPeakHolidayProblems(llm.prices, now)] };
+  doc.set("openrouter_prices_at", new Date(now).toISOString());
+  return {
+    text: yamlText(doc, { lineWidth: 0 }),
+    priced: Object.keys(prices).length,
+    asked: ids.size,
+    problems: [...problems, ...offPeakHolidayProblems(llm.prices, now)],
+    notices: directPriceChangeNotices(llm.prices, now),
+  };
 }

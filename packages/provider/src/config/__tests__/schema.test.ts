@@ -353,6 +353,12 @@ describe("deployment overrides of LLM routes", () => {
     expect(parseProviderConfig({ ...config, llm: { ...llm, openrouter_quantizations: ["int4", "nvfp4", "unknown"] } }).llm.openrouter_quantizations).toEqual(["int4", "nvfp4", "unknown"]);
   });
 
+  it("refuses an openrouter_prices_at that is not an ISO 8601 UTC time, naming where, and keeps a well-formed one", () => {
+    const config = (at: string): ProviderConfigInput => ({ upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, openrouter_prices_at: at } });
+    expect(problemsOf(config("November 8, 2026"))).toEqual([expect.stringMatching(/^llm\.openrouter_prices_at: /)]);
+    expect(parseProviderConfig(config("2026-11-08T05:12:33.456Z")).llm.openrouter_prices_at).toBe("2026-11-08T05:12:33.456Z");
+  });
+
   it("applies an llm override to the chat routes only", () => {
     const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
     expect(order(config.llm.routes)).toEqual(["openrouter", "google"]);

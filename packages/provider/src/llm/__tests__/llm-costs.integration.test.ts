@@ -110,6 +110,44 @@ describe("costOf", () => {
   });
 });
 
+describe("a direct finish that reports no token usage (critical path)", () => {
+  const { usage: _usage, ...WHOLE_WITHOUT_USAGE } = CHAT_REPLY;
+  /** A streamed DeepSeek answer that closes after its finish_reason chunk, before the usage chunk. */
+  const STREAMED_WITHOUT_USAGE = [
+    { id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "a long answer" }, finish_reason: null }] },
+    { id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+  ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("");
+
+  it.each(["whole", "streamed"] as const)("books a %s DeepSeek call whose answer carries no usage as missing, never a known 0", async (shape) => {
+    fakes.deepseek.answer(() => (shape === "whole" ? { status: 200, body: WHOLE_WITHOUT_USAGE } : { status: 200, raw: STREAMED_WITHOUT_USAGE, contentType: "text/event-stream" }));
+    const provider = llmProvider(fakes, { DEEPSEEK_API_KEY: "ds" }, { llmMaxRetries: 0 });
+    const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false });
+    let finished: { usage: LanguageModelUsage; providerMetadata: Parameters<typeof provider.llm.costOf>[0]["providerMetadata"] };
+    if (shape === "whole") {
+      finished = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    } else {
+      const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options });
+      await stream.consumeStream();
+      finished = { usage: await stream.usage, providerMetadata: await stream.providerMetadata };
+    }
+    const cost = provider.llm.costOf({ model: "deepseek/deepseek-v4-pro", usage: finished.usage, providerMetadata: finished.providerMetadata });
+    expect(cost).toEqual({
+      state: "missing",
+      reason: "deepseek reported no token usage for deepseek/deepseek-v4-pro",
+      tokens: { input: 0, cachedInput: 0, output: 0, reasoning: 0 },
+    });
+  });
+
+  it("prices a direct finish that reports input tokens only, as Gemini answers a blocked prompt", () => {
+    const cost = llmProvider(fakes, { DEEPSEEK_API_KEY: "ds" }).llm.costOf({
+      model: "deepseek/deepseek-v4-pro",
+      usage: { inputTokens: 11, inputTokenDetails: { noCacheTokens: 11, cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokens: undefined, outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined }, totalTokens: 11 },
+      providerMetadata: { breatic: { upstream: "deepseek", sentAt: Date.now() } },
+    });
+    expect(cost).toEqual({ state: "known", usd: (11 * 1.32) / 1_000_000, tokens: { input: 11, cachedInput: 0, output: 0, reasoning: 0 }, source: "price_table" });
+  });
+});
+
 describe("costOf by the price table, to the cent (critical path)", () => {
   /**
    * The cost of one direct Anthropic call with cache reads and writes, at these prices per million tokens:
@@ -180,16 +218,32 @@ describe("a direct price that changes on a stated date (critical path)", () => {
   });
 
   it.each([
-    [CHANGES_AT - 1, "google"],
-    [CHANGES_AT, "openrouter"],
-  ])("ranks a cheapest call at %i by the direct price in effect then", async (at, first) => {
+    ["before the change", CHANGES_AT - 1, undefined, "google"],
+    ["at the change, OpenRouter's prices read when it took effect", CHANGES_AT, "2027-01-01T00:00:00Z", "openrouter"],
+    ["at the change, OpenRouter's prices read before it took effect, so unknown", CHANGES_AT, "2026-12-31T23:59:59Z", "google"],
+    ["at the change, OpenRouter's prices read at an unstated moment, so unknown", CHANGES_AT, undefined, "google"],
+  ])("ranks a cheapest call %s by the direct price in effect then", async (_name, at, readAt, first) => {
     vi.useFakeTimers({ toFake: ["Date"], now: at });
     const config = dated();
     config.llm!.openrouter_prices = { "google/gemini-3.8-flash": { input_cache_miss_per_mtok: 1, output_per_mtok: 5 } };
+    if (readAt !== undefined) config.llm!.openrouter_prices_at = readAt;
     const provider = createProvider({ config, keyOf: (name) => ({ GOOGLE_API_KEY: "g", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
     const prepared = provider.llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false }, { mode: "cheapest" });
     const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
     expect(result.providerMetadata?.breatic?.upstream).toBe(first);
+  });
+
+  it.each(["2026-12-31T12:00:00Z", "2027-01-01T12:00:00Z"])("ranks a cheapest Gemini 3.8 Flash call planned at %s with the shipped prices google first", async (at) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse(at) });
+    const shipped = yaml<NonNullable<ReturnType<typeof llmConfig>["llm"]>>("provider/llm.yaml");
+    const config = llmConfig(fakes);
+    config.llm!.prices = shipped.prices;
+    config.llm!.openrouter_prices = shipped.openrouter_prices;
+    config.llm!.openrouter_prices_at = shipped.openrouter_prices_at;
+    const provider = createProvider({ config, keyOf: (name) => ({ GOOGLE_API_KEY: "g", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false }, { mode: "cheapest" });
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe("google");
   });
 
   it("books an understand call sent before the change and answered after it at the price in effect when it was sent", async () => {
@@ -357,9 +411,12 @@ describe("DeepSeek's off-peak price, half the peak outside 01:00-04:00 and 06:00
   it.each([
     ["Monday 02:00", MONDAY + 2 * HOUR, "openrouter"],
     ["Saturday 12:00", Date.parse("2026-11-14T12:00:00Z"), "deepseek"],
-  ])("ranks a cheapest deepseek/deepseek-v4-pro call planned %s with the shipped prices", async (_name, at, first) => {
+  ])("ranks a cheapest deepseek/deepseek-v4-pro call planned %s with the shipped direct prices", async (_name, at, first) => {
     vi.useFakeTimers({ toFake: ["Date"], now: at });
-    const provider = createProvider({ config: shippedPrices(), keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const config = shippedPrices();
+    // An OpenRouter price between the off-peak and the peak direct price, so the ranking turns on the hour alone.
+    config.llm!.openrouter_prices = { ...config.llm!.openrouter_prices, "deepseek/deepseek-v4-pro": { input_cache_miss_per_mtok: 0.788916, output_per_mtok: 1.577832 } };
+    const provider = createProvider({ config, keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
     const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false }, { mode: "cheapest" });
     const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
     expect(result.providerMetadata?.breatic?.upstream).toBe(first);
@@ -423,6 +480,21 @@ describe("DeepSeek's off-peak price, half the peak outside 01:00-04:00 and 06:00
     const { cost, breatic } = await bookedCall(provider, shape);
     expect(breatic).toMatchObject({ upstream: "backup", sentAt: MONDAY + HOUR + 10_000 });
     expect(cost).toMatchObject({ state: "known", usd: (11 * 1.32 + 3 * 3.96) / 1_000_000, source: "price_table" });
+  });
+
+  it.each(["whole", "streamed"] as const)("books a %s call sent at 03:59 and answered at 04:01 at the peak price, the moment the try that served it was sent", async (shape) => {
+    const sent = MONDAY + 3 * HOUR + 59 * MINUTE;
+    vi.useFakeTimers({ toFake: ["Date"], now: sent });
+    fakes.deepseek.answer(() => {
+      // The upstream answers after the peak window closed.
+      vi.setSystemTime(MONDAY + 4 * HOUR + MINUTE);
+      return shape === "whole" ? { status: 200, body: CHAT_REPLY } : { status: 200, raw: STREAMED, contentType: "text/event-stream" };
+    });
+    const provider = createProvider({ config: shippedPrices(), keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const { cost, breatic } = await bookedCall(provider, shape);
+    expect(Date.now()).toBe(MONDAY + 4 * HOUR + MINUTE);
+    expect(breatic).toMatchObject({ upstream: "deepseek", sentAt: sent });
+    expect(cost).toEqual({ state: "known", usd: (11 * 1.32 + 3 * 3.96) / 1_000_000, tokens: TOKENS, source: "price_table" });
   });
 });
 

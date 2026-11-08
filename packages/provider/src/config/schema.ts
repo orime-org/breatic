@@ -191,6 +191,11 @@ const llmSchema = z.strictObject({
   ).optional(),
   /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * When `openrouter_prices` was read, an ISO 8601 UTC time `pnpm provider:prices` writes: a direct price that took effect
+   * after it is not ranked against them.
+   */
+  openrouter_prices_at: z.iso.datetime().optional(),
   /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
   openrouter_quantizations: z.array(openRouterQuantization).min(1).default([...OPENROUTER_QUANTIZATIONS]),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
@@ -239,8 +244,8 @@ export interface ProviderConfig {
   models: Record<string, MediaBinding[]>;
   /** The model vendor's input limits, by model; a model without any is absent. */
   rejects: Record<string, Reject[]>;
-  /** The LLM routing file, every field filled. */
-  llm: Required<z.infer<typeof llmSchema>>;
+  /** The LLM routing file, every field filled but `openrouter_prices_at`, which a file that never synced lacks. */
+  llm: Required<Omit<z.infer<typeof llmSchema>, "openrouter_prices_at">> & Pick<z.infer<typeof llmSchema>, "openrouter_prices_at">;
 }
 
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
@@ -397,7 +402,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
       const problem = formulaProblem(when);
       if (problem !== undefined) problems.push(`${model}: the vendor's limit "${when}" is not JSONata: ${problem}`);
     }
-    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ when, reason, from }) => ({ when, reason, ...(from === undefined ? {} : { from }) }));
+    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ source: _source, ...limit }) => limit);
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
     const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
@@ -446,6 +451,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
     openrouter_prices: raw.llm?.openrouter_prices ?? {},
+    openrouter_prices_at: raw.llm?.openrouter_prices_at,
     openrouter_quantizations: raw.llm?.openrouter_quantizations ?? [...OPENROUTER_QUANTIZATIONS],
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
     gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
