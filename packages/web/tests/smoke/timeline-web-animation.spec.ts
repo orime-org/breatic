@@ -576,8 +576,11 @@ test('one real web animation is created, reused as three copies over a video, se
       expect(waiting.filter((sample) => sample.time > later / nominal), `the video played past the copy start: ${brief(waiting)}`).toEqual([]);
       // Once the copy answered, play went on past its start.
       expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(later + nominal / 2);
-      // From the frame the clock reached the copy's start, the video is paused until the copy answers.
-      expect(waiting.filter((sample) => !sample.paused).length, `the video kept playing while the copy loaded: ${brief(waiting)}`).toBe(0);
+      // The clock stops at the copy's start on one animation frame and the render after it pauses the video, so the video
+      // may still be playing for an animation frame or two (it has not reached the start, as asserted above); from about
+      // 100 ms on it is paused until the copy answers.
+      const settled = waiting.slice(6);
+      expect(settled.filter((sample) => !sample.paused).length, `the video kept playing while the copy loaded: ${brief(waiting)}`).toBe(0);
     });
     expect(errors.unexpected).toEqual([]);
   } finally {
