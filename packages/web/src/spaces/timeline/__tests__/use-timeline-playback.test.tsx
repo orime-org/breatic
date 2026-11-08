@@ -800,6 +800,61 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.state).toBe('playing');
   });
 
+  it('keeps the frame when paused while an ended element holds its last picture, and resumes from it', async () => {
+    // The extent is ceil(1.012 s x 24) = 25 frames; the element ends at 0.9995 s, whose own frame is 23.
+    const shortSource = { ...SOURCE, durationSeconds: '1.012', extentFrames: 25 };
+    const shortClip = { ...CLIP, durationFrames: 25 };
+    const sourceB = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002' };
+    const next = { ...CLIP, id: '30000000-0000-4000-8000-000000000002', sourceId: sourceB.id, startFrame: 25, durationFrames: 24 };
+    const media = mediaFixture({ duration: 0.9995 });
+    const mediaB = mediaFixture();
+    const hook = renderPlayback(media, {
+      document: timelineDocument([shortClip, next], [shortSource, sourceB]),
+      media: new Map([[SOURCE.id, media.element], [sourceB.id, mediaB.element]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(990);
+    expect(hook.result.current.frame).toBe(23);
+    now = 999.5;
+    mediaEvent(media, 'timeupdate', { currentTime: 0.9995, paused: true, ended: true });
+    mediaEvent(media, 'pause');
+    mediaEvent(media, 'ended');
+    tick(1020);
+    expect(hook.result.current.frame).toBe(24);
+    const before = hook.observedFrames.length;
+    act(() => hook.result.current.toggle());
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.frame).toBe(24);
+    now = 2000;
+    act(() => hook.result.current.toggle());
+    expect(hook.result.current.frame).toBe(24);
+    tick(2042);
+    await settle();
+    expect(hook.result.current.frame).toBe(25);
+    expect(Math.min(...hook.observedFrames.slice(before))).toBeGreaterThanOrEqual(24);
+  });
+
+  it('plays from a seek to a frame whose source time lies past the element end', async () => {
+    // The extent is ceil(1.080 s x 24) = 26 frames; frame 25 samples 1.0417 s, and the element clamps to its 1.000 s end.
+    const shortSource = { ...SOURCE, durationSeconds: '1.080', extentFrames: 26 };
+    const shortClip = { ...CLIP, durationFrames: 26 };
+    const media = mediaFixture({ duration: 1 });
+    const hook = renderPlayback(media, { document: timelineDocument([shortClip], [shortSource]) });
+    act(() => hook.result.current.seek(25));
+    expect(media.seeks.at(-1)).toBeCloseTo(25 / 24, 6);
+    mediaEvent(media, 'seeked', { currentTime: 1, seeking: false, paused: true, ended: true });
+    expect(hook.result.current.frame).toBe(25);
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('playing');
+    tick(42);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+  });
+
   it('plays the final frame bucket before stopping at the sequence end', async () => {
     const media = mediaFixture({ duration: 1 });
     const hook = renderPlayback(media, { document: timelineDocument([{ ...CLIP, durationFrames: 24 }]) });
