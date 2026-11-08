@@ -378,6 +378,15 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       const target = landingFor(viewport, flight.id);
       if (target !== null && Math.abs(target - flight.target) >= 1) jump.current = launch(viewport, flight.id, target);
     };
+    /**
+     * Ends a jump once the body stops, after reading where it stopped: typing
+     * that scrolls the caret into view, or a scrollbar let go, stops it short.
+     */
+    const settled = (): void => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      compute();
+      jump.current = null;
+    };
     // The comment panel sits in the same scroller: opening it rewraps the
     // text without changing the viewport's size, so the content is watched too.
     const sizes = new ResizeObserver(() => {
@@ -388,9 +397,11 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const content = viewport.querySelector('.doc-body-editor');
     if (content !== null) sizes.observe(content);
     viewport.addEventListener('scroll', schedule, { passive: true });
+    viewport.addEventListener('scrollend', settled);
     compute();
     return () => {
       viewport.removeEventListener('scroll', schedule);
+      viewport.removeEventListener('scrollend', settled);
       sizes.disconnect();
       if (frame !== 0) cancelAnimationFrame(frame);
     };
@@ -431,13 +442,11 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     // short of the landing, where the reading rule picks another, so the
     // clicked heading holds from the frame the body reaches the end until it
     // leaves it; scroll anchoring keeps it there when content above grows.
-    pinned.current = null;
-    jump.current = launch(viewport, id, target);
-    if (jump.current.start < 1) {
-      jump.current = null;
-      pinned.current = atEnd(viewport) ? id : null;
-      setReading(id);
-    }
+    const flight = launch(viewport, id, target);
+    const still = flight.start < 1;
+    jump.current = still ? null : flight;
+    pinned.current = still && flight.pinOnArrival ? id : null;
+    if (still) setReading(id);
     if (floating) setTucked(true);
   }, [viewport, readOnly, editor, floating]);
 
