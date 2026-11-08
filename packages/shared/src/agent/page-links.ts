@@ -24,13 +24,21 @@ function decoded(path: string): string {
 }
 
 /**
- * The key two spellings of one page share: host lower-cased, no scheme, no
- * fragment, no trailing slash, the path percent-decoded, the query kept.
- * @param link - A link, with or without its scheme.
+ * A Markdown escape inside a link: one backslash before URL punctuation, as
+ * turndown writes it, or two, as a JSON-encoded body carries it.
+ */
+const MARKDOWN_ESCAPE = /\\{1,2}([-._~:/?#[\]@!$&'()*+,;=%])/g;
+
+/**
+ * The key two spellings of one page share: Markdown escapes removed, host
+ * lower-cased, no scheme, no fragment, no trailing slash, the path
+ * percent-decoded, the query kept.
+ * @param written - A link, with or without its scheme.
  * @returns The key.
  * @throws {never} Never.
  */
-export function pageLinkKey(link: string): string {
+export function pageLinkKey(written: string): string {
+  const link = written.replace(MARKDOWN_ESCAPE, "$1");
   const withScheme = /^https?:\/\//i.test(link) ? link : `https://${link}`;
   let url: URL;
   try {
