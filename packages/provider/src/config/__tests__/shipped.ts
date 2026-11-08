@@ -71,3 +71,24 @@ export function coveredValues(name: string, param: OfferedParam | undefined, bin
   const supported = binding.params?.[name]?.supported;
   return supported === undefined ? values : values.filter((v) => supported.includes(v as string | number | boolean));
 }
+
+/**
+ * A condition's top-level ` or ` operands, so a vendor limit joined to a reseller's own is seen on its own.
+ * @param when - The condition.
+ * @returns Each operand outside any brackets.
+ */
+export function disjuncts(when: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < when.length; i++) {
+    const c = when[i];
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (depth === 0 && when.startsWith(" or ", i)) {
+      parts.push(when.slice(start, i));
+      start = i + 4;
+    }
+  }
+  return [...parts, when.slice(start)];
+}

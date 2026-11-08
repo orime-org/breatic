@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { openRouterPrices, syncedLlmYaml } from "./provider-llm-prices.mjs";
+import { offPeakHolidayProblems, openRouterPrices, syncedLlmYaml } from "./provider-llm-prices.mjs";
 
 /** One endpoint of OpenRouter's `/api/v1/models/{author}/{slug}/endpoints`: USD per token, as strings. */
 const endpoint = (tag, prompt, completion, quantization = "fp8") => ({ tag, quantization, pricing: { prompt, completion, input_cache_read: "0.0000001" } });
@@ -69,8 +69,8 @@ test("ranks a pinned model only over the endpoints of the providers it is pinned
 test("rewrites openrouter_prices from the values the schema reads, its defaults filled, and keeps the file's comments", async () => {
   const text = "# Where LLM calls go.\nprices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\nvendor_ids:\n  m:\n    openrouter: vendor/m\n";
   const asked = [];
-  // The schema fills openrouter_quantizations, which the file leaves out, and nothing else: a raw read has none.
-  const parse = (raw) => ({ openrouter_backends: {}, ...raw, openrouter_quantizations: ["fp8"] });
+  // Fills what the schema fills when the file leaves them out; this file leaves out openrouter_quantizations.
+  const parse = (raw) => ({ openrouter_backends: {}, openrouter_quantizations: ["fp8"], ...raw });
   const synced = await syncedLlmYaml(text, parse, async (id) => {
     asked.push(id);
     return [endpoint("cheap/fp4", "0.0000001", "0.0000002", "fp4"), endpoint("kept/fp8", "0.000001", "0.000002")];
@@ -84,7 +84,25 @@ test("rewrites openrouter_prices from the values the schema reads, its defaults 
 });
 
 test("names a model OpenRouter answers 404 for", async () => {
-  const synced = await syncedLlmYaml("prices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n", (raw) => ({ vendor_ids: {}, openrouter_backends: {}, ...raw, openrouter_quantizations: ["fp8"] }), async () => undefined);
+  const synced = await syncedLlmYaml("prices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n", (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: ["fp8"], ...raw }), async () => undefined);
   assert.equal(synced.priced, 0);
   assert.deepEqual(synced.problems, ["m: OpenRouter lists no endpoint of m"]);
+});
+
+test("names each model with an off-peak discount whose holidays list no date in the calendar year after the run", () => {
+  const offPeak = (holidays) => ({ factor: 0.5, peak_utc: [{ days: [1], from: "01:00", to: "04:00" }], holidays });
+  const prices = {
+    listed: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak(["2027-01-01"]) }],
+    stale: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak(["2026-10-01"]) }],
+    empty: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2 }, { from: "2027-01-01T00:00:00Z", input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak([]) }],
+    plain: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2 }],
+  };
+  assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2026-12-31T23:59:59Z")), ["stale: off-peak holidays list no date in 2027", "empty: off-peak holidays list no date in 2027"]);
+  assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-01-01T00:00:00Z")), ["listed: off-peak holidays list no date in 2028", "stale: off-peak holidays list no date in 2028", "empty: off-peak holidays list no date in 2028"]);
+});
+
+test("reports the off-peak holidays among the sync's problems", async () => {
+  const text = "prices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n      off_peak:\n        factor: 0.5\n        peak_utc:\n          - days: [1]\n            from: \"01:00\"\n            to: \"04:00\"\n        holidays: []\n";
+  const synced = await syncedLlmYaml(text, (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: ["fp8"], ...raw }), async () => [endpoint("kept/fp8", "0.000001", "0.000002")], Date.parse("2026-11-08T00:00:00Z"));
+  assert.deepEqual(synced.problems, ["m: off-peak holidays list no date in 2027"]);
 });

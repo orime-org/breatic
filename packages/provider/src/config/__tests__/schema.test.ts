@@ -379,10 +379,16 @@ describe("deployment overrides of LLM routes", () => {
       expect(problemsOf(load([now, { ...later, from: "2027-01-01T00:00:00Z" }]))).toEqual([]);
     });
 
-    it("refuses a later price without a date, naming the model", () => {
+    it("refuses a first price with a date, naming where, so a listed model always has a price in effect", () => {
+      const error = refusal([{ ...now, from: "2027-01-01T00:00:00Z" }]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/^llm\.prices\.google\/gemini-3\.8-flash\.0: .*from/)]);
+    });
+
+    it("refuses a later price without a date, naming where", () => {
       const error = refusal([now, later]);
       expect(error).toBeInstanceOf(ProviderConfigError);
-      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/google\/gemini-3\.8-flash.*from/)]);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/^llm\.prices\.google\/gemini-3\.8-flash\.1\.from: /)]);
     });
 
     it("refuses dates that do not ascend, naming the model", () => {
@@ -394,6 +400,31 @@ describe("deployment overrides of LLM routes", () => {
     it("refuses an empty price list and a date that is not an ISO 8601 UTC time", () => {
       expect(refusal([])).toBeInstanceOf(ProviderConfigError);
       expect(refusal([now, { ...later, from: "January 1, 2027" }])).toBeInstanceOf(ProviderConfigError);
+    });
+
+    describe("an off-peak discount", () => {
+      const window = { days: [1, 2, 3, 4, 5], from: "01:00", to: "04:00" };
+      const offPeak = (extra: Record<string, unknown>): Record<string, unknown> => ({ factor: 0.5, peak_utc: [window], ...extra });
+
+      it("loads one on the first price and on a dated one, holidays optional", () => {
+        expect(problemsOf(load([{ ...now, off_peak: offPeak({}) }, { ...later, from: "2027-01-01T00:00:00Z", off_peak: offPeak({ holidays: ["2027-01-01"] }) }]))).toEqual([]);
+      });
+
+      it.each([
+        ["a factor of 0", offPeak({ factor: 0 })],
+        ["a factor above 1", offPeak({ factor: 1.5 })],
+        ["a malformed time", offPeak({ peak_utc: [{ ...window, from: "1:00" }] })],
+        ["a day past Saturday", offPeak({ peak_utc: [{ ...window, days: [7] }] })],
+        ["a window with no days", offPeak({ peak_utc: [{ ...window, days: [] }] })],
+        ["no window", offPeak({ peak_utc: [] })],
+        ["a malformed holiday", offPeak({ holidays: ["2027-1-1"] })],
+        ["a window whose from is its to", offPeak({ peak_utc: [{ ...window, to: "01:00" }] })],
+        ["a window whose from is after its to", offPeak({ peak_utc: [{ ...window, from: "10:00", to: "06:00" }] })],
+      ])("refuses %s, naming the model", (_name, off_peak) => {
+        const error = refusal([{ ...now, off_peak }]);
+        expect(error).toBeInstanceOf(ProviderConfigError);
+        expect((error as ProviderConfigError).problems).toEqual([expect.stringContaining("google/gemini-3.8-flash")]);
+      });
     });
   });
 

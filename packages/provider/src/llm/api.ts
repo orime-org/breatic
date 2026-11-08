@@ -40,6 +40,8 @@ export interface PreparedCall {
 /** What a finished model call reports, as the AI SDK hands it over. */
 export interface FinishedCall {
   model: string;
+  /** When the request was sent, in epoch ms: a direct price is the one in effect then. */
+  startedAt: number;
   usage: LanguageModelUsage;
   providerMetadata?: ProviderMetadata;
 }

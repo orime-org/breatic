@@ -34,7 +34,8 @@
  * `config/provider/llm.yaml`, OpenRouter's token prices for every model with a
  * direct price there: the cheapest endpoint OpenRouter lists for the model
  * (its public endpoints list, no key), the one a cheapest LLM call is served by,
- * so such a call ranks OpenRouter beside the direct upstream. Last it regenerates
+ * so such a call ranks OpenRouter beside the direct upstream, and it names each
+ * direct price whose off-peak holidays list no date in the coming year. Last it regenerates
  * `config/provider/upstream-field-names.json`: the upstream field names no
  * catalog param shares, which non-provider code must not spell.
  *
@@ -328,8 +329,10 @@ async function syncFal(upstream: string, list: typeof bindings): Promise<void> {
   if (key === undefined) return;
   let written = 0;
   problems.push(...await syncFalBindings(list, {
-    fetchDoc: (endpoint) => json(`${FAL_OPENAPI}?endpoint_id=${endpoint}`, {}, { absentOn404: true }),
-    fetchPrice: async (endpoint) => at(await json(`${FAL_PRICING}?endpoint_id=${endpoint}`, { headers: { Authorization: `Key ${key}` } }, { absentOn404: true }), "prices") as { endpoint_id: string; unit_price: number; unit: string }[] | undefined,
+    json,
+    docUrl: (endpoint) => `${FAL_OPENAPI}?endpoint_id=${endpoint}`,
+    priceUrl: (endpoint) => `${FAL_PRICING}?endpoint_id=${endpoint}`,
+    priceHeaders: { Authorization: `Key ${key}` },
     onDoc: ({ model }, endpoint, doc) => {
       const source = `${FAL_OPENAPI}?endpoint_id=${endpoint}`;
       const input = at(doc, "paths", `/${endpoint}`, "post", "requestBody", "content", "application/json", "schema");

@@ -60,17 +60,17 @@ test("updates the upstreams it writes and keeps the others", () => {
 test("updates the LLM routes and entries it writes by prefix and key, keeping the others", () => {
   const existing = {
     routes: [{ prefix: "a/", upstreams: [{ upstream: "x", weight: 0 }] }, { prefix: "b/", upstreams: [{ upstream: "y", weight: 0 }] }],
-    prices: { "a/1": { input_cache_miss_per_mtok: 1, output_per_mtok: 1 }, "b/1": { input_cache_miss_per_mtok: 2, output_per_mtok: 2 } },
+    prices: { "a/1": [{ input_cache_miss_per_mtok: 1, output_per_mtok: 1 }], "b/1": [{ input_cache_miss_per_mtok: 2, output_per_mtok: 2 }] },
     gemini_file_poll_ms: 1,
   };
   const generated = {
     routes: [{ prefix: "a/", upstreams: [{ upstream: "z", weight: 0 }] }],
-    prices: { "a/1": { input_cache_miss_per_mtok: 3, output_per_mtok: 3 } },
+    prices: { "a/1": [{ input_cache_miss_per_mtok: 3, output_per_mtok: 3 }] },
     gemini_file_poll_ms: 5,
   };
   assert.deepEqual(mergeLlm(existing, generated), {
     routes: [{ prefix: "a/", upstreams: [{ upstream: "z", weight: 0 }] }, { prefix: "b/", upstreams: [{ upstream: "y", weight: 0 }] }],
-    prices: { "a/1": { input_cache_miss_per_mtok: 3, output_per_mtok: 3 }, "b/1": existing.prices["b/1"] },
+    prices: { "a/1": [{ input_cache_miss_per_mtok: 3, output_per_mtok: 3 }], "b/1": existing.prices["b/1"] },
     gemini_file_poll_ms: 5,
   });
 });

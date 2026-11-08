@@ -11,7 +11,7 @@ import { buildBody } from "@provider/media/body.js";
 import type { StepContext } from "@provider/media/adapter.js";
 import { rejectedInput, type EstimateInput } from "@provider/pricing/estimate.js";
 import { createProvider } from "@provider/provider.js";
-import { ROOT, catalog, shipped } from "./shipped.js";
+import { ROOT, catalog, disjuncts, shipped } from "./shipped.js";
 import { RESELLER_LACKS, WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
 /** One param of our catalog as its yaml writes it. */
@@ -284,27 +284,6 @@ function vendorLength(model: string, param: string): number | undefined {
 function inOurNames(binding: MediaBinding, when: string): string {
   const ours = new Map([...Object.entries(binding.params ?? {}).map(([param, bound]) => [bound.field, param] as const), ...(binding.prompt_field === undefined ? [] : [[binding.prompt_field, "prompt"] as const])]);
   return when.replace(/\b[a-z_][a-z0-9_]*\b/g, (name) => ours.get(name) ?? name).replace(/\s+/g, "");
-}
-
-/**
- * A condition's top-level ` or ` operands, so a vendor limit joined to a reseller's own is seen on its own.
- * @param when - The condition.
- * @returns Each operand outside any brackets.
- */
-function disjuncts(when: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < when.length; i++) {
-    const c = when[i];
-    if (c === "(" || c === "[") depth++;
-    else if (c === ")" || c === "]") depth--;
-    else if (depth === 0 && when.startsWith(" or ", i)) {
-      parts.push(when.slice(start, i));
-      start = i + 4;
-    }
-  }
-  return [...parts, when.slice(start)];
 }
 
 /** The longest prompt each catalog model takes, where it states one. */

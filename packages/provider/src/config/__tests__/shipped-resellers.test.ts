@@ -9,7 +9,7 @@ import { estimateCost, orderByPrice, rejectedInput, type EstimateInput } from ".
 import { createProvider } from "../../provider.js";
 import { droppedValues, type MediaBinding } from "../schema.js";
 import type { SchemaSnapshot } from "../upstream-schema.js";
-import { ROOT, catalog, shipped } from "./shipped.js";
+import { ROOT, catalog, disjuncts, shipped } from "./shipped.js";
 
 /**
  * The reseller each catalog model is bound to and its id there: a model on fal or
@@ -547,8 +547,10 @@ describe("the limits a reseller states beyond its schema", () => {
     ["wan-3.0-image-to-video", { prompt: "x".repeat(20001), params: { image: URL_A } }, { prompt: "x".repeat(20000), params: { image: URL_A } }, "20,000"],
     ["wan-3.0-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 31 } }, { prompt: "a fox", params: { image: URL_A, duration: 30 } }, "[2, 30]"],
     ["wan-3.0-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 1 } }, { prompt: "a fox", params: { image: URL_A, duration: 2 } }, "[2, 30]"],
+    ["wan-3.0-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 5.5 } }, { prompt: "a fox", params: { image: URL_A, duration: 5 } }, "an integer"],
     ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 31 } }, { prompt: "a fox", params: { image: URL_A, duration: 30 } }, "[4, 30]"],
     ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 3 } }, { prompt: "a fox", params: { image: URL_A, duration: 4 } }, "[4, 30]"],
+    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, duration: 5.5 } }, { prompt: "a fox", params: { image: URL_A, duration: 5 } }, "integer"],
     ["kling-video-o3-4k-image-to-video", { params: { image: URL_A, duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 4 }] } }, { params: { image: URL_A, duration: 10, multi_prompt: [{ prompt: "a", duration: 5 }, { prompt: "b", duration: 5 }] } }, "equal the total"],
     ["kling-video-o3-4k-image-to-video", { params: { image: URL_A, duration: 5, multi_prompt: [{ prompt: "x".repeat(513), duration: 5 }] } }, { params: { image: URL_A, duration: 5, multi_prompt: [{ prompt: "x".repeat(512), duration: 5 }] } }, "max 512"],
     ["minimax-h3-reference-to-video", { prompt: "x".repeat(7001), params: { images: [URL_A] } }, { prompt: "x".repeat(7000), params: { images: [URL_A] } }, "7000"],
@@ -561,11 +563,14 @@ describe("the limits a reseller states beyond its schema", () => {
     ["happyhorse-1.1-reference-to-video", { prompt: "狐".repeat(2501), params: { images: [URL_A] } }, { prompt: "狐".repeat(2500), params: { images: [URL_A] } }, "2,500"],
     ["happyhorse-1.1-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 16 } }, { prompt: "a fox", params: { images: [URL_A], duration: 15 } }, "3 to 15"],
     ["happyhorse-1.1-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 2 } }, { prompt: "a fox", params: { images: [URL_A], duration: 3 } }, "3 to 15"],
+    ["happyhorse-1.1-reference-to-video", { prompt: "a fox", params: { images: [URL_A], duration: 5.5 } }, { prompt: "a fox", params: { images: [URL_A], duration: 5 } }, "an integer"],
     ["flux-3-start-end-to-video", { prompt: "a fox", params: { image: URL_A, duration: 21 } }, { prompt: "a fox", params: { image: URL_A, duration: 20 } }, "5 to 20"],
     ["flux-3-start-end-to-video", { prompt: "a fox", params: { image: URL_A, duration: 4 } }, { prompt: "a fox", params: { image: URL_A, duration: 5 } }, "5 to 20"],
+    ["flux-3-start-end-to-video", { prompt: "a fox", params: { image: URL_A, duration: 5.5 } }, { prompt: "a fox", params: { image: URL_A, duration: 5 } }, "whole second"],
     ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A }, durations: { video: [1.9] } }, { prompt: "go on", params: { video: URL_A }, durations: { video: [2] } }, "2-30 seconds"],
     ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, duration: 31 }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, duration: 30 }, durations: { video: [5] } }, "[4, 30]"],
     ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, duration: 3 }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, duration: 4 }, durations: { video: [5] } }, "[4, 30]"],
+    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, duration: 5.5 }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, duration: 5 }, durations: { video: [5] } }, "integer"],
     ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A }, durations: { video: [15.5] } }, { prompt: "edit", params: { video: URL_A }, durations: { video: [15] } }, "total no more than 15 seconds"],
     ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A }, durations: { video: [0.9] } }, { prompt: "edit", params: { video: URL_A }, durations: { video: [1] } }, "[1, 15] seconds per clip"],
     ["wan-3.0-video-edit", { prompt: "edit", params: { video: URL_A, duration: 5.5 }, durations: { video: [5] } }, { prompt: "edit", params: { video: URL_A, duration: 5 }, durations: { video: [5] } }, "an integer"],
@@ -678,27 +683,29 @@ describe("the limits a reseller states beyond its schema", () => {
     expect(strangers, strangers.join("\n")).toEqual([]);
   });
 
-  it("exercises every vendor limit: a VENDOR row's run is refused on the model's first upstream that takes its values with exactly its reason", async () => {
+  it("exercises every part of every vendor limit: for each top-level `or` operand, a VENDOR row's run is refused on the model's first upstream that takes its values with exactly its reason, and by that operand alone", async () => {
     const untested: string[] = [];
     for (const [model, { rejects, upstreams }] of Object.entries(models)) {
       const order = [...upstreams].sort((a, b) => a.weight - b.weight).map((b) => b.upstream);
       const rules = provider.pricingRules(model);
       const rows = VENDOR.filter(([m]) => m === model).map(([, refusedRow]) => run(withDefaults(model, refusedRow)));
       for (const reject of rejects ?? []) {
-        // The limit alone, on a binding stripped of its own checks, tells which of two limits sharing a reason holds.
-        const alone = { ...rules, rejects: [{ when: reject.when, reason: reject.reason }], upstreams: (rules.upstreams as Record<string, unknown>[]).map((u) => ({ ...u, rejects: [], limits: {}, voices: {} })) };
-        let hit = false;
-        for (const input of rows) {
-          // The first upstream that takes the row's values (SKIPS lists those that do not).
-          let [upstream, ...rest] = order;
-          let whole = await rejectedInput(rules, upstream!, input);
-          while (whole !== undefined && "param" in whole && rest.length > 0) {
-            [upstream, ...rest] = rest;
-            whole = await rejectedInput(rules, upstream!, input);
+        for (const part of disjuncts(reject.when)) {
+          // The operand alone, on a binding stripped of its own checks, tells which operand, and which of two limits sharing a reason, holds.
+          const alone = { ...rules, rejects: [{ when: part, reason: reject.reason }], upstreams: (rules.upstreams as Record<string, unknown>[]).map((u) => ({ ...u, rejects: [], limits: {}, voices: {} })) };
+          let hit = false;
+          for (const input of rows) {
+            // The first upstream that takes the row's values (SKIPS lists those that do not).
+            let [upstream, ...rest] = order;
+            let whole = await rejectedInput(rules, upstream!, input);
+            while (whole !== undefined && "param" in whole && rest.length > 0) {
+              [upstream, ...rest] = rest;
+              whole = await rejectedInput(rules, upstream!, input);
+            }
+            if (JSON.stringify(whole) === JSON.stringify({ reason: reject.reason }) && JSON.stringify(await rejectedInput(alone, upstream!, input)) === JSON.stringify({ reason: reject.reason })) hit = true;
           }
-          if (JSON.stringify(whole) === JSON.stringify({ reason: reject.reason }) && JSON.stringify(await rejectedInput(alone, upstream!, input)) === JSON.stringify({ reason: reject.reason })) hit = true;
+          if (!hit) untested.push(`${model}: ${part}`);
         }
-        if (!hit) untested.push(`${model}: ${reject.when}`);
       }
     }
     expect(untested, untested.join("\n")).toEqual([]);

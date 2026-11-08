@@ -137,21 +137,22 @@ const llmPriceSchema = z.strictObject({
   output_per_mtok: z.number().min(0),
 });
 
-/** One direct price and when it took effect (an ISO 8601 UTC time); only a model's first price may leave `from` out. */
-const datedLlmPriceSchema = llmPriceSchema.extend({ from: z.iso.datetime().optional() });
-
-/** One LLM token price, as a call is charged at it. */
-export type LlmPrice = z.infer<typeof llmPriceSchema>;
+/** A time of day in UTC, "HH:MM". */
+const utcTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 
 /**
- * The price in effect at a moment: the last one that took effect at or before it.
- * @param entries - A model's prices, their `from` ascending, or none.
- * @param at - The moment, in epoch ms.
- * @returns The price, or undefined when none is in effect yet or the model has none.
+ * A vendor's repeating discount on a direct price: every per-million-token price times `factor` outside its peak hours.
+ * Peak is a UTC weekday in one window's `days` (0 = Sunday, as `Date.getUTCDay`), at a UTC time in `[from, to)`, on a
+ * UTC date not in `holidays`.
  */
-export function priceAt(entries: readonly z.infer<typeof datedLlmPriceSchema>[] | undefined, at: number): LlmPrice | undefined {
-  return entries?.findLast((entry) => entry.from === undefined || Date.parse(entry.from) <= at);
-}
+const offPeakSchema = z.strictObject({
+  factor: z.number().gt(0).max(1),
+  peak_utc: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).min(1), from: utcTime, to: utcTime })).min(1),
+  holidays: z.array(z.iso.date()).default([]),
+});
+
+/** One direct price, as a model's first price states it: in effect from the start, with any off-peak discount. */
+const directPriceSchema = llmPriceSchema.extend({ off_peak: offPeakSchema.optional() });
 
 /** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
 const GEMINI_INLINE_MAX_BYTES = 20_000_000;
@@ -172,10 +173,11 @@ const llmSchema = z.strictObject({
   vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /**
-   * Direct token prices in USD per million tokens, by our model id: a list whose first price may have no `from` and each
-   * later one takes effect at its `from` (strictly ascending), so a price the vendor has announced is in place before its day.
+   * Direct token prices in USD per million tokens, by our model id: a list whose first price has no `from`, so a listed
+   * model always has a price in effect, and each later one takes effect at its `from` (an ISO 8601 UTC time, strictly
+   * ascending), so a price the vendor has announced is in place before its day.
    */
-  prices: z.record(z.string(), z.array(datedLlmPriceSchema).min(1)).optional(),
+  prices: z.record(z.string(), z.tuple([directPriceSchema], directPriceSchema.extend({ from: z.iso.datetime() }))).optional(),
   /** OpenRouter's token prices in USD per million tokens, by our model id: its cheapest endpoint at a quantization `openrouter_quantizations` lists, as `pnpm provider:prices` writes them. */
   openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The quantizations a cheapest call takes on OpenRouter (its `provider.quantizations`). */
@@ -462,8 +464,17 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
   checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
   for (const [model, entries] of Object.entries(llm.prices)) {
-    if (entries.slice(1).some((entry) => entry.from === undefined)) problems.push(`${model}: every direct price after the first needs a from date`);
-    else if (entries.some((entry, i) => i > 0 && entries[i - 1]!.from !== undefined && Date.parse(entry.from!) <= Date.parse(entries[i - 1]!.from!))) problems.push(`${model}: the from dates of its direct prices do not ascend`);
+    const [, ...later] = entries;
+    let previous = -Infinity;
+    for (const { from } of later) {
+      const date = Date.parse(from);
+      if (date <= previous) {
+        problems.push(`${model}: the from dates of its direct prices do not ascend`);
+        break;
+      }
+      previous = date;
+    }
+    if (entries.some((entry) => entry.off_peak?.peak_utc.some((w) => w.from >= w.to))) problems.push(`${model}: an off-peak window's from is not before its to`);
   }
   if (problems.length > 0) throw new ProviderConfigError(problems);
   return { upstreams: raw.upstreams, models, rejects, llm };

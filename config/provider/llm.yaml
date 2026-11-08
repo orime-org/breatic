@@ -64,10 +64,86 @@ prices:
     - input_cache_hit_per_mtok: 0.044
       input_cache_miss_per_mtok: 1.32
       output_per_mtok: 3.96
+      off_peak:
+        factor: 0.5
+        peak_utc:
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 01:00
+            to: 04:00
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 06:00
+            to: 10:00
+        holidays:
+          - 2027-01-01
+          - 2027-02-05
+          - 2027-02-08
+          - 2027-02-09
+          - 2027-02-10
+          - 2027-02-11
+          - 2027-02-12
+          - 2027-04-05
+          - 2027-05-03
+          - 2027-05-04
+          - 2027-05-05
+          - 2027-06-09
+          - 2027-09-15
+          - 2027-10-01
+          - 2027-10-04
+          - 2027-10-05
+          - 2027-10-06
+          - 2027-10-07
   deepseek/deepseek-v4.1-flash-1017:
     - input_cache_hit_per_mtok: 0.006
       input_cache_miss_per_mtok: 0.3
       output_per_mtok: 1.2
+      off_peak:
+        factor: 0.5
+        peak_utc:
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 01:00
+            to: 04:00
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 06:00
+            to: 10:00
+        holidays:
+          - 2027-01-01
+          - 2027-02-05
+          - 2027-02-08
+          - 2027-02-09
+          - 2027-02-10
+          - 2027-02-11
+          - 2027-02-12
+          - 2027-04-05
+          - 2027-05-03
+          - 2027-05-04
+          - 2027-05-05
+          - 2027-06-09
+          - 2027-09-15
+          - 2027-10-01
+          - 2027-10-04
+          - 2027-10-05
+          - 2027-10-06
+          - 2027-10-07
   anthropic/claude-opus-5.5:
     - input_cache_hit_per_mtok: 0.2
       input_cache_miss_per_mtok: 4
@@ -82,7 +158,7 @@ prices:
     - input_cache_hit_per_mtok: 0.075
       input_cache_miss_per_mtok: 0.75
       output_per_mtok: 3.75
-    - from: "2027-01-01T00:00:00Z"
+    - from: 2027-01-01T00:00:00Z
       input_cache_hit_per_mtok: 0.15
       input_cache_miss_per_mtok: 1.5
       output_per_mtok: 7.5

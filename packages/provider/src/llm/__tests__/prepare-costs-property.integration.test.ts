@@ -200,7 +200,7 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
             abortSignal: stop.signal,
             ...prepared.options,
             onError: () => undefined,
-            onLanguageModelCallEnd: (e) => void ends.push(provider.llm.costOf({ model: route.model, usage: e.usage, providerMetadata: e.providerMetadata })),
+            onLanguageModelCallEnd: (e) => void ends.push(provider.llm.costOf({ startedAt: Date.now(), model: route.model, usage: e.usage, providerMetadata: e.providerMetadata })),
           });
           let thrown: unknown;
           try {
@@ -236,7 +236,7 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
           let thrown: unknown;
           try {
             const result = await generateText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options });
-            ends.push(provider.llm.costOf({ model: route.model, usage: result.usage, providerMetadata: result.providerMetadata }));
+            ends.push(provider.llm.costOf({ startedAt: Date.now(), model: route.model, usage: result.usage, providerMetadata: result.providerMetadata }));
           } catch (error) {
             thrown = error;
           }

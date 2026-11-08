@@ -397,6 +397,29 @@ const DIRECT_PRICES: Readonly<Record<string, readonly Record<string, number | st
     { from: "2027-01-01T00:00:00Z", input_cache_hit_per_mtok: 0.15, input_cache_miss_per_mtok: 1.5, output_per_mtok: 7.5 },
   ],
 };
+/**
+ * DeepSeek's off-peak discount, keyed by model (both DeepSeek models usage-pricing.yaml lists, at the peak rate). Its
+ * pricing page (https://api-docs.deepseek.com/quick_start/pricing), footnote (2): "Off-peak rates are half of the peak
+ * rates. Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays.
+ * All other hours are off-peak, including weekends and Chinese public holidays in full." The holidays are the Chinese
+ * public holidays that fall on a weekday, from the State Council's yearly schedule (2027:
+ * https://www.news.cn/politics/20261105/f90cd6ad4df94ab4833b141e52ccfc13/c.html); `pnpm provider:prices` reports a
+ * list with no date in the coming year.
+ * @returns A fresh copy, so the yaml writer gives each model its own and no alias.
+ */
+const deepseekOffPeak = (): Record<string, unknown> => ({
+  factor: 0.5,
+  peak_utc: [{ days: [1, 2, 3, 4, 5], from: "01:00", to: "04:00" }, { days: [1, 2, 3, 4, 5], from: "06:00", to: "10:00" }],
+  holidays: [
+    "2027-01-01", "2027-02-05", "2027-02-08", "2027-02-09", "2027-02-10", "2027-02-11", "2027-02-12", "2027-04-05",
+    "2027-05-03", "2027-05-04", "2027-05-05", "2027-06-09", "2027-09-15", "2027-10-01", "2027-10-04", "2027-10-05",
+    "2027-10-06", "2027-10-07",
+  ],
+});
+const OFF_PEAK: Readonly<Record<string, () => Record<string, unknown>>> = {
+  "deepseek/deepseek-v4-pro": deepseekOffPeak,
+  "deepseek/deepseek-v4.1-flash-1017": deepseekOffPeak,
+};
 const flash = capture(llmSource, /modelId === "([^"]+)" \? "[^"]+"/);
 const flashOnDeepseek = capture(llmSource, /modelId === "[^"]+" \? "([^"]+)"/);
 write("llm.yaml", `
@@ -426,7 +449,10 @@ uploaded file is asked about until it is ready.
   openrouter_backends: {
     [describe.model]: { only: [capture("packages/domain/src/understand/types.ts", /backend: "([^"]+)"/)], allow_fallbacks: false },
   },
-  prices: { ...Object.fromEntries(Object.entries(usagePricing.models).map(([model, price]) => [model, [price]])), ...DIRECT_PRICES },
+  prices: {
+    ...Object.fromEntries(Object.entries(usagePricing.models).map(([model, price]) => [model, [{ ...price, ...(OFF_PEAK[model] === undefined ? {} : { off_peak: OFF_PEAK[model]() }) }]])),
+    ...DIRECT_PRICES,
+  },
   gemini_inline_max_bytes: 20_000_000,
   gemini_file_poll_ms: 5_000,
 }));
