@@ -13,7 +13,7 @@
  */
 
 import { create } from 'zustand';
-import type { ThreeDGenerationMode } from '@breatic/shared';
+import type { SceneGenerationOrigin, ThreeDGenerationMode } from '@breatic/shared';
 
 /** One picture in a view slot. */
 export interface SceneViewImage {
@@ -25,7 +25,7 @@ export interface SceneViewImage {
 /** What the dialog opens filled with, besides blank: an Agent proposal or a Retry. */
 export interface SceneGenerateFill {
   source: 'agent' | 'retry';
-  origin: 'space' | 'agent';
+  origin: SceneGenerationOrigin;
   mode: ThreeDGenerationMode;
   prompt: string;
   /** The settings, `negative_prompt` among them. */

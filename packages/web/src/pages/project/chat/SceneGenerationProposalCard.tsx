@@ -17,7 +17,7 @@ import { SCENE_MODE_LABELS, fillFromProposal } from '@web/spaces/three-d/scene-g
 import { useSceneProposals } from '@web/stores/scene-proposals';
 
 /**
- * Which settings the card names: the choices, and the switches that are on.
+ * Which settings the card names: the choices, the switches that are on, and those turned off that are on by default.
  * @param control - One of the model's controls.
  * @returns True for a choice or a switch.
  */
@@ -57,7 +57,7 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
      */
     const named = (name: string, value: string): string => t('chat.sceneProposal.setting', { name, value });
     // The tool resolved the params already.
-    return ownControlSummary(entry, proposal.mode, proposal.params, nameOf, MAIN_SETTING, named).join(' · ');
+    return ownControlSummary(entry, proposal.mode, proposal.params, nameOf, MAIN_SETTING, named, t('canvas.generatePanel.switchOff')).join(' · ');
   }, [entry, proposal.mode, proposal.params, t]);
   const needScene = t('chat.sceneProposal.needScene');
   const open = React.useCallback((): void => {

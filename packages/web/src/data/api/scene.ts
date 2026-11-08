@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody } from '@breatic/shared';
+import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin } from '@breatic/shared';
 
 /**
  * Scene controls and model import budgets from the owning Project's readable API.
@@ -43,7 +43,7 @@ export interface SpaceTask {
   kind?: 'import' | 'generation';
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage?: string | null;
-  origin?: 'space' | 'agent' | null;
+  origin?: SceneGenerationOrigin | null;
   model?: { name: string; displayName: string };
   mode?: string;
   prompt?: string | null;

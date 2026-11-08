@@ -8,7 +8,7 @@
  * dialog is filled with when it opens from a proposal or a retry.
  */
 
-import type { ModelEntry, SceneGenerationProposal, ThreeDGenerationMode } from '@breatic/shared';
+import { modesOf, picturesOf, type ModelEntry, type SceneGenerationProposal, type ThreeDGenerationMode } from '@breatic/shared';
 
 import type { SpaceTask } from '@web/data/api/scene';
 import type { SceneGenerateFill } from '@web/stores/scene-proposals';
@@ -48,10 +48,9 @@ function modeOf(mode: string | undefined): ThreeDGenerationMode {
  * @returns The entry, or undefined before the catalog holds one.
  */
 export function sceneEntryFor(entries: readonly ModelEntry[], mode: ThreeDGenerationMode, views: number): ModelEntry | undefined {
-  const inMode = entries.filter((entry) => (Array.isArray(entry.mode) ? entry.mode.includes(mode) : entry.mode === mode));
+  const inMode = entries.filter((entry) => modesOf(entry).includes(mode));
   if (mode === 't23d') return inMode[0];
-  const wanted = views > 1 ? 'images' : 'image';
-  return inMode.find((entry) => entry.params[wanted] !== undefined) ?? inMode[0];
+  return inMode.find((entry) => picturesOf(entry)?.list === (views > 1)) ?? inMode[0];
 }
 
 /**

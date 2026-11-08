@@ -5,6 +5,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Crosshair, ListFilter, Sparkles, Upload } from 'lucide-react';
+import type { SceneGenerationOrigin } from '@breatic/shared';
 import { checkSpaceTask, isGenerationTask, listSpaceTasks, removeSpaceTask, spaceTasksQueryKey, type SpaceTask } from '@web/data/api/scene';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -28,7 +29,7 @@ interface SceneTaskListProps {
   spaceId: string;
   userId: string;
   canEdit: boolean;
-  /** Whether the reader may generate in this project: a generation row's Retry and Remove are server calls that never touch the scene. */
+  /** Whether the user may generate in this project: a generation row's Retry and Remove are server calls that never touch the scene. */
   canGenerate: boolean;
   /** The page's own uploads: live percent, registration and which rows it may retry. */
   uploads: SceneUploads;
@@ -55,7 +56,7 @@ interface TaskFilters {
   running: boolean;
   kind: 'all' | 'import' | 'generation';
   starter: 'all' | 'me';
-  origin: 'all' | 'space' | 'agent';
+  origin: 'all' | SceneGenerationOrigin;
 }
 
 const NO_FILTERS: TaskFilters = { running: false, kind: 'all', starter: 'all', origin: 'all' };
@@ -316,7 +317,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           <div className='flex items-center gap-2'>
             <span className={cn('size-2 shrink-0 rounded-full', DOT_CLASS[hasResult ? 'done' : task.status])} />
             <Tooltip><TooltipTrigger asChild><span className='min-w-0 flex-1 truncate font-medium'>{task.label}</span></TooltipTrigger>
-              <TooltipContent portal side='top' className='max-w-sm break-all'>{task.label}</TooltipContent></Tooltip>
+              <TooltipContent portal side='top' className='max-w-sm break-words'>{generation && task.prompt ? task.prompt : task.label}</TooltipContent></Tooltip>
             {generation ? <KindBadge icon={Sparkles} label={t('spaces.threeD.taskList.kindGeneration')} colorClassName='text-muted-foreground' />
               : <KindBadge icon={Upload} label={t('spaces.threeD.taskList.kind')} colorClassName='text-muted-foreground' />}
           </div>

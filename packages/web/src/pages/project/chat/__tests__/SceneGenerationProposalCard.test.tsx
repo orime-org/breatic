@@ -104,6 +104,13 @@ describe('what the card shows', () => {
     expect(screen.getByText(/\b36\b/)).toBeInTheDocument();
   });
 
+  it('says which switches that are on by default the proposal turns off', async () => {
+    draw({ ...TEXT_TO_3D, params: { texture: false, pbr: false } }, true);
+
+    expect(await screen.findByText(/Texture: Off/)).toBeInTheDocument();
+    expect(screen.getByText(/PBR: Off/)).toBeInTheDocument();
+  });
+
   it('shows the input images of an image-to-3D proposal in view order', async () => {
     const { container } = draw(IMAGE_TO_3D, true);
 

@@ -278,6 +278,8 @@ export function ownControlValues(
  * @param include - Which controls to summarise; all of them when absent.
  * @param named - Joins a choice's or a range's name to its value, for a
  *   summary drawn away from the controls; the value alone when absent.
+ * @param offText - With `named`, what a switch that is on by default but
+ *   turned off says, so the summary shows it is off.
  * @returns One part per control that has something to show, in declared order.
  */
 export function ownControlSummary(
@@ -287,6 +289,7 @@ export function ownControlSummary(
   nameOf: (name: string) => string,
   include?: (control: ModelControl) => boolean,
   named?: (name: string, value: string) => string,
+  offText?: string,
 ): string[] {
   const parts: string[] = [];
   for (const control of modelControls(model, mode)) {
@@ -305,6 +308,8 @@ export function ownControlSummary(
       parts.push(named ? named(nameOf(control.name), value) : value);
     } else if (control.kind === 'toggle' && shown === true) {
       parts.push(nameOf(control.name));
+    } else if (control.kind === 'toggle' && shown === false && named && offText !== undefined && model.params[control.name]?.default === true) {
+      parts.push(named(nameOf(control.name), offText));
     } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {
       parts.push(nameOf(control.name));
     } else if (control.kind === 'items' && Array.isArray(shown) && shown.length > 0) {

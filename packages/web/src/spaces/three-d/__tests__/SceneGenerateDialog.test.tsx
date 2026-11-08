@@ -350,6 +350,26 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     await waitFor(() => expect(shown(toast.error)).toEqual([sentence]));
   });
 
+  it('says the model list is unavailable and closes when it cannot load', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/models') throw new Error('the model list is down');
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const { onOpenChange } = renderDialog();
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(shown(toast.error)).toEqual([t('canvas.generatePanel.catalogUnavailable')]);
+  });
+
+  it('says no model is configured and closes when the list serves no 3D model', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/models') return { ...RAW_CATALOG, three_d: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const { onOpenChange } = renderDialog();
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(shown(toast.warning)).toEqual([t('canvas.generatePanel.catalogNoModels')]);
+  });
+
   it('shows which model runs', async () => {
     renderDialog();
     await ready();

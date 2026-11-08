@@ -26,6 +26,12 @@ vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (): React.JSX.Element => <canvas tabIndex={0} data-testid='scene-native-boundary' />,
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({ readSceneView: () => null, writeSceneView: () => true }));
+// The generation dialog closes at once on a model list it cannot load, so it is served one.
+vi.mock('@web/data/api/models', async () => {
+  const { sanitizeModelCatalog } = await import('@breatic/shared');
+  const { RAW_CATALOG } = await import('@web/spaces/three-d/__tests__/scene-generate-fixtures');
+  return { modelsApi: { list: async () => sanitizeModelCatalog(RAW_CATALOG) } };
+});
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND = '22222222-2222-4222-8222-222222222222';
 const owners: Array<{ doc: Y.Doc; session: SceneSession; client: QueryClient }> = [];
