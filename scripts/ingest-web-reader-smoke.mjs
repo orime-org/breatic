@@ -20,8 +20,8 @@ const PDF_PAGES = ['Hello page one', 'Second page here'];
 
 /**
  * A minimal valid PDF with one line of Helvetica text per page, its xref
- * offsets exact; with `binaryMarker`, the comment line of high bytes most
- * writers put after the header follows it.
+ * offsets exact; with `binaryMarker`, a comment line of control bytes
+ * (0x01 to 0x08) follows the header.
  */
 function pdfOf(lines, binaryMarker = false) {
   const objects = [];
@@ -37,7 +37,7 @@ function pdfOf(lines, binaryMarker = false) {
     objects[pageId + 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
   });
   objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-  let out = binaryMarker ? '%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' : '%PDF-1.4\n';
+  let out = binaryMarker ? '%PDF-1.4\n%\x01\x02\x03\x04\x05\x06\x07\x08\n' : '%PDF-1.4\n';
   const offsets = [];
   for (let id = 1; id < objects.length; id++) {
     offsets[id] = out.length;
@@ -58,7 +58,8 @@ const ARTICLE = `<!doctype html><html><head><title>Smoke Article</title></head><
 <p>The full notes are in the <a href="/notes">harbour notes</a>, read the same way.</p>
 </article></body></html>`;
 const PDF = pdfOf(PDF_PAGES);
-// Sent as text/plain and not as a download: only its bytes say it is a PDF.
+// Sent as text/plain with no content-disposition: only its bytes say it is a PDF.
+// Chromium downloads a text/plain response only when its first bytes look binary.
 const BINARY_PDF = pdfOf(PDF_PAGES, true);
 
 const CSP_PARAGRAPH = 'The lighthouse keeper writes the tide tables by hand every Sunday morning before dawn.';
@@ -84,8 +85,8 @@ const BUSY = '<!doctype html><html><head><title>Busy</title><script>for (;;) {}<
 // Markdown-looking text a plain-text file holds, which must come back unescaped.
 const PLAIN_LINES = ['# Install', '* run `pnpm i`', '/\\d+/'];
 const PLAIN = `${PLAIN_LINES.join('\n')}\n`;
-// "中文测试" in GBK, written out because Node's TextEncoder only writes UTF-8.
-const GBK_TEXT = '中文测试';
+// Four Chinese characters in GBK, written out because Node's TextEncoder only writes UTF-8.
+const GBK_TEXT = '\u4e2d\u6587\u6d4b\u8bd5';
 const GBK_BYTES = Buffer.from([0xd6, 0xd0, 0xce, 0xc4, 0xb2, 0xe2, 0xca, 0xd4]);
 const JSON_BODY = '{"name":"harbour","tides":[1,2,3],"note":"# not a heading"}';
 const BIG_BYTES = 30 * 1024 * 1024;
