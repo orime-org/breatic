@@ -32,6 +32,8 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
+import { useDocSize } from '@web/data/yjs/doc-size';
+import { docNameOf } from '@web/data/yjs/manager';
 import {
   MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
@@ -650,13 +652,18 @@ export const PromptEditor = React.forwardRef<
   // A chip only picks from the pool (design §2.1) and shows its source's live
   // name and thumbnail; these two effects keep it so for whatever reaches the
   // pool, remote writes included.
+  // While the Space is full the size gate drops these machine edits, so a
+  // peer's rename shows the old name until the phase leaves full; they run
+  // again then (inner#1790 design 5.3).
+  const sizePhase = useDocSize(docNameOf(fragment.doc) ?? '').phase;
+  const editsHeld = sizePhase === 'full' || sizePhase === 'resyncing';
   React.useEffect(() => {
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
     clearStaleChips(editor, (id) => !poolIds.has(id));
-  }, [editor, references]);
+  }, [editor, references, editsHeld]);
   React.useEffect(() => {
     syncChipDisplay(editor, references);
-  }, [editor, references]);
+  }, [editor, references, editsHeld]);
   // A local canvas write that changes the pool (rename, cut edge, delete
   // source, remove crop, undo of a connect) gets its chip follow-up in the same
   // task, so both leave as one Update message: collab judges the size cap per
