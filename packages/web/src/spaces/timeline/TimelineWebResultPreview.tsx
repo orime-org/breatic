@@ -5,11 +5,13 @@ import * as React from 'react';
 import type { TimelineWebAnimationClip } from '@breatic/shared';
 import { webAnimationDurationFrames, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
+import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { UNDRAWN_PLAYER, usePlayerDefined, useWebInstanceDrawn } from '@web/spaces/timeline/TimelineWebPreview';
+import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { createWebAnimationHost, type WebAnimationPlayerElement, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 
@@ -18,7 +20,9 @@ interface TimelineWebResultPreviewProps { projectId: string; executionId: string
 
 /**
  * A finished result in the execution list, scrubbed by its own slider through the same frame-ready bridge as the
- * Timeline preview (inner#1711 design §8). Its page is sandboxed and takes no clicks.
+ * Timeline preview (inner#1711 design §8), under the same player load timeout. Its page is sandboxed and takes no
+ * clicks; a refused address, a player module that failed to load or a page that never answered shows unavailable with
+ * a retry instead of the skeleton.
  * @param props - The result.
  * @param props.projectId - The Project its address is read through.
  * @param props.executionId - The execution, standing in for a copy's id.
@@ -30,7 +34,10 @@ interface TimelineWebResultPreviewProps { projectId: string; executionId: string
 export function TimelineWebResultPreview({ projectId, executionId, sourceVersionId, input }: TimelineWebResultPreviewProps): React.JSX.Element {
   const t = useTranslation();
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
-  const defined = usePlayerDefined(true);
+  const player = usePlayerDefined(true);
+  const { defined } = player;
+  const loadTimeoutMs = React.useRef<number | undefined>(undefined);
+  loadTimeoutMs.current = useTimelineLimits(projectId)?.webAnimation.playerLoadTimeoutMs;
   const [element, setElement] = React.useState<HTMLElement | null>(null);
   const [frame, setFrame] = React.useState(0);
   const position = React.useRef(0);
@@ -43,7 +50,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   const [state, setState] = React.useState<WebInstanceState | undefined>(undefined);
   const [host] = React.useState(() => {
     const created = createWebAnimationHost({
-      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => undefined,
+      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => loadTimeoutMs.current,
       // The one instance is keyed by its source version; its state decides whether the picture is drawn yet.
       onChange: () => setState(created.states().values().next().value),
     });
@@ -65,7 +72,15 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   }, [host]);
   React.useEffect(() => {
     host.sync(defined && element !== null ? [{ key: sourceVersionId, clip, fps, player: element as WebAnimationPlayerElement }] : []);
+    // A detached or newly attached instance changes state without the host saying so.
+    setState(host.states().get(sourceVersionId));
   }, [host, defined, element, sourceVersionId, clip, fps]);
+  const { refresh } = preview;
+  const unavailable = preview.failed || player.failed || state === 'failed';
+  const retry = React.useCallback((): void => {
+    player.retry();
+    refresh();
+  }, [player, refresh]);
   const scrub = React.useCallback((value: number[]): void => {
     position.current = value[0] ?? 0;
     setFrame(position.current);
@@ -76,7 +91,12 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   const playerStyle = React.useMemo(() => ({ pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [drawn]);
   return <div className='flex flex-col gap-1.5'>
     <div className='relative mx-auto max-h-48 w-full max-w-full overflow-hidden rounded-chrome border border-border bg-muted' style={style}>
-      {!drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
+      {unavailable
+        ? <div className='absolute inset-0 flex items-center justify-center gap-2 bg-muted text-xs text-foreground'>
+          <span>{t('timeline.webAnimation.unavailable')}</span>
+          <Button variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
+        </div>
+        : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
       {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
         className='absolute inset-0 size-full' style={playerStyle} />}
     </div>

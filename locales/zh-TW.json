@@ -3278,6 +3278,7 @@
       },
       "usage": "用量：{credits} 點",
       "usagePending": "結束後結算用量",
+      "unavailable": "網頁動畫不可用",
       "cancel": "取消",
       "addToTimeline": "新增至 Timeline",
       "addPlaceholder": "先加入 Timeline",

@@ -3278,6 +3278,7 @@
       },
       "usage": "Usage: {credits} credits",
       "usagePending": "Usage is settled when it ends",
+      "unavailable": "Web animation unavailable",
       "cancel": "Cancel",
       "addToTimeline": "Add to Timeline",
       "addPlaceholder": "Add to Timeline now",

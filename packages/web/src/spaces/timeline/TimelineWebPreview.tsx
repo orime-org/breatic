@@ -29,26 +29,32 @@ const PLAYER_TAG = 'hyperframes-player';
 // The player is loaded the first time a web copy is shown, so the Timeline itself does not carry it.
 let playerModule: Promise<unknown> | null = null;
 
+/** Whether `<hyperframes-player>` is defined, whether loading it failed, and a retry of that load. */
+export interface PlayerModule { defined: boolean; failed: boolean; retry: () => void }
+
 /**
  * Whether `<hyperframes-player>` is defined, loading it on first need. A platform whose iframes cannot be sandboxed
  * cannot isolate the page, so the player is never loaded there and its elements stay inert.
  * @param needed - Whether a web copy is visible.
- * @returns True once the element is defined.
+ * @returns Whether the element is defined, whether its module failed to load, and a retry that loads it again.
  * @throws {never} Never.
  */
-export function usePlayerDefined(needed: boolean): boolean {
+export function usePlayerDefined(needed: boolean): PlayerModule {
   const [defined, setDefined] = React.useState(() => customElements.get(PLAYER_TAG) !== undefined);
+  const [failed, setFailed] = React.useState(false);
   React.useEffect(() => {
-    if (defined || !needed || !('sandbox' in HTMLIFrameElement.prototype)) return;
+    if (defined || failed || !needed || !('sandbox' in HTMLIFrameElement.prototype)) return;
     let live = true;
     playerModule ??= import('@hyperframes/player');
     playerModule.then(() => { if (live) setDefined(true); }, () => {
-      // A failed load leaves no player; the copy's instance never answers and its preview note offers a retry.
+      // A failed load leaves no player until the retry the preview offers loads it again.
       playerModule = null;
+      if (live) setFailed(true);
     });
     return () => { live = false; };
-  }, [defined, needed]);
-  return defined;
+  }, [defined, failed, needed]);
+  const retry = React.useCallback((): void => setFailed(false), []);
+  return React.useMemo(() => ({ defined, failed, retry }), [defined, failed, retry]);
 }
 
 /**
@@ -87,9 +93,11 @@ interface WebInstanceProps {
   entry: TimelineWebEntry & { instance: NonNullable<TimelineWebEntry['instance']> };
   state: WebInstanceState | undefined;
   defined: boolean;
+  playerFailed: boolean;
   notes: HTMLElement | null;
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
+  onPlayerRetry: () => void;
 }
 
 /**
@@ -118,13 +126,15 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
  * @param props.entry - The copy it shows now.
  * @param props.state - Its bridge state.
  * @param props.defined - Whether the player element is defined; until then the element is inert and not driven.
+ * @param props.playerFailed - Whether the player module failed to load.
  * @param props.notes - Where its note goes.
  * @param props.onPlayer - Hands its element to the playback.
  * @param props.onRetry - Loads it again.
+ * @param props.onPlayerRetry - Loads the player module again.
  * @returns The player and, when it is unavailable, its note.
  * @throws {never} Never.
  */
-const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, notes, onPlayer, onRetry }: WebInstanceProps): React.JSX.Element {
+const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, onPlayer, onRetry, onPlayerRetry }: WebInstanceProps): React.JSX.Element {
   const t = useTranslation();
   const { key, sourceVersionId } = entry.instance;
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
@@ -138,7 +148,10 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
   }, [defined, element, key, onPlayer]);
   const drawn = useWebInstanceDrawn(state);
   const style = React.useMemo(() => ({ zIndex: entry.z, pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [entry.z, drawn]);
-  const retry = React.useCallback((): void => { refresh(); onRetry(key); }, [refresh, onRetry, key]);
+  const retry = React.useCallback((): void => {
+    if (playerFailed) onPlayerRetry();
+    if (!playerFailed || preview.failed) { refresh(); onRetry(key); }
+  }, [playerFailed, preview.failed, onPlayerRetry, refresh, onRetry, key]);
   // A page reloaded after its address expired never says it is ready; one fresh address is tried before giving up.
   const refreshedOnce = React.useRef(false);
   React.useEffect(() => {
@@ -146,7 +159,7 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     refreshedOnce.current = true;
     refresh();
   }, [state, refresh]);
-  const unavailable = preview.failed || (state === 'failed' && refreshedOnce.current);
+  const unavailable = preview.failed || playerFailed || (state === 'failed' && refreshedOnce.current);
   const loading = !drawn && !unavailable;
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
@@ -184,12 +197,12 @@ export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRet
   const t = useTranslation();
   const instances = React.useMemo(() => entries.flatMap((entry) => entry.instance === null ? [] : [{ ...entry, instance: entry.instance }])
     .sort((a, b) => (a.instance.key < b.instance.key ? -1 : a.instance.key > b.instance.key ? 1 : 0)), [entries]);
-  const defined = usePlayerDefined(instances.length > 0);
+  const player = usePlayerDefined(instances.length > 0);
   const [notes, setNotes] = React.useState<HTMLDivElement | null>(null);
   const notesStyle = React.useMemo(() => ({ zIndex: entries.length + 1 }), [entries.length]);
   return <>
-    {instances.map((entry) => <WebInstance key={entry.instance.key} projectId={projectId} entry={entry} state={states.get(entry.instance.key)} defined={defined}
-      notes={notes} onPlayer={onPlayer} onRetry={onRetry} />)}
+    {instances.map((entry) => <WebInstance key={entry.instance.key} projectId={projectId} entry={entry} state={states.get(entry.instance.key)} defined={player.defined}
+      playerFailed={player.failed} notes={notes} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} />)}
     <div ref={setNotes} className='absolute right-3 top-3 flex flex-col items-end gap-1.5' style={notesStyle}>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status === null ? '' : t(`timeline.webAnimation.status.${entry.status}`);

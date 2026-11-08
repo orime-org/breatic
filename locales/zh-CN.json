@@ -3278,6 +3278,7 @@
       },
       "usage": "用量：{credits} 积分",
       "usagePending": "结束后结算用量",
+      "unavailable": "网页动画不可用",
       "cancel": "取消",
       "addToTimeline": "添加到 Timeline",
       "addPlaceholder": "先加入 Timeline",

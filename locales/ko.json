@@ -3278,6 +3278,7 @@
       },
       "usage": "사용량: {credits} 크레딧",
       "usagePending": "사용량은 종료 후 정산됩니다",
+      "unavailable": "웹 애니메이션을 사용할 수 없음",
       "cancel": "취소",
       "addToTimeline": "Timeline에 추가",
       "addPlaceholder": "Timeline에 먼저 추가",

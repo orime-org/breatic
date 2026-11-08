@@ -3278,6 +3278,7 @@
       },
       "usage": "使用量：{credits} クレジット",
       "usagePending": "使用量は終了後に精算されます",
+      "unavailable": "ウェブアニメーションを利用できません",
       "cancel": "キャンセル",
       "addToTimeline": "Timeline に追加",
       "addPlaceholder": "先に Timeline に追加",
