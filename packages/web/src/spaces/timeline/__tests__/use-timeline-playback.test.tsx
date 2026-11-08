@@ -747,6 +747,24 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.frame).toBe(24);
   });
 
+  it('holds the last frame when the registered duration is a little longer than the element plays', async () => {
+    // The probe rounds the registered duration up; the element ends a fraction of a millisecond earlier.
+    const shortSource = { ...SOURCE, durationSeconds: '1.012', extentFrames: 25 };
+    const shortClip = { ...CLIP, durationFrames: 25 };
+    const media = mediaFixture({ duration: 1.01 });
+    const hook = renderPlayback(media, { document: timelineDocument([shortClip], [shortSource]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    now = 1010;
+    mediaEvent(media, 'ended', { currentTime: 1.01, paused: true, ended: true });
+    expect(hook.result.current.state).toBe('playing');
+    tick(1042);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.frame).toBe(24);
+  });
+
   it('plays the final frame bucket before stopping at the sequence end', async () => {
     const media = mediaFixture({ duration: 1 });
     const hook = renderPlayback(media, { document: timelineDocument([{ ...CLIP, durationFrames: 24 }]) });
