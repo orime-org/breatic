@@ -423,21 +423,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     state.current = { intent: 'pause', state: 'paused' };
   }, []);
 
-  // The bridge's replies arrive on the window; only the iframe of an attached instance is listened to.
-  React.useEffect(() => {
-    /**
-     * Hand a window message to the host.
-     * @param event - The message.
-     * @throws {never} Never.
-     */
-    const receive = (event: MessageEvent): void => { host.receive(event); };
-    window.addEventListener('message', receive);
-    return () => {
-      window.removeEventListener('message', receive);
-      // A hidden Space tab runs no effects; showing it again attaches every instance afresh with a new hello.
-      host.dispose();
-    };
-  }, [host]);
+  // The bridge's replies arrive on the window; only the iframe of an attached instance is listened to. A hidden Space
+  // tab runs no effects, so the stop detaches everything and showing it again attaches every instance with a new hello.
+  React.useEffect(() => host.listen(), [host]);
 
   React.useEffect(() => {
     host.sync(webLayers);

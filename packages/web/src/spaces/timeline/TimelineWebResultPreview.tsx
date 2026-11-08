@@ -57,19 +57,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
     return created;
   });
   const drawn = useWebInstanceDrawn(state);
-  React.useEffect(() => {
-    /**
-     * Hand a window message to the host.
-     * @param event - The message.
-     * @throws {never} Never.
-     */
-    const receive = (event: MessageEvent): void => { host.receive(event); };
-    window.addEventListener('message', receive);
-    return () => {
-      window.removeEventListener('message', receive);
-      host.dispose();
-    };
-  }, [host]);
+  React.useEffect(() => host.listen(), [host]);
   React.useEffect(() => {
     host.sync(defined && element !== null ? [{ key: sourceVersionId, clip, fps, player: element as WebAnimationPlayerElement }] : []);
     // A detached or newly attached instance changes state without the host saying so.

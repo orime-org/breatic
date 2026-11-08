@@ -47,6 +47,8 @@ export interface WebAnimationHost {
   retry: (key: string) => void;
   /** Take a message the window received. */
   receive: (event: MessageEvent) => void;
+  /** Take the window's messages until the returned stop, which also detaches everything. */
+  listen: () => () => void;
   /** Every instance's state. */
   states: () => ReadonlyMap<string, WebInstanceState>;
   /** Whether every instance that has not failed shows the latest frame. */
@@ -198,7 +200,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     load(instance);
   };
 
-  return {
+  const host: WebAnimationHost = {
     sync(layers) {
       const next = new Map(layers.map((layer) => [layer.key, layer]));
       for (const [key, instance] of instances) {
@@ -255,9 +257,23 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     ready() {
       return [...instances.values()].every((instance) => instance.state === 'ready' || instance.state === 'failed');
     },
+    listen() {
+      /**
+       * Hand a window message to the host.
+       * @param event - The message.
+       * @throws {never} Never.
+       */
+      const receive = (event: MessageEvent): void => { host.receive(event); };
+      window.addEventListener('message', receive);
+      return () => {
+        window.removeEventListener('message', receive);
+        host.dispose();
+      };
+    },
     dispose() {
       for (const instance of instances.values()) instance.detach();
       instances.clear();
     },
   };
+  return host;
 }
