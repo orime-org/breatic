@@ -24,7 +24,7 @@ import {
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
-import { FILL_BLANKS, quoted } from "@domain/agent/tools/template-expansion.js";
+import { FILL_BLANKS, quoted, tweakLabels } from "@domain/agent/tools/template-expansion.js";
 import {
   aNode,
   entriesFor,
@@ -360,8 +360,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
 export function checkBlanks(proposal: CanvasProposal): ProposalVerdict {
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
-    const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
-    const blanks = [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
+    const blanks = tweakLabels(node);
     if (blanks.length > 0) {
       return refuse("template-tweak-unfilled", `"${node.name}" still holds the blanks ${quoted(blanks)}.`, fixOn(nodeLabel(proposal.nodes, index), FILL_BLANKS));
     }

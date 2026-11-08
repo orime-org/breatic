@@ -73,6 +73,17 @@ function templateTweakLabels(template: GenerationTemplate, key: TemplateNodeKey)
   return new Set(labels);
 }
 
+/**
+ * The labels of the tweak blanks a node's words hold, once each, from its
+ * prompt and every shot.
+ * @param node - The node.
+ * @returns The labels, in the order they first appear.
+ */
+export function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
+  const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
+}
+
 /** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */
 export const FILL_BLANKS = "write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.";
 
@@ -184,8 +195,7 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
   // A template's own tweak mark sent back unchanged is a blank the user
   // never filled in, so the result would be made without it.
   const ownTweaks = templateTweakLabels(template, key);
-  const sent = [...(rest.prompt ?? []), ...(rest.shots ?? []).flatMap((shot) => shot.prompt)];
-  const left = [...new Set(sent.flatMap((segment) => (segment.slot?.kind === "tweak" && ownTweaks.has(segment.slot.label) ? [segment.slot.label] : [])))];
+  const left = tweakLabels(rest).filter((label) => ownTweaks.has(label));
   if (left.length > 0) {
     return refuse(
       "template-tweak-unfilled",

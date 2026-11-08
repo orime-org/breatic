@@ -64,6 +64,7 @@ import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import type { CreditEstimate } from "@breatic/shared/pricing";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
 
@@ -302,10 +303,26 @@ export function verdictFor(
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
 ): ProposalVerdict {
+  const judged = judgeSent(sent, materials, templates);
+  return "proposal" in judged ? { ok: true } : judged;
+}
+
+/**
+ * What the model sent, resolved and judged: the one path both the verdict
+ * and the tool's answer take, so no check runs on one and not the other.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
+ * @returns The resolved proposal, or the refusal.
+ * @throws {never} Never.
+ */
+function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, templates: readonly GenerationTemplate[]): Resolved | Refusal {
   const resolved = resolveSent(sent, templates);
   if (!("proposal" in resolved)) return resolved;
   const blanks = checkBlanks(resolved.proposal);
-  return blanks.ok ? checkResolved(resolved.proposal, materials, resolved.instances) : blanks;
+  if (!blanks.ok) return blanks;
+  const verdict = checkResolved(resolved.proposal, materials, resolved.instances);
+  return verdict.ok ? resolved : verdict;
 }
 
 /**
@@ -395,11 +412,9 @@ export function answerFor(
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
 ): ProposalAnswer {
-  const sentResolved = resolveSent(sent, templates);
-  if (!("proposal" in sentResolved)) return { placed: false, reason: sentResolved.reason };
-  const { proposal: resolved, instances } = sentResolved;
-  const verdict = checkResolved(resolved, materials, instances);
-  if (!verdict.ok) return { placed: false, reason: verdict.reason };
+  const judged = judgeSent(sent, materials, templates);
+  if (!("proposal" in judged)) return { placed: false, reason: judged.reason };
+  const { proposal: resolved, instances } = judged;
   const guides = instances.flatMap(({ anchor, place }) => {
     const guide = templateGuideNode(place.template, anchor);
     return guide === undefined ? [] : [guide];
@@ -448,20 +463,40 @@ export async function renderProposalForModel(answer: ProposalAnswer): Promise<st
   const priced = await Promise.all(
     answer.nodes.flatMap((node) =>
       node.role === "generate" && node.model !== undefined
-        ? [estimateModelCredits(node.model, { params: node.params ?? {} }).then((price) => ({ name: node.name, price }))]
+        ? [estimateModelCredits(node.model, { params: node.params ?? {}, prompt: wordsOf(node) }).then((price) => ({ name: node.name, price }))]
         : [],
     ),
   );
   const lines = priced.map(({ name, price }) => `- "${name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`);
-  const known = priced.flatMap(({ price }) => (price === undefined || price.bound === "per_thousand_chars" ? [] : [price]));
-  const total = known.reduce((sum, price) => sum + price.credits, 0);
-  const atLeast = known.length < priced.length || known.some((price) => price.bound !== "exact");
-  return [
-    "The proposal is on screen as a card. The user decides whether to place it.",
-    ...(priced.length === 0
-      ? []
-      : ["Running its generations costs:", ...lines, `Total: ${atLeast ? "about " : ""}${formatCredits(total, "en-US")} credits.`]),
-  ].join("\n");
+  return ["The proposal is on screen as a card. The user decides whether to place it.", ...(priced.length === 0 ? [] : ["Running its generations costs:", ...lines]), ...totalLine(priced.map(({ price }) => price))].join("\n");
+}
+
+/**
+ * A node's written words, as a price billed by length reads them.
+ * @param node - The node.
+ * @returns Its prompt's and shots' words, joined.
+ */
+function wordsOf(node: ProposalNode): string {
+  const segments = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return segments.map((segment) => ("text" in segment ? segment.text : "")).join("");
+}
+
+/**
+ * The total of a proposal's estimates, worded by how they bound the charge:
+ * exact when every one is, otherwise at least or up to, naming what the sum
+ * leaves out. No line when nothing could be summed.
+ * @param prices - Each generation's estimate, undefined when unpriced.
+ * @returns The line, or none.
+ */
+function totalLine(prices: readonly (CreditEstimate | undefined)[]): string[] {
+  const summed = prices.flatMap((price) => (price === undefined || price.bound === "per_thousand_chars" ? [] : [price]));
+  if (summed.length === 0) return [];
+  const credits = formatCredits(summed.reduce((sum, price) => sum + price.credits, 0), "en-US");
+  const left = prices.length - summed.length;
+  const outside = left === 0 ? "" : `, plus ${String(left)} generation${left === 1 ? "" : "s"} not in this sum`;
+  if (left === 0 && summed.every((price) => price.bound === "exact")) return [`Total: ${credits} credits.`];
+  if (left === 0 && summed.every((price) => price.bound === "at_most")) return [`Total: up to ${credits} credits.`];
+  return [`Total: at least ${credits} credits${outside}.`];
 }
 
 /**
@@ -530,7 +565,8 @@ export function makeProposeCanvasAction(
     "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
-    "can judge; the rest is theirs to run. The answer says what running each " +
+    "can judge; the rest is theirs to run. Takes go out at the lowest value of every setting that sets the price. " +
+    "The answer says what running each " +
     "generation costs at the params you sent, and the total; say it in your reply. " +
     "A picked take is brought to full quality by an i2i generation with that take " +
     "as its material. Clips for a timeline are made here, as video on a canvas. " +
