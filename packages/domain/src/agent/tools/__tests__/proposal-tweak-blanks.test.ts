@@ -18,7 +18,7 @@ import { loadLocales } from "@breatic/core";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { verdictFor } from "../propose-canvas-action.js";
+import { answerFor, verdictFor } from "../propose-canvas-action.js";
 
 beforeEach(() => {
   loadLocales();
@@ -37,6 +37,20 @@ const LOOK = "the look";
 
 /** A tweak segment. */
 const BLANK = { slot: { kind: "tweak" as const, label: LOOK, note: "Write the look you want" } };
+
+/** The multi-shot node with a blank left in its first shot. */
+const SHOT_BLANK: Partial<Sent["nodes"][number]> = {
+  type: "video",
+  name: "Clip",
+  mode: "multi_shot",
+  model: "kling-v3.0-4k-text-to-video",
+  params: { duration: 5 },
+  prompt: undefined,
+  shots: [
+    { prompt: [{ text: "A paper boat, in " }, BLANK], duration: 2 },
+    { prompt: [{ text: "The pond at dusk." }], duration: 3 },
+  ],
+};
 
 /**
  * One generation, standing alone.
@@ -59,20 +73,7 @@ describe("a tweak blank in a generate node's words", () => {
   });
 
   it("is refused in a shot of a multi-shot node that names no template", () => {
-    const verdict = verdictFor(
-      alone({
-        type: "video",
-        name: "Clip",
-        mode: "multi_shot",
-        model: "kling-v3.0-4k-text-to-video",
-        params: { duration: 5 },
-        prompt: undefined,
-        shots: [
-          { prompt: [{ text: "A paper boat, in " }, BLANK], duration: 2 },
-          { prompt: [{ text: "The pond at dusk." }], duration: 3 },
-        ],
-      }),
-    );
+    const verdict = verdictFor(alone(SHOT_BLANK));
     expect(verdict).toMatchObject({ ok: false, refusal: "template-tweak-unfilled" });
   });
 
@@ -121,5 +122,27 @@ describe("a tweak blank in a generate node's words", () => {
       groupName: "Post",
     });
     expect(verdict).toEqual({ ok: true });
+  });
+});
+
+/**
+ * The tool answers through `answerFor`, not `verdictFor`: what the card shows
+ * and the canvas places is that answer, so a blank has to be held there too.
+ */
+describe("a tweak blank on the tool's own path", () => {
+  it("is not placed on a node that names no template, naming the blank", () => {
+    const answer = answerFor(alone({ prompt: [{ text: "A herbalist girl, drawn in " }, BLANK, { text: "." }] }));
+    expect(answer).toMatchObject({ placed: false });
+    expect(answer.placed ? "" : answer.reason).toContain(`"${LOOK}"`);
+  });
+
+  it("is not placed from a shot of a multi-shot node that names no template, naming the blank", () => {
+    const answer = answerFor(alone(SHOT_BLANK));
+    expect(answer).toMatchObject({ placed: false });
+    expect(answer.placed ? "" : answer.reason).toContain(`"${LOOK}"`);
+  });
+
+  it("places the same generation once its words hold no blank", () => {
+    expect(answerFor(alone({ prompt: [{ text: "A herbalist girl, drawn in ink wash." }] }))).toMatchObject({ placed: true });
   });
 });

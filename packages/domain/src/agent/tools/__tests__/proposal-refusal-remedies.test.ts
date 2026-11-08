@@ -733,7 +733,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "mark-typed": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it {✏️ mood}." }] })]),
-    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes.'],
+    states: [`"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template's blank, which is filled before sending.`],
   }, {
     // Brackets typed around a ref: quoted as written, the ref inside as the agent sent it.
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

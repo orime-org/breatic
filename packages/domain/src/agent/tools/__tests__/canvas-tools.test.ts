@@ -261,6 +261,62 @@ describe("list_generation_models priced at the params a step will use (breatic#1
   });
 });
 
+/**
+ * The lines one model's entry carries before its parameter list, which is
+ * where the listing says what it priced the model at.
+ * @param rendered - The rendered answer.
+ * @param name - The model's catalog name.
+ * @returns The entry's head, or the empty string when the model is not listed.
+ */
+function entryHead(rendered: string, name: string): string {
+  const entry = rendered.split(/\n(?=- )/).find((one) => one.includes(`(${name})`)) ?? "";
+  return entry.split("\n  parameters:")[0] ?? "";
+}
+
+describe("list_generation_models with params a model does not take (breatic#1361)", () => {
+  it("prices every model at its defaults and names the param when the value is of the wrong type", async () => {
+    const PARAMS = { duration: "5" };
+    const plain = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    if (!plain.available) throw new Error("t2v has models");
+    // Guards the case itself: no entry at its defaults says anything of duration.
+    for (const model of plain.models) expect(entryHead(renderGenerationModelsForModel(plain), model.name), model.name).not.toContain("duration");
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v", params: PARAMS });
+    if (!answer.available) throw new Error("t2v has models");
+    expect(answer.models.map((model) => model.name)).toEqual(plain.models.map((model) => model.name));
+    const rendered = renderGenerationModelsForModel(answer);
+    for (const model of answer.models) {
+      expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
+      const head = entryHead(rendered, model.name);
+      expect(head, model.name).toContain("duration");
+      expect(head, model.name).not.toContain("at the params given");
+    }
+  });
+
+  it("drops a param a model does not declare, prices it at its defaults and names the param", async () => {
+    const PARAMS = { not_a_setting: 1 };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    for (const model of answer.models) {
+      expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
+      const head = entryHead(rendered, model.name);
+      expect(head, model.name).toContain("not_a_setting");
+      expect(head, model.name).not.toContain("at the params given");
+    }
+  });
+
+  it("prices a model that takes every param given at those params, and says so", async () => {
+    const PARAMS = { resolution: "0.5k" };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const model = answer.models.find((one) => one.name === "nano-banana-2");
+    expect(model?.price).toEqual(await estimateModelCredits("nano-banana-2", { params: PARAMS }));
+    // Guards the case itself: the params given price differently from the defaults.
+    expect(model?.price).not.toEqual(await estimateModelCredits("nano-banana-2", { params: {} }));
+    expect(entryHead(renderGenerationModelsForModel(answer), "nano-banana-2")).toContain("at the params given");
+  });
+});
+
 describe("what the rendered answer tells the model", () => {
   it("prices a model by its contract at its defaults", async () => {
     // Gemini Omni text-to-video: $0.10 a second, 8 seconds at 720p by default.

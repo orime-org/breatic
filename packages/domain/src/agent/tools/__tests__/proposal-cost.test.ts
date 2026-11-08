@@ -115,3 +115,90 @@ describe("the cost of a placed proposal, read back to the model", () => {
     expect(await readBack()).toContain("The proposal is on screen as a card.");
   });
 });
+
+/** Words a voice reads, short enough that their price differs from the rate per 1000 characters. */
+const WORDS = "Welcome to the herb garden. Mind the nettles by the gate.";
+
+/** One voice-over whose words are written into its prompt; the TTS model is priced by the length of its text. */
+const VOICE = {
+  nodes: [{ role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ text: WORDS }] }],
+  edges: [],
+  rationale: "A voice-over.",
+};
+
+/**
+ * The placed answer for a proposal.
+ * @param sent - What the model sends.
+ * @returns The answer.
+ * @throws {Error} When the proposal is refused.
+ */
+function placedOf(sent: unknown): Extract<ProposalAnswer, { placed: true }> {
+  const answer = answerFor(inputSchema.parse(sent));
+  if (!answer.placed) throw new Error(answer.reason);
+  return answer;
+}
+
+/**
+ * The line of the read-back that states the total, or the empty string.
+ * @param said - The read-back.
+ * @returns The line.
+ */
+function totalLine(said: string): string {
+  return said.split("\n").find((line) => /^total/i.test(line)) ?? "";
+}
+
+describe("the cost read back when a price turns on the words", () => {
+  it("prices a voice node from the words written in its prompt", async () => {
+    const answer = placedOf(VOICE);
+    const params = answer.nodes[0]?.params ?? {};
+    const expected = await estimateModelCredits("realtime-tts-2", { params, prompt: WORDS });
+    if (expected === undefined) throw new Error("realtime-tts-2 has no price");
+    // Guards the case itself: the words price differently from the rate.
+    const rate = await estimateModelCredits("realtime-tts-2", { params });
+    expect(rate?.bound).toBe("per_thousand_chars");
+    expect(expected.bound).not.toBe("per_thousand_chars");
+    expect(expected.credits).not.toBe(rate?.credits);
+    const line = (await renderProposalForModel(answer)).split("\n").find((one) => one.includes('"Voice"')) ?? "";
+    expect(line).toContain(formatCredits(expected.credits, "en-US"));
+    expect(line).not.toContain("per 1000 characters");
+  });
+
+  it("says no total when the only generation is priced per 1000 characters", async () => {
+    const answer = placedOf(VOICE);
+    const unwritten = { ...answer, nodes: answer.nodes.map((node) => ({ ...node, prompt: undefined })) };
+    const said = await renderProposalForModel(unwritten);
+    // Guards the case itself: with no words the node is priced by the rate.
+    expect(said).toContain("per 1000 characters");
+    expect(said).not.toMatch(/total/i);
+  });
+
+  it("says no total when the only generation has no price on this deployment", async () => {
+    const answer = placedOf(TAKES);
+    const unpriced = { ...answer, nodes: answer.nodes.slice(0, 1).map((node) => ({ ...node, model: "no-such-model" })) };
+    const said = await renderProposalForModel(unpriced);
+    expect(said).toContain("no price on this deployment");
+    expect(said).not.toMatch(/total/i);
+  });
+});
+
+describe("how the total bounds the charge", () => {
+  /** A model that needs a source the read-back cannot measure, so its price is a floor. */
+  const EDIT = "gpt-image-2.5-sunburst-edit";
+
+  it("says at least when one generation's price is a floor", async () => {
+    const answer = placedOf(TAKES);
+    const first = answer.nodes[0];
+    if (first === undefined) throw new Error("no node");
+    // Guards the case itself: the edit model is priced as a floor, the takes exactly.
+    expect((await estimateModelCredits(EDIT, { params: {} }))?.bound).toBe("at_least");
+    const mixed = { ...answer, nodes: [...answer.nodes, { ...first, name: "Edit", mode: "i2i", model: EDIT, params: {} }] };
+    expect(totalLine(await renderProposalForModel(mixed))).toContain("at least");
+  });
+
+  it("says neither about nor at least when every price is exact", async () => {
+    for (const node of TAKES.nodes) expect((await estimateModelCredits(node.model, { params: node.params }))?.bound, node.model).toBe("exact");
+    const total = totalLine(await readBack());
+    expect(total).not.toBe("");
+    expect(total).not.toMatch(/about|at least/i);
+  });
+});

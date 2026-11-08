@@ -144,3 +144,13 @@ describe("the tools that point at the product guide name its section", () => {
     });
   }
 });
+
+describe("propose_canvas_action leaves asking about material to the working rules", () => {
+  it("does not tell the agent to find out whether the user has the material", () => {
+    expect(proposeSaid()).not.toMatch(/find out whether they have that material/);
+  });
+
+  it("says takes go out at the lowest value of every setting that sets the price", () => {
+    expect(proposeSaid()).toMatch(/takes go out at the lowest value of every setting that sets the price/i);
+  });
+});

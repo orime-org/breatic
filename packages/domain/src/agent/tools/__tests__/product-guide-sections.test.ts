@@ -244,3 +244,23 @@ describe("the index in the tool's description", () => {
     }
   });
 });
+
+describe("every section the index names reads back", () => {
+  it("answers each name quoted in the description's index with that section's heading", async () => {
+    const names = [...described().matchAll(/"([^"]+)" \(/g)].map((m) => m[1] ?? "");
+    // Guards the case itself: the index is parsed, not empty.
+    expect(names.length).toBeGreaterThan(10);
+    for (const name of names) {
+      const said = await read({ sections: [name] });
+      expect(said, name).toContain(`## ${name}`);
+      expect(said.replace(`## ${name}`, "").trim(), name).not.toBe("");
+    }
+  });
+});
+
+describe("pointers between sections", () => {
+  it("names the section that hands the keys back from this chat, not a section the guide does not have", () => {
+    expect(renderProductGuide()).not.toContain("see the chat panel section for handing the keys back");
+    expect(body("Moving around the canvas")).toMatch(/handing the keys back[^.]*Making nodes|Making nodes[^.]*handing the keys back/);
+  });
+});
