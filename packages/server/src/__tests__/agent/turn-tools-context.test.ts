@@ -31,7 +31,8 @@ const memory = { read: async () => [] } as never;
 
 describe("turnToolsContext", () => {
   const openDocument = { spaceId: "d1", spaceName: "Storyboard", blocks: [] };
-  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records, memory });
+  const readPages = async () => ({ pages: [], usage: { wallMs: 0, cpuUsec: null } });
+  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records, memory, readPages });
 
   it("keeps the usage recorder on every tool", () => {
     for (const name of Object.keys(tools)) expect(context[name]).toMatchObject({ usage });

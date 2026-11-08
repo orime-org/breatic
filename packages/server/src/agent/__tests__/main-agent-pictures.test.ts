@@ -66,7 +66,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   setUserForModel: h.setUser,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn: vi.fn(async () => null) }));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({ getMessagesForLlm: async () => [], titleForTurn: vi.fn(async () => null) }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");

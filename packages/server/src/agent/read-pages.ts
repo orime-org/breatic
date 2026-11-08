@@ -3,18 +3,35 @@
 
 /**
  * How one turn's `web_fetch` reads pages: rate limited per user, then sent to
- * the ingest Worker (inner#1664).
+ * the ingest Worker, which reads them in a container of its own (inner#1664).
  */
-import type { ReadPages } from "@breatic/domain";
+import { checkRateLimit, env, getRedis, logger } from "@breatic/core";
+import { ReadPagesRefused, type ReadPages } from "@breatic/domain";
+import { readPagesAtIngest } from "@breatic/shared";
+
+import { getRateLimit } from "@server/config/rate-limits.js";
+
+/** The rate limit a call counts against, in `config/rate-limits.yaml`. */
+const THROTTLE = "web-fetch";
 
 /**
  * The read one turn hands its tool, bound to the user.
+ *
+ * One call counts once however many links it names: the container it starts
+ * is what costs, and one call starts one.
  * @param who - The turn's user.
  * @param who.userId - Who the calls are counted against.
  * @returns The read.
- * @throws {Error} Always, until implemented.
+ * @throws {never} Never; the read it returns throws.
  */
-export function readPagesFor(who: { userId: string }): ReadPages {
-  void who;
-  throw new Error("not implemented: readPagesFor");
+export function readPagesFor({ userId }: { userId: string }): ReadPages {
+  return async (request, signal) => {
+    const { max, windowSeconds } = getRateLimit(THROTTLE);
+    const verdict = await checkRateLimit(getRedis(), [{ key: `${THROTTLE}:${userId}`, max, windowSeconds }]);
+    if (!verdict.allowed) {
+      logger.warn({ action: THROTTLE, key: userId }, "rate_limit_hit");
+      throw new ReadPagesRefused("rate_limited");
+    }
+    return readPagesAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, signal);
+  };
 }

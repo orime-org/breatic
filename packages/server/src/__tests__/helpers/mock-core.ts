@@ -29,6 +29,7 @@ import {
   RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
   MEMORY_TOOL_NAMES as REAL_MEMORY_TOOL_NAMES,
   UNDERSTAND_MEDIA as REAL_UNDERSTAND_MEDIA,
+  WEB_FETCH as REAL_WEB_FETCH,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 // Pure rules about an address a caller hands over, which the routes read off
@@ -176,6 +177,8 @@ export const mocks = {
     deleteConversation: vi.fn(),
     createConversation: vi.fn(),
     rename: vi.fn(),
+    // Read by the turn for the links web_fetch may read (inner#1664).
+    getMessagesForLlm: vi.fn().mockResolvedValue([]),
   },
   conversationRepo: {
     getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
@@ -681,6 +684,8 @@ export const domainMock = async () => ({
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   // Read by the turn when it hands the media tool its project and owner context.
   UNDERSTAND_MEDIA: REAL_UNDERSTAND_MEDIA,
+  // Read by the turn when it hands the page read its reader (inner#1664).
+  WEB_FETCH: REAL_WEB_FETCH,
   // Read by the turn when it hands the record tools the turn's records (inner#1469).
   RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
   // Read by the turn when it hands the memory tools the turn's memory (#1363).
