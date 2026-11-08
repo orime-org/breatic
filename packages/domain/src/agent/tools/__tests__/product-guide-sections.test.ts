@@ -263,4 +263,21 @@ describe("pointers between sections", () => {
     expect(renderProductGuide()).not.toContain("see the chat panel section for handing the keys back");
     expect(body("Moving around the canvas")).toMatch(/handing the keys back[^.]*Making nodes|Making nodes[^.]*handing the keys back/);
   });
+
+  it("names in every pointer a section the guide has", () => {
+    const names = sections().map(({ name }) => name);
+    // "see the X section" and "(the X section)"; X may narrow to a part of
+    // the section, as in "the picture panel in the Inside the generation panel section".
+    const pointers = [...renderProductGuide().replace(/\s+/g, " ").matchAll(/(?:see the|\(the) ([^().;,]+?) section\b/g)].map((m) => m[1] ?? "");
+    // Guards the case itself: the guide does point between its sections.
+    expect(pointers.length).toBeGreaterThan(0);
+    for (const named of pointers) {
+      expect(names.some((name) => named === name || named.endsWith(` in the ${name}`)), `"the ${named} section" names no section of the guide`).toBe(true);
+    }
+  });
+
+  it("names the Document spaces section where the handle's menu is", () => {
+    expect(renderProductGuide()).not.toContain("(see the document section)");
+    expect(renderProductGuide()).toContain("see the Document spaces section");
+  });
 });

@@ -332,6 +332,25 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
   // request to make leaves open, each kind with its own answer.
   const text = (): string => flat(section("## How You Co-create"));
 
+  /**
+   * One bullet of the section, from its opening words up to the next one's.
+   * @param start - The words the bullet opens with.
+   * @param next - The words the bullet after it opens with.
+   * @returns The bullet, whitespace folded, or "" when either is absent.
+   */
+  const bullet = (start: string, next: string): string => {
+    const all = text();
+    const from = all.indexOf(start);
+    const to = all.indexOf(next, from + 1);
+    return from < 0 || to < 0 ? "" : all.slice(from, to).trim();
+  };
+
+  /** The bullet on what only the user knows. */
+  const onlyTheUserKnows = (): string => bullet("- What only the user knows:", "- Taste with no right answer");
+
+  /** The paragraph that says to try things cheaply. */
+  const tryCheaply = (): string => bullet("Try things cheaply.", "Choose for each step");
+
   it("has a How You Co-create section", () => {
     expect(buildSystemPrompt()).toContain("\n## How You Co-create\n");
   });
@@ -361,6 +380,12 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Do not make, propose, plan their next step or review their earlier choices. Do not offer to make anything. Something they did not ask goes in one sentence at the end, only when their next step would go wrong without it; an offer of more work is never that sentence.");
   });
 
+  it("ends both a reply to something told and an answer to a question by never closing with an offer", () => {
+    const NO_OFFER = "Never close with an offer (\"if you like, I can …\").";
+    expect(bullet("- Something they tell you", "- A question").slice(-NO_OFFER.length)).toBe(NO_OFFER);
+    expect(bullet("- A question", "- A change to something that exists").slice(-NO_OFFER.length)).toBe(NO_OFFER);
+  });
+
   it("notes another problem in a change in one sentence without fixing it", () => {
     expect(text()).toContain("Another problem you notice goes in one sentence; do not fix it.");
   });
@@ -369,15 +394,22 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("What a request to make leaves open is one of three kinds, each with its own answer.");
   });
 
-  it("asks what only the user knows all at once and saying why, assuming only small points", () => {
+  it("asks what only the user knows all at once and saying why", () => {
     expect(text()).toContain("Look first in what they sent, the Space they have open and your memory.");
     expect(text()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask.");
-    expect(text()).toContain("A small point you can assume, assume and say so. Of work that already exists");
     expect(text()).not.toContain("who a character of theirs is is never one");
   });
 
-  it("opens what only the user knows with who a character of theirs is, robots and creatures too, never assumed", () => {
-    expect(text()).toContain("- What only the user knows: who a character of theirs is (age, gender, role in their story, a robot or a creature too), which you never assume; material of their own, the look or sound of work that already exists, their brand, and how the result will be used when that changes all of it (format, length, where it plays).");
+  it("opens what only the user knows with who a character of theirs is, robots and creatures having these too, never assumed", () => {
+    expect(text()).toContain("- What only the user knows: who a character of theirs is (age, gender, role in their story; a robot or a creature has these too), which you never assume");
+    expect(onlyTheUserKnows()).not.toContain("a robot or a creature too)");
+  });
+
+  it("assumes a small point outside what only the user knows, and never counts who a character is as one", () => {
+    // Inside that bullet the small-point sentence read as one more thing only
+    // the user knows, and a character's age or gender was assumed as small.
+    expect(onlyTheUserKnows()).not.toContain("A small point");
+    expect(text()).toContain("A small point that changes little of the result, assume and say so; who a character is is never such a point.");
   });
 
   it("asks only whether existing work exists and to see it, and treats the look with none as taste, never a list", () => {
@@ -418,7 +450,8 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 
   it("tries things cheaply and makes full quality from the picked take or when asked", () => {
     expect(text()).toContain("Try things cheaply.");
-    expect(text()).toContain("made at the lowest cost that still shows the difference: every setting that sets the price at its lowest (resolution, quality, length, how many) on a fast and cheap model.");
+    expect(tryCheaply()).not.toContain("that still shows the difference");
+    expect(tryCheaply()).toContain("made at the lowest cost: every setting the model list marks as setting the price, at the value it names as lowest, on a fast and cheap model.");
     expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
   });
 
@@ -466,6 +499,17 @@ describe("what the prompt says per medium (breatic#1361)", () => {
       for (const [i, field] of FIELDS.entries()) expect(at[i], `${medium} lacks ${field}`).toBeGreaterThan(-1);
       expect(at, `${medium} fields out of order`).toEqual([...at].sort((a, b) => a - b));
     }
+  });
+
+  it("has a long piece start as an outline or two openings for the user to pick, and settles a tone by openings, not a question", () => {
+    const para = paragraphs().get("Writing in a Document") ?? "";
+    expect(para).toContain("Craft: a long piece starts as an outline, or as two short openings in different tones, for them to pick, and the full text is written once they have picked; a tone is settled by those openings, never by a question; the piece in their own voice.");
+    expect(para).not.toContain("an outline before a long piece, for them to approve");
+  });
+
+  it("asks in 3D whether they want a look or a model even when they say model", () => {
+    const ask = ((paragraphs().get("3D") ?? "").split("Takes:")[0] ?? "").trim();
+    expect(ask).toContain("Ask: whether they want a 3D look in pictures or video, or a model to place in a 3D scene; ask it even when they say model, since Breatic does not make models.");
   });
 
   it("says in the 3D Reach that Breatic does not make 3D models yet", () => {

@@ -317,6 +317,108 @@ describe("list_generation_models with params a model does not take (breatic#1361
   });
 });
 
+/**
+ * One parameter's line in one model's entry.
+ * @param rendered - The rendered answer.
+ * @param model - The model's catalog name.
+ * @param param - The parameter's name.
+ * @returns The line, or the empty string when the entry has none.
+ */
+function paramLine(rendered: string, model: string, param: string): string {
+  const entry = rendered.split(/\n(?=- )/).find((one) => one.includes(`(${model})`)) ?? "";
+  return entry.split("\n").find((line) => line.startsWith(`    ${param}:`)) ?? "";
+}
+
+/**
+ * What a model costs with one setting at each value it offers, others at their defaults.
+ * @param model - The model's catalog name.
+ * @param param - The setting.
+ * @param options - The values it offers.
+ * @returns The credits at each value, in the order offered.
+ */
+async function creditsAcross(model: string, param: string, options: readonly unknown[]): Promise<(number | undefined)[]> {
+  return Promise.all(options.map(async (value) => (await estimateModelCredits(model, { params: { [param]: value } }))?.credits));
+}
+
+describe("list_generation_models says which settings set the price (breatic#1361)", () => {
+  // Takes go out at the lowest value of every setting that sets the price, and
+  // the Agent can only do that when the listing says which settings those are
+  // and which value is the cheapest.
+  it("marks a setting whose value changes the price with its cheapest value, right before its default", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const options = answer.models.find((one) => one.name === "nano-banana-2")?.params["resolution"]?.options ?? [];
+    const credits = await creditsAcross("nano-banana-2", "resolution", options);
+    const lowest = Math.min(...credits.filter((one): one is number => one !== undefined));
+    const cheapest = options[credits.indexOf(lowest)];
+    // Guards the case itself: resolution changes nano-banana-2's price.
+    expect(new Set(credits).size).toBeGreaterThan(1);
+    expect(paramLine(renderGenerationModelsForModel(answer), "nano-banana-2", "resolution")).toContain(
+      `sets the price, lowest at ${JSON.stringify(cheapest)}; defaults to "1k".`,
+    );
+  });
+
+  it("says nothing of the price on a setting whose value does not change it", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    const flat = "grok-imagine-image-v2.0-text-to-image";
+    for (const [model, param] of [["nano-banana-2", "aspect_ratio"], [flat, "aspect_ratio"], [flat, "resolution"]] as const) {
+      const options = answer.models.find((one) => one.name === model)?.params[param]?.options ?? [];
+      // Guards the case itself: every value prices the same.
+      expect(new Set(await creditsAcross(model, param, options)).size, `${model} ${param}`).toBe(1);
+      const line = paramLine(rendered, model, param);
+      expect(line, `${model} ${param}`).not.toBe("");
+      expect(line, `${model} ${param}`).not.toContain("sets the price");
+    }
+  });
+
+  it("marks exactly the settable settings that change each model's price, each with a value priced lowest", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    let marked = 0;
+    for (const model of answer.models) {
+      for (const [name, spec] of Object.entries(model.params)) {
+        if (spec.options === undefined || spec.filledBySource === true || spec.noControl === true) continue;
+        const credits = await creditsAcross(model.name, name, spec.options);
+        const known = credits.filter((one): one is number => one !== undefined);
+        const line = paramLine(rendered, model.name, name);
+        if (new Set(known).size <= 1) {
+          expect(line, `${model.name} ${name}`).not.toContain("sets the price");
+          continue;
+        }
+        const lowest = Math.min(...known);
+        const said = spec.options.filter((_, i) => credits[i] === lowest).map((value) => `sets the price, lowest at ${JSON.stringify(value)}; defaults to`);
+        expect(said.some((words) => line.includes(words)), `${model.name} ${name}: ${line}`).toBe(true);
+        marked += 1;
+      }
+    }
+    // Guards the case itself: some t2i setting changes its model's price.
+    expect(marked).toBeGreaterThan(0);
+  });
+
+  it("keeps a gated setting named before the switch that gates it, and prices the model at both", async () => {
+    const PARAMS = { camera: "Sony Venice", enable_camera: true };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const model = answer.models.find((one) => one.name === "nano-banana-2");
+    // Guards the case itself: camera waits on enable_camera, which comes after it.
+    expect(model?.params["camera"]?.gate).toEqual({ kind: "flagOn", param: "enable_camera" });
+    expect(model?.price).toEqual(await estimateModelCredits("nano-banana-2", { params: PARAMS }));
+    const head = entryHead(renderGenerationModelsForModel(answer), "nano-banana-2");
+    expect(head).toContain("at the params given");
+    expect(head).not.toContain("not priced");
+  });
+
+  it("says in its description that a model is good only at what its line names", () => {
+    const description: unknown = generationModels.description;
+    expect(typeof description === "string" ? description : "").toContain(
+      "What a model is good at is what its line here says; a strength its line does not name, such as lettering, is not one of its strengths.",
+    );
+  });
+});
+
 describe("what the rendered answer tells the model", () => {
   it("prices a model by its contract at its defaults", async () => {
     // Gemini Omni text-to-video: $0.10 a second, 8 seconds at 720p by default.

@@ -237,26 +237,19 @@ describe("a template's tweak segments left in the prompt", () => {
   const design = (prompt: PromptSegment[]): ProposalNode & { template: Tag } =>
     named(DESIGN, { name: "Character design", prompt });
 
-  it("refuses a node whose prompt keeps the template's own tweak segments, naming each one left unfilled", () => {
-    const out = expandTemplate(design([{ text: "A full-body character design of " }, tweak(WHO), { text: ", in " }, tweak(STYLE), { text: "." }]), AT);
-    expect(out).toMatchObject({ ok: false, refusal: "template-tweak-unfilled" });
-    const reason = out.ok ? "" : out.reason;
-    expect(reason).toContain(WHO);
-    expect(reason).toContain(STYLE);
+  // Blanks are held by one check, the generate check on the whole proposal
+  // (`checkBlanks`), which the tool's path runs after expansion; how it
+  // refuses a template's own blanks is pinned in proposal-tweak-blanks.test.ts.
+  it("expands a node keeping the template's own tweak segments, leaving them to the generate check", () => {
+    const prompt = [{ text: "A full-body character design of " }, tweak(WHO), { text: ", in " }, tweak(STYLE), { text: "." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
   });
 
-  it("names only the tweak segments still left, not the ones the agent filled", () => {
-    const out = expandTemplate(design([{ text: "A full-body character design of a twelve-year-old fox girl in a red coat, in " }, tweak(STYLE), { text: "." }]), AT);
-    expect(out).toMatchObject({ ok: false, refusal: "template-tweak-unfilled" });
-    const reason = out.ok ? "" : out.reason;
-    expect(reason).toContain(STYLE);
-    expect(reason).not.toContain(WHO);
-  });
-
-  it("refuses the anchor the same way when it keeps its own tweak segment", () => {
-    const out = expandTemplate(named({ id: "character-design-from-text" }, { name: "Sheet", prompt: [{ text: "A character sheet. " }, tweak(SHEET_TEXT), { ref: 1 }] }), AT);
-    expect(out).toMatchObject({ ok: false, refusal: "template-tweak-unfilled" });
-    expect(out.ok ? "" : out.reason).toContain(SHEET_TEXT);
+  it("expands the anchor keeping its own tweak segment, leaving it to the generate check", () => {
+    const prompt = [{ text: "A character sheet. " }, tweak(SHEET_TEXT), { ref: 1 }];
+    const out = expandTemplate(named({ id: "character-design-from-text" }, { name: "Sheet", prompt }), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
   });
 
   it("accepts a prompt whose every template tweak segment is filled", () => {
