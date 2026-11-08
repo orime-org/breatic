@@ -27,8 +27,6 @@ type StackItem = Y.UndoManager['undoStack'][number];
 /** A manager's last trial and what it was judged on. */
 interface Verdict {
   top: StackItem;
-  undo: number;
-  redo: number;
   updates: number;
   kind: SpaceWriteKind;
 }
@@ -163,8 +161,7 @@ function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKi
  * the limit (and while the size is unknown) the step is not judged; while
  * resyncing `writeSpaceDoc` refuses it whatever the kind; full or over the
  * ceiling, it is run on a copy first, unless that stack is empty or the
- * manager's last trial still holds (same top entry, stack lengths and
- * document updates).
+ * manager's last trial still holds (same top entry and document updates).
  * @param manager - The undo manager about to run.
  * @param direction - Which stack runs.
  * @returns Its kind: `remove` for a step that writes nothing, `add` when the trial cannot be run.
@@ -176,10 +173,8 @@ export function nextHistoryStep(manager: Y.UndoManager, direction: 'undo' | 'red
   const top = manager[direction === 'undo' ? 'undoStack' : 'redoStack'].at(-1);
   if (top === undefined) return NO_EFFECT;
   const updates = updateCounter(manager.doc).count;
-  const undo = manager.undoStack.length;
-  const redo = manager.redoStack.length;
   const last = verdicts.get(manager);
-  if (last !== undefined && last.top === top && last.undo === undo && last.redo === redo && last.updates === updates) return last.kind;
+  if (last !== undefined && last.top === top && last.updates === updates) return last.kind;
   let kind: SpaceWriteKind;
   try {
     kind = trial(manager, direction);
@@ -187,7 +182,7 @@ export function nextHistoryStep(manager: Y.UndoManager, direction: 'undo' | 'red
     // A step that cannot be tried is not let through a full Space.
     kind = 'add';
   }
-  verdicts.set(manager, { top, undo, redo, updates, kind });
+  verdicts.set(manager, { top, updates, kind });
   return kind;
 }
 
