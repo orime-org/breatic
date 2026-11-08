@@ -608,7 +608,8 @@ export function toChatMessage(
   // line is ever handed out before it knows every number it answers to. The
   // first title stands, unless it is empty and a later source has one.
   const byUrl = new Map<string, ChatSource>();
-  for (const [index, source] of found) {
+  // Taken in number order, so each line's numbers and its first title follow the numbers.
+  for (const [index, source] of [...found].sort(([a], [b]) => a - b)) {
     const key = pageLinkKey(source.url);
     const kept = byUrl.get(key);
     byUrl.set(
