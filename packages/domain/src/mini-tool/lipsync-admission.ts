@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
-  lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
+  lipsyncChunkSourceWindow, lipsyncTimeline, lipsyncUsedSourceRange, planLipsyncCompositeChunks, type LipsyncMonotonicSegment, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
   type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
@@ -190,4 +190,98 @@ export function lipSyncTimeline(request: LipSyncRequest, table: VideoPresentatio
     throw new AppError(400, t("server.mini_tool.lipSyncTrackingOutOfRange", { min: settings.tracking.min_duration_seconds, max: settings.tracking.max_duration_seconds }));
   }
   return { timeline, usedRange };
+}
+
+/** The raw pictures a lip-sync job holds: the picture's size and alpha, the referenced people and their crop side. */
+export interface LipsyncRawFrames { width: number; height: number; alpha: boolean; persons: number; cropSize: number }
+
+/**
+ * The disk a lip-sync job's raw decoded frames may fill (execution design paragraph before §9.4): the configured share of
+ * its instance class's disk, the rest left to its downloaded inputs and its encoded output.
+ * @param diskGb - The class's disk in GB (10^9 bytes, as Cloudflare publishes it).
+ * @param share - The configured `encoding.raw_disk_share`.
+ * @returns The bytes.
+ * @throws {never} Never.
+ */
+export function lipsyncRawDiskBytes(diskGb: number, share: number): number {
+  return Math.floor(diskGb * 1_000_000_000 * share);
+}
+
+/**
+ * The bytes of one raw 8-bit 4:2:0 picture, as the container writes it.
+ * @param width - Its width.
+ * @param height - Its height.
+ * @param alpha - Whether it carries an alpha plane.
+ * @returns The bytes.
+ * @throws {never} Never.
+ */
+function pictureBytes(width: number, height: number, alpha: boolean): number {
+  return width * height * (alpha ? 2 : 1) + 2 * Math.ceil(width / 2) * Math.ceil(height / 2);
+}
+
+/**
+ * The raw bytes one composite chunk holds on disk: the source frames it shows, its result frames, and each person's result
+ * frames over the window, all decoded at once.
+ * @param timeline - The frozen timeline.
+ * @param table - The source's presentation table.
+ * @param window - The chunk's result frames.
+ * @param window.start - The first.
+ * @param window.end - The end.
+ * @param frames - The pictures.
+ * @returns The bytes.
+ * @throws {RangeError} When the table has no frame or the window is empty.
+ */
+export function lipsyncCompositeRawBytes(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }, frames: LipsyncRawFrames): number {
+  const shown = lipsyncChunkSourceWindow(timeline, table, window);
+  const length = window.end - window.start;
+  return (shown.end - shown.start + length) * pictureBytes(frames.width, frames.height, frames.alpha) + frames.persons * length * pictureBytes(frames.cropSize, frames.cropSize, false);
+}
+
+/**
+ * The raw bytes a person's clip holds beside one decoded segment: its result's crops and one prepared frame, the least a
+ * segment needs.
+ * @param resultFrames - The result frames.
+ * @param frames - The pictures.
+ * @returns The bytes.
+ * @throws {never} Never.
+ */
+export function lipsyncClipRawBytes(resultFrames: number, frames: LipsyncRawFrames): number {
+  return resultFrames * pictureBytes(frames.cropSize, frames.cropSize, false) + pictureBytes(frames.width, frames.height, frames.alpha);
+}
+
+/**
+ * The composite chunks (frames-split §5.4; execution design paragraph before §9.4): cut by the time share inside each
+ * monotonic segment, then each split evenly into the fewest parts whose raw frames fit the disk budget.
+ * @param input - The timeline, table, segments, a frame's work, the share, the pictures and the disk budget.
+ * @param input.timeline - The frozen timeline.
+ * @param input.table - The source's presentation table.
+ * @param input.segments - The monotonic segments in result order.
+ * @param input.frameSeconds - One result frame's work.
+ * @param input.targetSeconds - The chunk share in seconds.
+ * @param input.frames - The pictures.
+ * @param input.diskBytes - The raw disk budget.
+ * @returns Half-open result-frame windows tiling the result.
+ * @throws {RangeError} When the work or the share is not positive, or one result frame alone is over the budget.
+ */
+export function lipsyncCompositeChunks(input: { timeline: LipsyncTimeline; table: VideoPresentationTable; segments: readonly Pick<LipsyncMonotonicSegment, "resultStart" | "resultEnd">[];
+  frameSeconds: number; targetSeconds: number; frames: LipsyncRawFrames; diskBytes: number }): { start: number; end: number }[] {
+  const { timeline, table, frames, diskBytes } = input;
+  /**
+   * The raw bytes of a window.
+   * @param window - The window.
+   * @param window.start - Its first result frame.
+   * @param window.end - Its end.
+   * @returns The bytes.
+   * @throws {RangeError} When the window is empty.
+   */
+  const bytes = (window: { start: number; end: number }): number => lipsyncCompositeRawBytes(timeline, table, window, frames);
+  return planLipsyncCompositeChunks(input).flatMap((chunk) => {
+    const length = chunk.end - chunk.start;
+    for (let parts = Math.min(length, Math.max(1, Math.ceil(bytes(chunk) / diskBytes))); parts <= length; parts += 1) {
+      const windows = Array.from({ length: parts }, (_unused, at) => ({
+        start: chunk.start + Math.floor((at * length) / parts), end: chunk.start + Math.floor(((at + 1) * length) / parts) }));
+      if (windows.every((window) => bytes(window) <= diskBytes)) return windows;
+    }
+    throw new RangeError("One lip-sync result frame alone is over the raw disk budget");
+  });
 }

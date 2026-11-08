@@ -474,7 +474,8 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       const c = clip.outputs[0]!.recipe;
       expect(bound(clip, c.faces)).toBe(faces.outputs[0]!.storageKey);
       expect(bound(clip, c.track)).toBe(joinedKey(person));
-      expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" } });
+      // The clip's raw frames fit half the frozen standard-4 disk of 20 GB (execution design paragraph before §9.4).
+      expect(c).toMatchObject({ cropSize: 512, timeline: { duration: 2, videoDuration: 3.84, syncMode: "cut_off" }, rawBytes: 10_000_000_000 });
       expect(clip.outputs[0]).toMatchObject({ storageKey: `${videoPresentationWorkKeyFor(SOURCE_KEY, clip.jobId)}.mp4`, contentType: "video/mp4" });
       // Times are exact rationals, as every recipe carries them (§97 D20-1 lipsync_stem shape).
       const s = stem.outputs[0]!.recipe as { rows: { inputId: string; startTime: Exact }[]; duration: Exact };
@@ -536,6 +537,20 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
     expect(jobsOf("lipsync_faces").length).toBeLessThanOrEqual(frozen.get("faces")!);
     expect(jobsOf("lipsync_clip").length + jobsOf("lipsync_stem").length).toBeLessThanOrEqual(frozen.get("clip_stem")!);
     expect(composites.length).toBeLessThanOrEqual(frozen.get("composite")!);
+  });
+
+  it("LC06b decodes in each composite chunk only the source frames it shows (execution design paragraph before §9.4)", async () => {
+    const f = await seed(); await drive(f);
+    const composites = jobsOf("lipsync_composite");
+    expect(composites).toHaveLength(LAYOUT.composite.length);
+    for (const job of composites) {
+      const recipe = job.outputs[0]!.recipe as { window: { start: number; end: number }; entries: { kind: string; displayStart?: Exact; displayEnd?: Exact }[] };
+      const sources = recipe.entries.filter((entry) => entry.kind === "source");
+      const seconds = (value: Exact): number => Number(value.numerator) / Number(value.denominator);
+      // A 2 s cut_off timeline on the 25 fps source: result frame k shows source frame k, each 0.04 s long.
+      expect(Math.min(...sources.map((entry) => seconds(entry.displayStart!)))).toBeCloseTo(recipe.window.start * 0.04, 9);
+      expect(Math.max(...sources.map((entry) => seconds(entry.displayEnd!)))).toBeCloseTo(recipe.window.end * 0.04, 9);
+    }
   });
 
   it("LC07 stitches the composite chunks with every stem in one job and registers the run's one output", async () => {

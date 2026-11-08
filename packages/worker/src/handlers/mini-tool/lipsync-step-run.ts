@@ -22,10 +22,10 @@
 import { z } from "zod";
 import { getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
-  lipsyncPersonStepKeys, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
+  lipsyncPersonStepKeys, lipsyncRawDiskBytes, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
 } from "@breatic/domain";
 import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
-import { presentationFrameCount, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
+import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
   advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
@@ -300,8 +300,10 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
         const inputs = [{ inputId: PREPARED, storageKey: (await preparedOf(execution)).outputs[0]!.storageKey },
           { inputId: inputOf(FACES, 0), storageKey: await objectOf(execution, personId, "faces", userId, deadlineAt) },
           { inputId: inputOf(TRACK, 0), storageKey: await objectOf(execution, personId, "track_join", userId, deadlineAt) }];
+        // The clip decodes in segments that keep its raw frames within the frozen class's disk share (paragraph before §9.4).
+        const rawBytes = lipsyncRawDiskBytes(execution.container.size.disk_gb, getMiniToolsConfig().encoding.raw_disk_share);
         return { recipe: { kind: "lipsync_clip", inputId: PREPARED, faces: inputOf(FACES, 0), track: inputOf(TRACK, 0), cropSize: execution.cropSize,
-          timeline: execution.timeline, table: ledger.plan.presentation }, inputs };
+          timeline: execution.timeline, table: ledger.plan.presentation, rawBytes }, inputs };
       }, () => ({ failed: "failed" }), deadlineAt);
     case "stem":
       return personContainer(execution, keyOf(keys, "stem"), "audio/mp4", async () => {
@@ -333,7 +335,8 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
 }
 
 /**
- * The composite chunks over every person's result, faces table and track (§7.17 lipsync_composite row).
+ * The composite chunks over every person's result, faces table and track (§7.17 lipsync_composite row); each decodes only
+ * the source frames its result frames show.
  * @param execution - The frozen run.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
@@ -357,7 +360,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
               track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
           const target = segmentTarget(ledger, execution.container.encode);
           return { recipe: { kind: "lipsync_composite", inputId: SOURCE, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
-            entries: windowEntries(ledger, { start: 0, end: presentationFrameCount(ledger.plan.presentation) }), target: { ...target, format: undefined },
+            entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target: { ...target, format: undefined },
             timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })) },
           inputs: [{ inputId: SOURCE, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
             .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };

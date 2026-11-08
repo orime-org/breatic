@@ -104,6 +104,9 @@ encoding:
   # Decoded frames one job holds to play a tracking clip backwards; a longer reversed clip is reversed in chunks
   # stitched latest first. 2 GiB is a sixth of standard-4's 12 GiB.
   reverse_buffer_bytes: 2147483648
+  # The share of a job's instance disk (classes.<class>.disk_gb) its raw decoded frames may fill; the rest holds its
+  # downloaded inputs and encoded output. A lip-sync composite chunk is cut, and a clip decodes in segments, to stay within it.
+  raw_disk_share: 0.5
   encoder:
     container_class: "MiniToolContainerStd4"
     start_seconds: 3

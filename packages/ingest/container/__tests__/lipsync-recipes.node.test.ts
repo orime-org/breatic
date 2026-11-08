@@ -38,7 +38,7 @@
  */
 import { execFile, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,12 +48,19 @@ import { runAnalysisPipeline, type AnalysisPipelineRequest } from '@ingest/conta
 import { decodeCocoRleMask } from '@shared/mini-tools/coco-rle.js';
 import { cocoCounts } from './helpers/coco-counts.js';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
+import { runPlanCommand } from '@ingest/container/plan-command.js';
+import type * as PlanCommand from '@ingest/container/plan-command.js';
 import { lipsyncSourceFrameAt, type LipsyncTimeline } from '@shared/mini-tools/lipsync-plan.js';
 import { canonicalMediaType } from '@shared/upload/media-type.js';
 import { sniffMimeType } from '@shared/upload/sniff-mime.js';
 import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
 
 vi.mock('@ingest/container/analysis-pipeline.js', () => ({ runAnalysisPipeline: vi.fn() }));
+// The real command runner, spied on so a test can read the size of the raw files FFmpeg writes.
+vi.mock('@ingest/container/plan-command.js', async (original) => {
+  const actual = await original<typeof PlanCommand>();
+  return { ...actual, runPlanCommand: vi.fn(actual.runPlanCommand) };
+});
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const run = promisify(execFile);
@@ -74,6 +81,8 @@ const FPS = 25;
 // Every video fixture: ten 25 fps frames, so V = 0.4 s; the presentation table of the prepared video and the original.
 const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 10, step: 1, duration: 1 }] };
 const V = 0.4;
+// A clip decode budget no fixture comes near: one segment holds the whole prepared video.
+const AMPLE_RAW_BYTES = 1_000_000_000;
 const ID = {
   video: '10000000-0000-4000-8000-000000000001', track: '10000000-0000-4000-8000-000000000002', faces: '10000000-0000-4000-8000-000000000003',
   audioA: '10000000-0000-4000-8000-0000000000a1', audioB: '10000000-0000-4000-8000-0000000000a2',
@@ -515,7 +524,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const faces = await facesTable(`clip-faces-${syncMode}.json`, n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
     const mask = await track(`clip-track-${syncMode}.json`, (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
     const file = await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE, rawBytes: AMPLE_RAW_BYTES });
     const video = (await streams(file)).find(stream => stream.codec_type === 'video')!;
     expect([video.codec_name, video.width, video.height]).toEqual(['h264', CROP, CROP]);
     const count = Math.round(duration * FPS);
@@ -532,6 +541,39 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     });
   });
 
+  // Execution design paragraph before §9.4: the clip decodes the prepared video in segments bounded by `rawBytes`. Here the
+  // budget holds the whole result's raw crops and two 160x96 source frames, so every mode decodes several segments, the
+  // bounce and loop ones going back over frames already passed.
+  it.each([
+    ['cut_off', 0.32], ['silence', 0.6], ['loop', 0.72], ['bounce', 0.72], ['remap', 0.8],
+  ] as const)('LC03 %s over %s s within a two-frame decode budget shows the same mapped source frames', async (syncMode, duration) => {
+    const timeline: LipsyncTimeline = { duration, videoDuration: V, syncMode };
+    const faces = await facesTable(`seg-faces-${syncMode}.json`, n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
+    const mask = await track(`seg-track-${syncMode}.json`, (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
+    const count = Math.round(duration * FPS);
+    const rawBytes = count * (CROP * CROP * 3) / 2 + 2 * (W * H * 3) / 2;
+    const actual = await vi.importActual<typeof PlanCommand>('@ingest/container/plan-command.js');
+    const decoded: number[] = [];
+    vi.mocked(runPlanCommand).mockImplementation(async (program, args, options) => {
+      const answer = await actual.runPlanCommand(program, args, options);
+      const output = args.at(-1)!;
+      if (program === 'ffmpeg' && output.endsWith('.yuv') && output.includes('clip-source')) decoded.push((await stat(output)).size);
+      return answer;
+    });
+    const file = await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE, rawBytes });
+    // Each decoded segment holds at most the two source frames the budget leaves beside the result's crops.
+    expect(decoded.length).toBeGreaterThan(1);
+    for (const bytes of decoded) expect(bytes).toBeLessThanOrEqual(2 * (W * H * 3) / 2);
+    const { width, frames } = await planeFrames(file, 'y');
+    expect(frames).toHaveLength(count);
+    frames.forEach((frame, k) => {
+      const s = lipsyncSourceFrameAt(timeline, TABLE, k / FPS);
+      expect(Math.abs(mean(frame, width, { x: 20, y: 20, width: 20, height: 36 }) - (40 + 18 * s)), `frame ${k} shows source ${s}`).toBeLessThan(4);
+      expect(mean(frame, width, { x: 2, y: 2, width: 10, height: 10 }), `frame ${k} marker at the crop's corner`).toBeGreaterThan(200);
+    });
+  });
+
   // §97 D20-4: a non-square faceRect is scaled to fit the crop, centred, and the padding is split equally, the odd pixel
   // going to the bottom (wide) or the right (tall). The picture is white and wholly foreground, so the crop is white and the
   // padding black; every row (wide) or column (tall) is classified by its mean against the midpoint 125.
@@ -545,7 +587,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const mask = await track(`pad-track-${axis}-${before}-${after}.json`, () => true, 2);
     const table: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 2, step: 1, duration: 1 }] };
     const file = await produce({ [ID.video]: join(dir, 'white.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table, rawBytes: AMPLE_RAW_BYTES });
     const { width, frames } = await planeFrames(file, 'y');
     expect(frames).toHaveLength(2);
     const expected = Array.from({ length: CROP }, (_unused, at) => (at < before || at >= CROP - after ? 'pad' : 'crop'));
@@ -679,7 +721,9 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     const window = { start: 6, end: 14 };
     const sources = Array.from({ length: 8 }, (_unused, j) => lipsyncSourceFrameAt(bounce, TABLE, (window.start + j) / FPS));
     expect(sources).toEqual([6, 7, 8, 9, 9, 9, 8, 7]);
-    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline: bounce, window });
+    // The chunk's entries cover only the source frames it shows, [6, 10) (execution design paragraph before §9.4).
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
+    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline: bounce, window, entries });
     const list = await packets(file);
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 8 }, (_unused, j) => j / FPS));
     expect(list[0]!.flags).toContain('K');

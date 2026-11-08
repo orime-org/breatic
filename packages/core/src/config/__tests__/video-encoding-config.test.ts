@@ -118,7 +118,7 @@ describe('EC S6b encoding and carrier configuration', () => {
 
   it('EC04 encoder rates exist only for standard-4: basic only probes and copies', () => {
     const encoding = (getMiniToolsConfig() as unknown as { encoding: Record<string, unknown> }).encoding;
-    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'copy_disk_margin_bytes', 'encoder', 'max_parallel_chunks', 'reverse_buffer_bytes']);
+    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'copy_disk_margin_bytes', 'encoder', 'max_parallel_chunks', 'raw_disk_share', 'reverse_buffer_bytes']);
     expect((encoding.encoder as Record<string, unknown>).container_class).toBe('MiniToolContainerStd4');
   });
 

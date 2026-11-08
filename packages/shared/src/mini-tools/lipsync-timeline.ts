@@ -45,3 +45,29 @@ export function lipsyncSourceTimeAt(timeline: LipsyncTimeline, t: number): numbe
 export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPresentationTable, t: number): number {
   return presentationCoveringFrame(table, lipsyncSourceTimeAt(timeline, t));
 }
+
+/**
+ * The presentation frames a composite chunk shows (execution design paragraph before §9.4): result frames
+ * [window.start, window.end) at k · step / timescale of the table's first run map to source frames, and the chunk decodes
+ * only [lowest, highest + 1) of them. The worker writes the chunk's entries over it and the container indexes its decoded
+ * frames from its start, so both read this one function.
+ * @param timeline - The frozen timeline.
+ * @param table - The source's presentation table.
+ * @param window - The chunk's half-open result frames.
+ * @param window.start - The first.
+ * @param window.end - The end.
+ * @returns The half-open source presentation frames.
+ * @throws {RangeError} When the table has no frame or the window is empty.
+ */
+export function lipsyncChunkSourceWindow(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }): { start: number; end: number } {
+  const step = table.runs[0]?.step;
+  if (step === undefined) throw new RangeError("Expected a presented frame");
+  if (window.end <= window.start) throw new RangeError("Expected a result frame");
+  let [low, high] = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+  for (let k = window.start; k < window.end; k += 1) {
+    const frame = lipsyncSourceFrameAt(timeline, table, (k * step) / table.timescale);
+    low = Math.min(low, frame);
+    high = Math.max(high, frame);
+  }
+  return { start: low, end: high + 1 };
+}

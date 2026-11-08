@@ -8,13 +8,14 @@
  * Faces are detected on the whole prepared frame and kept by their intersection with the person's tracked foreground.
  * The clip and the composite map every result frame to its source presentation frame through the shared timeline, and move
  * pixels in 8-bit 4:2:0 planes here, because each frame has its own face rectangle and mask: the source frames are decoded
- * once into a raw file, the result frames written to another and encoded by FFmpeg. The tracks and transform tables are in
+ * into a raw file (a composite chunk only the frames it shows, a clip in segments its disk budget holds), the result frames
+ * written to another and encoded by FFmpeg. The tracks and transform tables are in
  * prepared-video pixels; the prepared video presents the original's frames at its picture size (§7.17 lipsync rows).
  */
 import { open, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import { lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import { lipsyncChunkSourceWindow, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
@@ -193,7 +194,7 @@ interface RawFrames { read(index: number): Promise<Picture>; count: number; clos
 async function rawFrames(file: string, width: number, height: number, alpha: boolean): Promise<RawFrames> {
   const handle: FileHandle = await open(file, "r");
   const chroma = Math.ceil(width / 2) * Math.ceil(height / 2);
-  const size = width * height * (alpha ? 2 : 1) + 2 * chroma;
+  const size = pictureBytes(width, height, alpha);
   const count = Math.floor((await handle.stat()).size / size);
   return {
     count,
@@ -206,6 +207,18 @@ async function rawFrames(file: string, width: number, height: number, alpha: boo
     },
     close: () => handle.close(),
   };
+}
+
+/**
+ * The bytes of one raw 8-bit 4:2:0 picture.
+ * @param width - Its width.
+ * @param height - Its height.
+ * @param alpha - Whether it carries an alpha plane.
+ * @returns The bytes.
+ * @throws {never} Never.
+ */
+function pictureBytes(width: number, height: number, alpha: boolean): number {
+  return width * height * (alpha ? 2 : 1) + 2 * Math.ceil(width / 2) * Math.ceil(height / 2);
 }
 
 /**
@@ -352,37 +365,67 @@ async function encodeRaw(raw: string, frame: { width: number; height: number; al
 /**
  * Write one person's face clip (§7.17 lipsync_clip row, execution design §9.2): result frame t shows source frame
  * `lipsyncSourceFrameAt(timeline, table, t)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
- * video's frame rate.
+ * video's frame rate. The prepared video is decoded in segments that fit `rawBytes` beside the result's raw crops
+ * (execution design paragraph before §9.4); a frame outside the segment held decodes the next one, ending at that frame
+ * when the frames that follow go back.
  * @param recipe - The clip recipe.
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
+ * @throws {RangeError} When the budget holds no source frame beside the result, or a segment decodes no frame.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipeRequest, run: Run): Promise<void> {
   const video = local(request.inputs, recipe.inputId);
   const { width, height } = await videoFacts(video, run);
   const [track, faces] = await Promise.all([readTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
-  const source = join(request.directory, "clip-source.yuv");
-  await decodeRaw(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0"], false, source, run);
-  const frames = await rawFrames(source, width, height, false);
   const grid = resultGrid(recipe.timeline, recipe.table);
+  const sources = Array.from({ length: grid.count }, (_unused, k) => lipsyncSourceFrameAt(recipe.timeline, recipe.table, (k * grid.step) / grid.clock));
+  const span = Math.floor((recipe.rawBytes - grid.count * pictureBytes(recipe.cropSize, recipe.cropSize, false)) / pictureBytes(width, height, false));
+  if (span < 1) throw new RangeError("The lip-sync clip's decode budget holds no source frame beside its result");
+  const source = join(request.directory, "clip-source.yuv");
+  // ponytail: each segment decodes from the video's start and trims; seek to the segment's keyframe if decode time matters.
+  const held: { segment: { start: number; frames: RawFrames } | null } = { segment: null };
+  /**
+   * A source frame from the segment holding it, decoding that segment first when none does.
+   * @param k - The result frame showing it.
+   * @returns The frame.
+   * @throws {RangeError} When the segment decodes no frame.
+   * @throws {Error} When decoding or reading fails.
+   */
+  const frameAt = async (k: number): Promise<Picture> => {
+    const s = sources[k]!;
+    let segment = held.segment;
+    if (segment === null || s < segment.start || s >= segment.start + segment.frames.count) {
+      await segment?.frames.close();
+      held.segment = null;
+      const next = sources[k + 1];
+      const start = next !== undefined && next < s ? Math.max(0, s - span + 1) : s;
+      await decodeRaw(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-i", video, "-map", "0:v:0",
+        "-vf", `trim=start_frame=${start}:end_frame=${start + span}`], false, source, run);
+      const frames = await rawFrames(source, width, height, false);
+      segment = { start, frames };
+      held.segment = segment;
+      if (frames.count === 0 || s >= start + frames.count) throw new RangeError("The lip-sync clip's segment holds none of its frames");
+    }
+    return segment.frames.read(s - segment.start);
+  };
   const raw = join(request.directory, "clip-result.yuv");
   const out = await open(raw, "w");
   try {
     const crops = new Map<number, Picture>();
     for (let k = 0; k < grid.count; k += 1) {
-      const s = lipsyncSourceFrameAt(recipe.timeline, recipe.table, (k * grid.step) / grid.clock);
+      const s = sources[k]!;
       let crop = crops.get(s);
       if (crop === undefined) {
-        crop = cropFace(await frames.read(s), faces[s] ?? null, maskAt(track, s, { width, height }), recipe.cropSize);
+        crop = cropFace(await frameAt(k), faces[s] ?? null, maskAt(track, s, { width, height }), recipe.cropSize);
         crops.set(s, crop);
       }
       await appendPicture(out, crop);
     }
   } finally {
     await out.close();
-    await frames.close();
+    await held.segment?.frames.close();
   }
   await encodeRaw(raw, { width: recipe.cropSize, height: recipe.cropSize, alpha: false }, { clock: grid.clock, tick: grid.step, end: grid.end },
     { width: recipe.cropSize, height: recipe.cropSize, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", ...CLIP_ENCODE, format: "mp4-h264" }, request.output, run);
@@ -469,7 +512,9 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
  * Write one composite chunk (§7.17 lipsync_composite row, §5.4): result frames [window.start, window.end) on the result clock
  * from 0, opening with a keyframe; result frame k shows the original's presentation frame
  * `lipsyncSourceFrameAt(timeline, table, t_k)` with every person's result frame k laid onto that frame's face; a frame
- * without a face leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264.
+ * without a face leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
+ * only the source frames the chunk shows (`lipsyncChunkSourceWindow`) and each person's result is decoded over the window
+ * alone, so the chunk's raw files hold its own frames (execution design paragraph before §9.4).
  * @param recipe - The composite recipe.
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
@@ -484,6 +529,8 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   const { rect: placed } = placement(target);
   const graph = await windowGraph(recipe.entries, BigInt(table.timescale), local(request.inputs, recipe.inputId), run, (label) => picture(target, label),
     (entry) => `color=c=black${alpha && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,format=${alpha ? "yuva420p" : "yuv420p"},setsar=1`);
+  // The entries cover only the source frames this chunk shows, so the raw file starts at the window's first.
+  const shown = lipsyncChunkSourceWindow(timeline, table, window);
   const source = join(request.directory, "composite-source.yuv");
   await decodeRaw([...graph.args, "-filter_complex", graph.graph.join(";"), "-map", "[v]"], alpha, source, run);
   const frames = await rawFrames(source, target.width, target.height, alpha);
@@ -492,7 +539,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
     for (const [at, person] of recipe.persons.entries()) {
       const file = join(request.directory, `composite-person-${at}.yuv`);
       await decodeRaw(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-i", local(request.inputs, person.result), "-map", "0:v:0",
-        "-frames:v", String(window.end), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, file, run);
+        "-vf", `trim=start_frame=${window.start}:end_frame=${window.end},scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, file, run);
       const [faces, track] = await Promise.all([readFaces(local(request.inputs, person.faces)), readTrack(local(request.inputs, person.track))]);
       persons.push({ faces, track, results: await rawFrames(file, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
     }
@@ -505,12 +552,12 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
     try {
       for (let k = window.start; k < window.end; k += 1) {
         const s = lipsyncSourceFrameAt(timeline, table, (k * table.runs[0]!.step) / table.timescale);
-        const frame = await frames.read(s);
+        const frame = await frames.read(s - shown.start);
         for (const person of persons) {
           const rect = person.faces[s] ?? null;
           const mask = maskAt(person.track, s, placed);
-          if (rect === null || mask === null || k >= person.results.count) continue;
-          layFace(frame, rect, mask, placed, await person.results.read(k), person.cropSize);
+          if (rect === null || mask === null || k - window.start >= person.results.count) continue;
+          layFace(frame, rect, mask, placed, await person.results.read(k - window.start), person.cropSize);
         }
         await appendPicture(out, frame);
       }

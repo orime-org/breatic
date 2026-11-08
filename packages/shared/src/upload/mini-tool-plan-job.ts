@@ -201,7 +201,10 @@ const recipeUnion = z.discriminatedUnion("kind", [
   }),
   // The lip-sync steps (§7.17 lipsync rows, §97 D20-1): every object is a bound input named by its inputId.
   z.strictObject({ kind: z.literal("lipsync_faces"), inputId, track: inputId, profile }),
-  z.strictObject({ kind: z.literal("lipsync_clip"), inputId, faces: inputId, track: inputId, cropSize, timeline: lipsyncTimeline, table: presentationTableSchema }),
+  // `rawBytes` bounds the raw frames the clip holds on disk: its result's crops and one decoded segment (execution design
+  // paragraph before §9.4).
+  z.strictObject({ kind: z.literal("lipsync_clip"), inputId, faces: inputId, track: inputId, cropSize, timeline: lipsyncTimeline, table: presentationTableSchema,
+    rawBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   z.strictObject({ kind: z.literal("lipsync_stem"), rows: z.array(z.strictObject({ inputId, startTime: time })).min(1), duration: positiveTime }),
   z.strictObject({
     kind: z.literal("lipsync_composite"), ...windowRecipe, timeline: lipsyncTimeline, table: presentationTableSchema,
