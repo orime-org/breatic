@@ -7,7 +7,12 @@
 # vendor_ids is the id an upstream serves one of our models under.
 # openrouter_backends pins the backend OpenRouter routes a model to. prices are
 # the direct token prices, in USD per million tokens, for upstreams that report
-# no cost of their own. openrouter_prices are OpenRouter's token prices for the
+# no cost of their own: per model a list whose first price holds from the start
+# and each later one from its from (a UTC time), so an announced change is
+# written ahead; off_peak multiplies every price by its factor outside the
+# peak_utc windows (UTC weekdays, 0 is Sunday, and times) and on its holidays
+# (UTC dates). A call is priced at the moment the request that served it was
+# sent. openrouter_prices are OpenRouter's token prices for the
 # same models, as pnpm provider:prices writes them, so a cheapest call can rank
 # OpenRouter beside the direct upstream; both read only the endpoints of the
 # quantizations openrouter_quantizations lists, unknown only for a model none

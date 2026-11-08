@@ -2,6 +2,9 @@
 # it, its address, the environment variable that holds its key, and for media
 # upstreams how many requests one process sends it at once. An upstream whose
 # key variable is empty is skipped, and the call says which variable is missing.
+# billing_url is where a fal upstream's costs are read, its platform API;
+# empty_output_wait_ms is how long a SandBase run answered completed without
+# outputs is waited for.
 
 upstreams:
   wavespeed:

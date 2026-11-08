@@ -4,7 +4,7 @@
 /**
  * What every media upstream's adapter answers to. The runner, cost lookups and
  * configuration checks reach an upstream only through one of these, picked by
- * the upstream's kind (`adapterOf` in `media/adapters.ts`).
+ * the upstream's kind (`mediaAdapter` or `adapterOf` in `media/adapters.ts`).
  */
 
 import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";

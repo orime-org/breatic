@@ -1,12 +1,24 @@
 # Where each of our three d models runs, upstream by upstream.
 # Weight is priority: the lowest configured weight is tried first, and weights
-# are unique per model. Each binding names the upstream's model id, the field
-# the prompt goes in (`send_empty` sends it and every param even when empty),
-# and how each of our params is written there: `field`,
-# `values` (our value to the upstream's spelling), `item_key` (each list
-# entry wrapped under it), `absent_value` (holding it sends nothing) and
-# `transform`. A param this upstream has no field for is listed in `drops`:
-# "*" serves the run whatever the value. `mentions` is
+# are unique per model. A model's `rejects` are its vendor's own input limits,
+# in our param names (the prompt as `prompt`), each with the vendor's words as
+# `reason`, the vendor page as `source` and, for a limit announced for a date,
+# `from`; no upstream takes a run past them. Each binding names the upstream's
+# model id, the field the prompt goes in (`send_empty` sends it and every param
+# even when empty), and how each of our params is written there: `field` (dots
+# write under nested objects), `values` (our value to the upstream's spelling),
+# `as` (a string, a number or a one-item list), `supported` (the only values
+# this upstream takes), `item_fields` (the sub-fields of each item of a list),
+# `item_key` (each list entry wrapped under it), `absent_value` (holding it
+# sends nothing), `unset` (written when the run leaves it out) and `transform`.
+# A param this upstream has no field for is listed in `drops`: "*" serves the
+# run whatever the value, a list of values that send nothing serves only those,
+# { values, equivalent } serves those values for the reason given and
+# { all_values } any value for the reason given. `fixed` fields are sent on
+# every call, `voice_map` maps our voices to the upstream's, `output_field` is
+# where a fal result puts its files, `extra_steps` and `reused_by` are the
+# upstream's further calls, and the binding's `rejects` hold only what this
+# upstream enforces beyond the vendor. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 # `pricing` is the upstream's contract: base_price in millionths of a USD, a
 # JSONata formula (empty means base_price per call), discount_rate the percentage

@@ -309,13 +309,25 @@ function placeholderOf(model: RawModel): Record<string, unknown> | undefined {
 const MEDIA_HEADER = `
 Where each of our {modality} models runs, upstream by upstream.
 Weight is priority: the lowest configured weight is tried first, and weights
-are unique per model. Each binding names the upstream's model id, the field
-the prompt goes in (\`send_empty\` sends it and every param even when empty),
-and how each of our params is written there: \`field\`,
-\`values\` (our value to the upstream's spelling), \`item_key\` (each list
-entry wrapped under it), \`absent_value\` (holding it sends nothing) and
-\`transform\`. A param this upstream has no field for is listed in \`drops\`:
-"*" serves the run whatever the value. \`mentions\` is
+are unique per model. A model's \`rejects\` are its vendor's own input limits,
+in our param names (the prompt as \`prompt\`), each with the vendor's words as
+\`reason\`, the vendor page as \`source\` and, for a limit announced for a date,
+\`from\`; no upstream takes a run past them. Each binding names the upstream's
+model id, the field the prompt goes in (\`send_empty\` sends it and every param
+even when empty), and how each of our params is written there: \`field\` (dots
+write under nested objects), \`values\` (our value to the upstream's spelling),
+\`as\` (a string, a number or a one-item list), \`supported\` (the only values
+this upstream takes), \`item_fields\` (the sub-fields of each item of a list),
+\`item_key\` (each list entry wrapped under it), \`absent_value\` (holding it
+sends nothing), \`unset\` (written when the run leaves it out) and \`transform\`.
+A param this upstream has no field for is listed in \`drops\`: "*" serves the
+run whatever the value, a list of values that send nothing serves only those,
+{ values, equivalent } serves those values for the reason given and
+{ all_values } any value for the reason given. \`fixed\` fields are sent on
+every call, \`voice_map\` maps our voices to the upstream's, \`output_field\` is
+where a fal result puts its files, \`extra_steps\` and \`reused_by\` are the
+upstream's further calls, and the binding's \`rejects\` hold only what this
+upstream enforces beyond the vendor. \`mentions\` is
 how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 \`pricing\` is the upstream's contract: base_price in millionths of a USD, a
 JSONata formula (empty means base_price per call), discount_rate the percentage
@@ -369,6 +381,9 @@ Every upstream provider reaches: the adapter kind that speaks to
 it, its address, the environment variable that holds its key, and for media
 upstreams how many requests one process sends it at once. An upstream whose
 key variable is empty is skipped, and the call says which variable is missing.
+billing_url is where a fal upstream's costs are read, its platform API;
+empty_output_wait_ms is how long a SandBase run answered completed without
+outputs is waited for.
 `, {
   upstreams: mergeUpstreams(current<{ upstreams: Record<string, unknown> }>("upstreams.yaml")?.upstreams, {
     wavespeed: { kind: "wavespeed", base_url: wavespeed.base_url, key_env: wavespeed.api_key_env, concurrency: [...concurrency][0] },
@@ -432,7 +447,12 @@ understand_routes is the same for reading media, the official API first.
 vendor_ids is the id an upstream serves one of our models under.
 openrouter_backends pins the backend OpenRouter routes a model to. prices are
 the direct token prices, in USD per million tokens, for upstreams that report
-no cost of their own. openrouter_prices are OpenRouter's token prices for the
+no cost of their own: per model a list whose first price holds from the start
+and each later one from its from (a UTC time), so an announced change is
+written ahead; off_peak multiplies every price by its factor outside the
+peak_utc windows (UTC weekdays, 0 is Sunday, and times) and on its holidays
+(UTC dates). A call is priced at the moment the request that served it was
+sent. openrouter_prices are OpenRouter's token prices for the
 same models, as pnpm provider:prices writes them, so a cheapest call can rank
 OpenRouter beside the direct upstream; both read only the endpoints of the
 quantizations openrouter_quantizations lists, unknown only for a model none
