@@ -53,15 +53,13 @@ const TRAILING = new Set(".,;:!?*_~");
  * Read one link from where it starts until a character ends it.
  * @param text - The text.
  * @param from - Where the link starts.
- * @returns The link as read, with Markdown escapes removed, or null when it
- *   ran past `READ_PAGE_MAX_URL_CHARS`; and where reading stopped.
+ * @returns The link as read, with Markdown escapes removed, and where reading
+ *   stopped: the whole run, however long, so no part of it is read again.
  */
-function readLink(text: string, from: number): { link: string | null; end: number } {
+function readLink(text: string, from: number): { link: string; end: number } {
   let link = "";
   let at = from;
   while (at < text.length) {
-    // Longer than any page address may be: dropped, the rest left unread.
-    if (link.length > READ_PAGE_MAX_URL_CHARS) return { link: null, end: at };
     const char = text[at] as string;
     if (char === "\\") {
       const next = text[at + 1];
@@ -80,7 +78,17 @@ function readLink(text: string, from: number): { link: string | null; end: numbe
     link += char;
     at += 1;
   }
-  return { link: link.length > READ_PAGE_MAX_URL_CHARS ? null : link, end: at };
+  return { link, end: at };
+}
+
+/**
+ * Whether a link, as it would be stored, fits a page address.
+ * @param link - The link, with or without its scheme.
+ * @param hasScheme - Whether it was written with one; one without is stored with `https://`.
+ * @returns True when it is at most `READ_PAGE_MAX_URL_CHARS` long.
+ */
+function fits(link: string, hasScheme: boolean): boolean {
+  return (hasScheme ? link.length : link.length + "https://".length) <= READ_PAGE_MAX_URL_CHARS;
 }
 
 /**
@@ -142,7 +150,9 @@ function hostGoesOn(text: string, at: number): boolean {
  * A link holding a non-ASCII character is followed by the same link cut at
  * that character: a user who runs a link on into Chinese without a space
  * still has the plain link, and a real non-ASCII path keeps its full spelling.
- * A link longer than `READ_PAGE_MAX_URL_CHARS` is left out.
+ * A link longer than `READ_PAGE_MAX_URL_CHARS` once its end is trimmed and,
+ * when written without a scheme, `https://` is put in front, is left out; the
+ * cut spelling is judged the same way on its own length.
  * @param text - The text.
  * @returns The links, each cleaned of the punctuation around it.
  * @throws {never} Never.
@@ -153,7 +163,7 @@ export function pageLinksIn(text: string): string[] {
   for (let found = start.exec(text); found !== null; found = start.exec(text)) {
     const opening = found[0];
     const hasScheme = /^https?:\/\//i.test(opening);
-    let link: string | null;
+    let link: string;
     let end: number;
     if (hasScheme || hostGoesOn(text, found.index + opening.length)) {
       ({ link, end } = readLink(text, found.index));
@@ -162,13 +172,12 @@ export function pageLinksIn(text: string): string[] {
       end = found.index + opening.length;
     }
     start.lastIndex = Math.max(end, found.index + 1);
-    if (link === null) continue;
     link = trimEnd(link);
     if (!hasScheme || link.length > opening.length) {
-      links.push(link);
+      if (fits(link, hasScheme)) links.push(link);
       const nonAscii = link.search(/[\u0080-\u{10FFFF}]/u);
       const cut = nonAscii < 0 ? "" : trimEnd(link.slice(0, nonAscii));
-      if (cut !== "" && (!hasScheme || cut.length > opening.length)) links.push(cut);
+      if (cut !== "" && (!hasScheme || cut.length > opening.length) && fits(cut, hasScheme)) links.push(cut);
     }
   }
   return links;
