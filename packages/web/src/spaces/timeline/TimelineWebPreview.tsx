@@ -9,7 +9,8 @@ import { timelineExecutionFailed } from '@breatic/shared/space-content';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { WebAnimationPlayerElement, WebInstanceState } from '@web/spaces/timeline/web-animation-host';
-import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
+import { useWebAnimationPreviewUrl, type WebAnimationPreviewSharing } from '@web/spaces/timeline/use-web-animation-preview-url';
+import type { WebInstanceRole } from '@web/spaces/timeline/web-instance-pool';
 
 declare module 'react' {
   // eslint-disable-next-line @typescript-eslint/no-namespace -- React declares intrinsic elements in this namespace.
@@ -74,15 +75,21 @@ export function useWebInstanceDrawn(state: WebInstanceState | undefined): boolea
 /** The style of a player that has no picture yet: it keeps loading and stays in the layout, unseen. */
 export const UNDRAWN_PLAYER = { opacity: 0 } as const;
 
-/** One visible web copy: the instance showing it, or the status a placeholder notes. */
+/**
+ * One web copy the preview serves: a visible one with the instance showing it or the status a placeholder notes, or
+ * a copy whose instance is premounted ahead of it or idle after it (inner#1711 design §7.4).
+ */
 export interface TimelineWebEntry {
   clip: TimelineWebAnimationClip;
   /** Its track's name. */
   track: string;
   /** Its stacking position, bottom 1. */
   z: number;
-  /** The instance showing it, keyed by source version and its ordinal among visible copies of that source. */
-  instance: { key: string; sourceVersionId: string; fps: TimelineRate } | null;
+  /**
+   * The instance serving it, keyed by source version and its pool ordinal, with its pool role (absent means visible);
+   * an idle instance's entry carries the copy it last showed.
+   */
+  instance: { key: string; sourceVersionId: string; fps: TimelineRate; role?: WebInstanceRole } | null;
   /** What a copy without a picture waits for, when known. */
   status: TimelineExecutionStatus | null;
 }
@@ -95,6 +102,7 @@ interface WebInstanceProps {
   defined: boolean;
   playerFailed: boolean;
   notes: HTMLElement | null;
+  sharing: WebAnimationPreviewSharing | undefined;
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
   onPlayerRetry: () => void;
@@ -121,7 +129,8 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
 /**
  * One sandboxed player that only the Timeline clock drives: no controls, no autoplay, no clicks. Its address is
  * fetched once per mount; a player that fails is given one fresh address on its own, and after that the note's retry
- * fetches one.
+ * fetches one. A premounted or idle instance stays mounted, hidden and without a note, so its page is loaded when a
+ * copy shows it; its role changes only its style.
  * @param props - The instance.
  * @param props.projectId - The Project the address is read through.
  * @param props.entry - The copy it shows now.
@@ -129,6 +138,7 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
  * @param props.defined - Whether the player element is defined; until then the element is inert and not driven.
  * @param props.playerFailed - Whether the player module failed to load.
  * @param props.notes - Where its note goes.
+ * @param props.sharing - How long one address may be shared, once the Timeline limits are read.
  * @param props.onPlayer - Hands its element to the playback.
  * @param props.onRetry - Loads it again.
  * @param props.onPlayerRetry - Loads the player module again.
@@ -136,10 +146,11 @@ function WebNote({ clipId, z, text, children }: { clipId: string; z: number; tex
  * @returns The player and, when it is unavailable, its note.
  * @throws {never} Never.
  */
-const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, onPlayer, onRetry, onPlayerRetry, onUnavailable }: WebInstanceProps): React.JSX.Element {
+const WebInstance = React.memo(function WebInstance({ projectId, entry, state, defined, playerFailed, notes, sharing, onPlayer, onRetry, onPlayerRetry, onUnavailable }: WebInstanceProps): React.JSX.Element {
   const t = useTranslation();
   const { key, sourceVersionId } = entry.instance;
-  const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
+  const shown = (entry.instance.role ?? 'visible') === 'visible';
+  const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId, sharing);
   const { refresh } = preview;
   const [element, setElement] = React.useState<HTMLElement | null>(null);
   // The playback drives the player only once it is defined and so exposes its iframe.
@@ -149,7 +160,7 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     return () => onPlayer(key, null);
   }, [defined, element, key, onPlayer]);
   const drawn = useWebInstanceDrawn(state);
-  const style = React.useMemo(() => ({ zIndex: entry.z, pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [entry.z, drawn]);
+  const style = React.useMemo(() => ({ zIndex: entry.z, pointerEvents: 'none' as const, ...(drawn && shown ? {} : UNDRAWN_PLAYER) }), [entry.z, drawn, shown]);
   const retry = React.useCallback((): void => {
     if (playerFailed) onPlayerRetry();
     if (!playerFailed || preview.failed) { refresh(); onRetry(key); }
@@ -168,8 +179,9 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
     refreshedOnce.current = true;
     refresh();
   }, [state, refresh]);
-  const unavailable = unregistrable || (state === 'failed' && refreshedOnce.current);
-  const loading = !drawn && !unavailable;
+  // Notes are for visible copies only.
+  const unavailable = shown && (unregistrable || (state === 'failed' && refreshedOnce.current));
+  const loading = shown && !drawn && !unavailable;
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
       data-instance-key={key} data-clip-id={entry.clip.id} data-web-state={state ?? 'loading'} className='absolute inset-0 size-full' style={style} />}
@@ -185,26 +197,29 @@ interface TimelineWebPreviewProps {
   projectId: string;
   entries: readonly TimelineWebEntry[];
   states: ReadonlyMap<string, WebInstanceState>;
+  /** How long one address may be shared; absent until the Timeline limits are read. */
+  sharing?: WebAnimationPreviewSharing;
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
   onUnavailable?: (key: string, unavailable: boolean) => void;
 }
 
 /**
- * The web layers of the preview (inner#1711 design §7.3): one player per visible copy with a picture, rendered in a
- * fixed order by instance key and stacked by z-index, so restacking never moves or reloads one; and, at the top right,
- * a note per copy that shows no picture, top track first.
- * @param props - The visible copies and the playback's instance states.
+ * The web layers of the preview (inner#1711 design §7.3, §7.4): one player per instance, visible, premounted or idle,
+ * rendered in a fixed order by instance key and stacked by z-index, so restacking or a role change never moves or
+ * reloads one; and, at the top right, a note per visible copy that shows no picture, top track first.
+ * @param props - The copies and the playback's instance states.
  * @param props.projectId - The Project.
- * @param props.entries - The visible web copies, bottom-up.
+ * @param props.entries - The visible web copies bottom-up, then the premounted and idle instances' copies.
  * @param props.states - Each instance's state.
+ * @param props.sharing - How long one address may be shared, once the Timeline limits are read.
  * @param props.onPlayer - Hands a player element to the playback.
  * @param props.onRetry - Loads an instance again.
  * @param props.onUnavailable - Says which instances can register no player until a retry.
  * @returns The layers.
  * @throws {never} Never.
  */
-export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRetry, onUnavailable }: TimelineWebPreviewProps): React.JSX.Element {
+export function TimelineWebPreview({ projectId, entries, states, sharing, onPlayer, onRetry, onUnavailable }: TimelineWebPreviewProps): React.JSX.Element {
   const t = useTranslation();
   const instances = React.useMemo(() => entries.flatMap((entry) => entry.instance === null ? [] : [{ ...entry, instance: entry.instance }])
     .sort((a, b) => (a.instance.key < b.instance.key ? -1 : a.instance.key > b.instance.key ? 1 : 0)), [entries]);
@@ -213,7 +228,7 @@ export function TimelineWebPreview({ projectId, entries, states, onPlayer, onRet
   const notesStyle = React.useMemo(() => ({ zIndex: entries.length + 1 }), [entries.length]);
   return <>
     {instances.map((entry) => <WebInstance key={entry.instance.key} projectId={projectId} entry={entry} state={states.get(entry.instance.key)} defined={player.defined}
-      playerFailed={player.failed} notes={notes} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} onUnavailable={onUnavailable} />)}
+      playerFailed={player.failed} notes={notes} sharing={sharing} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} onUnavailable={onUnavailable} />)}
     <div ref={setNotes} className='absolute right-3 top-3 flex flex-col items-end gap-1.5' style={notesStyle}>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status === null ? '' : t(`timeline.webAnimation.status.${entry.status}`);
