@@ -5,7 +5,7 @@
     "text": "我要一个国风游戏的女主角：会用剑的药师，白衣青纱。先出角色设定，再出正面、侧面、背面的定妆照。",
     "compare": true,
     "user": "An indie game maker. The heroine is 19, a wandering apothecary who joins the hero's party. There is no existing art style or reference art; the look is open. Answers in Simplified Chinese.",
-    "pass": "Before anything is proposed, the agent asks in one questionnaire whether there is existing art or an art style, and her age (her role, the heroine and an apothecary, is given; her gender is given and is not asked). No proposal assumes her age before the user has answered. Once the user answers with no existing style, it proposes 2-3 clearly different looks at the lowest price settings, with prompts written in full and no unfilled blanks, and states the estimated credits; it does not jump to a high-resolution final or a full character-sheet before a look is picked. If the user says reference art will be sent, waiting for it, or proposing looks that read it from an empty node left for it, is right. Its reply does not end with an offer of more work."
+    "pass": "Before anything is proposed, the agent asks in one questionnaire whether there is existing art or an art style, and her age (her role, the heroine and an apothecary, is given; her gender is given and is not asked). No proposal assumes her age before the user has answered. Once the user answers with no existing style, it proposes 2-3 clearly different looks at the lowest price settings, with prompts written in full and no unfilled blanks, and states the estimated credits; it does not jump to a high-resolution final or a full character-sheet before a look is picked. Its reply does not end with an offer of more work."
   },
   {
     "id": "character-2",
@@ -13,7 +13,7 @@
     "text": "ロボットの相棒キャラを作りたい。かわいいけど頼れる感じで、三面図と表情差分がほしい。",
     "compare": true,
     "user": "Making a sci-fi manga. The robot is a boyish, about-ten-year-old-feeling partner to the heroine. No original design exists. Answers in Japanese.",
-    "pass": "The agent asks whether an original design exists and who the robot is (for example its gender leaning, age feel or role), and no proposal assumes these before the user has answered. The body shape and styling are offered as 2-3 different directions at the lowest price settings, never asked as a list of shapes or styles to pick from in words; a question whose options list body shapes or types counts as such a list. If the user says a sketch will be sent, waiting for it is right."
+    "pass": "The agent asks whether an original design exists and who the robot is (for example its gender leaning, age feel or role), and no proposal assumes these before the user has answered. The body shape and styling are offered as 2-3 different directions at the lowest price settings, never asked as a list of shapes or styles to pick from in words; a question whose options list body shapes or types counts as such a list."
   },
   {
     "id": "character-3",
@@ -97,14 +97,14 @@
     "fixed": [
       "一部关于海边小镇的温情短剧"
     ],
-    "pass": "The agent does not ask again about use or length, which were given. It offers two or three short music takes in clearly different moods for the user to pick, at the lowest price settings; if the user says a reference track will be sent, waiting for it and saying what will follow is right."
+    "pass": "The agent does not ask again about use or length, which were given. It offers two or three short music takes in clearly different moods for the user to pick, at the lowest price settings."
   },
   {
     "id": "promo-video",
     "lang": "zh-CN",
     "text": "做一段 15 秒的产品宣传视频，产品是一款白色保温杯。",
     "user": "A small brand owner. No product photo to share; no brand guidelines. It will be posted on Douyin (vertical). Answers in Simplified Chinese.",
-    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, with trial shots short or at a low setting. It asks only what changes the result (such as where it is posted, or whether there is a product photo); waiting for a photo the user said they will send is right."
+    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots are short and on a fast model. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
   },
   {
     "id": "timeline-cut",
@@ -204,14 +204,14 @@
     "lang": "ko",
     "text": "우리 카페 오픈 포스터 하나 만들어 줘.",
     "user": "Owns a small cafe called 'Moon Bean', opening on 1 December. Has a logo but no fixed brand colours. Answers in Korean.",
-    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text. When the user says brand material will be sent, waiting for it before proposing looks is right."
+    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. When the user says brand material will be sent, it waits for it before proposing looks. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text."
   },
   {
     "id": "usage-unknown",
     "lang": "zh-CN",
     "text": "给我的新视频做一张封面，主题是露营。",
     "user": "The video goes on Bilibili (horizontal 16:9). Answers in Simplified Chinese.",
-    "pass": "Because where the cover is posted decides its ratio, the agent asks where it will be used and says why it asks, and no proposal picks a ratio before the user has answered. The look is offered as directions at the lowest price settings; when the user says they will send a frame of their own, waiting for it, or proposing directions that read it from an empty node left for it, is right."
+    "pass": "Because where the cover is posted decides its ratio, the agent asks where it will be used and says why it asks, and no proposal picks a ratio before the user has answered. The look is offered as directions at the lowest price settings."
   },
   {
     "id": "voice",
@@ -225,7 +225,7 @@
     "lang": "zh-CN",
     "text": "画一只橘猫在窗台上晒太阳，给我三个画风方向，三张都直接出 2K 的。",
     "user": "Wants the three directions at 2K. Answers in Simplified Chinese.",
-    "pass": "The agent proposes three clearly different style directions at 2K as the user asked; it does not lower the resolution to a trial setting."
+    "pass": "The agent proposes three clearly different style directions at 2K as the user asked; it does not lower the resolution, and every setting the user did not name (such as quality) stays at its cheapest value."
   },
   {
     "id": "you-decide",
@@ -243,5 +243,33 @@
     "text": "我用 wan-3.0 生成的视频里，人物的手总是变形，是不是你们这个产品不行？",
     "user": "Frustrated user. Answers in Simplified Chinese.",
     "pass": "The agent says this is a limit of that model, not something Breatic cannot do. It recommends another model only if that model's own description in the model list says it handles this; with none, it says so plainly. It gives ways that can reduce the problem (such as shorter motion or framing that hides the hands)."
+  },
+  {
+    "id": "pick-sheet",
+    "lang": "zh-CN",
+    "text": "就用这张，出正面、侧面、背面的三视图。",
+    "chips": [
+      {
+        "id": "take-2",
+        "name": "方向二 · 药师",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+      }
+    ],
+    "user": "Picked this direction from earlier takes for their game heroine; wants the same character in front, side and back views. Answers in Simplified Chinese.",
+    "pass": "The agent builds the three views on this picked picture: the picture goes in as the source or character reference of the turnaround (a character-sheet template or an image-to-image step), so the character stays the one in it; it does not design a new character from a prompt alone. It does not ask again for a look."
+  },
+  {
+    "id": "pick-keyframe",
+    "lang": "zh-CN",
+    "text": "用这张关键帧出 5 秒的正式镜头。",
+    "chips": [
+      {
+        "id": "frame-1",
+        "name": "关键帧 B",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+      }
+    ],
+    "user": "Picked this key frame from earlier directions for a promo; wants the final 5-second shot from it, no other changes. Answers in Simplified Chinese.",
+    "pass": "The agent makes the shot from this key frame: an image-to-video step with this picture as its first frame or source, 5 seconds long; it does not make a new video from a prompt alone, and does not offer new looks."
   }
 ]

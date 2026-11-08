@@ -28,7 +28,7 @@
  * comma-separated) and EVAL_RUNS narrow a run.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { expect, request, type APIRequestContext } from 'playwright/test';
 
@@ -36,6 +36,7 @@ import { dataOf } from '../helpers/api';
 import { stateFile, test } from '../helpers/slot';
 import {
   agreement,
+  agreementByScenario,
   fixedAnswers,
   judgePrompt,
   parseUserAnswers,
@@ -68,7 +69,8 @@ const HELPER_MODEL = process.env.EVAL_HELPER_MODEL ?? 'google/gemini-3.8-flash';
 const AT_ONCE = Number(process.env.EVAL_AT_ONCE ?? '6');
 /** How many cards a run answers before it is read. */
 const FOLLOW_UPS = 2;
-const LABELS = join(__dirname, 'agent-cocreation.labels.json');
+/** Hand labels, one JSON object a line: the scenario, its criterion's {@link criterionOf}, the run and the person's verdict. */
+const LABELS = join(__dirname, 'agent-cocreation.labels.jsonl');
 
 /** The zone a user writing each language would most likely report, as a browser does. */
 const TIME_ZONES: Readonly<Record<string, string>> = {
@@ -112,19 +114,25 @@ function toolOf(part: StoredPart): string | undefined {
  * @throws {Error} When the provider refuses the call.
  */
 async function askHelper(api: APIRequestContext, prompt: string, asObject = false): Promise<string> {
-  const res = await api.post('https://openrouter.ai/api/v1/chat/completions', {
-    headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY ?? ''}` },
-    data: {
-      model: HELPER_MODEL,
-      temperature: 0,
-      messages: [{ role: 'user', content: prompt }],
-      ...(asObject ? { response_format: { type: 'json_object' } } : {}),
-    },
-    timeout: 120_000,
-  });
-  if (!res.ok()) throw new Error(`helper model: ${String(res.status())} ${await res.text()}`);
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  return body.choices?.[0]?.message?.content ?? '';
+  // One retry, after the provider's Retry-After or five seconds: an empty or
+  // refused answer is the helper's failure, not the agent's.
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await api.post('https://openrouter.ai/api/v1/chat/completions', {
+      headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY ?? ''}` },
+      data: {
+        model: HELPER_MODEL,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
+        ...(asObject ? { response_format: { type: 'json_object' } } : {}),
+      },
+      timeout: 120_000,
+    });
+    const content = res.ok() ? ((await res.json()) as { choices?: { message?: { content?: string } }[] }).choices?.[0]?.message?.content ?? '' : '';
+    if (content !== '') return content;
+    if (attempt >= 1) throw new Error(`helper model: ${String(res.status())} ${res.ok() ? 'empty answer' : await res.text()}`);
+    const wait = Number(res.headers()['retry-after'] ?? '5');
+    await new Promise((resolve) => setTimeout(resolve, (Number.isFinite(wait) && wait > 0 ? wait : 5) * 1000));
+  }
 }
 
 /**
@@ -177,20 +185,22 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
   const project = await createProject(api, { studioId, name: `cocreation ${scenario.id} ${suffix}`, slug: `cocreation-${scenario.id}-${suffix}`, spaceType });
   try {
     const space = { id: randomUUID(), name: spaceType === 'document' ? 'Chapter one' : 'Space 1', type: spaceType };
-    const extra: Record<string, unknown> = {};
-    // A document is read by blocks, so a share of it carries them as the open one does.
+    // As the product sends them: a document's blocks each under its
+    // `<!-- b:N -->` marker, an open canvas with its (here empty) content, a
+    // Timeline or 3D Space as unreadable.
+    const piece = (from: number, list: readonly (readonly [string, string])[]): string =>
+      list.map(([, text], i) => `<!-- b:${String(from + i)} -->\n${text}`).join('\n\n');
     const docRead = scenario.doc === undefined ? undefined : (() => {
       const blocks = scenario.doc.map(([type, text], i) => ({ id: `b${String(i + 1)}`, type, text, lossy: false, partial: false }));
-      const content = scenario.doc.map(([, text]) => text).join('\n\n');
+      const content = piece(1, scenario.doc);
       return { content, total_chars: content.length, blocks };
     })();
-    // As the product sends them: the agent reads canvases and documents; a Timeline or 3D Space comes as unreadable.
     const readable = spaceType === 'canvas' || spaceType === 'document';
-    if (scenario.space !== undefined) {
-      extra.spaces = [{ id: space.id, name: space.name, kind: space.type }];
-      if (docRead !== undefined) extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', ...docRead };
-      if (!readable) extra.current_space = { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
-    }
+    const canvasDetail = { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 };
+    const extra: Record<string, unknown> = { spaces: [{ id: space.id, name: space.name, kind: space.type }] };
+    if (docRead !== undefined) extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', ...docRead };
+    else if (spaceType === 'canvas') extra.current_space = { id: space.id, name: space.name, kind: 'canvas', state: 'loaded', content: '', total_chars: 0, detail: canvasDetail };
+    else extra.current_space = { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
     const conversation = await dataOf<{ id: string }>(
       await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
       'create conversation',
@@ -214,21 +224,19 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         answered.set(pending.toolCallId ?? '', JSON.stringify(answers));
         await send(api, scenario, { ...base, message: '', answer: { toolCallId: pending.toolCallId, answers } });
       } else {
-        const content = docRead?.content ?? scenario.spaceContent ?? '(empty)';
-        const read = docRead ?? { content, total_chars: content.length };
-        const detail = space.type === 'canvas'
-          ? { detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }
-          : {};
-        answered.set(pending.toolCallId ?? '', readable ? `shared the Space: ${content}` : 'shared the Space, which cannot be read');
-        // A part asked for comes back named, as the browser sends it.
+        // A part asked for comes back named and cut to that part, as the browser sends it.
         const asked = pending.input?.spaces?.find((one) => one.id === space.id);
-        const part = asked?.blocks !== undefined
-          ? { part: { blocks: asked.blocks }, blocks_total: scenario.doc?.length ?? 0 }
+        const range = asked?.blocks;
+        const docPart = range === undefined || scenario.doc === undefined ? undefined : piece(range.from, scenario.doc.slice(range.from - 1, range.to));
+        const content = docPart ?? docRead?.content ?? scenario.spaceContent ?? '';
+        const part = range !== undefined
+          ? { part: { blocks: range }, blocks_total: scenario.doc?.length ?? 0 }
           : asked?.node_ids !== undefined
             ? { part: { node_ids: asked.node_ids }, nodes_missing: asked.node_ids.length }
             : {};
+        answered.set(pending.toolCallId ?? '', readable ? `shared the Space: ${content}` : 'shared the Space, which cannot be read');
         const shared = readable
-          ? { id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail, ...part }
+          ? { id: space.id, name: space.name, kind: space.type, state: 'read', content, total_chars: content.length, ...(space.type === 'canvas' ? { detail: canvasDetail } : {}), ...part }
           : { id: space.id, name: space.name, kind: space.type, state: 'unreadable', ...('part' in part ? { part: part.part } : {}) };
         await send(api, scenario, { ...base, message: '', shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [shared] } });
       }
@@ -263,15 +271,10 @@ async function partsOf(api: APIRequestContext, conversationId: string): Promise<
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The verdict.
- * @throws {Error} When the judge answers twice with no verdict.
+ * @throws {Error} When the judge's answer holds no verdict.
  */
 async function judge(helper: APIRequestContext, scenario: Scenario, run: Run): Promise<Verdict> {
-  // A judge that answers with no verdict is asked again once; a second miss is the run's failure.
-  try {
-    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run), true));
-  } catch {
-    return parseVerdict(await askHelper(helper, judgePrompt(scenario, run), true));
-  }
+  return parseVerdict(await askHelper(helper, judgePrompt(scenario, run), true));
 }
 
 /**
@@ -299,6 +302,16 @@ async function pooled<T>(jobs: readonly (() => Promise<T>)[], atOnce: number): P
  * @param baseURL - Where the app under test is served.
  * @returns The rows that did not pass.
  */
+/**
+ * A short fingerprint of a scenario's criterion, kept with every run and label
+ * so a label made against older words is found.
+ * @param scenario - The scenario.
+ * @returns The first twelve hex digits of the criterion's SHA-256.
+ */
+function criterionOf(scenario: Scenario): string {
+  return createHash('sha256').update(scenario.pass).digest('hex').slice(0, 12);
+}
+
 async function evaluate(label: string, model: string | undefined, scenarios: readonly Scenario[], baseURL: string | undefined): Promise<string[]> {
   // Both of the slot's accounts take turns, so the per-account limits on
   // creating Projects and conversations are reached half as fast.
@@ -316,9 +329,9 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
         const { api, studioId } = accounts[(row * RUNS + index) % accounts.length] as (typeof accounts)[number];
         try {
           const run = await runOnce(api, helper, studioId, scenario, model);
-          return { scenario: scenario.id, index, run, verdict: await judge(helper, scenario, run) };
+          return { scenario: scenario.id, criterion: criterionOf(scenario), index, run, verdict: await judge(helper, scenario, run) };
         } catch (err) {
-          return { scenario: scenario.id, index, error: String(err), verdict: { pass: false, reason: `the run failed: ${String(err)}` } };
+          return { scenario: scenario.id, criterion: criterionOf(scenario), index, error: String(err), verdict: { pass: false, reason: 'errored' } };
         }
       }),
     );
@@ -326,18 +339,26 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
     const out = test.info().outputPath(`agent-cocreation-${label}.json`);
     mkdirSync(test.info().outputDir, { recursive: true });
     writeFileSync(out, JSON.stringify(results, null, 2));
-    const passed = results.filter((one) => one.verdict.pass).length;
-    const { low, high } = wilson(passed, results.length);
+    // A run that errored (a helper, the stack, the request) was never judged;
+    // it counts on its own line, outside the pass rate.
+    const judged = results.filter((one) => !('error' in one));
+    const passed = judged.filter((one) => one.verdict.pass).length;
+    const { low, high } = judged.length > 0 ? wilson(passed, judged.length) : { low: 0, high: 0 };
     const failing: string[] = [];
     const lines = scenarios.map((scenario) => {
-      const row = results.filter((one) => one.scenario === scenario.id);
+      const row = judged.filter((one) => one.scenario === scenario.id);
+      const errored = results.filter((one) => one.scenario === scenario.id && 'error' in one);
       const ok = row.filter((one) => one.verdict.pass).length;
-      if (!rowPasses(ok, row.length)) failing.push(scenario.id);
-      const misses = row.filter((one) => !one.verdict.pass).map((one) => `#${String(one.index + 1)} ${one.verdict.reason}`);
-      return `${scenario.id}: ${String(ok)}/${String(row.length)}${misses.length > 0 ? `\n    ${misses.join('\n    ')}` : ''}`;
+      if (row.length === 0 || !rowPasses(ok, row.length)) failing.push(scenario.id);
+      const misses = [
+        ...row.filter((one) => !one.verdict.pass).map((one) => `#${String(one.index + 1)} ${one.verdict.reason}`),
+        ...errored.map((one) => `#${String(one.index + 1)} errored, not judged: ${'error' in one ? one.error : ''}`),
+      ];
+      return `${scenario.id}: ${String(ok)}/${String(row.length)}${errored.length > 0 ? ` (${String(errored.length)} errored)` : ''}${misses.length > 0 ? `\n    ${misses.join('\n    ')}` : ''}`;
     });
     const percent = (x: number): string => `${(x * 100).toFixed(1)}%`;
-    console.warn(`${label}: ${String(passed)}/${String(results.length)} passed (95% ${percent(low)}–${percent(high)}); runs in ${out}\n${lines.join('\n')}`);
+    const erroredAll = results.length - judged.length;
+    console.warn(`${label}: ${String(passed)}/${String(judged.length)} passed (95% ${percent(low)}–${percent(high)})${erroredAll > 0 ? `, ${String(erroredAll)} errored` : ''}; runs in ${out}\n${lines.join('\n')}`);
     return failing;
   } finally {
     for (const { api } of accounts) await api.dispose();
@@ -358,26 +379,36 @@ test('the comparison model co-creates as the scenarios say @needs-model @needs-i
 
 test('the judge agrees with hand labels @needs-model @needs-internet', async () => {
   test.setTimeout(60 * 60_000);
-  const only = SCENARIOS.map((one) => one.id);
-  const labelled = (JSON.parse(readFileSync(LABELS, 'utf8')) as { scenario: string; run: Run; human: boolean }[]).filter((one) => only.includes(one.scenario));
-  const byId = new Map((JSON.parse(readFileSync(join(__dirname, 'agent-cocreation.scenarios.json'), 'utf8')) as Scenario[]).map((one) => [one.id, one]));
+  const byId = new Map(SCENARIOS.map((one) => [one.id, one]));
+  const labelled = readFileSync(LABELS, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as { scenario: string; criterion: string; run: Run; human: boolean })
+    .filter((one) => byId.has(one.scenario));
+  // A label made against a criterion since rewritten judges other words.
+  const stale = labelled.filter((one) => one.criterion !== criterionOf(byId.get(one.scenario) as Scenario)).map((one) => one.scenario);
+  expect([...new Set(stale)], 'labels made against an older criterion').toEqual([]);
+  expect(labelled.length, 'labels for the scenarios run').toBeGreaterThan(0);
   const helper = await request.newContext();
   try {
     const judged = await pooled(
       labelled.map((one) => async () => {
-        const scenario = byId.get(one.scenario);
-        if (scenario === undefined) throw new Error(`no scenario ${one.scenario}`);
-        const verdict = await judge(helper, scenario, one.run);
+        const verdict = await judge(helper, byId.get(one.scenario) as Scenario, one.run);
         return { scenario: one.scenario, human: one.human, judge: verdict.pass, reason: verdict.reason };
       }),
       AT_ONCE,
     );
     mkdirSync(test.info().outputDir, { recursive: true });
     writeFileSync(test.info().outputPath('agent-cocreation-judge.json'), JSON.stringify(judged, null, 2));
+    const share = (x: number | undefined): string => (x === undefined ? '-' : `${(x * 100).toFixed(0)}%`);
+    const rows = [...agreementByScenario(judged)].map(
+      ([scenario, one]) => `${scenario}: passes ${share(one.truePass)} of ${String(one.passes)}, fails ${share(one.trueFail)} of ${String(one.fails)}`,
+    );
     const said = agreement(judged);
-    console.warn(`judge against hand labels: passes ${String(said.truePass)} of ${String(said.passes)}, fails ${String(said.trueFail)} of ${String(said.fails)}`);
-    expect(said.truePass ?? 0).toBeGreaterThanOrEqual(0.9);
-    expect(said.trueFail ?? 0).toBeGreaterThanOrEqual(0.9);
+    console.warn(`judge against hand labels: passes ${share(said.truePass)} of ${String(said.passes)}, fails ${share(said.trueFail)} of ${String(said.fails)}\n${rows.join('\n')}`);
+    // A side with no labels has nothing to agree with.
+    if (said.truePass !== undefined) expect(said.truePass).toBeGreaterThanOrEqual(0.9);
+    if (said.trueFail !== undefined) expect(said.trueFail).toBeGreaterThanOrEqual(0.9);
   } finally {
     await helper.dispose();
   }

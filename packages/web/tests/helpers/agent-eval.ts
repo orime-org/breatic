@@ -14,6 +14,8 @@
  * share of its runs rather than on every one.
  */
 
+import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
+
 /** The normal quantile of a two-sided 95% interval. */
 const Z = 1.96;
 /** The share of a row's runs that must pass: four in five. */
@@ -176,8 +178,9 @@ export function simulatedUserPrompt(scenario: Scenario, questions: readonly Card
 /**
  * The simulated user's answer read back into the card's answers. A choice
  * that is one of the question's option labels is selected; any other choice,
- * or `other`, goes in as words. A fenced code block around the array is read
- * through.
+ * or `other`, goes in as words, cut to what the chat route takes; an answer
+ * with no words leaves `other` out. A fenced code block around the array is
+ * read through.
  * @param text - What the simulated user wrote.
  * @param questions - The card's questions.
  * @returns One answer per question, in index order.
@@ -192,7 +195,11 @@ export function parseUserAnswers(text: string, questions: readonly CardQuestion[
     if (question === undefined || typeof entry.index !== 'number') throw new Error(`no question ${String(entry.index)}`);
     const choice = typeof entry.choice === 'string' ? entry.choice : undefined;
     if (choice !== undefined && question.options.includes(choice)) answers.set(entry.index, { index: entry.index, selected: [choice] });
-    else answers.set(entry.index, { index: entry.index, selected: [], other: typeof entry.other === 'string' && entry.other !== '' ? entry.other : choice ?? '' });
+    else {
+      // The chat route rejects an empty other and one past its cap.
+      const words = (typeof entry.other === 'string' && entry.other.trim() !== '' ? entry.other : choice ?? '').slice(0, ASK_USER_OTHER_MAX_CHARS);
+      answers.set(entry.index, words.trim() === '' ? { index: entry.index, selected: [] } : { index: entry.index, selected: [], other: words });
+    }
   }
   return questions.map((_, index) => {
     const answer = answers.get(index);
@@ -260,4 +267,14 @@ export function agreement(labels: readonly { human: boolean; judge: boolean }[])
     passes: passes.length,
     fails: fails.length,
   };
+}
+
+/**
+ * {@link agreement} for each scenario's own labels.
+ * @param labels - Each run's scenario and two decisions.
+ * @returns The scenario's numbers, by scenario.
+ */
+export function agreementByScenario(labels: readonly { scenario: string; human: boolean; judge: boolean }[]): Map<string, ReturnType<typeof agreement>> {
+  const byScenario = Map.groupBy(labels, (one) => one.scenario);
+  return new Map([...byScenario].map(([scenario, own]) => [scenario, agreement(own)]));
 }
