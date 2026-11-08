@@ -573,8 +573,8 @@ describe("the model call", () => {
     const prompt = promptOf(model.calls[0]);
     expect(prompt).toContain("Here is the full document");
     expect(prompt).toContain("Notes");
-    expect(prompt).toContain("The user selected this text");
-    expect(prompt).toContain("quick");
+    // The prompt is serialised as JSON, so the block is matched as JSON spells it.
+    expect(prompt).toContain(JSON.stringify(`The user selected this text:\n---\n${SEL}\n---`).slice(1, -1));
   });
 
   it("gives shorten its own prompt rather than summarize's", async () => {

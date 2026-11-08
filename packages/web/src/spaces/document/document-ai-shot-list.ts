@@ -14,7 +14,7 @@ import type { WrittenBlock } from '@web/spaces/document/document-external-media'
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** Each column's width in pixels, in the order the storyboard prompt asks for. */
-export const SHOT_LIST_COLUMN_WIDTHS = [64, 88, 88, 88, 220, 180, 64, 140] as const;
+const SHOT_LIST_COLUMN_WIDTHS = [64, 88, 88, 88, 220, 180, 64, 140] as const;
 
 /**
  * Whether every row of a table holds exactly the shot list's columns, none spanning more than one.
