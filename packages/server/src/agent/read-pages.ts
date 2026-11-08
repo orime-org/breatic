@@ -22,7 +22,7 @@ const THROTTLE = "web-fetch";
  * @param who - The turn's user.
  * @param who.userId - Who the calls are counted against.
  * @returns The read.
- * @throws {never} Never; the read it returns throws.
+ * @throws {never} Never; the read it returns throws, after logging a failed read.
  */
 export function readPagesFor({ userId }: { userId: string }): ReadPages {
   return async (request, signal) => {
@@ -32,6 +32,13 @@ export function readPagesFor({ userId }: { userId: string }): ReadPages {
       logger.warn({ action: THROTTLE, key: userId }, "rate_limit_hit");
       throw new ReadPagesRefused("rate_limited");
     }
-    return readPagesAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, signal);
+    try {
+      return await readPagesAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, signal);
+    } catch (err) {
+      // web_fetch may answer with the pages it already held, so this is the
+      // one place that sees why the read failed; a read the caller stopped is no failure.
+      if (signal?.aborted !== true) logger.warn({ err, userId }, "web_fetch_read_failed");
+      throw err;
+    }
   };
 }
