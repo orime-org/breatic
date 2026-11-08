@@ -46,7 +46,8 @@ import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
-import { lipsyncObjectKey, lipsyncStepKey } from "@worker/handlers/mini-tool/lipsync-steps.js";
+import { lipsyncStepKey } from "@worker/handlers/mini-tool/lipsync-steps.js";
+import { stepObjectKey } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
 import { INGEST_ENV } from "./ingest-jobs-fake.js";
 
@@ -381,7 +382,7 @@ async function rleKey(f: Fixture, person: Person, direction: "fwd" | "rev"): Pro
   const x = Number(Object.entries(BOX_X).find(([, who]) => who === person)![0]);
   const order = direction === "fwd" ? "forward" : "reverse";
   const attempt = await attemptOf(f, TRACKER, (body) => (body.box_prompts as { x_min: number }[])[0]!.x_min === x && directionOfClip(String(body.video)) === order);
-  return lipsyncObjectKey(lipsyncStepKey(PLAN, person, `track:${direction}`), attempt);
+  return stepObjectKey(lipsyncStepKey(PLAN, person, `track:${direction}`), attempt);
 }
 
 /**
@@ -508,7 +509,7 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
       expect(body.video).toMatch(/\.mp4$/);
       expect(body.audio).toMatch(/\.m4a$/);
       const attempt = await attemptOf(f, GENERATOR, (sent) => sent.video === body.video);
-      const key = lipsyncObjectKey(lipsyncStepKey(PLAN, person, "gen"), attempt);
+      const key = stepObjectKey(lipsyncStepKey(PLAN, person, "gen"), attempt);
       expect(outside.fetchUrl.mock.calls.map((call) => call[0])).toContain(`https://provider.example.test/gen/${person}.mp4`);
       expect(await pinned(f.execution.taskId)).toContain(key);
       expect(await assetsAt([key])).toBe(0);
@@ -529,7 +530,7 @@ describe("lip-sync step bodies after track submits (ยง97 D21; execution design ย
     expect(composites).toHaveLength(LAYOUT.composite.length);
     const genKeys = await Promise.all(PEOPLE.map(async (person) => {
       const clip = personJob("lipsync_clip", person).outputs[0]!.storageKey;
-      return lipsyncObjectKey(lipsyncStepKey(PLAN, person, "gen"), await attemptOf(f, GENERATOR, (sent) => sent.video === publicUrl(clip)));
+      return stepObjectKey(lipsyncStepKey(PLAN, person, "gen"), await attemptOf(f, GENERATOR, (sent) => sent.video === publicUrl(clip)));
     }));
     for (const job of composites) {
       const recipe = job.outputs[0]!.recipe as { persons: { result: string; faces: string; track: string; cropSize: number }[]; timeline: unknown };

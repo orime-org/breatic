@@ -12,7 +12,7 @@
  *   failure `failed`; a passed deadline, exhausted network retries, 408, 429 and 5xx are `timeout`; anything else is
  *   `failed` (never guessed from error text). Only `gen` can be `model_rejected`.
  * - `lipsyncStepKey(planFingerprint, personId, kind)`: the DD §7.1 step key, a 64-hex digest of the three; the composite
- *   step has no person. `lipsyncObjectKey(stepKey, attemptId)`: the intermediate object key, the step key, a colon and the
+ *   step has no person. `stepObjectKey(stepKey, attemptId)` (model-run-steps): the intermediate object key, the step key, a colon and the
  *   attempt's existing `attemptId` (§97 D17-6: `MiniToolStepAttempt.attemptId` for track and gen, the container attempt's
  *   `attemptId` for container steps).
  * - `lipsyncStoppedLines(people)`: once a person has `no_face` or `model_rejected`, every other person whose paid step
@@ -27,6 +27,7 @@
 import { describe, expect, it } from "vitest";
 import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
+import { stepObjectKey } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 
 type Category = "no_face" | "model_rejected" | "timeout" | "failed" | "stopped";
@@ -38,7 +39,6 @@ interface Line { personId: string; detectionNumber: number; step: PersonStep; ca
 interface StepsApi {
   lipsyncStepCategory: (step: "track" | "gen", error: unknown, rejection: Rejection) => "model_rejected" | "timeout" | "failed";
   lipsyncStepKey: (planFingerprint: string, personId: string | null, kind: PersonStep | "composite") => string;
-  lipsyncObjectKey: (stepKey: string, attemptId: string) => string;
   lipsyncStoppedLines: (people: readonly PersonState[]) => Line[];
   lipsyncFacesFailureLine: (reason: string) => { step: PersonStep; category: Category };
   lipsyncFailureReason: (people: readonly (PersonState & { succeeded: boolean })[], shared: { step: "prepare" | "composite" | "stitch" | "expired"; category: "timeout" | "failed" } | null) => unknown;
@@ -92,12 +92,11 @@ describe("step keys and intermediate object keys (§97; DD §7.1, frames-split �
       lipsyncStepKey("d".repeat(64), "person-1", "track"), lipsyncStepKey("d".repeat(64), null, "composite")]).size).toBe(5);
   });
 
-  it("SK02 an intermediate object key is the step key, a colon and the attempt's id", async () => {
-    const { lipsyncObjectKey } = await steps();
+  it("SK02 an intermediate object key is the step key, a colon and the attempt's id", () => {
     const first = "70000000-0000-4000-8000-000000000001";
     const second = "70000000-0000-4000-8000-000000000002";
-    expect(lipsyncObjectKey("a".repeat(64), first)).toBe(`${"a".repeat(64)}:${first}`);
-    expect(lipsyncObjectKey("a".repeat(64), second)).not.toBe(lipsyncObjectKey("a".repeat(64), first));
+    expect(stepObjectKey("a".repeat(64), first)).toBe(`${"a".repeat(64)}:${first}`);
+    expect(stepObjectKey("a".repeat(64), second)).not.toBe(stepObjectKey("a".repeat(64), first));
   });
 });
 

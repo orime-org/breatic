@@ -68,17 +68,6 @@ export function lipsyncStepCategory(step: "track" | "gen", error: unknown, rejec
 }
 
 /**
- * An intermediate object's key: the step key, a colon and the attempt's existing id (§97 D17-6).
- * @param stepKey - The step key.
- * @param attemptId - The attempt's id.
- * @returns The object key.
- * @throws {never} Never.
- */
-export function lipsyncObjectKey(stepKey: string, attemptId: string): string {
-  return `${stepKey}:${attemptId}`;
-}
-
-/**
  * After a `no_face` or `model_rejected`, the `stopped` line of each other person's first unsubmitted paid step (§9.4
  * stopped row); a step already submitted settles on its own.
  * @param people - Every person's progress.
