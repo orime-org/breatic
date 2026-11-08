@@ -13,7 +13,9 @@ import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-to
 import { lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import { presentationFrameCount } from "@shared/mini-tools/video-presentation-table.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
-export { lipsyncChunkSourceWindow, lipsyncSourceTimeAt, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+export {
+  lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, lipsyncSourceTimeAt, lipsyncSourceFrameAt, type LipsyncTimeline,
+} from "@shared/mini-tools/lipsync-timeline.js";
 
 /**
  * The frozen timeline of a lip-sync plan: the dialogue planner's result duration with the video duration and mode (§9.2).

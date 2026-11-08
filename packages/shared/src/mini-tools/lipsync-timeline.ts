@@ -47,6 +47,56 @@ export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPres
 }
 
 /**
+ * The bytes of one raw 8-bit 4:2:0 picture as the lip-sync container writes it and admission budgets it: luma, the two
+ * chroma planes at half size rounded up and, for a transparent picture, alpha at luma size.
+ * @param width - Its width.
+ * @param height - Its height.
+ * @param alpha - Whether it carries an alpha plane.
+ * @returns The bytes.
+ * @throws {never} Never.
+ */
+export function lipsyncPictureBytes(width: number, height: number, alpha: boolean): number {
+  return width * height * (alpha ? 2 : 1) + 2 * Math.ceil(width / 2) * Math.ceil(height / 2);
+}
+
+/**
+ * The source presentation frame each result frame shows, on the grid the container writes: frame k at k · step / timescale
+ * of the table's first run, `ceil(round(duration · timescale) / step)` frames, the last ending at the result duration.
+ * @param timeline - The frozen timeline.
+ * @param table - The source's presentation table.
+ * @returns One source frame per result frame.
+ * @throws {RangeError} When the table has no frame.
+ */
+export function lipsyncResultSourceFrames(timeline: LipsyncTimeline, table: VideoPresentationTable): number[] {
+  const step = table.runs[0]?.step;
+  if (step === undefined) throw new RangeError("Expected a presented frame");
+  const count = Math.ceil(Math.round(timeline.duration * table.timescale) / step);
+  return Array.from({ length: count }, (_unused, k) => lipsyncSourceFrameAt(timeline, table, (k * step) / table.timescale));
+}
+
+/**
+ * The source frames a window of result frames shows (execution design paragraph before §9.4): its half-open
+ * [lowest, highest + 1) and whether a later frame lies below an earlier one, which a forward decode cannot serve.
+ * @param sources - The source frame of each result frame.
+ * @param window - The half-open result frames.
+ * @param window.start - The first.
+ * @param window.end - The end.
+ * @returns The span and whether it goes back.
+ * @throws {RangeError} When the window is empty or outside the sources.
+ */
+export function lipsyncSourceSpan(sources: readonly number[], window: { start: number; end: number }): { start: number; end: number; goesBack: boolean } {
+  if (window.end <= window.start || window.start < 0 || window.end > sources.length) throw new RangeError("Expected result frames");
+  let [low, high, goesBack] = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, false];
+  for (let k = window.start; k < window.end; k += 1) {
+    const frame = sources[k]!;
+    if (frame < high) goesBack = true;
+    low = Math.min(low, frame);
+    high = Math.max(high, frame);
+  }
+  return { start: low, end: high + 1, goesBack };
+}
+
+/**
  * The presentation frames a composite chunk shows (execution design paragraph before §9.4): result frames
  * [window.start, window.end) at k · step / timescale of the table's first run map to source frames, and the chunk decodes
  * only [lowest, highest + 1) of them. The worker writes the chunk's entries over it and the container indexes its decoded
@@ -63,11 +113,7 @@ export function lipsyncChunkSourceWindow(timeline: LipsyncTimeline, table: Video
   const step = table.runs[0]?.step;
   if (step === undefined) throw new RangeError("Expected a presented frame");
   if (window.end <= window.start) throw new RangeError("Expected a result frame");
-  let [low, high] = [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
-  for (let k = window.start; k < window.end; k += 1) {
-    const frame = lipsyncSourceFrameAt(timeline, table, (k * step) / table.timescale);
-    low = Math.min(low, frame);
-    high = Math.max(high, frame);
-  }
-  return { start: low, end: high + 1 };
+  const sources = Array.from({ length: window.end - window.start }, (_unused, at) => lipsyncSourceFrameAt(timeline, table, ((window.start + at) * step) / table.timescale));
+  const { start, end } = lipsyncSourceSpan(sources, { start: 0, end: sources.length });
+  return { start, end };
 }

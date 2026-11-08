@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
-  lipsyncChunkSourceWindow, lipsyncTimeline, lipsyncUsedSourceRange, planLipsyncCompositeChunks, type LipsyncMonotonicSegment, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
+  lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncTimeline, lipsyncUsedSourceRange, planLipsyncCompositeChunks, type LipsyncMonotonicSegment, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
   type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
@@ -208,18 +208,6 @@ export function lipsyncRawDiskBytes(diskGb: number, share: number): number {
 }
 
 /**
- * The bytes of one raw 8-bit 4:2:0 picture, as the container writes it.
- * @param width - Its width.
- * @param height - Its height.
- * @param alpha - Whether it carries an alpha plane.
- * @returns The bytes.
- * @throws {never} Never.
- */
-function pictureBytes(width: number, height: number, alpha: boolean): number {
-  return width * height * (alpha ? 2 : 1) + 2 * Math.ceil(width / 2) * Math.ceil(height / 2);
-}
-
-/**
  * The raw bytes one composite chunk holds on disk: the source frames it shows, its result frames, and each person's result
  * frames over the window, all decoded at once.
  * @param timeline - The frozen timeline.
@@ -234,7 +222,7 @@ function pictureBytes(width: number, height: number, alpha: boolean): number {
 export function lipsyncCompositeRawBytes(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }, frames: LipsyncRawFrames): number {
   const shown = lipsyncChunkSourceWindow(timeline, table, window);
   const length = window.end - window.start;
-  return (shown.end - shown.start + length) * pictureBytes(frames.width, frames.height, frames.alpha) + frames.persons * length * pictureBytes(frames.cropSize, frames.cropSize, false);
+  return (shown.end - shown.start + length) * lipsyncPictureBytes(frames.width, frames.height, frames.alpha) + frames.persons * length * lipsyncPictureBytes(frames.cropSize, frames.cropSize, false);
 }
 
 /**
@@ -246,7 +234,7 @@ export function lipsyncCompositeRawBytes(timeline: LipsyncTimeline, table: Video
  * @throws {never} Never.
  */
 export function lipsyncClipRawBytes(resultFrames: number, frames: LipsyncRawFrames): number {
-  return resultFrames * pictureBytes(frames.cropSize, frames.cropSize, false) + pictureBytes(frames.width, frames.height, frames.alpha);
+  return resultFrames * lipsyncPictureBytes(frames.cropSize, frames.cropSize, false) + lipsyncPictureBytes(frames.width, frames.height, frames.alpha);
 }
 
 /**

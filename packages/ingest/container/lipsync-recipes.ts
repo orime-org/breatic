@@ -15,7 +15,7 @@
 import { open, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import { lipsyncChunkSourceWindow, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import { lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
@@ -194,7 +194,7 @@ interface RawFrames { read(index: number): Promise<Picture>; count: number; clos
 async function rawFrames(file: string, width: number, height: number, alpha: boolean): Promise<RawFrames> {
   const handle: FileHandle = await open(file, "r");
   const chroma = Math.ceil(width / 2) * Math.ceil(height / 2);
-  const size = pictureBytes(width, height, alpha);
+  const size = lipsyncPictureBytes(width, height, alpha);
   const count = Math.floor((await handle.stat()).size / size);
   return {
     count,
@@ -207,18 +207,6 @@ async function rawFrames(file: string, width: number, height: number, alpha: boo
     },
     close: () => handle.close(),
   };
-}
-
-/**
- * The bytes of one raw 8-bit 4:2:0 picture.
- * @param width - Its width.
- * @param height - Its height.
- * @param alpha - Whether it carries an alpha plane.
- * @returns The bytes.
- * @throws {never} Never.
- */
-function pictureBytes(width: number, height: number, alpha: boolean): number {
-  return width * height * (alpha ? 2 : 1) + 2 * Math.ceil(width / 2) * Math.ceil(height / 2);
 }
 
 /**
@@ -381,7 +369,7 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
   const [track, faces] = await Promise.all([readTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
   const grid = resultGrid(recipe.timeline, recipe.table);
   const sources = Array.from({ length: grid.count }, (_unused, k) => lipsyncSourceFrameAt(recipe.timeline, recipe.table, (k * grid.step) / grid.clock));
-  const span = Math.floor((recipe.rawBytes - grid.count * pictureBytes(recipe.cropSize, recipe.cropSize, false)) / pictureBytes(width, height, false));
+  const span = Math.floor((recipe.rawBytes - grid.count * lipsyncPictureBytes(recipe.cropSize, recipe.cropSize, false)) / lipsyncPictureBytes(width, height, false));
   if (span < 1) throw new RangeError("The lip-sync clip's decode budget holds no source frame beside its result");
   const source = join(request.directory, "clip-source.yuv");
   // ponytail: each segment decodes from the video's start and trims; seek to the segment's keyframe if decode time matters.
