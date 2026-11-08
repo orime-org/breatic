@@ -118,8 +118,7 @@ function noteSent(record: SizeRecord, connection: unknown): void {
     seen = { changes: [], knowsFull: false, lastSeq: 0 };
     record.seen.set(connection, seen);
   }
-  const previous = seen.changes.at(-1)?.full ?? seen.knowsFull;
-  if (seen.changes.length === 0 || previous !== full) seen.changes.push({ seq: record.seq, full });
+  if ((seen.changes.at(-1)?.full ?? seen.knowsFull) !== full) seen.changes.push({ seq: record.seq, full });
   seen.lastSeq = record.seq;
 }
 
@@ -163,12 +162,10 @@ function pushAll(name: string, record: SizeRecord): void {
 export function acknowledge(name: string, connection: unknown, seq: number): void {
   const seen = records.get(name)?.seen.get(connection);
   if (!seen || seq > seen.lastSeq) return;
-  let i = -1;
-  while (i + 1 < seen.changes.length && (seen.changes[i + 1]?.seq ?? Infinity) <= seq) i += 1;
-  const change = seen.changes[i];
-  if (change === undefined) return;
-  seen.knowsFull = change.full;
-  seen.changes.splice(0, i);
+  for (let change = seen.changes[0]; change !== undefined && change.seq <= seq; change = seen.changes[0]) {
+    seen.knowsFull = change.full;
+    seen.changes.shift();
+  }
 }
 
 /**

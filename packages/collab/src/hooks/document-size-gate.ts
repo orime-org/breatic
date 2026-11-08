@@ -97,11 +97,12 @@ function isOldPage(connection: Connection): boolean {
 }
 
 /**
- * Close an old page's whole WebSocket after its document connection was
- * closed with the size-limit reason, so its provider reconnects.
- * @param connection - The refused connection.
+ * Close a refused connection with the size-limit reason; an old page's whole
+ * WebSocket is closed after it, so its provider reconnects.
+ * @param connection - The refused connection, still in the document.
  */
-function closeOldPageSocket(connection: Connection): void {
+function closeForSize(connection: Connection): void {
+  connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
   if (isOldPage(connection)) connection.webSocket.close();
 }
 
@@ -122,12 +123,7 @@ export function createDocumentSizeGate(): (data: beforeSyncPayload<AuthContext>)
     const refuse = (step: RefusalStep): never => {
       if (document.hasConnection(connection)) {
         markRefused(connection.socketId, documentName);
-        // Hocuspocus closes with the reason after the throw; the socket can
-        // close only once the reason is out.
-        if (isOldPage(connection)) {
-          connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
-          closeOldPageSocket(connection);
-        }
+        closeForSize(connection);
       }
       logRefusal(documentName, userId, step);
       throw Object.assign(new Error("document size limit reached"), { reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
@@ -250,8 +246,7 @@ export function watchDocumentSize(document: Document): void {
         store.pendingDs = snapshot.ds;
         if (document.hasConnection(connection)) {
           markRefused(connection.socketId, name);
-          connection.close({ code: 1000, reason: COLLAB_DOCUMENT_TOO_LARGE_REASON });
-          closeOldPageSocket(connection);
+          closeForSize(connection);
         }
         logRefusal(name, (connection.context as AuthContext | undefined)?.user?.id, "pending", { pendingBefore, pendingAfter });
       }
