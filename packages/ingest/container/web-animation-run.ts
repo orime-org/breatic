@@ -12,7 +12,7 @@
  * (inner#1367).
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -332,24 +332,53 @@ export const CHROMIUM_ARGS: readonly string[] = [
   "--hide-scrollbars", "--mute-audio", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
 ];
 
+/** Chromium leads its own process group, so closing it reaches the renderers and helpers it starts. */
+export const CHROMIUM_SPAWN_OPTIONS = { detached: true } as const;
+
 /**
  * Start Chromium headless and read its DevTools endpoint.
  * @param bin - The Chromium program.
  * @param profile - A fresh user-data directory.
  * @returns The process and its endpoint.
  */
-function startChromium(bin: string, profile: string): Promise<{ stop: () => void; endpoint: string }> {
-  const child = spawn(bin, [...CHROMIUM_ARGS, `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+function startChromium(bin: string, profile: string): Promise<{ child: ChildProcess; endpoint: string }> {
+  const child = spawn(bin, [...CHROMIUM_ARGS, `--user-data-dir=${profile}`, "about:blank"], { ...CHROMIUM_SPAWN_OPTIONS, stdio: ["ignore", "ignore", "pipe"] });
   return new Promise((resolve, reject) => {
     let seen = "";
     child.stderr.on("data", (chunk: Buffer) => {
       seen += chunk.toString("utf8");
       const match = /DevTools listening on (ws:\/\/\S+)/.exec(seen);
-      if (match !== null) resolve({ stop: () => child.kill("SIGKILL"), endpoint: match[1] ?? "" });
+      if (match !== null) resolve({ child, endpoint: match[1] ?? "" });
     });
     child.on("error", reject);
     child.on("close", (code) => reject(new Error(`chromium exited ${code}: ${seen.slice(-2000)}`)));
   });
+}
+
+/**
+ * Kill Chromium's whole process group, wait until it has exited, then remove its profile. Its helpers keep writing
+ * into the profile until they are gone, so removing it earlier fails with ENOTEMPTY. A profile that still cannot be
+ * removed is logged: the measurement it belongs to stands.
+ * @param child - The Chromium process, started with {@link CHROMIUM_SPAWN_OPTIONS}.
+ * @param profile - Its user-data directory.
+ * @throws {never} Never.
+ */
+export async function closeChromium(child: ChildProcess, profile: string): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    try {
+      if (child.pid === undefined) throw new Error("no pid");
+      process.kill(-child.pid, "SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+    await exited;
+  }
+  try {
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (err) {
+    console.error("web_animation_profile_cleanup_failed", { profile, err: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 /**
@@ -439,9 +468,8 @@ async function measureInChromium(html: string, job: WebAnimationRunBody, setting
     return { ...empty, seekRepeat: [forward, again], seekDirections: [forward, backward], textFonts };
   } finally {
     cdp.close();
-    chromium.stop();
     server.close();
-    await rm(profile, { recursive: true, force: true });
+    await closeChromium(chromium.child, profile);
   }
 }
 
