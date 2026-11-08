@@ -4,8 +4,8 @@
 /**
  * The `timeline` queue's `QueueEvents` 'failed' handler (inner#1711 design §5.2).
  *
- * A job that used up its retries is only logged: the row keeps its state, fence and hold, its container keeps
- * running, the sweep adds the job again and the original deadline finishes the execution.
+ * A job that used up its retries is only logged: the row keeps its state and fence, its container keeps running,
+ * the sweep adds the job again and the original deadline finishes the execution.
  */
 
 import type { Queue } from "bullmq";
