@@ -20,7 +20,6 @@ import {
   budgetDeadlineFrom,
   db,
   env,
-  type DbTx,
   getTimelineConfig,
   logger,
   timelineExecutionRepo,
@@ -252,16 +251,4 @@ export async function previewUrl(userId: string, sourceId: string, projectId: st
   const exp = Date.now() + getTimelineConfig().web_animation.preview_token_ttl_ms;
   const signed = await signPayload({ sourceVersionId: source.id, packageKey: source.packageKey, exp }, env.INGEST_SHARED_SECRET);
   return `${env.WEB_ANIMATION_PREVIEW_BASE_URL}/web-animation/${encodePreviewToken(signed)}/index.html`;
-}
-
-/**
- * Give a Project copy every live grant its source holds, inside the copy's transaction.
- * @param sourceProjectId - The Project copied from.
- * @param copyProjectId - The copy.
- * @param tx - The copy's transaction.
- * @returns Nothing once the grants are written.
- * @throws {Error} When the write fails; the copy then rolls back.
- */
-export async function copyGrants(sourceProjectId: string, copyProjectId: string, tx: DbTx): Promise<void> {
-  await grantRepo.copyGrants(sourceProjectId, copyProjectId, tx);
 }
