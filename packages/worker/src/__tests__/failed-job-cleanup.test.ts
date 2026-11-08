@@ -462,7 +462,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
       spaceId: "s1",
       targetNodeIds: [],
       sceneRowId: "row-1",
-    } as Partial<TaskJobData>);
+    });
   }
 
   beforeEach(() => {
