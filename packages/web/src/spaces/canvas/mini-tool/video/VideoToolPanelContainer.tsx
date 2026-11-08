@@ -9,7 +9,7 @@ import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type MiniToolSlotValue, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -433,10 +433,10 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     let pickedTimeline = false;
     for (const [key, held] of Object.entries(slots)) {
       if (held === undefined || Array.isArray(held)) continue;
-      const value = held as { url: string; cover?: string; duration?: number };
-      const copiedNode = nodes.find((candidate) => 'content' in candidate.data && candidate.data.content === value.url);
+      const value = held as MiniToolSlotValue;
       const inputId = newId();
-      const copied = { inputId, url: value.url, ...(value.cover === undefined ? {} : { cover: value.cover }), ...(value.duration === undefined ? {} : { mediaInfo: { duration: value.duration } }), ...(copiedNode === undefined ? {} : { sourceNodeId: copiedNode.id }) };
+      // The clicked node, not the first holding its address: two nodes may hold the same video (edge and name follow it).
+      const copied = { inputId, url: value.url, ...(value.cover === undefined ? {} : { cover: value.cover }), ...(value.duration === undefined ? {} : { mediaInfo: { duration: value.duration } }), ...(value.nodeId === undefined ? {} : { sourceNodeId: value.nodeId }) };
       if (toolId === 'video.lip-sync' && key.startsWith('dialogue:')) {
         const draft = current as VideoToolDraftById['video.lip-sync'];
         const id = key.slice('dialogue:'.length);
@@ -466,7 +466,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     }
     // A picked video opens the timeline (canvas design §4 transitions row).
     if (pickedTimeline) { store.getState().endPick(); setTimelineOpen(true); }
-  }, [slots, current, disabled, nodes, toolId, change, store]);
+  }, [slots, current, disabled, toolId, change, store]);
   const intent = `video-analysis:${projectId}:${spaceId}:${nodeId}:${toolId}`;
   const analysisPressRunning = Boolean(useRunning(intent));
   const analysing = analysisPressRunning || analysisReadings.pending || matchingRecords.some((record) => record.status === 'pending' || record.status === 'running');

@@ -71,11 +71,12 @@ export function miniToolSlotCandidate(
 }
 
 /**
- * What a pick copies off the clicked node: its address, its poster, its length.
+ * What a pick copies off the clicked node: its address, its poster, its length, and the node itself.
  * @param node - The clicked node.
+ * @param node.id - Its id, which tells it apart from another node holding the same address.
  * @returns The slot value, or null when the node holds nothing.
  */
-export function miniToolSlotValue(node: ClickedNode): MiniToolSlotValue | null {
+export function miniToolSlotValue(node: ClickedNode & { id: string }): MiniToolSlotValue | null {
   const content = node.data?.content;
   if (typeof content !== 'string' || content.length === 0) return null;
   const cover = pickedSlotCover(node);
@@ -84,5 +85,6 @@ export function miniToolSlotValue(node: ClickedNode): MiniToolSlotValue | null {
     url: content,
     ...(cover !== null && { cover }),
     ...(duration !== null && { duration }),
+    nodeId: node.id,
   };
 }

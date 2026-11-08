@@ -52,11 +52,12 @@ describe('miniToolSlotCandidate', () => {
 
 describe('miniToolSlotValue', () => {
   // §7.3: the pick is a snapshot of the node at that moment, cover and length included.
-  it('copies the address, the cover and the length', () => {
+  // The node it was picked from travels with it, so two nodes holding the same address stay apart (inner#1306 #14).
+  it('copies the address, the cover, the length and the clicked node', () => {
     expect(
-      miniToolSlotValue({ type: 'video', data: { content: 'v.mp4', coverUrl: 'c.jpg', duration: 4 } }),
-    ).toEqual({ url: 'v.mp4', cover: 'c.jpg', duration: 4 });
-    expect(miniToolSlotValue({ type: 'image', data: { content: 'i.png' } })).toEqual({ url: 'i.png' });
+      miniToolSlotValue({ id: 'v', type: 'video', data: { content: 'v.mp4', coverUrl: 'c.jpg', duration: 4 } }),
+    ).toEqual({ url: 'v.mp4', cover: 'c.jpg', duration: 4, nodeId: 'v' });
+    expect(miniToolSlotValue({ id: 'i', type: 'image', data: { content: 'i.png' } })).toEqual({ url: 'i.png', nodeId: 'i' });
   });
 });
 

@@ -48,7 +48,7 @@ const name = docName.canvasSpace(projectId, spaceId);
  * @param picked - An input already picked, with its trimmed clip, or none.
  * @returns The Run entry.
  */
-function mount(picked?: { url: string; duration: number; in: number; out: number }): ReturnType<typeof vi.fn> {
+function mount(picked?: { url: string; duration: number; in: number; out: number }, others: readonly CanvasNodeView[] = []): ReturnType<typeof vi.fn> {
   const doc = getDoc(name);
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   const initial = createVideoToolDraft('video.transitions', { nodeId, canonicalURL: sourceURL, mediaInfo });
@@ -58,7 +58,7 @@ function mount(picked?: { url: string; duration: number; in: number; out: number
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.transitions', { sourceContent: sourceURL, params: {} });
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.transitions' node={node} nodes={[node]} presentation={ready} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.transitions' node={node} nodes={[node, ...others]} presentation={ready} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   return onRunVideo;
 }
 
@@ -78,8 +78,8 @@ function held(): VideoToolDraftById['video.transitions'] {
  * @param duration - Its length in seconds.
  * @returns Nothing.
  */
-function pick(url: string, duration: number): void {
-  act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url, duration }, false));
+function pick(url: string, duration: number, nodeId?: string): void {
+  act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url, duration, ...(nodeId === undefined ? {} : { nodeId }) }, false));
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
@@ -113,5 +113,15 @@ describe('the transitions input slot (canvas design §4, §28)', () => {
     expect(clips).toHaveLength(2);
     expect(clips[0]).toEqual(host);
     expect(clips[1]).toMatchObject({ clipId: '50000000-0000-4000-8000-000000000002', inputId: held().inputs[1]!.inputId, in: 0, out: 5 });
+  });
+
+  it('names the input after the clicked node when two nodes hold the same video (inner#1306 #14)', async () => {
+    const shared = 'https://assets.example.test/shared.webm';
+    const twin = (id: string, label: string): CanvasNodeView => ({ id, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: shared, name: label, ...mediaInfo } });
+    mount(undefined, [twin('20000000-0000-4000-8000-000000000001', 'First copy'), twin('20000000-0000-4000-8000-000000000002', 'Second copy')]);
+    pick(shared, 3, '20000000-0000-4000-8000-000000000002');
+    await waitFor(() => expect(held().inputs[1]?.sourceNodeId).toBe('20000000-0000-4000-8000-000000000002'));
+    expect(screen.getAllByText('Second copy').length).toBeGreaterThan(0);
+    expect(screen.queryByText('First copy')).toBeNull();
   });
 });

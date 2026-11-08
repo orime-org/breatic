@@ -22,6 +22,8 @@ export interface MiniToolSlotValue {
   readonly cover?: string;
   /** Seconds, when the medium has a length. */
   readonly duration?: number;
+  /** The canvas node it was picked from; another node may hold the same address. */
+  readonly nodeId?: string;
 }
 
 /** What a run was started with: the panel's draft at the moment Execute was pressed. */
