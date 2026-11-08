@@ -193,6 +193,18 @@ export type StepEnded = { key: string } | { failed: string; step?: string };
 
 const objectResult = z.strictObject({ stepKey: z.string().min(1), object: z.string().min(1), providerURL: z.url() });
 const retryOf = z.object({ miniToolExecution: z.object({ retry: z.object({ runId: z.uuid() }).optional() }) });
+const sam3Outputs = z.tuple([z.object({ rle_url: z.url() })]);
+
+/**
+ * The RLE link of a SAM3 tracking answer (execution design §10.3 track step): the `rle_url` of its one output.
+ * @param outputs - The prediction's outputs.
+ * @returns The link, or null for an answer of any other shape.
+ * @throws {never} Never.
+ */
+export function sam3RleLink(outputs: unknown): string | null {
+  const parsed = sam3Outputs.safeParse(outputs);
+  return parsed.success ? parsed.data[0].rle_url : null;
+}
 
 /**
  * An intermediate object's key: the step key, a colon and the attempt's id (§97 D17-6).

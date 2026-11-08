@@ -13,6 +13,7 @@
  * - `eraseContainerCategory(reason)`: `model_output_mismatch` from the composite keeps its name, any other reason is `failed`.
  * - `expandFailureReason(windows, shared)`: a line per window that did not succeed; a window never submitted after a failure
  *   or an expiry is `generate` / `stopped`.
+ * - `sam3RleLink(outputs)`: the RLE link of a SAM3 tracking answer, the `rle_url` of its one output; null for any other shape.
  * - `lipsyncTrackJoinFailureLine(reason)`: a person's `track_join` failure, `empty_foreground` as `track` / `no_face`, anything
  *   else as `track` / `failed`.
  */
@@ -20,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
 import { expandFailureReasonSchema } from "@breatic/shared/mini-tools";
 import { lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { eraseContainerCategory, expandFailureReason, modelStepCategory, trackedMaskFailure } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { eraseContainerCategory, expandFailureReason, modelStepCategory, sam3RleLink, trackedMaskFailure } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
 
 /**
@@ -102,5 +103,20 @@ describe("expand failure reason (execution design §10.5 failure paragraph)", ()
 describe("lip-sync track_join failure line (execution design §10.2 last paragraph)", () => {
   it.each([["empty_foreground", "no_face"], ["tracking_output_mismatch", "failed"], ["tool_failed", "failed"]] as const)("LJ01 %s is track / %s", (reason, category) => {
     expect(lipsyncTrackJoinFailureLine(reason)).toEqual({ step: "track", category });
+  });
+});
+
+describe("SAM3 tracking answer (execution design §10.3 track step)", () => {
+  const rle = "https://provider.test.invalid/sam3/rle.json?signature=x";
+
+  it("TA01 reads the rle_url of the one output", () => {
+    expect(sam3RleLink([{ rle_url: rle, video_url: "https://provider.test.invalid/sam3/preview.mp4" }])).toBe(rle);
+  });
+
+  it.each([
+    undefined, null, {}, [], [rle], [null], [{}], [{ rle_url: "" }], [{ rle_url: "not a url" }], [{ rle_url: 1 }],
+    [{ rle_url: rle }, { rle_url: rle }],
+  ].map((outputs) => ({ outputs })))("TA02 is null for an answer of any other shape: %j", ({ outputs }) => {
+    expect(sam3RleLink(outputs)).toBeNull();
   });
 });

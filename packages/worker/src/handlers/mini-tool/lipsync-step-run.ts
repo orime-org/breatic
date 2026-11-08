@@ -28,7 +28,7 @@ import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlan
 import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
-  advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
+  advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -73,7 +73,6 @@ const ROW = 5;
 const STEM = 6;
 const TRACK_REV = 7;
 
-const trackOutputs = z.tuple([z.object({ rle_url: z.url() })]);
 const genOutputs = z.tuple([z.url()]);
 
 /**
@@ -259,7 +258,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
       // The RLE answer is JSON text, which the Worker names by its bytes: signature-less text reads as text/plain.
       const ended = await advanceGenerate(stepRun(execution), { endpoint: providerModel(execution.tracking.model), itemIndex: index * 2 + (order === "forward" ? 0 : 1),
         stepKey: keyOf(keys, kind), contentType: "text/plain", category: (error) => lipsyncStepCategory("track", error, undefined),
-        link: (outputs) => { const parsed = trackOutputs.safeParse(outputs); return parsed.success ? parsed.data[0].rle_url : null; },
+        link: sam3RleLink,
         body: async () => {
           const video = await clipVideo(execution, order, deadlineAt);
           if (!("key" in video)) throw new Error(`The lip-sync ${order} clip is not prepared`);

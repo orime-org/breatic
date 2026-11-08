@@ -9,7 +9,6 @@
  * fetched RLEs stay on the analysis pin until the analysis ends. A step that fails for good ends the analysis with
  * `TrackedMaskFailed`, whose code and step the pickup stores.
  */
-import { z } from "zod";
 import { getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
 import { lipsyncStepKey, upstreamStepRepo, type miniToolAnalysisService, type MiniToolStepJson } from "@breatic/domain";
 import {
@@ -18,7 +17,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import {
-  advanceClip, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
+  advanceClip, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, sam3RleLink, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceAnalysisJob, frozenLedger } from "@worker/handlers/mini-tool/run-container-analysis.js";
 import { modelInputTarget } from "@worker/handlers/video-presentation-recipes.js";
@@ -29,7 +28,6 @@ type TrackedMaskResult = Extract<MiniToolAnalysisResult, { kind: "tracked_mask" 
 
 /** The input ids the join binds the tracks under, fixed so a rebuilt request is the same request. */
 const TRACKS = { forward: "00000000-0000-4000-8002-000000000000", reverse: "00000000-0000-4000-8007-000000000000" } as const;
-const trackOutputs = z.tuple([z.object({ rle_url: z.url() })]);
 
 /**
  * Advance one accepted tracked mask analysis through its steps.
@@ -75,7 +73,7 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
     // The selection in the clip's pixels on its frame 0, the anchor (§10.2); the RLE is read, so no mask is applied.
     const ended = await advanceGenerate(run, { endpoint: providerModel(input.profile.id), itemIndex: side.itemIndex, stepKey: keyOf(`track:${side.suffix}`),
       contentType: "text/plain", category: (error) => modelStepCategory(error, undefined),
-      link: (outputs) => { const parsed = trackOutputs.safeParse(outputs); return parsed.success ? parsed.data[0].rle_url : null; },
+      link: sam3RleLink,
       body: () => Promise.resolve(upstreamBody(catalogModel(input.profile.id), {
         video: storage.publicUrl(prepared[at]!), apply_mask: input.profile.params.apply_mask ?? false,
         ...(box === null ? {} : { box_prompts: [{ frame_index: 0, object_id: 1, x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
