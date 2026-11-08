@@ -91,7 +91,8 @@ function sourceWindow(clip: Clip, output: FrameWindow, fps: { numerator: string;
 }
 
 /**
- * Advance one unregistered work chunk up to the frozen retries; a failed attempt's output is retired with its result.
+ * Advance one unregistered work chunk up to the frozen retries; a done output is pinned with the run and a failed
+ * attempt's output is retired with its result.
  * @param execution - The run.
  * @param spec - The chunk's §5.4 id per attempt.
  * @param containerClass - The class it runs on.
@@ -122,7 +123,7 @@ async function advanceWork(execution: Transitions, spec: (attempt: number) => Vi
     if (report.state !== "done" && report.state !== "failed") return null;
     const key = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [key] } } : {}) },
+      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [key] } } : { presentation: { pin: [key] } }) },
     { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
     if (report.state === "done") return key;
     reason = report.reason;

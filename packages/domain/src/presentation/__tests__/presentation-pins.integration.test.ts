@@ -273,4 +273,17 @@ describe("appending lip-sync intermediates to the execution pin (§97 D17-7)", (
     await pins().release({ holderKind: "execution", holderId: task });
     expect(await queued(s.key)).toEqual([s.full(T), s.table(T), key].sort());
   });
+
+  // A transitions run pins each of its two inputs in its own execution row; a done chunk it appends stays pinned with the
+  // run and is registered when the run's pins are released.
+  it("PA04 a run with one execution row per input appends to it, and releasing the run registers the appended keys", async () => {
+    const s = source(); const task = randomUUID(); const key = s.work(`${"e".repeat(64)}:70000000-0000-4000-8000-000000000005`);
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T2, objectKeys: [s.full(T2), s.table(T2)] });
+    const write = await append();
+    await db.transaction(async (tx) => { await write(task, [key], tx); });
+    expect(await pins().isKeyPinned(key)).toBe(true);
+    await pins().release({ holderKind: "execution", holderId: task });
+    expect(await queued(s.key)).toEqual([s.full(T), s.table(T), s.full(T2), s.table(T2), key].sort());
+  });
 });

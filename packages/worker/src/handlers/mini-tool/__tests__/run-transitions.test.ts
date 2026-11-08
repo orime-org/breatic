@@ -472,6 +472,17 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(statuses(completion)).toEqual(["registered"]);
   });
 
+  // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so a run that fails after
+  // it still hands it to reclaim at the terminal release; the stitch's retire leaves it to that release.
+  it("TW03b every done encode and window chunk is pinned with the run when its result is recorded", async () => {
+    const value = fade();
+    serve(plan(value));
+    await drive();
+    const done = h.record.mock.calls.map((call) => call[0] as { outcome: string; stepId: string; presentation?: unknown }).filter((entry) => entry.outcome === "done");
+    const ids = [...value.layout.encode.map((_window, k) => encId(k)), ...value.layout.window.map((_window, k) => winId(k))];
+    expect(done.map((entry) => entry.presentation)).toEqual(ids.map((id) => ({ pin: [requestOf(id).outputs[0]!.storageKey] })));
+  });
+
   it("TW04 sends in each stage exactly the frozen stageJobs distinct jobs and no other job", async () => {
     const value = fade();
     serve(plan(value));

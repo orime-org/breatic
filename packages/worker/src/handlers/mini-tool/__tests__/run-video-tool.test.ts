@@ -560,6 +560,16 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     const failedChunk = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { retire?: string[] } }).find((value) => value.outcome === "failed");
     expect(failedChunk?.presentation?.retire).toEqual([videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))]);
   });
+
+  // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so the stitch's retire
+  // leaves it to the run's pin release and a segment that fails after it still hands it to reclaim at the terminal release.
+  it("VC04 every done chunk is pinned with the run when its result is recorded", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE]));
+    scripted.set(chunkId(1), { written: [], state: "failed" });
+    await drive();
+    const recorded = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { pin?: string[]; retire?: string[] } });
+    expect(recorded.find((value) => value.outcome === "done")?.presentation).toEqual({ pin: [videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(0))] });
+  });
 });
 
 // §93 D5-12 (frames-split design §7.17 segment row 「透明源输出VP9+透明+Opus的WebM并保留奇数尺寸」, §4.3): a transparent source's

@@ -183,7 +183,8 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
 
 /**
  * Advance one chunk of an oversized segment on the model-input preparation path (§93 D5-10): a work object, never
- * registered; a failed attempt's output is retired with its result, the next attempt runs under its own id.
+ * registered; a done output is pinned with the run, a failed attempt's output is retired with its result, the next
+ * attempt runs under its own id.
  * @param execution - The run.
  * @param output - The segment's output index.
  * @param chunk - The chunk index.
@@ -212,7 +213,7 @@ async function advanceChunk(execution: VideoTool, output: number, chunk: number,
     if (report.state !== "done" && report.state !== "failed") return null;
     const key = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [key] } } : {}) },
+      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [key] } } : { presentation: { pin: [key] } }) },
     { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
     if (report.state === "done") return key;
     reason = report.reason;
