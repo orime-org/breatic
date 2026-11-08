@@ -911,6 +911,7 @@
         "face_limit": "Face limit",
         "auto_size": "Auto size",
         "export_uv": "Export UV",
+        "rig_skeleton": "Rig skeleton",
         "model_seed": "Model seed",
         "texture_seed": "Texture seed",
         "texture_alignment": "Texture alignment",

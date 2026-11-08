@@ -898,6 +898,7 @@
         "face_limit": "면 수 제한",
         "auto_size": "자동 크기",
         "export_uv": "UV 내보내기",
+        "rig_skeleton": "스켈레톤 리깅",
         "model_seed": "모델 시드",
         "texture_seed": "텍스처 시드",
         "texture_alignment": "텍스처 정렬",

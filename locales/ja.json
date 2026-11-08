@@ -898,6 +898,7 @@
         "face_limit": "ポリゴン数上限",
         "auto_size": "自動サイズ",
         "export_uv": "UV を出力",
+        "rig_skeleton": "スケルトンをリギング",
         "model_seed": "モデルシード",
         "texture_seed": "テクスチャシード",
         "texture_alignment": "テクスチャの合わせ方",

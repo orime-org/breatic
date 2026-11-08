@@ -898,6 +898,7 @@
         "face_limit": "面數上限",
         "auto_size": "自動尺寸",
         "export_uv": "匯出 UV",
+        "rig_skeleton": "綁定骨骼",
         "model_seed": "模型種子",
         "texture_seed": "貼圖種子",
         "texture_alignment": "貼圖對齊",

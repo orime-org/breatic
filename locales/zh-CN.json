@@ -898,6 +898,7 @@
         "face_limit": "面数上限",
         "auto_size": "自动尺寸",
         "export_uv": "导出 UV",
+        "rig_skeleton": "绑定骨骼",
         "model_seed": "模型种子",
         "texture_seed": "贴图种子",
         "texture_alignment": "贴图对齐",
