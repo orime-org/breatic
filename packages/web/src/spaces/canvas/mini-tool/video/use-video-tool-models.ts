@@ -86,7 +86,14 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   const outputs = React.useMemo(() => toolId !== 'video.lip-sync' ? [] : readEdges(getDoc(docName.canvasSpace(projectId, spaceId)))
     .filter((edge) => edge.source === nodeId && edge.toolId === 'video.lip-sync' && nodes.some((node) => node.id === edge.target)).map((edge) => edge.target).sort(),
   [toolId, projectId, spaceId, nodeId, nodes]);
-  const failureKey = React.useMemo(() => ['lip-sync-failure', projectId, spaceId, ...outputs], [projectId, spaceId, outputs]);
+  // Keyed on each output's task counts too: they move when its run settles or a retry starts on it, which is when the last
+  // run and its failure change.
+  const outputCounts = outputs.map((id) => {
+    const view = nodes.find((node) => node.id === id);
+    const counts = view !== undefined && 'taskCounts' in view.data ? view.data.taskCounts : undefined;
+    return counts === undefined ? `${id}:none` : `${id}:${counts.running}/${counts.done}/${counts.failed}/${counts.expired}`;
+  }).join(',');
+  const failureKey = React.useMemo(() => ['lip-sync-failure', projectId, spaceId, outputCounts], [projectId, spaceId, outputCounts]);
   const failure = useQuery({ queryKey: failureKey, queryFn: () => lastLipSyncFailure(projectId, spaceId, outputs), enabled: outputs.length > 0 }).data ?? null;
   // A taken-over output is retried from the run that took it over, and a reason no retry can clear offers none.
   const onRetryFailed = React.useMemo(() => failure === null || !plannedOutputRetryable('video.lip-sync', failure.output) ? undefined : (): void => {

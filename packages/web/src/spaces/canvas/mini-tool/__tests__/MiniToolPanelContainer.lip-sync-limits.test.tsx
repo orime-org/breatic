@@ -242,16 +242,23 @@ function addFailedOutput(id = outputId, failed = true): CanvasNodeView {
  * @param rows - The draft's dialogue rows (see {@link seed}).
  * @param people - The people the analysis found (see {@link seed}).
  * @param outputs - Adds the host's lip-sync outputs after the draft is seeded and returns the views still on the canvas.
- * @returns Nothing.
+ * @returns A rerender with the canvas's next output views, the panel staying mounted.
  */
-async function mount(withOutput = false, rows?: Dialogue[], people?: readonly string[], outputs?: () => CanvasNodeView[]): Promise<void> {
+async function mount(withOutput = false, rows?: Dialogue[], people?: readonly string[], outputs?: () => CanvasNodeView[]): Promise<(next: CanvasNodeView[]) => void> {
   await seed(rows, people);
   const host: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  const nodes = [host, ...(withOutput ? [addFailedOutput()] : []), ...(outputs?.() ?? [])];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(modelCatalogQuery().queryKey, catalog);
-  render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn().mockResolvedValue({ kind: 'done', result: {} })} videoPresentation={new Map([[nodeId, mounted]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
+  /**
+   * The panel container as `CanvasSpace` mounts it over these node views.
+   * @param nodes - The canvas's node views.
+   * @returns The tree.
+   */
+  const tree = (nodes: CanvasNodeView[]): React.JSX.Element => <QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={nodes} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={onRunVideo} videoPresentation={new Map([[nodeId, mounted]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>;
+  const { rerender } = render(tree([host, ...(withOutput ? [addFailedOutput()] : []), ...(outputs?.() ?? [])]));
   await screen.findAllByText('Person 1');
+  return (next) => rerender(tree([host, ...next]));
 }
 
 /**
@@ -355,6 +362,42 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
     const failure = await screen.findByTestId('video-lip-sync-failure');
     expect(failure).toHaveTextContent(ui('personFailNoFace'));
     expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
+  });
+});
+
+// The output node's counts are what moves when its run settles or a retry starts on it, so the host's failure block reads
+// the last run again whenever they move, without the panel being reopened.
+describe('the host panel follows its lip-sync output as the run settles (§97 D24-1; execution design §9.4)', () => {
+  const reason: LipsyncFailureReason = { kind: 'lipsync', persons: [{ personId: 'person-a', detectionNumber: 2, step: 'gen', category: 'timeout' }], shared: null };
+
+  it('shows the failure of a run that fails while the panel is open', async () => {
+    const state = { failed: false };
+    http.get.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path === '/canvas/limits') return limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 });
+      if (path === `/canvas/nodes/${outputId}/tasks`) return { tasks: [{ ...task({ nodeId: outputId, runId: failedRunId, startedAt: '2026-11-06T00:00:00.000001Z', failure: state.failed ? reason : null }), ...(state.failed ? {} : { status: 'running', settledAt: null }) }] };
+      if (path === `/projects/${projectId}/mini-tool-runs/${failedRunId}`) {
+        if (state.failed) return run(reason);
+        const running = run(null);
+        return { ...running, status: 'running', billingState: 'idle', outputs: running.outputs.map((output) => ({ ...output, result: null })) };
+      }
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    /**
+     * The output node's view with these counts.
+     * @param taskCounts - Its task counts.
+     * @returns The view.
+     */
+    const view = (taskCounts: { running: number; done: number; failed: number; expired: number }): CanvasNodeView => ({ id: outputId, type: 'video', position: { x: 600, y: 0 }, data: { handling: false, content: '', taskCounts } });
+    const next = await mount(false, undefined, undefined, () => {
+      addNode(projectId, spaceId, { id: outputId, type: 'video', position: { x: 600, y: 0 }, data: { content: '', name: 'Source lip-sync', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+      addEdge(projectId, spaceId, { id: `${nodeId}->${outputId}`, source: nodeId, target: outputId, toolId: 'video.lip-sync' });
+      return [view({ running: 1, done: 0, failed: 0, expired: 0 })];
+    });
+    await waitFor(() => expect(http.get.mock.calls.map(([path]) => path)).toContain(`/projects/${projectId}/mini-tool-runs/${failedRunId}`));
+    expect(screen.queryByTestId('video-lip-sync-failure')).toBeNull();
+    state.failed = true;
+    next([view({ running: 0, done: 0, failed: 1, expired: 0 })]);
+    expect(await screen.findByTestId('video-lip-sync-failure')).toHaveTextContent(`${ui('personNumber', { number: 2 })} · ${ui('personFailTimeout')}`);
   });
 });
 
