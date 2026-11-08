@@ -15,6 +15,7 @@ import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { READER_SERVICE_PORT, readerServiceAnswerSchema } from "@breatic/shared";
 import type { ReadPagesAnswer, ReadPagesRequest } from "@breatic/shared";
 
+import { noteFailure } from "@ingest/error-monitoring.js";
 import { webReaderOutbound } from "@ingest/web-reader-outbound.js";
 
 /**
@@ -139,7 +140,8 @@ export class WebReaderContainer extends Container {
   private async destroyOnce(): Promise<void> {
     if (this.destroyed) return;
     this.destroyed = true;
-    await this.destroy().catch(() => undefined);
+    // A failed destroy leaves a container running until its own timeout.
+    await this.destroy().catch((err: unknown) => noteFailure("ingest_web_reader_destroy_failed", {}, err));
   }
 }
 

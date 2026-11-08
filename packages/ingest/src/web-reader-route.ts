@@ -8,6 +8,7 @@
 import { INGEST_FAILURE_HEADER, readPagesRequestSchema } from "@breatic/shared";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
+import { noteFailure } from "@ingest/error-monitoring.js";
 import type { WebReaderContainer } from "@ingest/web-reader-container.js";
 
 /** What the route reads from the Worker's bindings. */
@@ -47,6 +48,7 @@ export async function readPages(request: Request, env: WebReaderEnv): Promise<Re
     if (request.signal.aborted) return new Response("The caller left", { status: 499 });
     // Nothing ran, so nothing is charged: the server reads the code.
     if (err instanceof Error && err.message.startsWith("reader_not_started")) {
+      noteFailure("ingest_web_reader_start_failed", {}, err);
       return new Response("The page reader would not start", {
         status: 503,
         headers: { [INGEST_FAILURE_HEADER]: "reader_not_started" },
