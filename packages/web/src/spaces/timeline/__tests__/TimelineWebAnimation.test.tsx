@@ -57,6 +57,13 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
     },
   };
 });
+// The player module as the preview loads it; a case sets `fail` to make the import reject.
+const playerModule = vi.hoisted(() => ({ fail: false, imports: 0 }));
+vi.mock('@hyperframes/player', () => {
+  playerModule.imports += 1;
+  if (playerModule.fail) throw new Error('Failed to fetch dynamically imported module');
+  return {};
+});
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
@@ -562,6 +569,128 @@ describe('preview of web copies', () => {
     await userEvent.click(within(note).getByTestId(`timeline-web-retry-${copy}`));
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
+  });
+});
+
+describe('play holds for a web copy that has just become visible', () => {
+  const COPY = '30000000-0000-4000-8000-000000000105';
+  // Each player's iframe window, recording what the host posts to it.
+  let frames = new Map<Element, { frameWindow: Window; posted: ReturnType<typeof vi.fn> }>();
+
+  beforeEach(() => {
+    rows = [SOURCE_A_ROW];
+    playerModule.fail = false;
+    playerModule.imports = 0;
+    frames = new Map();
+    // Every player exposes the iframe its page runs in, as the real element does once defined.
+    Object.defineProperty(HTMLElement.prototype, 'iframeElement', {
+      configurable: true,
+      get(this: HTMLElement): HTMLIFrameElement {
+        const iframe = document.createElement('iframe');
+        let frame = frames.get(this);
+        if (frame === undefined) {
+          const posted = vi.fn();
+          frame = { frameWindow: { postMessage: posted } as unknown as Window, posted };
+          frames.set(this, frame);
+        }
+        const { frameWindow } = frame;
+        Object.defineProperty(iframe, 'contentWindow', { configurable: true, get: () => frameWindow });
+        return iframe;
+      },
+    });
+  });
+
+  afterEach(() => {
+    // The document is shared across files; these stand-ins must not outlive the case.
+    Reflect.deleteProperty(HTMLElement.prototype, 'iframeElement');
+    Reflect.deleteProperty(HTMLIFrameElement.prototype, 'sandbox');
+  });
+
+  /**
+   * Count the player element as defined, as it is once its module has loaded.
+   * @throws {never} Never.
+   */
+  function playerDefined(): void {
+    const get = customElements.get.bind(customElements);
+    vi.spyOn(customElements, 'get').mockImplementation((name) => (name === 'hyperframes-player' ? HTMLElement : get(name)));
+  }
+
+  /**
+   * Deliver a message from a player's page.
+   * @param element - The player.
+   * @param data - The message.
+   * @throws {Error} When the host never reached that player.
+   */
+  function fromPage(element: Element, data: unknown): void {
+    const frame = frames.get(element);
+    if (frame === undefined) throw new Error('the host never reached this player');
+    const event = new Event('message');
+    Object.defineProperties(event, { data: { value: data }, source: { value: frame.frameWindow }, origin: { value: 'null' } });
+    act(() => { window.dispatchEvent(event); });
+  }
+
+  /**
+   * The transport line under the preview.
+   * @param state - The state it should name.
+   * @returns Its text.
+   * @throws {never} Never.
+   */
+  function transport(state: 'playing' | 'waiting' | 'paused'): string {
+    return t(`timeline.transport.${state}`);
+  }
+
+  it('waits at the copy while its preview address is still being fetched, and plays once its page answers', async () => {
+    playerDefined();
+    let answer: (value: { url: string }) => void = () => {};
+    vi.mocked(timelineApi.previewUrl).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+    seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
+    showTimeline();
+    await screen.findByTestId(`timeline-web-note-${COPY}`);
+    await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getByTestId('timeline-play'));
+    expect(screen.getByText(transport('waiting'))).toBeInTheDocument();
+    expect(screen.queryByText(transport('playing'))).toBeNull();
+
+    await act(async () => { answer({ url: PREVIEW_URL }); });
+    const player = await waitFor(() => {
+      const element = screen.getByTestId('timeline-preview').querySelector('hyperframes-player');
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    await waitFor(() => expect(frames.get(player)?.posted).toHaveBeenCalledWith({ type: 'breatic-hello' }, '*'));
+    expect(screen.getByText(transport('waiting'))).toBeInTheDocument();
+
+    fromPage(player, { type: 'breatic-bridge-ready' });
+    const seek = frames.get(player)?.posted.mock.calls.map((call) => call[0] as { type?: string; session?: unknown; sequence?: unknown })
+      .filter((message) => message.type === 'breatic-seek').at(-1);
+    expect(seek).toBeDefined();
+    expect(screen.getByText(transport('waiting'))).toBeInTheDocument();
+    fromPage(player, { type: 'breatic-frame-ready', session: seek?.session, sequence: seek?.sequence });
+    await waitFor(() => expect(screen.getByText(transport('playing'))).toBeInTheDocument());
+  });
+
+  it('plays past a copy whose preview address was refused', async () => {
+    playerDefined();
+    vi.mocked(timelineApi.previewUrl).mockRejectedValue(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
+    seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${COPY}`))
+      .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
+    await userEvent.click(screen.getByTestId('timeline-play'));
+    await waitFor(() => expect(screen.getByText(transport('playing'))).toBeInTheDocument());
+  });
+
+  it('plays past a copy whose player module failed to load', async () => {
+    Object.defineProperty(HTMLIFrameElement.prototype, 'sandbox', { configurable: true, get: () => document.createElement('div').classList });
+    playerModule.fail = true;
+    seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
+    await waitFor(() => expect(playerModule.imports).toBe(1));
+    await act(async () => { await Promise.resolve(); });
+    await userEvent.click(screen.getByTestId('timeline-play'));
+    await waitFor(() => expect(screen.getByText(transport('playing'))).toBeInTheDocument());
   });
 });
 

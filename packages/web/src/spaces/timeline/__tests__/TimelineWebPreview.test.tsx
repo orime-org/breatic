@@ -15,7 +15,10 @@
 
 import * as React from 'react';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '@breatic/shared';
 
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
@@ -26,7 +29,15 @@ import { SRC_A, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fi
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, previewUrl: vi.fn() } };
+  return { ...actual, timelineApi: { ...actual.timelineApi, previewUrl: vi.fn(), limits: vi.fn() } };
+});
+// The player module as the preview loads it: a case sets `fail` to make the next import reject, as a chunk that a
+// release removed or a dropped connection does.
+const playerModule = vi.hoisted(() => ({ fail: false, imports: 0 }));
+vi.mock('@hyperframes/player', () => {
+  playerModule.imports += 1;
+  if (playerModule.fail) throw new Error('Failed to fetch dynamically imported module');
+  return {};
 });
 // The marker proves the frame shows the shared Skeleton, not a copy of its classes.
 vi.mock('@web/components/ui/skeleton', () => ({
@@ -46,14 +57,33 @@ const ENTRY: TimelineWebEntry = {
 };
 const ENTRIES = [ENTRY];
 
+const LIMITS = {
+  defaults: { width: 1920, height: 1080, fps: FPS },
+  assets: { pageSize: 50, pageMax: 100 },
+  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50, sourceRefreshIntervalMs: 10000 },
+};
+
 beforeEach(() => {
   vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: PREVIEW_URL });
+  vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(LIMITS as never);
+  playerModule.fail = false;
+  playerModule.imports = 0;
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // jsdom iframes cannot be sandboxed; a case that pretends they can must not leak that into the shared document.
+  Reflect.deleteProperty(HTMLIFrameElement.prototype, 'sandbox');
 });
+
+/**
+ * Let iframes count as sandboxable, as in every browser the product supports, so the preview loads the player module.
+ * @throws {never} Never.
+ */
+function sandboxableIframes(): void {
+  Object.defineProperty(HTMLIFrameElement.prototype, 'sandbox', { configurable: true, get: () => document.createElement('div').classList });
+}
 
 /**
  * Render the Timeline preview's web layers with one copy in this state.
@@ -132,6 +162,47 @@ describe('Timeline preview of a web copy', () => {
     expect(note).not.toHaveTextContent(LOADING_NOTE);
     expect(within(note).getByTestId(`timeline-web-retry-${COPY}`)).toBeInTheDocument();
   });
+
+  it('keeps the same player and page address when its Space tab is hidden while loading and shown again', async () => {
+    vi.mocked(timelineApi.previewUrl).mockReset()
+      .mockResolvedValueOnce({ url: PREVIEW_URL })
+      .mockResolvedValue({ url: 'https://preview.example/web-animation/other-token/index.html' });
+    const onPlayer = vi.fn();
+    const view = (mode: 'visible' | 'hidden'): React.JSX.Element => <React.Activity mode={mode}><div className='relative' data-testid='preview'>
+      <TimelineWebPreview projectId={PROJECT} entries={ENTRIES} states={new Map([[KEY, 'loading']])} onPlayer={onPlayer} onRetry={vi.fn()} />
+    </div></React.Activity>;
+    const { rerender } = render(view('visible'));
+    const element = await player();
+    rerender(view('hidden'));
+    rerender(view('visible'));
+    await act(async () => { await Promise.resolve(); });
+    // A new address would reload the page that was already loading.
+    expect(await player()).toBe(element);
+    expect(element).toHaveAttribute('src', PREVIEW_URL);
+    expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('notes a copy unavailable with a retry when the player module fails to load, and loads it again on retry', async () => {
+    sandboxableIframes();
+    playerModule.fail = true;
+    const onPlayer = vi.fn();
+    render(<div className='relative' data-testid='preview'>
+      <TimelineWebPreview projectId={PROJECT} entries={ENTRIES} states={new Map()} onPlayer={onPlayer} onRetry={vi.fn()} />
+    </div>);
+    await waitFor(() => expect(playerModule.imports).toBe(1));
+    const note = await screen.findByTestId(`timeline-web-note-${COPY}`);
+    await waitFor(() => expect(note).toHaveTextContent(`${TRACK}: web animation unavailable`));
+    expect(note).not.toHaveTextContent(LOADING_NOTE);
+    expect(onPlayer).not.toHaveBeenCalled();
+
+    playerModule.fail = false;
+    await userEvent.click(within(note).getByTestId(`timeline-web-retry-${COPY}`));
+    await waitFor(() => expect(playerModule.imports).toBe(2));
+    // Once the module is in, the player is handed to the playback and the copy waits for its page like any other.
+    const element = await player();
+    await waitFor(() => expect(onPlayer).toHaveBeenCalledWith(KEY, element));
+    expect(screen.getByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
+  });
 });
 
 /** The result preview's player with an iframe window that records what the host posts. */
@@ -185,8 +256,7 @@ describe('execution list result preview', () => {
   });
 
   it('shows a skeleton instead of the player until its page answers, then draws the player', async () => {
-    render(<TimelineWebResultPreview projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A}
-      input={{ prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: FPS }} />);
+    showResult();
     await waitFor(() => expect(document.querySelector('hyperframes-player')).not.toBeNull());
     const result = withIframe(document.querySelector('hyperframes-player') as HTMLElement);
     const frame = result.element.parentElement as HTMLElement;
@@ -204,4 +274,42 @@ describe('execution list result preview', () => {
     expect(result.element.style.opacity).not.toBe('0');
     expect(frame.querySelector('[data-ui-skeleton]')).toBeNull();
   });
+
+  it('shows unavailable with a retry instead of the skeleton when its preview address is refused, and fetches a new one on retry', async () => {
+    vi.mocked(timelineApi.previewUrl).mockRejectedValueOnce(new Error('refused'));
+    showResult();
+    const retry = await screen.findByRole('button', { name: t('timeline.retry') });
+    expect(document.querySelector('[data-ui-skeleton]')).toBeNull();
+    expect(document.querySelector('hyperframes-player')).toBeNull();
+    await userEvent.click(retry);
+    await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('src', PREVIEW_URL));
+    expect(screen.queryByRole('button', { name: t('timeline.retry') })).toBeNull();
+  });
+
+  it('fails a page that never says it is ready within the Timeline player load timeout and offers a retry', async () => {
+    showResult();
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).not.toBeNull());
+    withIframe(document.querySelector('hyperframes-player') as HTMLElement);
+    // No bridge-ready ever comes; the Timeline limits give 50 ms.
+    const retry = await screen.findByRole('button', { name: t('timeline.retry') });
+    expect(document.querySelector('[data-ui-skeleton]')).toBeNull();
+    const calls = vi.mocked(timelineApi.previewUrl).mock.calls.length;
+    await userEvent.click(retry);
+    await waitFor(() => expect(vi.mocked(timelineApi.previewUrl).mock.calls.length).toBeGreaterThan(calls));
+  });
 });
+
+/**
+ * Render a succeeded execution's result preview inside the query cache the execution list provides.
+ * @throws {Error} When rendering fails.
+ */
+function showResult(): void {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  // The list opens inside the Timeline Space, which has read the Timeline limits already.
+  client.setQueryData(['timeline-limits', PROJECT], LIMITS);
+  render(<QueryClientProvider client={client}>
+    <TimelineWebResultPreview projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A}
+      input={{ prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: FPS }} />
+  </QueryClientProvider>);
+}

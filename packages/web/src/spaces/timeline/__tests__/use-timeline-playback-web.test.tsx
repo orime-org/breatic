@@ -17,7 +17,7 @@
  */
 
 import * as React from 'react';
-import { act, renderHook, type RenderHookResult } from '@testing-library/react';
+import { act, render, renderHook, type RenderHookResult } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource, TimelineWebAnimationClip } from '@breatic/shared';
@@ -379,6 +379,52 @@ describe('failure and retry', () => {
     act(() => hook.result.current.retryWeb(`${SRC}:0`));
     expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
     expect(sent(fixture).filter((message) => message['type'] === 'breatic-hello')).toHaveLength(2);
+  });
+});
+
+describe('a Space tab hidden while an instance loads', () => {
+  it('attaches the instance again with one new hello when shown, and ends ready without reloading its page', () => {
+    const fixture = playerFixture();
+    const clip = web(1, 0, 48);
+    const layers = [{ key: `${SRC}:0`, clip, fps: FPS, player: fixture.player }];
+    const document = documentOf([clip]);
+    const readyClipIds = new Set([clip.id]);
+    const result: { current: ReturnType<typeof useTimelinePlayback> | null } = { current: null };
+    let iframeLoads = 0;
+    fixture.iframe.addEventListener('load', () => { iframeLoads += 1; });
+
+    /**
+     * The Timeline body's use of the hook, as a Space tab renders it.
+     * @returns Nothing visible.
+     * @throws {never} Never.
+     */
+    function Body(): null {
+      const [frame, setFrame] = React.useState(0);
+      result.current = useTimelinePlayback({
+        document, readyClipIds, frame, onFrame: setFrame, clip: null, source: null, media: null,
+        enabled: true, resourceState: 'ready', webLayers: layers, webLoadTimeoutMs: TIMEOUT_MS,
+      });
+      return null;
+    }
+    const hellos = (): number => sent(fixture).filter((message) => message['type'] === 'breatic-hello').length;
+    const view = render(<React.Activity mode='visible'><Body /></React.Activity>);
+    expect(hellos()).toBe(1);
+    expect(result.current?.webStates.get(`${SRC}:0`)).toBe('loading');
+
+    view.rerender(<React.Activity mode='hidden'><Body /></React.Activity>);
+    // The page finishes loading while the tab is hidden; its bridge-ready reaches no listener.
+    bridgeReady(fixture);
+    view.rerender(<React.Activity mode='visible'><Body /></React.Activity>);
+    expect(hellos()).toBe(2);
+    expect(result.current?.webStates.get(`${SRC}:0`)).toBe('loading');
+
+    // The page answers the new hello with bridge-ready, then the seek it is sent.
+    bridgeReady(fixture);
+    answerLast(fixture);
+    expect(result.current?.webStates.get(`${SRC}:0`)).toBe('ready');
+    expect(hellos()).toBe(2);
+    expect(iframeLoads).toBe(0);
+    view.unmount();
   });
 });
 
