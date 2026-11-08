@@ -126,6 +126,32 @@ async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; 
 }
 
 /**
+ * Twelve frames into a jump, puts a 300px spacer at the top of the body's
+ * surface, outside the editable element ProseMirror keeps in step.
+ * @param p - The page.
+ * @returns Whether the body was still short of its end when it grew.
+ */
+async function growMidJump(p: Page): Promise<boolean> {
+  return p.evaluate((viewport) => new Promise<boolean>((resolve) => {
+    const vp = document.querySelector(viewport)!;
+    let n = 0;
+    const tick = (): void => {
+      n += 1;
+      if (n < 12) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      const midFlight = vp.scrollTop < vp.scrollHeight - vp.clientHeight - 2;
+      const spacer = document.createElement('div');
+      spacer.style.height = '300px';
+      vp.querySelector('.doc-body-editor')!.prepend(spacer);
+      resolve(midFlight);
+    };
+    requestAnimationFrame(tick);
+  }), VIEWPORT);
+}
+
+/**
  * How far below the top of the body a heading's own line sits.
  * @param p - The page.
  * @param text - The heading's words.
@@ -222,24 +248,8 @@ test('a jump aims again when the body above grows mid-scroll, and still ends on 
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Tail b').click();
-  // Twelve frames in, the body's content grows by 300px above what is in view,
-  // as it does when an image without a stored size loads. The spacer sits in
-  // the body's surface, outside the editable element ProseMirror keeps in step.
-  await page.evaluate((surface) => new Promise<void>((resolve) => {
-    let n = 0;
-    const tick = (): void => {
-      n += 1;
-      if (n < 12) {
-        requestAnimationFrame(tick);
-        return;
-      }
-      const spacer = document.createElement('div');
-      spacer.style.height = '300px';
-      document.querySelector(surface)!.prepend(spacer);
-      resolve();
-    };
-    requestAnimationFrame(tick);
-  }), `${VIEWPORT} .doc-body-editor`);
+  // As an image without a stored size does once it loads.
+  expect(await growMidJump(page)).toBe(true);
   const { tops } = await scrollSettled(page);
   const end = await page.evaluate((viewport) => {
     const vp = document.querySelector(viewport)!;
@@ -247,6 +257,40 @@ test('a jump aims again when the body above grows mid-scroll, and still ends on 
   }, VIEWPORT);
   expect(Math.abs(tops.at(-1)! - end)).toBeLessThanOrEqual(2);
   expect(await highlighted(page)).toBe('Tail b');
+});
+
+test('a jump the user stops by typing ends there, and later growth leaves the body alone', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Two one one').click();
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    let n = 0;
+    const tick = (): void => {
+      n += 1;
+      if (n < 6) requestAnimationFrame(tick);
+      else resolve();
+    };
+    requestAnimationFrame(tick);
+  }));
+  // The caret is still out of view: the editor scrolls it in at once,
+  // which stops the smooth scroll short of the landing.
+  await page.keyboard.type('x');
+  const stopped = (await scrollSettled(page)).tops.at(-1)!;
+  const end = await page.evaluate((viewport) => {
+    const vp = document.querySelector(viewport)!;
+    return vp.scrollHeight - vp.clientHeight;
+  }, VIEWPORT);
+  expect(stopped).toBeLessThan(end - 2);
+
+  await page.evaluate((surface) => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '300px';
+    document.querySelector(surface)!.prepend(spacer);
+  }, `${VIEWPORT} .doc-body-editor`);
+  // Scroll anchoring keeps the view where it was; nothing scrolls further.
+  expect((await scrollSettled(page)).tops.at(-1)!).toBeLessThanOrEqual(stopped + 300 + 2);
 });
 
 test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {

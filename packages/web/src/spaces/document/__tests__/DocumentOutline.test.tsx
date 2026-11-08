@@ -515,12 +515,12 @@ describe('DocumentOutline', () => {
        * Moves the body to a scroll position and runs that frame.
        * @param viewport - The body's viewport.
        * @param top - The new scrollTop.
-       * @param above - How much content above the headings has grown.
+       * @param grown - How much the content above the headings has grown.
        * @returns Once the frame has run.
        */
-      async function frameAt(viewport: HTMLElement, top: number, above = 0): Promise<void> {
+      async function frameAt(viewport: HTMLElement, top: number, grown = 0): Promise<void> {
         viewport.scrollTop = top;
-        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line + above - top);
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line + grown - top);
         await scrolled(viewport);
       }
 
@@ -590,6 +590,30 @@ describe('DocumentOutline', () => {
         await frameAt(viewport, 100);
         resizeTo(1440);
         expect(scrollTo).toHaveBeenCalledTimes(1);
+      });
+
+      it('ends a jump the body stops short of, so later growth leaves the scroll alone', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        // Typing scrolls the caret into view, which stops the smooth scroll here.
+        act(() => fireEvent(viewport, new Event('scrollend')));
+        await growAbove(viewport, 100, 300);
+        expect(scrollTo).toHaveBeenCalledTimes(1);
+      });
+
+      it('pins the clicked heading on the frame the scroll stops at the end', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+        await frameAt(viewport, 0);
+
+        fireEvent.click(row('Two'));
+        viewport.scrollTop = 200;
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line - 200);
+        act(() => fireEvent(viewport, new Event('scrollend')));
+        expect(itemOf('Two')).toHaveClass('bg-accent-strong');
       });
 
       it('leaves the scroll alone when the body changes height after a jump has arrived', async () => {
