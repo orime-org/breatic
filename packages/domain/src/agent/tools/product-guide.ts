@@ -494,9 +494,10 @@ export function renderProductGuide(): string {
       "can assign them to this studio, so anyone else asks the admin. Where the deployment takes payments, " +
       `${quoted(t("studio.topBar.membership"))} in the same menu opens the membership panel, which has a ` +
       `${quoted(t("membership.referral.heading"))} section, where an account that has never paid for a ` +
-      "membership adds a code for a discount on its first period, and a " +
-      `${quoted(t("membership.promoter.heading"))} section with ${quoted(t("membership.promoter.apply"))}; ` +
-      `the sign-up form there also has an optional ${quoted(t("auth.referral.label"))} field.`,
+      "membership adds a code for a discount on its first period. Just below the account settings entry, " +
+      `${quoted(t("promoter.heading"))} opens a dialog with ${quoted(t("promoter.apply"))} and, once approved, ` +
+      `the promoter's own code and link; while applications are closed it only says ${quoted(t("promoter.closed"))} ` +
+      `to an account that has not applied. The sign-up form also has an optional ${quoted(t("auth.referral.label"))} field.`,
     `In ${quoted(t("chat.history.title"))}, ${quoted(t("chat.conversation.rename"))} turns the name into a box ` +
       `(${quoted(t("chat.conversation.renamePlaceholder"))} when empty); ` +
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +

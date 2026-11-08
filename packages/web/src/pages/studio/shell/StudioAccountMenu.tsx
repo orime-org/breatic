@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -27,6 +27,8 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { PromoterDialog } from '@web/features/referral/PromoterDialog';
+import { usePromoterEntry } from '@web/features/referral/use-promoter-entry';
 import { LogoutOthersDialog } from '@web/pages/studio/shell/LogoutOthersDialog';
 import { useMembershipCheckoutReturn } from '@web/features/membership/use-membership-checkout-return';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -75,8 +77,8 @@ function creditsFigure(
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, account settings, membership,
- * credits, and sign out.
+ * the account's own entries: who is signed in, account settings, the promoter
+ * program, membership, credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -111,6 +113,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   // designating a pack or asking for a refund invalidates it, so the next
   // open here reads the new figure rather than the one from before.
   const overview = useCreditOverview(menuOpen);
+  const promoter = usePromoterEntry(menuOpen);
 
   // Reports what a membership checkout came to, on the way back from it. It
   // lives beside the credits return for the same reason that one does: the
@@ -286,6 +289,12 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          {promoter.shown ? (
+            <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
+              <Megaphone className='h-4 w-4' />
+              {t('promoter.heading')}
+            </DropdownMenuItem>
+          ) : null}
           {/* The two rows that carry a reading are their own block: with the
             settings row among them the right-hand column reads as a list with
             a hole in it. */}
@@ -346,6 +355,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         returnFocusTo={accountButtonRef}
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
+      <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay
         open={creditsOpen || back.overlayOpen}
