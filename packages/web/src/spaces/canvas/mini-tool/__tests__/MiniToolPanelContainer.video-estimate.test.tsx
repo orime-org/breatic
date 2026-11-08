@@ -240,6 +240,34 @@ describe('video model tools show the server quote of the current draft in their 
   });
 });
 
+// Frames-split design §10.8 计费 row: extract-frames and split are charged for their container work like the other planned
+// tools, so their footer shows the server's quote of the planned request, never "Free". A split names one output node per
+// planned segment, so its quote names as many.
+describe('extract-frames and split show the server quote, not "Free" (frames-split §10.8)', () => {
+  const FRAMES_QUOTES = { 'video.extract-frames': 3.25, 'video.split': 6.5 } as const;
+  it.each(['video.extract-frames', 'video.split'] as const)('%s shows exactly the quoted credits for the planned request of its draft', async (toolId) => {
+    http.post.mockImplementation(async (path: string): Promise<unknown> => {
+      if (path !== '/mini-tools/quote') throw new Error(`Unexpected POST ${path}`);
+      return { credits: FRAMES_QUOTES[toolId] };
+    });
+    const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+    addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+    const initial = createVideoToolDraft(toolId, source);
+    commitVideoToolDraft(doc, nodeId, toolId, (toolId === 'video.split' ? { ...initial, params: { ...initial.params, cuts: [2] } } : initial));
+    canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
+    const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(modelCatalogQuery().queryKey, CATALOG);
+    render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><MiniToolPanelContainer nodes={[node]} getLastWriteWasLocal={() => false} onRun={vi.fn()} onRunVideo={vi.fn()} videoPresentation={new Map([[nodeId, presentation]])} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+    await waitFor(() => expect(footer()).toBe(formatCreditAmount(FRAMES_QUOTES[toolId])));
+    const body = quoteBodies().at(-1)!;
+    expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
+    const outputs = body.outputs as { nodeId: string }[];
+    expect(outputs).toHaveLength(toolId === 'video.split' ? 2 : 1);
+    expect(new Set(outputs.map((output) => output.nodeId)).size).toBe(outputs.length);
+  });
+});
+
 // Canvas design §4 erase row: beside "Track selection" the server's quote of the tracking the press would start, and once that
 // tracking is billed, what it used in the same place (`POST /mini-tools/analyses/quote`; the record's `usage`).
 describe('the erase tracking cost beside "Track selection" (canvas design §4 erase row)', () => {

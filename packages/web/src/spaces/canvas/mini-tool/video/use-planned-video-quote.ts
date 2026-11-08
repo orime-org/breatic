@@ -4,7 +4,7 @@
 /**
  * The footer quote of a planned video run (inner#1306 §97 D26-1): the server prices the planned request the Run would send
  * with the admission's own computation, so the panel prices nothing itself. The output node ids are chosen once per panel,
- * at the first quote, so the Run can name the same ones.
+ * one per planned output (a split names one per segment), so the Run can name the same ones.
  */
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -12,7 +12,7 @@ import { newId } from '@breatic/shared';
 import { canonicalMiniToolValue, type MiniToolPlannedRequest, type VideoToolDraft, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
-import { buildPlannedVideoRequest, type PlannedVideoFacts } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { buildPlannedVideoRequest, plannedVideoRecipes, type PlannedVideoFacts } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 
 /**
  * Quote the current draft's planned run.
@@ -23,7 +23,20 @@ import { buildPlannedVideoRequest, type PlannedVideoFacts } from '@web/spaces/ca
  * @throws {never} Never.
  */
 export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | null, facts: PlannedVideoFacts | null): { text?: string; outputNodeIds: readonly string[] } {
-  const [outputNodeIds] = React.useState<readonly string[]>(() => [newId()]);
+  const count = React.useMemo((): number => {
+    if (draft === null || facts === null) return 1;
+    try {
+      return plannedVideoRecipes(tool, draft, facts.frameTable).length;
+    } catch {
+      return 1;
+    }
+  }, [tool, draft, facts]);
+  // Ids already named stay named as the count changes, so a quoted node keeps its id.
+  const pool = React.useRef<string[]>([]);
+  const outputNodeIds = React.useMemo((): readonly string[] => {
+    while (pool.current.length < count) pool.current.push(newId());
+    return pool.current.slice(0, count);
+  }, [count]);
   const body = React.useMemo((): MiniToolPlannedRequest | null => {
     if (draft === null || facts === null) return null;
     try {
