@@ -9,8 +9,7 @@
 import { AppError } from "@breatic/core";
 import { t, type VideoPresentationLedger } from "@breatic/shared";
 import {
-  anchorInTrackingRange, gridSecondsAllowed, modelGrid, presentationFrameAt, presentationFramesIn, type ModelGrid, type TrackingAnchor, type TrackingClips,
-  type TrackingTimeRange, type VideoPresentationTable,
+  eraseRangeCheck, presentationFrameAt, type ModelGrid, type TrackingAnchor, type TrackingClips, type TrackingTimeRange, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 
 /** The eraser limits a range is checked against. */
@@ -26,26 +25,20 @@ export function assertOpaqueSource(ledger: VideoPresentationLedger): void {
 }
 
 /**
- * The range's presentation frames and the model grid over them, with the anchor inside the range and the grid's seconds
- * within the eraser's (§10.2 anchor rule, §10.4 model grid and duration rows).
+ * The range's presentation frames and the model grid over them, refused as the panel refuses them (`eraseRangeCheck`).
  * @param table - The presentation table.
  * @param range - The range in seconds.
  * @param anchor - The anchor.
  * @param model - The eraser limits.
  * @returns The first frame, the count and the grid.
- * @throws {AppError} `anchorOutsideRange` or `eraseRange` when a check refuses it.
+ * @throws {AppError} `anchorOutsideRange` or `eraseRange` when the check refuses it.
  */
 export function eraseRangeGrid(table: VideoPresentationTable, range: TrackingTimeRange, anchor: TrackingAnchor, model: EraseModelLimits): { first: number; count: number; grid: ModelGrid } {
-  if (!anchorInTrackingRange(range, anchor)) throw new AppError(400, t("server.mini_tool.anchorOutsideRange"));
-  const { first, count } = presentationFramesIn(table, range);
-  const refused = new AppError(400, t("server.mini_tool.eraseRange", { min: model.min_seconds, max: model.max_seconds }));
-  if (count === 0) throw refused;
-  const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
-    const frame = presentationFrameAt(table, first + at);
-    return { start: frame.pts, end: frame.displayEnd };
-  }), model.max_grid_fps);
-  if (!gridSecondsAllowed(grid, { minSeconds: model.min_seconds, maxSeconds: model.max_seconds })) throw refused;
-  return { first, count, grid };
+  const checked = eraseRangeCheck(table, range, anchor, { minSeconds: model.min_seconds, maxSeconds: model.max_seconds, maxGridFps: model.max_grid_fps });
+  if (checked.refusal !== null) {
+    throw new AppError(400, checked.refusal === "anchor" ? t("server.mini_tool.anchorOutsideRange") : t("server.mini_tool.eraseRange", { min: model.min_seconds, max: model.max_seconds }));
+  }
+  return { first: checked.first, count: checked.count, grid: checked.grid };
 }
 
 /**

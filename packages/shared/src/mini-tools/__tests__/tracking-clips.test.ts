@@ -61,3 +61,18 @@ describe("anchorInTrackingRange (execution design §10.2)", () => {
     expect(anchorInTrackingRange(range, { frameIndex: 24, pts: 0.96 })).toBe(false);
   });
 });
+
+// Execution design §10.2, §10.4: the panel and admission refuse an erase selection by one check, so they cannot disagree.
+describe("eraseRangeCheck (execution design §10.2, §10.4)", () => {
+  // 25 fps for 10 s.
+  const TABLE = { schemaVersion: 1 as const, timescale: 25, runs: [{ start: 0, count: 250, step: 1, duration: 1 }] };
+  const LIMITS = { minSeconds: 1, maxSeconds: 5, maxGridFps: 25 };
+
+  it("TC09 names the anchor first, then the range, and returns the grid of an allowed selection", async () => {
+    const { eraseRangeCheck } = await import("../tracking-clips.js");
+    expect(eraseRangeCheck(TABLE, { start: 2, end: 4 }, { frameIndex: 125, pts: 5 }, { minSeconds: 1, maxSeconds: 1.5, maxGridFps: 25 })).toEqual({ refusal: "anchor" });
+    expect(eraseRangeCheck(TABLE, { start: 2, end: 9 }, { frameIndex: 75, pts: 3 }, LIMITS)).toEqual({ refusal: "range" });
+    expect(eraseRangeCheck(TABLE, { start: 2, end: 2.01 }, { frameIndex: 50, pts: 2 }, LIMITS)).toEqual({ refusal: "range" });
+    expect(eraseRangeCheck(TABLE, { start: 2, end: 4 }, { frameIndex: 75, pts: 3 }, LIMITS)).toEqual({ refusal: null, first: 50, count: 50, grid: { mode: "frames", rate: 25, frameCount: 50 } });
+  });
+});

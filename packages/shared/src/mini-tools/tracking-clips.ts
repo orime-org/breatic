@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { gridSecondsAllowed, modelGrid, type ModelGrid } from "@shared/mini-tools/model-grid.js";
+import { presentationFrameAt, presentationFramesIn } from "@shared/mini-tools/video-presentation-table.js";
+import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+
 /** A range of presentation frame ordinals, [start, end). */
 export interface FrameRange { start: number; end: number }
 
@@ -61,4 +65,33 @@ export function joinTrackingClips<T>(clips: TrackingClips, forward: readonly T[]
  */
 export function anchorInTrackingRange(range: TrackingTimeRange, anchor: TrackingAnchor): boolean {
   return anchor.pts >= range.start && anchor.pts < range.end;
+}
+
+/** The eraser limits an erase range is checked against (config `executions."video.erase".model`). */
+export interface EraseRangeLimits { minSeconds: number; maxSeconds: number; maxGridFps: number }
+
+/** Why an erase selection is refused: its anchor lies outside the range, or the range's model grid lies outside the eraser's seconds. */
+export type EraseRangeRefusal = "anchor" | "range";
+
+/**
+ * The one check an erase selection passes both when it is tracked and when it is erased, in the panel and at admission
+ * (execution design §10.2 anchor rule, §10.4 model grid and duration rows): the anchor inside the range, then the range's
+ * model grid within the eraser's seconds.
+ * @param table - The presentation table.
+ * @param range - The range in presentation seconds.
+ * @param anchor - The anchor.
+ * @param limits - The eraser limits.
+ * @returns The refusal, or the range's first frame, frame count and model grid.
+ * @throws {RangeError} When the table cannot be read.
+ */
+export function eraseRangeCheck(table: VideoPresentationTable, range: TrackingTimeRange, anchor: TrackingAnchor, limits: EraseRangeLimits):
+  { refusal: EraseRangeRefusal } | { refusal: null; first: number; count: number; grid: ModelGrid } {
+  if (!anchorInTrackingRange(range, anchor)) return { refusal: "anchor" };
+  const { first, count } = presentationFramesIn(table, range);
+  if (count === 0) return { refusal: "range" };
+  const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
+    const frame = presentationFrameAt(table, first + at);
+    return { start: frame.pts, end: frame.displayEnd };
+  }), limits.maxGridFps);
+  return gridSecondsAllowed(grid, limits) ? { refusal: null, first, count, grid } : { refusal: "range" };
 }

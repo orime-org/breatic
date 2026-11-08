@@ -9,7 +9,7 @@ import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { anchorInTrackingRange, canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, gridSecondsAllowed, modelGrid, presentationFramesIn, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, presentationVideoEnd, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -120,9 +120,11 @@ export interface VideoToolPanelContainerProps {
 }
 
 /**
- * Why an erase selection cannot be tracked or erased now (execution design §10.2, §10.4), as admission judges it: a
- * transparent source, an anchor outside the range, or a model input outside the eraser's seconds on its grid.
- * @param draft - The erase draft.
+ * Why an erase selection cannot be tracked or erased now (execution design §10.2, §10.4), by the check admission runs
+ * (`eraseRangeCheck`): a transparent source, an anchor outside the range, or a model input outside the eraser's seconds on
+ * its grid.
+ * @param range - The selected range.
+ * @param anchor - The anchor the press is judged with.
  * @param table - The source's presentation table, null while unknown.
  * @param erase - The erase limits, absent while unknown.
  * @param transparent - Whether the source is transparent.
@@ -130,18 +132,12 @@ export interface VideoToolPanelContainerProps {
  * @returns The reason, or undefined.
  * @throws {never} Never.
  */
-function eraseBlock(draft: VideoToolDraftById['video.erase'], table: VideoPresentationTable | null, erase: CanvasEraseLimits | undefined, transparent: boolean,
+function eraseBlock(range: TrackingTimeRange, anchor: TrackingAnchor, table: VideoPresentationTable | null, erase: CanvasEraseLimits | undefined, transparent: boolean,
   t: (key: string, params?: Record<string, string | number>) => string): string | undefined {
   if (transparent) return t('canvas.miniTool.videoUI.transparentSource');
-  if (!anchorInTrackingRange(draft.params.range, draft.params.anchor)) return t('canvas.miniTool.videoUI.anchorOutsideRange');
-  if (table === null || erase === undefined) return undefined;
-  const { first, count } = presentationFramesIn(table, draft.params.range);
-  const grid = modelGrid(Array.from({ length: count }, (_unused, at) => {
-    const frame = presentationFrameAt(table, first + at);
-    return { start: frame.pts, end: frame.displayEnd };
-  }), erase.maxGridFps);
-  const { minSeconds: min, maxSeconds: max } = erase;
-  return count === 0 || !gridSecondsAllowed(grid, { minSeconds: min, maxSeconds: max }) ? t('canvas.miniTool.videoUI.eraseRange', { min, max }) : undefined;
+  const refusal = table === null || erase === undefined ? (anchorInTrackingRange(range, anchor) ? null : 'anchor') : eraseRangeCheck(table, range, anchor, erase).refusal;
+  if (refusal === 'anchor') return t('canvas.miniTool.videoUI.anchorOutsideRange');
+  return refusal === 'range' ? t('canvas.miniTool.videoUI.eraseRange', { min: erase?.minSeconds ?? 0, max: erase?.maxSeconds ?? 0 }) : undefined;
 }
 
 /**
@@ -504,7 +500,8 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const exportBlockedReason = canRun || readOnly ? undefined : !validSource ? t('canvas.miniTool.panel.sourceMissing')
     : invalidFields.size > 0 ? t('canvas.miniTool.videoUI.invalidNumber') : !readyTool ? t('canvas.miniTool.videoUI.pickVideo') : t('canvas.miniTool.panel.sourceMissing');
   const transparent = presentation?.transparent === true;
-  const trackBlockedReason = toolId === 'video.erase' ? eraseBlock(current as VideoToolDraftById['video.erase'], presentation?.frameTable ?? null, eraseLimits, transparent, t) : undefined;
+  const eraseDraft = toolId === 'video.erase' ? current as VideoToolDraftById['video.erase'] : null;
+  const trackBlockedReason = eraseDraft === null ? undefined : eraseBlock(eraseDraft.params.range, eraseDraft.params.anchor, presentation?.frameTable ?? null, eraseLimits, transparent, t);
   const runBlockedReason = !canRun ? undefined
     : toolId === 'video.lip-sync' ? (lipSync !== undefined && presentation.frameTable !== null ? lipSyncRangeBlock(current as VideoToolDraftById['video.lip-sync'], presentation.frameTable, lipSync, t) : undefined)
       : toolId === 'video.erase' ? trackBlockedReason
