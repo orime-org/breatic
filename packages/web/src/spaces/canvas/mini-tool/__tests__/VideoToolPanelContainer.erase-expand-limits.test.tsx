@@ -10,7 +10,7 @@
  * transparent. The props `erase` and `expand` (config `executions."video.erase"` and `"video.expand"`) and
  * `presentation.transparent` are shapes this test chose, as the lip-sync range test chose `lipSync`.
  *
- * Fixture: a 5 s 960x540 source at 25 fps.
+ * Fixture: a 20 s 960x540 source at 25 fps.
  */
 
 import * as React from 'react';
@@ -38,12 +38,13 @@ import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
+import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 
 const projectId = 'erase-project'; const spaceId = 'erase-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.mp4';
-const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
+const mediaInfo = { width: 960, height: 540, duration: 20, mimeType: 'video/mp4' };
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 500, step: 4, duration: 4 }] };
 const ERASE = { minSeconds: 1, maxSeconds: 5, maxGridFps: 30 };
 const EXPAND = { maxDurationSeconds: 180, maxTargetSide: 4096 };
 
@@ -55,17 +56,19 @@ const EXPAND = { maxDurationSeconds: 180, maxTargetSide: 4096 };
  * @param options.erase - The erase config prop.
  * @param options.expand - The expand config prop.
  * @param options.transparent - Whether the source is transparent.
+ * @param options.presentedTime - The presented frame's time, 0 s by default.
  * @param options.onRunVideo - The execution entry.
  * @returns Nothing.
  */
 function mount(toolId: Extract<VideoToolId, 'video.erase' | 'video.expand'>, params: Record<string, unknown>,
-  options: { erase?: object; expand?: object; transparent?: boolean; onRunVideo?: () => Promise<unknown> } = {}): void {
+  options: { erase?: object; expand?: object; transparent?: boolean; presentedTime?: number; onRunVideo?: () => Promise<unknown> } = {}): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   const initial = createVideoToolDraft(toolId, source);
   commitVideoToolDraft(doc, nodeId, toolId, { ...initial, params: { ...initial.params, ...params } } as VideoToolDraftById[typeof toolId]);
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
-  const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0, ...(options.transparent ? { transparent: true } : {}) } as VideoToolPresentation;
+  const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: options.presentedTime ?? 0,
+    presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } }, ...(options.transparent ? { transparent: true } : {}) } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const proposed: object = { erase: options.erase ?? ERASE, expand: options.expand ?? EXPAND };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={options.onRunVideo ?? vi.fn()} {...proposed} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -107,9 +110,19 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
     expectRefused(track(), t('canvas.miniTool.videoUI.eraseRange', { min: 1, max }));
   });
 
-  it('refuses an anchor outside the range', () => {
-    mount('video.erase', { ...REGION, range: { start: 0, end: 3 }, anchor: { frameIndex: 100, pts: 4 } });
+  it('refuses a presented frame outside the range, since the press anchors on it', () => {
+    mount('video.erase', { ...REGION, range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 } }, { presentedTime: 4 });
     expectRefused(track(), t('canvas.miniTool.videoUI.anchorOutsideRange'));
+  });
+
+  it('tracks a range away from 0 s on the presented frame, whatever anchor the draft held before', async () => {
+    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockReturnValue(new Promise(() => undefined));
+    mount('video.erase', { ...REGION, range: { start: 10, end: 14 }, anchor: { frameIndex: 0, pts: 0 } }, { presentedTime: 12 });
+    expect(track()).not.toHaveAttribute('aria-disabled', 'true');
+    act(() => track().click());
+    expect(toast.warning).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', params: { range: { start: 10, end: 14 }, anchor: { frameIndex: 300, pts: 12 } } });
   });
 
   it('refuses a transparent source', () => {
@@ -121,7 +134,7 @@ describe('erase limits on Track selection (execution design §10.2, §10.4)', ()
 describe('expand limits on Run (execution design §10.5)', () => {
   const WIDER = { frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: 'free' };
 
-  it('runs a 1440x540 target of a 5 s source', () => {
+  it('runs a 1440x540 target of a 20 s source', () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     mount('video.expand', WIDER, { onRunVideo });
     const run = screen.getByTestId('mini-tool-run');

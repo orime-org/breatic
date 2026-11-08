@@ -501,10 +501,13 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     : invalidFields.size > 0 ? t('canvas.miniTool.videoUI.invalidNumber') : !readyTool ? t('canvas.miniTool.videoUI.pickVideo') : t('canvas.miniTool.panel.sourceMissing');
   const transparent = presentation?.transparent === true;
   const eraseDraft = toolId === 'video.erase' ? current as VideoToolDraftById['video.erase'] : null;
-  const trackBlockedReason = eraseDraft === null ? undefined : eraseBlock(eraseDraft.params.range, eraseDraft.params.anchor, presentation?.frameTable ?? null, eraseLimits, transparent, t);
+  // Track selection anchors on the presented frame, as its press does (analyse); Run is judged on the anchor it sends.
+  const pressFrame = eraseDraft === null || selectedTime === null || presentation?.frameTable == null ? undefined : planVideoFrames(presentation.frameTable, { mode: 'current', currentTime: selectedTime })[0];
+  const trackBlockedReason = eraseDraft === null ? undefined : eraseBlock(eraseDraft.params.range, pressFrame === undefined ? eraseDraft.params.anchor : { frameIndex: pressFrame.frameIndex, pts: pressFrame.pts },
+    presentation?.frameTable ?? null, eraseLimits, transparent, t);
   const runBlockedReason = !canRun ? undefined
     : toolId === 'video.lip-sync' ? (lipSync !== undefined && presentation.frameTable !== null ? lipSyncRangeBlock(current as VideoToolDraftById['video.lip-sync'], presentation.frameTable, lipSync, t) : undefined)
-      : toolId === 'video.erase' ? trackBlockedReason
+      : eraseDraft !== null ? eraseBlock(eraseDraft.params.range, eraseDraft.params.anchor, presentation.frameTable, eraseLimits, transparent, t)
         : toolId === 'video.expand' ? expandBlock(current as VideoToolDraftById['video.expand'], expandLimits, transparent, t)
           // More planned outputs than one run creates are refused here, before any node is made (frames-split §10.7).
           : toolId === 'video.split' && maxOutputs !== undefined && presentation.frameTable !== null
