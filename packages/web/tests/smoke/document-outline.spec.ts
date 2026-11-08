@@ -102,13 +102,27 @@ async function highlighted(p: Page): Promise<string | null> {
 }
 
 /**
- * Waits two frames: the click shows the clicked heading at once, and the
- * highlight is computed again a frame after the scroll it makes.
+ * Follows a jump's smooth scroll frame by frame until the body has held still
+ * for five frames, then one more frame for the highlight to be computed.
  * @param p - The page.
- * @returns Once both frames have run.
+ * @returns The highlighted row and the body's scrollTop in every frame.
  */
-async function twoFrames(p: Page): Promise<void> {
-  await p.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+async function scrollSettled(p: Page): Promise<{ highlights: (string | null)[]; tops: number[] }> {
+  return p.evaluate(({ outline, viewport }) => new Promise((resolve) => {
+    const vp = document.querySelector(viewport)!;
+    const highlights: (string | null)[] = [];
+    const tops: number[] = [];
+    let still = 0;
+    const tick = (): void => {
+      const item = [...document.querySelectorAll(`${outline} [data-outline-item]`)].find((i) => i.className.includes('bg-accent-strong'));
+      highlights.push(item?.querySelector('[data-testid="doc-outline-row"]')?.textContent ?? null);
+      still = tops.length > 0 && tops[tops.length - 1] === vp.scrollTop ? still + 1 : 0;
+      tops.push(vp.scrollTop);
+      if (still >= 5) requestAnimationFrame(() => resolve({ highlights, tops }));
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), { outline: OUTLINE, viewport: VIEWPORT });
 }
 
 /**
@@ -174,17 +188,31 @@ test('a jump leaves each level of heading 16px under the top and the caret at it
   await openWith(page, DOCUMENT);
   for (const title of ['One one one', 'Two', 'One one']) {
     await row(page, title).click();
+    await scrollSettled(page);
     expect(Math.abs(await lineBelowTop(page, title) - 16)).toBeLessThanOrEqual(2);
-    await twoFrames(page);
     expect(await highlighted(page)).toBe(title);
   }
   await page.keyboard.type('Z');
   await expect(row(page, 'ZOne one')).toBeVisible();
 });
 
+test('a jump scrolls smoothly, the highlight passing the headings on the way', async () => {
+  await openWith(page, DOCUMENT);
+  await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
+  await expect.poll(() => highlighted(page)).toBe('One');
+
+  await row(page, 'Two one one').click();
+  const { highlights, tops } = await scrollSettled(page);
+  expect(new Set(tops).size).toBeGreaterThan(2);
+  expect(highlights.filter((h) => h !== 'One' && h !== 'Two one one')).not.toEqual([]);
+  expect(highlights.at(-1)).toBe('Two one one');
+  expect(Math.abs(await lineBelowTop(page, 'Two one one') - 16)).toBeLessThanOrEqual(2);
+});
+
 test('a row reads from after its arrow column, indented by level, and only the one being read is medium weight', async () => {
   await openWith(page, DOCUMENT);
   await row(page, 'Two').click();
+  await scrollSettled(page);
   const rows = await page.evaluate((outline) => [...document.querySelectorAll(`${outline} [data-testid="doc-outline-row"]`)].map((r) => {
     const words = r.lastElementChild!.getBoundingClientRect();
     const item = r.closest('[data-outline-item]')!.getBoundingClientRect();
@@ -203,8 +231,8 @@ test('a whole row jumps, its indent included, and its arrow is a 24px target of 
   await page.evaluate((viewport) => document.querySelector(viewport)!.scrollTo({ top: 0, behavior: 'instant' }), VIEWPORT);
   const item = (await row(page, 'One one one').locator('xpath=ancestor::*[@data-outline-item][1]').boundingBox())!;
   await page.mouse.click(item.x + 4, item.y + item.height / 2);
+  await scrollSettled(page);
   expect(Math.abs(await lineBelowTop(page, 'One one one') - 16)).toBeLessThanOrEqual(2);
-  await twoFrames(page);
   expect(await highlighted(page)).toBe('One one one');
 
   const fold = page.locator(`${OUTLINE} [data-outline-item]`).first().getByTestId('doc-outline-fold');
@@ -219,6 +247,7 @@ test('a whole row jumps, its indent included, and its arrow is a 24px target of 
 test('rows draw the demo\'s states: small corners, the one being read darker, an arrow that darkens on hover', async () => {
   await openWith(page, DOCUMENT);
   await row(page, 'Two').click();
+  await scrollSettled(page);
   const look = await page.evaluate((outline) => {
     const token = (name: string): string => {
       const probe = document.createElement('span');
@@ -278,7 +307,7 @@ test('the highlight follows the scroll, and a short last section keeps the one c
   await expect.poll(() => highlighted(page)).toBe('One');
 
   await row(page, 'Tail a').click();
-  await twoFrames(page);
+  await scrollSettled(page);
   expect(await highlighted(page)).toBe('Tail a');
 
   await page.mouse.move(900, 500);
@@ -372,6 +401,7 @@ test('a narrow Space floats the outline over the body, above the block handles, 
   expect(await page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.closest('[data-testid="doc-outline-row"]')?.textContent ?? null, { px: x, py: y })).toBe('Two');
 
   await page.mouse.click(x, y);
+  await scrollSettled(page);
   expect(Math.abs(await lineBelowTop(page, 'Two') - 16)).toBeLessThanOrEqual(2);
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator(OUTLINE)).toHaveCount(0);

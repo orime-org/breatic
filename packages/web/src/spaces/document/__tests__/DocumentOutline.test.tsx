@@ -279,13 +279,13 @@ describe('DocumentOutline', () => {
       placeAt(block.querySelector(':scope > .bn-block > .bn-block-content')!, 700);
     }
 
-    it('scrolls at once so the heading’s line lands 16px under the top of the body', () => {
+    it('scrolls smoothly so the heading’s line lands 16px under the top of the body', () => {
       renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two')]);
       layOut();
 
       fireEvent.click(row('Two'));
 
-      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'smooth' });
     });
 
     it('puts an editor’s caret at the start of the heading', () => {
@@ -300,6 +300,21 @@ describe('DocumentOutline', () => {
       expect(editor.prosemirrorState.selection.$from.parentOffset).toBe(0);
     });
 
+    it('sets the caret and focuses the body before the scroll starts', () => {
+      renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two')]);
+      layOut();
+      const editor = opened.handle.editor;
+      const atScroll: { block?: string; focused?: boolean } = {};
+      scrollTo.mockImplementation(() => {
+        atScroll.block = (editor.getTextCursorPosition().block as { id: string }).id;
+        atScroll.focused = editor.prosemirrorView!.dom.contains(document.activeElement);
+      });
+
+      fireEvent.click(row('Two'));
+
+      expect(atScroll).toEqual({ block: idOf(opened.handle, 'Two'), focused: true });
+    });
+
     it('only scrolls for a viewer, leaving the selection where it was', () => {
       renderWith([h('a', 1, 'One'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Two')], { readOnly: true });
       layOut();
@@ -307,7 +322,7 @@ describe('DocumentOutline', () => {
 
       fireEvent.click(row('Two'));
 
-      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 700 - 100 - 16, behavior: 'smooth' });
       expect(opened.handle.editor.prosemirrorState.selection.toJSON()).toEqual(before);
       expect(opened.handle.editor.prosemirrorView!.dom.contains(document.activeElement)).toBe(false);
     });
@@ -363,7 +378,7 @@ describe('DocumentOutline', () => {
       const viewport = layOutForPin(1000);
 
       fireEvent.click(row('Two'));
-      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'smooth' });
       await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
 
@@ -381,7 +396,7 @@ describe('DocumentOutline', () => {
       const viewport = layOutForPin(1386);
 
       fireEvent.click(row('Two'));
-      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'smooth' });
       await scrolled(viewport);
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
     });
@@ -419,7 +434,7 @@ describe('DocumentOutline', () => {
       expect(itemOf('Three')).toHaveClass('bg-accent-strong');
 
       fireEvent.click(row('Two'));
-      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'smooth' });
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
       await nextFrame();
       expect(itemOf('Two')).toHaveClass('bg-accent-strong');
@@ -431,7 +446,7 @@ describe('DocumentOutline', () => {
       viewport.scrollTop = 584;
       placeAt(lineOf('Two'), 100 + 16);
       fireEvent.click(row('Two'));
-      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledWith({ top: 584, behavior: 'smooth' });
 
       viewport.scrollTop = 4200;
       await scrolled(viewport);
@@ -473,6 +488,110 @@ describe('DocumentOutline', () => {
       placeAt(lineOf('Two'), 300);
       await scrolled(viewport);
       expect(itemOf('One')).toHaveClass('bg-accent-strong');
+    });
+
+    describe('while the body scrolls smoothly to a heading at its end', () => {
+      const FOUR = [h('a', 1, 'One'), h('m', 2, 'Mid'), h('b', 2, 'Two'), h('c', 2, 'Three')];
+      // Each heading's line at scrollTop 0; the body can scroll 200px, and
+      // "Two" lands at 200, its end, so "Three" stays below it in view.
+      const LINES = { One: 40, Mid: 220, Two: 700, Three: 800 } as const;
+
+      /**
+       * Gives the body a 200px scroll; `scrollTo` records only, so the test
+       * moves the body frame by frame as a smooth scroll would.
+       * @returns The body's viewport.
+       */
+      function layOutFour(): HTMLElement {
+        const viewport = bodyViewport();
+        placeAt(viewport, 100);
+        Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 1000 });
+        Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
+        viewport.scrollTop = 0;
+        for (const [text, top] of Object.entries(LINES)) placeAt(lineOf(text), top);
+        return viewport;
+      }
+
+      /**
+       * Moves the body to a scroll position and runs that frame.
+       * @param viewport - The body's viewport.
+       * @param top - The new scrollTop.
+       * @returns Once the frame has run.
+       */
+      async function frameAt(viewport: HTMLElement, top: number): Promise<void> {
+        viewport.scrollTop = top;
+        for (const [text, line] of Object.entries(LINES)) placeAt(lineOf(text), line - top);
+        await scrolled(viewport);
+      }
+
+      it('follows the body while it scrolls and settles on the clicked heading at the end', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+        await frameAt(viewport, 0);
+        expect(itemOf('One')).toHaveClass('bg-accent-strong');
+
+        fireEvent.click(row('Two'));
+        expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'smooth' });
+        await nextFrame();
+        expect(itemOf('One')).toHaveClass('bg-accent-strong');
+
+        await frameAt(viewport, 100);
+        expect(itemOf('Mid')).toHaveClass('bg-accent-strong');
+
+        await frameAt(viewport, 200);
+        expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      });
+
+      it('keeps waiting through first frames that carry the body away from the landing', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+        await frameAt(viewport, 50);
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 30);
+        await frameAt(viewport, 120);
+        await frameAt(viewport, 200);
+        expect(itemOf('Two')).toHaveClass('bg-accent-strong');
+      });
+
+      it('stops waiting once the body, having closed in, moves away from the landing', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        await frameAt(viewport, 50);
+        await frameAt(viewport, 200);
+        expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+      });
+
+      it('stops waiting once another heading is clicked', async () => {
+        renderWith(FOUR);
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        fireEvent.click(row('Mid'));
+        await frameAt(viewport, 104);
+        await frameAt(viewport, 200);
+        expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+      });
+
+      it('stops waiting once the Space is hidden', async () => {
+        const { rerender } = render(
+          <React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>,
+        );
+        fill(opened.handle, FOUR);
+        resizeTo(1440);
+        Object.defineProperty(bodyViewport(), 'scrollTo', { configurable: true, value: scrollTo });
+        const viewport = layOutFour();
+
+        fireEvent.click(row('Two'));
+        await frameAt(viewport, 100);
+        rerender(<React.Activity mode='hidden'><DocumentEditor handle={opened.handle} /></React.Activity>);
+        rerender(<React.Activity mode='visible'><DocumentEditor handle={opened.handle} /></React.Activity>);
+        await frameAt(viewport, 200);
+        expect(itemOf('Three')).toHaveClass('bg-accent-strong');
+      });
     });
   });
 
