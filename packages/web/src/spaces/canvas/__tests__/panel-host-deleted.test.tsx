@@ -78,7 +78,7 @@ describe('a panel whose node is deleted', () => {
     );
   });
 
-  it('closes without a message when this reader deleted the node', () => {
+  it('closes without a message when this user deleted the node', () => {
     deleteHostUnderOpenPanel(false);
 
     expect(canvasSessions.of('s').getState().panelHostId).toBeNull();

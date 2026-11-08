@@ -538,7 +538,7 @@ interface TextControlProps {
 }
 
 /**
- * A free-text param, written to the node when the reader leaves the box.
+ * A free-text param, written to the node when the user leaves the box.
  *
  * One write per edit rather than per key: every write is a canvas undo entry,
  * and a word typed a letter at a time would push out everything else.

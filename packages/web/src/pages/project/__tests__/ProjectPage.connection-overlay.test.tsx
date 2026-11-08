@@ -232,7 +232,7 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     expect(workspace?.getAttribute('aria-hidden')).toBeNull();
   });
 
-  it('signs the reader out on this device before taking them to sign in again', async () => {
+  it('signs the user out on this device before taking them to sign in again', async () => {
     // The session behind the stored account has expired. Arriving at /login
     // with that account still in the store would make the page act as if
     // someone were signed in, for example by writing a language pick to an

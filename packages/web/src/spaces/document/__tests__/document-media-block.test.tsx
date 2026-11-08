@@ -8,6 +8,7 @@
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -524,6 +525,29 @@ describe('the toolbar', () => {
     expect(within(toolbar(editor)).queryByTestId('doc-media-align-left')).toBeNull();
   });
 
+  // breatic#1184: every toolbar button names itself on hover, and the name is
+  // drawn outside the body's scroller, which would otherwise cut it off.
+  it.each([
+    ['image', 'doc-media-caption-button'],
+    ['image', 'doc-media-fullscreen'],
+    ['image', 'doc-media-download'],
+    ['image', 'doc-media-delete'],
+    ['video', 'doc-media-fullscreen'],
+    ['audio', 'doc-media-caption-button'],
+    ['audio', 'doc-media-download'],
+    ['audio', 'doc-media-delete'],
+  ] as const)('names the %s toolbar\'s %s on hover, outside the scroller', async (type, testId) => {
+    const user = userEvent.setup();
+    const editor = open(type);
+    const scroller = roots[roots.length - 1]!;
+
+    await user.hover(within(toolbar(editor)).getByTestId(testId));
+
+    const tip = await screen.findByRole('tooltip');
+    expect(tip.textContent).not.toBe('');
+    expect(scroller.contains(tip)).toBe(false);
+  });
+
   it.each(['image', 'video', 'audio'] as const)(
     'downloads a %s through its own public asset URL (A19)',
     (type) => {
@@ -723,7 +747,7 @@ describe('a caption written through an input method (A16)', () => {
     fireEvent.change(input, { target: { value: '说明' } });
     fireEvent.compositionEnd(input, { data: '说明' });
     // The Enter that confirms the candidate is the input method's; the
-    // reader's own Enter afterwards commits.
+    // user's own Enter afterwards commits.
     await new Promise((done) => setTimeout(done, 0));
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -1828,7 +1852,7 @@ describe('the caption field and the keyboard', () => {
     const { editor, field } = openCaption();
     const view = editor.prosemirrorView!;
     // The body takes the keyboard while the field is still on the page, so
-    // the field's going is not read as the reader leaving the body.
+    // the field's going is not read as the user leaving the body.
     let fieldWhenBodyFocused: boolean | null = null;
     view.dom.addEventListener('focus', () => {
       fieldWhenBodyFocused = field.isConnected;

@@ -9,7 +9,7 @@
  * The rejections are H1 and H2 verbatim: what OpenRouter returned on
  * 2026-10-25 for a first request and for a second step after a tool ran.
  * Neither carries usage, and the step it ends has no output, so what the
- * reader sees is one reply: the waiting dot, "consolidating memory", and the
+ * user sees is one reply: the waiting dot, "consolidating memory", and the
  * answer -- never the error.
  *
  * Window 1,048,576 (the probe's), output reserve 16,384, keep line 2,000,000,
@@ -397,7 +397,7 @@ describe("a precheck fold that touched nothing (A5)", () => {
   });
 });
 
-describe("the reader stopping during a fold", () => {
+describe("the user stopping during a fold", () => {
   it.each([
     ["an overflow fold", (): void => {
       history(2, 30_000);
@@ -422,7 +422,7 @@ describe("the reader stopping during a fold", () => {
     expect(stored()).toContainEqual({ type: "interrupted" });
   });
 
-  it("does not say how long it thought live when the reader stops an overflow fold, as on any stop", async () => {
+  it("does not say how long it thought live when the user stops an overflow fold, as on any stop", async () => {
     history(2, 30_000);
     world.foldOutcomes = ["aborted"];
     world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];

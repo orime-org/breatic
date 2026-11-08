@@ -46,7 +46,7 @@ describe('the box that rewrites an entry', () => {
   it('writes the rewrite on Enter, the way the other two boxes do', () => {
     // One state machine, three uses (§6.2): the new-note box, the reply box
     // and this one share a transition table whose Enter cell reads "write it
-    // and close". A reader learns Enter-writes-it from the box that creates
+    // and close". A user learns Enter-writes-it from the box that creates
     // the note; the same key on the same sticky, in a box that looks the same,
     // means the same thing.
     const { box } = openTheBox();
@@ -73,7 +73,7 @@ describe('the box that rewrites an entry', () => {
   });
 
   it('leaves a press alone once the box is closed', () => {
-    // Nothing to protect then, and the press is how the reader selects the
+    // Nothing to protect then, and the press is how the user selects the
     // words or reaches for the menu.
     render(
       <AnnotationEntry

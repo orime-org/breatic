@@ -43,7 +43,7 @@ describe('the pin a collapsed annotation is', () => {
   });
 
   it('holds the face at one size whether or not the name has landed', () => {
-    // The ground and the avatar are the same circle; a reader watching a board
+    // The ground and the avatar are the same circle; a user watching a board
     // load should see a face appear, not the pin's middle change size. Both
     // halves are drawn here, because the equality lives in two places that do
     // not know about each other: the ground's own `size-5`, and the avatar's
@@ -128,7 +128,7 @@ describe('the pin a collapsed annotation is', () => {
     expect(onToggle).toHaveBeenCalledTimes(2);
   });
 
-  it('is sized in flow pixels, so what xyflow measures is what the reader sees', () => {
+  it('is sized in flow pixels, so what xyflow measures is what the user sees', () => {
     // The box is the pin. `offsetWidth` is the only number xyflow reads
     // (@xyflow/system@0.0.79:854), so marquee selection, group geometry, the
     // minimap and the sticky's anchor all follow for free.

@@ -81,7 +81,7 @@ describe("nano-banana-relight family", () => {
     expect(json).not.toHaveProperty("lighting");
   });
 
-  it("adds what the reader wrote as a note", async () => {
+  it("adds what the user wrote as a note", async () => {
     const json = JSON.parse((await relight.prepare("  rim light on the hair ", MANUAL, RUN)).prompt) as { note?: string };
     expect(json.note).toBe("rim light on the hair");
   });
@@ -93,8 +93,8 @@ describe("nano-banana-relight family", () => {
     expect(json.lighting.direction).toBe("from directly above");
   });
 
-  // inner#1304 B3: what the reader set by hand overrides the reference; only what stays on Auto comes from it.
-  it("takes from the reference only what the reader left on Auto, and says the set values win", async () => {
+  // inner#1304 B3: what the user set by hand overrides the reference; only what stays on Auto comes from it.
+  it("takes from the reference only what the user left on Auto, and says the set values win", async () => {
     const auto = { ...MANUAL, light_color: "auto", light_quality: "auto", light_reference: REFERENCE };
     const all = JSON.parse((await relight.prepare("", auto, RUN)).prompt) as { reference: string };
     expect(all.reference).toMatch(/direction/);

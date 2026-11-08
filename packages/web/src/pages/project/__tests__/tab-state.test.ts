@@ -119,7 +119,7 @@ describe('reduceTabState — spaces arriving with nothing stored (E1, E8, E9)', 
       type: 'spaces',
       spaces: [SPACES[0]!, SPACES[2]!],
     });
-    // Not stored: the reader did not choose this empty strip, so the record
+    // Not stored: the user did not choose this empty strip, so the record
     // keeps naming the deleted Space and the next visit falls back.
     expect(next).toEqual({ ...ready([], null), persist: false });
     expectInvariants(next);
@@ -340,12 +340,12 @@ describe('reduceTabState — what is worth storing', () => {
       'reordering',
       { type: 'reorder', spaceId: 'b', beforeSpaceId: 'a' } as const,
     ],
-  ])('stores the strip after the reader is done %s', (_name, action) => {
+  ])('stores the strip after the user is done %s', (_name, action) => {
     const next = reduceTabState({ ...ready(['a', 'b'], 'b'), persist: false }, action);
     expect(next.persist).toBe(true);
   });
 
-  it('stores the empty strip the reader closed down to', () => {
+  it('stores the empty strip the user closed down to', () => {
     const one = reduceTabState(ready(['a'], 'a'), { type: 'close', spaceId: 'a' });
     expect(one.openIds).toEqual([]);
     expect(one.persist).toBe(true);

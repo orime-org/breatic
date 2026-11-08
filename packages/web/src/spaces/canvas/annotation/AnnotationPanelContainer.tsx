@@ -84,8 +84,8 @@ export function AnnotationPanelContainer({
   }, [gone, nodeId, draftsHeld, closeActivePanel, deletedByPeer, t]);
   // What a close does to the box that was open, by which box it is (user
   // 2026-09-15). A REPLY is kept for as long as this Space is open: closing
-  // the panel is not the reader saying they do not want it, and reopening the
-  // pin draws it as it was. A REWRITE goes, and the reader opens a new one
+  // the panel is not the user saying they do not want it, and reopening the
+  // pin draws it as it was. A REWRITE goes, and the user opens a new one
   // from the entry's own menu — that one reads what the entry says now, so a
   // collaborator's newer body is what it starts from.
   //
@@ -116,11 +116,11 @@ export function AnnotationPanelContainer({
   // is the one the canvas's other two modes take, down to five conditions:
   // `useEscapeInSpace` is where they live, and a third hand-written copy is
   // what let the ⋯ menu, an IME candidate window and the agent column each
-  // collapse a note out from under the reader. A box inside the sticky that
+  // collapse a note out from under the user. A box inside the sticky that
   // has something to drop stops the key before it reaches this (§6.2), so the
   // first press closes that box and the next one collapses the note.
   //
-  // Stacked under the armed note tool: that is the thing the reader picked up
+  // Stacked under the armed note tool: that is the thing the user picked up
   // most recently, so the press puts it down and the next one collapses this.
   // The stack is this gate — while the tool is armed there is no listener here
   // at all. Measured on a board with both listening: one Escape disarmed the

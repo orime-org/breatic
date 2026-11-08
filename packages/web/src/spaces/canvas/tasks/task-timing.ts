@@ -4,7 +4,7 @@
 /**
  * The number a running task's row counts (#186 §7.3): how long it has run.
  *
- * It is derived from the instant the server opened the task, so a reader's
+ * It is derived from the instant the server opened the task, so a user's
  * clock only changes how accurate the number looks, never what anything is
  * judged to be. Whether a task ran out of time is settled server-side when
  * somebody reads this node's task list (§4.6).
@@ -17,7 +17,7 @@
 /**
  * How long a task has been running.
  * @param startedAt - When the server opened it, ISO 8601.
- * @param now - Reader's clock (epoch ms), injectable for tests.
+ * @param now - User's clock (epoch ms), injectable for tests.
  * @returns Milliseconds since it opened, floored at zero.
  */
 export function elapsedMs(

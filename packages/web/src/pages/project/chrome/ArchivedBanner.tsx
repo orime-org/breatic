@@ -10,7 +10,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 interface ArchivedBannerProps {
   projectId: string;
-  /** Whether this reader may restore it (the studio's admin). */
+  /** Whether this user may restore it (the studio's admin). */
   canRestore: boolean;
 }
 
@@ -23,7 +23,7 @@ interface ArchivedBannerProps {
  * action the studio card offers; it refetches the project, which takes the
  * banner away, and the members' connections are dropped by the server and
  * come back writable on their own.
- * @param props - The project and whether the reader may restore it.
+ * @param props - The project and whether the user may restore it.
  * @param props.projectId - The archived project.
  * @param props.canRestore - Whether to show the restore button.
  * @returns The banner.

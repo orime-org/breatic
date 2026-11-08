@@ -40,7 +40,7 @@ describe('what the browser refuses before it builds anything', () => {
   // Audio a reading cannot take. The item stays clickable on purpose (user
   // 2026-09-19): a disabled item says nothing about why, and the reason here
   // is one sentence. That sentence names the file in hand, which is the
-  // thing the reader acts on (user 2026-09-20).
+  // thing the user acts on (user 2026-09-20).
   it('names the format of the file it refused', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/ogg', sizeBytes: 1024, url: ASSET }, LIMIT),
@@ -191,7 +191,7 @@ describe('where the text node lands', () => {
   // One neighbour to the right, level with it — the same step a dropped batch
   // puts between neighbours, so the two read as a row rather than two
   // unrelated placements. Fixed, with no search for a free spot: a second run
-  // lands on the first (user 2026-09-19), and the reader sorts out the stack.
+  // lands on the first (user 2026-09-19), and the user sorts out the stack.
   it('sits one step to the right of the node it reads', () => {
     expect(understandNodePosition({ x: 100, y: 40 }, null)).toEqual({
       x: 100 + NODE_STEP.x,

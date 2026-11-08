@@ -90,7 +90,9 @@
       "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "text_tool": {
-      "already_running": "Another text tool is already running. Please wait."
+      "selection_too_long": "The selection is too long for AI: {actual} characters, the limit is {limit}.",
+      "document_too_long": "The text sent with the selection is too long: {actual} characters, the limit is {limit}.",
+      "failed": "AI couldn't finish this request. Please try again."
     },
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
@@ -2046,7 +2048,6 @@
         "code": "Inline code",
         "comment": "Comment",
         "ai": "AI",
-        "comingLabel": "{name} (not open yet)",
         "link": "Link",
         "blockType": "Block type",
         "paragraph": "Text",
@@ -2077,6 +2078,28 @@
         "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
       },
+      "ai": {
+        "customTitle": "Custom instruction",
+        "tone": {
+          "professional": "More professional",
+          "casual": "More casual",
+          "straightforward": "More straightforward",
+          "confident": "More confident",
+          "friendly": "More friendly"
+        },
+        "close": "Close",
+        "stop": "Stop",
+        "retry": "Retry",
+        "start": "Start",
+        "insert": "Insert",
+        "replace": "Replace",
+        "instructionsPlaceholder": "What should AI do with the selection? Enter to start, Shift+Enter for a new line",
+        "instruction": "Instruction: {text}",
+        "rangeGone": "The selected text has been deleted",
+        "blockGone": "The paragraph it was in has been deleted",
+        "notWritable": "You can't edit right now",
+        "selectionTooLong": "Too much text is selected. Select less and try again."
+      },
       "comment": {
         "placeholder": "Write a comment…",
         "targetGone": "The text was changed or deleted.",
@@ -2106,6 +2129,11 @@
         "risksLead": "Before you refresh:",
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
+      },
+      "outline": {
+        "show": "Show outline",
+        "hide": "Hide outline",
+        "empty": "No headings yet"
       },
       "docMenu": {
         "label": "Whole-document commands",

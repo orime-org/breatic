@@ -83,8 +83,8 @@ export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
-export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
-export { isReaderLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
+export { extFromUrl, labelForUrl, userUrlSchema, safeExt } from "@domain/asset/source-url.js";
+export { isUserLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 export {
   MEDIA_READ_QUEUE,
   type MediaReadJob,
@@ -116,7 +116,7 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
-  AWAITS_READER,
+  AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The web app registers only English and the reader's own locale as full
+ * The web app registers only English and the user's own locale as full
  * catalogs (breatic#1374); the one key `tInEveryLocale` reads back in every
  * language reaches the engine through a separate every-locale table.
  */

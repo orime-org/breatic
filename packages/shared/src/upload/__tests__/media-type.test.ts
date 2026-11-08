@@ -100,7 +100,7 @@ describe("isUploadableMediaType", () => {
     // The pair has to admit this header AND strip it. Admitting it is not
     // enough: the raw string starts with "video/" too, so a gate that only
     // asked whether it is uploadable would hand the whole thing to storage,
-    // and a reader would be served the last value in it.
+    // and a user would be served the last value in it.
     const raw = "video/mp4,text/html";
     const reduced = reduceMediaType(raw);
     expect(isUploadableMediaType(reduced)).toBe(true);

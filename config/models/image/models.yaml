@@ -9,7 +9,7 @@
 #                          it on only where both appear (`modelLabel`). The
 #                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
-#                          display_name, so it is what tells a reader which of
+#                          display_name, so it is what tells a user which of
 #                          several models for one mode to pick: say what this
 #                          model is good at, never restate the name or the mode.
 #                          Only capabilities the panel reaches.
@@ -40,7 +40,7 @@
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
 #                          and `step` draw a slider; other `values` an option group.
-#   param.default        — what the param holds when the reader sets nothing;
+#   param.default        — what the param holds when the user sets nothing;
 #                          a run sends it unless it equals `absent_value`.
 #   param.absent_value   — the value that is sent as nothing: holding it
 #                          leaves the param out of the request (`auto` lets
@@ -795,7 +795,7 @@ models:
     takes_prompt: true
     tier: "internal"
     description: "Repaints only the masked area"
-    guide: "Inpainting: changes the area the reader painted and leaves the rest of the picture as it was."
+    guide: "Inpainting: changes the area the user painted and leaves the rest of the picture as it was."
     generation_time: 30
     # Measured 2026-10-12: 12288x12288 comes back at its own size; a side past
     # 14142 is refused by the upstream's validation.
@@ -827,7 +827,7 @@ models:
     takes_prompt: false
     tier: "internal"
     description: "Removes the masked object"
-    guide: "Object removal: takes out what the reader painted and fills in the background."
+    guide: "Object removal: takes out what the user painted and fills in the background."
     generation_time: 15
     icon: "bria"
     params:
@@ -861,7 +861,7 @@ models:
     icon: "seedream"
     params:
       images:
-        description: "The source with the reader's drawing painted on it"
+        description: "The source with the user's drawing painted on it"
         default: null
         type: "list"
         max_items: 1

@@ -226,7 +226,7 @@ export async function makeAGroup(page: Page): Promise<void> {
 /**
  * A screen point in the board's own coordinates.
  *
- * The board moves under the reader — `fitView` frames the first node the
+ * The board moves under the user — `fitView` frames the first node the
  * moment it appears — so anything compared across such a move has to be
  * compared here, where the viewport cannot reach it.
  * @param page - The page holding the board.
@@ -246,7 +246,7 @@ export async function inFlow(page: Page, at: { x: number; y: number }): Promise<
 }
 
 /**
- * Set the canvas zoom from the viewport toolbar, the way a reader does.
+ * Set the canvas zoom from the viewport toolbar, the way a user does.
  * @param page - The page to zoom.
  * @param percent - One of the toolbar's presets, as a whole percentage.
  */
@@ -263,7 +263,7 @@ export async function setZoom(page: Page, percent: number): Promise<void> {
  *
  * A note is a pin on the board and the sticky is what the pin opens into
  * (§8.7), so every assertion about what a note says goes through here. Opening
- * is per-reader and never reaches the document, so each page opens its own.
+ * is per-user and never reaches the document, so each page opens its own.
  * @param page - The page to open it on.
  */
 export async function openTheNote(page: Page): Promise<void> {

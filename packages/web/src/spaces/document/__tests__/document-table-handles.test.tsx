@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1126 A6: the row and column handles, as the reader meets them.
+ * inner#1126 A6: the row and column handles, as the user meets them.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';

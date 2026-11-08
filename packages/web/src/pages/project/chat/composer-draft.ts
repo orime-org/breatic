@@ -60,7 +60,7 @@ export function draftOf(doc: PMNode): string {
  * How long the draft in a document is, a reference counting as one.
  * @param doc - The box's document.
  * @param attached - What is attached; only their ids are read.
- * @returns The length the reader sees.
+ * @returns The length the user sees.
  */
 export function draftLength(doc: PMNode, attached: ReadonlyArray<{ readonly id: string }>): number {
   return messageLength(attached, draftOf(doc));
@@ -68,7 +68,7 @@ export function draftLength(doc: PMNode, attached: ReadonlyArray<{ readonly id: 
 
 /**
  * Brings every block in line with what is attached: a block whose attachment
- * left goes, on its own (the spaces around it are the reader's words), and
+ * left goes, on its own (the spaces around it are the user's words), and
  * the rest show their attachment's name as it reads now.
  * @param state - The box's state.
  * @param attached - What is attached.

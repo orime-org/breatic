@@ -7,7 +7,7 @@
  *
  * Each case starts from a fresh module registry, so `@breatic/shared`, the
  * bootstrap module and the mocked chunks are imported together and share one
- * engine. The engine is then reset to English alone, which is what a reader
+ * engine. The engine is then reset to English alone, which is what a user
  * has before any other locale's chunk arrives. A chunk waits on the gate a
  * case sets for it, set only after the bootstrap module has loaded so that
  * module load never waits on a gate.

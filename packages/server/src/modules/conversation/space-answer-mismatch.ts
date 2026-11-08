@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reader's answer to the agent's request to read Spaces, held to the
+ * The user's answer to the agent's request to read Spaces, held to the
  * request it answers (inner#1552). Only structure is checked here; the route
  * holds each Space's content to the configured length.
  */
@@ -40,7 +40,7 @@ function spaceMismatch(asked: AskedSpace, shared: SharedSpace): string | null {
 }
 
 /**
- * Why the reader's answer does not fit the request it answers: each Space
+ * Why the user's answer does not fit the request it answers: each Space
  * asked for is answered once, nothing else is, and each answers the part it
  * was asked for.
  * @param input - The request as the agent made it.

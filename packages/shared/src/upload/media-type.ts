@@ -63,7 +63,7 @@ const UPLOADABLE: ReadonlySet<string> = new Set(UPLOADABLE_MEDIA_TYPES);
  * Cut at a comma as well as a semicolon: a browser honours the LAST parsable
  * value when a header carries commas, so `video/mp4,text/html` is served as
  * HTML — measured in Chromium, scripts in it run. What survives here is what
- * gets signed, what R2 stores, and what a reader is eventually handed, so the
+ * gets signed, what R2 stores, and what a user is eventually handed, so the
  * value the gate reads has to be the value that decides all three.
  * @param raw - The header or field as it arrived.
  * @returns The essence, lowercased and trimmed; empty when there is none.
@@ -118,7 +118,7 @@ export function canonicalMediaType(value: string): string {
 }
 
 /**
- * The formats one medium takes, written out for a reader.
+ * The formats one medium takes, written out for a user.
  *
  * Read by the sentences that refuse a file: knowing a format is not taken
  * leaves the person holding it with nowhere to go, and what we do take is on

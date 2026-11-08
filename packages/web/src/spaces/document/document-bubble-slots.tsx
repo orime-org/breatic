@@ -8,9 +8,10 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * Block type, alignment and colour all reach their commands. The AI slot is
- * drawn the way the demo draws it and writes a line to the console when
- * pressed, the menu closing after it either way (user 2026-08-27).
+ * Block type, alignment and colour all reach their commands. The AI slot's
+ * text commands open the AI output dialog (inner#1860); its two rows that make
+ * something new write a line to the console when pressed, the menu closing
+ * after it either way (user 2026-08-27).
  *
  * Three things carry the greyed treatment `document-unavailable-control.ts` defines:
  * the block type menu over a selection no row can act on, judged only while
@@ -28,7 +29,12 @@ import {
   BubbleMenuHeading,
   BubbleMenuRow,
   BubbleMenuRule,
+  BubbleMenuSubmenuRow,
 } from '@web/spaces/document/document-bubble-rows';
+import { TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from '@breatic/shared';
+import { langFor } from '@web/features/preferences/supported-langs';
+import type { AiCommand } from '@web/spaces/document/document-ai-session';
+import { TONE_LABEL_KEYS, useDocumentAiLaunch } from '@web/spaces/document/document-ai-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
@@ -84,9 +90,9 @@ import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
  * Says a control was pressed before anyone wrote the command behind it.
  *
  * The console rather than the screen: these controls look and behave the way
- * the demo draws them, and the product is not launched, so a reader is not
- * told anything (user 2026-08-26). Whoever is holding the browser open sees
- * which command they reached.
+ * the demo draws them, and telling the user that one is not built yet is the
+ * unavailable-item marking of inner#1008. Whoever is holding the browser open
+ * sees which command they reached.
  * @param what - The control that was pressed.
  */
 function pressedWithNothingBehindIt(what: string): void {
@@ -390,7 +396,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   const id = 'doc-bubble-align';
   const label = t('spaces.document.commands.align');
   // One reading covers both states the slot draws: whether it is live, and
-  // which row is lit. Two readers would walk the covered blocks twice per
+  // which row is lit. Two snapshot readers would walk the covered blocks twice per
   // keystroke and could disagree about what is under the selection.
   const face = useEditorSnapshot(editor, alignFace);
   const active = face === MIXED_ALIGNMENT ? undefined : face;
@@ -521,40 +527,79 @@ export const ColorSlot = React.memo(function ColorSlot({
   );
 });
 
+/** What an AI menu row does: a command, a second level, or nothing yet. */
+type AiRowKind =
+  | { readonly runs: AiCommand }
+  | { readonly opens: 'translate' | 'tone' }
+  | { readonly notOpen: true };
+
+/** One row of the AI menu. */
+interface AiRow {
+  readonly id: string;
+  readonly labelKey: string;
+  readonly kind: AiRowKind;
+}
+
 /** The AI menu's eight commands in three groups, from the ruling §3.2.1. */
-const AI_GROUPS = [
+const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = [
   {
     labelKey: 'spaces.document.commands.aiRewriteGroup',
     // Each row spells its key out. A template built from the id would read the
     // same at runtime and vanish from the scan that finds dead catalog entries,
     // so every one of these eight would look unused.
     items: [
-      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine' },
-      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand' },
-      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten' },
-      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate' },
-      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone' },
+      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
+      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
+      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten', kind: { runs: { id: 'shorten' } } },
+      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate', kind: { opens: 'translate' } },
+      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone', kind: { opens: 'tone' } },
     ],
   },
   {
+    // Not in inner#1860: the shot list is inner#1130, the illustration
+    // inner#1866.
     labelKey: 'spaces.document.commands.aiProduceGroup',
     items: [
-      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard' },
-      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate' },
+      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { notOpen: true } },
+      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate', kind: { notOpen: true } },
     ],
   },
   {
     labelKey: 'spaces.document.commands.aiOtherGroup',
-    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom' }],
+    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom', kind: { runs: { id: 'custom' } } }],
   },
 ];
+
+/** One item of a second level: its test id stem, what it shows, the command it runs. */
+interface AiSubItem {
+  readonly id: string;
+  readonly label: string;
+  readonly command: AiCommand;
+}
+
+/**
+ * The items of a second level of the AI menu: the five languages of the text
+ * tool's contract, each named in its own language as the language switcher
+ * names it, or the five tones.
+ * @param which - Which second level.
+ * @param t - The translator.
+ * @returns The items, in the order the menu lists them.
+ */
+function aiSubItems(which: 'translate' | 'tone', t: (key: string) => string): AiSubItem[] {
+  if (which === 'translate') {
+    return TEXT_TOOL_LANGUAGES.map((code) => ({ id: code, label: langFor(code).nativeName, command: { id: 'translate', language: code } }));
+  }
+  return TEXT_TOOL_TONES.map((tone) => ({ id: tone, label: t(TONE_LABEL_KEYS[tone]), command: { id: 'tone', style: tone } }));
+}
 
 /**
  * The AI slot.
  *
  * Its shape is the ruling's (§3.2.1): icon, the word AI, chevron, and hovering
- * it opens a list of commands below. None of the eight reach anything this time
- * round; each arrives with its own task (the ruling §3.3 routes them).
+ * it opens a list of commands below. Six of the eight open the AI output
+ * dialog (inner#1860); translate and change tone first open a second level
+ * beside their row, for the language or the tone. The shot list and the
+ * illustration arrive with their own tasks.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -566,14 +611,29 @@ export const AiSlot = React.memo(function AiSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-ai';
-  const label = t('spaces.document.commands.comingLabel', {
-    name: t('spaces.document.commands.ai'),
-  });
+  const launch = useDocumentAiLaunch();
+  // Which second level is open; one at a time, and none once the menu goes.
+  const [level, setLevel] = React.useState<'translate' | 'tone' | null>(null);
+  const open = openId === id;
+  React.useEffect(() => {
+    if (!open) setLevel(null);
+  }, [open]);
+  const changeLevel = React.useCallback((which: 'translate' | 'tone', next: boolean): void => {
+    setLevel((current) => (next ? which : current === which ? null : current));
+  }, []);
+  const run = React.useCallback(
+    (command: AiCommand): void => {
+      onOpenChange(id, false);
+      launch?.(command, container);
+    },
+    [container, launch, onOpenChange],
+  );
 
   return (
     <SlotShell
       id={id}
-      label={label}
+      label={t('spaces.document.commands.ai')}
+      align='end'
       face={(
         <>
           <Sparkles className='h-4 w-4' />
@@ -589,19 +649,110 @@ export const AiSlot = React.memo(function AiSlot({
       {AI_GROUPS.map((group) => (
         <React.Fragment key={group.labelKey}>
           <BubbleMenuHeading>{t(group.labelKey)}</BubbleMenuHeading>
-          {group.items.map((item) => (
-            <BubbleMenuRow
-              key={item.id}
-              data-testid={`doc-bubble-ai-item-${item.id}`}
-              onSelect={() => {
-                pressedWithNothingBehindIt(`ai ${item.id}`);
-              }}
-            >
-              {t(item.labelKey)}
-            </BubbleMenuRow>
-          ))}
+          {group.items.map((item) => {
+            const { kind } = item;
+            if ('opens' in kind) {
+              const which = kind.opens;
+              return (
+                <AiSecondLevel
+                  key={item.id}
+                  which={which}
+                  label={t(item.labelKey)}
+                  container={container}
+                  scroller={scroller}
+                  open={level === which}
+                  onLevelChange={changeLevel}
+                  onRun={run}
+                />
+              );
+            }
+            return (
+              <BubbleMenuRow
+                key={item.id}
+                data-testid={`doc-bubble-ai-item-${item.id}`}
+                onSelect={() => {
+                  if ('runs' in kind) run(kind.runs);
+                  else pressedWithNothingBehindIt(`ai ${item.id}`);
+                }}
+              >
+                {t(item.labelKey)}
+              </BubbleMenuRow>
+            );
+          })}
         </React.Fragment>
       ))}
     </SlotShell>
   );
 });
+
+/** What a second level of the AI menu receives. */
+interface AiSecondLevelProps {
+  which: 'translate' | 'tone';
+  /** Its row's label. */
+  label: string;
+  container: HTMLElement | null;
+  scroller: HTMLElement | null;
+  open: boolean;
+  /** Opens or closes a second level. */
+  onLevelChange: (which: 'translate' | 'tone', open: boolean) => void;
+  /** Runs an item's command, closing the whole menu. */
+  onRun: (command: AiCommand) => void;
+}
+
+/**
+ * A row of the AI menu that opens a second level on its right: its trigger is
+ * a row of the first menu that does not close it, and a press on an item of
+ * the second level runs the command and closes both.
+ * @param props - See {@link AiSecondLevelProps}.
+ * @param props.which - Which second level.
+ * @param props.label - Its row's label.
+ * @param props.container - Which element the level mounts inside.
+ * @param props.scroller - The body's scroller.
+ * @param props.open - Whether the level is open.
+ * @param props.onLevelChange - Opens or closes a second level.
+ * @param props.onRun - Runs an item's command.
+ * @returns The row and its level.
+ */
+function AiSecondLevel({
+  which,
+  label,
+  container,
+  scroller,
+  open,
+  onLevelChange,
+  onRun,
+}: AiSecondLevelProps): React.JSX.Element {
+  const t = useTranslation();
+  const onOpenChange = React.useCallback((next: boolean): void => {
+    onLevelChange(which, next);
+  }, [onLevelChange, which]);
+  const items = aiSubItems(which, t);
+  return (
+    <DocumentBubbleMenu
+      id={`doc-bubble-ai-${which}`}
+      side='right'
+      container={container}
+      scroller={scroller}
+      contentClassName={ROWS}
+      open={open}
+      onOpenChange={onOpenChange}
+      trigger={(
+        <BubbleMenuSubmenuRow data-testid={`doc-bubble-ai-item-${which}`}>
+          {label}
+        </BubbleMenuSubmenuRow>
+      )}
+    >
+      {items.map((item) => (
+        <BubbleMenuRow
+          key={item.id}
+          data-testid={`doc-bubble-ai-${which}-item-${item.id}`}
+          onSelect={() => {
+            onRun(item.command);
+          }}
+        >
+          {item.label}
+        </BubbleMenuRow>
+      ))}
+    </DocumentBubbleMenu>
+  );
+}

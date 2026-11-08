@@ -7,6 +7,10 @@ const logged = vi.hoisted(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(),
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   logger: logged,
+  // The route is rate limited (inner#1860); whether a request is throttled is
+  // not this file's subject, so every request is admitted.
+  checkRateLimit: async () => ({ allowed: true }),
+  getRedis: () => ({}),
 }));
 
 vi.mock("@server/middleware/auth.js", () => ({
@@ -17,9 +21,17 @@ vi.mock("@server/middleware/auth.js", () => ({
 }));
 
 const service = vi.hoisted(() => ({ executeTextTool: vi.fn() }));
-vi.mock("@server/modules", () => ({ textToolService: service }));
+// The caller is an editor of the project and its studio can pay (inner#1860).
+vi.mock("@server/modules", () => ({
+  textToolService: service,
+  projectService: { assertAccess: async () => undefined },
+  precheckCredits: async () => undefined,
+}));
 
 import { textToolsRoute } from "@server/routes/text-tools.js";
+
+const PID = "11111111-1111-4111-8111-111111111111";
+const BODY = JSON.stringify({ tool: "generate", instructions: "write a line", project_id: PID });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,7 +48,7 @@ describe("text tools stream", () => {
     const res = await textToolsRoute.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tool: "generate", instructions: "write a line" }),
+      body: BODY,
     });
     await res.text();
 
@@ -44,6 +56,25 @@ describe("text tools stream", () => {
       expect.objectContaining({ err: failure, userId: "user-1", tool: "generate" }),
       "text_tool_stream_failed",
     );
+  });
+
+  it("ends the stream with an error event when the run throws", async () => {
+    // Without a closing event the browser cannot tell a failed run from a
+    // dropped connection (inner#1860 F22).
+    service.executeTextTool.mockImplementation(async function* () {
+      yield { type: "text_delta", text: "half" };
+      throw new Error("model call failed");
+    });
+
+    const res = await textToolsRoute.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: BODY,
+    });
+    const body = await res.text();
+
+    const events = [...body.matchAll(/^event: ?(.*)$/gm)].map((m) => m[1]);
+    expect(events.at(-1)).toBe("error");
   });
 });
 
@@ -58,6 +89,7 @@ describe("text tools stream when the client leaves before anything is read", () 
     const signals: AbortSignal[] = [];
     service.executeTextTool.mockImplementation(async function* (
       _user: string,
+      _project: string,
       _tool: string,
       _params: unknown,
       signal: AbortSignal,
@@ -82,7 +114,7 @@ describe("text tools stream when the client leaves before anything is read", () 
     const res = await textToolsRoute.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tool: "generate", instructions: "write a line" }),
+      body: BODY,
       signal: gone.signal,
     });
     expect(res.status).toBe(200);
@@ -99,7 +131,7 @@ describe("text tools stream when the client leaves before anything is read", () 
     const res = await textToolsRoute.request("/", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tool: "generate", instructions: "write a line" }),
+      body: BODY,
       signal: leaving.signal,
     });
     expect(res.status).toBe(200);

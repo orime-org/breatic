@@ -386,7 +386,7 @@ describe("miniToolEstimateInput", () => {
   });
 });
 
-// inner#1302: the three tools the reader draws on the node for.
+// inner#1302: the three tools the user draws on the node for.
 describe("drawing tools", () => {
   const SOURCE = "https://cdn.example.com/a.png";
   const COPY = "https://cdn.example.com/upright.png";
@@ -597,7 +597,7 @@ describe("batch-four tools", () => {
     }
   });
 
-  it("keeps the server-filled aspect param out of what the reader sends", () => {
+  it("keeps the server-filled aspect param out of what the user sends", () => {
     for (const tool of MINI_TOOLS) {
       if (tool.sourceAspectParam === undefined) continue;
       expect(toolParamKeys(tool), tool.id).not.toContain(tool.sourceAspectParam);

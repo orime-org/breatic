@@ -6,7 +6,7 @@
  *
  * A node's task counts go out on the cross-service stream so that everyone
  * else with this canvas open sees them move. The request that caused the
- * move already has its own answer in hand, and the reader on the other end
+ * move already has its own answer in hand, and the user on the other end
  * of that request is not the audience for the broadcast.
  *
  * So the two are separated here. Losing the stream for a few seconds is a

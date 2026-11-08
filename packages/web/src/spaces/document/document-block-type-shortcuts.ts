@@ -11,7 +11,7 @@
  * A descriptor rather than a string: the same chord reads `⌘⌥1` on macOS and
  * `Ctrl+Alt+1` on Windows, and
  * `packages/web/AGENTS.md#keyboard-shortcuts-on-both-platforms` makes
- * carrying both mandatory. `formatShortcut` turns it into whichever the reader is on, and
+ * carrying both mandatory. `formatShortcut` turns it into whichever the user is on, and
  * {@link shortcutChord} into the notation tiptap binds.
  */
 

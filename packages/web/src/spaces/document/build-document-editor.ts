@@ -74,6 +74,7 @@ import {
   type DocumentCommentsOptions,
 } from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
+import { documentAiRange } from '@web/spaces/document/document-ai-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
@@ -206,6 +207,7 @@ export function buildDocumentEditor(
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      documentAiRange(),
       documentFileDropExtension(options.onFiles),
       documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
@@ -225,7 +227,7 @@ export function buildDocumentEditor(
       // store; inside BlockNote only its own Tab and Shift-Tab bindings do,
       // and they decline the key while the toolbar judges it should be on
       // screen — a selection that is non-empty, holds text, and does not
-      // reach into plain content like a code block — so a reader can tab
+      // reach into plain content like a code block — so a user can tab
       // INTO the toolbar.
       'formattingToolbar',
     ],

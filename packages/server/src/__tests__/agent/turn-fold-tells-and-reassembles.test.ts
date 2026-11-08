@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the reader hears of a fold, what is sent after a fold that wrote
+ * What the user hears of a fold, what is sent after a fold that wrote
  * nothing, and a turn stopped before it asked anything (inner#1567, design
  * 6.4 and the state table in 6.6).
  *
- * - Every fold that starts tells the reader once (`data-memory-consolidating`);
+ * - Every fold that starts tells the user once (`data-memory-consolidating`);
  *   a turn that folds nothing says nothing of the sort.
  * - A fold that ends `failed` moved nothing and wrote nothing (#1363): the
  *   turn goes on with the request it has, and after an overflow, where that
- *   request does not fit, it ends with an error the reader can send again.
+ *   request does not fit, it ends with an error the user can send again.
  *   The turn folds no more after it; the next turn folds again.
- * - A reader who stopped before the first call is owed no paid work: no fold
+ * - A user who stopped before the first call is owed no paid work: no fold
  *   and no model call, even with a known count over the line.
  *
  * Window 200,000 and output reserve 16,384, so a known count of 183,616 leaves
@@ -102,7 +102,7 @@ interface SecondTurn {
  * @param firstOutput - Output tokens the first answer reports.
  * @param options - How the second turn runs.
  * @param options.outcomes - How the second turn's folds end.
- * @param options.stopped - The reader stopped the second turn before it began.
+ * @param options.stopped - The user stopped the second turn before it began.
  * @returns What the second turn did.
  */
 async function secondTurn(
@@ -141,7 +141,7 @@ function threeEarlierTurns(): void {
   world.nextTurn = 4;
 }
 
-describe("the reader is told of a precheck fold once", () => {
+describe("the user is told of a precheck fold once", () => {
   it("at the start of a turn, and not on a turn with one token of room left", async () => {
     const folded = await secondTurn(LINE - 616, 616);
     const roomLeft = await secondTurn(LINE - 616, 615);
@@ -160,7 +160,7 @@ describe("the reader is told of a precheck fold once", () => {
     world.history = rowsOf(1);
     let wireDuringFold: string[] = [];
     world.duringFold = async () => {
-      // Long enough for anything already written to reach the reader.
+      // Long enough for anything already written to reach the user.
       await new Promise((resolve) => setTimeout(resolve, 20));
       wireDuringFold = [...world.wire];
     };
@@ -241,7 +241,7 @@ describe("a fold that failed leaves the history as it was (#1363)", () => {
     expect(stored()).toContainEqual({ type: "text", text: "done" });
   });
 
-  it("after an overflow, ends the turn with an error the reader can send again", async () => {
+  it("after an overflow, ends the turn with an error the user can send again", async () => {
     world.window = PROBE_WINDOW;
     world.history = [...plainTurn(1, 30_000), ...plainTurn(2, 30_000)];
     world.nextTurn = 3;
@@ -268,7 +268,7 @@ describe("a fold that failed leaves the history as it was (#1363)", () => {
     expect(stored()).toContainEqual({ type: "text", text: "done" });
   });
 
-  it("is not tried again after an overflow later in the same turn, which ends with an error the reader can send again", async () => {
+  it("is not tried again after an overflow later in the same turn, which ends with an error the user can send again", async () => {
     threeEarlierTurns();
     world.foldOutcomes = ["failed", "written"];
     world.script = [callsFetch("c1", LINE, 0), { reject: h1() }, answers("the answer")];
@@ -280,7 +280,7 @@ describe("a fold that failed leaves the history as it was (#1363)", () => {
     expect(stored()).not.toContainEqual({ type: "text", text: "the answer" });
   });
 
-  it("is tried again on the reader's next turn", async () => {
+  it("is tried again on the user's next turn", async () => {
     world.script = [answers("first answer", LINE - 616, 616)];
     await sendMessage("first");
     world.history = rowsOf(1);
@@ -296,7 +296,7 @@ describe("a fold that failed leaves the history as it was (#1363)", () => {
   });
 });
 
-describe("a turn whose reader stopped before it began", () => {
+describe("a turn whose user stopped before it began", () => {
   it("folds nothing and calls nothing, though its known count is over the line, and ends stopped", async () => {
     const stopped = await secondTurn(LINE - 616, 616, { stopped: true });
     const running = await secondTurn(LINE - 616, 616);

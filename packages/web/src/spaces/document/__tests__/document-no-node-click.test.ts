@@ -5,7 +5,7 @@
  * #113 A11.3: a modifier-click puts the caret down, it does not select a block.
  *
  * The one press this has to keep its hands off is a modifier-click on a link,
- * which is how a reader opens one in a new tab everywhere else. Answering it
+ * which is how a user opens one in a new tab everywhere else. Answering it
  * here would stop the link handler from ever being asked
  * (`prosemirror-view/src/input.ts`: `handleSingleClick` calls `preventDefault`
  * on the first prop that answers true).

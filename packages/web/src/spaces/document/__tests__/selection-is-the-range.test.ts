@@ -7,7 +7,7 @@
  * Not a character more, not a character less. A space is content — it carries
  * a colour, a fill and a weight, it is only invisible — so it joins the range
  * and it joins the reading. Typing at the end of a styled run continues that
- * run, which is what a reader means by making the region bigger.
+ * run, which is what a user means by making the region bigger.
  *
  * This is a rule for the whole document space (user 2026-09-11), not for one
  * command: bold, alignment, colour and fill all answer the same way, and so

@@ -5,7 +5,7 @@
  * The options a generation parameter offers, read off whichever model is
  * active. Read by the image and video panels, by the camera cluster (#1896),
  * and by the answer the agent is given about a model (#261) -- the panel and
- * that answer have to offer the reader the same values.
+ * that answer have to offer the user the same values.
  *
  * A catalog parameter states its allowed values in one of two shapes, and a
  * reader that only understands the first makes the second's group vanish:

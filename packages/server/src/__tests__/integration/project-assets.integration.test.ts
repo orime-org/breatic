@@ -262,7 +262,7 @@ describe("Project registered media HTTP reads", () => {
     }
   });
 
-  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project reader", async (state) => {
+  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project user", async (state) => {
     const fixture = await seedFixture();
     const asset = await seedAsset(state === "foreign" ? await seedFixture() : fixture);
     if (state === "deleted") {

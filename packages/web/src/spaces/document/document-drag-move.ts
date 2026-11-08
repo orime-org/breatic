@@ -14,7 +14,7 @@
  * goes down, and a drop reads it rather than the document
  * (`prosemirror-view/src/input.ts:788-790`).
  *
- * Measured 2026-09-18 with two pages on one Space: a word the other reader
+ * Measured 2026-09-18 with two pages on one Space: a word the other user
  * typed INTO the dragged row during the flight was gone on both ends after the
  * drop, while a word typed into any other row survived and the row itself
  * moved correctly. The three runs are in design §8.
@@ -88,7 +88,7 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * Usually the row itself. When the row is the only child of a NESTED
  * `blockGroup`, that group has to go with it: `BlockGroup.ts:12` is
  * `blockGroupChild+`, so a group left with no children is refilled by the
- * schema with an empty paragraph, and the reader would watch a blank row
+ * schema with an empty paragraph, and the user would watch a blank row
  * appear under the block they dragged out of. The document's own top-level
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
  * requires it, so it stays and the insert below is what keeps it occupied. A
@@ -122,7 +122,7 @@ export function rangeToLift(
  * `dropPoint` answers with a gap, and the gaps at and inside the dragged row's
  * own range are the places it already is. Writing the move anyway would empty
  * the only group a one-row document has — which is what a fresh Space is — and
- * `blockGroupChild+` refills an emptied group with a paragraph, so the reader
+ * `blockGroupChild+` refills an emptied group with a paragraph, so the user
  * would get a second, blank row out of putting a row back where it was
  * (measured 2026-09-18: one row before, two after).
  * @param view - The view to write to.

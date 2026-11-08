@@ -37,7 +37,7 @@ export function suppressTooltipFocusOpen(event: React.FocusEvent): void {
  * `context.triggerRef.current?.focus()` (`@radix-ui/react-dialog@1.1.23`,
  * `dist/index.mjs:154`). An overlay opened from state rather than from
  * `DialogTrigger` / `SheetTrigger` has no such ref, so that call reaches
- * nothing and focus lands on the body -- a keyboard reader who pressed Escape
+ * nothing and focus lands on the body -- a keyboard user who pressed Escape
  * has to Tab back through the whole page to where they were.
  *
  * Several things open the same overlay in places -- every square in a row of

@@ -4,7 +4,7 @@
 /**
  * What the audio enhance model declares (inner#1305 §4.3): WaveSpeed's
  * veed/clean-audio, which takes at most 30 minutes and 512 MB, cleans speech
- * at a strength the reader picks, levels it to -16 LUFS and returns a WAV,
+ * at a strength the user picks, levels it to -16 LUFS and returns a WAV,
  * priced per started minute.
  *
  * These read the REAL config files, as the sibling catalog tests do.
@@ -50,7 +50,7 @@ describe("veed-clean-audio", () => {
     });
   });
 
-  it("lets the reader set the strength from 0 to 1 and fixes the level and the format", () => {
+  it("lets the user set the strength from 0 to 1 and fixes the level and the format", () => {
     expect(enhance().params.strength).toMatchObject({ fill: "tool", min: 0, max: 1, step: 0.05, default: 0.85 });
     expect(enhance().params.target_lufs).toMatchObject({ fill: "none", default: -16 });
     expect(enhance().params.output_format).toMatchObject({ fill: "none", default: "wav" });

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A questionnaire pauses the turn, and the reader's answer resumes it
+ * A questionnaire pauses the turn, and the user's answer resumes it
  * (inner#1542).
  *
- * The agent's `ask_user` call has no result until the reader gives one: the
+ * The agent's `ask_user` call has no result until the user gives one: the
  * segment of the turn that asked stops there, the call is stored as
  * `awaiting`, and the answer comes back as that call's result -- either from
- * the card, which resumes the same turn, or as word that the reader wrote a
+ * the card, which resumes the same turn, or as word that the user wrote a
  * message instead. Whichever way it comes, the call and its result sit in the
  * same stored row, so every later request in the conversation carries a call
  * with its result; a call left without one makes the SDK refuse every
@@ -292,7 +292,7 @@ describe("a turn that asks", () => {
 });
 
 describe("answering on the card", () => {
-  it("resumes the same turn: the result goes to the model, nothing new is said for the reader, and the call is answered in its own row", async () => {
+  it("resumes the same turn: the result goes to the model, nothing new is said for the user, and the call is answered in its own row", async () => {
     const chat = await askedIn("ask-2");
     model.calls = [];
     const { status, chunks } = await post(chat, { message: "", answer: { toolCallId: "ask-2", answers: ANSWERS } });

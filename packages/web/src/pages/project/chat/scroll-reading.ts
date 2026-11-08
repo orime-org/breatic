@@ -20,9 +20,9 @@ export const AT_END_EPSILON_PX = 4;
  * How far off a written position may come back and still be our own write.
  *
  * Only the fraction a write is rounded by, which is why it is not the
- * tolerance above: a reader's smallest wheel nudge is about three pixels and
+ * tolerance above: a user's smallest wheel nudge is about three pixels and
  * fits inside that one, and taking such a nudge for our own write would leave
- * the column following while the reader meant to stop it.
+ * the column following while the user meant to stop it.
  */
 export const OWN_WRITE_EPSILON_PX = 1;
 
@@ -41,10 +41,10 @@ export interface ScrollReading {
 }
 
 /**
- * Which reader move, if any, a scroll event stands for.
+ * Which user move, if any, a scroll event stands for.
  *
  * A scroll event carries no trace of who caused it: CSSOM View puts a
- * programmatic write and a reader's gesture in the same queue, and `isTrusted`
+ * programmatic write and a user's gesture in the same queue, and `isTrusted`
  * is true for both. So this reads by exclusion.
  *
  * Our own write is known by the value the column took from it.
@@ -55,28 +55,28 @@ export interface ScrollReading {
  * column was, and scroll anchoring, when a height above the viewport shrinks.
  * Content arriving below pushes the end further away and can never pull a
  * column up, so an upward move while the end holds still or grows is the
- * reader, however small it is -- which is what a trackpad's opening
+ * user, however small it is -- which is what a trackpad's opening
  * two-finger nudge is.
  *
  * Asking instead where the move came to rest cannot work here. A column that
- * is following sits on its end, so a reader's first nudge always lands near
+ * is following sits on its end, so a user's first nudge always lands near
  * it, and the write after each chunk puts the ground back before they can
  * accumulate anything.
  *
- * Everything left is the reader, whatever they used to do it, so the middle
+ * Everything left is the user, whatever they used to do it, so the middle
  * wheel, the browser's own find-in-page, a tab into something offscreen, Home
  * and End, and a wheel turned over the scrollbar all count without being
  * named.
  * @param reading - The event and what we knew going into it.
- * @returns The reader's move, or null when it was not the reader.
+ * @returns The user's move, or null when it was not the user.
  */
 export function readScroll(reading: ScrollReading): FollowEvent | null {
   const { top, lastTop, end, lastEnd, written } = reading;
   if (written !== undefined && Math.abs(top - written) <= OWN_WRITE_EPSILON_PX) return null;
 
-  if (top < lastTop) return end < lastEnd ? null : 'readerMovedUp';
+  if (top < lastTop) return end < lastEnd ? null : 'userMovedUp';
 
   const atEnd = Math.abs(end - top) <= AT_END_EPSILON_PX;
-  if (top > lastTop) return atEnd ? 'readerMovedDownToEnd' : 'readerMovedDownShort';
+  if (top > lastTop) return atEnd ? 'userMovedDownToEnd' : 'userMovedDownShort';
   return null;
 }

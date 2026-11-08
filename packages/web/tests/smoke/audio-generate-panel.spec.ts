@@ -106,7 +106,7 @@ test('text past the model’s limit is refused before anything is sent', async (
 
   await page.getByTestId('generate-audio-execute').click();
 
-  // Named, not merely refused: the reader has to know how much to cut.
+  // Named, not merely refused: the user has to know how much to cut.
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('2,000', { timeout: 10_000 });
 });
 

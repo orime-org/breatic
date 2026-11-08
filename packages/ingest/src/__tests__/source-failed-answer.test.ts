@@ -8,7 +8,7 @@
  * for here and `write-stream-as-parts.test.ts` drives the real one against a
  * failing stream, which is where its `SourceReadError` comes from. What this file asserts is the answer and who hears of it:
  * the caller is told the source failed, and only a provider's link is
- * reported, since a link the reader handed us is theirs to replace.
+ * reported, since a link the user handed us is theirs to replace.
  */
 
 import { fetchMock } from "cloudflare:test";
@@ -60,7 +60,7 @@ describe("a source that breaks partway through its body", () => {
     expect(events[0]?.tags?.label).toBe("ingest_source_read_failed");
   });
 
-  it("is answered as unreachable and only logged when the reader handed us the link", async () => {
+  it("is answered as unreachable and only logged when the user handed us the link", async () => {
     const response = await pull({ contentType: "application/octet-stream", typeFromSource: true });
 
     expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("source_unreachable");

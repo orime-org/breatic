@@ -8,7 +8,7 @@
  * Credit deduction is a critical path, so the turn's shape is generated: any
  * run of tool steps, steps whose count leaves no room (a precheck fold
  * follows), calls the provider turns away as too long (an overflow fold and a
- * continuation follow), and folds the reader stops. Whatever the shape:
+ * continuation follow), and folds the user stops. Whatever the shape:
  *
  * - every call that reported usage is recorded once, and nothing else is;
  * - the turn is charged once, for exactly what those calls reported, so a

@@ -132,7 +132,7 @@ describe('the shot list', () => {
     expect(renderEditor).not.toHaveBeenCalled();
   });
 
-  it('names the shots in the language the reader switches to', () => {
+  it('names the shots in the language the user switches to', () => {
     shotList();
 
     act(() => setLocale('zh-CN'));

@@ -399,7 +399,7 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   const [bar, media, scroller] = await Promise.all([
     toolbar.boundingBox(),
     img.boundingBox(),
-    page.locator('[data-testid="document-space"] [data-radix-scroll-area-viewport]').first().boundingBox(),
+    page.locator('[data-testid="document-space"] .doc-body-scroller [data-radix-scroll-area-viewport]').first().boundingBox(),
   ]);
   // The first block has no room above it inside the scroller, so the bar sits
   // on the picture along its top edge, all in view.
@@ -480,6 +480,34 @@ for (const kind of ['image', 'video', 'audio'] as const) {
     expect(readFileSync(await download.path()).equals(bytes)).toBe(true);
   });
 }
+
+test('a toolbar button shows its name on hover, whole on screen, over a first-block picture (#1184)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'image', {
+    name: 'named.png',
+    mimeType: 'image/png',
+    buffer: await pngBytes(page, 400, 240),
+  });
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
+
+  await img.hover();
+  const download = page.locator(`${IMAGE} [data-testid="doc-media-download"]`);
+  await expect(download).toBeVisible();
+  // In several moves, the way a hand moves the pointer onto it.
+  const target = (await download.boundingBox())!;
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
+
+  const tip = page.locator('[data-radix-popper-content-wrapper]').filter({ hasText: 'Download' });
+  await expect(tip).toBeVisible();
+  // Drawn over the page, so the body's scroller does not cut it off.
+  expect(await tip.evaluate((el) => el.closest('[data-radix-scroll-area-viewport]') === null)).toBe(true);
+  const box = (await tip.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+});
 
 test('the toolbar sits above a picture with lines above it (A9)', async () => {
   await openFreshDocument(page);
@@ -678,6 +706,64 @@ test('a picture that is the first block takes its width from any corner (A8)', a
   }
 });
 
+/**
+ * Presses a selected block's bottom-right knob, holds it still for longer than
+ * Chromium's macOS text-drag delay (150 ms, none on Windows), then drags right
+ * step by step, as a user who pauses on the knob does (#1396).
+ * @param p - The page.
+ * @param block - The media block's selector.
+ * @returns The frame's width after each step, and whether one more media frame
+ *   than the page held at the press (a row drag's preview) showed up along the way.
+ */
+async function dragHeldKnob(p: Page, block: string): Promise<{ widths: number[]; rowDragged: boolean }> {
+  const frame = p.locator(`${block} [data-media-frame]`);
+  const box = (await p.locator(`${block} [data-testid="doc-media-resize-se"]`).boundingBox())!;
+  const widths = [Math.round((await frame.boundingBox())!.width)];
+  const frames = await p.getByTestId('doc-media-frame').count();
+  let rowDragged = false;
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.mouse.down();
+  await p.waitForTimeout(300);
+  for (let step = 1; step <= 10; step += 1) {
+    await p.mouse.move(box.x + box.width / 2 + step * 8, box.y + box.height / 2);
+    widths.push(Math.round((await frame.boundingBox())!.width));
+    rowDragged ||= (await p.getByTestId('doc-media-frame').count()) > frames;
+  }
+  await p.mouse.up();
+  return { widths, rowDragged };
+}
+
+test('a corner held still before the pointer moves follows the pointer and moves no row (#1396)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'video', {
+    name: 'held.mp4',
+    mimeType: 'video/mp4',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+  });
+  await expect(page.locator(`${VIDEO} video`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const below = (await page.locator(VIDEO).boundingBox())!;
+  await page.mouse.click(below.x + 4, below.y + below.height + 12);
+  await page.keyboard.type('Between');
+  await pasteFile(page, await pngBytes(page, 300, 200), 'held.png', 'image/png');
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const order = await types(page);
+  expect(order.slice(0, 3)).toEqual(['video', 'paragraph', 'image']);
+
+  for (const block of [IMAGE, VIDEO]) {
+    if (block === IMAGE) await img.click();
+    else await selectFromBelow(page, VIDEO);
+    const { widths, rowDragged } = await dragHeldKnob(page, block);
+    expect(rowDragged, `${block}: a row drag started`).toBe(false);
+    for (let step = 1; step < widths.length; step += 1) {
+      expect(widths[step], `${block}: width after step ${step} of ${widths.join(',')}`).toBeGreaterThan(widths[step - 1]!);
+    }
+    await expect(page.locator(block)).toHaveAttribute('data-preview-width', String(widths.at(-1)));
+    expect(await types(page)).toEqual(order);
+    await expect(page.locator(`${EDITOR} .bn-block-outer[draggable="true"]`)).toHaveCount(0);
+  }
+});
+
 test('the keys on a player button are the button\'s: Space and Enter play and pause, and the document stays as it is (A7, A10)', async () => {
   await openFreshDocument(page);
   await pickFromPlus(page, 'video', {
@@ -800,7 +886,7 @@ function textBody(...lines: string[]): unknown {
 }
 
 /**
- * Pastes clipboard text into the body as a reader's paste does.
+ * Pastes clipboard text into the body as a user's paste does.
  * @param p - The page.
  * @param text - The clipboard's plain text.
  */
@@ -997,8 +1083,8 @@ test('words typed just before a paste stay when the paste is undone (inner#1351 
 });
 
 // A paste the table hook takes is a step of its own, apart from the words
-// typed on either side, with the reader's own Cmd+V: a browser runs
-// microtasks between the listeners of an event the reader caused.
+// typed on either side, with the user's own Cmd+V: a browser runs
+// microtasks between the listeners of an event the user caused.
 test('a table pasted into a cell with the keyboard is undone apart from the words typed around it (inner#1351 A6)', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);
@@ -1056,7 +1142,7 @@ test('a web table with a picture in a cell and a srcset picture paste in with bo
 });
 
 // A picture in the middle of a sentence and two pictures in one figure are
-// each read into a pending block, in the reader's own browser.
+// each read into a pending block, in the user's own browser.
 test('a picture in a sentence and a figure of two pictures paste in as three pending pictures (inner#1351 A5)', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);

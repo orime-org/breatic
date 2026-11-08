@@ -100,7 +100,7 @@ canvas-paste:   { max: 60,  window_seconds: 60 }
 understand:     { max: 30,  window_seconds: 60 }
 
 # Transcribing a node's audio or video into a text node (inner#856). The same
-# shape as Understand, one press per run, and its own budget so a reader
+# shape as Understand, one press per run, and its own budget so a user
 # alternating the two is not refused by the other's count.
 transcribe:     { max: 30,  window_seconds: 60 }
 
@@ -121,7 +121,7 @@ mini_tool:      { max: 30,  window_seconds: 60 }
 membership-read: { max: 60, window_seconds: 60 }
 
 # Reading the credits overlay. It reconciles unsettled payments with Stripe on
-# every read (#13 §4.6), so an unthrottled reader is an unthrottled caller of
+# every read (#13 §4.6), so an unthrottled user is an unthrottled caller of
 # somebody else's API.
 credits-read: { max: 60, window_seconds: 60 }
 
@@ -153,6 +153,9 @@ subscription-write: { max: 10, window_seconds: 60 }
 # database. A person starts a handful of conversations a minute and creates
 # far fewer projects.
 conversation-create: { max: 30, window_seconds: 60 }
+# Document AI text tools (inner#1860), per user: each run is one model call
+# charged to the project's studio; this bounds how fast a member can start them.
+text-tool: { max: 30, window_seconds: 60 }
 project-create: { max: 10, window_seconds: 60 }
 
 # Asking a project's owner to let you in (#96, post-auth, user-keyed). The

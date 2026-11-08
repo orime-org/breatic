@@ -3,9 +3,9 @@
 
 /**
  * The every-locale wordings the web build carries beside the one catalog a
- * reader downloads (#1374).
+ * user downloads (#1374).
  *
- * The app ships English and the reader's own catalog only, but
+ * The app ships English and the user's own catalog only, but
  * `tInEveryLocale` reads a few keys back in every language: a prompt may have
  * been filled in by a collaborator in another one. Those keys of every locale
  * reach the page as the `__EVERY_LOCALE_MESSAGES__` define, set by both

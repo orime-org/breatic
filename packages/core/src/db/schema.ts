@@ -467,7 +467,7 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    // Null while the conversation has no name of its own. What the reader
+    // Null while the conversation has no name of its own. What the user
     // sees in that case is decided where their language is known, which is
     // not here.
     title: varchar("title", { length: 200 }),
@@ -887,7 +887,7 @@ export const studioUpstreamClones = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * AIGC generations, user uploads, and the copies a user asks to keep.
  * Queried by frontend to show version history and support restore. Node
  * soft-deletes don't cascade - history is preserved until the project is
  * deleted.
@@ -996,7 +996,7 @@ export const nodeTasks = pgTable(
     spaceId: uuid("space_id").notNull(),
     // Same: the node lives in the canvas document. Null on a 3D Space's
     // model upload (inner#1690) or generation (inner#1691), which belong to
-    // the Space's own list; 0113 and 0116 allow that for the scene import and
+    // the Space's own list; 0113 and 0117 allow that for the scene import and
     // generate actions only.
     nodeId: uuid("node_id"),
 
@@ -1051,7 +1051,7 @@ export const nodeTasks = pgTable(
     assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     // Where a 3D Space's generation was started from (inner#1691): 'space'
     // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
-    // only, null on every other row; its CHECK lives in 0116.
+    // only, null on every other row; its CHECK lives in 0117.
     origin: varchar("origin", { length: 16 }),
 
     ...timestamps,
@@ -2891,7 +2891,7 @@ export const studioAssets = pgTable(
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself) | 'project_cover' /
      * 'studio_avatar' (a picture uploaded to be a project's cover or a
-     * studio's avatar) | 'agent' (a link the chat agent saved for the reader,
+     * studio's avatar) | 'agent' (a link the chat agent saved for the user,
      * inner#1315; usually a picture, but the row keeps whatever uploadable
      * type the link held). A dedup hit keeps the first uploader's value, so this
      * does not say what a row is used as. varchar, no schema change.

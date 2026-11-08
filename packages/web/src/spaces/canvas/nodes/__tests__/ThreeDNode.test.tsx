@@ -27,7 +27,7 @@ describe('ThreeDNode', () => {
   });
 
   it('keeps showing what it holds while a task runs on it', () => {
-    // Covering the content took away the thing the reader came for; the
+    // Covering the content took away the thing the user came for; the
     // counts beside the node already say something is working
     // (user 2026-09-06).
     render(

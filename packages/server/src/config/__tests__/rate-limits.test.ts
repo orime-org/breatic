@@ -31,4 +31,12 @@ describe("rate limits — config/rate-limits.yaml", () => {
   it("gives internal-api 120 requests per 60 seconds", () => {
     expect(getRateLimit("internal-api")).toEqual({ max: 120, windowSeconds: 60 });
   });
+
+  // The text mini-tool (inner#1860): the per-user lock is gone, so this limit
+  // and the per-run charge are what bound one person's spend.
+  it("has a text-tool entry with a positive count and window", () => {
+    const { max, windowSeconds } = getRateLimit("text-tool");
+    expect(Number.isInteger(max) && max > 0).toBe(true);
+    expect(Number.isInteger(windowSeconds) && windowSeconds > 0).toBe(true);
+  });
 });

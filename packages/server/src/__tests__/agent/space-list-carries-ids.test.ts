@@ -26,7 +26,7 @@ describe("the Space list", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the reader has this one open\n- "Cast" (canvas, id: s2)',
+      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the user has this one open\n- "Cast" (canvas, id: s2)',
     );
   });
 

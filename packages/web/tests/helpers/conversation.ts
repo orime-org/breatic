@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Starting a new Agent conversation the way a reader does, and waiting until
+ * Starting a new Agent conversation the way a user does, and waiting until
  * it is open.
  *
  * Pressing the header's new-conversation button posts the new conversation

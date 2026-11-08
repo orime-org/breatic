@@ -4,7 +4,7 @@
 /**
  * Every combination the placement takes (inner#1351 design §5.4.6): the
  * target line × the content's shape × where it was copied from, pasted or
- * dropped, each selection made the way a reader makes it, each result held
+ * dropped, each selection made the way a user makes it, each result held
  * against the rules of §5.4.3.
  */
 
@@ -44,7 +44,7 @@ function ownBlocks(pieces: readonly Piece[]): unknown[] {
 }
 
 /**
- * The pieces as the reader's copy from another body: a selection from the
+ * The pieces as the user's copy from another body: a selection from the
  * first piece's start to the last piece's end, written out the way the
  * body's copy writes it.
  * @param pieces - The pieces.

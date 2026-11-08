@@ -102,7 +102,7 @@ describe("noteFailure", () => {
     logged.mockRestore();
   });
 
-  it("T89: reports nothing for the reader's own input, whatever else it passes", () => {
+  it("T89: reports nothing for the user's own input, whatever else it passes", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     noteFailure(LABEL, CTX, undefined, {

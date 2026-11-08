@@ -119,7 +119,7 @@ describe('a selection past the last block, with Yjs rebuilding it', () => {
     const { ours, manager } = pair();
     const view = ours.prosemirrorView!;
     const at = textStart(view, 'Middle') + 2;
-    // Selecting and deleting are two dispatches, as they are for a reader.
+    // Selecting and deleting are two dispatches, as they are for a user.
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, at, 'end')));
     view.dispatch(view.state.tr.deleteSelection());
     await settle();

@@ -29,7 +29,7 @@ import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 /**
  * The eight entries, in the block type menu's order.
  *
- * Read off that menu rather than written out again: a reader who learns where
+ * Read off that menu rather than written out again: a user who learns where
  * Code block sits in one menu finds it in the same place in the other, and a
  * row added there arrives here already in position.
  */

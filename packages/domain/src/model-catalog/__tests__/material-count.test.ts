@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * How many pieces of material a run asks its reader for (#269, #2156).
+ * How many pieces of material a run asks its user for (#269, #2156).
  *
  * Read off the model alone: each slot or pool it does not mark optional is one
  * piece, and each "one of these" group it declares for the mode is one more.
@@ -27,7 +27,7 @@ describe("the count of material a mode asks for", () => {
     expect(materialCount(model, "t2m")).toBe(0);
   });
 
-  it("counts each required slot and skips one the reader may leave empty", () => {
+  it("counts each required slot and skips one the user may leave empty", () => {
     const model = {
       params: {
         image: { fill: "canvas" },

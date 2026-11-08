@@ -4,7 +4,7 @@
 /**
  * The two block handle commands that act on a whole block: copy it, remove it.
  *
- * Both take the block the pointer is over rather than the reader's selection
+ * Both take the block the pointer is over rather than the user's selection
  * (A5), so both address it by id and neither touches the caret.
  *
  * The shapes every command off this handle takes live here too — the editor it
@@ -132,11 +132,11 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
 }
 
 /**
- * Indents or outdents the named block, leaving the reader's selection where it
+ * Indents or outdents the named block, leaving the user's selection where it
  * was.
  *
  * BlockNote nests whatever `tr.selection` is in (`nestBlock.ts:44,195`), so the
- * selection is put on the block for the step and the reader's own is mapped
+ * selection is put on the block for the step and the user's own is mapped
  * through and put back in the same transaction.
  * @param editor - The editor to write to.
  * @param blockId - The block.
@@ -145,7 +145,7 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
  */
 export function indentRow(editor: HandleEditor, blockId: string, inward: boolean): void {
   editor.transact((tr) => {
-    const reader = tr.selection;
+    const userSelection = tr.selection;
     const written = tr.mapping.maps.length;
     tr.setSelection(selectionOverBlockContent(tr.doc, blockId));
     if (inward) {
@@ -153,6 +153,6 @@ export function indentRow(editor: HandleEditor, blockId: string, inward: boolean
     } else {
       editor.unnestBlock();
     }
-    tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
+    tr.setSelection(userSelection.map(tr.doc, tr.mapping.slice(written)));
   });
 }

@@ -23,12 +23,12 @@ interface CanvasShortcutsDialogProps {
 
 /**
  * The canvas keyboard shortcuts and pointer gestures, grouped, two actions to
- * a line, with the keys written for the reader's platform the way the
+ * a line, with the keys written for the user's platform the way the
  * context-menu hints are.
  * @param props - Dialog props.
  * @param props.open - Whether the dialog shows.
  * @param props.onOpenChange - Called when the dialog asks to open or close.
- * @param props.readOnly - Whether the reader cannot edit the canvas.
+ * @param props.readOnly - Whether the user cannot edit the canvas.
  * @param props.onCloseAutoFocus - Focus handling on close.
  * @returns The dialog.
  */

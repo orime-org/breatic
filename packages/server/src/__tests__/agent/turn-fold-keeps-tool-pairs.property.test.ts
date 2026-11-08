@@ -20,7 +20,7 @@
  * - `fetch_page` ran once per call the model made;
  * - the reply carries an error chunk only when it ends as failed, it ends as
  *   failed only after an overflow fold that touched nothing or failed, it ends stopped
- *   only after a fold the reader stopped, and a turn that ended neither
+ *   only after a fold the user stopped, and a turn that ended neither
  *   failed, too long nor stopped ends with its answer.
  *
  * The window is set above H2's 2,021,458 so every rejection kind can be
@@ -168,7 +168,7 @@ describe("tool calls across folds and continuations", () => {
           expect(errors).toBe(plainFailure ? 1 : 0);
           // Nothing generated here fails a turn but an overflow fold that
           // touched nothing or failed (#1363), and nothing stops one but a
-          // fold the reader stopped (the state table in 6.6).
+          // fold the user stopped (the state table in 6.6).
           const endedFolds = outcomes.slice(0, world.folds.length);
           const interrupted = parts.some((part) => part.type === "interrupted");
           if (!endedFolds.includes("untouched") && !endedFolds.includes("failed")) expect(plainFailure).toBe(false);

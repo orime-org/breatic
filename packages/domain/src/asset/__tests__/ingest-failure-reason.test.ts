@@ -5,7 +5,7 @@
  * The reason a failed call to the ingest Worker is settled with (inner#1595
  * T30–T32, P04).
  *
- * Three callers share it — finishing an upload, pulling a reader's link, and
+ * Three callers share it — finishing an upload, pulling a user's link, and
  * the server opening an upload — and each passes its own word for "nothing
  * answered". An answer that arrived is the Worker's: its named refusal, or
  * the unnamed sentinel when it named none.

@@ -42,9 +42,9 @@ export type UnderstandRefusal =
   | {
       kind: 'format';
       /**
-       * What the file the reader picked is in, as a word they would use for
+       * What the file the user picked is in, as a word they would use for
        * it — or null when its type carries no name anybody would recognise.
-       * The file in hand is what the reader acts on; the formats a reading
+       * The file in hand is what the user acts on; the formats a reading
        * does take are a list of ten whichever one of them this is (user
        * 2026-09-20). Named as the row names it, since both fill one sentence.
        */
@@ -134,7 +134,7 @@ export function understandRefusal(
  * Where the text node this run writes to goes.
  *
  * One neighbour-step to the right of the node it reads, level with it, with
- * no search for a free spot: a second run lands on the first, and the reader
+ * no search for a free spot: a second run lands on the first, and the user
  * sorts out the stack (user 2026-09-19). One press produces one node, and
  * nothing here knows which press this is.
  * @param source - The read node's stored position.

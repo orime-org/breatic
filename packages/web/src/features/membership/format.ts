@@ -28,7 +28,7 @@ export function usageRatio(used: number, limit: number): number {
 }
 
 /**
- * Writes a price the way the reader's locale writes money.
+ * Writes a price the way the user's locale writes money.
  *
  * The currency comes from the server beside the amount, because which currency
  * a plan is sold in is a fact about the plan, not about who is looking at it.

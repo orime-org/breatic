@@ -63,7 +63,7 @@ const declarationSchema = z.object({
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
-  // What a new node stands on until the reader changes it (user 2026-09-29).
+  // What a new node stands on until the user changes it (user 2026-09-29).
   default: z.unknown().optional(),
   min: z.number().optional(),
   max: z.number().optional(),
@@ -82,7 +82,7 @@ const declarationSchema = z.object({
   // range. English and never localized, like the model's own description.
   value_labels: z.record(z.string(), z.string()).optional(),
   // The BCP-47 tag each value is, in the order `values` lists them, so the
-  // panel can show a language in the reader's own words (#2156, design §16).
+  // panel can show a language in the user's own words (#2156, design §16).
   value_locales: z.array(z.string()).optional(),
   // One spelling each, because readers compare against these exact strings:
   // the source gate takes a `list` or `items` param as a list and anything
@@ -236,7 +236,7 @@ export function onStep(value: number, min: number, step: number): boolean {
 }
 
 /**
- * Whether a control lets the reader pick the value a key spells.
+ * Whether a control lets the user pick the value a key spells.
  * @param declared - The declaration.
  * @param key - A value in its string form, as a yaml map key holds it.
  * @returns True for one of its `values`, or a step of its `min`/`max`/`step`

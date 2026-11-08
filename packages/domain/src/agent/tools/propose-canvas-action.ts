@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Propose a wired group of nodes for the reader to place (#229).
+ * Propose a wired group of nodes for the user to place (#229).
  *
- * The tool hands its input straight back: the card the reader presses is
+ * The tool hands its input straight back: the card the user presses is
  * drawn from it, and the placing happens on the canvas. What stands between a
  * careless proposal and that card is `checkProposal`, and every rule it
  * applies is read off the live catalog -- which modes a node offers, which
  * models a mode can reach, and whether that mode needs material only the
- * reader has.
+ * user has.
  *
  * A mode that needs material is proposed with a source node for it: one
- * holding the reader's material (a chat upload or a picture saved with
- * save_image), or an empty one for the reader to fill.
+ * holding the user's material (a chat upload or a picture saved with
+ * save_image), or an empty one for the user to fill.
  * Every way a node reaches a generation is read off the catalog (`waysIn`,
  * design 5.7): the reference pool, mentioned in the prompt by a ref; a slot
- * on the panel, which the reader picks it into; or a song model's lyrics box,
+ * on the panel, which the user picks it into; or a song model's lyrics box,
  * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
@@ -123,7 +123,7 @@ function edgesSaid(edges: CanvasProposal["edges"], from: NodeLabel, to: NodeLabe
 }
 
 /**
- * Whether a proposal states a flow the reader can carry out.
+ * Whether a proposal states a flow the user can carry out.
  *
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
  * in through `modelsForMode`, and nothing else is read.
@@ -167,9 +167,9 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   }
 
   // A node earns its place on the canvas one of two ways: something generates
-  // there, or it stands in a relation the reader would otherwise have to keep
+  // there, or it stands in a relation the user would otherwise have to keep
   // in their head. Words with neither are words, and a reply carries those --
-  // the reader reads them, takes them, and asks for another version in the
+  // the user reads them, takes them, and asks for another version in the
   // same breath, where placing, pressing and undoing buys them nothing.
   if (!proposal.nodes.some((node) => node.role === "generate")) {
     // The second sentence is about words, so it is said only where there are
@@ -177,8 +177,8 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     // model off to write copy nobody asked for.
     const words = proposal.nodes.some((node) => node.role === "written");
     return words
-      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the reader reads and takes from your message: words with nothing generating belong in your reply.")
-      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press.");
+      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the user reads and takes from your message: words with nothing generating belong in your reply.")
+      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the user nothing to press.");
   }
 
   // The canvas holds one edge between two nodes: a second drag between the
@@ -209,7 +209,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     if (into && into.role !== "generate") {
       return refuse("edge-into-nothing-generating", `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`);
     }
-    // The same whitelist the canvas holds a reader's own drag to. A line they
+    // The same whitelist the canvas holds a user's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
       // How the node reaches the generation instead is the model's to say; a
@@ -219,10 +219,10 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     }
   }
   if (hasRing(proposal)) {
-    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the reader presses first.");
+    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the user presses first.");
   }
 
-  // Two or more nodes land inside a group, which the reader sees as one thing
+  // Two or more nodes land inside a group, which the user sees as one thing
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
@@ -378,7 +378,7 @@ function orderInputEdges(edges: CanvasProposal["edges"], instances: readonly Anc
  * through the SDK would be pinning the SDK's calling convention.
  * Nodes naming a template are expanded first, so the check judges the node
  * that will be placed; a template with steps gets its guide text node after
- * the agent's own nodes, in the reader's language.
+ * the agent's own nodes, in the user's language.
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
  * @param templates - The template registry the tags are read against.
@@ -406,7 +406,7 @@ export function answerFor(
   const edges = orderInputEdges(resolved.edges, instances);
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
-  // could be absent -- the reader may press Use before it loads. Each node
+  // could be absent -- the user may press Use before it loads. Each node
   // holding material carries the numbers its registration holds, so it lands
   // the way an upload would.
   return {
@@ -431,20 +431,20 @@ export function answerFor(
 /**
  * The one line the model reads back.
  *
- * The proposal itself is for the reader, not for the model -- it sent the
+ * The proposal itself is for the user, not for the model -- it sent the
  * thing, and repeating it into every later turn costs the whole payload again.
  * @param answer - What the tool answered.
  * @returns A sentence saying it is on screen, or why it is not.
  */
 export function renderProposalForModel(answer: ProposalAnswer): string {
   return answer.placed
-    ? "The proposal is on screen as a card. The reader decides whether to place it."
+    ? "The proposal is on screen as a card. The user decides whether to place it."
     : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
 }
 
 /**
  * The templates as one line each, what the agent weighs when choosing one:
- * its id, goal and anchor type, what it makes, the words a reader asks for it
+ * its id, goal and anchor type, what it makes, the words a user asks for it
  * with and when to offer it unasked (inner#1807). The full text is read with
  * get_generation_template, so a turn carries every template's index but only
  * the prompts of the template it means to propose.
@@ -456,13 +456,13 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
   const lines = templates.map(
     (template) =>
       `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
-      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}.` +
+      `The user asks for it with words like: ${template.triggers.asks.join("; ")}.` +
       (template.triggers.offerWhen.length === 0 ? "" : ` Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`),
   );
   return (
     `Templates: ${lines.join(" | ")} ` +
     `Before proposing a template, read it with ${GET_GENERATION_TEMPLATE}: it gives the nodes, wiring, inputs and each prompt ` +
-    "in the reader's language, and how to send them."
+    "in the user's language, and how to send them."
   );
 }
 
@@ -486,7 +486,7 @@ export function makeProposeCanvasAction(
   description:
     "The canvas is where models are run and where the pieces of one job are " +
     "laid out in relation to each other. Propose the canvas nodes for what " +
-    "the reader asked for, as a card they place with one press, and the " +
+    "the user asked for, as a card they place with one press, and the " +
     "nodes are there, configured and wired. Something has to generate here: " +
     "asked for words and nothing else, write them in your reply instead, " +
     "where they read them and take them. Copy that is one part of a job the " +
@@ -500,10 +500,10 @@ export function makeProposeCanvasAction(
     "fill a generation's slot with it through fills, or wire it into the pool. " +
     "Before proposing any shape with an empty node in it, find out whether " +
     "they have that material, since the answer decides the shape: when the " +
-    "message carries the canvas they have open, under \"The Space the reader " +
+    "message carries the canvas they have open, under \"The Space the user " +
     "has open\", look there first; ask with ask_user when it is not there or no " +
     "canvas came with the message. Wire an edge where a node draws on another's " +
-    "work or on what the reader puts in an empty node; belonging is said by " +
+    "work or on what the user puts in an empty node; belonging is said by " +
     "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
@@ -533,6 +533,6 @@ export function makeProposeCanvasAction(
 /**
  * The proposal tool over the registry; it holds nothing between calls, so one
  * object serves every turn. It is built when the module loads, so its
- * description carries no text in the reader's language.
+ * description carries no text in the user's language.
  */
 export const proposeCanvasAction = makeProposeCanvasAction();

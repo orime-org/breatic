@@ -231,7 +231,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // Collab closed this document to re-check it, and the registry has
       // already re-sent the token on the same socket. The answer arrives as
       // `authenticated` (or `authenticationFailed`); in between nothing is
-      // wrong with the connection, so there is nothing to tell the reader.
+      // wrong with the connection, so there is nothing to tell the user.
       if (isReauthCloseReason(data?.event?.reason)) return;
       // Keep an existing authFailed sticky across the close that follows it.
       // For everything else, surface a soft disconnect (the shared socket

@@ -7,7 +7,7 @@
  *
  * The module holds that one class and the package entry hands out the very
  * same reference, because the server and the worker tell it apart with
- * `instanceof`. Settling a reader's link that did not land (`settleAborted`)
+ * `instanceof`. Settling a user's link that did not land (`settleAborted`)
  * stays private to the backend lane: it throws an `AggregateError`, which is
  * not what an open failure carries.
  */

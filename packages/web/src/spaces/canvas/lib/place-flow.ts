@@ -97,7 +97,7 @@ export function textFootprintHeight(text: string): number {
  * How tall a node will be once it is on the canvas.
  *
  * An empty node and one waiting for Generate are the standard footprint. A
- * node holding the reader's picture or video is as tall as it draws at the
+ * node holding the user's picture or video is as tall as it draws at the
  * node's width (inner#1315). A node carrying words is as tall as the words wrap to.
  * @param node - The proposed node.
  * @returns Its height in flow coordinates.
@@ -118,7 +118,7 @@ export function estimateHeight(node: ProposalNode): number {
  * Nodes with nothing feeding them start the flow; every other node sits one
  * layer to the right of the last thing that feeds it. Layers read left to
  * right, the nodes of one layer stack downwards, and the whole arrangement is
- * centred on the point the reader was looking at.
+ * centred on the point the user was looking at.
  * @param proposal - What is being placed.
  * @param centre - The viewport centre, in flow coordinates.
  * @param order - Each node's rank within its column, top first; the proposal's own order where left out.
@@ -302,13 +302,13 @@ const FRAME_PADDING = 0.1;
 
 /**
  * Where to put the camera once a proposal has landed: centred on what was
- * placed, at the reader's zoom while it fits, zoomed out just enough to show
+ * placed, at the user's zoom while it fits, zoomed out just enough to show
  * all of it when it does not, never past the canvas floor.
  * @param bounds - The rect of what landed, in flow coordinates.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
- * @param zoom - The reader's zoom now.
+ * @param zoom - The user's zoom now.
  * @returns The viewport to move to.
  * @throws {never} Never.
  */

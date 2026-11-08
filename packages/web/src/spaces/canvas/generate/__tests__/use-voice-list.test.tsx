@@ -171,7 +171,7 @@ describe('useVoiceList — paging and model changes', () => {
     expect(result.current.state.loadingMore).toBe(false);
   });
 
-  it('asks for the same page again when the reader retries after it failed', async () => {
+  it('asks for the same page again when the user retries after it failed', async () => {
     list.mockResolvedValueOnce(page(['Alice'], 'c1'));
     list.mockRejectedValueOnce(new Error('upstream down'));
     list.mockResolvedValueOnce(page(['Aria']));

@@ -31,7 +31,7 @@ export interface NodeReaders {
 }
 
 /**
- * A reference mention read as the name the reader sees on its chip, and a
+ * A reference mention read as the name the user sees on its chip, and a
  * note as its words in the form a template writes it.
  * @param element - An element inside a prompt.
  * @returns The text, or undefined for anything else.

@@ -46,8 +46,8 @@ function changeOpenWaits(delta: 1 | -1): void {
  * shows.
  *
  * Four places wait: `ProtectedRoute` while the boot `/auth/me` ping decides
- * whether the reader may be here, `LoadingBoundary` while a route's chunk is
- * on the wire, and `ProjectPage` twice — while the project and the reader's
+ * whether the user may be here, `LoadingBoundary` while a route's chunk is
+ * on the wire, and `ProjectPage` twice — while the project and the user's
  * preferences load, then while the Hocuspocus connection settles (without that
  * wait the page paints once with `connectionStatus === 'connecting'` and the
  * banner and workspace overlay pop in on the next frame, 2026-05-26 user spec).

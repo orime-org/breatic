@@ -255,7 +255,7 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(Number(row!.credits)).toBeCloseTo(1.23, 6);
   }, 60_000);
 
-  it("records the model the reader picked for the conversation", async () => {
+  it("records the model the user picked for the conversation", async () => {
     provider = "openrouter";
     finishMetadata = { openrouter: { usage: { cost: 0.0123 } } };
     const seeded = await seed(100_000);

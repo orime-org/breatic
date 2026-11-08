@@ -263,7 +263,7 @@ export async function cleanupFailedJobNodes(
         outcome: "failed",
         // The same exit the handler's own failure path uses, so a lane whose
         // causes are stored as codes keeps storing codes when the net is what
-        // settles the row: a reader opens this list in their own language, and
+        // settles the row: a user opens this list in their own language, and
         // BullMQ's sentence is in one.
         errorMessage: storedFailure(
           job.data.taskType,

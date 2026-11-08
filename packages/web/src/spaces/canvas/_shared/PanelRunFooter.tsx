@@ -11,11 +11,11 @@ import { cn } from '@web/lib/utils';
  * The bottom row of a panel that runs something on its node: what the run
  * costs on the left, Run on the right.
  *
- * The mini-tool panel and the transcribe panel both end on it, so a reader
+ * The mini-tool panel and the transcribe panel both end on it, so a user
  * moving between them presses the same button in the same place.
  */
 export interface PanelRunFooterProps {
-  /** What the run costs, as the reader reads it. */
+  /** What the run costs, as the user reads it. */
   creditText: string;
   /** Run's accessible name. */
   runLabel: string;

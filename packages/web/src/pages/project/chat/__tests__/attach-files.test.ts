@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What happens to the files a reader picks with the composer's attach button.
+ * What happens to the files a user picks with the composer's attach button.
  *
  * Media goes up to storage and is sent as the address it was filed under;
  * a document is read in the browser and sent as its text. Either way it sits

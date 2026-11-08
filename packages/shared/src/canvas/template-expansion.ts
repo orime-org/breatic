@@ -375,7 +375,7 @@ export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
 
 /**
  * Every name a reference mark in one generate node's prompt binds to, in the
- * reader's language: each input feeding the node, and each template node
+ * user's language: each input feeding the node, and each template node
  * wired into its pool (an edge naming no into goes into the pool, as a
  * proposal edge without one does).
  * @param template - The template.
@@ -385,7 +385,7 @@ export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
  */
 export function templateMarkTargets(template: GenerationTemplate, key: TemplateNodeKey): Map<string, TemplateMarkTarget> {
   /**
-   * One of the template's strings in the reader's language.
+   * One of the template's strings in the user's language.
    * @param rest - The key under the template's locale entry.
    * @returns The string.
    */
@@ -402,7 +402,7 @@ export function templateMarkTargets(template: GenerationTemplate, key: TemplateN
 
 /**
  * The guide text node for a template with steps: the template's name, then
- * each step numbered, in the reader's language.
+ * each step numbered, in the user's language.
  * @param template - The template.
  * @param anchorIndex - The anchor's index in the proposal.
  * @returns The node, or undefined for a template without steps.
@@ -434,7 +434,7 @@ export function templateGuideNode(template: GenerationTemplate, anchorIndex: num
 export function expandTemplate(template: GenerationTemplate, input: TemplateExpansionInput): TemplateExpansionResult {
   const skeleton = templateSkeleton(template);
   /**
-   * One of the template's strings in the reader's language.
+   * One of the template's strings in the user's language.
    * @param rest - The key under the template's locale entry.
    * @returns The string.
    */
@@ -498,7 +498,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     for (const fed of one.feeds) wire(inputAt.get(one.key)?.get(fed) as number, indexOf.get(fed) as number, "pool");
   }
 
-  // A mark names its target in the reader's language: an input feeding the
+  // A mark names its target in the user's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
    * A generate node's words: its prompt, or its shots when it has them, each

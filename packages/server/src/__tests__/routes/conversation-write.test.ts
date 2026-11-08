@@ -168,7 +168,7 @@ describe("Conversation write routes", () => {
 
     it("refuses a name that is only spaces", async () => {
       // A row in the list showing nothing at all is worse than the default
-      // title, and the reader cannot tell it apart from a rendering fault.
+      // title, and the user cannot tell it apart from a rendering fault.
       const app = createApp();
       const res = await app.request("/api/v1/chat/conversations/22222222-2222-4222-8222-222222222222", {
         method: "PATCH",

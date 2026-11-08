@@ -16,7 +16,7 @@
  * carries them in a second shared fragment and the panel reads that. Nothing
  * written under this name in a node's parameters reaches the box, and the
  * panel refuses to generate a vocal track on an empty one -- so an answer
- * that treats it as an ordinary parameter tells the reader something is set
+ * that treats it as an ordinary parameter tells the user something is set
  * when the box in front of them is blank.
  */
 export const PANEL_EDITOR_PARAM = "lyrics";

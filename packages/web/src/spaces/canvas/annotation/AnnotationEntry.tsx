@@ -73,7 +73,7 @@ export interface AnnotationEntryProps {
    * bounding how tall it draws — 300 characters of short lines still stand
    * taller than the note may.
    * A reply does not — the thread it sits in is already a scroller, and a
-   * second one inside it would give the reader two nested scrollbars for one
+   * second one inside it would give the user two nested scrollbars for one
    * column of words.
    */
   ownScroller?: boolean;
@@ -111,13 +111,13 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
   // open. The draft outlives the node's DOM on purpose (the canvas culls
   // offscreen nodes, #1881 E7), so a sticky panned back into view mounts with
   // its box already open — and focusing there takes the caret out of whatever
-  // the reader is typing in elsewhere on the board. Measured with two
+  // the user is typing in elsewhere on the board. Measured with two
   // stickies: with an edit box open on one, half a reply typed on the other,
   // and the first panned back, the caret landed in the returning note's box
   // and the reply was discarded on blur.
   //
   // Closing hands the caret back to the ⋯ menu the box was opened from, so the
-  // keyboard carries on from where the reader left it.
+  // keyboard carries on from where the user left it.
   //
   // §6.2's one criterion for the IME, asked by every way out of this box.
   const rewriteBoxKeys = useNoteBox(props.onDraft);
@@ -142,7 +142,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
       // Past the cap the scroller around the box decides what is on screen,
       // and the caret is at the end — so the end is what opens. Measured on a
       // board with 14 lines: the box opened 284px short of it, with the caret
-      // out of sight until the reader scrolled by hand. Same move the thread
+      // out of sight until the user scrolled by hand. Same move the thread
       // makes to follow a reply it just posted.
       const viewport = boxViewport.current;
       if (viewport !== null) viewport.scrollTop = viewport.scrollHeight;
@@ -161,7 +161,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
 
   // What a cap applies to: the words, settled or being rewritten. The buttons
   // below stay out of it — swept in, they went below the fold on anything long
-  // enough to fill the cap and the reader had to scroll the box they were
+  // enough to fill the cap and the user had to scroll the box they were
   // typing in to find the one that keeps it.
   const words =
     editing === undefined ? (

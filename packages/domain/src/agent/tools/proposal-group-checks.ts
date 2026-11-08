@@ -22,7 +22,7 @@ import { waysIn } from "@domain/model-catalog/mode-catalog.js";
  * Whether the edges lead anywhere, or run in a circle.
  *
  * An edge stands for one node drawing on another, so a ring of them says every
- * node waits on the next and the reader has nowhere to start.
+ * node waits on the next and the user has nowhere to start.
  * @param proposal - What the model proposed.
  * @returns True when some edge leads back to where it started.
  * @throws {never} Never.
@@ -55,8 +55,8 @@ export function hasRing(proposal: CanvasProposal): boolean {
  * Where the empty nodes a proposal places can go, counted by kind.
  *
  * A proposal cannot see the canvas it lands on, so it cannot know whether the
- * reader already holds a piece of material -- but it can be held to the nodes
- * it places itself. An empty node is a to-do, and a to-do the reader completes
+ * user already holds a piece of material -- but it can be held to the nodes
+ * it places itself. An empty node is a to-do, and a to-do the user completes
  * and then has nowhere to put is the shape a talking head takes when it is
  * proposed with two portraits: the panel has one place for a picture and one
  * for a voice, so the second portrait can only sit there.
@@ -113,7 +113,7 @@ export function checkSourceNodesFit(proposal: CanvasProposal): ProposalVerdict {
  * Whether every empty node no edge sends into a generation has a note, where
  * some generation in the group has a slot of its kind (design 5.7 table C):
  * unwired, or wired only as a creative link to a model that takes nothing from
- * it. Such a node reaches a generation only by the reader picking it into a
+ * it. Such a node reaches a generation only by the user picking it into a
  * slot, and the panel never says which node goes there.
  *
  * Counted over the group, never paired: a slot is filled by clicking any node
@@ -151,5 +151,5 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   }
   const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
   if (loose.length <= spare) return { ok: true };
-  return refuse("loose-without-note", `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and a note tells them which. The generations here carry ${String(spare)} note(s) beyond those their wired nodes use.`);
+  return refuse("loose-without-note", `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the user picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and a note tells them which. The generations here carry ${String(spare)} note(s) beyond those their wired nodes use.`);
 }

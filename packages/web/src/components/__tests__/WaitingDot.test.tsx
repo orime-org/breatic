@@ -22,14 +22,14 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
+import { WaitingDot } from '@web/components/WaitingDot';
 
 /**
  * The application stylesheet.
  * @returns Its whole text.
  */
 function stylesheet(): string {
-  return readFileSync(resolve(import.meta.dirname, '../../../../index.css'), 'utf8');
+  return readFileSync(resolve(import.meta.dirname, '../../index.css'), 'utf8');
 }
 
 /**
@@ -64,7 +64,7 @@ describe('the dot that waits', () => {
     expect(dot.className).toContain('chat-waiting-dot');
   });
 
-  it('keeps a name for a reader who cannot see it', () => {
+  it('keeps a name for a user who cannot see it', () => {
     render(<WaitingDot />);
     expect(screen.getByTestId('chat-waiting-dot')).toHaveAttribute('aria-label');
   });

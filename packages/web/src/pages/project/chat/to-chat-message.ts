@@ -22,7 +22,7 @@ import {
   chipOfPart,
   documentProposalSchema,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   readQuestionnaire,
@@ -59,17 +59,17 @@ const BLOCKED = 'data-blocked';
 /** The mark naming the questionnaire a turn stopped at (inner#1542). */
 const ASK_AWAITING = 'data-ask-awaiting';
 
-/** The tool that puts a questionnaire to the reader. */
+/** The tool that puts a questionnaire to the user. */
 const ASK_TOOL = 'ask_user';
 
-/** The tool that asks the reader to let the Agent look at Spaces (inner#1552). */
+/** The tool that asks the user to let the Agent look at Spaces (inner#1552). */
 const REQUEST_SPACE_TOOL = 'request_space_content';
 
 /**
- * The tools whose card stops the turn until the reader answers; a step keeps
+ * The tools whose card stops the turn until the user answers; a step keeps
  * only the first card of either and the server names it with one mark.
  */
-const AWAITS_READER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
+const AWAITS_USER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = 'data-thinking-time';
@@ -77,10 +77,10 @@ const THINKING_TIME = 'data-thinking-time';
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
 
-/** The tool that finds pictures and puts them in front of the reader. */
+/** The tool that finds pictures and puts them in front of the user. */
 const RESULTS_TOOL = 'search_images';
 
-/** The tool that proposes a group of canvas nodes for the reader to place. */
+/** The tool that proposes a group of canvas nodes for the user to place. */
 const PROPOSE_TOOL = 'propose_canvas_action';
 
 /** The tool that proposes a comment, rewrite or insert for the open document. */
@@ -246,7 +246,7 @@ function failureLineOf(part: { state: string; input?: unknown }, name: string): 
   // the table is what answers that. The same field carries the SDK's own
   // fixed English sentence when it has nothing else to put there, which is
   // never put on the screen.
-  const reason = isReaderLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
+  const reason = isUserLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
   return { step, reason, count: 1 };
 }
 
@@ -290,7 +290,7 @@ function statusOf(state: string, stillRunning: boolean): ToolCall['status'] {
 }
 
 /**
- * The call a mark names as the card the reader is shown, for each mark.
+ * The call a mark names as the card the user is shown, for each mark.
  * @param parts - The message's parts.
  * @returns The named call ids, in order.
  */
@@ -313,7 +313,7 @@ function awaitedCalls(parts: UIMessage['parts']): Set<string> {
  * @param part.state - Where it stands.
  * @param part.input - What the model sent.
  * @param part.output - What it ended with, once it has.
- * @param awaited - The calls named as the card the reader is shown.
+ * @param awaited - The calls named as the card the user is shown.
  * @returns The questionnaire, or null.
  */
 function questionnaireOf(
@@ -359,7 +359,7 @@ function summariesOf(list: unknown[]): ChatSharedSpaceSummary[] {
  * @param part.state - Where it stands.
  * @param part.input - What the model sent.
  * @param part.output - What it ended with, once it has.
- * @param awaited - The calls named as the card the reader is shown.
+ * @param awaited - The calls named as the card the user is shown.
  * @returns The request, or null.
  */
 function spaceRequestOf(
@@ -381,7 +381,7 @@ function spaceRequestOf(
 
 /**
  * A reply as the panel lays it out: whole, or split where each segment that
- * asked a questionnaire ended, once the reader answered on the card and the
+ * asked a questionnaire ended, once the user answered on the card and the
  * turn went on in the same message (inner#1542).
  *
  * The server stores the two segments as two rows, so a reload reads them as
@@ -420,7 +420,7 @@ export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boo
  * @param options - What is true of this message right now rather than of the
  *   message itself.
  * @param options.streaming - Its bubble is still receiving tokens.
- * @param options.failedJustNow - This failure is happening with the reader
+ * @param options.failedJustNow - This failure is happening with the user
  *   waiting on it, rather than being read back out of the history.
  * @returns The same message in the panel's shape.
  */
@@ -485,7 +485,7 @@ export function toChatMessage(
   const awaited = awaitedCalls(message.parts);
   let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
-  // The server writes it onto the stored message; a message this reader has
+  // The server writes it onto the stored message; a message this user has
   // only just sent is not stored yet and carries none.
   const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
   const sentAt = typeof written === 'string' ? written : undefined;
@@ -497,8 +497,8 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const isCard = AWAITS_READER.has(getToolName(part));
-      // A card waiting for the reader is not a call that came to nothing; a
+      const isCard = AWAITS_USER.has(getToolName(part));
+      // A card waiting for the user is not a call that came to nothing; a
       // second card in the step, of either tool, which the server named
       // nothing for, was turned away rather than failed.
       const waiting = isCard && part.state === 'input-available' && awaited.has(part.toolCallId);
@@ -668,7 +668,7 @@ const endedViews = new WeakMap<ChatMessage, { text: string; view: ChatMessage }>
  * reads as one reply going on, live and read back, so it offers one copy, at
  * its end, of everything it said.
  *
- * Replies of one turn sit next to each other with no message of the reader's
+ * Replies of one turn sit next to each other with no message of the user's
  * between them, which is the only way two replies sit next to each other.
  * Views that need nothing are handed back as they came, and a view marked
  * once is the same object every time, so the bubbles' memo holds.

@@ -222,7 +222,7 @@ export function MediaPlayer({
   // The focus ring is the one thing the video branch has to restate. `Button`
   // rings in `--ring`, a themed colour read against a themed surface — and this
   // bar's surface is the video's own dark scrim in either theme, so in light
-  // theme the ring is dark on dark and a keyboard reader cannot see where they
+  // theme the ring is dark on dark and a keyboard user cannot see where they
   // are.
   const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
     isVideo && !themedControls

@@ -155,7 +155,7 @@ export async function recordUpload(opts: {
  * keep it (#2175).
  *
  * A text node's words live in the canvas document, where the next edit
- * replaces them. This row is what a reader comes back to when they want the
+ * replaces them. This row is what a user comes back to when they want the
  * version they had. Words this node's history already holds are not kept a
  * second time (#2186); the row holding them is returned.
  * @param opts - Whose node, and what it held.

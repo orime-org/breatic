@@ -135,7 +135,7 @@ export function canConnect(
  * How long a node's name may be, in characters.
  *
  * The rename input stops at this and the commit clips to it, so it is also
- * the longest name a reader can give a node by hand. It lives here beside the
+ * the longest name a user can give a node by hand. It lives here beside the
  * connection rule for the same reason that one does: the agent proposes names
  * too (#263), and the tool judging a proposal sits in a library package that
  * cannot reach into the frontend. A name past this is one nobody could have

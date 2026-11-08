@@ -5,7 +5,7 @@
  * The chat box's editor: plain paragraphs with reference blocks, the draft
  * kept as one string outside it.
  *
- * Every write the reader did not make — a draft written from outside, a block
+ * Every write the user did not make — a draft written from outside, a block
  * taken out because its attachment left, a name brought up to date — goes
  * through `dispatchMachineEdit`, so it stays out of undo and never opens the
  * `@` list.

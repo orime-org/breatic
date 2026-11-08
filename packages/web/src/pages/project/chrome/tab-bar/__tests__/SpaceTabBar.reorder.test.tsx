@@ -108,7 +108,7 @@ describe('SpaceTabBar — the keyboard on a draggable tab', () => {
   });
 
   it('does not offer a keyboard drag the strip does not have', () => {
-    // dnd-kit ships default screen-reader instructions telling the reader to
+    // dnd-kit ships default screen-reader instructions telling the user to
     // press space to pick a tab up and use the arrow keys to move it. Space
     // on a tab switches Space (design §4.5), and the text is English in a
     // product that ships five locales.

@@ -8,7 +8,7 @@
  * whether the canvas lets that kind be wired into the generation
  * (`canConnect`), and what the node holds -- material reaches a slot through
  * fills, everything else by an edge or, where no edge may be drawn, by the
- * reader picking it. `entriesFor` puts the three together into everything a
+ * user picking it. `entriesFor` puts the three together into everything a
  * proposal does to send a node one way: the edge or fills, the ref and the
  * note. The check accepts a node only when it arrives as one of its entries,
  * and every refusal that tells the agent how a node goes in says what
@@ -96,7 +96,7 @@ export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): E
     // The lyrics box is @'d at landing.
     if (way.mark === "placed") return wired && holding !== "material" ? [{ way, by: "edge", ref: false, note: false }] : [];
     // A slot: material fills it as a pick would; anything else is picked by
-    // the reader, whom a note tells which node goes there.
+    // the user, whom a note tells which node goes there.
     if (holding === "material") return [{ way, by: "fills", ref: false, note: false }];
     return [{ way, by: wired ? "edge" : "unwired", ref: false, note: true }];
   });
@@ -196,7 +196,7 @@ export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, aw
 
 /**
  * The slots a model fills straight from material nodes: every way in that the
- * reader would pick a node into, which is every way carrying a note.
+ * user would pick a node into, which is every way carrying a note.
  * @param chosen - The model.
  * @returns Each slot with the kind it takes.
  * @throws {never} Never.
@@ -290,7 +290,7 @@ export function capitalised(phrase: string): string {
 }
 
 /**
- * The refusal for a value set on a box the reader writes in on the panel.
+ * The refusal for a value set on a box the user writes in on the panel.
  * @param chosen - The model.
  * @param generation - The generation node.
  * @param key - The box's parameter.
@@ -508,7 +508,7 @@ export interface NoteAsked {
 
 /**
  * The notes one generation needs: one for each node arriving by an entry that
- * carries a note -- a node going into a slot, which the reader picks there,
+ * carries a note -- a node going into a slot, which the user picks there,
  * and a node in the pool that lands empty, an empty source to put a file in or
  * a generation still to run. Every check counting notes reads this, so the
  * two never count differently.

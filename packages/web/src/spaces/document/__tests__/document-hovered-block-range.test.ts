@@ -8,7 +8,7 @@
  * A block in BlockNote is a `blockContainer`, whose content is
  * `blockContent blockGroup?` (`BlockContainer.ts:27`) — the nested blocks live
  * inside it. A range over the container therefore covers the whole subtree,
- * which the reader would see as every indented row changing along with the one
+ * which the user would see as every indented row changing along with the one
  * they pointed at.
  */
 
@@ -66,7 +66,7 @@ describe('the range a block handle command acts on', () => {
     expect(covered[0]?.node.textContent).toBe('parent');
   });
 
-  it('leaves the reader’s own selection alone', () => {
+  it('leaves the user’s own selection alone', () => {
     const editor = open();
     const parentId = (editor.document[0] as { id: string }).id;
     const before = editor.prosemirrorState.selection;

@@ -18,7 +18,8 @@
 
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
@@ -84,7 +85,7 @@ describe('DocumentEditor', () => {
     doc.destroy();
   });
 
-  it('keeps the editor in the body when the reader turns read-only while it is open', () => {
+  it('keeps the editor in the body when the user turns read-only while it is open', () => {
     // A role change or an archive refetches the project with the Space open
     // (`use-refresh-on-reauth.ts`), so `readOnly` flips on a mounted body.
     const files: FileUploads = { prepare: () => null };
@@ -98,22 +99,24 @@ describe('DocumentEditor', () => {
     expect(container.contains(handle.surface)).toBe(true);
   });
 
-  it('renders one chrome element beside the body: the scroller', () => {
+  it('renders two chrome elements beside each other: the heading outline and the scroller', () => {
     // The top toolbar is gone (task #129). This counts what the shell renders
     // rather than naming test ids the toolbar used to carry — those queries
     // went vacuous the moment it was deleted. Anything new added beside the
     // body turns this red. Two things do NOT: the bubble bar, which only
     // renders while a selection exists, and anything portalled out.
     //
-    // The shell holds one row, and the row is where the columns go: the body
-    // and, once the reader opens it, the comment panel (#18, A18).
+    // The shell holds one row, and the row holds the heading outline
+    // (inner#1149) and the scroller; the body and, once the user opens it,
+    // the comment panel (#18, A18) sit side by side inside the scroller.
     const { container } = render(<DocumentEditor handle={handle} />);
     const shell = [...container.firstElementChild!.children];
     expect(shell).toHaveLength(1);
 
     const columns = [...shell[0]!.children];
-    expect(columns).toHaveLength(1);
-    expect(columns[0]).toHaveClass(BODY_SCROLLER_CLASS);
+    expect(columns).toHaveLength(2);
+    expect(columns[0]).toHaveAttribute('data-testid', 'doc-outline-column');
+    expect(columns[1]).toHaveClass(BODY_SCROLLER_CLASS);
   });
 
   it('puts the whole-document entry inside the scroller, ahead of the page', () => {
@@ -301,7 +304,7 @@ describe('DocumentEditor', () => {
     const own = kind === 'table' ? block : block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
     const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1]!;
     expect(nested).not.toBe(own);
-    const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const viewport = document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`)!;
     const spies = [
       vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
       vi.spyOn(nested, 'getBoundingClientRect').mockReturnValue(new DOMRect(50, 100, 90, 20)),
@@ -363,7 +366,7 @@ describe('DocumentEditor', () => {
       await waitFor(() => expect(handle.surface.querySelectorAll('.doc-table-frame')).toHaveLength(1));
       const location = writtenLocation();
       const block = handle.surface.querySelector<HTMLElement>(`[data-id="${location.blockId}"]`)!;
-      const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+      const viewport = document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`)!;
       let bounds = new DOMRect(40, 90, 300, 160);
       spies.push(vi.spyOn(block, 'getBoundingClientRect').mockImplementation(() => bounds));
       spies.push(vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)));
@@ -435,7 +438,7 @@ describe('DocumentEditor', () => {
     }
   });
 
-  it('opens the panel on a comment an Agent proposal landed, the way a comment the reader wrote is shown (inner#1509)', async () => {
+  it('opens the panel on a comment an Agent proposal landed, the way a comment the user wrote is shown (inner#1509)', async () => {
     const files: FileUploads = { prepare: () => null };
     const { editor } = handle;
     const { rerender } = render(<DocumentEditor handle={handle} files={files} />);
@@ -487,8 +490,7 @@ describe('DocumentEditor', () => {
     }
 
     /** The body's own scroller. */
-    const bodyViewport = (): HTMLElement => document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`)
-      ?? document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const bodyViewport = (): HTMLElement => document.querySelector<HTMLElement>(`.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`)!;
 
     /**
      * Gives each DOM range the rectangle of the words it covers.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The two things a reader gets done through the selection bubble bar.
+ * The two things a user gets done through the selection bubble bar.
  *
  * Pressing Bold then Italic really changes the document, and pressing a link
  * written through the panel really opens the address in another tab — each
@@ -18,7 +18,7 @@ import { openFreshDocument, selectFirstParagraph, test } from '../helpers/bubble
 import { collapseAfterLinking, linkTheSelection } from '../helpers/link-panel';
 import { DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
-test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({ page }) => {
+test('bold and italic: pressing the bar buttons in a real browser changes the document', async ({ page }) => {
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox');
   await selectFirstParagraph(page);
@@ -31,16 +31,43 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ({
           ?.innerHTML ?? '', VISIBLE_SPACE
     );
 
-  // 单测里的点击走的是 jsdom 的 `.click()`，它不移动焦点；真机点击会先把焦点
-  // 从正文拿走，而浮出条的显示恰恰依赖编辑器的焦点状态。这条走的就是那条路。
+  // A unit test clicks through jsdom's `.click()`, which does not move focus; a
+  // real click first takes focus away from the body, and the bar's visibility
+  // depends on the editor's focus state. This case walks that path.
   expect(await html()).not.toContain('<strong>');
   await page.getByTestId('doc-bubble-tool-bold').click();
   await expect.poll(html).toContain('<strong>');
 
-  // 按完之后条还在、选区还在，可以接着按第二个命令。
+  // After the press the bar and the selection are still there, so a second
+  // command can follow.
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
   await page.getByTestId('doc-bubble-tool-italic').click();
   await expect.poll(html).toContain('<em>');
+});
+
+test('a button without a menu shows its name on hover, greyed or not (#1184)', async ({ page }) => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectFirstParagraph(page);
+  const bold = page.getByTestId('doc-bubble-tool-bold');
+  // The pointer travels onto the button the way a hand moves it, in several
+  // moves: the tooltip opens on a pointer move over its button.
+  const reach = async (): Promise<void> => {
+    const box = (await bold.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  };
+
+  await reach();
+  await expect(page.getByRole('tooltip')).toHaveText('Bold');
+
+  // Inline code takes no other mark, so bold greys out over it; a greyed
+  // button that a browser sends no pointer events would never show its name.
+  await page.getByTestId('doc-bubble-tool-code').click();
+  await expect(bold).toHaveAttribute('aria-disabled', 'true');
+  await page.mouse.move(0, 0, { steps: 8 });
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await reach();
+  await expect(page.getByRole('tooltip')).toHaveText('Bold');
 });
 
 test('link: pressing a link in the body opens it in a new tab', async ({ page }) => {
@@ -78,7 +105,7 @@ test('link: pressing a link in the body opens it in a new tab', async ({ page })
   // (`prosemirror-view`'s `isNear`, `dx*dx + dy*dy < 100`), which selects a
   // word and never reaches the handler that opens the address — and the middle
   // of this link is one pixel from where `selectFirstParagraph` just pressed.
-  // A reader who takes half a second between the two never meets this; a test
+  // A user who takes half a second between the two never meets this; a test
   // that runs both in 143ms does.
   const [opened] = await Promise.all([
     page.context().waitForEvent('page', { timeout: 10_000 }),

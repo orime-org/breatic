@@ -154,7 +154,7 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
         nodeId: "node-1",
         outcome: "failed",
         // A cause we author travels as a code, so the sentence is written in
-        // the reader's language rather than frozen in the worker's (#186 §7.1).
+        // the user's language rather than frozen in the worker's (#186 §7.1).
         errorMessage: "no_result",
       }),
     );

@@ -228,7 +228,7 @@ export interface ParamDescriptor {
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
   value_labels?: Readonly<Record<string, string>>;
-  /** The BCP-47 tag each value of `values` is, by position, so the panel names it in the reader's language. */
+  /** The BCP-47 tag each value of `values` is, by position, so the panel names it in the user's language. */
   value_locales?: readonly string[];
   /**
    * Names the picker that fills this param, for params whose value domain

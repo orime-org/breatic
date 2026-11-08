@@ -594,10 +594,10 @@ body {
      block handle — so the only selections of this kind left are the ones the
      machinery makes for itself: the one `blockDragStart` puts on a row it
      carries, and the one ProseMirror falls back to when no plugin answers a
-     modifier-click in a read-only body. Both framed a block the reader never
+     modifier-click in a read-only body. Both framed a block the user never
      selected. A divider and a media block are the exceptions: neither has text,
      so clicking one or walking onto it with the arrows node-selects it, and that
-     selection IS the reader's. A divider is painted by `.doc-in-selection`
+     selection IS the user's. A divider is painted by `.doc-in-selection`
      further down, the same band a drag across it gets (#124); a media block
      draws its own frame off its selected state
      (`[data-media-box][data-selected='true']`, inner#1127).
@@ -754,7 +754,7 @@ body {
   /* ---- A line's text fills the row it sits on ----
      BlockNote lays a block's content out as a flex row carrying a marker and the
      inline content. Neither of them grows, so the width between the last glyph
-     and the block's right edge belongs to no box — and a reader presses there
+     and the block's right edge belongs to no box — and a user presses there
      all the time, both to put the caret at the end of a short line and while
      dragging across one to select it.
 
@@ -873,7 +873,7 @@ body {
      and the three do not draw the same size in this face — measured at the 15px
      a list marker is set in, 5x5, 3x4 and 5x5. No hollow circle in the block
      reaches that size either (`○` measures 12x13), so a glyph cannot carry all
-     three at one size, and three sizes are what a reader sees as the list
+     three at one size, and three sizes are what a user sees as the list
      thinning out as it nests (user 2026-09-08). A gradient draws each shape.
 
      THE CIRCLES ARE 7px AND THE SQUARE 6px (user 2026-09-08). Two things are
@@ -942,7 +942,7 @@ body {
 
      The circles fill a 7px box at the gutter's left edge, so their ink begins
      where every other marker does. The square's 6px box is placed a pixel
-     further in, which puts its RIGHT edge where theirs is — the gap a reader
+     further in, which puts its RIGHT edge where theirs is — the gap a user
      sees is the one between a shape's right edge and its words, and left-aligned
      the 6px square stood a pixel further from them (user 2026-09-08). The left
      edges then differ by that pixel, inside a 24px gutter. */
@@ -957,7 +957,7 @@ body {
   }
 
   /* The ring is 1.4px thick — two fifths of the radius, which is what leaves a
-     hole a reader sees as a hole rather than as a notch: measured at 1x, 5px
+     hole a user sees as a hole rather than as a notch: measured at 1x, 5px
      left one pixel of hole and 7px leaves 2x3. */
   .bn-block-content[data-bullet-level='1']::before {
     background-image: radial-gradient(
@@ -1008,30 +1008,6 @@ body {
      asking you to. The switch is the Editor's `injectCSS` option, which defaults
      to true and is left alone. Measured with a 180-character URL: two lines, no
      horizontal overflow, with and without an `overflow-wrap` of our own. */
-  /* The body's right gutter, and the whole-document entry that stands in
-     it. Declared together on their common ancestor because the gutter is
-     built out of the other three: the button, the gap it keeps from the padding
-     box on its left, and the gap it keeps from the viewport edge on its right.
-
-     The entry sits in the gutter with a negative margin that cancels its own
-     width plus the clearance (`DocumentMenuEntry`), which is everything from the
-     padding box's right edge to its own. So the two edges land where each number
-     says: padding-box-right to button is the clearance, button to viewport edge
-     is the inset. The page itself is capped at `max-w-3xl` and centres inside
-     the padding box, so what it leaves the button is the clearance at the narrow
-     end and more than that once it stops filling the box.
-
-     The margin reads size and clearance, the gutter is all three, so the two
-     move together. Raise the gutter alone and the button follows the padding box
-     inward, growing the inset; drop it below size + clearance and the button
-     overruns the viewport edge and gets clipped. The left gutter is sized by
-     the strips it holds (`BODY_GUTTER_START`, `document-strip-alignment.ts`). */
-  .doc-body-scroller {
-    --doc-entry-size: 32px;
-    --doc-entry-inset: 16px;
-    --doc-entry-clearance: 8px;
-    --doc-body-gutter: calc(var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance));
-  }
 
   .doc-body {
     line-height: var(--doc-leading-body);
@@ -1534,7 +1510,7 @@ body {
      one of them to another layer would change that.
 
      The tint is `--color-palette-*-highlight`, the same token the panel's own
-     swatch reads, so the cell the reader presses and the text they get are one
+     swatch reads, so the cell the user presses and the text they get are one
      value. Both sides are tokens, so the dark theme follows without a second
      rule. It is a depth of its own rather than the `-bg` a status chip and a
      canvas group lie under: behind a run of words the colour is the only thing
@@ -1824,7 +1800,7 @@ body {
        does not grow back when its start margin goes negative — it slides, taking
        its far edge with it. `auto` on a stretched item is the line's own width
        less its margins, so the negative one is added back by the layout and the
-       line a reader writes on ends where every other line ends. */
+       line a user writes on ends where every other line ends. */
     width: auto;
   }
 
@@ -1904,7 +1880,7 @@ body {
   }
 
   /* TAB THAT CANNOT MOVE A BLOCK SAYS SO. A block already as deep as it can go
-     took the key and did nothing, which a reader cannot tell from a press that
+     took the key and did nothing, which a user cannot tell from a press that
      missed (user 2026-09-08). It goes in a full level's worth — one
      `--doc-indent-step` — and comes back, so what is shown is the move that
      was asked for and did not hold. `document-tab.ts` puts the mark on the
@@ -1951,7 +1927,7 @@ body {
   }
 
   /* A media block's caption field and resize handles are for editing it, so a
-     body the reader may not write to shows none of them (inner#1127 A11). Read
+     body the user may not write to shows none of them (inner#1127 A11). Read
      off the surface's own editability: the node view that draws them is not
      rebuilt when that changes. The toolbar over a picture or a video stays,
      holding only full screen for a viewer (inner#1844). */
@@ -1959,12 +1935,12 @@ body {
     display: none;
   }
 
-  /* A media block the reader selected, one a selected range runs over, and the
+  /* A media block the user selected, one a selected range runs over, and the
      one the pointer is on, is framed on the media itself — not its caption — in
      the link colour; a band behind it would fill the empty rest of its row
      (inner#1127). The selected one's frame goes with its corner knobs and its
      toolbar, all off the block's own selected state, and like them only in a
-     body the reader can edit. */
+     body the user can edit. */
   .doc-body[contenteditable='true'] [data-media-box][data-selected='true'] [data-media-frame],
   .doc-body .doc-media-in-selection [data-media-frame],
   .doc-body [data-media-box][data-hovered='true'] [data-media-frame] {
@@ -2225,7 +2201,7 @@ body {
 }
 
 @layer components {
-  /* A block with no text inside the reader's selection, painted with the colour
+  /* A block with no text inside the user's selection, painted with the colour
      the browser paints selected text with (`document-selection-paint.ts`). One
      look however it got selected — a click, the arrows, a drag, select-all.
 
@@ -2359,7 +2335,7 @@ body {
      is where the choice of blue is argued. */
   /* The pointer says the press does something other than put the caret down,
      which since a press opens the address is what it does. Inside an editable
-     surface the caret is the default, and a reader holding a caret over a link
+     surface the caret is the default, and a user holding a caret over a link
      has no way to tell it apart from the prose it is sitting in. */
   .doc-body a {
     color: var(--color-content-link);
@@ -2375,7 +2351,7 @@ body {
      because nothing else paints `bn-thread-mark`.
 
      The hue is the sticky note's, which is what a comment already looks like on
-     the canvas. Nothing in the seven-colour palette is yellow, so a reader
+     the canvas. Nothing in the seven-colour palette is yellow, so a user
      cannot mistake it for a background colour they chose themselves.
 
      Overlapping comments need no rule of their own. ProseMirror renders two
@@ -2442,7 +2418,7 @@ body {
      of its own, a settled thread's mark included. Measured 2026-09-23: a
      resolved comment's words dragged between two runs of a live one come out
      at rgba(255, 200, 0, 0.25) the moment that live comment is opened, while
-     belonging to no comment a reader can see. */
+     belonging to no comment a user can see. */
   .doc-body .bn-thread-mark-selected:not(.doc-comment-mark-reading) {
     background-color: transparent;
   }
@@ -2473,7 +2449,7 @@ body {
    The wrapper is NAMED by what it holds, not by what it is not. Radix gives it
    no attribute of its own, so this selector used to read "every direct child
    div except the one kind I know about" — and everything else that mounts here
-   took the growth with it. Two did, and each was found by a reader rather than
+   took the growth with it. Two did, and each was found by a user rather than
    by the selector: `FloatingPortal` mounts its container here (that is how the
    bubble bar and the link panel hang inside the scroller), where `min-height`
    added a whole empty viewport to the scroll range — measured, selecting one
@@ -2481,7 +2457,7 @@ body {
    `view.dom.offsetParent`, which is this same wrapper, where `display: flex`
    and `min-height` turned the 5px line the plugin writes inline into a
    768 × 870 pale block over the rest of the page (measured 2026-09-17, task
-   #113 — the reader saw the whole area below a dragged row fill with colour).
+   #113 — the user saw the whole area below a dragged row fill with colour).
    `:has(.doc-body-editor)` names the one child that holds the text column, so
    nothing else mounted here can match however it arrives. Specificity is
    unchanged at (0,4,1): `:has()` counts its argument the way `:not()` did.

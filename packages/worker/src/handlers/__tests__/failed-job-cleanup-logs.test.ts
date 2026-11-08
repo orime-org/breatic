@@ -118,7 +118,7 @@ describe("cleanupFailedJobNodes, when settling a row fails", () => {
 });
 
 describe("cleanupFailedJobNodes, delivering a run that was billed before the crash", () => {
-  // The row this writes is the only history the reader gets for that run, and
+  // The row this writes is the only history the user gets for that run, and
   // its second line names the model. A reading's stored result says nothing
   // about the model — the run's answer is text and a finish reason — so the
   // name has to come from the job, which is where the two live deliveries

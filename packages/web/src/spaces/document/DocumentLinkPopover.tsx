@@ -44,7 +44,8 @@ import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import { panelReference } from '@web/spaces/document/document-link-anchor';
-import { BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
+import { BUBBLE_ICON_BUTTON_SIZE, HoverName, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
+import { UNAVAILABLE } from '@web/spaces/document/document-unavailable-control';
 import { cn } from '@web/lib/utils';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
@@ -180,8 +181,8 @@ export function DocumentLinkPopover({
     setMode('closed');
     setTarget(NO_TARGET);
     // The selection goes with the panel. The bar shows on a selection, and a
-    // reader who wants it back makes one — leaving the old selection standing
-    // would put the bar back over text the reader has finished with.
+    // user who wants it back makes one — leaving the old selection standing
+    // would put the bar back over text the user has finished with.
     editor.exec((state, dispatch) => {
       dispatch?.(
         state.tr.setSelection(caretAt(state.selection, 1)),
@@ -283,7 +284,7 @@ export function DocumentLinkPopover({
     onPanelOpenChange(panelShowing);
   }, [onPanelOpenChange, panelShowing]);
 
-  // What the reader is about to link stays visible while the panel holds the
+  // What the user is about to link stays visible while the panel holds the
   // focus. The address goes into a field, so the body is not the focused
   // element any more, and a contenteditable that is not focused has its
   // selection painted by nobody. The extension draws a decoration over the
@@ -369,24 +370,26 @@ export function DocumentLinkPopover({
 
   return (
     <>
-      <Button
-        variant='ghost'
-        size='icon'
-        aria-label={t('spaces.document.commands.link')}
-        aria-pressed={holdsLink}
-        aria-haspopup='dialog'
-        aria-expanded={mode !== 'closed'}
-        aria-controls={mode !== 'closed' ? panelId : undefined}
-        disabled={!canLink}
-        onClick={openFromSelection}
-        data-testid='doc-bubble-tool-link'
-        // The bar stays out of the tab order entirely, as the eight command
-        // buttons beside it do.
-        tabIndex={-1}
-        className={cn(BUBBLE_ICON_BUTTON_SIZE, holdsLink && PRESSED_CLASS)}
-      >
-        <LinkIcon className='h-4 w-4' />
-      </Button>
+      <HoverName name={t('spaces.document.commands.link')}>
+        <Button
+          variant='ghost'
+          size='icon'
+          aria-label={t('spaces.document.commands.link')}
+          aria-pressed={holdsLink}
+          aria-haspopup='dialog'
+          aria-expanded={mode !== 'closed'}
+          aria-controls={mode !== 'closed' ? panelId : undefined}
+          aria-disabled={canLink ? undefined : true}
+          onClick={canLink ? openFromSelection : undefined}
+          data-testid='doc-bubble-tool-link'
+          // The bar stays out of the tab order entirely, as the eight command
+          // buttons beside it do.
+          tabIndex={-1}
+          className={cn(BUBBLE_ICON_BUTTON_SIZE, holdsLink && PRESSED_CLASS, !canLink && UNAVAILABLE)}
+        >
+          <LinkIcon className='h-4 w-4' />
+        </Button>
+      </HoverName>
       {mode !== 'closed' && scroller ? (
         <FloatingPortal root={scroller}>
           <FloatingFocusManager context={context} modal={false}>

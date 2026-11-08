@@ -181,7 +181,7 @@ export function callsFetch(toolCallId: string, input = 100, output = 10, thinks 
 }
 
 /**
- * A call that puts a questionnaire to the reader.
+ * A call that puts a questionnaire to the user.
  * @param toolCallId - The call's id.
  * @param input - Input tokens reported.
  * @param output - Output tokens reported.
@@ -272,10 +272,10 @@ export interface World {
   toolOutput: string;
   /** How many times `fetch_page` ran. */
   toolRuns: number;
-  /** The turn index the next reader message is filed under. */
+  /** The turn index the next user message is filed under. */
   nextTurn: number;
-  /** Reader messages written, with their turn. */
-  readerMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
+  /** User messages written, with their turn. */
+  userMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
   /** Every `setUserForModel` write. */
   userForModel: Array<{ turnIndex: number; kept: { messages: ModelMessage[]; snapshot?: unknown } }>;
   /** Every reply row written, with what was kept for the model. */
@@ -312,7 +312,7 @@ function emptyWorld(): World {
     toolOutput: "the page",
     toolRuns: 0,
     nextTurn: 1,
-    readerMessages: [],
+    userMessages: [],
     userForModel: [],
     replies: [],
     recorded: [],
@@ -363,7 +363,7 @@ export const TOOLS = {
     },
   }),
   ask_user: tool({
-    description: "Ask the reader.",
+    description: "Ask the user.",
     inputSchema: z.object({ questions: z.array(z.unknown()) }),
   }),
 };
@@ -420,16 +420,16 @@ export function plainTurn(turnIndex: number, size: number): Array<MessageData & 
 /**
  * The rows a turn this world ran left behind, as the repository reads them back.
  * @param turnIndex - The turn.
- * @returns Its reader row and every reply row, oldest first.
- * @throws {Error} When the turn left no reader message.
+ * @returns Its user row and every reply row, oldest first.
+ * @throws {Error} When the turn left no user message.
  */
 export function rowsOf(turnIndex: number): Array<MessageData & { forModel: unknown }> {
-  const reader = world.readerMessages.find((one) => one.turnIndex === turnIndex);
+  const userMessage = world.userMessages.find((one) => one.turnIndex === turnIndex);
   const kept = world.userForModel.filter((one) => one.turnIndex === turnIndex).at(-1)?.kept;
   const rows: Array<MessageData & { forModel: unknown }> = [];
-  if (reader !== undefined) {
-    const text = reader.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
-    rows.push({ role: "user", content: text, parts: reader.message.parts, ts: "", turnIndex, forModel: kept ?? null });
+  if (userMessage !== undefined) {
+    const text = userMessage.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
+    rows.push({ role: "user", content: text, parts: userMessage.message.parts, ts: "", turnIndex, forModel: kept ?? null });
   }
   for (const reply of world.replies.filter((one) => one.message.turnIndex === turnIndex)) {
     const text = reply.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
@@ -522,9 +522,9 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
  */
 export function overflowRepo(): Record<string, unknown> {
   return {
-    addReaderMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
+    addUserMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
       const turnIndex = world.nextTurn;
-      world.readerMessages.push({ turnIndex, message });
+      world.userMessages.push({ turnIndex, message });
       return { turnIndex, closedAsks: [] };
     },
     setUserForModel: async (_conversationId: string, turnIndex: number, kept: World["userForModel"][number]["kept"]) => {
@@ -580,9 +580,9 @@ export function overflowConsolidator(): Record<string, unknown> {
 }
 
 /**
- * Send one reader message and read the turn to its end.
- * @param said - What the reader wrote.
- * @param space - The reader's Spaces.
+ * Send one user message and read the turn to its end.
+ * @param said - What the user wrote.
+ * @param space - The user's Spaces.
  * @returns Every chunk the turn put on the wire.
  */
 export async function sendMessage(said = "hi", space: Record<string, unknown> = {}): Promise<UIMessageChunk[]> {
@@ -606,7 +606,7 @@ export async function sendMessage(said = "hi", space: Record<string, unknown> = 
  * Resume a turn that stopped at a questionnaire and read it to its end.
  * @param toolCallId - The questionnaire answered.
  * @param turnIndex - The turn that asked.
- * @param space - The reader's Spaces when they answered.
+ * @param space - The user's Spaces when they answered.
  * @returns Every chunk the segment put on the wire.
  */
 export async function sendAnswer(toolCallId: string, turnIndex: number, space: Record<string, unknown> = {}): Promise<UIMessageChunk[]> {

@@ -9,7 +9,7 @@
  * which needs real layout; dragging a row, a column or a column's edge, and
  * selecting across cells, are real pointer gestures; a pasted table comes in
  * through a real clipboard event; two pages on one Space are two real
- * connections. Every table here is made the way a reader makes one, off the
+ * connections. Every table here is made the way a user makes one, off the
  * block menu's grid, and every case checks the page threw nothing.
  *
  * Wants dev running:
@@ -783,7 +783,7 @@ test('A6 and A11: a cell cut by the frame of a wide table shows its button and c
     }, [box.x, right] as const);
 
   // The scroll's event lands a frame later and hides the table's controls
-  // (A6); the pointer arrives after it, as a reader's does.
+  // (A6); the pointer arrives after it, as a user's does.
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.mouse.click(cut!.x, cut!.y);
   await expect(page.getByTestId('doc-table-cell-button')).toHaveCount(1);

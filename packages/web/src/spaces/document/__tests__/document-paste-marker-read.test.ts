@@ -59,7 +59,7 @@ function tree(editor: Editor): string[] {
 }
 
 /**
- * How many media the reader was told were left out.
+ * How many media the user was told were left out.
  * @param sink - The sink.
  * @returns The count.
  */

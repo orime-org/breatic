@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Web content with media, pasted or dropped the way a reader does it
+ * Web content with media, pasted or dropped the way a user does it
  * (inner#1351 + inner#1390 design §5.1, §5.4; A5, A7, A12–A14): HTML carrying
  * media is read as HTML even when its plain text looks like Markdown;
  * ordinary media stay in their table cells, mixed table content is rejected

@@ -13,7 +13,7 @@
  * (`cellPos`) is read once, when a menu opens or a drag starts; from then on
  * the held target is what the commands act on.
  *
- * Neither is on screen while the reader holds a selection: the
+ * Neither is on screen while the user holds a selection: the
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 

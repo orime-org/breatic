@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe("a reference mark written in a language not downloaded", () => {
-  it("gives the bare label of a Japanese-worded mark to an English reader", () => {
+  it("gives the bare label of a Japanese-worded mark to an English user", () => {
     // Japanese label: the mark was written by a Japanese-speaking collaborator.
     const label = "キャラクター写真";
     const written = `[📎 ${referenceOf(catalog("ja")).replace("{label}", label)}]`;

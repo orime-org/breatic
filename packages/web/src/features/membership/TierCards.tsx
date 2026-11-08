@@ -383,7 +383,7 @@ interface TierCardActionProps {
  * The control on one card, or a slot of the same height.
  *
  * A card that cannot be moved to stays empty rather than showing a disabled
- * button or a sentence explaining the refusal: the reader is looking at what
+ * button or a sentence explaining the refusal: the user is looking at what
  * they can buy, not at a list of what they cannot. The empty slot keeps the
  * height of a button so the row of cards stays lined up.
  * @param props - What this card offers and how to take it.

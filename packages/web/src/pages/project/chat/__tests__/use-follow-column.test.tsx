@@ -5,7 +5,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import * as React from 'react';
 
-import { useFollowColumn, type ReaderAction } from '@web/pages/project/chat/use-follow-column';
+import { useFollowColumn, type UserAction } from '@web/pages/project/chat/use-follow-column';
 
 /** Undos owed at the end of the current test, newest first. */
 const undos: Array<() => void> = [];
@@ -125,7 +125,7 @@ async function settle(): Promise<void> {
  * @param root0.actions - Actions to expose as buttons, so a test can send one.
  * @returns The host.
  */
-function Host({ actions = [] }: { actions?: ReaderAction[] }): React.JSX.Element {
+function Host({ actions = [] }: { actions?: UserAction[] }): React.JSX.Element {
   const column = useFollowColumn();
   return (
     <div data-testid='viewport' data-viewport ref={column.setViewport}>
@@ -157,9 +157,9 @@ function Host({ actions = [] }: { actions?: ReaderAction[] }): React.JSX.Element
  * Put the column somewhere and tell it, the way the browser would.
  * @param geometry - The live geometry.
  * @param viewport - The scroller.
- * @param top - Where the reader left it.
+ * @param top - Where the user left it.
  */
-function readerScrollsTo(geometry: Geometry, viewport: HTMLElement, top: number): void {
+function userScrollsTo(geometry: Geometry, viewport: HTMLElement, top: number): void {
   geometry.scrollTop = top;
   fireEvent.scroll(viewport);
 }
@@ -190,7 +190,7 @@ describe('useFollowColumn', () => {
     expect(geometry.scrollTop).toBe(2000);
   });
 
-  describe('a reader who takes the column', () => {
+  describe('a user who takes the column', () => {
     it('keeps it, whatever moved it', async () => {
       // No wheel, no key, no pointer -- just the column somewhere else and a
       // scroll event, which is all some of the ways to move it produce.
@@ -200,7 +200,7 @@ describe('useFollowColumn', () => {
       render(<Host />);
       await settle();
 
-      readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+      userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       column.reset();
 
       geometry.scrollHeight = 2400;
@@ -217,7 +217,7 @@ describe('useFollowColumn', () => {
       // the column to the new end in that same frame. Both halves of the
       // reading have to be taken from the same moment: a write that refreshed
       // where the column sits but left where its end was would compare the two
-      // across the shrink, and call the reader's move the browser's.
+      // across the shrink, and call the user's move the browser's.
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
       stateGeometry(geometry);
       const resize = observableResize();
@@ -229,7 +229,7 @@ describe('useFollowColumn', () => {
         resize.fire();
       });
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 180);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 180);
       });
 
       const whereTheyLeftIt = geometry.scrollTop;
@@ -248,7 +248,7 @@ describe('useFollowColumn', () => {
       // turns, fifteen of them, left the column flush with the end the whole
       // time. Following writes the column back every time content grows, so a
       // reading that measures distance-from-the-end rather than what moved
-      // starts each nudge over and the reader never gets out.
+      // starts each nudge over and the user never gets out.
       const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
       stateGeometry(geometry);
       const resize = observableResize();
@@ -257,9 +257,9 @@ describe('useFollowColumn', () => {
 
       for (let nudge = 0; nudge < 3; nudge += 1) {
         await act(async () => {
-          readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 2);
+          userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 2);
         });
-        // The next chunk lands, which is what used to reset the reader's ground.
+        // The next chunk lands, which is what used to reset the user's ground.
         geometry.scrollHeight += 40;
         await act(async () => {
           resize.fire();
@@ -278,10 +278,10 @@ describe('useFollowColumn', () => {
       expect(screen.queryByTestId('way-back')).toBeNull();
 
       // Six pixels: a quarter of a line, far narrower than any band that asks
-      // "is the reader near enough that we may finish the trip for them", and
-      // the reader is the one who put it there.
+      // "is the user near enough that we may finish the trip for them", and
+      // the user is the one who put it there.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1594);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1594);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
     });
@@ -294,12 +294,12 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1600);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1600);
       });
       expect(screen.queryByTestId('way-back')).toBeNull();
 
@@ -314,7 +314,7 @@ describe('useFollowColumn', () => {
   });
 
   describe('what the browser does on its own', () => {
-    it('does not hand the column back when a clamp carries a held reader onto the end', async () => {
+    it('does not hand the column back when a clamp carries a held user onto the end', async () => {
       const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
       const column = stateGeometry(geometry);
       const resize = observableResize();
@@ -324,7 +324,7 @@ describe('useFollowColumn', () => {
       // Sixty pixels up: held, and near enough to the end that losing content
       // will carry them onto it.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1540);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1540);
       });
       expect(screen.getByTestId('way-back')).toBeInTheDocument();
 
@@ -339,7 +339,7 @@ describe('useFollowColumn', () => {
       });
       await settle();
 
-      // The reader never came back, so the column is still theirs, and the
+      // The user never came back, so the column is still theirs, and the
       // arrow is gone because there is nothing below to go to.
       expect(screen.queryByTestId('way-back')).toBeNull();
       expect(column.writes()).toEqual([]);
@@ -364,7 +364,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -404,7 +404,7 @@ describe('useFollowColumn', () => {
     it('takes the better part of a second over it', async () => {
       // The journey is a spring, and a spring is what "travels rather than
       // arrives" means here: it eases in, eases out, and takes enough frames
-      // for the reader to see where they were taken from. A step that grows
+      // for the user to see where they were taken from. A step that grows
       // on itself instead of being spent each frame covers the same ground in
       // a handful of frames, which reads as a jump.
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
@@ -414,7 +414,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -431,7 +431,7 @@ describe('useFollowColumn', () => {
       expect(frames).toBeGreaterThan(20);
     });
 
-    it('gives the column up to a reader who takes it back up during the journey', async () => {
+    it('gives the column up to a user who takes it back up during the journey', async () => {
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
       stateGeometry(geometry);
       observableResize();
@@ -439,7 +439,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -449,7 +449,7 @@ describe('useFollowColumn', () => {
       });
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 900);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 900);
       });
       const whereTheyLeftIt = geometry.scrollTop;
       await settle();
@@ -460,9 +460,9 @@ describe('useFollowColumn', () => {
 
     it('keeps going when content above the viewport gets shorter', async () => {
       // A tool line finishing, or a thinking block folding away, changes a
-      // height above what the reader is looking at. Scroll anchoring holds
+      // height above what the user is looking at. Scroll anchoring holds
       // their row still by moving the column, and that move is upward -- which
-      // used to read as the reader changing their mind and ended the journey
+      // used to read as the user changing their mind and ended the journey
       // half way, with the way back popping straight back up.
       const geometry: Geometry = { scrollHeight: 4000, clientHeight: 400, scrollTop: 3600 };
       stateGeometry(geometry);
@@ -471,7 +471,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -487,7 +487,7 @@ describe('useFollowColumn', () => {
       geometry.scrollHeight -= 300;
       await act(async () => {
         resize.fire();
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
       });
 
       let frames = 0;
@@ -502,7 +502,7 @@ describe('useFollowColumn', () => {
       expect(screen.queryByTestId('way-back')).not.toBeInTheDocument();
     });
 
-    it('keeps going for a reader who pushes it further down during the journey', async () => {
+    it('keeps going for a user who pushes it further down during the journey', async () => {
       // Pressing the way back says "take me to the end". A push downward while
       // it travels agrees with that; only a push back up changes their mind.
       // This is also how a browser's scroll anchoring reaches us -- content
@@ -515,7 +515,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 1000);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('way-back'));
@@ -528,7 +528,7 @@ describe('useFollowColumn', () => {
       // can carry it past any fixed point, and a push to that point would then
       // be a push back up.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop + 100);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop + 100);
       });
 
       let frames = 0;
@@ -544,7 +544,7 @@ describe('useFollowColumn', () => {
     });
   });
 
-  describe('what the reader does elsewhere', () => {
+  describe('what the user does elsewhere', () => {
     it('takes the column back to the end when they send', async () => {
       const geometry: Geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
       stateGeometry(geometry);
@@ -553,7 +553,7 @@ describe('useFollowColumn', () => {
       await settle();
 
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 200);
+        userScrollsTo(geometry, screen.getByTestId('viewport'), 200);
       });
       await act(async () => {
         fireEvent.click(screen.getByTestId('send-messageSent'));
@@ -592,7 +592,7 @@ describe('useFollowColumn', () => {
     await settle();
 
     await act(async () => {
-      readerScrollsTo(geometry, screen.getByTestId('viewport'), 0);
+      userScrollsTo(geometry, screen.getByTestId('viewport'), 0);
     });
     await act(async () => {
       fireEvent.click(screen.getByTestId('way-back'));

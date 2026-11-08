@@ -46,7 +46,7 @@ function open(rows: TableInput['rows'] = [{ cells: ['a1', 'b1'] }, { cells: ['a2
   document.body.appendChild(viewport);
   editor.mount(root);
   mounted.push(editor);
-  // A reader working in the body: the body holds the focus, which the caret
+  // A user working in the body: the body holds the focus, which the caret
   // needs before it raises anything (inner#1127 A20).
   editor.prosemirrorView!.dom.focus();
   editor.replaceBlocks(editor.document, [

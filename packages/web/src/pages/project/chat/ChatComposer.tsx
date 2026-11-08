@@ -53,7 +53,7 @@ interface ChatComposerProps {
   onChange: (next: string) => void;
   onSubmit: () => void;
   onAbort?: () => void;
-  /** Called with the files the reader picked. */
+  /** Called with the files the user picked. */
   onAttachFiles?: (files: File[]) => void;
   /** Called with canvas nodes pasted into the box. */
   onPasteCanvas?: (payload: ClipboardPayload) => void;
@@ -92,7 +92,7 @@ interface ChatComposerProps {
  * @param root0.onChange - Called with the next draft text on each edit.
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
- * @param root0.onAttachFiles - Called with the files the reader picked.
+ * @param root0.onAttachFiles - Called with the files the user picked.
  * @param root0.onPasteCanvas - Called with the canvas clipboard payload pasted into the box.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
  * @param root0.space - The open Space's chip beside the plus sign, if one is open.
@@ -164,7 +164,7 @@ function ChatComposerInner({
    *
    * The same rule as {@link submit} and the same reason: this element is
    * about to be a different button. Stopping turns it back into Send, and a
-   * reader who wrote their next message while waiting would send it with the
+   * user who wrote their next message while waiting would send it with the
    * very next keypress, having aimed at stop.
    */
   const abort = (): void => {
@@ -177,11 +177,11 @@ function ChatComposerInner({
    *
    * The one slot in this row serves send, the wait and stop in turn, which is
    * what keeps focus from falling to the body when the phase changes -- and
-   * what makes standing there dangerous. The box is where the reader acts
+   * what makes standing there dangerous. The box is where the user acts
    * next anyway.
    */
   const handOverTheKeyboard = (): void => {
-    // The editor's own focus puts the caret back where the reader left it; a
+    // The editor's own focus puts the caret back where the user left it; a
     // bare DOM focus lets the browser put it at the start.
     editor?.view.focus();
   };
@@ -212,7 +212,7 @@ function ChatComposerInner({
       {/* Only what is being referenced, and only when something is. Holding a
           control here is what made this a row that could never go away, and
           an empty row at the top of the composer is a row of the
-          conversation the reader does not get. */}
+          conversation the user does not get. */}
       {attachments.length > 0 ? (
         <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
           <div
@@ -295,7 +295,7 @@ function ChatComposerInner({
           // this slot is the stop button, and anything focusable here can be
           // tabbed to and then turn into something else underneath whoever
           // is standing on it. What it has to say is said by the live region
-          // below, which is where a reader hears it anyway.
+          // below, which is where a user hears it anyway.
             <span
               data-testid='chat-composer-sending'
               aria-hidden='true'
@@ -335,7 +335,7 @@ function ChatComposerInner({
             </Button>
           )}
         </div>
-        {/* Here whether or not there is anything to say, so that a reader is
+        {/* Here whether or not there is anything to say, so that a user is
             told when it fills rather than when it appears: a live region
             inserted already holding its text is one many screen readers never
             announce. The wait used to be announced by the indicator itself,
@@ -358,6 +358,6 @@ function ChatComposerInner({
  * for a component whose props did not move. Every callback it is handed keeps
  * the same identity across those renders, which is what lets the comparison
  * actually stop anything; `draft` is the one prop that does change, and it
- * changes only when the reader types.
+ * changes only when the user types.
  */
 export const ChatComposer = React.memo(ChatComposerInner);

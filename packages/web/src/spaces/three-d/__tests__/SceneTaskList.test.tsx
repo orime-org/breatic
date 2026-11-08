@@ -84,7 +84,7 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * Render the panel.
  * @param props - Store, edit right, remote progress and place handler.
  * @param props.uploads - The page store.
- * @param props.canEdit - Whether the reader may edit.
+ * @param props.canEdit - Whether the user may edit.
  * @param props.canGenerate - Whether the user may generate in the project.
  * @param props.remoteUploads - Peers' progress.
  * @param props.onPlace - Place handler.

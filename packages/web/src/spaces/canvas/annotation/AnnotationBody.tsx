@@ -23,7 +23,7 @@ import { keepUnsupportedAsTyped } from '@web/spaces/canvas/annotation/keep-unsup
 /**
  * The tags this renderer emits. Anything the plugin did not already hand back
  * as text would be dropped here, so the two lists say the same thing twice on
- * purpose: the plugin decides what the reader sees, this is the floor under it.
+ * purpose: the plugin decides what the user sees, this is the floor under it.
  */
 const DRAWN_TAGS = [
   'p',

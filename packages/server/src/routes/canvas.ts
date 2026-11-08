@@ -30,7 +30,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { readerUrlSchema, voiceSampleUrl } from "@breatic/domain";
+import { userUrlSchema, voiceSampleUrl } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -134,7 +134,7 @@ canvas.get("/limits", (c) => {
  */
 const ingestUrlSchema = z
   .object({
-    url: readerUrlSchema.optional(),
+    url: userUrlSchema.optional(),
     // A file a generation template brings (inner#1345), named by its path
     // under our hosted-resources address; the address is built here.
     template_resource: z.string().min(1).max(512).optional(),
@@ -454,7 +454,7 @@ async function startReading(
   reading: Record<string, unknown>,
 ): Promise<{ taskId: string; status: Awaited<ReturnType<typeof startRowedRun>> }> {
   // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
-  // what puts it on the row the reader sees, in the history row this run
+  // what puts it on the row the user sees, in the history row this run
   // writes, and against the charge — the three places every other modality
   // names the model it ran on.
   const model = UNDERSTAND_PINS.model;
@@ -469,9 +469,14 @@ async function startReading(
     // carries and what the browser's format gate judged by.
     source_mime_type: body.source_mime_type,
     // Carried between the two ends that know about it: the browser, which is
-    // where the reader's language is set, and the run, which names that
+    // where the user's language is set, and the run, which names that
     // language to the model. Nothing here reads it.
-    reader_locale: body.reader_locale,
+    user_locale: body.user_locale ?? body.reader_locale,
+    // Under the pre-#1378 name too, for a worker of the previous release
+    // still running while a deploy rolls out. Carries the old name until
+    // #1387 removes it, in the release that also runs the rename migration
+    // again.
+    reader_locale: body.user_locale ?? body.reader_locale,
     ...reading,
   };
 
@@ -599,7 +604,7 @@ canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
  * `GET /canvas/nodes/:nodeId/history` — list a node's content history.
  *
  * Returns AIGC generation results (success + failed), user uploads, and
- * the copies a reader asked to keep, ordered by most recent first. Used by
+ * the copies a user asked to keep, ordered by most recent first. Used by
  * the frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
@@ -654,7 +659,7 @@ canvas.get(
  * four numbers on the node and the rows in this table are not kept in lock
  * step — a dropped `node-task:counts` leaves the node showing a number the
  * table no longer holds, and a node that still reads as running cannot be
- * deleted. This is the way back: the reader who noticed asks for the truth,
+ * deleted. This is the way back: the user who noticed asks for the truth,
  * and everyone's node follows. The space rides in the query because a
  * document is what the counts are published to, and a node with no rows left
  * still has one.

@@ -384,7 +384,7 @@ describe('an empty line that is not a paragraph, taking content whose last block
 });
 
 describe('a line the content\'s last words join', () => {
-  it('keeps the reader\'s type', async () => {
+  it('keeps the user\'s type', async () => {
     const editor = open([{ type: 'heading', content: 'abcd', props: { level: 2 } }]);
     select(editor, positionOf(editor, 'abcd', 2));
     pasteOwn(editor, [{ type: 'image', props: { url: PIC } }, { type: 'bulletListItem', content: 'x' }]);
@@ -441,15 +441,15 @@ describe.each(SOURCES)('%s of lines of words alone, on a line that is not a para
     return lines(editor);
   }
 
-  it('in its middle keeps the reader\'s type on both halves', async () => {
+  it('in its middle keeps the user\'s type on both halves', async () => {
     expect(await at(2, [W, V])).toEqual(['heading#2:abw', 'heading#2:vcd', 'paragraph:tail']);
   });
 
-  it('at its start keeps the reader\'s type on the line the last words join', async () => {
+  it('at its start keeps the user\'s type on the line the last words join', async () => {
     expect(await at(0, [W, V])).toEqual(['paragraph:w', 'heading#2:vabcd', 'paragraph:tail']);
   });
 
-  it('at its end keeps the reader\'s type on the line the first words join', async () => {
+  it('at its end keeps the user\'s type on the line the first words join', async () => {
     expect(await at(4, [W, V])).toEqual(['heading#2:abcdw', 'paragraph:v', 'paragraph:tail']);
   });
 

@@ -7,7 +7,7 @@
  *
  * Each file is admitted at once on the canvas's rules plus the body's own; a
  * refused one is told and makes nothing. Each admitted file becomes a pending
- * media block, which the entry puts in where the reader aimed, and its upload
+ * media block, which the entry puts in where the user aimed, and its upload
  * starts once the block is in. Where the block goes and what it shows from
  * then on belong to the entry and the page's upload controller.
  */

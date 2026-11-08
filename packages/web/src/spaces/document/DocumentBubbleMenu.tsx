@@ -48,6 +48,9 @@ const CLOSE_GRACE_MS = 120;
  */
 const MENU_SIDE_OFFSET = 4 + 5;
 
+/** A level opened to the right is pulled up by its own padding and border, so its first row stands level with the row that opened it (as `DropdownMenuSubContent` does). */
+const SUB_ALIGN_OFFSET = -5;
+
 /**
  * The panel a menu is drawn on.
  *
@@ -91,11 +94,22 @@ interface DocumentBubbleMenuProps {
   /**
    * Which end of the trigger the panel lines up with; the start by default.
    *
-   * The colour panel is wide enough that opening from the start put a third
-   * of it out past the bar's own right edge, while every menu of rows stayed
-   * inside. Lining the wide one up by its end keeps both within the bar.
+   * Two panels line up by their end: the colour panel, wide enough that
+   * opening from the start put a third of it out past the bar's own right
+   * edge, and the AI menu, the bar's last slot. Both then stay within the bar.
    */
   align?: 'start' | 'end';
+  /**
+   * Which side of the trigger the panel opens on; below by default.
+   *
+   * `right` is a second level: a row of a menu whose own panel opens beside
+   * it (the AI menu's translate and change tone, inner#1860). Its trigger is a
+   * row of the first menu, and has to stay a row of it — the first menu's
+   * rows are its direct children — so it gets no zone around it: the trigger
+   * and the panel each say when the pointer leaves them, which comes to the
+   * same thing, since entering the other cancels the close.
+   */
+  side?: 'bottom' | 'right';
   /**
    * Which element the menu mounts inside.
    *
@@ -122,6 +136,7 @@ interface DocumentBubbleMenuProps {
  * @param props.children - What the menu holds.
  * @param props.contentClassName - Extra classes for the menu panel.
  * @param props.align - Which end of the trigger the panel lines up with.
+ * @param props.side - Which side of the trigger the panel opens on.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.open - Is this slot open?
@@ -134,6 +149,7 @@ export function DocumentBubbleMenu({
   children,
   contentClassName,
   align = 'start',
+  side = 'bottom',
   container,
   scroller,
   open,
@@ -204,60 +220,71 @@ export function DocumentBubbleMenu({
     };
   }, [content]);
 
+  // A second level has no zone of its own; its trigger and panel say when the
+  // pointer leaves instead (see `side`).
+  const zoned = side === 'bottom';
+  const popover = (
+    <Popover open={open} onOpenChange={onOpenChange} modal={false}>
+      {/* A pointer cannot rest on the slot with the menu shut — entering it
+            opened the menu — so every click a user makes lands on an open
+            one. Radix would read that click as a toggle and take the menu
+            away; the slot answers it by opening, which is what it already is
+            (ruling R4 / B2). */}
+      <PopoverTrigger
+        asChild
+        onPointerEnter={enter}
+        onPointerLeave={zoned ? undefined : leave}
+        onClick={(event) => {
+          // Radix runs its own handler after this one unless the default is
+          // prevented (`composeEventHandlers`).
+          event.preventDefault();
+          enter();
+        }}
+      >
+        {trigger}
+      </PopoverTrigger>
+      <PopoverContent
+        ref={setContent}
+        container={container}
+        data-testid={`${id}-menu`}
+        className={cn(MENU_PANEL, contentClassName)}
+        align={align}
+        side={side}
+        sideOffset={MENU_SIDE_OFFSET}
+        alignOffset={side === 'right' ? SUB_ALIGN_OFFSET : 0}
+        onPointerEnter={enter}
+        onPointerLeave={zoned ? undefined : leave}
+        // The focus stays in the body, on both ways.
+        //
+        // These menus take no keyboard input (user 2026-08-26), so the focus
+        // has no business moving into one: a user typing while a menu is
+        // open goes on reaching the body. Radix moves it in on open and back
+        // out on close, and both halves are refused here — the way out is
+        // what closed a menu that had just opened beside it, since it runs
+        // one turn late (`react-focus-scope` puts the unmount half in a
+        // `setTimeout`) and by then the focus it takes belongs to the next
+        // menu along the bar.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <CloseBubbleMenu.Provider value={close}>
+          {children}
+        </CloseBubbleMenu.Provider>
+      </PopoverContent>
+    </Popover>
+  );
+  if (!zoned) return popover;
   return (
     <div
       data-testid={`${id}-zone`}
       className='flex items-center'
       onPointerLeave={leave}
     >
-      <Popover open={open} onOpenChange={onOpenChange} modal={false}>
-        {/* A pointer cannot rest on the slot with the menu shut — entering it
-            opened the menu — so every click a reader makes lands on an open
-            one. Radix would read that click as a toggle and take the menu
-            away; the slot answers it by opening, which is what it already is
-            (ruling R4 / B2). */}
-        <PopoverTrigger
-          asChild
-          onPointerEnter={enter}
-          onClick={(event) => {
-            // Radix runs its own handler after this one unless the default is
-            // prevented (`composeEventHandlers`).
-            event.preventDefault();
-            enter();
-          }}
-        >
-          {trigger}
-        </PopoverTrigger>
-        <PopoverContent
-          ref={setContent}
-          container={container}
-          data-testid={`${id}-menu`}
-          className={cn(MENU_PANEL, contentClassName)}
-          align={align}
-          sideOffset={MENU_SIDE_OFFSET}
-          onPointerEnter={enter}
-          // The focus stays in the body, on both ways.
-          //
-          // These menus take no keyboard input (user 2026-08-26), so the focus
-          // has no business moving into one: a reader typing while a menu is
-          // open goes on reaching the body. Radix moves it in on open and back
-          // out on close, and both halves are refused here — the way out is
-          // what closed a menu that had just opened beside it, since it runs
-          // one turn late (`react-focus-scope` puts the unmount half in a
-          // `setTimeout`) and by then the focus it takes belongs to the next
-          // menu along the bar.
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-          }}
-        >
-          <CloseBubbleMenu.Provider value={close}>
-            {children}
-          </CloseBubbleMenu.Provider>
-        </PopoverContent>
-      </Popover>
+      {popover}
     </div>
   );
 }

@@ -21,7 +21,7 @@ export interface PriceCheckSources {
 }
 
 /**
- * The models the agent's own paths run on: every model the reader can pick
+ * The models the agent's own paths run on: every model the user can pick
  * for chat, and memory consolidation.
  * @returns Each model id once.
  */

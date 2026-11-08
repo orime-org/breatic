@@ -4,7 +4,7 @@
 /**
  * Where each message the product's screens show is in the product guide.
  *
- * Every message the reader's screens can show is either quoted by the guide,
+ * Every message the user's screens can show is either quoted by the guide,
  * described by it, or left out for a stated reason. A message the guide
  * quotes needs no entry here; every other one does, so a new message on those
  * screens fails the coverage test until someone decides where it belongs.
@@ -17,14 +17,14 @@ export const REASONS = {
   OUTSIDERS_ONLY: "Only someone who is not a member of the project sees it, and they get no chat.",
   ARCHIVED_ONLY: "Only shown on an archived project, which is read-only for everyone and has no chat.",
   PASSING: "A loading or in-progress word that goes away by itself.",
-  ECHO: "It confirms what the reader has just done.",
-  SAYS_TRY_AGAIN: "A failure that already tells the reader to try again or reload; the guide has nothing to add.",
+  ECHO: "It confirms what the user has just done.",
+  SAYS_TRY_AGAIN: "A failure that already tells the user to try again or reload; the guide has nothing to add.",
   FILLS_A_VALUE: "A time, count, unit, label or name filled into a row; it reads as itself.",
   SAYS_WHAT_HAPPENED: "A message or list entry that says in its own words what happened.",
   SAYS_WHAT_TO_TYPE: "A box's placeholder or a suggestion, which says itself what to type.",
   MODEL_SETTING_NAME: "The name of one model's own setting on its row; the guide says such settings appear.",
   TOOL_NOTE: "A fixed line under one tool's settings that states what the tool holds to; it reads as itself.",
-  NOT_CREATABLE: "Belongs to a node type the reader cannot make.",
+  NOT_CREATABLE: "Belongs to a node type the user cannot make.",
   NOT_USED: "Reached only by a key built at run time, and nothing builds this one.",
   NOT_ON_THESE_SCREENS: "Shown on a page outside the project, which the guide does not cover.",
   NOT_OPEN: "A command in the document AI menu, which the guide says does nothing yet.",
@@ -45,7 +45,7 @@ interface Described {
 
 /**
  * The guide leaves the message out, for this reason. A name only a screen
- * reader hears also carries the phrase that describes its control by look.
+ * user hears also carries the phrase that describes its control by look.
  */
 interface Excluded {
   excluded: (typeof REASONS)[keyof typeof REASONS];
@@ -500,7 +500,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.vertical-15s-quick-tip.shot.3": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.vertical-15s-quick-tip.shot.4": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.vertical-15s-quick-tip.shot.5": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
-  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/ },
+  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets, where a prompt carries one, asks the user to @ a node/ },
   "canvas.task.couldNotStart": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.task.countTip": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.dismissFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1048,7 +1048,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.studio.slug_taken": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.team_limit_reached": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.transfer_credits_designated": { excluded: REASONS.NOT_ON_THESE_SCREENS },
-  "server.text_tool.already_running": { excluded: REASONS.NO_CALLER },
+  "server.text_tool.document_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.text_tool.failed": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "server.text_tool.selection_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "share.inviteFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "share.inviteSending": { excluded: REASONS.PASSING },
   "share.inviteSent": { excluded: REASONS.ECHO },
@@ -1063,7 +1065,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.typeLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
   "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
-  "spaces.document.commands.aiOtherGroup": { excluded: REASONS.NOT_OPEN },
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1082,23 +1083,14 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.captionPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "spaces.document.media.captionReadOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.captionRetained": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "spaces.document.commands.aiProduceGroup": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.aiRewriteGroup": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_custom": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_expand": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.ai_illustrate": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_refine": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_shorten": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.ai_storyboard": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_tone": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.ai_translate": { excluded: REASONS.NOT_OPEN },
-  "spaces.document.commands.bold": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.code": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.comingLabel": { excluded: REASONS.SCREEN_READER, look: /a sparkle with the word/ },
-  "spaces.document.commands.italic": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.link": { excluded: REASONS.SCREEN_READER, look: /a link icon/ },
-  "spaces.document.commands.strike": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
-  "spaces.document.commands.underline": { excluded: REASONS.SCREEN_READER, look: /bold B, italic I, strikethrough S and underline U icons, a link icon, a code/ },
+  "spaces.document.ai.close": { excluded: REASONS.SCREEN_READER, look: /An X at the top right of the panel/ },
+  "spaces.document.ai.customTitle": { described: /titled with the command/ },
+  "spaces.document.ai.instruction": { described: /the instruction\s+then stays as a line above the result/ },
+  "spaces.document.ai.instructionsPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "spaces.document.ai.notWritable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.document.ai.selectionTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.comment.closeRail": { excluded: REASONS.SCREEN_READER, look: /and an X that closes it/ },
   "spaces.document.comment.deleteReply": { excluded: REASONS.SCREEN_READER, look: /each later reply has a small X/ },
   "spaces.document.docMenu.label": { excluded: REASONS.SCREEN_READER, look: /Three dots at the top right open/ },
@@ -1106,7 +1098,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.schemaOutdated.risksLead": { described: /warns above the button that/ },
   "spaces.document.table.cellMenu": { excluded: REASONS.SCREEN_READER, look: /a small box with a down arrow/ },
   "spaces.document.table.columnHandle": { excluded: REASONS.SCREEN_READER, look: /one above its column/ },
-  "spaces.document.table.mergeCells": { excluded: REASONS.SCREEN_READER, look: /a merge icon after the speech bubble/ },
   "spaces.document.table.rowHandle": { excluded: REASONS.SCREEN_READER, look: /a small handle of dots at the left of its row/ },
   "spaces.drawer.action.deleteConfirmDescription": { described: /says the owner can restore it/ },
   "spaces.drawer.action.deleteConfirmTitle": { described: /which asks whether to delete the space by name/ },
@@ -1166,7 +1157,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.threeD.taskList.removeFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "activity.type.assetUploadedModel": { described: /The project activity records each import whose file was uploaded, under the model's name/ },
   "spaces.threeD.invalidObject": { described: /Unreadable objects appear as rows naming their object id/ },
-  "spaces.threeD.peerSelection": { described: /each reader's name and selected-object count/ },
+  "spaces.threeD.peerSelection": { described: /each user's name and selected-object count/ },
   "spaces.threeD.selectedCount": { described: /For several objects the panel shows a selection count/ },
   "spaces.threeD.selectObject": { described: /Clearing the selection closes its properties panel/ },
   "spaces.threeD.submit": { excluded: REASONS.SCREEN_READER, look: /the round button with an upward arrow, which generates/ },

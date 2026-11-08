@@ -204,7 +204,7 @@ describe('TextNode', () => {
 
     it('keeps its body readable while a task is writing', () => {
       // The counts beside the node say something is working; covering the
-      // text took away the thing the reader came for (user 2026-09-06).
+      // text took away the thing the user came for (user 2026-09-06).
       seedNode('x');
       renderNode({ view: { handling: true } });
       expect(
@@ -495,7 +495,7 @@ describe('TextNode', () => {
     it('stays open when the blur comes from its Space being hidden', async () => {
       // Hiding the Space unmounts the editor's host, which moves the editor
       // into a detached element; Chrome fires the blur while the Space is
-      // still on screen, so only what happens next says it was not the reader
+      // still on screen, so only what happens next says it was not the user
       // leaving (inner#1235 A13).
       seedNode('x');
       const outlet = document.body.appendChild(document.createElement('div'));
@@ -626,7 +626,7 @@ describe('TextNode', () => {
 
     it('stays open when a task on the node fails mid-edit', () => {
       // A failed task leaves the body where it was (inner#888 §7.8), so the
-      // reader typing into it keeps typing.
+      // user typing into it keeps typing.
       seedNode('typed so far');
       const { rerender } = renderNode();
       enterByDoubleClick();
@@ -642,7 +642,7 @@ describe('TextNode', () => {
 
     it('stays open when a task starts writing the node mid-edit', () => {
       // A task running freezes deletion and nothing else — the mandate has
-      // the second upload, the second generation and the reader's own typing
+      // the second upload, the second generation and the user's own typing
       // all going through, last write winning. The editor used to close here
       // because the content slot went to a skeleton and there would have been
       // nothing under the caret; the node keeps showing its body now

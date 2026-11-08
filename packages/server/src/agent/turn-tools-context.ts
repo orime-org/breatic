@@ -38,11 +38,11 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  * @param tools - The tool set the call runs with.
  * @param usage - The turn's recorder.
  * @param turn - What this turn's project lends its tools.
- * @param turn.saveToStorage - How a found picture is stored for this project and reader.
+ * @param turn.saveToStorage - How a found picture is stored for this project and user.
  * @param turn.studioId - The studio whose material a proposal may name.
  * @param turn.projectId - The project owning the long-media operation, when supplied.
  * @param turn.actorUserId - The user who owns the long-media operation, when supplied.
- * @param turn.openDocument - The document the reader has open, which a
+ * @param turn.openDocument - The document the user has open, which a
  *   document proposal goes to, or null when none can be read.
  * @param turn.records - The user's records this turn may read (inner#1469).
  * @param turn.memory - The user's memory this turn may write and read (#1363).
@@ -93,9 +93,9 @@ export function turnToolsContext(
 }
 
 /**
- * The document the reader has open this turn, as a document proposal reads
+ * The document the user has open this turn, as a document proposal reads
  * it (inner#1509): a loaded document Space and the blocks its browser sent.
- * @param space - The reader's Spaces as the message carries them.
+ * @param space - The user's Spaces as the message carries them.
  * @returns The document, or null when the open Space is not a loaded document.
  * @throws {never} Never.
  */

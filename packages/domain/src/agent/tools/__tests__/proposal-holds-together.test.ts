@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a proposal has to hold together before it reaches a reader (#229).
+ * What a proposal has to hold together before it reaches a user (#229).
  *
  * The tool hands back what the model sent, so the only thing standing between
- * a careless proposal and a card the reader presses is this check. Everything
+ * a careless proposal and a card the user presses is this check. Everything
  * it applies is read off the catalog rather than written here: whether the
  * mode needs source material, how that material reaches the generation, which
  * models the mode can reach, what each model declares its parameters to be,
@@ -18,7 +18,7 @@
  * reads, so a fixture is not an independent statement of how many pieces a
  * mode takes -- it says the tool agrees with itself about the shape of a
  * correct proposal, and the cases below then build incorrect ones. What holds
- * that answer to the panel a reader will actually see is the nine cases in
+ * that answer to the panel a user will actually see is the nine cases in
  * `declarations-have-claimants.test.ts`, which compare the declarations
  * against the panel's own registries.
  */
@@ -54,17 +54,17 @@ interface Reachable {
   nodeType: GenerationNodeType;
   mode: string;
   model: string;
-  /** The kinds of material this mode needs from the reader. */
+  /** The kinds of material this mode needs from the user. */
   needs: GenerationNodeType[];
   /** True when that material arrives through the reference pool, fed by an edge. */
   byReference: boolean;
   /** How many places the panel offers to put material in. */
   slots: number;
-  /** How many separate pieces of material the panel asks the reader for. */
+  /** How many separate pieces of material the panel asks the user for. */
   pieces: number;
   /** True when the model is driven by what the prompt says. */
   takesPrompt: boolean;
-  /** Parameters only the reader can fill, in the panel, once the group is there. */
+  /** Parameters only the user can fill, in the panel, once the group is there. */
   choices: string[];
   /** The most prompt text one call takes, when the model states a cap. */
   maxInputChars?: number;
@@ -171,7 +171,7 @@ function slotFor(at: Reachable, kind: string): string {
   return name;
 }
 
-/** A mode asking nothing of the reader. */
+/** A mode asking nothing of the user. */
 const sourceless = (): Reachable => pick((at) => at.needs.length === 0, "mode needing no source");
 
 /**
@@ -183,9 +183,9 @@ const sourceless = (): Reachable => pick((at) => at.needs.length === 0, "mode ne
 interface Built {
   /** One empty node per entry, of that kind. */
   sources?: GenerationNodeType[];
-  /** How many places in the prompt are marked as the reader's to fill. */
+  /** How many places in the prompt are marked as the user's to fill. */
   marks?: number;
-  /** How many places are marked as the reader's to choose. */
+  /** How many places are marked as the user's to choose. */
   tweaks?: number;
   /** Whether each empty node is wired into the generation. */
   wired?: boolean;
@@ -239,7 +239,7 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
   };
 }
 
-/** A mode on one node type that asks the reader for nothing. */
+/** A mode on one node type that asks the user for nothing. */
 const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
   pick(
     (at) => at.nodeType === nodeType && at.needs.length === 0,
@@ -247,7 +247,7 @@ const sourcelessOn = (nodeType: GenerationNodeType): Reachable =>
   );
 
 /**
- * What one empty node of the reader's needs in the prompt: a note saying
+ * What one empty node of the user's needs in the prompt: a note saying
  * what to put in it, and where the mode reads the reference pool, the ref
  * that @s it.
  * @param at - The mode the material is for.
@@ -263,7 +263,7 @@ function materialMark(at: Reachable, index: number, note: string): PromptSegment
 
 /**
  * The ref to a generation upstream, with the note that it lands empty until
- * the reader runs it.
+ * the user runs it.
  * @param index - The upstream node's index in the proposal.
  * @returns The segments.
  * @throws {never} Never.
@@ -275,7 +275,7 @@ function madeFirst(index: number): PromptSegment[] {
 /**
  * One generation node, configured, with what the prompt carries.
  * @param at - The node type, mode and model to propose.
- * @param marks - The indices of the empty nodes it asks the reader to fill.
+ * @param marks - The indices of the empty nodes it asks the user to fill.
  * @param extra - Further segments, such as refs to nodes upstream.
  * @returns The node.
  * @throws {never} Never.
@@ -403,7 +403,7 @@ describe("a mode whose material arrives through the reference pool", () => {
 
   it("counts what the step before made against the pool ceiling too", () => {
     // What the step before made goes in the pool like anything else the
-    // reader would have mentioned, so it takes one of the rows -- counting
+    // user would have mentioned, so it takes one of the rows -- counting
     // only the empty nodes lets a group be placed that the panel then refuses.
     const at = pick(
       (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video" && m.needs.length > 0,
@@ -461,7 +461,7 @@ describe("a mode whose material arrives through the reference pool", () => {
 
 describe("a mode whose material arrives through a panel slot", () => {
   it("stands with the empty node and no edge at all", () => {
-    // The reader picks the node in the toolbar slot, clicking any node of that
+    // The user picks the node in the toolbar slot, clicking any node of that
     // kind anywhere on the canvas, so no edge carries the material here.
     expect(checkProposal(propose(slotted()))).toEqual({ ok: true });
   });
@@ -476,9 +476,9 @@ describe("a mode whose material arrives through a panel slot", () => {
     expect(checkProposal(propose(at, { sources: each }))).toEqual({ ok: true });
   });
 
-  it("stands as one generation with no empty node, for a reader who has the material", () => {
+  it("stands as one generation with no empty node, for a user who has the material", () => {
     // The other answer to the question the tool tells the model to ask first.
-    // The reader picks what is already on their canvas in the panel's slot,
+    // The user picks what is already on their canvas in the panel's slot,
     // and the proposal cannot see that canvas to prove it is there.
     const at = pick(
       (m) => !m.byReference && m.needs.length > 0,
@@ -497,7 +497,7 @@ describe("a mode whose material arrives through a panel slot", () => {
 
   it("stands when one branch's empty node sits beside a generation that needs another kind", () => {
     // The empty node belongs to the branch it is wired into. A generation in
-    // the same group whose own material is already on the reader's canvas is
+    // the same group whose own material is already on the user's canvas is
     // not made wrong by a neighbour asking for something.
     const slot = pick((m) => !m.byReference && m.needs.length > 0, "mode fed by a panel slot");
     const other = pick(
@@ -525,7 +525,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     ).toEqual({ ok: true });
   });
 
-  it("stands when it places an empty node for one kind and the reader holds the other", () => {
+  it("stands when it places an empty node for one kind and the user holds the other", () => {
     // Placing one empty node says that piece is theirs to put somewhere; it
     // says nothing about the piece they already have on their canvas.
     const at = pick(
@@ -548,7 +548,7 @@ describe("a mode whose material arrives through a panel slot", () => {
   });
 
   it("is refused when it places an empty node no place in the group can take", () => {
-    // A to-do the reader cannot complete: they fill the node and there is no
+    // A to-do the user cannot complete: they fill the node and there is no
     // slot anywhere in this group to pick it into.
     const at = pick(
       (m) => !m.byReference && m.needs.length === 1,
@@ -575,7 +575,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     // Slot material is picked in the panel rather than wired, so no edge is
     // drawn and the connection rule never sees these nodes. A talking head has
     // one place for a picture and one for a voice; two portraits is a group
-    // the reader fills and then has nowhere to put the second one.
+    // the user fills and then has nowhere to put the second one.
     const at = pick(
       (m) => !m.byReference && new Set(m.needs).size > 1,
       "mode needing two kinds through panel slots",
@@ -592,7 +592,7 @@ describe("a mode whose material arrives through a panel slot", () => {
   });
 });
 
-describe("a mode that needs nothing of the reader", () => {
+describe("a mode that needs nothing of the user", () => {
   it("stands as one node with no edges", () => {
     expect(checkProposal(propose(sourceless(), { sources: [], marks: 0 }))).toEqual({
       ok: true,
@@ -615,11 +615,11 @@ describe("what the generation is driven by", () => {
   });
 });
 
-describe("what only the reader can fill in", () => {
+describe("what only the user can fill in", () => {
   it("is refused when the proposal fills the value in itself", () => {
     // The list is fetched from the vendor and shown in the panel; a value
     // written here is one nobody checked against it.
-    const at = pick((m) => m.choices.length > 0, "model with something only the reader fills");
+    const at = pick((m) => m.choices.length > 0, "model with something only the user fills");
 
     expect(
       checkProposal(propose(at, { params: { [at.choices[0] as string]: "anything" } })).ok,
@@ -674,7 +674,7 @@ describe("what the model is allowed to fill in", () => {
   });
 
   it("refuses a value for a parameter the canvas itself fills", () => {
-    // That parameter carries the reader's material, which arrives by wiring a
+    // That parameter carries the user's material, which arrives by wiring a
     // node in. A URL written here is one the canvas would overwrite anyway.
     const found = reachableModes()
       .flatMap((at) =>
@@ -692,7 +692,7 @@ describe("what the model is allowed to fill in", () => {
   });
 
   it("refuses a value for a parameter the panel draws no control for", () => {
-    // Nothing on screen would show it and nothing would let the reader change
+    // Nothing on screen would show it and nothing would let the user change
     // it, so a value set here is one they can neither see nor undo.
     const found = reachableModes()
       .flatMap((at) =>
@@ -772,7 +772,7 @@ describe("what the model is allowed to fill in", () => {
   it("stands when a blank line keeps the prompt inside the cap", () => {
     // The editor collapses a run of block breaks back to one blank line, so a
     // script with paragraphs is no longer in the box than the panel measures.
-    // Counted any other way, the agent trims the reader's own words.
+    // Counted any other way, the agent trims the user's own words.
     const at = pick((m) => m.maxInputChars !== undefined, "model stating an input cap");
     const cap = at.maxInputChars ?? 0;
     const marks = [...markTextOf(propose(at, { text: "" }))].length;
@@ -897,7 +897,7 @@ describe("wiring that could not be placed", () => {
   });
 
   it("refuses an edge that does not end at the node that generates", () => {
-    // The canvas would draw it, and it says the reader's two files feed each
+    // The canvas would draw it, and it says the user's two files feed each
     // other rather than the generation.
     const at = pooled();
     const twice = [at.needs[0] as GenerationNodeType, at.needs[0] as GenerationNodeType];
@@ -940,7 +940,7 @@ describe("what the catalog does not offer", () => {
   it("names the model when the model is what it does not carry", () => {
     // The refusal is the whole of what the model has to act on. Told instead
     // that nothing reads the empty node, the sensible next move is to drop
-    // the empty node -- and the reader who said they had the photo gets a
+    // the empty node -- and the user who said they had the photo gets a
     // flow that does not use it.
     const at = pooled();
     const verdict = checkProposal({
@@ -1109,7 +1109,7 @@ describe("what the schema turns away before any of this runs", () => {
   }
 
   it("refuses a note that is nothing but space", () => {
-    // The note is a line on the card, telling the reader what is left for
+    // The note is a line on the card, telling the user what is left for
     // them. A blank one draws a bullet with nothing beside it, which reads
     // as a step nobody wrote down.
     expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: "x" }))).toBe(true);
@@ -1150,23 +1150,23 @@ describe("what the schema turns away before any of this runs", () => {
   }
 
   it("refuses a node name that is nothing but space", () => {
-    // The name is what the reader sees on the node once it is placed, and on
+    // The name is what the user sees on the node once it is placed, and on
     // the card before that. A blank one leaves both unlabelled, the same way
     // a blank label or note does.
     expect(accepted(named("Result"))).toBe(true);
     expect(accepted(named(" "))).toBe(false);
   });
 
-  it("refuses a node name longer than a reader could type", () => {
+  it("refuses a node name longer than a user could type", () => {
     // The rename input stops at this and the commit clips to it, so a longer
     // name is one nobody at the canvas could have given -- and the first time
-    // the reader opens the name to edit it, committing shortens it without
+    // the user opens the name to edit it, committing shortens it without
     // saying so.
     expect(accepted(named("a".repeat(MAX_NODE_NAME_LEN)))).toBe(true);
     expect(accepted(named("a".repeat(MAX_NODE_NAME_LEN + 1)))).toBe(false);
   });
 
-  it("refuses a group name longer than a reader could type", () => {
+  it("refuses a group name longer than a user could type", () => {
     // The group's name lands on a group node and is renamed through the same
     // editor, under the same cap, so it is the same name rule as the nodes it
     // holds rather than a second one.
@@ -1191,7 +1191,7 @@ describe("what the schema turns away before any of this runs", () => {
 
   it("refuses a label that is nothing but space", () => {
     // The label is what goes between the brackets in the prompt, so a blank
-    // one puts a mark in the reader's box that names nothing.
+    // one puts a mark in the user's box that names nothing.
     expect(accepted(withSlot({ kind: "tweak", label: " ", note: "pick one" }))).toBe(false);
   });
 });
@@ -1206,7 +1206,7 @@ describe("what the schema turns away before any of this runs", () => {
  * actually able to hold the words it carries.
  */
 describe("a flow of any shape", () => {
-  /** A node holding words the reader can read before pressing anything. */
+  /** A node holding words the user can read before pressing anything. */
   const written = (name = "Your copy"): ProposalNode => ({
     role: "written",
     type: "text",
@@ -1218,9 +1218,9 @@ describe("a flow of any shape", () => {
     ],
   });
 
-  it("refuses words alone, which the reader can read in the reply", () => {
+  it("refuses words alone, which the user can read in the reply", () => {
     // Asked for a line of copy and nothing else, the answer is the copy, in
-    // the message. A node carrying it gives the reader something to place,
+    // the message. A node carrying it gives the user something to place,
     // press and undo for words they could already read and take.
     const verdict = checkProposal({
       nodes: [written()],
@@ -1305,7 +1305,7 @@ describe("a flow of any shape", () => {
     expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("text node") });
   });
 
-  it("refuses an empty text node, which the reader makes in one click", () => {
+  it("refuses an empty text node, which the user makes in one click", () => {
     const at = pooled();
     const one = propose(at);
 
@@ -1328,7 +1328,7 @@ describe("a flow of any shape", () => {
     expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("no mode") });
   });
 
-  it("refuses words asking the reader for material", () => {
+  it("refuses words asking the user for material", () => {
     const verdict = checkProposal({
       nodes: [
         {
@@ -1344,7 +1344,7 @@ describe("a flow of any shape", () => {
   });
 
   it("places a generation the step before it feeds, through a panel slot", () => {
-    // "Draw the shoe, then animate it." The reader picks the picture in the
+    // "Draw the shoe, then animate it." The user picks the picture in the
     // panel's slot, and what they pick is the node upstream -- a slot is
     // filled by clicking any node of that kind on the canvas, and a generated
     // one is one of those. That click is theirs, so the prompt marks it.
@@ -1375,7 +1375,7 @@ describe("a flow of any shape", () => {
   it("lets words upstream be named in a slot-fed prompt", () => {
     // A mention of a text node substitutes its words into the prompt; it
     // never asks the reference pool for anything, and the panel lets it
-    // through for any model that takes a prompt. The reader can make this
+    // through for any model that takes a prompt. The user can make this
     // mention by hand, so the proposal may make it for them.
     const at = slotted();
     const kind = at.needs[0] as GenerationNodeType;
@@ -1402,7 +1402,7 @@ describe("a flow of any shape", () => {
   });
 
   it("leaves the panel slot fed while words are wired in", () => {
-    // On the slot path the reader fills the material by clicking, so an
+    // On the slot path the user fills the material by clicking, so an
     // empty node need not be wired at all. An edge carrying words says
     // nothing about where the material comes from, and reading it as one
     // turns away a group the panel would have run.
@@ -1432,10 +1432,10 @@ describe("a flow of any shape", () => {
 
   it("places two slot-fed generations that each take their own material", () => {
     // Clone both of these voices: two empty nodes, two generations, each
-    // taking one piece. The reader opens the first panel and picks one node
+    // taking one piece. The user opens the first panel and picks one node
     // into its slot, opens the second and picks the other. How many empty
     // nodes the group carries says nothing about how many pieces reach any
-    // one generation -- on this path the reader decides that by clicking.
+    // one generation -- on this path the user decides that by clicking.
     const at = slotted();
     const kind = at.needs[0] as GenerationNodeType;
     const one = (name: string): ProposalNode => ({
@@ -1516,7 +1516,7 @@ describe("a flow of any shape", () => {
   });
 
   it("names the panel slot when that is where the material goes", () => {
-    // Two ways the reader's material reaches a generation, and the sentence
+    // Two ways the user's material reaches a generation, and the sentence
     // about a parameter carrying it has to name the one this model uses.
     const at = slotted();
     const key = Object.keys(at.params).find((name) => at.params[name]?.filledBySource);
@@ -1529,7 +1529,7 @@ describe("a flow of any shape", () => {
     expect(verdict.reason).not.toContain("reference pool");
   });
 
-  it("names the pool when that is where the reader's material goes", () => {
+  it("names the pool when that is where the user's material goes", () => {
     const at = pooled();
     const key = Object.keys(at.params).find((name) => at.params[name]?.fromReferencePool);
     if (key === undefined) throw new Error("the catalog offers no pooled parameter");
@@ -1544,7 +1544,7 @@ describe("a flow of any shape", () => {
   it("places two slot-fed generations wired one empty node each", () => {
     // Two photos, two clips, one edge apiece. What the edge settles here is
     // which photo a mark is about; how many pieces reach either generation is
-    // the reader's, since a slot is filled by clicking. The case that tells
+    // the user's, since a slot is filled by clicking. The case that tells
     // the two readings apart is the one below, where the edge carries a kind
     // the generation cannot take.
     const at = slotted();
@@ -1575,7 +1575,7 @@ describe("a flow of any shape", () => {
 
   it("judges each slot-fed generation on the material of its own kind", () => {
     // One job, two generations, each bringing its own empty node. Neither is
-    // answerable for the other's: the reader fills the picture slot from the
+    // answerable for the other's: the user fills the picture slot from the
     // picture node and the sound slot from the sound node.
     const one = slotted();
     const two = pick(
@@ -1625,7 +1625,7 @@ describe("a flow of any shape", () => {
     expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("ring") });
   });
 
-  it("refuses an edge ending at a place the reader fills", () => {
+  it("refuses an edge ending at a place the user fills", () => {
     const at = pooled();
     const one = propose(at);
 
@@ -1656,13 +1656,13 @@ describe("a flow of any shape", () => {
  * A flow carries more than one thing that generates, so "the material this
  * proposal offers" stops being a property of the whole group: each generation
  * reads what its own incoming edges bring it, and an upstream generation
- * supplies a picture as surely as an empty node the reader fills does.
+ * supplies a picture as surely as an empty node the user fills does.
  *
- * The edges themselves are held to the whitelist the canvas holds a reader's
+ * The edges themselves are held to the whitelist the canvas holds a user's
  * own drag to -- one ratified rule, one answer, whoever drew the line.
  */
 describe("edges the canvas itself would refuse", () => {
-  it("refuses a pair the reader could not have wired by hand", () => {
+  it("refuses a pair the user could not have wired by hand", () => {
     const sound = pooled();
     const other = pick(
       (at) => !canConnect(at.nodeType, sound.nodeType),
@@ -1764,7 +1764,7 @@ describe("edges the canvas itself would refuse", () => {
  * not move -- with no words on screen saying why.
  *
  * A `ref` mark is how the proposal says which upstream node a sentence means.
- * It asks the reader for nothing, so it is not one of the things left to do,
+ * It asks the user for nothing, so it is not one of the things left to do,
  * and it writes no bracket of its own -- the mention it lands as is the text.
  */
 describe("a mark pointing at an upstream node", () => {
@@ -1785,7 +1785,7 @@ describe("a mark pointing at an upstream node", () => {
 
   it("refuses a written node whose words are all whitespace", () => {
     // It lands as a text node with nothing readable in it, which is the thing
-    // a reader makes in one click.
+    // a user makes in one click.
     const verdict = checkProposal({
       nodes: [
         { role: "written", type: "text", name: "Your copy", prompt: [{ text: "   \n  " }] },
@@ -1848,7 +1848,7 @@ describe("a mark pointing at an upstream node", () => {
   });
 
   it("pairs a mark with the node past the one the slot takes", () => {
-    // The reader picks the slot's node in the panel, so the canvas writes no
+    // The user picks the slot's node in the panel, so the canvas writes no
     // mention of it and the one mark is about the caption wired in after it.
     const at = pick(
       (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,

@@ -102,7 +102,7 @@ describe("templates in proposals", () => {
   // inner#1807: the description indexes each template in one line, its goal,
   // what it makes and when to offer it; the full text is read with
   // get_generation_template.
-  it("indexes every template in its description with its goal, the reader's words for it and when to offer it", () => {
+  it("indexes every template in its description with its goal, the user's words for it and when to offer it", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
       expect(said).toContain(`${template.id} (${template.goal}, makes ${templateAnchor(template).type})`);

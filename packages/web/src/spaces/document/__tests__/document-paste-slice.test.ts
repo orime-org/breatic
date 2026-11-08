@@ -30,9 +30,9 @@ function between(editor: Editor, a: [string, number], b: [string, number]): Sele
 }
 
 /**
- * What the reader's copy of a selection reads back as, in another body.
+ * What the user's copy of a selection reads back as, in another body.
  * @param editor - The body copied from.
- * @param selection - What the reader selected.
+ * @param selection - What the user selected.
  * @returns The original slice and the slice read back.
  */
 function copyAndRead(editor: Editor, selection: Selection): { original: Slice; read: Slice } {
@@ -59,7 +59,7 @@ function label(node: PMNode): string {
 /**
  * The lines a selection's copy reads as, and how each end lands.
  * @param editor - The body copied from.
- * @param selection - What the reader selected.
+ * @param selection - What the user selected.
  * @returns The labels and both ends.
  */
 function linesOf(editor: Editor, selection: Selection): { rows: string[]; start: string; end: string } {

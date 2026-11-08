@@ -175,7 +175,7 @@ function renderModel(model: PricedModelInfo): string {
   const beyond = Object.entries(model.params)
     .filter(([, spec]) => spec.noControl && !spec.fromStoryboard)
     .map(([name]) => name);
-  // A reader picks a model off this line. A capability its prose sells whose
+  // A user picks a model off this line. A capability its prose sells whose
   // parameter nothing can set is one they cannot have, and the per-parameter
   // line saying so is read after the choice.
   const unreachable =
@@ -248,10 +248,10 @@ function renderModel(model: PricedModelInfo): string {
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
           : shape;
     // The control exists but does not count yet, which asks something of the
-    // reader that "no control" does not: satisfy the gate and setting it works.
+    // user that "no control" does not: satisfy the gate and setting it works.
     const waits = spec.gate === undefined ? "" : ` it applies only while ${gateWords(spec.gate, false)};`;
     // A field served from upstream stands on the first entry of that list
-    // until the reader picks one in the panel.
+    // until the user picks one in the panel.
     const tail = spec.valuesFrom
       ? " defaults to the first entry of that list."
       : ` defaults to ${JSON.stringify(spec.default)}.`;
