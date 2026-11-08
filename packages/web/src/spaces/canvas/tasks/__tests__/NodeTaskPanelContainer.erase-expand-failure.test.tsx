@@ -56,24 +56,26 @@ function row(): NodeTaskEntry {
 /**
  * The failed run; the reason is the failed output's error.
  * @param reason - The reason.
+ * @param takenOver - Whether an admitted retry has taken the failed output over.
  * @returns The record.
  */
-function record(reason: Record<string, unknown>): MiniToolExecutionRecord {
+function record(reason: Record<string, unknown>, takenOver = false): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
-    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: TOOL.current === 'video.erase' ? 'erase' : 'expand' }, late: false, result: { status: 'failed', error: structuredClone(reason) as never } }],
+    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: TOOL.current === 'video.erase' ? 'erase' : 'expand' }, late: false, result: { status: 'failed', error: structuredClone(reason) as never }, takenOver }],
     usage: [], billingState: 'settled', error: { message: 'output failed' } };
 }
 
 /**
  * Answers the output node's task list and its run.
  * @param reason - The run's failure reason.
+ * @param takenOver - Whether an admitted retry has taken the failed output over.
  * @returns Nothing.
  */
-function serve(reason: Record<string, unknown>): void {
+function serve(reason: Record<string, unknown>, takenOver = false): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === `/canvas/nodes/${OUTPUT}/tasks`) return { tasks: [row()] };
-    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(reason);
+    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(reason, takenOver);
     throw new Error(`Unexpected GET ${path}`);
   });
 }
@@ -163,6 +165,15 @@ describe('erase and expand output nodes list their failure and retry what can be
     await screen.findByTestId('node-task-row');
     await screen.findByText(new RegExp(`${ui('windowNumber', { number: 1 })}\\W+${ui('personFailRejected')}`));
     expect(screen.getByText(ui('expandRejectedNext'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ui('retryFailedItems') })).toBeNull();
+  });
+
+  // frames-split §7.15 可重试结束: once a retry has taken the failed output over, the old run's failure stays listed with no retry.
+  it.each(['video.erase', 'video.expand'] as const)('a %s output a retry took over shows its failure and offers no retry', async (tool) => {
+    TOOL.current = tool;
+    serve(tool === 'video.erase' ? { kind: 'erase', step: 'mask', category: 'timeout' } : { kind: 'expand', windows: [{ windowIndex: 2, step: 'generate', category: 'timeout' }], shared: null }, true);
+    mount();
+    await screen.findByText(new RegExp(`${ui(tool === 'video.erase' ? 'stepFail.mask' : 'windowNumber', { number: 3 })}\\W+${ui('personFailTimeout')}`));
     expect(screen.queryByRole('button', { name: ui('retryFailedItems') })).toBeNull();
   });
 });

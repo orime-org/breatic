@@ -259,6 +259,7 @@
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
       "foreignSource": "이 파일은 처리할 수 없습니다.",
+      "alreadyRetried": "이 결과는 이미 다시 시도되었습니다.",
       "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
       "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
       "runTooLong": "이 동영상은 한 번에 처리하기에 너무 깁니다(인코딩 작업이 {max}개를 넘습니다). 출력 수를 줄이거나 더 짧게 해 주세요.",

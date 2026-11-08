@@ -788,7 +788,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand or for a ${quoted(t("canvas.miniTool.video.remove-bg.label"))}, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} or ` +
-      `${quoted(t("canvas.miniTool.video.split.label"))} result that can run again, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `${quoted(t("canvas.miniTool.video.split.label"))} result that can run again and was not retried already (a retried result runs again from ` +
+      `its newest row), and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "",
@@ -1012,7 +1013,7 @@ export function renderProductGuide(): string {
       "when that can help. " + eraseRange() + " frame the selection was marked on must lie inside the " +
       "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
       "expansion lists on its output node what failed, by step or by window, and what to do next; " +
-      `${quoted(t("canvas.miniTool.videoUI.retryFailedItems"))} is offered only when retrying can succeed. ` +
+      `${quoted(t("canvas.miniTool.videoUI.retryFailedItems"))} is offered only when retrying can succeed and the run was not retried already. ` +
       "Video expansion uses the frame around the " +
       "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion" + expandLimits() + ". Neither erase nor expansion works on a " +
       "video with transparency, such as a background removal result.",
@@ -1031,7 +1032,8 @@ export function renderProductGuide(): string {
       "Choose the lip-sync model in the panel; Run stays unavailable, with a toast giving the range, while the result is " +
       "outside the model's duration range or the used part of the video is outside what person tracking takes. " + lipSyncLimits() +
       "A failed run lists one line per person with the step that failed " +
-      "and what to do next; retry is offered only when every failure can clear on a retry, and it reruns only the failed people.",
+      "and what to do next; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
+      "and it reruns only the failed people.",
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
       `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.current"))} in one row. ` +

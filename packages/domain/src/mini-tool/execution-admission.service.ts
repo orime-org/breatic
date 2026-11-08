@@ -957,7 +957,7 @@ async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecuti
  * @param fingerprint - Whole retry request identity.
  * @returns One new claimed task, or the existing same-run winner.
  * @throws {NotFoundError} When the original execution belongs to another Project, Space or tool.
- * @throws {ValidationError} When any selected slot is not failed or was registered late.
+ * @throws {ValidationError} When any selected slot is not failed, was registered late or was already taken over by a retry.
  * @throws {ConflictError} When an overlapping execution is still active.
  * @throws {Error} When original frozen planning or transactional persistence is invalid.
  */
@@ -994,6 +994,9 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
       || selected.some((output) => output.result?.status !== "failed" || output.late
         // A failure no retry can clear (§9.4, §10.4, §10.5) is no retryable slot.
         || !plannedFailureRetryable(plan.execution.tool, output.result.error))) throw new ValidationError(t("server.mini_tool.foreignSource"));
+    // A failed output an admitted retry took over accepts no further retry; the next one starts from that retry (§7.15).
+    const takenOver = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(original.id, tx));
+    if (selected.some((output) => takenOver.has(output.outputIndex))) throw new ValidationError(t("server.mini_tool.alreadyRetried"));
     const outputs = plan.execution.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
     if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
     const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;

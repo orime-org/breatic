@@ -37,24 +37,24 @@ export interface VideoToolModels {
 }
 
 /**
- * The host's last failed lip-sync run: the newest lip-sync task of the output nodes its lip-sync edges lead to, and that
- * run's failed output reason.
+ * The host's last failed lip-sync run: the newest lip-sync task of the output nodes its lip-sync edges lead to, that
+ * run's failed output reason, and whether an admitted retry has taken that output over (frames-split §7.15).
  * @param projectId - The project.
  * @param spaceId - The space.
  * @param outputs - The output node ids.
- * @returns The run and its reason, or null.
+ * @returns The run, its reason and whether it was taken over, or null.
  * @throws {Error} When a read fails.
  */
-async function lastLipSyncFailure(projectId: string, spaceId: string, outputs: readonly string[]): Promise<{ runId: string; reason: LipsyncFailureReason } | null> {
+async function lastLipSyncFailure(projectId: string, spaceId: string, outputs: readonly string[]): Promise<{ runId: string; reason: LipsyncFailureReason; takenOver: boolean } | null> {
   const tasks = (await Promise.all(outputs.map((id) => canvasApi.listNodeTasks(id, projectId, spaceId)))).flat()
     .flatMap((task) => task.action === 'mini_tool' && task.label === 'video.lip-sync' && task.taskId !== null ? [{ ...task, taskId: task.taskId }] : [])
     .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
   const last = tasks[0];
   if (last === undefined) return null;
   const record = await miniToolsApi.getRun(projectId, last.taskId);
-  const result = record.outputs[0]?.result;
-  const reason = result?.status === 'failed' ? lipsyncFailureReasonSchema.safeParse(result.error) : null;
-  return reason?.success === true ? { runId: last.taskId, reason: reason.data } : null;
+  const output = record.outputs[0];
+  const reason = output?.result?.status === 'failed' ? lipsyncFailureReasonSchema.safeParse(output.result.error) : null;
+  return reason?.success === true ? { runId: last.taskId, reason: reason.data, takenOver: output?.takenOver === true } : null;
 }
 
 /**
@@ -93,7 +93,8 @@ export function useVideoToolModels(args: { projectId: string; spaceId: string; n
   [toolId, projectId, spaceId, nodeId, nodes]);
   const failureKey = React.useMemo(() => ['lip-sync-failure', projectId, spaceId, ...outputs], [projectId, spaceId, outputs]);
   const failure = useQuery({ queryKey: failureKey, queryFn: () => lastLipSyncFailure(projectId, spaceId, outputs), enabled: outputs.length > 0 }).data ?? null;
-  const onRetryFailed = React.useMemo(() => failure === null ? undefined : (): void => {
+  // A taken-over output is retried from the run that took it over, so the old one offers no retry.
+  const onRetryFailed = React.useMemo(() => failure === null || failure.takenOver ? undefined : (): void => {
     void runOnce(plannedRetryIntent(failure.runId), {
       scope: 'mini-tool',
       prepare: () => ({ tool: 'video.lip-sync' as const, project_id: projectId, space_id: spaceId, run_id: newId(), retry: { runId: failure.runId, outputIndexes: [0] } }),

@@ -169,7 +169,8 @@ export async function commitMiniToolExecutionProgress(taskId: string, progress: 
  * @param projectId - The Project in the route path.
  * @param runId - The immutable execution run.
  * @param userId - The currently authenticated collaborator.
- * @returns Current computation, registered outputs and public actual expenses.
+ * @returns Current computation, registered outputs, whether a retry took each output over (frames-split §7.15) and public
+ * actual expenses.
  * @throws {NotFoundError} When the task or project is hidden from this collaborator.
  * @throws {Error} When persisted planning or public metadata is inconsistent.
  */
@@ -179,7 +180,9 @@ export async function getMiniToolExecution(projectId: string, runId: string, use
     || task.params.miniToolExecution === undefined || await projectAuthService.loadProjectRole(userId, projectId) === null) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  return recordFromPlan(await executionPlanFromTask(task));
+  const record = recordFromPlan(await executionPlanFromTask(task));
+  const taken = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(task.id));
+  return { ...record, outputs: record.outputs.map((output) => taken.has(output.outputIndex) ? { ...output, takenOver: true } : output) };
 }
 
 /**

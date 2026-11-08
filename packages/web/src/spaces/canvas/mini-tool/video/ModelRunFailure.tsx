@@ -18,7 +18,7 @@ const EXPAND_NEXT_KEYS = { model_rejected: 'expandRejectedNext', timeout: 'perso
  * @param props - The reason and the actions.
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
- * @param props.onRetry - Retries the failed items.
+ * @param props.onRetry - Retries the failed items; without it no retry is offered.
  * @param props.retryIntent - The retry's press intent, which the button waits on.
  * @returns The failure block.
  * @throws {z.ZodError} When the reason is malformed.
@@ -51,6 +51,6 @@ export function ModelRunFailure(props: { reason: EraseFailureReason | ExpandFail
   }
   return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-model-run-failure'>
     <ul className='grid min-w-0 gap-1.5'>{lines}</ul>
-    {modelFailureRetryable(reason) ? <div className='flex justify-end'><Button variant='outline' size='compact' loading={retrying} disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedItems')}</Button></div> : null}
+    {modelFailureRetryable(reason) && props.onRetry !== undefined ? <div className='flex justify-end'><Button variant='outline' size='compact' loading={retrying} disabled={props.disabled} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedItems')}</Button></div> : null}
   </div>;
 }

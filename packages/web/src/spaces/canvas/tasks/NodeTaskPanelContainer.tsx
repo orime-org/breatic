@@ -195,6 +195,9 @@ function OpenNodeTaskPanel({
     const reason: EraseFailureReason | ExpandFailureReason | null = erase.success ? erase.data : expand.success ? expand.data : null;
     return reason === null ? [] : [[runId, reason] as const];
   })), [parentRunIds, runs]);
+  // A failed output an admitted retry took over accepts no further retry; the next one starts from that retry's run
+  // (frames-split §7.15 可重试结束). Lip-sync, erase and expand runs have one output.
+  const takenOverRuns = React.useMemo(() => new Set(parentRunIds.filter((_runId, at) => runs[at]?.data?.outputs[0]?.takenOver === true)), [parentRunIds, runs]);
   const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
     runOnce(plannedRetryIntent(runId, outputIndex), {
       scope: 'mini-tool',
@@ -211,7 +214,7 @@ function OpenNodeTaskPanel({
     const tool = ROW_RETRY_TOOLS.find((id) => id === entry?.label);
     if (entry?.status !== 'failed' || runId == null || tool === undefined) return null;
     const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs.find((candidate) => candidate.nodeId === nodeId);
-    return output?.result?.status === 'failed' && plannedFailureRetryable(tool, output.result.error) ? { runId, tool, outputIndex: output.outputIndex } : null;
+    return output?.result?.status === 'failed' && output.takenOver !== true && plannedFailureRetryable(tool, output.result.error) ? { runId, tool, outputIndex: output.outputIndex } : null;
   }, [entries, runs, parentRunIds, nodeId]);
   const detailOf = React.useCallback((taskId: string): React.ReactNode => {
     const entry = entries.find((candidate) => candidate.id === taskId);
@@ -220,12 +223,12 @@ function OpenNodeTaskPanel({
     if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
       const tool = entry.label;
       const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable(tool, failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(!takenOverRuns.has(runId) && plannedFailureRetryable(tool, failure) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
     }
     const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
     return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(plannedFailureRetryable('video.lip-sync', reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
-  }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
+      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(!takenOverRuns.has(runId) && plannedFailureRetryable('video.lip-sync', reason) ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
+  }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed, takenOverRuns]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(

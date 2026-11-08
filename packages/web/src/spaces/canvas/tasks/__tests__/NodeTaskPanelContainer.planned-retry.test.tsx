@@ -50,14 +50,15 @@ function row(): NodeTaskEntry {
 /**
  * The split run: its first segment failed on another node, the second on this one, or still pending while it runs.
  * @param failed - Whether this node's output failed.
+ * @param takenOver - Whether an admitted retry has taken this node's failed output over.
  * @returns The record.
  */
-function record(failed = true): MiniToolExecutionRecord {
+function record(failed = true, takenOver = false): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
     outputs: [
       { outputIndex: 0, nodeId: FIRST, recipe: { kind: 'segment', range: { start: 0, end: 2 } }, late: false, result: { status: 'failed', error: { code: 'mini_tool_failed' } } },
-      { outputIndex: 1, nodeId: OUTPUT, recipe: { kind: 'segment', range: { start: 2, end: 5 } }, late: false, result: failed ? { status: 'failed', error: { code: 'mini_tool_failed' } } : null },
+      { outputIndex: 1, nodeId: OUTPUT, recipe: { kind: 'segment', range: { start: 2, end: 5 } }, late: false, result: failed ? { status: 'failed', error: { code: 'mini_tool_failed' } } : null, takenOver },
     ],
     usage: [], billingState: failed ? 'settled' : 'idle', error: failed ? { code: 'mini_tool_failed' } : null, ...(failed ? {} : { status: 'running' }) };
 }
@@ -65,12 +66,13 @@ function record(failed = true): MiniToolExecutionRecord {
 /**
  * Answers the output node's task list and its run.
  * @param failed - Whether this node's output failed.
+ * @param takenOver - Whether an admitted retry has taken this node's failed output over.
  * @returns Nothing.
  */
-function serve(failed = true): void {
+function serve(failed = true, takenOver = false): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === `/canvas/nodes/${OUTPUT}/tasks`) return { tasks: [row()] };
-    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(failed);
+    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(failed, takenOver);
     throw new Error(`Unexpected GET ${path}`);
   });
 }
@@ -105,6 +107,17 @@ describe('a failed planned output node retries its own output (frames-split §10
     expect(body).toMatchObject({ tool: 'video.split', project_id: PROJECT, space_id: SPACE, retry: { runId: RUN, outputIndexes: [1] } });
     expect(body.run_id).not.toBe(RUN);
     expect(miniToolExecutionRequestSchema.safeParse(body).success).toBe(true);
+  });
+
+  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry; the next one starts
+  // from the run that took it over.
+  it('offers no Retry on the old failed row once a retry has taken its output over', async () => {
+    serve(true, true);
+    mount();
+    await screen.findByTestId('node-task-row');
+    await waitFor(() => expect(http.get).toHaveBeenCalledWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`));
+    await waitFor(() => expect(client.getQueryState(['mini-tool-run', PROJECT, RUN])?.status).toBe('success'));
+    expect(screen.queryByRole('button', { name: t('canvas.task.action.retry') })).toBeNull();
   });
 
   it('offers no Retry while the run has no failed output on this node', async () => {

@@ -508,12 +508,12 @@ export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId
 /**
  * The output indexes every execution admitted as a retry of one run has taken over.
  * @param runId - The retried run.
- * @param tx - The retry admission's transaction.
+ * @param tx - The retry admission's transaction, or none for a plain read.
  * @returns The distinct output indexes.
  * @throws {Error} When the query fails.
  */
-export async function listMiniToolRetriedOutputIndexes(runId: string, tx: DbTx): Promise<number[]> {
-  const rows = await tx.execute<{ output_index: number }>(sql`
+export async function listMiniToolRetriedOutputIndexes(runId: string, tx?: DbTx): Promise<number[]> {
+  const rows = await (tx ?? db).execute<{ output_index: number }>(sql`
     SELECT DISTINCT (output_index)::int AS output_index FROM ${tasks},
       jsonb_array_elements_text(${tasks.params}->'miniToolExecution'->'retry'->'outputIndexes') AS output_index
     WHERE ${tasks.source} = 'mini_tool' AND ${tasks.params}->'miniToolExecution'->'retry'->>'runId' = ${runId}`);

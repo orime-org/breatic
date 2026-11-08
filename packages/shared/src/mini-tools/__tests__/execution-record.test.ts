@@ -41,6 +41,13 @@ describe("planned execution public record (independent lifecycle oracle M/U/B)",
     const r = done(); r.status = "failed"; r.error = { code: "registration_failed" }; r.resultVersion = 2; r.outputs[0]!.late = true;
     expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
   });
+  // frames-split §7.15 可重试结束: a failed output an admitted retry has taken over accepts no further retry, and the
+  // record the node reads says so per output.
+  it("M13 carries whether each failed output was taken over by a retry", () => {
+    const r = record(); r.status = "failed"; r.resultVersion = 1; r.error = { code: "expired" };
+    r.outputs[0] = { ...r.outputs[0]!, result: { status: "failed", error: { code: "expired" } }, takenOver: true };
+    expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
+  });
   it("M12 retains cancelled rather than mapping it to analysis failed", () => {
     const r = record(); r.status = "cancelled"; expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
   });

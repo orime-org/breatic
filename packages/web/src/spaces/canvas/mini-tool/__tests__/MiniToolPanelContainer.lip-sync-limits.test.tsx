@@ -112,7 +112,7 @@ function limits(first: Range, tracking: Range, caps: { maxPeople: number; maxDia
 }
 
 /** One lip-sync output of the host: its node, its run, when the run started and why it failed (null when it succeeded). */
-interface OutputRun { nodeId: string; runId: string; startedAt: string; failure: LipsyncFailureReason | null }
+interface OutputRun { nodeId: string; runId: string; startedAt: string; failure: LipsyncFailureReason | null; takenOver?: boolean }
 
 /**
  * Answers the request layer's reads: the limits, and when given, the output node's task list and its failed run.
@@ -162,7 +162,7 @@ function task(output: OutputRun = { nodeId: outputId, runId: failedRunId, starte
  * @param output - Its output node and run; by default the single failed output.
  * @returns The record.
  */
-function run(failure: LipsyncFailureReason | null, output: Pick<OutputRun, 'nodeId' | 'runId'> = { nodeId: outputId, runId: failedRunId }): MiniToolExecutionRecord {
+function run(failure: LipsyncFailureReason | null, output: Pick<OutputRun, 'nodeId' | 'runId' | 'takenOver'> = { nodeId: outputId, runId: failedRunId }): MiniToolExecutionRecord {
   const sourceBindings: MiniToolExecutionRecord['sourceBindings'] = [{ assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video', mediaInfo }];
   if (failure === null) {
     return {
@@ -173,7 +173,7 @@ function run(failure: LipsyncFailureReason | null, output: Pick<OutputRun, 'node
   }
   return {
     schemaVersion: 1, runId: output.runId, status: 'failed', planFingerprint: 'c'.repeat(64), resultVersion: 1, sourceBindings,
-    outputs: [{ outputIndex: 0, nodeId: output.nodeId, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(failure) } }],
+    outputs: [{ outputIndex: 0, nodeId: output.nodeId, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(failure) }, ...(output.takenOver === undefined ? {} : { takenOver: output.takenOver }) }],
     usage: [], billingState: 'settled', error: { message: 'output failed' },
   };
 }
@@ -337,6 +337,16 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getByRole('button', { name: ui('retryFailedPeople') })).toHaveAttribute('aria-busy', 'true'));
     expect(useTaskActionsInFlight.getState().running.has(`planned-retry:${failedRunId}:0`)).toBe(true);
+  });
+
+  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry.
+  it('lists the failure of a run whose output a retry took over and offers no retry', async () => {
+    serveRuns(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }),
+      [{ nodeId: outputId, runId: failedRunId, startedAt: '2026-11-06T00:00:00.000001Z', failure: reason, takenOver: true }]);
+    await mount(true);
+    const failure = await screen.findByTestId('video-lip-sync-failure');
+    expect(failure).toHaveTextContent(`${ui('personNumber', { number: 2 })} · ${ui('personFailTimeout')}`);
+    expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
   });
 
   it('offers no retry when the reason is not retryable (a person with no face)', async () => {

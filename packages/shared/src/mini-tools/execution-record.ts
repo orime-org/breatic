@@ -23,6 +23,8 @@ export interface MiniToolExecutionOutput {
   outputIndex: number; nodeId: string; recipe: MiniToolPlannedRequest["outputs"][number]["recipe"];
   result: MiniToolExecutionRegistered | { status: "failed"; error: Record<string, z.infer<ReturnType<typeof z.json>>> } | null;
   late: boolean;
+  /** Whether an admitted retry has taken this failed output over; set on the read, never stored (frames-split §7.15). */
+  takenOver?: boolean;
 }
 /** A deliberately narrow public copy of the existing step-owned consumption fact. */
 export interface MiniToolExecutionUsage {
@@ -55,6 +57,7 @@ export const miniToolExecutionOutputSchema = z.strictObject({
   outputIndex: z.number().int().nonnegative(), nodeId: z.uuid(),
   recipe: miniToolExecutionRecipeSchema, late: z.boolean(),
   result: z.discriminatedUnion("status", [registeredSchema, z.strictObject({ status: z.literal("failed"), error: jsonObject })]).nullable(),
+  takenOver: z.boolean().optional(),
 });
 
 /** Actual consumption preserves its original amount's confirmation and recording state. */

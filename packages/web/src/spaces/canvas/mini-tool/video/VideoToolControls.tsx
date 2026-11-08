@@ -209,7 +209,7 @@ const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedF
  * @param props - The reason and the actions.
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
- * @param props.onRetry - Retries the failed items.
+ * @param props.onRetry - Retries the failed items; without it no retry is offered.
  * @param props.retryIntent - The retry's press intent, which the button waits on.
  * @param props.onRedetect - Identifies the people again, where the people are identified (the host's panel).
  * @returns The failure block.
@@ -220,7 +220,8 @@ export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: 
   const retrying = Boolean(useRunning(props.retryIntent ?? ''));
   const { persons, shared } = props.reason;
   const blocker = persons.find((person) => person.category === 'no_face' || person.category === 'model_rejected')?.detectionNumber;
-  const retryable = lipsyncFailureRetryable(props.reason);
+  // No retry is offered without a handler: the node hides it for an output a retry already took over (frames-split §7.15).
+  const retryable = lipsyncFailureRetryable(props.reason) && props.onRetry !== undefined;
   const noFace = persons.some((person) => person.category === 'no_face');
   return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-lip-sync-failure'>
     <ul className='grid min-w-0 gap-1.5'>
@@ -232,7 +233,7 @@ export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: 
       {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[shared.category]}`)}</span></li>}
     </ul>
     {retryable || (noFace && props.onRedetect !== undefined) ? <div className='flex justify-end'>{retryable
-      ? <Button variant='outline' size='compact' loading={retrying} disabled={props.disabled || props.onRetry === undefined} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
+      ? <Button variant='outline' size='compact' loading={retrying} disabled={props.disabled} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
       : <Button variant='outline' size='compact' disabled={props.disabled} onClick={props.onRedetect}>{t('canvas.miniTool.videoUI.redetectPeople')}</Button>}</div> : null}
   </div>;
 }

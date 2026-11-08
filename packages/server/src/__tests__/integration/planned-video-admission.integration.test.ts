@@ -271,9 +271,13 @@ async function blockedBy(gatePid: number): Promise<number> {
   return row.count;
 }
 
-/** Supply a valid failed retry with two failed original output identities. @throws {Error} On schema, admission or fixture SQL failure. */
+/**
+ * Supply a valid failed retry that took over the original's failed output 2; its failed output 1 is left to a direct retry
+ * (a taken-over output accepts no further retry, frames-split §7.15 可重试结束).
+ * @throws {Error} On schema, admission or fixture SQL failure.
+ */
 async function seedRetryChain(): Promise<{ f: Fixture; original: Parent; failedRetry: Parent }> {
-  const f = await seed(); const original = await failedOriginal(f); const body = retry(f, [1, 2]);
+  const f = await seed(); const original = await failedOriginal(f); const body = retry(f, [2]);
   await accept(f, body); const accepted = await parent(body.run_id); const plan = accepted.params.miniToolExecution;
   const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
     resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false,
@@ -538,7 +542,8 @@ describe("S5 independent failed-output retry admission", () => {
   it.each([false, true])("S5-R03 serializes concurrent retries on the original task with one active execution per output node (different IDs=%s)", async (different) => {
     const f = await seed(); const before = await failedOriginal(f); const a = retry(f); const b = different ? retry(f) : structuredClone(a);
     const responses = await contending(f.body.run_id, [() => post(f, a), () => post(f, b)]);
-    expect(responses.map((r) => r.status).sort()).toEqual(different ? [201, 409] : [201, 201]);
+    // The second of two different retries finds the output already taken over by the first (frames-split §7.15).
+    expect(responses.map((r) => r.status).sort()).toEqual(different ? [201, 422] : [201, 201]);
     const counts = await Promise.all([...new Set([a.run_id, b.run_id])].map((id) => effects(id)));
     expect(counts.reduce((n, c) => n + c.rows, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.holds, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.jobs, 0)).toBe(1);
     expect(await parent(f.body.run_id)).toEqual(before);
@@ -572,7 +577,8 @@ describe("S5 independent failed-output retry admission", () => {
     const chained = retry(f); chained.retry.runId = failedRetry.id;
     const direct = retry(f);
     const responses = await contending(original.id, [() => post(f, chained), () => post(f, direct, randomUUID(), f.otherId)]);
-    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    // The direct retry names an original output the failed retry already took over, so it is refused (frames-split §7.15).
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 422]);
     const counts = await Promise.all([effects(chained.run_id), effects(direct.run_id)]);
     expect(counts.reduce((sum, count) => ({ tasks: sum.tasks + count.tasks, rows: sum.rows + count.rows, holds: sum.holds + count.holds, jobs: sum.jobs + count.jobs }), { tasks: 0, rows: 0, holds: 0, jobs: 0 }))
       .toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
@@ -625,6 +631,23 @@ describe("S5 independent failed-output retry admission", () => {
       expect(await parent(original.id)).toEqual(original);
       expect(await parent(failedRetry.id)).toEqual({ ...failedRetry, result });
     } finally { release(); await owner; await Promise.allSettled([pending]); }
+  });
+  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry; the next one starts
+  // from the run that took it over, and the record the node reads says which outputs were taken over.
+  it("S5-R07 refuses a second retry of an output an ended retry already took over, with no task, hold or pin, and shows it taken over", async () => {
+    const { f, original, failedRetry } = await seedRetryChain();
+    const before = await chainSnapshot([original.id, failedRetry.id]);
+    const again = retry(f);
+    const response = await post(f, again);
+    expect({ status: response.status, message: ((await response.json()) as { error: { message: string } }).error.message })
+      .toEqual({ status: 422, message: shared.t("server.mini_tool.alreadyRetried") });
+    expect(await effects(again.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    expect([...(await pg`SELECT id FROM presentation_pins WHERE holder_id=${again.run_id}`)]).toEqual([]);
+    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
+    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+    const read = await app.request(`/api/v1/projects/${f.projectId}/mini-tool-runs/${original.id}`, { headers: { Cookie: `${core.sessionCookieName()}=${token}` } });
+    const record = ((await read.json()) as { data: { outputs: { outputIndex: number; takenOver?: boolean }[] } }).data;
+    expect(record.outputs.map((output) => [output.outputIndex, output.takenOver === true])).toEqual([[0, false], [1, false], [2, true]]);
   });
   it("S5-R05 settles a retry's actual container consumption and own hold once without charging or rewriting the original", async () => {
     const f = await seed(); const original = await failedOriginal(f); const body = retry(f); await accept(f, body);

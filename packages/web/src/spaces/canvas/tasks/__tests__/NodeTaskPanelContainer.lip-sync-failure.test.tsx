@@ -54,24 +54,26 @@ function row(): NodeTaskEntry {
 /**
  * The failed lip-sync run; the reason is the failed output's error (TR05).
  * @param reason - The reason.
+ * @param takenOver - Whether an admitted retry has taken the failed output over.
  * @returns The record.
  */
-function record(reason: LipsyncFailureReason): MiniToolExecutionRecord {
+function record(reason: LipsyncFailureReason, takenOver = false): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
-    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(reason) } }],
+    outputs: [{ outputIndex: 0, nodeId: OUTPUT, recipe: { kind: 'lip-sync' }, late: false, result: { status: 'failed', error: structuredClone(reason) }, takenOver }],
     usage: [], billingState: 'settled', error: { message: 'output failed' } };
 }
 
 /**
  * Answers the output node's task list and its run.
  * @param reason - The run's failure reason.
+ * @param takenOver - Whether an admitted retry has taken the failed output over.
  * @returns Nothing.
  */
-function serve(reason: LipsyncFailureReason): void {
+function serve(reason: LipsyncFailureReason, takenOver = false): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === `/canvas/nodes/${OUTPUT}/tasks`) return { tasks: [row()] };
-    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(reason);
+    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(reason, takenOver);
     throw new Error(`Unexpected GET ${path}`);
   });
 }
@@ -131,6 +133,14 @@ describe('the lip-sync output node lists its failed people and retries them (§9
     await screen.findByTestId('node-task-row');
     await screen.findByText(new RegExp(`${ui('personNumber', { number: 1 })}\\W+${ui('personFailNoFace')}`));
     expect(screen.getByText(ui('personFailNoFaceNext'))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
+  });
+
+  // frames-split §7.15 可重试结束: once a retry has taken the failed output over, the old run's people stay listed with no retry.
+  it('lists the failed people of a run whose output a retry took over and offers no retry', async () => {
+    serve({ kind: 'lipsync', persons: [{ personId: 'person-b', detectionNumber: 2, step: 'gen', category: 'timeout' }], shared: null }, true);
+    mount();
+    await screen.findByText(new RegExp(`${ui('personNumber', { number: 2 })}\\W+${ui('personFailTimeout')}`));
     expect(screen.queryByRole('button', { name: ui('retryFailedPeople') })).toBeNull();
   });
 });

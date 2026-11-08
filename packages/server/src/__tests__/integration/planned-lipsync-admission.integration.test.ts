@@ -781,11 +781,11 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     expect({ status: again.status, body: await again.json() }).toEqual({ status: 201, body: { data: { task_id: body.run_id, status: "pending" } } });
     expect(await taskRow(body.run_id)).toEqual(first);
     expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    // A second run on the same failed output while the first retry is active: the existing ConflictError (409).
+    // A second run on the same failed output: the first retry took it over, so it accepts no further retry (frames-split §7.15).
     const other = retryBody(f);
     const response = await post(f, other);
     expect({ status: response.status, message: (await response.json() as { error?: { message?: string } }).error?.message })
-      .toEqual({ status: 409, message: shared.t("server.idempotency.mismatch") });
+      .toEqual({ status: 422, message: shared.t("server.mini_tool.alreadyRetried") });
     expect(await effects(other.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
 
