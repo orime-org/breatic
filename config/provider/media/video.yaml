@@ -197,10 +197,6 @@ models:
             field: generate_audio
           resolution:
             field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
         drops:
           audios: []
           images: []
@@ -227,10 +223,6 @@ models:
             field: generate_audio
           resolution:
             field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
         drops:
           audios: []
           images: []
@@ -303,7 +295,7 @@ models:
       - when: $length(prompt) > 3072
         reason: "Kling prompt: Maximum length: 3072 characters"
         source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
-      - when: $exists(multi_prompt) and $sum(multi_prompt.duration) != duration
+      - when: $sum(multi_prompt.duration) != duration
         reason: "Kling shots: sum of all shot durations must equal the total video duration"
         source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
       - when: $max(multi_prompt.$length(prompt)) > 512
@@ -618,10 +610,6 @@ models:
             field: end_image_url
           resolution:
             field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
         drops:
           shots: "*"
         pricing:
@@ -644,10 +632,6 @@ models:
             field: end_image
           resolution:
             field: resolution
-            supported:
-              - 480p
-              - 720p
-              - 1080p
         drops:
           shots: "*"
         fixed:
@@ -667,7 +651,7 @@ models:
       - when: $length(prompt) > 3072
         reason: "Kling Omni prompt: should not exceed 3072 characters"
         source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
-      - when: $exists(multi_prompt) and $sum(multi_prompt.duration) != duration
+      - when: $sum(multi_prompt.duration) != duration
         reason: "Kling Omni shots: sum of all shot durations must equal the total video duration"
         source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
       - when: $max(multi_prompt.$length(prompt)) > 512

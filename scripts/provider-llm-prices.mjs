@@ -118,11 +118,12 @@ export function directPriceChangeNotices(prices, now) {
 }
 
 /**
- * `config/provider/llm.yaml` with `openrouter_prices` and, right after it, `openrouter_states_quantization` rewritten
- * from OpenRouter's endpoints and `openrouter_prices_at` set to the run's moment, its comments kept: for
- * every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when set, within the
- * quantizations and backend pins the file's values hold once read through `parse`, the schema createProvider reads it
- * with (its defaults filled), each model's levels read through `levels`, as its calls read them.
+ * `config/provider/llm.yaml` with `openrouter_prices` and `openrouter_states_quantization` rewritten in place (a key
+ * the file lacks goes at its end) from OpenRouter's endpoints and `openrouter_prices_at` set to the run's moment, its
+ * comments kept: for every model of its `prices`, in their order, read under `vendor_ids[model].openrouter` when
+ * set, within the quantizations and backend pins the file's values hold once read through `parse`, the schema
+ * createProvider reads it with (its defaults filled), each model's levels read through `levels`, as its calls read
+ * them.
  * @param {string} text - The file as it is.
  * @param {(raw: unknown) => { prices: Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
  * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
@@ -142,13 +143,7 @@ export async function syncedLlmYaml(text, parse, levels, fetchEndpoints, now = D
   }
   const { prices, statesQuantization, problems } = openRouterPrices(endpoints, ids, llm.openrouter_quantizations, levels, llm.openrouter_backends);
   doc.set("openrouter_prices", doc.createNode(prices));
-  if (doc.has("openrouter_states_quantization")) doc.set("openrouter_states_quantization", doc.createNode(statesQuantization));
-  else {
-    // A new key goes right after openrouter_prices rather than at the file's end; a key the file held is a Scalar, one
-    // doc.set added a string, and String() reads both.
-    const items = doc.contents.items;
-    items.splice(items.findIndex((pair) => String(pair.key) === "openrouter_prices") + 1, 0, doc.createPair("openrouter_states_quantization", statesQuantization));
-  }
+  doc.set("openrouter_states_quantization", doc.createNode(statesQuantization));
   doc.set("openrouter_prices_at", new Date(now).toISOString());
   return {
     text: yamlText(doc, { lineWidth: 0 }),

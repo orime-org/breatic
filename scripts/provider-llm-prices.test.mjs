@@ -4,6 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { parse } from "yaml";
+
 import { offPeakHolidayProblems, openRouterPrices, syncedLlmYaml } from "./provider-llm-prices.mjs";
 
 /** One endpoint of OpenRouter's `/api/v1/models/{author}/{slug}/endpoints`: USD per token, as strings. */
@@ -117,14 +119,22 @@ test("rewrites openrouter_prices from the values the schema reads, its defaults 
   assert.match(synced.text, /openrouter_prices:\n  m:\n    input_cache_miss_per_mtok: 1\n    output_per_mtok: 2\n/);
 });
 
-test("writes the models that state a level beside openrouter_prices, in the order of prices, priced or not", async () => {
+test("writes the models that state a level, in the order of prices, priced or not, at the end of a file that lacks the key", async () => {
   const text = "prices:\n  b:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n  plain:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n  a:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\nopenrouter_prices: {}\nopenrouter_prices_at: 2026-01-01T00:00:00.000Z\n";
   const listed = { b: [endpoint("relace/fp4", "0.0000001", "0.0000002", "fp4")], plain: [endpoint("venice", "0.000001", "0.000002", "unknown")], a: [endpoint("kept/fp8", "0.000001", "0.000002")] };
   const synced = await syncedLlmYaml(text, (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: TAKEN, ...raw }), levels, async (id) => listed[id]);
   assert.equal(synced.priced, 2);
-  assert.match(synced.text, /\nopenrouter_states_quantization:\n  - b\n  - a\n/);
+  assert.match(synced.text, /\nopenrouter_states_quantization:\n  - b\n  - a\n$/);
+});
+
+test("replaces an openrouter_states_quantization the file already holds where it stands, written once", async () => {
+  const text = "prices:\n  b:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\nopenrouter_prices: {}\nopenrouter_states_quantization:\n  - stale\nopenrouter_prices_at: 2026-01-01T00:00:00.000Z\n";
+  const synced = await syncedLlmYaml(text, (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: TAKEN, ...raw }), levels, async () => [endpoint("relace/fp4", "0.0000001", "0.0000002", "fp4")]);
+  assert.equal(synced.text.match(/^openrouter_states_quantization:/gm)?.length, 1);
+  assert.doesNotMatch(synced.text, /stale/);
+  assert.match(synced.text, /\nopenrouter_states_quantization:\n  - b\nopenrouter_prices_at:/);
   assert.ok(synced.text.indexOf("openrouter_prices:") < synced.text.indexOf("openrouter_states_quantization:"));
-  assert.ok(synced.text.indexOf("openrouter_states_quantization:") < synced.text.indexOf("openrouter_prices_at:"));
+  assert.doesNotThrow(() => parse(synced.text));
 });
 
 test("writes the moment OpenRouter's prices were read beside them", async () => {

@@ -606,10 +606,6 @@ describe("the limits a reseller states beyond its schema", () => {
     "seedance-2.5-text-to-video on sandbase: videos": "SandBase's text-to-video endpoint takes no reference video",
     "sfx-1.6-text-to-audio on wavespeed: loop": "WaveSpeed offers no loop control",
     "kling-video-o3-4k-image-to-video on sandbase: multi_prompt": "SandBase serves the model only as a single shot",
-    "seedance-2.5-text-to-video on fal: resolution": "fal's endpoint offers 480p, 720p and 1080p only",
-    "seedance-2.5-text-to-video on sandbase: resolution": "SandBase's endpoint offers 480p, 720p and 1080p only",
-    "seedance-2.5-image-to-video on fal: resolution": "fal's endpoint offers 480p, 720p and 1080p only",
-    "seedance-2.5-image-to-video on sandbase: resolution": "SandBase's endpoint offers 480p, 720p and 1080p only",
   };
 
   // Each entry: a model on an upstream whose own reject, stricter than the vendor's limit on the same field, refuses the
