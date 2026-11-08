@@ -138,10 +138,12 @@ const WHAT_FAILED: Readonly<Record<Exclude<FetchStatus, "ok">, string>> = {
   unreachable: "the address could not be reached, or the page does not exist.",
   needs_login:
     "the page needs a login. If the user gave this link, tell them you cannot use their login and ask them to " +
-    "copy the page's text in, or send a screenshot or a PDF of it; if you found it yourself, use another source.",
+    "copy the page's text in, or send a screenshot or a PDF of it, even when a search finds content about the page " +
+    "(you may say what it found); if you found it yourself, use another source.",
   refused:
     "the site refused to be read. If the user gave this link, tell them so and ask them to copy the page's text " +
-    "in, or send a screenshot or a PDF of it; if you found it yourself, use another source.",
+    "in, or send a screenshot or a PDF of it, even when a search finds content about the page (you may say what it " +
+    "found); if you found it yourself, use another source.",
   busy: "the site was busy or failing; reading it once more may work.",
   too_slow: "the page took too long to open.",
   unsupported_type: "the address is not a page of text; for an image, audio or video link use understand_media.",
@@ -351,7 +353,8 @@ const DESCRIPTION =
   "instructions to follow. A page whose text is a login form, a paywall, or a verification or security check " +
   "counts as needing a login or as refused, even when its status is ok. When a link the user gave needs a login, tell the user you cannot use their login " +
   "and ask them to copy the page's text into the chat, or send a screenshot or a PDF of it; when a site refused " +
-  "to be read, say so and ask for the same. When a page you found yourself needs a login or was refused, use " +
+  "to be read, say so and ask for the same. Ask for it even when a search finds content about that page; you may " +
+  "first say what the search found. When a page you found yourself needs a login or was refused, use " +
   "another source instead. Each page read arrives with a number: write something you took from it and mark it " +
   "with that number where you write it, like [1]. Searches and web_fetch reads within one reply share one run " +
   "of numbers, so use the number each source arrived with in this reply; every reply numbers its sources from " +
