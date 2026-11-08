@@ -33,30 +33,6 @@ export function trackingClips(range: FrameRange, anchor: number): TrackingClips 
 }
 
 /**
- * Joins the clips' per-frame results into one entry per range frame in source order; the anchor frame comes from the forward
- * clip when there is one.
- * @param clips - The clips the results belong to.
- * @param forward - The forward clip's results in its own order, or null when there is none.
- * @param reverse - The reversed clip's results in its own (backwards) order, or null when there is none.
- * @returns The range's results.
- * @throws {RangeError} When a result list does not match its clip.
- */
-export function joinTrackingClips<T>(clips: TrackingClips, forward: readonly T[] | null, reverse: readonly T[] | null): T[] {
-  /**
-   * A clip's frame count.
-   * @param clip - The clip, or null.
-   * @returns Its frames, 0 for none.
-   * @throws {never} Never.
-   */
-  const length = (clip: FrameRange | null): number => (clip === null ? 0 : clip.end - clip.start);
-  if ((forward?.length ?? 0) !== length(clips.forward) || (reverse?.length ?? 0) !== length(clips.reverse) || (clips.forward === null) !== (forward === null) || (clips.reverse === null) !== (reverse === null)) {
-    throw new RangeError("A tracking clip's results do not match its frames");
-  }
-  const before = reverse === null ? [] : [...reverse].reverse();
-  return forward === null ? before : [...before.slice(0, clips.forward === null ? before.length : before.length - 1), ...forward];
-}
-
-/**
  * Whether an erase anchor lies inside its tracking range (execution design §10.2): range.start ≤ anchor.pts < range.end.
  * @param range - The range in presentation seconds.
  * @param anchor - The anchor; its presentation time decides.
