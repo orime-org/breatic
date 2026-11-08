@@ -6,7 +6,11 @@
  * the response carries the selected bundle, the target policy's preparation and the selected version's ledger, and a
  * repair answers the same response. Every builder returns a value `videoPresentationResponseSchema` admits.
  */
+import type { QueryClient } from '@tanstack/react-query';
 import { videoPresentationAwaitsServer, type VideoPresentationResponse } from '@breatic/shared';
+import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
+import { sourceLedgerQuery } from '@web/spaces/canvas/video-presentation/source-ledger-query';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 type Bundle = NonNullable<VideoPresentationResponse['presentation']>;
 type Preparation = NonNullable<VideoPresentationResponse['preparation']>;
@@ -89,4 +93,22 @@ export function presentedResponse(sourceBinding: VideoPresentationResponse['sour
   fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation' | 'ledger' | 'sourceLedgerReadLimits'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
   const value = { presentation: null, preparation: null, ledger: null, ...fields };
   return { sourceBinding, ...value, pollAfterMs: videoPresentationAwaitsServer(value) ? pollAfterMs : null };
+}
+
+/**
+ * Puts a usable source in a query cache: a read with a selected bundle and a ready ledger, and its compact table read.
+ * @param client - The cache.
+ * @param projectId - The Project.
+ * @param canonicalURL - The source URL.
+ * @param fields - Bundle fields to replace (toolInputId, planSha256).
+ * @returns The seeded read.
+ * @throws {never} Never.
+ */
+export function seedUsablePresentation(client: QueryClient, projectId: string, canonicalURL: string, fields: Partial<Bundle> = {}): VideoPresentationResponse {
+  const bundle = presentedBundle(canonicalURL, fields);
+  const response = presentedResponse(presentedBinding(canonicalURL), { presentation: bundle, ledger: readyLedger(bundle), sourceLedgerReadLimits: { maxBytes: 16777216 } });
+  const table: VideoPresentationTable = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 75, step: 1, duration: 1 }] };
+  client.setQueryData(videoPresentationQuery({ projectId, canonicalURL, active: true }).queryKey, response);
+  client.setQueryData(sourceLedgerQuery({ projectId, response, active: true }).queryKey, table);
+  return response;
 }

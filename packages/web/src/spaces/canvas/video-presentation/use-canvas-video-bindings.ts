@@ -80,11 +80,11 @@ const WORST_FIRST: readonly VideoToolPanelState[] = ['unsupported', 'retryable',
 /**
  * The state of a multi-input panel (§7.12, last paragraph): each input is derived on its own and the worst, in the order
  * unsupported, retryable, waiting-presentation, waiting-table, usable, is shown with that input's reason code.
- * @param inputs - Each input's state and reason, at least one.
- * @returns The worst input's state and reason.
+ * @param inputs - Each input's state and reason, at least one, with whatever else the caller keeps beside them.
+ * @returns The worst input, the first of equally bad ones.
  * @throws {RangeError} When no input is given.
  */
-export function worstVideoToolPanelState(inputs: readonly RankedVideoToolPanelState[]): RankedVideoToolPanelState {
+export function worstVideoToolPanelState<T extends RankedVideoToolPanelState>(inputs: readonly T[]): T {
   if (inputs.length === 0) throw new RangeError('A panel has at least one input');
   return inputs.reduce((worst, input) => (WORST_FIRST.indexOf(input.state) < WORST_FIRST.indexOf(worst.state) ? input : worst));
 }

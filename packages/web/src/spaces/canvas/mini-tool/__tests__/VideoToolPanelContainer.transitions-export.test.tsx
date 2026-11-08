@@ -35,8 +35,7 @@ import { ApiException } from '@web/data/api/types';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
-import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
-import { presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
+import { seedUsablePresentation } from '@web/test-utils/video-presentation';
 
 const projectId = 'export-project'; const spaceId = 'export-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.webm';
@@ -45,12 +44,23 @@ const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 
 const ready: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 
 /**
+ * A cache in which the picked input's presentation is usable, which Run needs as much as the current video's (frames-split
+ * §7.12 last paragraph).
+ * @returns The cache.
+ */
+function usableInputClient(): QueryClient {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  seedUsablePresentation(client, projectId, 'https://assets.example.test/second.webm');
+  return client;
+}
+
+/**
  * Mounts the transitions panel on a committed draft and opens the timeline Dialog.
  * @param presentation - The node's presentation facts; undefined leaves Run unavailable.
  * @param onRunVideo - The execution entry the panel and Export share.
  * @returns The open Dialog.
  */
-function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })): HTMLElement {
+function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>, client = usableInputClient()): HTMLElement {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   // The two-clip timeline the design fixes: the current video first, the picked input video second.
@@ -110,9 +120,7 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const SECOND_URL = 'https://assets.example.test/second.webm';
     const refs: Record<string, { toolInputId: string; planSha256: string }> = { [sourceURL]: { toolInputId: '1'.repeat(64), planSha256: '2'.repeat(64) }, [SECOND_URL]: { toolInputId: '3'.repeat(64), planSha256: '4'.repeat(64) } };
-    for (const [url, ref] of Object.entries(refs)) {
-      client.setQueryData(videoPresentationQuery({ projectId, canonicalURL: url, active: true }).queryKey, presentedResponse(presentedBinding(url), { presentation: presentedBundle(url, ref) }));
-    }
+    for (const [url, ref] of Object.entries(refs)) seedUsablePresentation(client, projectId, url, ref);
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     const dialog = openDialog({ ...ready, presentationRef: { source: refs[sourceURL]! } }, onRunVideo, client);
     act(() => within(dialog).getByRole('button', { name: 'Export' }).click());

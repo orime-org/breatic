@@ -65,8 +65,7 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { createVideoToolDraft } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
-import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
-import { presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
+import { seedUsablePresentation } from '@web/test-utils/video-presentation';
 
 const PROJECT = '32000000-0000-4000-8000-000000000001';
 const SPACE = '32000000-0000-4000-8000-000000000002';
@@ -230,10 +229,9 @@ describe('Run sends the quoted body and creates the quoted output node (§97 D27
     commitVideoToolDraft(doc, HOST, 'video.transitions', draft);
     syncNodes();
     present('ready', [{ id: HOST, url: HOST_URL, letter: 'a' }, { id: PICKED_NODE, url: PICKED_URL, letter: 'b' }]);
-    // Each clip input's selected version comes from that input's own presentation read.
-    for (const [url, letter] of [[HOST_URL, 'a'], [PICKED_URL, 'b']] as const) {
-      clients[0]!.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: url, active: true }).queryKey, presentedResponse(presentedBinding(url), { presentation: presentedBundle(url, ref(letter)) }));
-    }
+    // Each clip input's selected version comes from that input's own presentation read, usable as Run needs it to be
+    // (frames-split §7.12 last paragraph).
+    for (const [url, letter] of [[HOST_URL, 'a'], [PICKED_URL, 'b']] as const) seedUsablePresentation(clients[0]!, PROJECT, url, ref(letter));
     act(() => canvasSessions.of(SPACE).getState().openMiniTool(HOST, 'video.transitions', { sourceContent: HOST_URL, params: {} }));
     render(tree());
     await waitFor(() => expect(posted('/mini-tools/quote').length).toBeGreaterThan(0));
