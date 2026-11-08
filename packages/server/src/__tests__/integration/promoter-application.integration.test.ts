@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { randomUUID } from "node:crypto";
+import fc from "fast-check";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { initCore, loadLocales } from "@breatic/core";
@@ -113,5 +114,38 @@ describe("submitApplication", () => {
     expect((await approval!).body).toMatchObject({ status: "applied" });
     expect([{ ok: false, reason: "application_pending" }, { ok: false, reason: "already_promoter" }]).toContainEqual(await again!);
     expect((await applicationsOf(userId)).map((a) => a.status)).toEqual(["approved"]);
+  });
+
+  // Program, terms and the account's latest application, in every mix
+  // (inner#1868 §7): the first one that refuses names the answer, and only an
+  // accepted submission files a row.
+  it("answers by program, then terms, then the latest application, and files only when all allow it", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.boolean(),
+        fc.boolean(),
+        fc.constantFrom("none", "pending", "rejected", "approved"),
+        async (open, sameTerms, latest) => {
+          const userId = await account();
+          if (latest !== "none") {
+            const decided = latest === "pending" ? null : new Date();
+            await sql`insert into promoter_applications
+              (user_id,status,country,channels,plan,terms_version,terms_accepted_at,decided_at,decided_by)
+              values(${userId},${latest},'SG',${sql.json(["https://example.test"])},'plan',${TERMS},now(),${decided},${decided ? "admin_7" : null})`;
+          }
+          const before = (await applicationsOf(userId)).length;
+
+          const outcome = await submitApplication(userId, { ...form, termsVersion: sameTerms ? TERMS : "2026-01-01" }, open ? TERMS : "");
+          const expected = !open ? { ok: false, reason: "program_closed" }
+            : !sameTerms ? { ok: false, reason: "terms_changed", termsVersion: TERMS }
+              : latest === "approved" ? { ok: false, reason: "already_promoter" }
+                : latest === "pending" ? { ok: false, reason: "application_pending" }
+                  : { ok: true };
+          expect(outcome).toEqual(expected);
+          expect(await applicationsOf(userId)).toHaveLength(before + (outcome.ok ? 1 : 0));
+        },
+      ),
+      { numRuns: 48 },
+    );
   });
 });

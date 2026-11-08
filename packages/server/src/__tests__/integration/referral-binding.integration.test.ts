@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { randomUUID } from "node:crypto";
+import fc from "fast-check";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { db, initCore, loadLocales } from "@breatic/core";
@@ -183,5 +184,49 @@ describe("bindReferral", () => {
     await payment;
     expect(await binding).toEqual({ ok: false, reason: "already_paid" });
     expect(await bindingOf(userId)).toBeNull();
+  });
+
+  // The four facts the rule reads, in every mix (inner#1868 §5): the first one
+  // that fails names the refusal, and only a bind that succeeds writes a row.
+  it("refuses for the first failed fact in the order code, binding, enterprise, payment, and binds otherwise", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.constantFrom("active", "disabled", "removed", "missing"),
+        fc.boolean(),
+        fc.boolean(),
+        fc.boolean(),
+        async (codeState, bound, enterprise, paid) => {
+          const code = freshCode();
+          if (codeState !== "missing") await promoter(code, codeState);
+          const userId = await account();
+          const earlier = freshCode();
+          if (bound) {
+            await promoter(earlier);
+            expect(await bind(userId, earlier)).toEqual({ ok: true });
+          }
+          if (enterprise) {
+            await sql`update users set membership_tier = 'enterprise' where id = ${userId}`;
+            await sql`insert into enterprise_memberships(user_id,expires_at,entry_timezone,contract_number,team_studios,projects_per_studio,concurrent_editors,studio_members,project_members,storage_bytes,fallback_tier,revision)
+              values(${userId},${new Date(Date.now() + 86_400_000)},'UTC',${`TEST-PROP-${randomUUID().slice(0, 8)}`},8,20,30,200,80,1099511627776,'base',1)`;
+          }
+          if (paid) {
+            await sql`insert into subscriptions(user_id,stripe_subscription_id,tier,period,status,current_period_end,first_active_at)
+              values(${userId},${`sub_prop_${randomUUID()}`},'pro','month','canceled',now(),now() - interval '40 days')`;
+          }
+
+          const expected = codeState !== "active" ? { ok: false, reason: "invalid_code" }
+            : bound ? { ok: false, reason: "already_bound" }
+              : enterprise ? { ok: false, reason: "not_eligible" }
+                : paid ? { ok: false, reason: "already_paid" }
+                  : { ok: true };
+          expect(await bind(userId, code)).toEqual(expected);
+          const row = await bindingOf(userId);
+          if (bound) expect(row?.code).toBe(earlier);
+          else if (expected.ok) expect(row?.code).toBe(code);
+          else expect(row).toBeNull();
+        },
+      ),
+      { numRuns: 64 },
+    );
   });
 });
