@@ -15,7 +15,7 @@ import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import { newId, type NodeTaskEntry } from '@breatic/shared';
-import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, lipsyncFailureRetryable, miniToolById, modelFailureRetryable, type EraseFailureReason, type ExpandFailureReason } from '@breatic/shared/mini-tools';
+import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, miniToolById, plannedFailureRetryable, type EraseFailureReason, type ExpandFailureReason } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
@@ -208,11 +208,11 @@ function OpenNodeTaskPanel({
     if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
       const tool = entry.label;
       const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(modelFailureRetryable(failure) ? { onRetry: () => retryFailed(runId, tool) } : {})} />;
+      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} {...(plannedFailureRetryable(failure) ? { onRetry: () => retryFailed(runId, tool) } : {})} />;
     }
     const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
     return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} {...(lipsyncFailureRetryable(reason) ? { onRetry: () => retryFailed(runId) } : {})} />;
+      : <LipSyncFailure reason={reason} disabled={readOnly} {...(plannedFailureRetryable(reason) ? { onRetry: () => retryFailed(runId) } : {})} />;
   }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.

@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { modelRunRetryable } from "@shared/mini-tools/model-run-retryable.js";
+import { lipsyncFailureReasonSchema, lipsyncFailureRetryable } from "@shared/mini-tools/lipsync-plan.js";
 
 /** One erase failure (execution design §10.4): the step that failed and why. */
 export const eraseFailureReasonSchema = z.strictObject({
@@ -35,4 +36,18 @@ export type ExpandFailureReason = z.infer<typeof expandFailureReasonSchema>;
 export function modelFailureRetryable(reason: unknown): boolean {
   const parsed = z.union([eraseFailureReasonSchema, expandFailureReasonSchema]).parse(reason);
   return parsed.kind === "erase" ? modelRunRetryable({ items: [], shared: parsed }) : modelRunRetryable({ items: parsed.windows, shared: parsed.shared });
+}
+
+/**
+ * Whether a planned run's failed output can be retried, the one decision the terminal commit's pin release, retry
+ * admission and the node share (execution design §9.4, §10.5 last paragraph): a lip-sync, erase or expand reason by its
+ * own rule; any other failure, such as a frames or split output's, is retryable.
+ * @param error - The failed output's error.
+ * @returns True when retrying the failed output can succeed.
+ * @throws {never} Never.
+ */
+export function plannedFailureRetryable(error: unknown): boolean {
+  if (lipsyncFailureReasonSchema.safeParse(error).success) return lipsyncFailureRetryable(error);
+  if (eraseFailureReasonSchema.safeParse(error).success || expandFailureReasonSchema.safeParse(error).success) return modelFailureRetryable(error);
+  return true;
 }

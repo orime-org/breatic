@@ -21,12 +21,15 @@
  *   `frame_at` condition from the previous window's result for every later window, one VACE request per window with the
  *   fixed parameters, the frozen seed and the resolved prompt, the composite cropping each background to `targetRoi`;
  *   a VACE refusal stops the later windows.
+ * - an erase or expand failure no retry can clear (model_rejected) ends the run's retryability at its terminal commit: its
+ *   execution and prepared pins are released there, and a retry of its output is refused (§10.5 last paragraph,
+ *   frames-split §7.15 end of retryability).
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
-import { miniToolExecutionService, miniToolFrozenAnalysisSchema, taskRepo } from "@breatic/domain";
+import { creditHoldService, miniToolExecutionService, miniToolFrozenAnalysisSchema, presentationPinService, taskRepo } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolById, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -372,5 +375,56 @@ describe("the expand chain (execution design §10.5 steps, model and composite r
     expect(result).toMatchObject({ status: "failed", error: { kind: "expand", shared: null,
       windows: [{ windowIndex: 1, step: "generate", category: "model_rejected" }, ...Array.from({ length: count - 2 }, (_unused, at) => ({ windowIndex: at + 2, step: "generate", category: "stopped" }))] } });
     expect(calls(VACE_ENDPOINT)).toHaveLength(2);
+  });
+});
+
+describe("an erase or expand failure no retry can clear ends its retryability (§10.5 last paragraph, frames-split §7.15)", () => {
+  /** A run's live pin holder kinds. @param holderId - The run. @returns The kinds in order. */
+  async function liveHolders(holderId: string): Promise<string[]> {
+    return (await pg<{ holder_kind: string }[]>`SELECT holder_kind FROM presentation_pins WHERE holder_id=${holderId} AND deleted_at IS NULL ORDER BY holder_kind`).map((row) => row.holder_kind);
+  }
+
+  /**
+   * Pin a prepared input as a preparation would, end the driven run with its result through the terminal commit as the
+   * worker does, settle its node task and release its hold, then ask for a retry of its output.
+   * @param f - The fixture.
+   * @param plan - The frozen plan.
+   * @param result - The output's failed result.
+   * @returns The pin holders before and after the commit and the retry's answer.
+   */
+  async function finishThenRetry(f: Fixture, plan: Record<string, unknown>, result: Record<string, unknown>): Promise<{ before: string[]; after: string[]; status: number }> {
+    const id = f.body.run_id;
+    const prepared = `${String(plan.sourceKey)}.${id}:prep:0:a1`;
+    await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId: (f.body.presentation_ref as { source: { toolInputId: string } }).source.toolInputId,
+      preparedKey: prepared, objectKeys: [prepared] });
+    const before = await liveHolders(id);
+    const outputs = plan.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "erase" | "expand" } }[];
+    const error = result.error as Record<string, never>;
+    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(plan.planFingerprint), expectedVersion: 0, consumptionSet: "uncertain",
+      error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
+    const after = await liveHolders(id);
+    await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;
+    await creditHoldService.releaseHold(id);
+    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+    const retry = { tool: f.body.tool, project_id: f.body.project_id, space_id: f.body.space_id, run_id: randomUUID(), retry: { runId: id, outputIndexes: [0] } };
+    const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(retry) });
+    return { before, after, status: response.status };
+  }
+
+  it("UR01 an erase Bria rejected releases its execution and prepared pins at the terminal commit and refuses a retry", async () => {
+    fault = (model) => (model === BRIA_ENDPOINT ? new HttpStatusError("wavespeed", 422, "{}") : undefined);
+    const f = await seedErase();
+    const { plan, result } = await admitAndDrive(f, "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase");
+    expect(result).toMatchObject({ status: "failed", error: { kind: "erase", step: "generate", category: "model_rejected" } });
+    // The existing refusal for a selected slot that cannot be retried: claimRetry's ValidationError (422).
+    expect(await finishThenRetry(f, plan, result)).toEqual({ before: ["execution", "prepared"], after: [], status: 422 });
+  });
+
+  it("UR02 an expand whose window VACE rejected releases its execution and prepared pins at the terminal commit and refuses a retry", async () => {
+    fault = (model) => (model === VACE_ENDPOINT ? new HttpStatusError("wavespeed", 422, "{}") : undefined);
+    const f = await seedExpand();
+    const { plan, result } = await admitAndDrive(f, "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand");
+    expect(result).toMatchObject({ status: "failed", error: { kind: "expand", windows: [{ windowIndex: 0, step: "generate", category: "model_rejected" }] } });
+    expect(await finishThenRetry(f, plan, result)).toEqual({ before: ["execution", "prepared"], after: [], status: 422 });
   });
 });
