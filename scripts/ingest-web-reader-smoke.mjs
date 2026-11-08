@@ -18,8 +18,12 @@ const HEADING = 'Reading inside the container';
 const PARAGRAPH = 'The quiet harbour lighthouse guides every fishing boat home before the evening storm arrives.';
 const PDF_PAGES = ['Hello page one', 'Second page here'];
 
-/** A minimal valid PDF with one line of Helvetica text per page, its xref offsets exact. */
-function pdfOf(lines) {
+/**
+ * A minimal valid PDF with one line of Helvetica text per page, its xref
+ * offsets exact; with `binaryMarker`, the comment line of high bytes most
+ * writers put after the header follows it.
+ */
+function pdfOf(lines, binaryMarker = false) {
   const objects = [];
   const pageIds = lines.map((_, i) => 3 + i * 2);
   const fontId = 3 + lines.length * 2;
@@ -33,7 +37,7 @@ function pdfOf(lines) {
     objects[pageId + 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
   });
   objects[fontId] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-  let out = '%PDF-1.4\n';
+  let out = binaryMarker ? '%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' : '%PDF-1.4\n';
   const offsets = [];
   for (let id = 1; id < objects.length; id++) {
     offsets[id] = out.length;
@@ -54,6 +58,8 @@ const ARTICLE = `<!doctype html><html><head><title>Smoke Article</title></head><
 <p>The full notes are in the <a href="/notes">harbour notes</a>, read the same way.</p>
 </article></body></html>`;
 const PDF = pdfOf(PDF_PAGES);
+// Sent as text/plain and not as a download: only its bytes say it is a PDF.
+const BINARY_PDF = pdfOf(PDF_PAGES, true);
 
 const CSP_PARAGRAPH = 'The lighthouse keeper writes the tide tables by hand every Sunday morning before dawn.';
 // Its policy forbids inline scripts, the way the reader adds Readability.
@@ -78,6 +84,9 @@ const BUSY = '<!doctype html><html><head><title>Busy</title><script>for (;;) {}<
 // Markdown-looking text a plain-text file holds, which must come back unescaped.
 const PLAIN_LINES = ['# Install', '* run `pnpm i`', '/\\d+/'];
 const PLAIN = `${PLAIN_LINES.join('\n')}\n`;
+// "中文测试" in GBK, written out because Node's TextEncoder only writes UTF-8.
+const GBK_TEXT = '中文测试';
+const GBK_BYTES = Buffer.from([0xd6, 0xd0, 0xce, 0xc4, 0xb2, 0xe2, 0xca, 0xd4]);
 const JSON_BODY = '{"name":"harbour","tides":[1,2,3],"note":"# not a heading"}';
 const BIG_BYTES = 30 * 1024 * 1024;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -113,7 +122,10 @@ const origin = createServer((req, res) => {
   else if (req.url === '/busy') res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(BUSY);
   else if (req.url === '/big.bin') void sendBigDownload(res);
   else if (req.url === '/readme.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end(PLAIN);
-  else if (req.url === '/data.json') res.writeHead(200, { 'content-type': 'application/json' }).end(JSON_BODY);
+  else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
+  else if (req.url === '/binary.pdf') {
+    res.writeHead(200, { 'content-type': 'text/plain', 'content-length': BINARY_PDF.length }).end(BINARY_PDF);
+  } else if (req.url === '/data.json') res.writeHead(200, { 'content-type': 'application/json' }).end(JSON_BODY);
   else if (req.url === '/download.pdf') {
     res.writeHead(200, {
       'content-type': 'application/x-pdf',
@@ -189,7 +201,7 @@ try {
   assert.equal(csp.status, 'ok', `csp page: read, got ${csp.status}`);
   assert.ok(csp.text.replace(/\s+/g, ' ').includes(CSP_PARAGRAPH), 'csp page: paragraph kept');
   assert.equal(xml.status, 'ok', `xml page: read, got ${xml.status}`);
-  assert.ok(xml.text.includes(XML_TEXT), 'xml page: its text kept');
+  assert.equal(xml.text, XML, `xml page: the XML as served, got ${JSON.stringify(xml.text)}`);
   assert.equal(shell.status, 'empty', `app shell: empty, got ${shell.status} ${JSON.stringify(shell.text ?? '')}`);
   assert.equal(rendered.status, 'ok', `rendered page: read, got ${rendered.status}`);
   assert.ok(rendered.text.replace(/\s+/g, ' ').includes(RENDERED_PARAGRAPH), 'rendered page: the text its script wrote');
@@ -197,8 +209,8 @@ try {
   // A document that is not HTML is read as its text, with no Markdown escapes;
   // a download with a type other than application/pdf is still checked for
   // the PDF signature rather than refused for its type.
-  const { body: files } = await read(['/readme.txt', '/data.json', '/download.pdf']);
-  const [plain, json, download] = files.pages;
+  const { body: files } = await read(['/readme.txt', '/data.json', '/download.pdf', '/gbk.txt', '/binary.pdf']);
+  const [plain, json, download, gbk, binaryPdf] = files.pages;
   assert.equal(plain.status, 'ok', `plain text: read, got ${plain.status}`);
   for (const line of PLAIN_LINES) {
     assert.ok(plain.text.split('\n').includes(line), `plain text: "${line}" kept as written, got ${JSON.stringify(plain.text)}`);
@@ -210,6 +222,15 @@ try {
   assert.equal(download.pages, 2);
   const downloadWords = download.text.replace(/\s+/g, ' ');
   for (const line of PDF_PAGES) assert.ok(downloadWords.includes(line), `x-pdf download: "${line}" read`);
+  // The bytes are decoded in the charset the response names.
+  assert.equal(gbk.status, 'ok', `gbk text: read, got ${gbk.status}`);
+  assert.ok(gbk.text.includes(GBK_TEXT), `gbk text: decoded as GBK, got ${JSON.stringify(gbk.text)}`);
+  // A PDF sent as text/plain is told by its signature, binary bytes and all.
+  assert.equal(binaryPdf.status, 'ok', `pdf sent as text: read, got ${binaryPdf.status}`);
+  assert.equal(binaryPdf.kind, 'pdf', `pdf sent as text: a pdf, got ${binaryPdf.kind}`);
+  assert.equal(binaryPdf.pages, 2);
+  const binaryWords = binaryPdf.text.replace(/\s+/g, ' ');
+  for (const line of PDF_PAGES) assert.ok(binaryWords.includes(line), `pdf sent as text: "${line}" read`);
 
   // Plan §9 row K: a download whose declared length is past the limit ends
   // at its headers, long before the 15 s the whole file would take.
@@ -224,7 +245,8 @@ try {
   assert.ok(busy.ms < 6000, `busy page: answered in ${busy.ms} ms`);
 
   console.log('Web reader smoke passed: article to Markdown, redirect followed, two-page PDF read, 404 unreachable, ' +
-    'CSP page, XML page, empty app shell, script-written page, plain text, JSON, x-pdf download, oversized download ' +
+    'CSP page, XML page, empty app shell, script-written page, plain text, GBK text, JSON, x-pdf download, ' +
+    'PDF sent as text, oversized download ' +
     'and busy page.');
   process.exit(0);
 } catch (error) {

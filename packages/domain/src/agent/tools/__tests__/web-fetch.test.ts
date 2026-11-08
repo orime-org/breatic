@@ -419,6 +419,8 @@ describe("one page asked twice in one call (plan §9 D)", () => {
     // The repeat carries no text of its own: the model reads it once, under the first.
     expect(answer.pages[1]!.text).toBeUndefined();
 
+    expect(answer.sources.map((source) => source.index)).toEqual([1]);
+
     // And the repeat took no number: the next page read is 2.
     const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
     expect(next.pages[0]!.index).toBe(2);
@@ -437,6 +439,7 @@ describe("one page asked twice in one call (plan §9 D)", () => {
       [0, 50, 2],
     ]);
     expect(answer.pages[2]!.text).toBeUndefined();
+    expect(answer.sources.map((source) => source.index)).toEqual([1, 2]);
   });
 
   it("hands the model the text once, the repeat being one line naming the first's source", async () => {
@@ -649,11 +652,17 @@ describe("citation numbers", () => {
 });
 
 describe("the source row", () => {
-  it("titles a page whose title is empty with its address", async () => {
+  it("passes on a page's empty title as it is, the panel showing the address in its place", async () => {
     const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage("Body.", { title: "" }) }));
 
     expect(answer.sources).toHaveLength(1);
-    expect(answer.sources[0]).toMatchObject({ url: A, title: A, index: 1 });
+    expect(answer.sources[0]).toMatchObject({ url: A, title: "", index: 1 });
+  });
+
+  it("titles a page the reader gave no title with an empty one", async () => {
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage("Body.", { title: undefined }) }));
+
+    expect(answer.sources[0]).toMatchObject({ url: A, title: "", index: 1 });
   });
 
   it("lists each page read under the address asked for, its title, publisher and number", async () => {
@@ -676,15 +685,48 @@ describe("the source row", () => {
 });
 
 describe("the links a page carries", () => {
-  it("are every link in the page's full text, not only in the slice handed over", async () => {
-    const full = `Intro https://a.example/one then ${filler(200)} later https://b.example/two.`;
+  const X = "https://a.example/one";
+  const Y = "https://b.example/two";
+  // Exactly one share (100 characters) each, so a slice holds one half.
+  const firstHalf = `Intro ${X} then`.padEnd(100, "-");
+  const secondHalf = `later ${Y} end`.padEnd(100, "-");
+
+  it("are only the links in the slice handed over, not the rest of the page", async () => {
     const answer = await fetchWith(
       turn(),
       { pages: [{ url: A }, { url: B }] },
-      reader({ [A]: okPage(full), [B]: { status: "refused", httpStatus: 403 } }),
+      reader({ [A]: okPage(firstHalf + secondHalf), [B]: { status: "refused", httpStatus: 403 } }),
     );
 
-    expect(answer.pages[0]!.links).toEqual(["https://a.example/one", "https://b.example/two"]);
+    // Two pages share 100 characters: page A's slice is its first 50, which holds X only.
+    expect(answer.pages[0]!.links).toEqual([X]);
+    expect(answer.pages[1]!.links).toEqual([]);
+  });
+
+  it("are the links of its own text for each slice of one page read on with next_start", async () => {
+    const tools = turn();
+    const readPages = reader({ [A]: okPage(firstHalf + secondHalf) });
+
+    const first = await fetchWith(tools, { pages: [{ url: A }] }, readPages);
+    expect(first.pages[0]).toMatchObject({ start: 0, end: 100, next_start: 100 });
+    const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
+
+    expect(first.pages[0]!.links).toEqual([X]);
+    expect(next.pages[0]!.links).toEqual([Y]);
+  });
+
+  it("name one page once, in the spelling the slice first writes it", async () => {
+    const text = `${X} and again http://A.example/one/ and ${X} once more`;
+
+    const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(text) }));
+
+    expect(answer.pages[0]!.links).toEqual([X]);
+  });
+
+  it("are none on a repeat of a page asked twice at one start", async () => {
+    const answer = await fetchWith(turn(), { pages: [{ url: A }, { url: A }] }, reader({ [A]: okPage(`See ${X} now`) }));
+
+    expect(answer.pages[0]!.links).toEqual([X]);
     expect(answer.pages[1]!.links).toEqual([]);
   });
 });

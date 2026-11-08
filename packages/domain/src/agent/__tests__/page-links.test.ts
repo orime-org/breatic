@@ -231,14 +231,52 @@ describe("pageLinksIn: links longer than a page address may be", () => {
     expect(pageLinksIn(`see ${link} now`)).toEqual([link]);
   });
 
-  it("drops a link that runs past READ_PAGE_MAX_URL_CHARS while being read, without reading the rest of it", () => {
+  it("judges the length after the end is trimmed: a run of 20000 closing parentheses keeps its one balanced pair", () => {
     const text = `https://a.com/(${")".repeat(20000)}`;
     const started = performance.now();
     const found = pageLinksIn(text);
     const elapsed = performance.now() - started;
 
-    expect(found).toEqual([]);
+    expect(found).toEqual(["https://a.com/()"]);
     expect(elapsed).toBeLessThan(200);
+  });
+
+  describe("a link of exactly READ_PAGE_MAX_URL_CHARS once the sentence's punctuation is trimmed", () => {
+    const link = `https://a.com/${"x".repeat(2034)}`;
+
+    it.each([
+      ["followed by a full stop", `see ${link}. ok`],
+      ["followed by a comma", `see ${link}, ok`],
+      ["wrapped in parentheses", `see (${link}) ok`],
+    ])("is kept when %s", (_label, text) => {
+      expect(link.length).toBe(READ_PAGE_MAX_URL_CHARS);
+
+      const found = pageLinksIn(text);
+
+      expect(found).toEqual([link]);
+      expect(found[0]).toHaveLength(READ_PAGE_MAX_URL_CHARS);
+    });
+  });
+
+  it("judges a link written without a scheme by its length with https:// in front", () => {
+    const written = `a.com/${"x".repeat(2042)}`;
+    expect(written.length).toBe(READ_PAGE_MAX_URL_CHARS);
+    expect(`https://${written}`.length).toBe(READ_PAGE_MAX_URL_CHARS + 8);
+
+    expect(pageLinksIn(`see ${written} now`)).toEqual([]);
+  });
+
+  it("keeps a link written without a scheme that is exactly READ_PAGE_MAX_URL_CHARS with https:// in front", () => {
+    const written = `a.com/${"x".repeat(2034)}`;
+    expect(`https://${written}`.length).toBe(READ_PAGE_MAX_URL_CHARS);
+
+    expect(pageLinksIn(`see ${written} now`)).toEqual([written]);
+  });
+
+  it("drops an over-long link as one whole run, never reading a host inside it as a link of its own", () => {
+    const text = `https://a.com/?q=${"y".repeat(2100)}&u=evil.com/steal`;
+
+    expect(pageLinksIn(`see ${text} now`)).toEqual([]);
   });
 
   it("trims the closing parentheses of links within the cap in linear time, keeping each one balanced pair", () => {

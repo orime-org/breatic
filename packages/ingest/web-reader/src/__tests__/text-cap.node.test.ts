@@ -15,6 +15,8 @@ import { describe, expect, it } from "vitest";
 
 import type { ReadPageResult } from "@breatic/shared";
 
+import { READ_PAGE_MAX_TITLE_CHARS, READ_PAGE_MAX_URL_CHARS } from "@shared/agent/read-pages.js";
+
 import { capPageText, perPageTextUnits } from "../text-cap.js";
 
 /** The code units one call's pages carry together. */
@@ -125,5 +127,66 @@ describe("capPageText", () => {
         }
       }),
     );
+  });
+});
+
+// Plan §11 row 9: the title and the final address are page fields the reader
+// takes from the site, so they are held to the contract's own bounds too; a
+// cut title is no cut text, so `truncated` still speaks only of the text.
+describe("capPageText: the title and the final address", () => {
+  /** The title bound the plan sets; the cases are built from it, not from the export. */
+  const TITLE_CAP = 1024;
+
+  it("bounds a title at 1024 code units", () => {
+    expect(READ_PAGE_MAX_TITLE_CHARS).toBe(TITLE_CAP);
+  });
+
+  it("cuts a title longer than READ_PAGE_MAX_TITLE_CHARS to that length", () => {
+    const title = "t".repeat(TITLE_CAP + 50);
+
+    const capped = capPageText({ ...okPage("Body."), title }, 100);
+
+    expect(capped.title).toBe("t".repeat(TITLE_CAP));
+  });
+
+  it("cuts a title one unit earlier when the cap falls inside a surrogate pair", () => {
+    const title = `${"t".repeat(TITLE_CAP - 1)}😀more`;
+
+    const capped = capPageText({ ...okPage("Body."), title }, 100);
+
+    expect(capped.title).toBe("t".repeat(TITLE_CAP - 1));
+  });
+
+  it("does not mark a page truncated for its title alone", () => {
+    const title = "t".repeat(TITLE_CAP + 1);
+
+    const capped = capPageText({ ...okPage("Body."), title }, 100);
+
+    expect(capped.title).toHaveLength(TITLE_CAP);
+    expect(capped.text).toBe("Body.");
+    expect(capped).not.toHaveProperty("truncated");
+  });
+
+  it("leaves out a final address longer than READ_PAGE_MAX_URL_CHARS", () => {
+    const finalUrl = `https://a.com/${"x".repeat(READ_PAGE_MAX_URL_CHARS)}`;
+
+    const capped = capPageText({ ...okPage("Body."), finalUrl }, 100);
+
+    expect(capped).not.toHaveProperty("finalUrl");
+    expect(capped).toMatchObject({ status: "ok", text: "Body." });
+  });
+
+  it("keeps a final address of exactly READ_PAGE_MAX_URL_CHARS", () => {
+    const finalUrl = `https://a.com/${"x".repeat(READ_PAGE_MAX_URL_CHARS - "https://a.com/".length)}`;
+
+    const capped = capPageText({ ...okPage("Body."), finalUrl }, 100);
+
+    expect(capped.finalUrl).toBe(finalUrl);
+  });
+
+  it("leaves a short title and final address untouched", () => {
+    const page = okPage("Body.");
+
+    expect(capPageText(page, 100)).toEqual(page);
   });
 });

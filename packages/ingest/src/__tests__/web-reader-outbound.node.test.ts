@@ -13,9 +13,12 @@
  */
 
 import fc from "fast-check";
+import * as Sentry from "@sentry/cloudflare";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { webReaderOutbound, type SendOn } from "@ingest/web-reader-outbound.js";
+
+vi.mock("@sentry/cloudflare", () => ({ captureMessage: vi.fn(), captureException: vi.fn() }));
 
 /** A `send` that answers 200 and records what it was given. */
 function sendRecording(answer: () => Response = () => new Response("page", { status: 200 })): ReturnType<typeof vi.fn<SendOn>> {
@@ -24,6 +27,9 @@ function sendRecording(answer: () => Response = () => new Response("page", { sta
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.mocked(Sentry.captureMessage).mockClear();
+  vi.mocked(Sentry.captureException).mockClear();
 });
 
 describe("webReaderOutbound refuses addresses that name a machine directly", () => {
@@ -172,6 +178,26 @@ describe("webReaderOutbound when the send fails", () => {
     expect(response.status).toBe(502);
     expect(response.headers.get("x-breatic-unreachable")).toBe("1");
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  // Plan §11 row 16: the host a page named not answering is the page's own
+  // matter, not ours to fix, but the reason must still be in the logs.
+  it("notes the failed send as ingest_web_reader_send_failed with its host, as the user's input", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const send = vi.fn<SendOn>(() => Promise.reject(new TypeError("fetch failed: getaddrinfo ENOTFOUND")));
+
+    await webReaderOutbound(new Request("https://no-such-host.example/page?q=1"), send);
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_web_reader_send_failed",
+      expect.objectContaining({
+        host: "no-such-host.example",
+        err: expect.stringContaining("ENOTFOUND") as unknown,
+      }),
+    );
+    // Caused by the link it was given, so it is logged and never reported.
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
   it("never marks an answer the site itself gave", async () => {

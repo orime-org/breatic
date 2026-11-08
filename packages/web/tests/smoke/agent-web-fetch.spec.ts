@@ -38,7 +38,7 @@ interface ToolPart {
   type: string;
   state?: string;
   errorText?: string;
-  output?: { sources?: Array<{ url: string }>; pages?: Array<{ url: string; status: string; kind?: string; text?: string }> };
+  output?: { sources?: Array<{ url: string; index?: number }>; pages?: Array<{ url: string; status: string; kind?: string; text?: string }> };
 }
 
 /** What one turn left on screen and in the conversation. */
@@ -47,14 +47,14 @@ interface Turn {
   reply: string;
   /** The address of every line in the source box, in order. */
   sources: string[];
+  /** The numbers each line of the source box carries, in the same order. */
+  marks: number[][];
   /** The turn's `web_fetch` calls, as stored. */
   fetches: ToolPart[];
   /** The turn's `web_search` calls, as stored. */
   searches: ToolPart[];
   /** How many citation chips the reply carries. */
   chips: number;
-  /** The lines of the steps that did not finish. */
-  failures: string[];
 }
 
 /**
@@ -91,9 +91,9 @@ async function oneTurn(page: Page, prompt: string): Promise<Turn> {
     )
   ).join('\n');
   const chips = await reply.getByTestId('citation-chip').count();
-  const failures = await reply.getByTestId('message-bubble-tool-failed').allInnerTexts();
 
   let sources: string[] = [];
+  let marks: number[][] = [];
   const opener = reply.getByTestId('turn-sources');
   if ((await opener.count()) > 0) {
     await opener.click();
@@ -102,6 +102,11 @@ async function oneTurn(page: Page, prompt: string): Promise<Turn> {
     sources = await box
       .getByTestId('source-box-row')
       .evaluateAll((rows) => rows.map((row) => row.getAttribute('href') ?? ''));
+    marks = await box
+      .getByTestId('source-box-marks')
+      .evaluateAll((groups) =>
+        groups.map((group) => Array.from(group.children, (ring) => Number(ring.textContent ?? ''))),
+      );
     await page.keyboard.press('Escape');
     await expect(box).toBeHidden();
   }
@@ -115,10 +120,10 @@ async function oneTurn(page: Page, prompt: string): Promise<Turn> {
   return {
     reply: prose,
     sources,
+    marks,
     fetches: parts.filter((part) => part.type === 'tool-web_fetch'),
     searches: parts.filter((part) => part.type === 'tool-web_search'),
     chips,
-    failures,
   };
 }
 
@@ -228,13 +233,21 @@ test('a page found by search is read, and both are sources the reply cites @need
   );
 
   const searched = turn.searches.flatMap((part) => part.output?.sources ?? []).map((s) => s.url);
-  const read = turn.fetches.flatMap((part) => part.output?.sources ?? []).map((s) => s.url);
+  const readSources = turn.fetches.flatMap((part) => part.output?.sources ?? []);
+  const read = readSources.map((s) => s.url);
   expect(searched.length).toBeGreaterThan(0);
   expect(read.length).toBeGreaterThan(0);
   // The pages the read reached are lines in the box, beside the ones the
   // search found; a page both found and read is one line.
   const rows = turn.sources.map(pageOf);
   for (const url of read) expect(rows).toContain(pageOf(url));
+  expect(new Set(rows).size, JSON.stringify(turn.sources)).toBe(rows.length);
+  // Each page read carries its number on the line for that page.
+  expect(turn.marks).toHaveLength(rows.length);
+  for (const source of readSources) {
+    const line = rows.indexOf(pageOf(source.url));
+    expect(turn.marks[line], JSON.stringify({ source, sources: turn.sources, marks: turn.marks })).toContain(source.index);
+  }
   expect(turn.sources.length).toBeGreaterThan(1);
   expect(turn.chips).toBeGreaterThan(0);
   expect(turn.reply).toMatch(/\d{3}/);

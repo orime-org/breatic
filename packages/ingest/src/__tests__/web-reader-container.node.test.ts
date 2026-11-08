@@ -32,6 +32,10 @@ const stand = vi.hoisted(() => {
     startMs: 0,
     fetchMs: 0,
     start: (): Promise<void> => Promise.resolve(),
+    /** How `startAndWaitForPorts` settles; by default the same as `start`. */
+    portsStart: (): Promise<void> => behaviour.start(),
+    /** When a schedule's promise settles. */
+    schedule: (): Promise<void> => Promise.resolve(),
     answer: (): Promise<Response> => Promise.resolve(new Response(null, { status: 500 })),
     destroy: (): Promise<void> => Promise.resolve(),
   };
@@ -91,10 +95,11 @@ const stand = vi.hoisted(() => {
      * @param payload - What it passes.
      * @returns A schedule record.
      */
-    schedule(when: Date | number, callback: string, payload?: unknown): Promise<{ id: string }> {
+    async schedule(when: Date | number, callback: string, payload?: unknown): Promise<{ id: string }> {
       this.recorded.events.push("schedule");
       this.recorded.scheduled.push({ when: when instanceof Date ? when.getTime() : when, callback, payload });
-      return Promise.resolve({ id: "schedule-1" });
+      await behaviour.schedule();
+      return { id: "schedule-1" };
     }
 
     /**
@@ -108,11 +113,15 @@ const stand = vi.hoisted(() => {
     }
 
     /**
-     * Same as `start`.
+     * Record a start that waits for the ports, moving the clock by the
+     * start's cost. Recorded apart from `start`, so a test can tell which one
+     * the reader called.
      * @returns Nothing.
      */
-    startAndWaitForPorts(): Promise<void> {
-      return this.start();
+    async startAndWaitForPorts(): Promise<void> {
+      this.recorded.events.push("startAndWaitForPorts");
+      vi.setSystemTime(Date.now() + behaviour.startMs);
+      await behaviour.portsStart();
     }
 
     /**
@@ -166,12 +175,18 @@ const PAGES: ReadPageResult[] = [
   { url: "https://example.org/report.pdf", status: "ok", httpStatus: 200, kind: "pdf", pages: 3, text: "Report" },
 ];
 
+/** The id of every reader's Durable Object, as `ctx.id.toString()` gives it. */
+const READER_ID = "web-reader-object-1";
+
+/** What the stand-in records for the start the reader must call. */
+const STARTED = "startAndWaitForPorts";
+
 /**
  * A fresh reader and what its base recorded.
  * @returns Both.
  */
 function newReader(): { reader: InstanceType<typeof WebReaderContainer>; recorded: Recorded } {
-  const reader = new WebReaderContainer({} as never, {});
+  const reader = new WebReaderContainer({ id: { toString: (): string => READER_ID } } as never, {});
   const recorded = stand.instances.at(-1);
   if (recorded === undefined) throw new Error("the stand-in base was not constructed");
   return { reader, recorded };
@@ -184,6 +199,8 @@ beforeEach(() => {
   stand.behaviour.startMs = 200;
   stand.behaviour.fetchMs = 1_000;
   stand.behaviour.start = (): Promise<void> => Promise.resolve();
+  stand.behaviour.portsStart = (): Promise<void> => stand.behaviour.start();
+  stand.behaviour.schedule = (): Promise<void> => Promise.resolve();
   stand.behaviour.answer = (): Promise<Response> => Promise.resolve(Response.json({ pages: PAGES, cpuUsec: 4_200_000 }));
   stand.behaviour.destroy = (): Promise<void> => Promise.resolve();
 });
@@ -194,12 +211,21 @@ afterEach(() => {
 });
 
 describe("WebReaderContainer.read on success", () => {
+  it("starts the container with startAndWaitForPorts, never a bare start", async () => {
+    const { reader, recorded } = newReader();
+
+    await reader.read(REQUEST);
+
+    expect(recorded.events).toContain(STARTED);
+    expect(recorded.events).not.toContain("start");
+  });
+
   it("schedules the destroy, starts, posts once, then destroys, in that order", async () => {
     const { reader, recorded } = newReader();
 
     await reader.read(REQUEST);
 
-    expect(recorded.events).toEqual(["schedule", "start", "fetch", "destroy"]);
+    expect(recorded.events).toEqual(["schedule", STARTED, "fetch", "destroy"]);
   });
 
   it("posts the request to the container's /read", async () => {
@@ -279,7 +305,7 @@ describe("WebReaderContainer.read on failure", () => {
 
     await expect(reader.read(REQUEST)).rejects.toThrow("no capacity");
 
-    expect(recorded.events).toEqual(["schedule", "start", "destroy"]);
+    expect(recorded.events).toEqual(["schedule", STARTED, "destroy"]);
   });
 
   // Plan §9 row I: the route answers a start that failed with 503 and the
@@ -297,6 +323,42 @@ describe("WebReaderContainer.read on failure", () => {
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toMatch(/^reader_not_started\b/);
     expect((failure as Error).message).toContain("no capacity");
+  });
+
+  it("names a startAndWaitForPorts that failed reader_not_started, even when a bare start would succeed", async () => {
+    stand.behaviour.portsStart = (): Promise<void> => Promise.reject(new Error("ports never opened"));
+    const { reader } = newReader();
+
+    const failure = await reader.read(REQUEST).then(
+      () => null,
+      (err: unknown) => err,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toMatch(/^reader_not_started\b/);
+    expect((failure as Error).message).toContain("ports never opened");
+  });
+
+  it("carries the service's own words when it answers other than 2xx", async () => {
+    stand.behaviour.answer = (): Promise<Response> =>
+      Promise.resolve(new Response("chromium failed to launch", { status: 500 }));
+    const { reader } = newReader();
+
+    await expect(reader.read(REQUEST)).rejects.toThrow(/chromium failed to launch/);
+  });
+
+  it("carries at most the first 500 characters of that answer", async () => {
+    const body = `${"a".repeat(500)}${"b".repeat(500)}`;
+    stand.behaviour.answer = (): Promise<Response> => Promise.resolve(new Response(body, { status: 502 }));
+    const { reader } = newReader();
+
+    const failure = await reader.read(REQUEST).then(
+      () => null,
+      (err: unknown) => err as Error,
+    );
+
+    expect(failure?.message).toContain("a".repeat(500));
+    expect(failure?.message).not.toContain("b");
   });
 
   it("does not name a failure after the start reader_not_started", async () => {
@@ -381,7 +443,7 @@ describe.each([
       () => "resolved",
       () => "rejected",
     );
-    await vi.waitFor(() => expect(recorded.events).toContain("start"));
+    await vi.waitFor(() => expect(recorded.events).toContain(STARTED));
 
     let ended = false;
     const ending = end(reader).then(() => {
@@ -442,7 +504,7 @@ describe("WebReaderContainer when the destroy fails", () => {
 
     expect(logged).toHaveBeenCalledWith(
       "ingest_web_reader_destroy_failed",
-      expect.objectContaining({ err: expect.stringContaining("destroy refused") as unknown }),
+      expect.objectContaining({ containerId: READER_ID, err: expect.stringContaining("destroy refused") as unknown }),
     );
   });
 
@@ -455,7 +517,38 @@ describe("WebReaderContainer when the destroy fails", () => {
 
     expect(logged).toHaveBeenCalledWith(
       "ingest_web_reader_destroy_failed",
-      expect.objectContaining({ err: expect.stringContaining("destroy refused") as unknown }),
+      expect.objectContaining({ containerId: READER_ID, err: expect.stringContaining("destroy refused") as unknown }),
     );
+  });
+});
+
+// Plan §11 row 14: a stop that arrives while the deadline's destroy is still
+// being scheduled must not wait for the schedule and then start a container
+// nobody is waiting for.
+describe("WebReaderContainer.stop while the destroy is still being scheduled", () => {
+  it("never starts the container, rejects the read and destroys the instance", async () => {
+    let scheduled: () => void = () => undefined;
+    stand.behaviour.schedule = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        scheduled = resolve;
+      });
+    const { reader, recorded } = newReader();
+    const outcome = reader.read(REQUEST).then(
+      () => "resolved",
+      () => "rejected",
+    );
+    await vi.waitFor(() => expect(recorded.events).toContain("schedule"));
+
+    const stopping = reader.stop();
+    await settle();
+    // Let a reader still waiting on the schedule go on, so neither way hangs.
+    scheduled();
+    await stopping;
+
+    await expect(outcome).resolves.toBe("rejected");
+    expect(recorded.events).not.toContain("start");
+    expect(recorded.events).not.toContain(STARTED);
+    expect(recorded.events).not.toContain("fetch");
+    expect(recorded.events.filter((event) => event === "destroy")).toHaveLength(1);
   });
 });

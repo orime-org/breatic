@@ -198,6 +198,30 @@ describe('one page reached by both tools', () => {
     expect(message.citations?.[2]?.indexes).toEqual([1, 2]);
   });
 
+  it('takes the title of a later source when the first one for the page had none', () => {
+    const message = toChatMessage(
+      reply([
+        searched('s', [{ url: 'https://same.example/page', title: '', publisher: 'Site', index: 1 }]),
+        fetched('f', [{ url: 'https://same.example/page', title: 'Real', publisher: 'Site', index: 2 }]),
+      ]),
+    );
+
+    expect(message.sources).toHaveLength(1);
+    expect(message.sources?.[0]?.title).toBe('Real');
+    expect(message.citations?.[1]?.title).toBe('Real');
+  });
+
+  it('keeps the first title when both sources for the page have one', () => {
+    const message = toChatMessage(
+      reply([
+        searched('s', [{ url: 'https://same.example/page', title: 'First', publisher: 'Site', index: 1 }]),
+        fetched('f', [{ url: 'https://same.example/page', title: 'Second', publisher: 'Site', index: 2 }]),
+      ]),
+    );
+
+    expect(message.sources?.[0]?.title).toBe('First');
+  });
+
   it('keeps two different pages on one site as two rows', () => {
     const message = toChatMessage(
       reply([

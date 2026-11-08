@@ -225,7 +225,7 @@ test('a page read that failed says which step and why', async ({ page }) => {
   await settled(page);
 
   await expect(page.getByTestId('message-bubble-tool-failed')).toHaveText(
-    'Read web pages didn\'t finish: this page needs a login',
+    'Read web pages didn\'t finish: needs a login',
   );
   await expect(page.getByTestId('turn-sources')).toHaveCount(0);
 });
