@@ -16,7 +16,7 @@ import { readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { chromium, errors, type Browser, type Download, type Response } from "playwright-core";
-import { READER_SERVICE_PORT, readPagesRequestSchema } from "@shared/agent/read-pages.js";
+import { READER_SERVICE_PORT, READER_UNREACHABLE_HEADER, readPagesRequestSchema } from "@shared/agent/read-pages.js";
 import type { ReadPageResult, ReadPagesRequest, ReaderServiceAnswer } from "@shared/agent/read-pages.js";
 
 import { articleOf } from "./article.js";
@@ -33,9 +33,6 @@ const USER_AGENT =
 
 /** Readability's source, run inside each rendered page. */
 const READABILITY = readFileSync(createRequire(import.meta.url).resolve("@mozilla/readability/Readability.js"), "utf8");
-
-/** The header the Worker's outbound handler marks a send that failed with. */
-const UNREACHABLE_HEADER = "x-breatic-unreachable";
 
 /**
  * Download types that are never a PDF, so the file is not fetched; any other
@@ -138,7 +135,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     if (response === null) return { url, status: "unreachable" };
     const httpStatus = response.status();
     const headers = response.headers();
-    const ended = statusOfResponse(httpStatus, headers["content-type"] ?? null, headers[UNREACHABLE_HEADER] === "1");
+    const ended = statusOfResponse(httpStatus, headers["content-type"] ?? null, headers[READER_UNREACHABLE_HEADER] === "1");
     if (ended !== null) return { url, status: ended, httpStatus, finalUrl: page.url() };
 
     await page.waitForLoadState("networkidle", { timeout: request.settleMs }).catch(() => undefined);

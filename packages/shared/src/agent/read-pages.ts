@@ -59,6 +59,12 @@ export interface ReadPagesAnswer {
 export const READ_PAGE_MAX_URL_CHARS = 2048;
 
 /**
+ * The header the Worker's outbound handler marks a send that failed with
+ * (value `1`), so the reader tells a site that never answered from one that did.
+ */
+export const READER_UNREACHABLE_HEADER = "x-breatic-unreachable";
+
+/**
  * Whether a string is an http or https address.
  * @param value - The string.
  * @returns True for an http or https URL.

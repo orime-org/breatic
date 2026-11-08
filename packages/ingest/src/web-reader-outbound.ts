@@ -8,12 +8,7 @@
  * production. Redirects come back to the browser, so each hop is judged here
  * again.
  */
-
-/**
- * Marks the answer to a send that failed (no such name, no answer), so the
- * reader can tell it from a 502 the site itself gave.
- */
-const UNREACHABLE_HEADER = "x-breatic-unreachable";
+import { READER_UNREACHABLE_HEADER } from "@breatic/shared";
 
 /** How a request is sent on. */
 export type SendOn = (request: Request, init: RequestInit) => Promise<Response>;
@@ -55,6 +50,7 @@ export async function webReaderOutbound(request: Request, send?: SendOn): Promis
   try {
     return await sendOn(request, { redirect: "manual" });
   } catch {
-    return new Response("Unreachable", { status: 502, headers: { [UNREACHABLE_HEADER]: "1" } });
+    // Marked so the reader can tell it from a 502 the site itself gave.
+    return new Response("Unreachable", { status: 502, headers: { [READER_UNREACHABLE_HEADER]: "1" } });
   }
 }
