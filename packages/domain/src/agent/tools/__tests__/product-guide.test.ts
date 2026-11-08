@@ -160,6 +160,13 @@ describe("transitions in the guide after the two-clip timeline", () => {
     expect(paragraph).toMatch(/half/);
     expect(paragraph).toMatch(/shorter/);
   });
+
+  it("says a shorter picked video turns the transition into Cut and its problem shows with Retry", () => {
+    const paragraph = toolParagraph("canvas.miniTool.video.transitions.label");
+    expect(paragraph).toMatch(/shorter video turns the transition into Cut/);
+    expect(paragraph).toMatch(/problem with the picked video shows on the panel/);
+    expect(paragraph).toContain(`"${t("canvas.miniTool.videoUI.retryPreview")}"`);
+  });
 });
 
 // inner#1306 test plan §97 (canvas design §4 对口型 row; execution design §9.3, §9.4; frames-split §7.11): the lip-sync panel

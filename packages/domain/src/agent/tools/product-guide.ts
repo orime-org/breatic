@@ -1056,6 +1056,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
       `set with ${quoted(t("canvas.miniTool.videoUI.transitionDuration"))}, and clips too short for one leave only Cut. ` +
+      "Picking a shorter video turns the transition into Cut when it no longer fits. A problem with the picked video shows " +
+      `on the panel as the current video's does, with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))} to repair it. ` +
       `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
       `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} runs it. To join more clips, run the tool again on the exported result.`,
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
