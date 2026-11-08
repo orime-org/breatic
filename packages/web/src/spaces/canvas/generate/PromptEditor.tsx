@@ -8,8 +8,8 @@ import { Text } from '@tiptap/extension-text';
 import { Selection } from '@tiptap/pm/state';
 import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
-import type * as Y from 'yjs';
-import { REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
+import * as Y from 'yjs';
+import { CANVAS_NODES_KEY, REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
@@ -27,7 +27,11 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import { PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  deriveReferences, focusToRailItem, type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
+import { validFocusImages } from '@web/data/focus-images';
+import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import {
   MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
@@ -103,6 +107,9 @@ interface PromptWiring {
   /** Where the open `@` popup registers its refresh. */
   suggestionRefresh: { current: (() => void) | null };
 }
+
+/** Text bodies are not needed to tell which sources a pool holds. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
 
 /** Each kept editor's wiring, what it was built on, and whether the caret goes back into it when it is shown. */
 const keptOf = new WeakMap<
@@ -189,6 +196,153 @@ interface PromptEditorProps {
    * extension mounts only when present (it throws on a null provider).
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
+}
+
+/**
+ * Removes every chip whose source is stale, each with the spaces it owns, as
+ * one machine edit.
+ * @param editor - The prompt editor.
+ * @param isStale - Whether a chip's source has left the pool.
+ * @throws {never} Never.
+ */
+function clearStaleChips(editor: Editor, isStale: (sourceNodeId: string) => boolean): void {
+  if (editor.isDestroyed) return;
+  const occurrences: MentionOccurrence[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name !== REFERENCE_MENTION_NODE) return;
+    const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+    if (typeof id === 'string') {
+      occurrences.push({ sourceNodeId: id, from: pos, to: pos + n.nodeSize });
+    }
+  });
+  const kept = new Set(occurrences.map((o) => o.sourceNodeId).filter((id) => !isStale(id)));
+  const deletions = planMentionDeletions(occurrences, kept);
+  if (deletions.length === 0) return;
+  // Delete each stale chip WITH its owned spaces (same deletion-unit model as
+  // the keyboard path), so a cascade clear leaves NO orphan space — a space
+  // shared with a SURVIVING chip is kept (design 2026-07-13 §5; adversarial
+  // finding: the old chip-node-only delete left orphan spaces, diverging from
+  // the keyboard path). Ranges are descending + merged, so each delete leaves
+  // the remaining (lower) positions valid.
+  const stalePositions = new Set(deletions.map((d) => d.from));
+  const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
+  const tr = editor.state.tr;
+  for (const { from, to } of ranges) tr.delete(from, to);
+  // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
+  // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
+  // resurrect an orphan chip whose reference is gone) AND tags it machine-
+  // derived so the local-input tracker never counts it as a keystroke —
+  // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
+  // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
+  dispatchMachineEdit(editor.view, tr);
+}
+
+/**
+ * Keeps every chip a LIVE PROJECTION of its source's pool row, for every
+ * modality (design 2026-07-12 invariant; batch-5 I5): the name and thumbnail
+ * are frozen into attributes at insert time, so a renamed or regenerated
+ * source is re-synced here. Chips whose source is not in `pool` are left
+ * alone; {@link clearStaleChips} removes them. A text chip's hover CONTENT is
+ * not synced: it is read live at hover-open (HoverPreview's resolveOnOpen),
+ * keeping the source node the single truth.
+ * @param editor - The prompt editor.
+ * @param pool - The live pool rows.
+ * @throws {never} Never.
+ */
+function syncChipDisplay(editor: Editor, pool: readonly ReferenceRailItem[]): void {
+  if (editor.isDestroyed) return;
+  const chips: ChipDisplaySnapshot[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name !== REFERENCE_MENTION_NODE) return;
+    const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+    if (typeof id !== 'string') return;
+    chips.push({
+      pos,
+      sourceNodeId: id,
+      label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
+      thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
+    });
+  });
+  const updates = planChipDisplayUpdates(chips, pool);
+  if (updates.length === 0) return;
+  const tr = editor.state.tr;
+  for (const u of updates) {
+    if ('label' in u) {
+      tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
+    }
+    if ('thumbnail' in u) {
+      tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
+    }
+  }
+  // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
+  // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
+  // instead of the user's own edit, and — gated on `references`, not the doc —
+  // that revert never self-heals) AND tags it so the local-input tracker never
+  // counts it as a keystroke (#1802 round-4; batch-4).
+  dispatchMachineEdit(editor.view, tr);
+}
+
+/**
+ * Whether a transaction can change a reference pool: a top-level map entry
+ * (node or edge added or removed), a node's name, or a node's focus crops.
+ * Prompt and body typing (XML types only) and moves do not.
+ * @param transaction - The finished transaction.
+ * @returns Whether the pool may have changed.
+ * @throws {never} Never.
+ */
+function touchesPool(transaction: Y.Transaction): boolean {
+  for (const [type, keys] of transaction.changed) {
+    if (type._item === null || type instanceof Y.Array) return true;
+    if (type instanceof Y.Map && keys.has('name')) return true;
+  }
+  return false;
+}
+
+/**
+ * The canvas node a prompt fragment is stored under.
+ * @param fragment - The prompt fragment.
+ * @param nodesMap - The canvas node map.
+ * @returns The node id, or null when the fragment is not under a node.
+ * @throws {never} Never.
+ */
+function hostNodeOf(fragment: Y.XmlFragment, nodesMap: Y.Map<unknown>): string | null {
+  let item = fragment._item;
+  while (item !== null) {
+    const parent = item.parent;
+    if (parent === nodesMap) return item.parentSub;
+    item = parent instanceof Y.AbstractType ? parent._item : null;
+  }
+  return null;
+}
+
+/**
+ * Applies a local canvas write's consequences to an editor's chips right
+ * after the write, from the pool the document now gives its host node. Only
+ * sources the editor's current pool holds are judged: a source the container
+ * filters out is left to the effects.
+ * @param editor - The prompt editor.
+ * @param fragment - The fragment it edits.
+ * @param transaction - The finished canvas transaction.
+ * @throws {never} Never.
+ */
+function projectChipsAfterWrite(editor: Editor, fragment: Y.XmlFragment, transaction: Y.Transaction): void {
+  if (editor.isDestroyed || !transaction.local || !touchesPool(transaction)) return;
+  const shown = keptOf.get(editor)?.wiring.references ?? [];
+  const doc = fragment.doc;
+  if (shown.length === 0 || doc === null) return;
+  const host = hostNodeOf(fragment, doc.getMap(CANVAS_NODES_KEY));
+  if (host === null) return;
+  const nodes = readNodes(doc);
+  const hostView = nodes.find((n) => n.id === host);
+  if (hostView === undefined) return;
+  const shownIds = new Set(shown.map((r) => r.sourceNodeId));
+  const live = [
+    ...deriveReferences(host, nodes, readEdges(doc), NO_TEXT),
+    ...validFocusImages((hostView.data as { focusImages?: unknown }).focusImages).map(focusToRailItem),
+  ].filter((r) => shownIds.has(r.sourceNodeId));
+  const liveIds = new Set(live.map((r) => r.sourceNodeId));
+  clearStaleChips(editor, (id) => shownIds.has(id) && !liveIds.has(id));
+  syncChipDisplay(editor, live);
 }
 
 /**
@@ -493,87 +647,34 @@ export const PromptEditor = React.forwardRef<
     keptOf.get(editor)?.wiring.suggestionRefresh.current?.();
   }, [editor, referenceKinds, references]);
 
-  // Cascade-clear stale @-mention chips: when a reference edge is removed the
-  // pool shrinks, so any @-mention pointing at a now-disconnected source must
-  // disappear from the prompt (design §2.1 — a mention only picks from the
-  // pool). Collect the mention occurrences, plan the deletions purely, then
-  // apply them in one transaction (synced to collaborators via Collaboration).
+  // A chip only picks from the pool (design §2.1) and shows its source's live
+  // name and thumbnail; these two effects keep it so for whatever reaches the
+  // pool, remote writes included.
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
-    const occurrences: MentionOccurrence[] = [];
-    editor.state.doc.descendants((n, pos) => {
-      if (n.type.name !== REFERENCE_MENTION_NODE) return;
-      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
-      if (typeof id === 'string') {
-        occurrences.push({ sourceNodeId: id, from: pos, to: pos + n.nodeSize });
-      }
-    });
-    const deletions = planMentionDeletions(occurrences, poolIds);
-    if (deletions.length === 0) return;
-    // Delete each stale chip WITH its owned spaces (same deletion-unit model as
-    // the keyboard path), so a cascade clear leaves NO orphan space — a space
-    // shared with a SURVIVING chip is kept (design 2026-07-13 §5; adversarial
-    // finding: the old chip-node-only delete left orphan spaces, diverging from
-    // the keyboard path). Ranges are descending + merged, so each delete leaves
-    // the remaining (lower) positions valid.
-    const stalePositions = new Set(deletions.map((d) => d.from));
-    const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
-    const tr = editor.state.tr;
-    for (const { from, to } of ranges) tr.delete(from, to);
-    // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
-    // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
-    // resurrect an orphan chip whose reference is gone) AND tags it machine-
-    // derived so the local-input tracker never counts it as a keystroke —
-    // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
-    // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
-    dispatchMachineEdit(editor.view, tr);
+    clearStaleChips(editor, (id) => !poolIds.has(id));
   }, [editor, references]);
-
-  // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
-  // for EVERY modality, not just images (design 2026-07-12 invariant; batch-5
-  // I5). The chip's cheap synced display attrs (name + thumbnail) are frozen at
-  // insert time, so a renamed / re-generated source must be re-synced here; the
-  // pure planner diffs each chip against the live pool and reports only changed
-  // fields (a text source has no thumbnail — its name still syncs, which the
-  // old thumbnail-only effect missed). Setting an attr re-renders the
-  // ReactNodeView. Chips whose source left the pool are removed by the
-  // cascade-clear effect above (the planner skips them). The text chip's hover
-  // CONTENT is not synced here — it is read live at hover-open (see
-  // HoverPreview's resolveOnOpen), keeping the source node the single truth
-  // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
-    const chips: ChipDisplaySnapshot[] = [];
-    editor.state.doc.descendants((n, pos) => {
-      if (n.type.name !== REFERENCE_MENTION_NODE) return;
-      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
-      if (typeof id !== 'string') return;
-      chips.push({
-        pos,
-        sourceNodeId: id,
-        label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
-        thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
-      });
-    });
-    const updates = planChipDisplayUpdates(chips, references);
-    if (updates.length === 0) return;
-    const tr = editor.state.tr;
-    for (const u of updates) {
-      if ('label' in u) {
-        tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
-      }
-      if ('thumbnail' in u) {
-        tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
-      }
-    }
-    // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
-    // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
-    // instead of the user's own edit, and — gated on `references`, not the doc —
-    // that revert never self-heals) AND tags it so the local-input tracker never
-    // counts it as a keystroke (#1802 round-4; batch-4).
-    dispatchMachineEdit(editor.view, tr);
+    syncChipDisplay(editor, references);
   }, [editor, references]);
+  // A local canvas write that changes the pool (rename, cut edge, delete
+  // source, remove crop, undo of a connect) gets its chip follow-up in the same
+  // task, so both leave as one Update message: collab judges the size cap per
+  // message (inner#1790 design 5.6), and the effects above run only after the
+  // container re-renders, past the provider's send window.
+  React.useEffect(() => {
+    const doc = fragment.doc;
+    if (doc === null) return undefined;
+    /**
+     * Projects the chips after one transaction of the canvas document.
+     * @param transaction - The finished transaction.
+     */
+    const onTransaction = (transaction: Y.Transaction): void => {
+      projectChipsAfterWrite(editor, fragment, transaction);
+    };
+    doc.on('afterTransaction', onTransaction);
+    return (): void => doc.off('afterTransaction', onTransaction);
+  }, [editor, fragment]);
   // Kept in step here rather than passed at creation: the editor's options are
   // read once when it is built, and rebuilding it for this would take the
   // collaborative binding and the caret down with it.

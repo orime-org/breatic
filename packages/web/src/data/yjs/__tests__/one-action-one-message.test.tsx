@@ -666,14 +666,14 @@ describe('21.1 canvas writes with prompt editors open send one message', () => {
     expectM1(count, 'R');
   });
 
-  it('MS-17 (b) the crop row ✕ removes the crop and its chip in one message (R)', async () => {
+  it('MS-17 (b) the crop row ✕ removes the crop and its chip in one message (D: the crop is a value in a Y.Array, design 5.2)', async () => {
     const board = await promptBoard('prompt', true);
     const row = poolOf('v').find((r) => r.focus === true)!;
     expect(holdsChip(board.fragments[0]!, 'focus:c1')).toBe(true);
     const count = await countOperation(board.socket, CANVAS, board.doc, () =>
       removeReferenceRow({ item: row, projectId: PID, spaceId: SID, nodeId: 'v' }));
     expect(holdsChip(board.fragments[0]!, 'focus:c1')).toBe(false);
-    expectM1(count, 'R');
+    expectM1(count, 'D');
   });
 
   it('MS-17 (c) the edge scissors (actions.deleteEdge, which calls removeEdge) remove the edge and the chip in one message (R)', async () => {

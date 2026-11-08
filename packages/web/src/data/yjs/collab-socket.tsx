@@ -148,6 +148,20 @@ interface DocEntry {
   sync: DocSyncBinding | null;
 }
 
+/**
+ * The provider every Space document uses: a hidden page may never run the
+ * flush timer again, so its own `pagehide` handler (bound in the base
+ * constructor, removed on destroy) sends what it buffered, the awareness
+ * withdrawal included.
+ */
+class SpaceProvider extends HocuspocusProvider {
+  /** Withdraws this user's awareness, then sends the buffered updates. */
+  override pageHide(): void {
+    super.pageHide();
+    this.flushPendingUpdates();
+  }
+}
+
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
 const docEntries = new Map<string, DocEntry>();
 const providerObservers = new Map<string, Set<() => void>>();
@@ -436,11 +450,16 @@ export function acquireDocProvider(
   }
   if (existing) destroyDocEntry(name, existing);
   const websocketProvider = ensureSharedSocket(url);
-  const provider = new HocuspocusProvider({
+  const provider = new SpaceProvider({
     websocketProvider,
     name,
     document: doc,
     token: COOKIE_AUTH_PLACEHOLDER,
+    // Collab judges the size cap per message: the writes of one user operation
+    // (including follow-ups libraries make in a microtask) must leave as one
+    // merged Update, or the second half is refused once the first fills the
+    // document (inner#1790). Any truthy value enables batching; 0 does not.
+    flushDelay: 1,
   });
   const entry: DocEntry = {
     doc,

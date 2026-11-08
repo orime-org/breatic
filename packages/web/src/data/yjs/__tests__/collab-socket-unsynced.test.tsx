@@ -69,6 +69,7 @@ vi.mock('@hocuspocus/provider', async (importOriginal) => ({
     configuration: { name: string; document: Y.Doc; websocketProvider: unknown };
     document: Y.Doc;
     sendStateless = vi.fn();
+    flushPendingUpdates = vi.fn();
     listeners = new Map<string, Set<(data?: unknown) => void>>();
     on = vi.fn((event: string, callback: (data?: unknown) => void): void => {
       const callbacks = this.listeners.get(event) ?? new Set();

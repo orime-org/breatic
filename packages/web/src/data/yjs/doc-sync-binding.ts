@@ -57,6 +57,8 @@ export function bindDocSync(name: string, doc: Y.Doc, provider: HocuspocusProvid
     if (!active || !state.handshakeComplete || state.pending !== null || !hasUnsyncedEdits()) return;
     if (!provider.isAttached || !provider.isAuthenticated || provider.authorizedScope !== 'read-write') return;
     if (provider.configuration.websocketProvider.webSocket?.readyState !== WebSocket.OPEN) return;
+    // The provider batches Updates; the receipt must follow what it covers.
+    provider.flushPendingUpdates();
     const request: SyncConfirmRequest = { type: 'sync:confirm', id: newId() };
     apply({ type: 'request-sent', id: request.id });
     try {

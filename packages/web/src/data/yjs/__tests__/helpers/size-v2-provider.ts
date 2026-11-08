@@ -59,6 +59,7 @@ export function providerModuleV2(actual: object): object {
     configuration: { name: string; document: Y.Doc; websocketProvider: SocketStandIn };
     document: Y.Doc;
     sendStateless = vi.fn();
+    flushPendingUpdates = vi.fn();
     listeners = new Map<string, Set<(data?: unknown) => void>>();
     on = vi.fn((event: string, callback: (data?: unknown) => void): void => {
       const callbacks = this.listeners.get(event) ?? new Set();

@@ -78,6 +78,7 @@ export function mockProviderModule(actual: object): object {
     configuration: { name: string; document: Y.Doc; websocketProvider: SocketSpy };
     document: Y.Doc;
     sendStateless = vi.fn();
+    flushPendingUpdates = vi.fn();
     mappedAtDestroy: boolean[] = [];
     listeners = new Map<string, Set<(data?: unknown) => void>>();
     on = vi.fn((event: string, callback: (data?: unknown) => void): void => {
