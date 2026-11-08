@@ -126,6 +126,24 @@ async function send(api: APIRequestContext, scenario: Scenario, body: Record<str
 }
 
 /**
+ * Create a Project, waiting out the per-account creation limit when a run of
+ * many turns reaches it.
+ * @param api - The signed-in request context.
+ * @param data - The Project to create.
+ * @returns The Project.
+ * @throws {Error} When creation keeps failing.
+ */
+async function createProject(api: APIRequestContext, data: Record<string, unknown>): Promise<{ id: string }> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const res = await api.post('/api/v1/projects', { headers: { 'Idempotency-Key': randomUUID() }, data });
+    if (res.status() !== 429) return dataOf<{ id: string }>(res, 'create project');
+    const wait = Number(res.headers()['retry-after'] ?? '10');
+    await new Promise((resolve) => setTimeout(resolve, (Number.isFinite(wait) && wait > 0 ? wait : 10) * 1000));
+  }
+  throw new Error('create project: still limited after 30 tries');
+}
+
+/**
  * One run of a scenario: a new Project and conversation, the first message,
  * and up to {@link FOLLOW_UPS} cards answered.
  * @param api - The signed-in request context.
@@ -138,23 +156,19 @@ async function send(api: APIRequestContext, scenario: Scenario, body: Record<str
 async function runOnce(api: APIRequestContext, helper: APIRequestContext, studioId: string, scenario: Scenario, model: string | undefined): Promise<Run> {
   const suffix = randomUUID().slice(0, 8);
   const spaceType = scenario.space ?? 'canvas';
-  const project = await dataOf<{ id: string }>(
-    await api.post('/api/v1/projects', {
-      headers: { 'Idempotency-Key': randomUUID() },
-      data: { studioId, name: `cocreation ${scenario.id} ${suffix}`, slug: `cocreation-${scenario.id}-${suffix}`, spaceType },
-    }),
-    'create project',
-  );
+  const project = await createProject(api, { studioId, name: `cocreation ${scenario.id} ${suffix}`, slug: `cocreation-${scenario.id}-${suffix}`, spaceType });
   try {
     const space = { id: randomUUID(), name: spaceType === 'document' ? 'Chapter one' : 'Space 1', type: spaceType };
     const extra: Record<string, unknown> = {};
+    // A document is read by blocks, so a share of it carries them as the open one does.
+    const docRead = scenario.doc === undefined ? undefined : (() => {
+      const blocks = scenario.doc.map(([type, text], i) => ({ id: `b${String(i + 1)}`, type, text, lossy: false, partial: false }));
+      const content = scenario.doc.map(([, text]) => text).join('\n\n');
+      return { content, total_chars: content.length, blocks };
+    })();
     if (scenario.space !== undefined) {
       extra.spaces = [{ id: space.id, name: space.name, kind: space.type }];
-      if (scenario.doc !== undefined) {
-        const blocks = scenario.doc.map(([type, text], i) => ({ id: `b${String(i + 1)}`, type, text, lossy: false, partial: false }));
-        const content = scenario.doc.map(([, text]) => text).join('\n\n');
-        extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', content, total_chars: content.length, blocks };
-      }
+      if (docRead !== undefined) extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', ...docRead };
     }
     const conversation = await dataOf<{ id: string }>(
       await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
@@ -179,7 +193,8 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         answered.set(pending.toolCallId ?? '', JSON.stringify(answers));
         await send(api, scenario, { ...base, message: '', answer: { toolCallId: pending.toolCallId, answers } });
       } else {
-        const content = scenario.spaceContent ?? '(empty)';
+        const content = docRead?.content ?? scenario.spaceContent ?? '(empty)';
+        const read = docRead ?? { content, total_chars: content.length };
         const detail = space.type === 'canvas'
           ? { detail: { selected_total: 0, selected_attached: 0, selected_whole: 0, slim: false, texts_cut: 0, names_only: 0, edges_not_listed: 0, nodes_not_listed: 0, groups_not_listed: 0 } }
           : {};
@@ -187,7 +202,7 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         await send(api, scenario, {
           ...base,
           message: '',
-          shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [{ id: space.id, name: space.name, kind: space.type, state: 'read', content, total_chars: content.length, ...detail }] },
+          shared_spaces: { toolCallId: pending.toolCallId, decision: 'shared', spaces: [{ id: space.id, name: space.name, kind: space.type, state: 'read', ...read, ...detail }] },
         });
       }
     }
@@ -252,13 +267,20 @@ async function pooled<T>(jobs: readonly (() => Promise<T>)[], atOnce: number): P
  * @returns The rows that did not pass.
  */
 async function evaluate(label: string, model: string | undefined, scenarios: readonly Scenario[], baseURL: string | undefined): Promise<string[]> {
-  const api = await request.newContext({ baseURL, storageState: stateFile('A') });
+  // Both of the slot's accounts take turns, so the per-account limits on
+  // creating Projects and conversations are reached half as fast.
+  const accounts = await Promise.all(
+    (['A', 'B'] as const).map(async (account) => {
+      const api = await request.newContext({ baseURL, storageState: stateFile(account) });
+      const studios = await dataOf<{ id: string; type: string }[]>(await api.get('/api/v1/studios'), 'list studios');
+      return { api, studioId: studios.find((one) => one.type === 'personal')?.id ?? '' };
+    }),
+  );
   const helper = await request.newContext();
   try {
-    const studios = await dataOf<{ id: string; type: string }[]>(await api.get('/api/v1/studios'), 'list studios');
-    const studioId = studios.find((one) => one.type === 'personal')?.id ?? '';
-    const jobs = scenarios.flatMap((scenario) =>
+    const jobs = scenarios.flatMap((scenario, row) =>
       Array.from({ length: RUNS }, (_, index) => async () => {
+        const { api, studioId } = accounts[(row * RUNS + index) % accounts.length] as (typeof accounts)[number];
         try {
           const run = await runOnce(api, helper, studioId, scenario, model);
           return { scenario: scenario.id, index, run, verdict: await judge(helper, scenario, run) };
@@ -285,7 +307,7 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
     console.warn(`${label}: ${String(passed)}/${String(results.length)} passed (95% ${percent(low)}–${percent(high)}); runs in ${out}\n${lines.join('\n')}`);
     return failing;
   } finally {
-    await api.dispose();
+    for (const { api } of accounts) await api.dispose();
     await helper.dispose();
   }
 }
