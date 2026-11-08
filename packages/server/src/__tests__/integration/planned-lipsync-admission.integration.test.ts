@@ -634,7 +634,7 @@ describe("lip-sync composite chunks span segments within the frozen raw disk bud
     const frozen = await plan(f.body.run_id);
     expect(frozen.timeline).toEqual({ duration: 8, videoDuration: V, syncMode: "bounce" });
     const table = { schemaVersion: 1 as const, timescale: 200, runs: [{ start: 0, count: 1011, step: 1, duration: 1 }] };
-    const shown = Array.from({ length: 1600 }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, at / 200));
+    const shown = Array.from({ length: 1600 }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, at));
     expect(shown.some((frame, at) => at > 0 && frame < shown[at - 1]!), "the result goes back through the source").toBe(true);
     // 1011 frames of 960 × 540 at 4:2:0 are about 0.8 GB, within half of standard-4's 20 GB disk.
     expect(frozen.layout?.composite).toEqual([{ start: 0, end: 1600 }]);

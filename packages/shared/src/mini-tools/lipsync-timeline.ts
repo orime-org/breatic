@@ -12,38 +12,44 @@ export const VIDEO_TOOL_SYNC_MODES = ["cut_off", "silence", "loop", "bounce", "r
 export interface LipsyncTimeline { duration: number; videoDuration: number; syncMode: (typeof VIDEO_TOOL_SYNC_MODES)[number] }
 
 /**
- * The source presentation time s in [0, V] a result time shows (§9.2, §97 D14-1), s = V being the last presentation frame:
- * cut_off s = t; silence s = min(t, V); loop s = t mod V; bounce u = t mod 2V, s = u when u <= V else 2V - u; remap
- * s = t · V / duration.
+ * The source presentation tick s in [0, V] a result tick shows (§9.2, §97 D14-1; execution design paragraph before §9.4),
+ * s = V being the last presentation frame, all in whole ticks of the source's clock so every loop and bounce cycle repeats
+ * the first exactly: cut_off s = t; silence s = min(t, V); loop s = t mod V; bounce u = t mod 2V, s = u when u <= V else
+ * 2V - u, going back while u > V; remap s = floor(t · V / duration).
  * @param timeline - The frozen timeline.
- * @param t - The result time in seconds.
- * @returns The source presentation time.
+ * @param timescale - The source's clock.
+ * @param tick - The result time in whole ticks.
+ * @returns The source tick and whether the result moves back through the source there.
  * @throws {never} Never.
  */
-export function lipsyncSourceTimeAt(timeline: LipsyncTimeline, t: number): number {
-  const v = timeline.videoDuration;
+export function lipsyncSourceTickAt(timeline: LipsyncTimeline, timescale: number, tick: number): { tick: number; reverse: boolean } {
+  const v = Math.round(timeline.videoDuration * timescale);
   switch (timeline.syncMode) {
-    case "cut_off": return t;
-    case "silence": return Math.min(t, v);
-    case "loop": return t % v;
+    case "cut_off": return { tick, reverse: false };
+    case "silence": return { tick: Math.min(tick, v), reverse: false };
+    case "loop": return { tick: tick % v, reverse: false };
     case "bounce": {
-      const u = t % (2 * v);
-      return u <= v ? u : 2 * v - u;
+      const u = tick % (2 * v);
+      return u <= v ? { tick: u, reverse: false } : { tick: 2 * v - u, reverse: true };
     }
-    case "remap": return (t * v) / timeline.duration;
+    case "remap": return { tick: Math.floor((tick * v) / Math.round(timeline.duration * timescale)), reverse: false };
   }
 }
 
 /**
- * The presentation frame a result time shows: the frame covering its source time, s = V giving the last frame.
+ * The presentation frame result frame k shows: the frame covering the source tick of k · step, step being the table's
+ * first run's, s = V giving the last frame.
  * @param timeline - The frozen timeline.
  * @param table - The source's compact presentation table.
- * @param t - The result time in seconds.
+ * @param k - The result frame.
  * @returns The presentation frame index.
- * @throws {never} Never.
+ * @throws {RangeError} When the table has no frame.
  */
-export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPresentationTable, t: number): number {
-  return presentationCoveringFrame(table, lipsyncSourceTimeAt(timeline, t));
+export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPresentationTable, k: number): number {
+  const step = table.runs[0]?.step;
+  if (step === undefined) throw new RangeError("Expected a presented frame");
+  // Whole ticks over one clock divide monotonically, so the covering frame compares them exactly.
+  return presentationCoveringFrame(table, lipsyncSourceTickAt(timeline, table.timescale, k * step).tick / table.timescale);
 }
 
 /**
@@ -71,7 +77,26 @@ export function lipsyncResultSourceFrames(timeline: LipsyncTimeline, table: Vide
   const step = table.runs[0]?.step;
   if (step === undefined) throw new RangeError("Expected a presented frame");
   const count = Math.ceil(Math.round(timeline.duration * table.timescale) / step);
-  return Array.from({ length: count }, (_unused, k) => lipsyncSourceFrameAt(timeline, table, (k * step) / table.timescale));
+  return Array.from({ length: count }, (_unused, k) => lipsyncSourceFrameAt(timeline, table, k));
+}
+
+/**
+ * The source frames a clip crops into its crop file (execution design paragraph before §9.4): its one forward decode
+ * passes every frame up to the highest the result shows, so a frame needs keeping when the result shows it again, or first
+ * shows it after a later frame, which a variable-frame-rate source's loop or bounce does.
+ * @param sources - The source frame of each result frame.
+ * @returns The frames, ascending.
+ * @throws {never} Never.
+ */
+export function lipsyncClipCropFrames(sources: readonly number[]): number[] {
+  const [seen, kept] = [new Set<number>(), new Set<number>()];
+  let highest = -1;
+  for (const frame of sources) {
+    if (seen.has(frame) || frame < highest) kept.add(frame);
+    seen.add(frame);
+    highest = Math.max(highest, frame);
+  }
+  return [...kept].sort((a, b) => a - b);
 }
 
 /**
@@ -110,10 +135,8 @@ export function lipsyncSourceSpan(sources: readonly number[], window: { start: n
  * @throws {RangeError} When the table has no frame or the window is empty.
  */
 export function lipsyncChunkSourceWindow(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }): { start: number; end: number } {
-  const step = table.runs[0]?.step;
-  if (step === undefined) throw new RangeError("Expected a presented frame");
   if (window.end <= window.start) throw new RangeError("Expected a result frame");
-  const sources = Array.from({ length: window.end - window.start }, (_unused, at) => lipsyncSourceFrameAt(timeline, table, ((window.start + at) * step) / table.timescale));
+  const sources = Array.from({ length: window.end - window.start }, (_unused, at) => lipsyncSourceFrameAt(timeline, table, window.start + at));
   const { start, end } = lipsyncSourceSpan(sources, { start: 0, end: sources.length });
   return { start, end };
 }

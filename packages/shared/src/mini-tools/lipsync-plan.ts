@@ -10,11 +10,11 @@
 import { z } from "zod";
 import { modelRunRetryable } from "@shared/mini-tools/model-run-retryable.js";
 import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-tools/video-plan.js";
-import { lipsyncSourceFrameAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
+import { lipsyncSourceFrameAt, lipsyncSourceTickAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import { presentationFrameCount } from "@shared/mini-tools/video-presentation-table.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 export {
-  lipsyncChunkSourceWindow, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, lipsyncSourceTimeAt, lipsyncSourceFrameAt, type LipsyncTimeline,
+  lipsyncChunkSourceWindow, lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, lipsyncSourceTickAt, lipsyncSourceFrameAt, type LipsyncTimeline,
 } from "@shared/mini-tools/lipsync-timeline.js";
 
 /**
@@ -94,18 +94,6 @@ export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: Video
   if (run === undefined) throw new RangeError("Expected a presented frame");
   const count = Math.ceil(Math.round(timeline.duration * table.timescale) / run.step);
   if (count <= 0) throw new RangeError("Expected a result frame");
-  const v = timeline.videoDuration;
-  /**
-   * Where a result time is in its cycle and which way it moves.
-   * @param t - The result time.
-   * @returns The position and whether it moves back.
-   * @throws {never} Never.
-   */
-  const phase = (t: number): { at: number; reverse: boolean } => {
-    if (timeline.syncMode === "loop") return { at: t % v, reverse: false };
-    if (timeline.syncMode === "bounce") { const u = t % (2 * v); return { at: u, reverse: u > v }; }
-    return { at: t, reverse: false };
-  };
   const segments: LipsyncMonotonicSegment[] = [];
   let open: { start: number; reverse: boolean; low: number; high: number } | null = null;
   let previous = 0;
@@ -122,17 +110,17 @@ export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: Video
     segments.push({ resultStart: open.start, resultEnd: end, sourceStart, sourceEnd, direction: open.reverse ? "reverse" : "forward", prerollFrames: sourceStart - key });
   };
   for (let k = 0; k < count; k += 1) {
-    const t = (k * run.step) / table.timescale;
-    const { at, reverse } = phase(t);
-    const frame = lipsyncSourceFrameAt(timeline, table, t);
-    if (open === null || open.reverse !== reverse || at < previous) {
+    const { tick, reverse } = lipsyncSourceTickAt(timeline, table.timescale, k * run.step);
+    const frame = lipsyncSourceFrameAt(timeline, table, k);
+    // A forward source tick falls back only where a loop wraps; a reverse one falls throughout.
+    if (open === null || open.reverse !== reverse || (!reverse && tick < previous)) {
       close(k);
       open = { start: k, reverse, low: frame, high: frame };
     } else {
       open.low = Math.min(open.low, frame);
       open.high = Math.max(open.high, frame);
     }
-    previous = at;
+    previous = tick;
   }
   close(count);
   return segments;

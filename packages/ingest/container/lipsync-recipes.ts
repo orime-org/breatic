@@ -19,7 +19,7 @@ import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import {
-  lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, type LipsyncTimeline,
+  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, type LipsyncTimeline,
 } from "@shared/mini-tools/lipsync-timeline.js";
 import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
@@ -454,16 +454,16 @@ async function finishEncode(encode: PlanPipe & { stdin: Writable }): Promise<voi
 }
 
 /**
- * Write one person's face clip (§7.17 lipsync_clip row, execution design §9.2): result frame t shows source frame
- * `lipsyncSourceFrameAt(timeline, table, t)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
+ * Write one person's face clip (§7.17 lipsync_clip row, execution design §9.2): result frame k shows source frame
+ * `lipsyncSourceFrameAt(timeline, table, k)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
  * video's frame rate. The prepared video is decoded once, forward, on FFmpeg's stdout and each crop goes to the encoder's
- * stdin as its frame arrives (execution design paragraph before §9.4): the first use of every source frame never goes back
- * on the result grid, and a frame the result shows again is cropped once into the crop file and read back from it.
+ * stdin in result order (execution design paragraph before §9.4); every frame of `lipsyncClipCropFrames` is cropped into
+ * the crop file as the decode passes it and read back from there.
  * @param recipe - The clip recipe.
  * @param request - The files, directory and lifetime.
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
- * @throws {RangeError} When a source frame's first use goes back, or the prepared video ends before a frame the result shows.
+ * @throws {RangeError} When the prepared video ends before a frame the result shows, or decodes past the last one.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipeRequest, run: Run): Promise<void> {
@@ -473,9 +473,7 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
   const grid = resultGrid(recipe.timeline, recipe.table);
   const sources = lipsyncResultSourceFrames(recipe.timeline, recipe.table);
   const highest = Math.max(...sources);
-  // Each source frame's last use, so a crop is kept in the crop file only when the result shows it again.
-  const lastUse = new Int32Array(highest + 1).fill(-1);
-  sources.forEach((s, k) => { lastUse[s] = k; });
+  const kept = new Set(lipsyncClipCropFrames(sources));
   const slots = new Int32Array(highest + 1).fill(-1);
   const cropBytes = lipsyncPictureBytes(recipe.cropSize, recipe.cropSize, false);
   const crops = await open(join(request.directory, "clip-crops.yuv"), "w+");
@@ -487,27 +485,27 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
     const frames = frameStream(decode.stdout!, width, height, false);
     let position = -1;
     let stored = 0;
-    for (const [k, s] of sources.entries()) {
-      let crop: Picture;
+    for (const s of sources) {
+      let crop: Picture | null = null;
       if (slots[s]! >= 0) {
         const bytes = Buffer.alloc(cropBytes);
         await crops.read(bytes, 0, cropBytes, slots[s]! * cropBytes);
         crop = pictureOf(bytes, recipe.cropSize, recipe.cropSize, false);
-      } else {
-        if (s <= position) throw new RangeError("A lip-sync clip's source frame is first used after a later one");
-        let frame: Picture | null = null;
-        while (position < s) {
-          frame = await frames.next();
-          if (frame === null) throw new RangeError("The prepared video ends before a frame the lip-sync clip shows");
-          position += 1;
-        }
-        crop = cropFace(frame!, faces[s] ?? null, maskAt(track, s, { width, height }), recipe.cropSize);
-        if (lastUse[s]! > k) {
-          slots[s] = stored;
-          await crops.write(Buffer.concat([crop.y, crop.u, crop.v]), 0, cropBytes, stored * cropBytes);
+      }
+      while (position < s) {
+        const frame = await frames.next();
+        if (frame === null) throw new RangeError("The prepared video ends before a frame the lip-sync clip shows");
+        position += 1;
+        if (position !== s && !kept.has(position)) continue;
+        const passed = cropFace(frame, faces[position] ?? null, maskAt(track, position, { width, height }), recipe.cropSize);
+        if (kept.has(position)) {
+          slots[position] = stored;
+          await crops.write(Buffer.concat([passed.y, passed.u, passed.v]), 0, cropBytes, stored * cropBytes);
           stored += 1;
         }
+        if (position === s) crop = passed;
       }
+      if (crop === null) throw new RangeError("A lip-sync clip's source frame was passed without being kept");
       await writePicture(encode.stdin, crop, encode.done);
     }
     if (await frames.next() !== null) throw new RangeError("The prepared video decoded past the frames the lip-sync clip shows");
@@ -626,7 +624,7 @@ function copyPicture(frame: Picture): Picture {
 /**
  * Write one composite chunk (§7.17 lipsync_composite row, §5.4): result frames [window.start, window.end) on the result clock
  * from 0, opening with a keyframe; result frame k shows the original's presentation frame
- * `lipsyncSourceFrameAt(timeline, table, t_k)` with every person's result frame k laid onto that frame's face; a frame
+ * `lipsyncSourceFrameAt(timeline, table, k)` with every person's result frame k laid onto that frame's face; a frame
  * without a face leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
  * only the source frames the chunk shows (`lipsyncChunkSourceWindow`). Frames move through pipes (execution design
  * paragraph before §9.4): each person's result is opened at the window and streamed, and so is the output; the source is
@@ -650,7 +648,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   if (step % table.timescale !== 0) throw new RangeError("The result frame step is not a whole number of the chunk's ticks");
   const tick = step / table.timescale;
   const length = window.end - window.start;
-  const sources = Array.from({ length }, (_unused, j) => lipsyncSourceFrameAt(timeline, table, ((window.start + j) * table.runs[0]!.step) / table.timescale));
+  const sources = Array.from({ length }, (_unused, j) => lipsyncSourceFrameAt(timeline, table, window.start + j));
   // The entries cover only the source frames this chunk shows, so the decoded frames start at the window's first.
   const shown = lipsyncSourceSpan(sources, { start: 0, end: length });
   const graph = await windowGraph(recipe.entries, BigInt(table.timescale), local(request.inputs, recipe.inputId), run, (label) => picture(target, label),

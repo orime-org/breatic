@@ -128,8 +128,10 @@ describe("lip-sync admission over streamed steps (execution design paragraph bef
       .toThrow(RangeError);
   });
 
-  it("LD07 the clip's crop file holds one crop per source frame the result shows more than once", () => {
+  it("LD07 the clip's crop file holds one crop per source frame the result uses after the decode passed it", () => {
     expect(lipsyncClipCropBytes([0, 1, 2, 2, 2, 0, 3], 512)).toBe(2 * lipsyncPictureBytes(512, 512, false));
     expect(lipsyncClipCropBytes([0, 1, 2, 3], 512)).toBe(0);
+    // A variable-frame-rate loop: frame 1 is first shown after frame 2, which the decode reached by passing it.
+    expect(lipsyncClipCropBytes([0, 2, 1, 2], 512)).toBe(2 * lipsyncPictureBytes(512, 512, false));
   });
 });

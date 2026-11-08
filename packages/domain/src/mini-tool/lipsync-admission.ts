@@ -11,7 +11,7 @@ import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import {
-  lipsyncPictureBytes, lipsyncSourceSpan, lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
+  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncSourceSpan, lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
   type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
@@ -206,18 +206,14 @@ export function lipsyncRawDiskBytes(diskGb: number, share: number): number {
 
 /**
  * The crop file a person's clip writes (execution design paragraph before §9.4): one crop for each source frame the result
- * shows more than once, read back for its later uses.
+ * uses after the clip's forward decode has passed it.
  * @param sources - The source frame of each result frame.
  * @param cropSize - The crop side.
  * @returns The bytes.
  * @throws {never} Never.
  */
 export function lipsyncClipCropBytes(sources: readonly number[], cropSize: number): number {
-  const uses = new Map<number, number>();
-  for (const frame of sources) uses.set(frame, (uses.get(frame) ?? 0) + 1);
-  let reused = 0;
-  for (const count of uses.values()) if (count > 1) reused += 1;
-  return reused * lipsyncPictureBytes(cropSize, cropSize, false);
+  return lipsyncClipCropFrames(sources).length * lipsyncPictureBytes(cropSize, cropSize, false);
 }
 
 /** Half-open result frames. */

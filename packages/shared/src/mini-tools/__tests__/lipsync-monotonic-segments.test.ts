@@ -13,7 +13,7 @@
  *   `{ resultStart, resultEnd, sourceStart, sourceEnd, direction, prerollFrames }[]`, all in frames, ranges half-open.
  *   The result grid is the one the container writes (`resultGrid` in lipsync-recipes): frame k at k · step / timescale of
  *   the table's first run, `ceil(round(duration · timescale) / step)` frames. The direction is the branch of
- *   `lipsyncSourceTimeAt`: bounce is forward while u = t mod 2V is in [0, V] and reverse while u is in (V, 2V); loop starts
+ *   `lipsyncSourceTickAt`: bounce is forward while u = t mod 2V is in [0, V] and reverse while u is in (V, 2V); loop starts
  *   a new forward segment where t mod V wraps to 0. `keyframes` is the per-presentation-frame keyframe flag list
  *   (`videoPresentationKeyframeFlags`), as `planVideoEncodeChunks` takes it.
  * Read from the mini-tools entry by name so this compiles before either exists.
@@ -28,7 +28,7 @@ type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count
 type Segment = { resultStart: number; resultEnd: number; sourceStart: number; sourceEnd: number; direction: "forward" | "reverse"; prerollFrames: number };
 const api = miniTools as unknown as {
   lipsyncMonotonicSegments: (timeline: Timeline, table: Table, keyframes: readonly boolean[]) => Segment[];
-  lipsyncSourceFrameAt: (timeline: Timeline, table: Table, t: number) => number;
+  lipsyncSourceFrameAt: (timeline: Timeline, table: Table, k: number) => number;
 };
 
 // Eighths of a second keep every result and source time exact in binary, so the frame mapping has no rounding to argue about.
@@ -56,7 +56,7 @@ const KEYS = keyframesAt(48, [0, 12, 24, 36]);
  * @param k - The result frame.
  * @returns The source presentation frame.
  */
-const sourceAt = (timeline: Timeline, tab: Table, k: number): number => api.lipsyncSourceFrameAt(timeline, tab, k / SCALE);
+const sourceAt = (timeline: Timeline, tab: Table, k: number): number => api.lipsyncSourceFrameAt(timeline, tab, k);
 /**
  * The result frames' source frames over [start, end).
  * @param timeline - The timeline.
@@ -173,5 +173,18 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
         expect(segments.length).toBe(timeline.syncMode === "loop" ? Math.ceil(count / frames) : 1);
       }
     }), { numRuns: 300 });
+  });
+
+  // Clocks whose seconds are not exact in binary: a loop's periods and a bounce's turns still fall on whole periods of the
+  // result grid, as on the 1/8 s clock above.
+  it.each([[12800, 512], [30000, 1001], [90000, 3600]] as const)("MS09 on a %s clock with a step of %s, loop periods and bounce turns fall on whole frames", (timescale, step) => {
+    fc.assert(fc.property(fc.integer({ min: 2, max: 60 }), fc.integer({ min: 1, max: 400 }), fc.constantFrom<Mode>("loop", "bounce"), (frames, count, syncMode) => {
+      const tab: Table = { schemaVersion: 1, timescale, runs: [{ start: 0, count: frames, step, duration: step }] };
+      const segments = api.lipsyncMonotonicSegments({ duration: (count * step) / timescale, videoDuration: (frames * step) / timescale, syncMode }, tab, Array.from({ length: frames }, (_, index) => index === 0));
+      const ends: number[] = [];
+      if (syncMode === "loop") for (let at = frames; ; at += frames) { ends.push(Math.min(at, count)); if (at >= count) break; }
+      else for (let turn = 0, at = 0; at < count; turn += 1) { at = Math.min(count, turn % 2 === 0 ? (turn / 2) * 2 * frames + frames + 1 : ((turn + 1) / 2) * 2 * frames); ends.push(at); }
+      expect(segments.map((segment) => segment.resultEnd)).toEqual(ends);
+    }), { numRuns: 200 });
   });
 });
