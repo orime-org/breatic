@@ -123,7 +123,8 @@ function expectWindows(server: ScriptedServer, name: string, pushed: Map<number,
     const kind = h7.kindOf(frame);
     if (kind.startsWith('seen(')) {
       const push = pushed.get(Number(kind.slice(5, -1)));
-      window = push?.phase === 'full' ? { over: push.bytes >= push.ceiling } : null;
+      // A push with limit 0 sets no limit, whatever its phase reads.
+      window = push?.phase === 'full' && push.limit > 0 ? { over: push.bytes >= push.ceiling } : null;
       continue;
     }
     if (frame.kind !== 'update' || window === null) continue;
