@@ -82,6 +82,16 @@ function lipSyncLimits(): string {
 }
 
 /**
+ * How many segments one split run makes in this deployment.
+ * @returns The clause with its leading separator, empty where the deployment offers no split.
+ * @throws {Error} When `config/mini-tools.yaml` cannot be read.
+ */
+function splitLimit(): string {
+  const split = getMiniToolsConfig().executions["video.split"];
+  return split === undefined ? "" : `; one run makes up to ${String(split.max_outputs)} segments, and with more Run says the limit instead of running`;
+}
+
+/**
  * The name a node type goes by in the create menus, quoted.
  * @param type - A creatable node type.
  * @returns Its menu label, quoted.
@@ -1033,8 +1043,7 @@ export function renderProductGuide(): string {
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
       "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
       `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
-      "a cut removes it. The segment count reflects the complete split plan; one run makes up to 8 segments, and with " +
-      "more Run says the limit instead of running.",
+      "a cut removes it. The segment count reflects the complete split plan" + splitLimit() + ".",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
       `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}; picking another replaces it and resets its trim, ` +
       "and Run asks for a video while none is picked. Picking a video opens the timeline, and " +
