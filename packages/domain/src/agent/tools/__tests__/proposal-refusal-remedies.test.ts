@@ -701,7 +701,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...HELD_PIC, material: MISSING }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: [
       '"Pic" holds an address in our storage that is not registered in this studio.',
-      "Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with save_image.",
+      "Material comes only from this studio's storage: files the user uploaded in the chat, pictures saved with save_image, and pictures or clips already on the canvas.",
     ],
   }],
   "material-wrong-kind": [{

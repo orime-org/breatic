@@ -99,7 +99,7 @@ const proposalNode = z
       .optional()
       .describe(
         `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +
-          `or a picture saved with ${SAVE_IMAGE}. Leave it out for an empty node`,
+          `a picture saved with ${SAVE_IMAGE}, or a picture or clip already on the canvas. Leave it out for an empty node`,
       ),
     template: z
       .union([

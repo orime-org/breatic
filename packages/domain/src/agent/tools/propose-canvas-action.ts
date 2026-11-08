@@ -41,6 +41,7 @@ import { z } from "zod";
 
 import {
   canConnect,
+  formatCredits,
   GENERATION_TEMPLATES,
   t,
   templateAnchor,
@@ -51,7 +52,8 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
+import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { checkBlanks, checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
@@ -61,6 +63,7 @@ import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
 
@@ -300,7 +303,9 @@ export function verdictFor(
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
 ): ProposalVerdict {
   const resolved = resolveSent(sent, templates);
-  return "proposal" in resolved ? checkResolved(resolved.proposal, materials, resolved.instances) : resolved;
+  if (!("proposal" in resolved)) return resolved;
+  const blanks = checkBlanks(resolved.proposal);
+  return blanks.ok ? checkResolved(resolved.proposal, materials, resolved.instances) : blanks;
 }
 
 /**
@@ -429,23 +434,41 @@ export function answerFor(
 }
 
 /**
- * The one line the model reads back.
+ * What the model reads back: that the card is on screen, and what running
+ * each of its generations costs at the params it was sent with, so the agent
+ * can say it before anything is spent (#1361).
  *
  * The proposal itself is for the user, not for the model -- it sent the
  * thing, and repeating it into every later turn costs the whole payload again.
  * @param answer - What the tool answered.
- * @returns A sentence saying it is on screen, or why it is not.
+ * @returns Lines saying it is on screen with its costs, or why it is not.
  */
-export function renderProposalForModel(answer: ProposalAnswer): string {
-  return answer.placed
-    ? "The proposal is on screen as a card. The user decides whether to place it."
-    : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
+export async function renderProposalForModel(answer: ProposalAnswer): Promise<string> {
+  if (!answer.placed) return `That proposal was refused, so nothing is on screen. ${answer.reason}`;
+  const priced = await Promise.all(
+    answer.nodes.flatMap((node) =>
+      node.role === "generate" && node.model !== undefined
+        ? [estimateModelCredits(node.model, { params: node.params ?? {} }).then((price) => ({ name: node.name, price }))]
+        : [],
+    ),
+  );
+  const lines = priced.map(({ name, price }) => `- "${name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`);
+  const known = priced.flatMap(({ price }) => (price === undefined || price.bound === "per_thousand_chars" ? [] : [price]));
+  const total = known.reduce((sum, price) => sum + price.credits, 0);
+  const atLeast = known.length < priced.length || known.some((price) => price.bound !== "exact");
+  return [
+    "The proposal is on screen as a card. The user decides whether to place it.",
+    ...(priced.length === 0
+      ? []
+      : ["Running its generations costs:", ...lines, `Total: ${atLeast ? "about " : ""}${formatCredits(total, "en-US")} credits.`]),
+  ].join("\n");
 }
 
 /**
  * The templates as one line each, what the agent weighs when choosing one:
  * its id, goal and anchor type, what it makes, the words a user asks for it
- * with and when to offer it unasked (inner#1807). The full text is read with
+ * with and the situations it fits (inner#1807); when to propose it is the
+ * working rules' call (#1361). The full text is read with
  * get_generation_template, so a turn carries every template's index but only
  * the prompts of the template it means to propose.
  * @param templates - The registry.
@@ -457,7 +480,7 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
     (template) =>
       `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
       `The user asks for it with words like: ${template.triggers.asks.join("; ")}.` +
-      (template.triggers.offerWhen.length === 0 ? "" : ` Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`),
+      (template.triggers.offerWhen.length === 0 ? "" : ` It also fits when: ${template.triggers.offerWhen.join("; ")}.`),
   );
   return (
     `Templates: ${lines.join(" | ")} ` +
@@ -494,27 +517,31 @@ export function makeProposeCanvasAction(
     "than half in your reply and half on the canvas. You decide the " +
     "shape: an empty node and a generation for a picture; the copy for the " +
     "same job as a written node beside them; one " +
-    "empty node feeding several generations for several takes on one thing. " +
-    "A source node can hold material the user gave: a file uploaded in the chat, " +
-    `or a picture found on the web and saved with ${SAVE_IMAGE}. Give its address as material, and ` +
+    "empty node feeding several generations for several takes on one thing; " +
+    "with no material, several generations, each with its full prompt, in one named group. " +
+    "A source node can hold material: a file uploaded in the chat, " +
+    `a picture found on the web and saved with ${SAVE_IMAGE}, or a picture or clip already on the canvas ` +
+    "(a take the user picked), by its address. Give its address as material, and " +
     "fill a generation's slot with it through fills, or wire it into the pool. " +
-    "Before proposing any shape with an empty node in it, find out whether " +
-    "they have that material, since the answer decides the shape: when the " +
-    "message carries the canvas they have open, under \"The Space the user " +
-    "has open\", look there first; ask with ask_user when it is not there or no " +
-    "canvas came with the message. Wire an edge where a node draws on another's " +
+    "Material they already have goes in a source node, and the canvas they have open " +
+    "is under \"The Space the user has open\" in the message; an empty node is for " +
+    "material they will put in. Wire an edge where a node draws on another's " +
     "work or on what the user puts in an empty node; belonging is said by " +
     "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
-    "can judge; the rest is theirs to run. Say in your reply, in numbered " +
-    `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
+    "can judge; the rest is theirs to run. The answer says what running each " +
+    "generation costs at the params you sent, and the total; say it in your reply. " +
+    "A picked take is brought to full quality by an i2i generation with that take " +
+    "as its material. Clips for a timeline are made here, as video on a canvas. " +
+    "Say in your reply, in numbered " +
+    `steps written from what ${GET_PRODUCT_GUIDE} says in section "Proposal cards", what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +
     templateIndex(templates),
   inputSchema,
   contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
-  toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
+  toModelOutput: async ({ output }) => ({ type: "text", value: await renderProposalForModel(output) }),
   execute: async (
     proposal: z.infer<typeof inputSchema>,
     // The signal is unused: a cached catalog and at most a few ledger rows,

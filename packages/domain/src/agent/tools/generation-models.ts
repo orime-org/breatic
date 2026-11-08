@@ -29,10 +29,13 @@ import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
-/** One model with what a run at its defaults costs, when the catalog prices it. */
-export type PricedModelInfo = ModelInfo & { price?: CreditEstimate };
+/**
+ * One model with what a run costs, when the catalog prices it: at its
+ * defaults, or at the params the call named (`atParams`).
+ */
+export type PricedModelInfo = ModelInfo & { price?: CreditEstimate; atParams?: true };
 
-/** The tool's answer: the mode's models, each priced at its defaults. */
+/** The tool's answer: the mode's models, each priced. */
 export type PricedModelsForMode = ModelsForMode<PricedModelInfo>;
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
@@ -49,23 +52,28 @@ const inputSchema = z
       .string()
       .min(1)
       .describe("The mode on that node, from get_canvas_capabilities"),
+    params: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Settings a step will run at, to price each model at them; left out, each is priced at its defaults"),
   })
   .strict();
 
 /**
  * A run's estimate in the words the panel shows it in.
- * @param price - The estimate at the model's defaults.
+ * @param price - The estimate.
+ * @param at - What it was priced at, as words that follow the credits.
  * @returns The credits, with how they bound the charge.
  */
-function renderPrice(price: CreditEstimate): string {
+export function renderPrice(price: CreditEstimate, at = "at its defaults"): string {
   const credits = formatCredits(price.credits, "en-US");
   switch (price.bound) {
     case "exact":
-      return `${credits} credits at its defaults`;
+      return `${credits} credits ${at}`;
     case "at_least":
-      return `at least ${credits} credits at its defaults, more with more or longer sources or more text`;
+      return `at least ${credits} credits ${at}, more with more or longer sources or more text`;
     case "at_most":
-      return `up to ${credits} credits at its defaults, less when a source was used before`;
+      return `up to ${credits} credits ${at}, less when a source was used before`;
     case "per_thousand_chars":
       return `${credits} credits per 1000 characters of prompt`;
   }
@@ -147,7 +155,7 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
  * @returns Its name, what it is for, what it costs, and its parameters.
  */
 function renderModel(model: PricedModelInfo): string {
-  const price = model.price ? `${renderPrice(model.price)}, ` : "";
+  const price = model.price ? `${renderPrice(model.price, model.atParams ? "at the params given" : undefined)}, ` : "";
   const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
   const cap =
     model.maxInputChars !== undefined
@@ -272,7 +280,8 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
+    `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}, section "Source slots". ` +
+    "To price a step at the settings it will run at, pass them as params.",
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
@@ -284,7 +293,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     value: renderGenerationModelsForModel(output),
   }),
   execute: async (
-    { nodeType, mode }: z.infer<typeof inputSchema>,
+    { nodeType, mode, params }: z.infer<typeof inputSchema>,
     // Unused: reads a cached catalog and prices it locally, so there is
     // nothing to abandon. Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
@@ -293,8 +302,9 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     if (!answer.available) return answer;
     const models = await Promise.all(
       answer.models.map(async (model): Promise<PricedModelInfo> => {
-        const price = await estimateModelCredits(model.name, { params: {} });
-        return price === undefined ? model : { ...model, price };
+        const price = await estimateModelCredits(model.name, { params: params ?? {} });
+        if (price === undefined) return model;
+        return params === undefined ? { ...model, price } : { ...model, price, atParams: true };
       }),
     );
     return { available: true, models };

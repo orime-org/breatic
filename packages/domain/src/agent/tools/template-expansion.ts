@@ -73,13 +73,16 @@ function templateTweakLabels(template: GenerationTemplate, key: TemplateNodeKey)
   return new Set(labels);
 }
 
+/** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */
+export const FILL_BLANKS = "write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.";
+
 /**
  * Template keys and inputs, quoted, for a sentence.
  * @param names - The names.
  * @returns They, quoted and joined.
  * @throws {never} Never.
  */
-function quoted(names: readonly string[]): string {
+export function quoted(names: readonly string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
 
@@ -187,7 +190,7 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     return refuse(
       "template-tweak-unfilled",
       `"${rest.name}" still holds template "${template.id}"'s blanks ${quoted(left)}.`,
-      fixOn(at, "write each one from what the user said, or ask them or choose it as your working rules say, and send the words in its place."),
+      fixOn(at, FILL_BLANKS),
     );
   }
   return { ok: true, node: filled };

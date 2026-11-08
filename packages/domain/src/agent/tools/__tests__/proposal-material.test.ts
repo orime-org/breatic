@@ -178,7 +178,7 @@ describe("the address is ours (A5)", () => {
     if (verdict.ok) throw new Error("expected a refusal");
 
     expect(verdict.reason).toContain("not registered in this studio");
-    expect(verdict.reason).toContain("files the user uploaded in the chat and pictures saved with save_image");
+    expect(verdict.reason).toContain("files the user uploaded in the chat, pictures saved with save_image, and pictures or clips already on the canvas");
     expect(verdict.reason).not.toContain("On node");
   });
 
