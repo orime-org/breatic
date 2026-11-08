@@ -163,9 +163,7 @@ function spacedAroundMentions(parts: readonly Part[]): Part[] {
  */
 function lineBlock(parts: readonly Part[]): Y.XmlElement {
   const block = new Y.XmlElement(BLOCK);
-  const children = spacedAroundMentions(parts).flatMap((part): (Y.XmlElement | Y.XmlText)[] =>
-    typeof part !== 'string' ? [mentionElement(part)] : part.length > 0 ? [new Y.XmlText(part)] : [],
-  );
+  const children = spacedAroundMentions(parts).map((part) => (typeof part === 'string' ? new Y.XmlText(part) : mentionElement(part)));
   if (children.length > 0) block.insert(0, children);
   return block;
 }
