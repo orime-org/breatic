@@ -953,8 +953,6 @@ export interface TimelineExecution {
   fence: string | null;
   /** The two-hour budget's end, set once at acceptance. */
   deadlineAt: string;
-  nextDispatchAt: string | null;
-  dispatchedAt: string | null;
   resultSourceVersionId: string | null;
   failureReason: string | null;
   /** Credits charged, as Postgres renders the numeric. */

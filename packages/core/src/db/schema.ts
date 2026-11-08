@@ -2191,8 +2191,6 @@ export const timelineExecutions = pgTable(
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
-    nextDispatchAt: timestamp("next_dispatch_at", { withTimezone: true }),
-    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     resultSourceVersionId: uuid("result_source_version_id"),
     failureReason: text("failure_reason"),
     billedCredits: numeric("billed_credits"),

@@ -77,8 +77,6 @@ const columns = {
   attempt: t.attempt,
   fence: t.fence,
   deadlineAt: iso(t.deadlineAt),
-  nextDispatchAt: iso<string | null>(t.nextDispatchAt),
-  dispatchedAt: iso<string | null>(t.dispatchedAt),
   resultSourceVersionId: t.resultSourceVersionId,
   failureReason: t.failureReason,
   billedCredits: t.billedCredits,
@@ -192,8 +190,8 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
     case "land":
       return {
         where: and(eq(t.status, "awaiting_landing"), eq(t.inputHash, event.inputHash), gt(t.deadlineAt, sql`now()`)),
-        // Due at once: the sweep adds the job again if the enqueue right after this is lost.
-        set: { status: "queued", nextDispatchAt: sql`now()` },
+        // The sweep adds the job again if the enqueue right after this is lost.
+        set: { status: "queued" },
       };
     case "claim":
       return { where: eq(t.status, "queued"), set: { status: "running", ...newAttempt } };
@@ -300,15 +298,24 @@ export async function markBilled(id: string, credits: string, tx?: DbTx): Promis
  * @param key - The Space.
  * @param key.projectId - Its Project.
  * @param key.spaceId - The Space.
+ * @param key.status - Only rows in this status; every status when omitted.
  * @param tx - The transaction to read in.
  * @returns The rows.
  * @throws {Error} When the read fails.
  */
-export async function listForSpace(key: { projectId: string; spaceId: string }, tx?: DbTx): Promise<TimelineExecution[]> {
+export async function listForSpace(
+  key: { projectId: string; spaceId: string; status?: TimelineExecutionStatus },
+  tx?: DbTx,
+): Promise<TimelineExecution[]> {
   const rows = await (tx ?? db)
     .select(columns)
     .from(t)
-    .where(and(eq(t.projectId, key.projectId), eq(t.spaceId, key.spaceId), isNull(t.deletedAt)))
+    .where(and(
+      eq(t.projectId, key.projectId),
+      eq(t.spaceId, key.spaceId),
+      key.status === undefined ? undefined : eq(t.status, key.status),
+      isNull(t.deletedAt),
+    ))
     .orderBy(desc(t.createdAt), desc(t.id));
   return rows.map(toEntity);
 }

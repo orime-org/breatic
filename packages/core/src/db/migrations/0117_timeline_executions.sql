@@ -22,8 +22,6 @@ CREATE TABLE timeline_executions (
   attempt integer NOT NULL DEFAULT 0,
   fence uuid,
   deadline_at timestamptz NOT NULL,
-  next_dispatch_at timestamptz,
-  dispatched_at timestamptz,
   result_source_version_id uuid,
   failure_reason text,
   billed_credits numeric,

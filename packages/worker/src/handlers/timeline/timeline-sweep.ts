@@ -5,8 +5,7 @@
  * The Timeline sweep (inner#1711 design §5.2), run on a schedule over executions that have not ended.
  *
  * An awaiting-landing row past its original deadline expires; a deleted Space gets no handling of its own, as with
- * canvas tasks. A queued row whose dispatch time has come, and every running or cancelling row, must have a live job
- * under its execution id: a missing, failed or completed job is removed and added again, because the queue's
+ * canvas tasks. Every queued, running or cancelling row must have a live job under its execution id: a missing, failed or completed job is removed and added again, because the queue's
  * retention would otherwise keep the old job id occupied. Nothing here calls the ingest Worker.
  */
 
@@ -45,7 +44,7 @@ export async function sweepTimelineExecutions(queue: Pick<Queue, "add" | "getJob
     try {
       if (row.status === "awaiting_landing") {
         if (Date.parse(row.deadlineAt) <= Date.now()) await move(row, { type: "deadline" });
-      } else if (row.status !== "queued" || (row.nextDispatchAt !== null && Date.parse(row.nextDispatchAt) <= Date.now())) {
+      } else {
         await ensureJob(queue, row.id);
       }
     } catch (err) {

@@ -114,9 +114,9 @@ export async function acceptTimelineReceipts(documentName: string, state: Uint8A
   }
   if (Object.keys(receipts).length === 0) return;
 
-  const awaiting = (await timelineExecutionRepo.listForSpace({ projectId, spaceId })).filter((row) => {
+  const awaiting = (await timelineExecutionRepo.listForSpace({ projectId, spaceId, status: "awaiting_landing" })).filter((row) => {
     const receipt = receipts[row.actionId];
-    return row.status === "awaiting_landing" && receipt?.executionId === row.id && receipt.inputHash === row.inputHash;
+    return receipt?.executionId === row.id && receipt.inputHash === row.inputHash;
   });
   if (awaiting.length === 0) return;
   if (!(await isListed(projectId, spaceContentDocName(projectId, spaceId, "timeline")))) return;
