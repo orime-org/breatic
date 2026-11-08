@@ -35,6 +35,6 @@ export function shipped(): ProviderConfigInput {
  * @returns The catalog.
  */
 export function catalog(): CatalogShape {
-  const files = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/meshy.yaml", "three_d/hunyuan3d.yaml"];
+  const files = ["image/models.yaml", "video/models.yaml", "audio/models.yaml", "tts/models.yaml", "three_d/models.yaml"];
   return { models: files.flatMap((f) => yaml<CatalogShape>(`models/${f}`).models.map(({ name, params }) => ({ name, params: params ?? {} }))) };
 }

@@ -27,6 +27,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
 
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
+import { SelectionDragImage } from '@web/features/drag-image/selection-drag-image';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { whenBlurLeaves } from '@web/lib/blur-left';
@@ -117,6 +118,7 @@ export function buildTextNodeExtensions(options: {
       resolveCollaboratorName: collaboratorNames?.resolve,
     }),
     Placeholder.configure({ placeholder }),
+    SelectionDragImage,
   ];
 }
 

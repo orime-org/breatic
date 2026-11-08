@@ -16,7 +16,7 @@ import { legalConfigSchema, getLegalConfig } from "@server/config/legal.js";
 
 describe("legal config - schema", () => {
   it("defaults to the terms published on 2026-10-02", () => {
-    expect(legalConfigSchema.parse({})).toEqual({ terms_version: "2026-10-02" });
+    expect(legalConfigSchema.parse({})).toEqual({ terms_version: "2026-10-02", promoter_terms_version: "" });
   });
 
   it("rejects an empty version and one too long for the column", () => {
@@ -29,7 +29,11 @@ describe("legal config - accessor reads config/legal.yaml", () => {
   it("returns the shipped version", () => {
     const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config/legal.yaml"), "utf-8")) as {
       terms_version: string;
+      promoter_terms_version: string;
     };
-    expect(getLegalConfig()).toEqual({ terms_version: shipped.terms_version });
+    expect(getLegalConfig()).toEqual({
+      terms_version: shipped.terms_version,
+      promoter_terms_version: shipped.promoter_terms_version,
+    });
   });
 });

@@ -13,6 +13,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  char,
   text,
   boolean,
   doublePrecision,
@@ -46,7 +47,7 @@ import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-gr
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { StripeWebhookResult } from "@breatic/shared";
+import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -995,8 +996,9 @@ export const nodeTasks = pgTable(
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
     // Same: the node lives in the canvas document. Null on a 3D Space's
-    // model upload (inner#1690), which belongs to the Space's own list; 0113
-    // allows that for the scene import action only.
+    // model upload (inner#1690) or generation (inner#1691), which belong to
+    // the Space's own list; 0113 and 0117 allow that for the scene import and
+    // generate actions only.
     nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
@@ -1048,6 +1050,10 @@ export const nodeTasks = pgTable(
     // when a dedup hit opens the row already done, by the settle into `done`,
     // or onto an expired row its result outlived.
     assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    // Where a 3D Space's generation was started from (inner#1691): 'space'
+    // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
+    // only, null on every other row; its CHECK lives in 0117.
+    origin: varchar("origin", { length: 16 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1164,6 +1170,57 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   requestedBy: uuid("requested_by").notNull(),
   requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
   result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
+export const promoterApplications = pgTable("promoter_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
+  country: char("country", { length: 2 }).notNull(),
+  channels: jsonb("channels").$type<string[]>().notNull(),
+  plan: text("plan").notNull(),
+  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: varchar("decided_by", { length: 64 }),
+  decisionReason: text("decision_reason"),
+  applicantNote: text("applicant_note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
+  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** The one code an account carries, written once and kept for commission. */
+export const referralBindings = pgTable("referral_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
+  source: text("source").$type<SignupReferralSource | "later">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every back-office referral write under its idempotency key, with its original answer. */
+export const referralOperations = pgTable("referral_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
+  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

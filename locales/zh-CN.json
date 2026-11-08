@@ -306,6 +306,33 @@
       },
       "credits_amount": "{credits} 积分",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "推广码无效。",
+      "already_bound": "这个账号已经绑定过推广码。",
+      "already_paid": "推广码只能在第一次付会员费之前填写。",
+      "not_eligible": "企业版账号不能绑定推广码。",
+      "program_closed": "推广计划暂未开放申请。",
+      "terms_changed": "推广条款已更新，请重新阅读后再申请。",
+      "application_pending": "你已经有一份申请在审核中。",
+      "already_promoter": "你已经是推广者。"
+    },
+    "three_d": {
+      "model_not_offered": "{model} 不是用于 {mode} 的 3D 模型。",
+      "prompt_required": "文生 3D 需要填写提示词。",
+      "prompt_not_taken": "{model} 根据图片生成，不接受提示词。",
+      "image_count": "{model} 需要{max, plural, =0 {不带图片} =1 {一张图片} other {{min} 到 {max} 张图片}}，这次请求给了 {actual} 张。",
+      "not_a_setting": "{model} 没有「{param}」这项设置。",
+      "setting_forced": "在当前设置下「{param}」不能是 {given}：规则 {force} 会把它设为 {value}。",
+      "setting_values": "「{param}」只能取 {values}，不能是 {value}。",
+      "setting_integer": "「{param}」需要整数，不能是 {value}。",
+      "setting_text": "「{param}」需要文字，不能是 {value}。",
+      "setting_bounds": "在当前设置下「{param}」的范围是 {min} 到 {max}，不能是 {value}。",
+      "setting_too_long": "「{param}」最多 {max} 个字符，现在有 {length} 个。",
+      "view_not_found": "第 {index} 个视图槽（{slot, select, front {正面} left {左侧} back {背面} right {右侧} other {多余}}）：{input} 不是本 Project 里的图片。",
+      "view_not_image": "第 {index} 个视图槽（{slot, select, front {正面} left {左侧} back {背面} right {右侧} other {多余}}）：这个文件是{kind, select, video {视频} audio {音频} other {模型或其他文件}}，不是图片。",
+      "still_running": "这次生成还在收尾，可能还会出结果，请稍后再试。",
+      "has_result": "这次生成已经出了结果，结果已回到任务列表。"
     }
   },
   "chat": {
@@ -442,8 +469,10 @@
         "readMemory": "查记忆",
         "other": "调用 {tool}",
         "readTemplate": "读模板",
-        "requestSpace": "请求查看 Space"
-      }
+        "requestSpace": "请求查看 Space",
+        "proposeScene": "拟 3D 生成建议"
+      },
+      "proposingSceneGeneration": "正在拟一份 3D 生成建议"
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -554,6 +583,13 @@
         "timedOut": "读取超时",
         "failed": "读取失败"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 生成",
+      "open": "在 3D Space 中打开",
+      "needScene": "先打开一个 3D Space。",
+      "credits": "约 {credits} 积分",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {
@@ -860,7 +896,23 @@
         "light_color_hex": "自定义光色",
         "light_intensity": "强度",
         "light_quality": "光质",
-        "strength": "强度"
+        "strength": "强度",
+        "texture": "贴图",
+        "pbr": "PBR",
+        "texture_quality": "贴图质量",
+        "texture_version": "贴图版本",
+        "delight": "去除光照",
+        "geometry_quality": "几何质量",
+        "smart_low_poly": "智能低面数",
+        "generate_parts": "拆分部件",
+        "face_limit": "面数上限",
+        "auto_size": "自动尺寸",
+        "export_uv": "导出 UV",
+        "model_seed": "模型种子",
+        "texture_seed": "贴图种子",
+        "texture_alignment": "贴图对齐",
+        "orientation": "朝向",
+        "enable_image_autofix": "图片自动修正"
       },
       "paramField": {
         "speaker": "名字",
@@ -903,7 +955,8 @@
         "loadFailed": "3D 视图加载失败，刷新页面后可用"
       },
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
-      "notePrefix": "注意事项："
+      "notePrefix": "注意事项：",
+      "integerBlank": "留空为自动"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1778,6 +1831,19 @@
       "notice": "继续即表示你同意{terms}，并已阅读{privacy}。",
       "termsLink": "使用条款",
       "privacyLink": "隐私政策"
+    },
+    "referral": {
+      "label": "推广码",
+      "optional": "选填",
+      "placeholder": "没有可以不填",
+      "notApplied": "推广码已失效，没有使用。可以在会员面板补填。",
+      "existingAccount": "这个账号已存在，推广码没有使用。还没开过会员的话，可以在会员面板补填。",
+      "carried": "用 Google 新注册时会使用推广码 {code}",
+      "carriedInvalid": "推广码 {code} 已失效",
+      "remove": "不使用这个推广码",
+      "haveCode": "有推广码？",
+      "invalid": "推广码无效。改一下，或清空后继续。",
+      "googleOnly": "用 Google 新注册时使用"
     }
   },
   "roleTag": {
@@ -2217,10 +2283,6 @@
       "controls": "操作说明",
       "tasks": "任务",
       "minimap": "场景小地图",
-      "generationDev": "3D 模型生成正在开发中",
-      "prompt": "描述你想生成的 3D 模型",
-      "reference": "参考图（可选）",
-      "chooseReference": "选择参考图",
       "submit": "生成",
       "helpBody": "点击对象选中；拖动空白处旋转视角；滚轮缩放。选中对象后，使用浮动菜单移动、旋转与缩放。",
       "closePanel": "关闭",
@@ -2286,10 +2348,77 @@
         "place": "放入场景",
         "retry": "重试",
         "remove": "移除",
-        "empty": "你导入的模型会显示在这里。",
+        "empty": "导入或生成的模型会显示在这里。",
         "loadFailed": "任务加载失败。",
         "removeFailed": "移除失败，请重试。",
-        "placeFailed": "模型未能放入场景。"
+        "placeFailed": "模型未能放入场景。",
+        "kindGeneration": "生成",
+        "originSpace": "Space 内",
+        "originAgent": "Agent",
+        "generating": "生成中",
+        "generatingFor": "生成中 · 已用 {minutes} 分钟",
+        "stillRunning": "这次生成还在收尾，请稍后再试。",
+        "hasResult": "这次生成已有结果，可以放入场景。",
+        "checkFailed": "无法查询这次生成，请重试。",
+        "locate": "在场景中定位",
+        "filter": "筛选",
+        "filterRunning": "只看进行中",
+        "filterKind": "类型",
+        "filterAll": "全部",
+        "filterStarter": "发起人",
+        "filterEveryone": "所有成员",
+        "filterMe": "我",
+        "filterOrigin": "来源",
+        "filterEmpty": "没有符合筛选的任务。"
+      },
+      "proposalBusy": "正在提交另一次生成。",
+      "readOnlyCreate": "Viewer 不能添加、导入或生成模型。",
+      "force": {
+        "parts_geometry_only": "拆分部件只生成几何。",
+        "pbr_needs_texture": "PBR 需要贴图。",
+        "fast_uses_v35": "Fast 贴图只有 v3.5。"
+      },
+      "generateDialog": {
+        "descriptionBlank": "生成的模型进入任务列表，完成后可放入场景。",
+        "descriptionAgent": "已按 Agent 的建议填好，确认后点生成。",
+        "descriptionRetry": "已按原任务填好，确认后点生成。",
+        "common": "通用设置",
+        "prompt": "提示词",
+        "promptPlaceholder": "描述你想生成的 3D 模型",
+        "views": "参考图",
+        "viewsHint": "视图按正、左、后、右依次填写。只有正面时按单图生成，有其他视图时按多视图生成。",
+        "view": {
+          "front": "正面",
+          "left": "左",
+          "back": "后",
+          "right": "右"
+        },
+        "required": "必填",
+        "upload": "上传",
+        "pickProject": "从 Project 选择",
+        "removeView": "移除",
+        "changeView": "更换{view}图",
+        "addView": "添加{view}图",
+        "uploadFailed": "上传失败",
+        "fillEarlier": "先填前一个视图",
+        "rule": {
+          "bounds": "请输入 {min} 到 {max}。",
+          "integer": "请输入整数。",
+          "length": "最多 {max} 个字符。",
+          "values": "请选择一个选项。"
+        }
+      },
+      "picker": {
+        "title": "选择图片",
+        "description": "从本 Project 的图片中选择，或上传。",
+        "project": "Project",
+        "local": "本地",
+        "loadFailed": "图片加载失败。",
+        "empty": "本 Project 还没有图片。",
+        "unnamed": "未命名图片",
+        "more": "加载更多",
+        "formats": "PNG、JPEG 或 WebP",
+        "chooseFile": "选择文件"
       }
     }
   },
@@ -2968,7 +3097,64 @@
       "enterpriseScale": "容量按协议约定",
       "enterpriseGovernance": "SSO、审计、知识产权保障"
     },
-    "noCreditsIncluded": "会员不含生成积分，积分单独购买。"
+    "noCreditsIncluded": "会员不含生成积分，积分单独购买。",
+    "referral": {
+      "heading": "推广码",
+      "intro": "有推广码的话，在第一次开会员前填上，首期会员 {zhe} 折。绑定后不能修改。",
+      "placeholder": "输入推广码",
+      "add": "绑定",
+      "required": "请输入推广码。",
+      "bound": "已绑定推广码 {code}",
+      "boundDiscount": "结账时自动生效。",
+      "badge": "首期 {zhe} 折",
+      "added": "已绑定，选择会员即享首期 {zhe} 折。",
+      "loadFailed": "没有读到推广信息。",
+      "retry": "重试"
+    },
+    "promoter": {
+      "heading": "推广计划",
+      "closed": "推广计划暂未开放申请。",
+      "pitch": "推荐别人用 breatic，按他们的会员付款拿佣金。",
+      "pitchDetail": "审核通过后你会拿到自己的推广码和专属链接；被推荐的人首期会员 {zhe} 折。",
+      "apply": "申请成为推广者",
+      "applyAgain": "再次申请",
+      "pending": "申请审核中",
+      "pendingDetail": "{date} 提交。审核结果会显示在这里。",
+      "pendingBadge": "审核中",
+      "rejected": "上次的申请没有通过",
+      "rejectedNote": "说明：{note}",
+      "yourCode": "你的推广码",
+      "copyCode": "复制推广码",
+      "copyLink": "复制链接",
+      "copied": "已复制",
+      "copyFailed": "复制到剪贴板失败。",
+      "shareHint": "别人用这个码注册，或在第一次开会员前填上，首期会员 {zhe} 折。",
+      "disabled": "已停用",
+      "removed": "已移出",
+      "disabledDetail": "这个推广码已停用，现在不能再填写。已经用了它的人照常享受首期折扣。",
+      "removedDetail": "你已不在推广计划中，这个推广码永久停用。已经用了它的人照常享受首期折扣。",
+      "dialogTitle": "申请成为推广者",
+      "dialogDescription": "我们审核后会在这里告诉你结果。",
+      "country": "国家或地区",
+      "countryPlaceholder": "选择",
+      "channels": "推广渠道",
+      "channelsHint": "网址或一句描述，最多 10 条",
+      "channelPlaceholder": "https://youtube.com/@yourchannel 或「200 人的设计师群」",
+      "addChannel": "再加一条",
+      "removeChannel": "删除这一条",
+      "plan": "推广方式",
+      "planPlaceholder": "你的受众是谁、打算怎么介绍 breatic",
+      "agreeLead": "我已阅读并同意",
+      "termsLink": "推广条款",
+      "agreeRequired": "需要同意推广条款才能提交。",
+      "countryRequired": "请选择国家或地区。",
+      "channelsRequired": "至少写一个推广渠道。",
+      "planRequired": "请写一下你打算怎么推广。",
+      "termsChanged": "推广条款已更新，请重新阅读后再勾选。",
+      "cancel": "取消",
+      "submit": "提交申请",
+      "submitted": "申请已提交"
+    }
   },
   "credits": {
     "panelTitle": "积分",

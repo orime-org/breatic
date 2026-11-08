@@ -23,10 +23,13 @@
  *
  * Scope: a claim belongs to a generation NODE, so a model is asked about only
  * through the nodes that offer it — its bucket, and a mode that node's picker
- * shows. A model no panel reaches (mini-tool operations, the three_d and
- * understand buckets) has an empty claim set, which is the right answer: there
- * is no panel to draw anything for it, so every one of its params has to say
- * `none`.
+ * shows. The three_d bucket is reached by the 3D Space's generation dialog
+ * instead (inner#1691): its view slots carry the param that accepts images,
+ * the same param the submit route fills, and its settings are drawn by
+ * `modelControls` like a panel's. A model nothing reaches (mini-tool
+ * operations, the understand bucket) has an empty claim set, which is the
+ * right answer: there is nothing to draw anything for it, so every one of its
+ * params has to say `none`.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -38,6 +41,7 @@ import {
   PANEL_EDITOR_PARAM,
   REFERENCE_KINDS,
   storyboardSpec,
+  THREE_D_GENERATION_MODES,
 } from '@breatic/shared';
 import type { GenerationNodeType, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
@@ -223,6 +227,16 @@ function nodesOffering(model: DeclaredModel): GenerationNodeType[] {
 }
 
 /**
+ * Whether the 3D Space's generation dialog serves this model in this mode.
+ * @param model - The model being asked about.
+ * @param mode - One of the modes it serves.
+ * @returns True for a three_d model in a mode the dialog switches between.
+ */
+function sceneDialogServes(model: DeclaredModel, mode: string): boolean {
+  return model.bucket === 'three_d' && (THREE_D_GENERATION_MODES as readonly string[]).includes(mode);
+}
+
+/**
  * Everything a panel would act on for one model in one of its modes.
  *
  * A slot is drawn by a mode, so the answer is per mode: a model declaring a
@@ -249,6 +263,12 @@ function claimsFor(
       controls.add(control.name);
     }
   }
+  if (sceneDialogServes(model, mode)) {
+    for (const [param, spec] of Object.entries(model.params)) if (spec?.accepts === 'image') slots.add(param);
+    for (const control of modelControls({ params: model.params } as unknown as ModelEntry, mode)) {
+      controls.add(control.name);
+    }
+  }
   return { slots, controls };
 }
 
@@ -260,7 +280,7 @@ function claimsFor(
 function offeredModes(model: DeclaredModel): string[] {
   const nodes = nodesOffering(model);
   return model.modes.filter((mode) =>
-    nodes.some((node) => GENERATION_NODE_MODES[node].includes(mode)),
+    nodes.some((node) => GENERATION_NODE_MODES[node].includes(mode)) || sceneDialogServes(model, mode),
   );
 }
 
@@ -320,7 +340,7 @@ function objections(
 ): string[] {
   const found: string[] = [];
   for (const model of MODELS) {
-    const unreached = fill !== 'none' && nodesOffering(model).length === 0;
+    const unreached = fill !== 'none' && offeredModes(model).length === 0;
     for (const [param, spec] of Object.entries(model.params)) {
       if (spec?.fill !== fill) continue;
       const wrong = unreached

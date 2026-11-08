@@ -6,8 +6,8 @@
  *
  * A11 asks for the row's content to lift off the page and follow the pointer
  * (user 2026-09-17, replacing the library's near-invisible clone). It is
- * delivered by `index.css` alone, hanging off `doc-drag-preview`, the class
- * `buildDragPreview` puts on every preview (inner#1350). A rename on either
+ * delivered by `index.css` alone, hanging off the class `mountDragImage`
+ * puts on every editor's drag image (`lib/drag-image.ts`). A rename on either
  * side takes the promise away with nothing to show for it, and a synthetic
  * mouse cannot drive a real drag image, so this is the assertion A20 asks for.
  *
@@ -21,6 +21,8 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
+import { DRAG_IMAGE_CLASS } from '@web/lib/drag-image';
+
 /** The stylesheet, read per case so a rule rename cannot pass unseen. */
 function stylesheet(): string {
   return readFileSync(
@@ -30,16 +32,18 @@ function stylesheet(): string {
 }
 
 describe('what a drag shows', () => {
-  it('sets the drag image opacity on the clone\'s contents', () => {
-    // The child, not the clone itself: Chrome ignores `opacity` on the element
-    // handed to `setDragImage`.
-    expect(stylesheet()).toMatch(/\.doc-drag-preview > \* \{\s*opacity: 1;/);
+  it('draws the image at full strength: no rule on a drag image sets an opacity (inner#1515)', () => {
+    const rules = [...stylesheet().matchAll(/([^{}]*)\{([^}]*)\}/g)].filter(([, selector]) =>
+      selector!.includes(`.${DRAG_IMAGE_CLASS}`),
+    );
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.filter(([, , body]) => /opacity/.test(body!))).toEqual([]);
   });
 
   it('keeps the preview opaque and fixed in the viewport for the image to be taken', () => {
     // Firefox and WebKit draw the root's own opacity into the image, and Safari
     // cancels a drag whose image is wholly off screen (inner#1350 design §4).
-    const rule = /\.doc-drag-preview \{([^}]*)\}/.exec(stylesheet())?.[1] ?? '';
+    const rule = new RegExp(`\\.${DRAG_IMAGE_CLASS} \\{([^}]*)\\}`).exec(stylesheet())?.[1] ?? '';
     expect(rule).toMatch(/position: fixed;/);
     expect(rule).toMatch(/top: 0;/);
     expect(rule).toMatch(/left: 0;/);
@@ -56,6 +60,6 @@ describe('what a drag shows', () => {
     const sheet = stylesheet();
     expect(sheet).toMatch(/\.doc-preview-shell \{\s*display: contents !important;\s*\}/);
     expect(sheet).toMatch(/\.doc-preview-shell::before,\s*\.doc-preview-shell::after \{\s*content: none !important;\s*\}/);
-    expect(sheet).toMatch(/\.doc-drag-preview \* \{\s*pointer-events: none !important;\s*\}/);
+    expect(sheet).toContain(`.${DRAG_IMAGE_CLASS} * {\n    pointer-events: none !important;\n  }`);
   });
 });

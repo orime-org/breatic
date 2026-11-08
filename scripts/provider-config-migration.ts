@@ -4,7 +4,7 @@
 /**
  * Writes the provider package's configuration from today's catalog
  * (inner#1743), so the provider tests can prove the move changes
- * nothing: every catalog and 3D model bound to WaveSpeed at weight 1 with the
+ * nothing: every catalog model bound to WaveSpeed at weight 1 with the
  * upstream fields, value spellings, extra steps and pricing the catalog
  * declares today, the upstreams from `config/models/<modality>/providers.yaml`
  * and the LLM routes from `packages/domain/src/agent/llm.ts`.
@@ -35,7 +35,6 @@ interface RawModel {
   name: string;
   takes_prompt?: boolean;
   prompt_upstream?: string;
-  cost_per_call?: number;
   params?: Record<string, RawParam>;
   providers?: { name: string; model_id: string; pricing?: RawPricing }[];
   extra_steps?: RawStep[];
@@ -136,11 +135,10 @@ const describe = {
 /**
  * One model's WaveSpeed binding.
  * @param model - The catalog entry.
- * @param threeD - Whether it is a 3D model, whose family passes every param through.
  * @returns The binding.
  * @throws {Error} When the model has no WaveSpeed provider or no price.
  */
-function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
+function bindingOf(model: RawModel): Record<string, unknown> {
   const provider = model.providers?.find((p) => p.name === "wavespeed");
   if (provider === undefined) throw new Error(`${model.name} has no WaveSpeed provider`);
   const skipped = new Set(APP_PARAMS[model.name] ?? []);
@@ -152,7 +150,7 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     if (skipped.has(name) || spec.joins !== undefined) continue;
     const transform = TRANSFORMS[model.name]?.[name];
     params[name] = {
-      field: threeD ? name : (spec.upstream ?? name),
+      field: spec.upstream ?? name,
       ...(spec.upstream_values === undefined ? {} : { values: spec.upstream_values }),
       ...(spec.item_key === undefined ? {} : { item_key: spec.item_key }),
       ...(spec.absent_value === undefined ? {} : { absent_value: spec.absent_value }),
@@ -172,20 +170,13 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
       pricing: pricingOf(step.pricing),
     };
   });
-  // 3D models carry no WaveSpeed contract today; their per-call credit figure
-  // (cents) stands in as a flat price until the price sync writes the real one.
-  const pricing = provider.pricing ?? (model.cost_per_call === undefined ? undefined : {
-    base_price: model.cost_per_call * 10_000,
-    formula: "",
-    discount_rate: 100,
-  });
+  const pricing = provider.pricing;
   if (pricing === undefined) throw new Error(`${model.name} has no price`);
   return {
     upstream: "wavespeed",
     weight: 1,
     model_id: provider.model_id,
-    // Today's 3D path sends the prompt on every call, "" when there is none, and drops only null params.
-    ...(threeD ? { prompt_field: "prompt", send_empty: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
+    ...(model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
@@ -214,13 +205,13 @@ const sources: [string, string[]][] = [
   ["video", ["config/models/video/models.yaml"]],
   ["audio", ["config/models/audio/models.yaml"]],
   ["tts", ["config/models/tts/models.yaml"]],
-  ["three_d", ["config/models/three_d/meshy.yaml", "config/models/three_d/hunyuan3d.yaml"]],
+  ["three_d", ["config/models/three_d/models.yaml"]],
 ];
 for (const [modality, files] of sources) {
   const models: Record<string, { upstreams: Record<string, unknown>[] }> = {};
   for (const file of files) {
     for (const model of yaml<{ models: RawModel[] }>(file).models) {
-      models[model.name] = { upstreams: [bindingOf(model, modality === "three_d")] };
+      models[model.name] = { upstreams: [bindingOf(model)] };
     }
   }
   write(`media/${modality}.yaml`, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models });

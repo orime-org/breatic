@@ -51,4 +51,9 @@ describe('Textarea', () => {
     );
     expect(captured).toBeInstanceOf(HTMLTextAreaElement);
   });
+
+  it('draws the error border when the field is invalid, like Input', () => {
+    render(<Textarea data-testid='ta' aria-invalid />);
+    expect(screen.getByTestId('ta').className).toContain('aria-invalid:border-status-error-foreground');
+  });
 });

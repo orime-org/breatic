@@ -2,28 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The two parameter names the panel spells, and the shape of a control's
- * condition (#261, #269).
+ * The two parameter names the panel spells (#261, #269).
  *
  * How a parameter gets filled is the model's to declare, so nothing here says
  * which modes fill what. What is left is the panel's own vocabulary: the two
- * places it reaches by name rather than by walking a registry, and the shape
- * a declared condition takes once the projection has read it.
+ * places it reaches by name rather than by walking a registry.
  */
-
-/**
- * What has to hold before one of these controls counts for anything.
- *
- * A panel offering a control is not the same as that control being live: the
- * four camera wheels are drawn whatever the switch says while the run throws
- * their values out until it is on. Told only that a control exists, a user
- * who sets one gets nothing for it.
- */
-export type ControlGate =
-  /** That switch has to be on; the value is dropped while it is off. */
-  { readonly kind: "flagOn"; readonly param: string };
-
-
 
 /**
  * The parameter the panel keeps in a text box of its own, beside the prompt.

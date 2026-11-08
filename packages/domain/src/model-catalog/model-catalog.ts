@@ -24,6 +24,7 @@ import {
 } from "@domain/model-catalog/mode-config.js";
 import { assertNamesTellApart } from "@domain/model-catalog/model-names.js";
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
+import { assertForces } from "@domain/model-catalog/forces.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import {
   assertCameraCommands,
@@ -37,7 +38,10 @@ import type {
   ModelCatalog,
   ModelEntry,
   ModelTier,
+  ParamBound,
   ParamDescriptor,
+  ParamForce,
+  ParamGate,
   PricingContract,
   RemoteParamSource,
   SourceGroup,
@@ -83,6 +87,12 @@ export interface FullParamSpec {
   into_prompt?: string;
   /** How the param's value reaches the run. */
   fill?: string;
+  /** What has to hold before this param counts; dropped from the run otherwise. */
+  when?: ParamGate;
+  /** Ranges that replace `min` and `max` while their condition holds (inner#1691). */
+  bounds?: ParamBound[];
+  /** The most characters a text param takes once cleaned (inner#1691). */
+  max_length?: number;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Projected onto the wire
@@ -146,6 +156,10 @@ export interface FullModelEntry {
   output_type?: string;
   /** The camera commands this model reads out of its prompt. */
   camera_commands?: DeclaredCameraCommand[];
+  /** Values the model forces while their conditions hold, in order (inner#1691). */
+  forces?: ParamForce[];
+  /** The most characters the prompt takes once cleaned (inner#1691). */
+  prompt_max_length?: number;
   /** The three params that together set one camera pose (inner#830). */
   camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
@@ -241,6 +255,7 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   // reader answers on its own. Same fail-fast reasoning as the line above.
   assertModesDeclared(modality, models, getModeConfig());
   assertParamDeclarations(modality, models);
+  assertForces(modality, models);
   assertNamesTellApart(modality, models);
   assertCameraCommands(modality, models);
   assertCameraAngle(modality, models);
@@ -353,6 +368,9 @@ function projectModelEntry(
     camera_commands: shipCameraCommands(m.camera_commands),
     camera_angle: shipCameraAngle(m.camera_angle),
     icon: m.icon,
+    // The panel locks and the run resolves by these, the same as every reader (inner#1691).
+    forces: m.forces,
+    prompt_max_length: m.prompt_max_length,
   };
 }
 

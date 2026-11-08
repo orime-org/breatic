@@ -26,6 +26,7 @@ import type { ConsentText } from '@web/data/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/data/analytics/runtime';
 import type * as RuntimeModule from '@web/data/analytics/runtime';
 import { PRIVACY_URL } from '@web/lib/official-home';
+import { setReferralPersistence } from '@web/lib/referral-carry';
 
 type Runtime = typeof RuntimeModule;
 
@@ -86,6 +87,7 @@ export function startProductAnalytics(): void {
   runtime = import('@web/data/analytics/runtime').then(async (module) => {
     module.onConsentChange((next) => {
       consent = next;
+      setReferralPersistence(next.analytics || next.ads);
       if (next.analytics || next.ads) {
         if (!attributionCaptured) captureAttribution(landing, referrer);
         attributionCaptured = true;

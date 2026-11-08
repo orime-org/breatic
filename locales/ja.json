@@ -306,6 +306,33 @@
       },
       "credits_amount": "{credits} クレジット",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "この紹介コードは無効です。",
+      "already_bound": "このアカウントには既に紹介コードが登録されています。",
+      "already_paid": "紹介コードは初回のメンバーシップ支払い前にのみ登録できます。",
+      "not_eligible": "エンタープライズアカウントには紹介コードを登録できません。",
+      "program_closed": "プロモーターの申請はまだ受け付けていません。",
+      "terms_changed": "プロモーター規約が更新されました。もう一度お読みのうえお申し込みください。",
+      "application_pending": "審査中の申請がすでにあります。",
+      "already_promoter": "すでにプロモーターです。"
+    },
+    "three_d": {
+      "model_not_offered": "{model} は {mode} 用の 3D モデルではありません。",
+      "prompt_required": "テキストから 3D にはプロンプトが必要です。",
+      "prompt_not_taken": "{model} は画像から生成するため、プロンプトを受け付けません。",
+      "image_count": "{model} には{max, plural, =0 {画像は不要です} =1 {画像が 1 枚必要です} other {画像が {min}～{max} 枚必要です}}が、このリクエストには {actual} 枚あります。",
+      "not_a_setting": "{model} には「{param}」という設定はありません。",
+      "setting_forced": "この設定では「{param}」を {given} にできません。ルール {force} により {value} になります。",
+      "setting_values": "「{param}」は {values} のいずれかで、{value} は指定できません。",
+      "setting_integer": "「{param}」は整数で指定してください。{value} は指定できません。",
+      "setting_text": "「{param}」は文字で指定してください。{value} は指定できません。",
+      "setting_bounds": "この設定では「{param}」は {min}～{max} の範囲で、{value} は指定できません。",
+      "setting_too_long": "「{param}」は最大 {max} 文字ですが、{length} 文字あります。",
+      "view_not_found": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：{input} はこの Project の画像ではありません。",
+      "view_not_image": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：このファイルは{kind, select, video {動画} audio {音声} other {モデルなどのファイル}}で、画像ではありません。",
+      "still_running": "この生成はまだ終了処理中で、結果が出る可能性があります。しばらくしてからもう一度お試しください。",
+      "has_result": "この生成は結果が出ており、タスク一覧に戻りました。"
     }
   },
   "chat": {
@@ -442,8 +469,10 @@
         "readMemory": "メモリの確認",
         "other": "{tool} の実行",
         "readTemplate": "テンプレートの確認",
-        "requestSpace": "Space の閲覧依頼"
-      }
+        "requestSpace": "Space の閲覧依頼",
+        "proposeScene": "3D 生成の提案を作成"
+      },
+      "proposingSceneGeneration": "3D 生成の提案をまとめています"
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -554,6 +583,13 @@
         "timedOut": "タイムアウト",
         "failed": "読み取りに失敗"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 生成",
+      "open": "3D Space で開く",
+      "needScene": "先に 3D Space を開いてください。",
+      "credits": "約 {credits} クレジット",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {
@@ -860,7 +896,23 @@
         "light_color_hex": "カスタムの光の色",
         "light_intensity": "強さ",
         "light_quality": "光の質",
-        "strength": "強さ"
+        "strength": "強さ",
+        "texture": "テクスチャ",
+        "pbr": "PBR",
+        "texture_quality": "テクスチャ品質",
+        "texture_version": "テクスチャバージョン",
+        "delight": "ライティング除去",
+        "geometry_quality": "ジオメトリ品質",
+        "smart_low_poly": "スマートローポリ",
+        "generate_parts": "パーツ分割",
+        "face_limit": "ポリゴン数上限",
+        "auto_size": "自動サイズ",
+        "export_uv": "UV を出力",
+        "model_seed": "モデルシード",
+        "texture_seed": "テクスチャシード",
+        "texture_alignment": "テクスチャの合わせ方",
+        "orientation": "向き",
+        "enable_image_autofix": "画像の自動補正"
       },
       "paramField": {
         "speaker": "名前",
@@ -903,7 +955,8 @@
         "loadFailed": "3D ビューを読み込めませんでした。ページを再読み込みすると使えます"
       },
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
-      "notePrefix": "注意事項："
+      "notePrefix": "注意事項：",
+      "integerBlank": "空欄で自動"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1778,6 +1831,19 @@
       "notice": "続行すると、{terms}に同意し、{privacy}を確認したものとみなされます。",
       "termsLink": "利用規約",
       "privacyLink": "プライバシーポリシー"
+    },
+    "referral": {
+      "label": "紹介コード",
+      "optional": "任意",
+      "placeholder": "お持ちでなければ空欄のまま",
+      "notApplied": "紹介コードは無効になっていたため使用されませんでした。メンバーシップパネルで登録できます。",
+      "existingAccount": "このアカウントは既に存在するため、紹介コードは使用されませんでした。まだメンバーシップに加入していなければ、メンバーシップパネルで登録できます。",
+      "carried": "Google で新規登録すると紹介コード {code} が使われます",
+      "carriedInvalid": "紹介コード {code} は無効です",
+      "remove": "このコードを使わない",
+      "haveCode": "紹介コードをお持ちですか？",
+      "invalid": "紹介コードが無効です。修正するか、空にして続行してください。",
+      "googleOnly": "Google で新規登録するときに使われます"
     }
   },
   "roleTag": {
@@ -2217,10 +2283,6 @@
       "controls": "操作説明",
       "tasks": "タスク",
       "minimap": "シーンのミニマップ",
-      "generationDev": "3D モデル生成は開発中です",
-      "prompt": "生成する 3D モデルを説明してください",
-      "reference": "参照画像（任意）",
-      "chooseReference": "参照画像を選択",
       "submit": "生成",
       "helpBody": "オブジェクトをクリックして選択します。空白をドラッグして視点を回転し、ホイールで拡大縮小します。選択後はフローティングメニューで移動・回転・拡大縮小できます。",
       "closePanel": "閉じる",
@@ -2286,10 +2348,77 @@
         "place": "シーンに配置",
         "retry": "再試行",
         "remove": "削除",
-        "empty": "インポートしたモデルがここに表示されます。",
+        "empty": "インポートまたは生成したモデルがここに表示されます。",
         "loadFailed": "タスクを読み込めませんでした。",
         "removeFailed": "タスクを削除できませんでした。もう一度お試しください。",
-        "placeFailed": "モデルをシーンに配置できませんでした。"
+        "placeFailed": "モデルをシーンに配置できませんでした。",
+        "kindGeneration": "生成",
+        "originSpace": "Space 内",
+        "originAgent": "Agent",
+        "generating": "生成中",
+        "generatingFor": "生成中 · {minutes} 分経過",
+        "stillRunning": "この生成はまだ処理中です。後でもう一度お試しください。",
+        "hasResult": "この生成には結果があります。シーンに配置できます。",
+        "checkFailed": "この生成を確認できませんでした。もう一度お試しください。",
+        "locate": "シーンで表示",
+        "filter": "絞り込み",
+        "filterRunning": "進行中のみ",
+        "filterKind": "種類",
+        "filterAll": "すべて",
+        "filterStarter": "開始した人",
+        "filterEveryone": "全メンバー",
+        "filterMe": "自分",
+        "filterOrigin": "開始元",
+        "filterEmpty": "条件に合うタスクはありません。"
+      },
+      "proposalBusy": "別の生成を送信中です。",
+      "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
+      "force": {
+        "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
+        "pbr_needs_texture": "PBR にはテクスチャが必要です。",
+        "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"
+      },
+      "generateDialog": {
+        "descriptionBlank": "生成したモデルはタスク一覧に入り、完了後にシーンに配置できます。",
+        "descriptionAgent": "Agent の提案で入力済みです。確認して生成してください。",
+        "descriptionRetry": "元のタスクの内容で入力済みです。確認して生成してください。",
+        "common": "共通設定",
+        "prompt": "プロンプト",
+        "promptPlaceholder": "生成したい 3D モデルを説明してください",
+        "views": "参照画像",
+        "viewsHint": "正面・左・背面・右の順に入力します。正面だけなら単一画像、ほかの視図があればマルチビューで生成します。",
+        "view": {
+          "front": "正面",
+          "left": "左",
+          "back": "背面",
+          "right": "右"
+        },
+        "required": "必須",
+        "upload": "アップロード",
+        "pickProject": "Project から選択",
+        "removeView": "削除",
+        "changeView": "{view}の画像を変更",
+        "addView": "{view}の画像を追加",
+        "uploadFailed": "アップロード失敗",
+        "fillEarlier": "先に前の視点を入力してください",
+        "rule": {
+          "bounds": "{min}〜{max} を入力してください。",
+          "integer": "整数を入力してください。",
+          "length": "{max} 文字以内です。",
+          "values": "選択肢から選んでください。"
+        }
+      },
+      "picker": {
+        "title": "画像を選択",
+        "description": "この Project の画像から選ぶか、アップロードします。",
+        "project": "Project",
+        "local": "ローカル",
+        "loadFailed": "画像を読み込めませんでした。",
+        "empty": "この Project にはまだ画像がありません。",
+        "unnamed": "無題の画像",
+        "more": "さらに読み込む",
+        "formats": "PNG、JPEG、WebP",
+        "chooseFile": "ファイルを選択"
       }
     }
   },
@@ -2968,7 +3097,64 @@
       "enterpriseScale": "容量は個別契約",
       "enterpriseGovernance": "SSO・監査・知的財産補償"
     },
-    "noCreditsIncluded": "メンバーシップに生成クレジットは含まれません。クレジットは別途購入します。"
+    "noCreditsIncluded": "メンバーシップに生成クレジットは含まれません。クレジットは別途購入します。",
+    "referral": {
+      "heading": "紹介コード",
+      "intro": "初めてメンバーシップに加入する前に紹介コードを登録すると、最初の期間が {percent}% 割引になります。登録後は変更できません。",
+      "placeholder": "紹介コードを入力",
+      "add": "登録",
+      "required": "紹介コードを入力してください。",
+      "bound": "紹介コード {code}",
+      "boundDiscount": "お支払い時に自動で適用されます。",
+      "badge": "初回 {percent}% 割引",
+      "added": "登録しました。メンバーシップを選ぶと最初の期間が {percent}% 割引になります。",
+      "loadFailed": "紹介情報を読み込めませんでした。",
+      "retry": "再試行"
+    },
+    "promoter": {
+      "heading": "プロモータープログラム",
+      "closed": "プロモーターの申請はまだ受け付けていません。",
+      "pitch": "breatic を紹介し、紹介した人のメンバーシップ支払いに応じて報酬を受け取れます。",
+      "pitchDetail": "承認されると専用の紹介コードとリンクが発行され、紹介された人は最初のメンバーシップ期間が {percent}% 割引になります。",
+      "apply": "プロモーターに申し込む",
+      "applyAgain": "もう一度申し込む",
+      "pending": "審査中",
+      "pendingDetail": "{date} に申請済み。結果はここに表示されます。",
+      "pendingBadge": "審査中",
+      "rejected": "前回の申請は承認されませんでした",
+      "rejectedNote": "補足：{note}",
+      "yourCode": "あなたの紹介コード",
+      "copyCode": "コードをコピー",
+      "copyLink": "リンクをコピー",
+      "copied": "コピーしました",
+      "copyFailed": "クリップボードへのコピーに失敗しました。",
+      "shareHint": "このコードで登録した人、または初回加入前に登録した人は、最初の期間が {percent}% 割引になります。",
+      "disabled": "停止中",
+      "removed": "終了",
+      "disabledDetail": "このコードは停止中のため、現在は誰も登録できません。既に登録した人は引き続き初回割引を受けられます。",
+      "removedDetail": "プロモータープログラムから外れています。このコードは今後使えません。既に登録した人は引き続き初回割引を受けられます。",
+      "dialogTitle": "プロモーターに申し込む",
+      "dialogDescription": "すべての申請を審査し、結果をここに表示します。",
+      "country": "国または地域",
+      "countryPlaceholder": "選択",
+      "channels": "紹介に使うチャネル",
+      "channelsHint": "リンクまたは短い説明、最大 10 件",
+      "channelPlaceholder": "https://youtube.com/@yourchannel や「200 人のデザイナーグループ」",
+      "addChannel": "追加する",
+      "removeChannel": "これを削除",
+      "plan": "紹介の方法",
+      "planPlaceholder": "対象とする人と、breatic をどう紹介するか",
+      "agreeLead": "以下を読み、同意します：",
+      "termsLink": "プロモーター規約",
+      "agreeRequired": "申し込むにはプロモーター規約への同意が必要です。",
+      "countryRequired": "国または地域を選んでください。",
+      "channelsRequired": "チャネルを 1 つ以上入力してください。",
+      "planRequired": "紹介の方法を入力してください。",
+      "termsChanged": "プロモーター規約が更新されました。もう一度お読みのうえ同意してください。",
+      "cancel": "キャンセル",
+      "submit": "申し込む",
+      "submitted": "申請しました"
+    }
   },
   "credits": {
     "panelTitle": "クレジット",

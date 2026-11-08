@@ -41,11 +41,31 @@ import {
 import {
   ConflictError,
   UnauthorizedError,
+  ValidationError,
+  db,
 } from "@breatic/core";
+import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { Attribution, ReportedConsent, UserEntity } from "@breatic/shared";
+import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
+
+/** A referral code carried by a sign-up (inner#1868 §5). */
+export interface SignupReferral {
+  code: string;
+  source: SignupReferralSource;
+}
+
+/** What became of a sign-up's referral code: none given, bound, or not used. */
+export type SignupReferralOutcome = "applied" | "not_applied" | null;
+
+/** A sign-up refused because the referral code it carried is not valid; nothing was created. */
+export class SignupReferralRefused extends ValidationError {
+  /** Creates the refusal with the translated message. */
+  constructor() {
+    super(t("server.referral.invalid_code"));
+  }
+}
 
 /**
  * Hash an account password at the cost every stored password uses.
@@ -65,16 +85,34 @@ export function hashPassword(password: string): Promise<string> {
  * Every way of signing up ends here, so this is where `signup_completed` is
  * sent. The campaign source is kept only when the signing-up browser accepted
  * a consent category (inner#1442 design §4.5).
+ * A referral code is bound in the same transaction as the account is created.
+ * While payments are off the code is ignored: the program does not exist.
  * @param data - The account to create, as `userRepo.createUser` takes it.
- * @returns The created account.
+ * @param referral - The code the sign-up carried, and what to do when it is
+ *   refused: `reject` creates nothing, `skip` creates the account unbound.
+ * @returns The created account and what became of the code.
  * @throws {ConflictError} When the address already belongs to an account.
+ * @throws {SignupReferralRefused} When the code is refused and `onRefused` is `reject`.
  */
-export async function createAccount(data: Parameters<typeof userRepo.createUser>[0]): Promise<UserEntity> {
+export async function createAccount(
+  data: Parameters<typeof userRepo.createUser>[0],
+  referral?: SignupReferral & { onRefused: "reject" | "skip" },
+): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   const consent = currentConsent();
   const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
+  const wanted = referral !== undefined && env.PAYMENT_ENABLED ? referral : undefined;
+  let outcome: SignupReferralOutcome = null;
   let user: UserEntity;
   try {
-    user = await userRepo.createUser({ ...data, attribution });
+    user = wanted === undefined
+      ? await userRepo.createUser({ ...data, attribution })
+      : await db.transaction(async (tx) => {
+        const created = await userRepo.createUser({ ...data, attribution }, tx);
+        const bound = await bindReferral({ userId: created.id, code: wanted.code, source: wanted.source }, tx);
+        if (!bound.ok && wanted.onRefused === "reject") throw new SignupReferralRefused();
+        outcome = bound.ok ? "applied" : "not_applied";
+        return created;
+      });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
     throw err;
@@ -93,7 +131,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
     logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
   });
   if (user.emailVerified) await claimEmailInvitations(user);
-  return user;
+  return { user, referral: outcome };
 }
 
 /**
@@ -114,22 +152,28 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
  * @param attribution - Campaign source the browser recorded before sign-up
- * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
+ * @param referral - The referral code the sign-up carried, bound with the account
+ * @returns `{ user, recoveryCode, referral }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
+ * @throws {SignupReferralRefused} If the referral code carried is not valid; nothing is created
  */
 export async function register(
   email: string,
   password: string,
   attribution: Attribution | null = null,
-): Promise<{ user: UserEntity; recoveryCode: string }> {
+  referral?: SignupReferral,
+): Promise<{ user: UserEntity; recoveryCode: string; referral: SignupReferralOutcome }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
 
   const hashedPassword = await hashPassword(password);
-  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale(), attribution });
+  const { user, referral: referralOutcome } = await createAccount(
+    { email, hashedPassword, locale: getActiveLocale(), attribution },
+    referral && { ...referral, onRefused: "reject" },
+  );
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -144,7 +188,7 @@ export async function register(
   // (setup-studio), where they choose their slug. Per
   // AGENTS.md#library-packages-do-not-log, the caller logs the `user_registered`
   // audit line after this resolves.
-  return { user, recoveryCode };
+  return { user, recoveryCode, referral: referralOutcome };
 }
 
 /**
@@ -222,17 +266,21 @@ export async function loginEmail(
  * @param email - The email address from Google
  * @param authoritativeEmail - Whether Google owns verification of this email (Gmail or Workspace).
  * @param attribution - Campaign source the browser recorded, kept only on a new account.
+ * @param referral - The referral code the sign-in carried; bound only to a new account.
+ * @throws {SignupReferralRefused} If a new account's referral code is not valid; nothing is created
  * @throws {UnauthorizedError} If linking would claim an unproven or differently bound email.
- * @returns The user, a session token, and whether this call created the account
+ * @returns The user, a session token, whether this call created the account, and what became of the code
  */
 export async function loginOrCreateGoogle(
   googleId: string,
   email: string,
   authoritativeEmail = false,
   attribution: Attribution | null = null,
-): Promise<{ user: UserEntity; token: string; created: boolean }> {
+  referral?: SignupReferral,
+): Promise<{ user: UserEntity; token: string; created: boolean; referral: SignupReferralOutcome }> {
   let user = await userRepo.getUserByGoogleId(googleId);
   let created = false;
+  let referralOutcome: SignupReferralOutcome = referral && env.PAYMENT_ENABLED ? "not_applied" : null;
 
   if (!user) {
     user = await userRepo.getUserByEmail(email);
@@ -244,7 +292,10 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await createAccount({ email, googleId, emailVerified: authoritativeEmail, locale: getActiveLocale(), attribution });
+      ({ user, referral: referralOutcome } = await createAccount(
+        { email, googleId, emailVerified: authoritativeEmail, locale: getActiveLocale(), attribution },
+        referral && { ...referral, onRefused: "reject" },
+      ));
       created = true;
     }
   }
@@ -258,7 +309,7 @@ export async function loginOrCreateGoogle(
   if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
-  return { user, token, created };
+  return { user, token, created, referral: referralOutcome };
 }
 
 /**

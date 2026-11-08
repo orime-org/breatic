@@ -243,6 +243,7 @@ export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, Enterprise
 // ceilings above are read here too, and a subscription whose paid period ran
 // out says the tier on the account is stale.
 export {
+  hasPaidMembership,
   listSubscriptions,
   markFirstActive,
   upsertSubscription,

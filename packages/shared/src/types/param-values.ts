@@ -57,6 +57,8 @@ export function paramValues(model: ModelEntry, key: string): ParamOptionValue[] 
   // model.params is trusted (the catalog is sanitized at the API boundary):
   // `values` is a readonly array or undefined, so a truthiness check suffices.
   if (descriptor.values) return [...descriptor.values];
+  // A whole number typed in, not picked: its bounds are not a list of options.
+  if (descriptor.type === 'integer') return [];
 
   return expandRange(descriptor.min, descriptor.max);
 }
