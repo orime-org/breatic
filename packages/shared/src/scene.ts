@@ -28,6 +28,80 @@ export const SceneModelSchema = z.discriminatedUnion('kind', [
 /** The longest name a scene object holds. */
 export const SCENE_OBJECT_NAME_MAX = 256;
 
+/** Every pose entry is its own key on the object record, behind this prefix (inner#1692). */
+export const SCENE_POSE_KEY_PREFIX = 'pose.';
+
+/** The most bones one object's pose may hold. */
+export const SCENE_POSE_MAX_KEYS = 256;
+
+/** The longest pose key, counted without {@link SCENE_POSE_KEY_PREFIX}. */
+export const SCENE_POSE_KEY_MAX_LENGTH = 128;
+
+/** The hips translation key; the only pose entry that is a vector. */
+const HIPS_TRANSLATION_KEY = 't:hips';
+
+/** A humanoid bone (`h:`) or a node of another rig (`n:`), each carrying a rotation. */
+const ROTATION_KEY = /^[hn]:.+$/su;
+
+/**
+ * Bones changed from rest, keyed `h:<VRM bone>` or `n:<node name>` to a normalized
+ * rotation, plus `t:hips` to the hips translation in hip heights.
+ */
+export type ScenePose = Readonly<Record<string, readonly number[]>>;
+
+/**
+ * Check one pose entry against the shape its key names.
+ * @param key - The pose key without the record prefix.
+ * @param value - The stored value.
+ * @returns Whether the entry is well formed.
+ */
+function isPoseEntry(key: string, value: unknown): boolean {
+  if (key === HIPS_TRANSLATION_KEY) return SceneVectorSchema.safeParse(value).success;
+  return key.length <= SCENE_POSE_KEY_MAX_LENGTH && ROTATION_KEY.test(key) && SceneRotationSchema.safeParse(value).success;
+}
+
+/**
+ * Check a whole pose; own keys are read as given, so `__proto__` is judged like any other key.
+ * @param value - The candidate pose.
+ * @returns Whether it is a pose of at most {@link SCENE_POSE_MAX_KEYS} well-formed entries.
+ */
+function isScenePose(value: unknown): value is ScenePose {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= SCENE_POSE_MAX_KEYS && entries.every(([key, entry]) => isPoseEntry(key, entry));
+}
+
+/** A pose as one value: the projection and commands carry it, the record stores it flat. */
+export const ScenePoseSchema = z.custom<ScenePose>(isScenePose, 'Invalid scene pose');
+
+/**
+ * Collect a record's flat pose keys into one `pose` value.
+ * @param record - A stored object record's plain values.
+ * @returns A copy without the flat keys, carrying `pose` only when the record had any.
+ */
+export function gatherScenePose(record: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  const pose: Record<string, unknown> = {};
+  let posed = false;
+  for (const [key, value] of Object.entries(record)) {
+    if (key.startsWith(SCENE_POSE_KEY_PREFIX)) {
+      pose[key.slice(SCENE_POSE_KEY_PREFIX.length)] = value;
+      posed = true;
+    } else values[key] = value;
+  }
+  if (posed) values.pose = pose;
+  return values;
+}
+
+/**
+ * Spread a pose into the flat record keys it is stored under.
+ * @param pose - The pose to store.
+ * @returns One prefixed key per entry.
+ */
+export function expandScenePose(pose: ScenePose): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [`${SCENE_POSE_KEY_PREFIX}${key}`, value]));
+}
+
 /** Plain scene values shared by the collaboration projection and renderer. */
 export const SceneObjectValuesSchema = z.object({
   name: z.string().trim().min(1).max(SCENE_OBJECT_NAME_MAX),
@@ -36,6 +110,7 @@ export const SceneObjectValuesSchema = z.object({
   rotation: SceneRotationSchema,
   scale: SceneScaleSchema,
   locked: z.boolean(),
+  pose: ScenePoseSchema.optional(),
 }).strict();
 
 /** A projected object combines its stable document key with plain values. */

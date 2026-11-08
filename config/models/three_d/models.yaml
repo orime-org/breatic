@@ -35,6 +35,11 @@
 # quality, whose 8K maps exceed the scene's texture budget
 # (config/scene.yaml max_texture_bytes). The formula still prices the extreme
 # quality as the upstream does; it has no term for quad.
+# Rig skeleton is our switch, not a Tripo H3.1 field: when it is on, the run
+# sends the generated GLB to WaveSpeed's tripo3d/rig after generation
+# (inner#1692); the extra step's price is that page's per-run price,
+# https://wavespeed.ai/models/tripo3d/rig. The step is optional: when rigging
+# fails the run still delivers the unrigged model and charges generation only.
 
 models:
 
@@ -130,6 +135,12 @@ models:
         default: true
         values: [true, false]
         fill: "panel"
+      rig_skeleton: &tripo_rig_skeleton
+        description: "Add a skeleton after generation so the model can be posed"
+        label: "Rig skeleton"
+        default: false
+        values: [true, false]
+        fill: "panel"
       model_seed: &tripo_model_seed
         description: "Seed for the geometry; blank is random"
         label: "Model seed"
@@ -166,6 +177,15 @@ models:
         when: { flag_on: "texture", equals: { texture_quality: "fast" } }
         set: { texture_version: "v3.5" }
         lock: true
+    extra_steps: &tripo_rig_step
+      - endpoint: "tripo3d/rig"
+        at: "after"
+        for_param: "rig_skeleton"
+        optional: true
+        pricing:
+          base_price: 300000
+          formula: ""
+          discount_rate: 100
     providers:
       - name: "wavespeed"
         model_id: "tripo3d/h3.1/text-to-3d"
@@ -201,6 +221,7 @@ models:
       face_limit: *tripo_face_limit
       auto_size: *tripo_auto_size
       export_uv: *tripo_export_uv
+      rig_skeleton: *tripo_rig_skeleton
       model_seed: *tripo_model_seed
       texture_seed: *tripo_texture_seed
       texture_alignment: &tripo_texture_alignment
@@ -225,6 +246,7 @@ models:
         values: [true, false]
         fill: "panel"
     forces: *tripo_forces
+    extra_steps: *tripo_rig_step
     providers:
       - name: "wavespeed"
         model_id: "tripo3d/h3.1/image-to-3d"
@@ -263,12 +285,14 @@ models:
       face_limit: *tripo_face_limit
       auto_size: *tripo_auto_size
       export_uv: *tripo_export_uv
+      rig_skeleton: *tripo_rig_skeleton
       model_seed: *tripo_model_seed
       texture_seed: *tripo_texture_seed
       texture_alignment: *tripo_texture_alignment
       orientation: *tripo_orientation
       enable_image_autofix: *tripo_image_autofix
     forces: *tripo_forces
+    extra_steps: *tripo_rig_step
     providers:
       - name: "wavespeed"
         model_id: "tripo3d/h3.1/multiview-to-3d"
