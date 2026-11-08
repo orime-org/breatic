@@ -290,7 +290,7 @@ describe("WebReaderContainer's way out", () => {
     const handler = WebReaderContainer.outbound;
     expect(typeof handler).toBe("function");
 
-    const response = await handler(
+    const response = await handler!(
       new Request("http://169.254.169.254/latest/meta-data/"),
       {},
       { containerId: "c1", className: "WebReaderContainer", params: undefined },

@@ -33,16 +33,6 @@ export class WebReaderContainer extends Container {
   /** Carries that to HTTPS as well. */
   interceptHttps = true;
 
-  /**
-   * Every request the browser makes.
-   * @param request - What the browser asked for.
-   * @param _env - The bindings.
-   * @param _ctx - The handler's context.
-   * @returns The answer, or a refusal.
-   */
-  static override outbound = (request: Request, _env: unknown, _ctx: OutboundHandlerContext): Promise<Response> =>
-    webReaderOutbound(request);
-
   /** Ends the read in progress, when one is. */
   private endRead: ((reason: Error) => void) | undefined;
 
@@ -111,3 +101,9 @@ export class WebReaderContainer extends Container {
     await this.destroy().catch(() => undefined);
   }
 }
+
+// Assigned, as the mini-tool classes assign theirs: `outbound` is a static
+// setter on `Container` that registers the handler for the class, and a class
+// field would define a property beside it and register nothing.
+WebReaderContainer.outbound = (request: Request, _env: unknown, _ctx: OutboundHandlerContext): Promise<Response> =>
+  webReaderOutbound(request);
