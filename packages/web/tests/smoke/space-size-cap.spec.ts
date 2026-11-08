@@ -323,8 +323,10 @@ async function docPosition(p: Page, s: SpaceRef, id: string): Promise<{ x: numbe
 }
 
 /**
- * A point on a node's top edge that the node itself takes, so a press there
- * lands on it rather than on a node drawn over it.
+ * A point on the top edge of the part of a node the canvas shows, that the
+ * node itself takes, so a press there lands on it rather than on a node drawn
+ * over it. A paste frames its new node, which can slide the top of another
+ * node under the page's top bar.
  * @param p - The page.
  * @param id - The node.
  * @returns Screen coordinates.
@@ -333,9 +335,11 @@ async function docPosition(p: Page, s: SpaceRef, id: string): Promise<{ x: numbe
 async function pointOn(p: Page, id: string): Promise<{ x: number; y: number }> {
   await expect(nodeOf(p, id)).toBeVisible({ timeout: 20_000 });
   const box = await nodeOf(p, id).boundingBox();
-  if (box === null) throw new Error(`node ${id} is not on screen`);
+  const pane = await visibleSpace(p).locator('.react-flow__pane').boundingBox();
+  if (box === null || pane === null) throw new Error(`node ${id} is not on screen`);
+  const top = Math.max(box.y, pane.y) + 6;
   for (const share of [0.5, 0.25, 0.75, 0.1, 0.9]) {
-    const at = { x: box.x + box.width * share, y: box.y + 6 };
+    const at = { x: box.x + box.width * share, y: top };
     const hit = await p.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.react-flow__node')?.getAttribute('data-id') ?? null, at);
     if (hit === id) return at;
   }
