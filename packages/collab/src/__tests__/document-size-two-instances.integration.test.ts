@@ -15,6 +15,13 @@
  * instance's record read just before and just after the production hook ran
  * its synchronous part, so the case sees what that one call counted whatever
  * a measurement does later.
+ *
+ * R7-34 (round 7, corrected spec): a bystander on instance 2 answers the
+ * forwarded rename with a follow-up write before the full push reaches it,
+ * so collab admits it as from a connection that has not acknowledged full.
+ * `beforeSync` is wrapped like `onChange`, recording each call with the
+ * record read around its synchronous part (the size judgement and `admit`),
+ * and warn / error lines are captured for the refusal log.
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,14 +29,15 @@ import { afterAll, describe, expect, inject, it, vi } from "vitest";
 import * as Y from "yjs";
 import type * as HocuspocusServerModule from "@hocuspocus/server";
 import type * as ConfigModuleShape from "@collab/config.js";
+import type * as CoreModuleShape from "@breatic/core";
 import * as core from "@breatic/core";
 import { createCollabServer } from "@collab/hocuspocus.js";
 
 import { seedCollabActivity } from "./helpers/account-activity-fixture.js";
 import { S, fill } from "./helpers/document-size-fixtures.js";
-import { V2_PUSH_KEYS, canvasOf, member, openDoc, openSocket, pushKeys, pushWhere, seed, settle, startInstance, stopInstance } from "./helpers/document-size-live.js";
+import { V2_PUSH_KEYS, canvasOf, member, openDoc, openSocket, persisted, pushKeys, pushWhere, refusalsOf, seed, settle, startInstance, stopInstance } from "./helpers/document-size-live.js";
 import type { Instance, SizeSocket } from "./helpers/document-size-live.js";
-import { SYNC, waitFor } from "./helpers/live-hocuspocus.js";
+import { waitFor } from "./helpers/live-hocuspocus.js";
 
 const { state } = vi.hoisted(() => ({
   state: {
@@ -37,13 +45,37 @@ const { state } = vi.hoisted(() => ({
     /** Instance index → reads that instance's `current` for a document. */
     readers: [] as Array<((name: string) => number | undefined) | undefined>,
     changes: [] as Array<{ instance: number; documentName: string; update: Uint8Array; source: unknown; before?: number; after?: number }>,
+    syncs: [] as Array<{ instance: number; documentName: string; userId: unknown; payload: Uint8Array; before?: number; after?: number }>,
+    logs: [] as Array<{ level: "warn" | "error"; args: unknown[] }>,
   },
 }));
+
+vi.mock("@breatic/core", async (importOriginal) => {
+  const real = await importOriginal<typeof CoreModuleShape>();
+  return {
+    ...real,
+    createLogger: (...args: Parameters<typeof real.createLogger>): ReturnType<typeof real.createLogger> => {
+      const logger = real.createLogger(...args);
+      return new Proxy(logger, {
+        get(target, prop, receiver): unknown {
+          if (prop === "warn" || prop === "error") {
+            return (...lineArgs: unknown[]): unknown => {
+              state.logs.push({ level: prop, args: lineArgs });
+              return Reflect.apply(Reflect.get(target, prop, receiver), target, lineArgs);
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+    },
+  };
+});
 
 vi.mock("@hocuspocus/server", async (importOriginal) => {
   const real = await importOriginal<typeof HocuspocusServerModule>();
   type Config = ConstructorParameters<typeof real.Server>[0];
   type ChangePayload = { documentName: string; update: Uint8Array; transactionOrigin?: { source?: unknown } | null };
+  type SyncPayload = { documentName: string; payload: Uint8Array; connection?: { context?: { user?: { id?: unknown } } } };
   /**
    * Record every `onChange` call of this instance with its record around the call.
    * @param config - What production passed.
@@ -53,8 +85,17 @@ vi.mock("@hocuspocus/server", async (importOriginal) => {
     const cfg = (config ?? {}) as Record<string, unknown>;
     const instance = state.instances++;
     const original = cfg.onChange as ((payload: ChangePayload) => Promise<void>) | undefined;
+    const originalSync = cfg.beforeSync as ((payload: SyncPayload) => Promise<void>) | undefined;
     return {
       ...cfg,
+      beforeSync: (payload: SyncPayload): Promise<void> => {
+        const read = state.readers[instance];
+        const before = read?.(payload.documentName);
+        const running = originalSync?.(payload) ?? Promise.resolve();
+        const after = read?.(payload.documentName);
+        state.syncs.push({ instance, documentName: payload.documentName, userId: payload.connection?.context?.user?.id, payload: payload.payload, before, after });
+        return running;
+      },
       onChange: (payload: ChangePayload): Promise<void> => {
         const read = state.readers[instance];
         const before = read?.(payload.documentName);
@@ -149,32 +190,42 @@ describe("two instances on one Redis", () => {
     expect(pushKeys(push)).toEqual(V2_PUSH_KEYS);
   });
 
-  it("R7-34 on instance 2 the full push reaches B before the forwarded update that crossed the limit", async () => {
+  it("R7-34 a bystander's follow-up to the forwarded update that crossed the limit on instance 2 is admitted, counted, stored and seen", async () => {
     const prefix = `document-size-two-${randomUUID()}`;
     const fixture = await seedCollabActivity();
     const name = canvasOf(fixture);
     const src = new Y.Doc();
-    const bytes = fill(src, 240_000);
+    fill(src, 240_000);
+    const nodes = src.getMap<Y.Map<unknown>>("nodes");
+    const e = new Y.Map<unknown>();
+    nodes.set("e", e);
+    e.set("name", "old");
+    const v = new Y.Map<unknown>();
+    nodes.set("v", v);
+    const chip = new Y.Map<unknown>();
+    v.set("chip", chip);
+    chip.set("label", "old");
+    const bytes = Y.encodeStateAsUpdate(src).byteLength;
     expect(bytes).toBeGreaterThanOrEqual(S.W);
+    expect(bytes).toBeLessThan(S.L);
     expect(bytes + 30_000).toBeGreaterThanOrEqual(S.L);
     await seed(name, src);
 
-    vi.resetModules();
-    const coreFirst = await import("@breatic/core");
-    coreFirst.initCore(process.env);
-    coreFirst.loadLocales();
-    const { createCollabServer: createFirst } = await import("@collab/hocuspocus.js");
-    const first = await startInstance(createFirst, inject("REDIS_COLLAB_URL"), prefix);
+    const first = await startInstance(createCollabServer, inject("REDIS_COLLAB_URL"), prefix);
     running.push(first);
     vi.resetModules();
     const coreSecond = await import("@breatic/core");
     coreSecond.initCore(process.env);
     coreSecond.loadLocales();
     const { createCollabServer: createSecond } = await import("@collab/hocuspocus.js");
+    const sizeSecond = await import("@collab/services/document-size.js");
     const second = await startInstance(createSecond, inject("REDIS_COLLAB_URL"), prefix);
     running.push(second);
+    const instanceSecond = state.instances - 1;
+    state.readers[instanceSecond] = (n: string): number | undefined => sizeSecond.readDocSizeRecord(n)?.current;
 
-    const socketB = await openSocket(second.server.address.port, (await member(fixture, "editor")).cookie);
+    const bystander = await member(fixture, "editor");
+    const socketB = await openSocket(second.server.address.port, bystander.cookie);
     sockets.push(socketB);
     const b = await openDoc(socketB, name);
     await b.sync();
@@ -183,20 +234,39 @@ describe("two instances on one Redis", () => {
     sockets.push(socketA);
     const a = await openDoc(socketA, name);
     await a.sync();
-    const since = socketB.frames.length;
 
-    a.edit((d) => {
-      const t = d.getText("t");
-      t.insert(t.length, "y".repeat(30_000));
+    const renamed = "r".repeat(30_000);
+    let followUp: Uint8Array | undefined;
+    // The bystander's editor re-projects the reference chip in the callback that received the rename.
+    socketB.ws.on("message", () => {
+      if (followUp !== undefined) return;
+      const node = b.doc.getMap<Y.Map<unknown>>("nodes").get("e");
+      if (node?.get("name") !== renamed) return;
+      followUp = b.edit((d) => {
+        const target = d.getMap<Y.Map<unknown>>("nodes").get("v")?.get("chip") as Y.Map<unknown>;
+        target.set("label", "renamed");
+      });
     });
+    const logsFrom = state.logs.length;
+    const syncsFrom = state.syncs.length;
+
+    a.edit((d) => d.getMap<Y.Map<unknown>>("nodes").get("e")?.set("name", renamed));
     expect(await settle(a)).toEqual([]);
-    await waitFor(() => b.doc.getText("t").length === 30_000, "B received A's update through instance 2", 30_000);
-    const frames = socketB.frames.slice(since).filter((f) => f.documentName === name);
-    const pushAt = frames.findIndex((f) => f.stateless !== undefined && (JSON.parse(f.stateless) as { type?: unknown; phase?: unknown }).type === "doc:size"
-      && (JSON.parse(f.stateless) as { phase?: unknown }).phase === "full");
-    const updateAt = frames.findIndex((f) => f.syncSubType === SYNC.update && (f.payload?.byteLength ?? 0) >= 30_000);
-    expect(pushAt).toBeGreaterThanOrEqual(0);
-    expect(updateAt).toBeGreaterThanOrEqual(0);
-    expect(pushAt).toBeLessThan(updateAt);
+    await waitFor(() => followUp !== undefined, "B wrote its follow-up", 30_000);
+    const label = (d: Y.Doc): unknown => (d.getMap<Y.Map<unknown>>("nodes").get("v")?.get("chip") as Y.Map<unknown> | undefined)?.get("label");
+    await waitFor(() => label(a.doc) === "renamed" || b.closeReasons().length > 0, "A saw the follow-up or B was closed", 30_000);
+    expect(await settle(b)).toEqual([]);
+
+    expect(b.closeReasons()).toEqual([]);
+    expect(socketB.closedByServer()).toBe(false);
+    expect(refusalsOf(state.logs.slice(logsFrom), name)).toEqual([]);
+    expect(label(a.doc)).toBe("renamed");
+    expect(label(await persisted(first, name))).toBe("renamed");
+    // Design 4.1: a write carrying structs, splitting nothing and pending nothing, costs its message length.
+    const counted = state.syncs.slice(syncsFrom).filter((x) => x.instance === instanceSecond && x.documentName === name && x.userId === bystander.userId);
+    expect(counted).toHaveLength(1);
+    expect(Buffer.from(counted[0]?.payload ?? []).equals(Buffer.from(followUp ?? []))).toBe(true);
+    expect(counted[0]?.before).toBeGreaterThanOrEqual(S.L);
+    expect((counted[0]?.after ?? 0) - (counted[0]?.before ?? 0)).toBe(followUp?.byteLength);
   });
 });

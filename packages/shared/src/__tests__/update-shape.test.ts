@@ -121,7 +121,7 @@ describe("updateShape", () => {
   it("SH-01 deleting a whole node is a pure delete of whole types, with no structBytes key", () => {
     const { client, server } = nodeDoc();
     const { update, store } = capture(client, server, () => client.getMap("nodes").delete("n1"));
-    expect(updateShape(update, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(updateShape(update, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true, coversLive: true });
   });
 
   it("SH-02 deleting one Map entry holding a plain value counts as a whole entry", () => {
@@ -208,7 +208,7 @@ describe("updateShape", () => {
       n2.set("name", "abc");
     });
     expect(update.byteLength).toBe(32);
-    expect(updateShape(update, store)).toEqual({ pureDelete: false, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(updateShape(update, store)).toEqual({ pureDelete: false, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true, coversLive: false });
   });
 
   it("SH-13 removing an XML attribute counts as deleting a Map entry", () => {
@@ -223,7 +223,7 @@ describe("updateShape", () => {
     const { store } = capture(client, server, () => data.delete("color"));
     // The client's whole delete set now covers the overwritten "x1" name item and the live "color" entry.
     const withOld = Y.encodeStateAsUpdate(client, Y.encodeStateVector(server));
-    expect(updateShape(withOld, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true });
+    expect(updateShape(withOld, store)).toEqual({ pureDelete: true, splitEndpoints: 0, beyondClockRanges: 0, wholeTypesOnly: true, coversLive: true });
   });
 
   it("SH-15 a malformed update throws", () => {
