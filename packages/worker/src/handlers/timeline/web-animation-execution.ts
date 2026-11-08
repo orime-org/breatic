@@ -62,10 +62,7 @@ import {
 /** The step that fixes an execution's container job, written before its first submission. */
 interface JobStep {
   kind: "container_job";
-  jobId: string;
-  containerClass: string;
-  /** Epoch ms: the execution's original deadline. */
-  deadlineAt: number;
+  /** The job as it is submitted; its `deadlineAt` is the execution's original deadline in epoch ms. */
   request: WebAnimationJobRequest;
 }
 
@@ -79,8 +76,18 @@ interface Pickup {
   endsAt: number;
 }
 
+/** One file a report says the job wrote. */
+type JobOutput = WebAnimationJobReport["outputs"][number];
+
+/** A done report's outputs and Manifest, checked against the accepted job. */
+interface ValidResult {
+  manifest: WebAnimationManifest;
+  pkg: JobOutput;
+  man: JobOutput;
+}
+
 /** How a settled run ends: a terminal event, or the result a done report's Manifest makes. */
-type RunEnd = TimelineExecutionEvent | { type: "result"; manifest: WebAnimationManifest };
+type RunEnd = TimelineExecutionEvent | ({ type: "result" } & ValidResult);
 
 /** A report that ended; only these settle. */
 type EndedReport = WebAnimationJobReport & { state: "done" | "failed" | "cancelled" | "expired" | "cancelled_before_submit" };
@@ -112,7 +119,8 @@ async function owns(pickup: Pickup): Promise<boolean> {
 
 /**
  * The job step a row already holds. Its request is read back through its schema, which also restores the field
- * order jsonb does not keep, so every attempt submits the same bytes.
+ * order jsonb does not keep, so every attempt submits the same bytes. Anything else a stored step carries beside its
+ * request is ignored.
  * @param steps - The row's steps.
  * @returns The step, or undefined when none was written yet.
  * @throws {never} Never.
@@ -123,7 +131,7 @@ function storedStep(steps: unknown[]): JobStep | undefined {
     if (candidate?.kind !== "container_job") continue;
     const request = webAnimationJobRequestSchema.safeParse(candidate.request);
     if (!request.success) return undefined;
-    return { kind: "container_job", jobId: request.data.jobId, containerClass: request.data.containerClass, deadlineAt: request.data.deadlineAt, request: request.data };
+    return { kind: "container_job", request: request.data };
   }
   return undefined;
 }
@@ -137,18 +145,13 @@ function storedStep(steps: unknown[]): JobStep | undefined {
  */
 function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep {
   const config = getTimelineConfig().web_animation;
-  const jobId = timelineOperationKey(row.id);
-  const deadlineAt = Date.parse(row.deadlineAt);
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
     kind: "container_job",
-    jobId,
-    containerClass: WEB_ANIMATION_CONTAINER_CLASS,
-    deadlineAt,
     request: {
       containerClass: WEB_ANIMATION_CONTAINER_CLASS,
-      jobId,
-      deadlineAt,
+      jobId: timelineOperationKey(row.id),
+      deadlineAt: Date.parse(row.deadlineAt),
       prompt: input.prompt,
       viewport: { ...config.viewports[input.aspect] },
       fps: input.fps,
@@ -204,10 +207,10 @@ async function featureDisabled(pickup: Pickup): Promise<void> {
  * Read the Manifest a done report wrote and check it, and the outputs, against the accepted job.
  * @param pickup - The pickup.
  * @param report - The done report.
- * @returns The Manifest, or why it does not match.
+ * @returns The Manifest with the package and Manifest outputs, or why they do not match.
  * @throws {Error} When storage cannot be read.
  */
-async function validated(pickup: Pickup, report: EndedReport): Promise<{ manifest: WebAnimationManifest } | { reason: string }> {
+async function validated(pickup: Pickup, report: EndedReport): Promise<ValidResult | { reason: string }> {
   const { request } = pickup.step;
   const pkg = report.outputs.find((output) => output.key === request.packageKey);
   const man = report.outputs.find((output) => output.key === request.manifestKey);
@@ -229,7 +232,7 @@ async function validated(pickup: Pickup, report: EndedReport): Promise<{ manifes
     durationFrames: request.durationFrames,
     fontSetVersion: request.fontSetVersion,
   });
-  return mismatch === null ? { manifest: parsed.data } : { reason: mismatch };
+  return mismatch === null ? { manifest: parsed.data, pkg, man } : { reason: mismatch };
 }
 
 /**
@@ -323,15 +326,13 @@ async function bill(pickup: Pickup): Promise<void> {
  * @throws {Error} When a write fails.
  */
 async function settle(pickup: Pickup, report: EndedReport, end: RunEnd): Promise<void> {
-  const { row, step } = pickup;
+  const { row } = pickup;
   let event: TimelineExecutionEvent;
   if (end.type !== "result") {
     event = end;
   } else {
-    const { manifest } = end;
+    const { manifest, pkg, man } = end;
     if (!(await owns(pickup))) return;
-    const pkg = report.outputs.find((output) => output.key === step.request.packageKey)!;
-    const man = report.outputs.find((output) => output.key === step.request.manifestKey)!;
     const source = await webAnimationSourceRepo.insert({
       executionId: row.id,
       packageKey: pkg.key,
@@ -370,7 +371,7 @@ async function finish(pickup: Pickup, report: EndedReport): Promise<void> {
   if (Date.now() >= pickup.endsAt || report.state === "expired") return settle(pickup, report, { type: "deadline" });
   if (report.state === "done") {
     const checked = await validated(pickup, report);
-    return settle(pickup, report, "manifest" in checked ? { type: "result", manifest: checked.manifest } : { type: "failure", fence, reason: checked.reason });
+    return settle(pickup, report, "manifest" in checked ? { type: "result", ...checked } : { type: "failure", fence, reason: checked.reason });
   }
   const reason = report.state === "failed" ? (report.failureReason ?? "container_failed") : "container_cancelled";
   return settle(pickup, report, { type: "failure", fence, reason });
@@ -400,7 +401,7 @@ async function noteProgress(pickup: Pickup, report: WebAnimationJobReport): Prom
  * @throws {Error} When a write fails.
  */
 async function cancelling(pickup: Pickup): Promise<void> {
-  const answer = await cancelWebAnimationJob(pickup.step.jobId, { deadlineAt: pickup.step.deadlineAt }, pickup.endsAt);
+  const answer = await cancelWebAnimationJob(pickup.step.request.jobId, { deadlineAt: pickup.step.request.deadlineAt }, pickup.endsAt);
   if (answer.kind === "disabled") return featureDisabled(pickup);
   if (answer.kind === "report" && ended(answer.report)) return settle(pickup, answer.report, { type: "cancelAck" });
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
@@ -414,24 +415,24 @@ async function cancelling(pickup: Pickup): Promise<void> {
  * @throws {Error} When a write or a call fails.
  */
 async function running(pickup: Pickup): Promise<void> {
-  const { step, endsAt } = pickup;
+  const { step: { request }, endsAt } = pickup;
   const poll = getTimelineConfig().web_animation.poll_interval_ms;
-  let answer: IngestAnswer = await readWebAnimationJob(step.jobId, endsAt);
+  let answer: IngestAnswer = await readWebAnimationJob(request.jobId, endsAt);
   if (answer.kind === "missing") {
     // The Worker holds no job, so it never ran; past the deadline it is not started.
-    if (Date.now() >= step.deadlineAt) {
+    if (Date.now() >= request.deadlineAt) {
       if (await owns(pickup)) await move(pickup.row, { type: "deadline" });
       return;
     }
-    answer = await submitWebAnimationJob(step.request, endsAt);
-    if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: step.jobId }, "web_animation_container_start_refused");
+    answer = await submitWebAnimationJob(request, endsAt);
+    if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: request.jobId }, "web_animation_container_start_refused");
   }
   if (answer.kind === "disabled") return featureDisabled(pickup);
   const report = answer.kind === "report" ? answer.report : null;
   if (report !== null && ended(report)) return finish(pickup, report);
   if (Date.now() >= endsAt) {
     // Out of time and still going: stop it, and read its ending on a later pickup.
-    const stopped = await cancelWebAnimationJob(step.jobId, { deadlineAt: step.deadlineAt }, endsAt);
+    const stopped = await cancelWebAnimationJob(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
     if (stopped.kind === "disabled") return featureDisabled(pickup);
     if (stopped.kind === "report" && ended(stopped.report)) return finish(pickup, stopped.report);
   } else if (report !== null) {
@@ -469,7 +470,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     token,
     row,
     step,
-    endsAt: step.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
+    endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
   };
   if (row.status === "cancelling") return cancelling(pickup);
   return running(pickup);
