@@ -358,6 +358,26 @@ describe("list_generation_models says which settings set the price (breatic#1361
     );
   });
 
+  it("marks a setting given as a range whose value changes the price with its cheaper end, right before its default", async () => {
+    // Mirelo SFX 1.6: duration is a 0.1 s slider from 0.1 to 60 s, priced per second.
+    const MODEL = "sfx-1.6-text-to-audio";
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
+    if (!answer.available) throw new Error("sfx has models");
+    const spec = answer.models.find((one) => one.name === MODEL)?.params["duration"];
+    // Guards the case itself: duration is a range, not a list, on this model.
+    expect(spec?.options).toBeUndefined();
+    const ends = [spec?.min, spec?.max];
+    expect(ends).toEqual([0.1, 60]);
+    const credits = await creditsAcross(MODEL, "duration", ends);
+    // Guards the case itself: duration changes this model's price.
+    expect(credits.every((one) => one !== undefined)).toBe(true);
+    expect(new Set(credits).size).toBe(2);
+    const cheaper = ends[credits.indexOf(Math.min(...credits.filter((one): one is number => one !== undefined)))];
+    expect(paramLine(renderGenerationModelsForModel(answer), MODEL, "duration")).toContain(
+      `sets the price, lowest at ${JSON.stringify(cheaper)}; defaults to ${JSON.stringify(spec?.default)}.`,
+    );
+  });
+
   it("says nothing of the price on a setting whose value does not change it", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     if (!answer.available) throw new Error("t2i has models");

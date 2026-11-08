@@ -15,52 +15,58 @@ const AT = new Date("2026-10-01T09:27:00Z");
 describe("userClockNote", () => {
   it("gives the user's local date, weekday, time and zone", () => {
     expect(userClockNote(AT, "Asia/Shanghai")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("follows daylight saving on either side of the change", () => {
     expect(userClockNote(new Date("2026-03-07T17:00:00Z"), "America/New_York")).toBe(
-      "[The user's local time when they sent this message: Saturday, 2026-03-07 12:00 (America/New_York, GMT-05:00).]",
+      "[The user's local time when they sent this message: Saturday, 2026-03-07 12:00 (America/New_York, GMT-05:00). The time zone tells the time only, never which language to reply in.]",
     );
     expect(userClockNote(new Date("2026-03-09T17:00:00Z"), "America/New_York")).toBe(
-      "[The user's local time when they sent this message: Monday, 2026-03-09 13:00 (America/New_York, GMT-04:00).]",
+      "[The user's local time when they sent this message: Monday, 2026-03-09 13:00 (America/New_York, GMT-04:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("writes a zero offset with its hours and minutes", () => {
     expect(userClockNote(AT, "UTC")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 09:27 (UTC, GMT+00:00).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 09:27 (UTC, GMT+00:00). The time zone tells the time only, never which language to reply in.]",
     );
     expect(userClockNote(new Date("2026-01-15T00:05:00Z"), "Europe/London")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-01-15 00:05 (Europe/London, GMT+00:00).]",
+      "[The user's local time when they sent this message: Thursday, 2026-01-15 00:05 (Europe/London, GMT+00:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("writes an offset that is not a whole hour", () => {
     expect(userClockNote(AT, "Asia/Kolkata")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Kolkata, GMT+05:30).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Kolkata, GMT+05:30). The time zone tells the time only, never which language to reply in.]",
     );
     expect(userClockNote(AT, "America/St_Johns")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 06:57 (America/St_Johns, GMT-02:30).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 06:57 (America/St_Johns, GMT-02:30). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("keeps the offset whole late in a minute", () => {
     expect(userClockNote(new Date("2026-10-01T09:27:59.900Z"), "Asia/Shanghai")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("moves to the next day when the user's clock already has", () => {
     expect(userClockNote(new Date("2026-10-01T16:30:00Z"), "Asia/Shanghai")).toBe(
-      "[The user's local time when they sent this message: Friday, 2026-10-02 00:30 (Asia/Shanghai, GMT+08:00).]",
+      "[The user's local time when they sent this message: Friday, 2026-10-02 00:30 (Asia/Shanghai, GMT+08:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 
   it("writes the zone as the browser reported it", () => {
     expect(userClockNote(AT, "Asia/Calcutta")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Calcutta, GMT+05:30).]",
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Calcutta, GMT+05:30). The time zone tells the time only, never which language to reply in.]",
+    );
+  });
+
+  it("says the time zone tells the time only, never which language to reply in", () => {
+    expect(userClockNote(AT, "Asia/Tokyo")).toBe(
+      "[The user's local time when they sent this message: Thursday, 2026-10-01 18:27 (Asia/Tokyo, GMT+09:00). The time zone tells the time only, never which language to reply in.]",
     );
   });
 

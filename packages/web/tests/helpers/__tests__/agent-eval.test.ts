@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   agreement,
+  agreementByScenario,
   fixedAnswers,
   judgePrompt,
   parseUserAnswers,
@@ -212,6 +213,24 @@ describe('parseUserAnswers', () => {
     expect(() => parseUserAnswers(text, questions)).toThrow();
   });
 
+  it('leaves other out when the answer has neither a choice nor words, since the chat route rejects an empty other', () => {
+    const answers = parseUserAnswers('[{"index":0,"choice":null,"other":null}]', [{ question: 'q', options: ['A'] }]);
+    expect(answers).toEqual([{ index: 0, selected: [] }]);
+    expect(answers[0]).not.toHaveProperty('other');
+  });
+
+  it('treats an other of only spaces as empty', () => {
+    const answers = parseUserAnswers('[{"index":0,"choice":null,"other":"   "}]', [{ question: 'q', options: ['A'] }]);
+    expect(answers).toEqual([{ index: 0, selected: [] }]);
+    expect(answers[0]).not.toHaveProperty('other');
+  });
+
+  it('cuts an other longer than 500 characters to 500', () => {
+    const long = 'w'.repeat(501);
+    const answers = parseUserAnswers(JSON.stringify([{ index: 0, choice: null, other: long }]), [{ question: 'q', options: ['A'] }]);
+    expect(answers).toEqual([{ index: 0, selected: [], other: long.slice(0, 500) }]);
+  });
+
   it('throws when a question is left unanswered', () => {
     expect(parseUserAnswers(answered, questions)).toHaveLength(3);
     const text = JSON.stringify([
@@ -310,5 +329,29 @@ describe('agreement', () => {
       fails: 1,
     });
     expect(agreement([])).toEqual({ truePass: undefined, trueFail: undefined, passes: 0, fails: 0 });
+  });
+});
+
+describe('agreementByScenario', () => {
+  const labels = [
+    { scenario: 'SCENARIO-A', human: true, judge: true },
+    { scenario: 'SCENARIO-B', human: false, judge: true },
+    { scenario: 'SCENARIO-A', human: true, judge: false },
+    { scenario: 'SCENARIO-A', human: false, judge: false },
+    { scenario: 'SCENARIO-B', human: false, judge: false },
+  ];
+
+  it('gives each scenario the numbers agreement gives its own runs', () => {
+    const byScenario = agreementByScenario(labels);
+    expect([...byScenario.keys()].sort()).toEqual(['SCENARIO-A', 'SCENARIO-B']);
+    expect(byScenario.get('SCENARIO-A')).toEqual({ truePass: 0.5, trueFail: 1, passes: 2, fails: 1 });
+    expect(byScenario.get('SCENARIO-B')).toEqual({ truePass: undefined, trueFail: 0.5, passes: 0, fails: 2 });
+    for (const [scenario, numbers] of byScenario) {
+      expect(numbers, scenario).toEqual(agreement(labels.filter((one) => one.scenario === scenario)));
+    }
+  });
+
+  it('has no scenario when there are no labels', () => {
+    expect(agreementByScenario([]).size).toBe(0);
   });
 });

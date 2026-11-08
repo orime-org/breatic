@@ -429,10 +429,12 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(at).toBeLessThan(text().indexOf("- Taste with no right answer"));
   });
 
-  it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never as a list of options", () => {
+  it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never alongside the takes, never as a list of options", () => {
     const taste = bullet("- Taste with no right answer", "- When what only the user knows and a taste");
     expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result");
-    expect(taste).toContain("say how they differ, list the later steps in words with their rough cost, and propose them only once they have picked one, never on the same card as the takes. A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).toContain("list the later steps in words with their rough cost, and propose them only once they have picked one, never alongside the takes.");
+    expect(taste).toContain("A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).not.toContain("never on the same card as the takes");
     expect(taste).not.toContain("say how they differ, and propose the later steps only once");
     expect(taste).not.toContain("build the later steps on the one they pick");
   });
@@ -458,16 +460,26 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Work of several steps: show the steps, what each makes and what it costs, before anything is spent.");
   });
 
-  it("tries things cheaply and makes full quality from the picked take or when asked", () => {
+  it("tries things cheaply, every setting that sets the price at its cheapest on a fast and cheap model", () => {
     expect(text()).toContain("Try things cheaply.");
     expect(tryCheaply()).not.toContain("that still shows the difference");
-    expect(tryCheaply()).toContain("made at the lowest cost: every setting the model list marks as setting the price, at the value it names as lowest, on a fast and cheap model.");
-    expect(text()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it.");
+    expect(tryCheaply()).toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
   });
 
-  it("chooses a model that can do the step by its own description in the model list, names a model's limit as the model's, not Breatic's, and says what helps on the model they have", () => {
-    expect(text()).toContain("Choose for each step a model that can do what it asks; what a model is good at is what its own description in the model list says, whatever the web says.");
-    expect(text()).toContain("name a model whose own description in the model list says it does this better; when none does, say so plainly. Either way, say what can help on the model they have (a shorter or simpler motion, another framing, a reference).");
+  it("makes full quality from the picked take or when asked, sets a setting the user names as named and keeps every other at its cheapest", () => {
+    expect(tryCheaply()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it. A setting they name is set as they name it; every other setting stays at its cheapest.");
+  });
+
+  it("names no product tool mechanics: neither the model list nor a card", () => {
+    expect(text()).toContain("Try things cheaply.");
+    expect(text()).not.toContain("the model list");
+    expect(text()).not.toMatch(/\bcard\b/);
+  });
+
+  it("chooses a model that can do the step by its own description in Breatic, names a model's limit as the model's, not Breatic's, and says what helps on the model they have", () => {
+    expect(text()).toContain("Choose for each step a model that can do what it asks; what a model is good at is what its own description in Breatic says, whatever the web says.");
+    expect(text()).toContain("name a model whose own description says it does this better; when none does, say so plainly.");
+    expect(text()).toContain("Either way, say what can help on the model they have (a shorter or simpler motion, another framing, a reference).");
     expect(text()).not.toContain("name a model that does it better");
   });
 
