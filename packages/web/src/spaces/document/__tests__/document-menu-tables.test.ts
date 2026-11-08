@@ -32,6 +32,8 @@ describe('the block handle menu', () => {
     expect(TABLE_MENU_ROWS.map((row) => row.id)).toEqual([
       'insertBelow',
       'duplicate',
+      'copy',
+      'cut',
       'indent',
       'unindent',
       'comment',

@@ -200,7 +200,7 @@ describe('copying a row, a column or the table from its menu', () => {
     const { editor } = open(SMALL);
     const view = editor.prosemirrorView;
     const selection = tableLineSelection(view.state.doc, cellOf(editor, 'a2'), scope)!;
-    const expected = tableClipped(editor as never, { ...view, state: view.state.apply(view.state.tr.setSelection(selection)) } as never)!;
+    const expected = tableClipped(editor, { ...view, state: view.state.apply(view.state.tr.setSelection(selection)) } as never)!;
 
     expect(await copyTableLine(editor as never, cellOf(editor, 'a2'), scope)).toBe('copied');
 
@@ -226,7 +226,7 @@ describe('copying a row, a column or the table from its menu', () => {
     const { editor } = open(SMALL);
     const before = editor.prosemirrorState.selection.toJSON();
 
-    await copyTableLine(editor as never, cellOf(editor, 'a1'), 'row');
+    await copyTableLine(editor, cellOf(editor, 'a1'), 'row');
 
     expect(editor.prosemirrorState.selection.toJSON()).toEqual(before);
   });
@@ -269,7 +269,7 @@ describe('cutting a row, a column or the table from its menu', () => {
   it('deletes the column it copied', async () => {
     const { editor } = open(SMALL);
 
-    await cutTableLine(editor as never, cellOf(editor, 'b1'), 'column');
+    await cutTableLine(editor, cellOf(editor, 'b1'), 'column');
 
     expect(grid(editor)).toEqual([['a1'], ['a2'], ['a3']]);
   });
@@ -277,7 +277,7 @@ describe('cutting a row, a column or the table from its menu', () => {
   it('deletes the table when the cut takes its last row', async () => {
     const { editor } = open({ rows: [{ cells: ['only', 'one'] }] });
 
-    await cutTableLine(editor as never, cellOf(editor, 'only'), 'row');
+    await cutTableLine(editor, cellOf(editor, 'only'), 'row');
 
     expect(editor.document.some((block) => block.type === 'docTable')).toBe(false);
   });
@@ -285,7 +285,7 @@ describe('cutting a row, a column or the table from its menu', () => {
   it('deletes the whole table it copied', async () => {
     const { editor } = open(SMALL);
 
-    await cutTableLine(editor as never, cellOf(editor, 'a1'), 'table');
+    await cutTableLine(editor, cellOf(editor, 'a1'), 'table');
 
     expect(copied['text/html']).toContain('<table');
     expect(editor.document.some((block) => block.type === 'docTable')).toBe(false);
@@ -305,7 +305,7 @@ describe('cutting a row, a column or the table from its menu', () => {
 describe('pasting copied rows and columns as new ones', () => {
   it('inserts the copied row below and leaves every row as it was; one undo takes it out', async () => {
     const { editor, manager } = open(SMALL);
-    await copyTableLine(editor as never, cellOf(editor, 'a1'), 'row');
+    await copyTableLine(editor, cellOf(editor, 'a1'), 'row');
     readBack(copied);
 
     expect(await pasteTableLines(editor as never, cellOf(editor, 'a3'), 'below')).toBe('pasted');
@@ -317,10 +317,10 @@ describe('pasting copied rows and columns as new ones', () => {
 
   it('inserts above', async () => {
     const { editor } = open(SMALL);
-    await copyTableLine(editor as never, cellOf(editor, 'a3'), 'row');
+    await copyTableLine(editor, cellOf(editor, 'a3'), 'row');
     readBack(copied);
 
-    await pasteTableLines(editor as never, cellOf(editor, 'a1'), 'above');
+    await pasteTableLines(editor, cellOf(editor, 'a1'), 'above');
 
     expect(grid(editor)).toEqual([['a3', 'b3'], ['a1', 'b1'], ['a2', 'b2'], ['a3', 'b3']]);
   });
@@ -330,10 +330,10 @@ describe('pasting copied rows and columns as new ones', () => {
     ['right', [['a1', 'b1', 'b1'], ['a2', 'b2', 'b2'], ['a3', 'b3', 'b3']]],
   ] as const)('inserts a copied column to the %s', async (side, expected) => {
     const { editor } = open(SMALL);
-    await copyTableLine(editor as never, cellOf(editor, 'b1'), 'column');
+    await copyTableLine(editor, cellOf(editor, 'b1'), 'column');
     readBack(copied);
 
-    await pasteTableLines(editor as never, cellOf(editor, side === 'left' ? 'a1' : 'b1'), side);
+    await pasteTableLines(editor, cellOf(editor, side === 'left' ? 'a1' : 'b1'), side);
 
     expect(grid(editor)).toEqual(expected);
   });
@@ -342,7 +342,7 @@ describe('pasting copied rows and columns as new ones', () => {
     const { editor } = open({ rows: [{ cells: ['a1', 'b1', 'c1'] }] });
     readable = { 'text/html': '<table><tr><td>x</td></tr></table>', 'text/plain': '' };
 
-    await pasteTableLines(editor as never, cellOf(editor, 'a1'), 'below');
+    await pasteTableLines(editor, cellOf(editor, 'a1'), 'below');
 
     expect(grid(editor)).toEqual([['a1', 'b1', 'c1'], ['x', '', '']]);
   });
@@ -351,7 +351,7 @@ describe('pasting copied rows and columns as new ones', () => {
     const { editor } = open({ rows: [{ cells: ['a1'] }, { cells: ['a2'] }] });
     readable = { 'text/html': '<table><tr><td>x</td><td>y</td><td>z</td></tr></table>', 'text/plain': '' };
 
-    await pasteTableLines(editor as never, cellOf(editor, 'a1'), 'below');
+    await pasteTableLines(editor, cellOf(editor, 'a1'), 'below');
 
     expect(grid(editor)).toEqual([['a1', '', ''], ['x', 'y', 'z'], ['a2', '', '']]);
   });
@@ -360,7 +360,7 @@ describe('pasting copied rows and columns as new ones', () => {
     const { editor } = open({ ...SMALL, headerCols: 1 });
     readable = { 'text/html': '<table><tr><td>x</td><td>y</td></tr></table>', 'text/plain': '' };
 
-    await pasteTableLines(editor as never, cellOf(editor, 'a2'), 'below');
+    await pasteTableLines(editor, cellOf(editor, 'a2'), 'below');
 
     expect(grid(editor)[2]).toEqual(['x', 'y']);
     expect(cellTypes(editor)[2]).toEqual(cellTypes(editor)[1]);
@@ -369,9 +369,9 @@ describe('pasting copied rows and columns as new ones', () => {
   it('above a header row, makes the cells "insert above" makes', async () => {
     const { editor: pasted } = open({ ...SMALL, headerRows: 1 });
     readable = { 'text/html': '<table><tr><td>x</td><td>y</td></tr></table>', 'text/plain': '' };
-    await pasteTableLines(pasted as never, cellOf(pasted, 'a1'), 'above');
+    await pasteTableLines(pasted, cellOf(pasted, 'a1'), 'above');
     const { editor: inserted } = open({ ...SMALL, headerRows: 1 });
-    insertRow(inserted as never, cellOf(inserted, 'a1'), 'above');
+    insertRow(inserted, cellOf(inserted, 'a1'), 'above');
 
     expect(grid(pasted)[0]).toEqual(['x', 'y']);
     expect(cellTypes(pasted)).toEqual(cellTypes(inserted));
@@ -379,10 +379,10 @@ describe('pasting copied rows and columns as new ones', () => {
 
   it('carries each copied cell colour', async () => {
     const { editor } = open({ rows: [{ cells: [{ content: 'red', props: { backgroundColor: 'red' } }, 'b1'] }] });
-    await copyTableLine(editor as never, cellOf(editor, 'red'), 'row');
+    await copyTableLine(editor, cellOf(editor, 'red'), 'row');
     readBack(copied);
 
-    await pasteTableLines(editor as never, cellOf(editor, 'red'), 'below');
+    await pasteTableLines(editor, cellOf(editor, 'red'), 'below');
 
     const second = tableOf(editor).child(1);
     expect(second.child(0).attrs['backgroundColor']).toBe('red');
@@ -392,10 +392,10 @@ describe('pasting copied rows and columns as new ones', () => {
     const { editor } = open({
       rows: [{ cells: [{ blocks: [{ type: 'bulletListItem', content: 'one' }, { type: 'bulletListItem', content: 'two' }] }, 'b1'] }],
     });
-    await copyTableLine(editor as never, cellOf(editor, 'onetwo'), 'row');
+    await copyTableLine(editor, cellOf(editor, 'onetwo'), 'row');
     readBack(copied);
 
-    await pasteTableLines(editor as never, cellOf(editor, 'b1'), 'below');
+    await pasteTableLines(editor, cellOf(editor, 'b1'), 'below');
 
     const kinds: string[] = [];
     tableOf(editor).child(1).child(0).descendants((node) => {
@@ -428,14 +428,14 @@ describe('pasting copied rows and columns as new ones', () => {
     const { editor } = open(SMALL, new Y.Doc(), { assetUrlPrefix: () => 'https://assets.test/', onLeftOut: vi.fn(), start });
     readable = { 'text/html': '<table><tr><td><img src="https://example.com/a.png"></td><td>y</td></tr></table>', 'text/plain': '' };
 
-    await pasteTableLines(editor as never, cellOf(editor, 'a1'), 'above');
+    await pasteTableLines(editor, cellOf(editor, 'a1'), 'above');
 
     const images: PMNode[] = [];
     tableOf(editor).child(0).child(0).descendants((node) => {
       if (node.type.name === 'image') images.push(node);
     });
     expect(images).toHaveLength(1);
-    expect(images[0]!.attrs['uploadId']).not.toBe('');
+    expect(images[0].attrs['uploadId']).not.toBe('');
   });
 
   it('says there is no table to insert, and changes nothing, for other content', async () => {
@@ -476,7 +476,7 @@ describe('pasting copied rows and columns as new ones', () => {
       release = resolve;
     });
 
-    const pasting = pasteTableLines(editor as never, cellOf(editor, 'a1'), 'below');
+    const pasting = pasteTableLines(editor, cellOf(editor, 'a1'), 'below');
     setTableTarget(editor.prosemirrorView, cellOf(editor, 'a3'), 'row');
     setTableTarget(editor.prosemirrorView, null);
     release();
@@ -501,8 +501,8 @@ describe('pasting copied rows and columns as new ones', () => {
       release = resolve;
     });
 
-    const pasting = pasteTableLines(ours as never, cellOf(ours, 'a2'), 'below');
-    insertRow(theirs as never, cellOf(theirs, 'a1'), 'above');
+    const pasting = pasteTableLines(ours, cellOf(ours, 'a2'), 'below');
+    insertRow(theirs, cellOf(theirs, 'a1'), 'above');
     Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)), 'peer');
     release();
     await pasting;
@@ -518,8 +518,8 @@ describe('pasting copied rows and columns as new ones', () => {
       release = resolve;
     });
 
-    const pasting = pasteTableLines(editor as never, cellOf(editor, 'a2'), 'below');
-    await cutTableLine(editor as never, cellOf(editor, 'a2'), 'row');
+    const pasting = pasteTableLines(editor, cellOf(editor, 'a2'), 'below');
+    await cutTableLine(editor, cellOf(editor, 'a2'), 'row');
     release();
 
     expect(await pasting).toBe('gone');
@@ -532,7 +532,7 @@ describe('handing a row or a column to the Agent', () => {
     const { editor } = open(SMALL);
     const view = editor.prosemirrorView;
     const pos = cellOf(editor, 'a2');
-    const item = tableLineItem(editor as never, pos, scope);
+    const item = tableLineItem(editor, pos, scope);
     view.dispatch(view.state.tr.setSelection(tableLineSelection(view.state.doc, pos, scope)!));
 
     expect(item).toEqual(selectionItem(editor as never));
@@ -553,13 +553,13 @@ describe('handing a row or a column to the Agent', () => {
 describe('a cell colour in HTML', () => {
   it('is written out and read back', () => {
     const { editor } = open({ rows: [{ cells: [{ content: 'red', props: { backgroundColor: 'red' } }, 'b1'] }] });
-    const html = editor.blocksToHTMLLossy(editor.document.filter((block) => block.type === 'docTable') as never);
+    const html = editor.blocksToHTMLLossy(editor.document.filter((block) => block.type === 'docTable'));
 
     expect(html).toContain('data-background-color="red"');
 
     const parsed = editor.tryParseHTMLToBlocks(html);
     const table = parsed.find((block) => block.type === 'docTable') as unknown as { children: { children: { props: Record<string, unknown> }[] }[] };
-    expect(table.children[0]!.children[0]!.props['backgroundColor']).toBe('red');
+    expect(table.children[0].children[0].props['backgroundColor']).toBe('red');
   });
 });
 

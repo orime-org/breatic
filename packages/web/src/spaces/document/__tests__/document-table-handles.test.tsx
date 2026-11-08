@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -14,7 +14,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { toast } from '@web/lib/toast';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import { TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
@@ -24,11 +26,15 @@ import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
-  editor: undefined as unknown,
-  state: undefined as unknown,
+  editor: undefined,
+  state: undefined,
   frozen: 0,
   unfrozen: 0,
 }));
+
+const attachToChat = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('@web/stores/attach-to-chat', () => ({ attachToChat }));
 
 vi.mock('@blocknote/react', () => ({
   useBlockNoteEditor: () => side.editor,
@@ -143,6 +149,10 @@ describe('the row handle (A6)', () => {
     expect(rows('doc-table-row-')).toEqual([
       'insertAbove',
       'insertBelow',
+      'copy',
+      'cut',
+      'pasteAbove',
+      'pasteBelow',
       'header(off)',
       'align',
       'fill',
@@ -272,7 +282,7 @@ describe('the row handle (A6)', () => {
 
   it('is there over a selection the body let go of, with no bubble bar up (inner#1127)', () => {
     const editor = openOver(0, 0);
-    const pm = editor.prosemirrorView!;
+    const pm = editor.prosemirrorView;
     pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 4)));
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
 
@@ -305,6 +315,10 @@ describe('the column handle (A6)', () => {
     expect(rows('doc-table-col-')).toEqual([
       'insertLeft',
       'insertRight',
+      'copy',
+      'cut',
+      'pasteLeft',
+      'pasteRight',
       'header(off)',
       'align',
       'fill',
@@ -365,5 +379,143 @@ describe('dragging a line (inner#1350)', () => {
     fireEvent.dragEnd(handle);
     expect(side.unfrozen).toBe(1);
     expect(handle.closest('.invisible')).toBeNull();
+  });
+});
+
+describe('copy, cut and paste from the handles (inner#1239)', () => {
+  /**
+   * Stands in for the browser clipboard: a copy command fires the copy event
+   * a browser fires, and a read hands back what it wrote, as an async read
+   * does (HTML and plain text only).
+   * @returns What the last copy wrote.
+   */
+  function fakeClipboard(): Record<string, string> {
+    const written: Record<string, string> = {};
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => {
+        const event = new Event('copy', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', {
+          value: {
+            setData: (format: string, value: string) => {
+              written[format] = value;
+            },
+            clearData: () => undefined,
+            getData: (format: string) => written[format] ?? '',
+          },
+        });
+        document.dispatchEvent(event);
+        return true;
+      }),
+    });
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        read: vi.fn(async () => [
+          {
+            types: ['text/html', 'text/plain'],
+            getType: async (type: string) => new Blob([written[type] ?? ''], { type }),
+          },
+        ]),
+        write: vi.fn(async () => undefined),
+      },
+    });
+    return written;
+  }
+
+  it('cuts the row it was opened on', async () => {
+    fakeClipboard();
+    const editor = openOver(0, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-table-row-cut'));
+    });
+
+    await waitFor(() => expect(grid(editor)).toEqual([['a2', 'b2']]));
+  });
+
+  it('pastes a copied row below the row it was opened on', async () => {
+    const written = fakeClipboard();
+    const editor = openOver(0, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-table-row-copy'));
+    });
+    await waitFor(() => expect(written['text/html']).toContain('a1'));
+    side.state = { ...(side.state as object), rowIndex: 1, cellPos: cellPosAt(editor, 1, 0) };
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-table-row-pasteBelow'));
+    });
+
+    await waitFor(() => expect(grid(editor)).toEqual([['a1', 'b1'], ['a2', 'b2'], ['a1', 'b1']]));
+  });
+
+  it('says there is no table to paste when the clipboard holds none', async () => {
+    const warning = vi.spyOn(toast, 'warning');
+    fakeClipboard();
+    openOver(0, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-table-row-pasteBelow'));
+    });
+
+    await waitFor(() => expect(warning).toHaveBeenCalledOnce());
+    warning.mockRestore();
+  });
+
+  it('greys copy, cut, paste and Add to Agent where a merged cell reaches out of the row, and says why on a click', () => {
+    const warning = vi.spyOn(toast, 'warning');
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: [{ content: 'm', props: { rowspan: 2 } }, 'b1'] }, { cells: ['b2'] }] }),
+    ] as never);
+    side.editor = editor;
+    side.state = { show: true, block: editor.document[0], rowIndex: 0, colIndex: 1, cellPos: cellPosAt(editor, 0, 1) };
+    render(
+      <DocumentProjectProvider projectId='project-1'>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+      </DocumentProjectProvider>,
+    );
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    expect(rows('doc-table-row-')).toEqual(expect.arrayContaining(['copy(off)', 'cut(off)', 'pasteAbove(off)', 'pasteBelow(off)', 'addToAgent(off)']));
+
+    fireEvent.click(screen.getByTestId('doc-table-row-cut'));
+    expect(warning).toHaveBeenCalledOnce();
+    expect(grid(editor)).toHaveLength(2);
+    warning.mockRestore();
+  });
+
+  it.each(['row', 'column'] as const)('offers Add to Agent in a Project, before delete, and hands the %s over', async (orientation) => {
+    attachToChat.mockClear();
+    openOver(0, 0);
+    render(
+      <DocumentProjectProvider projectId='project-1'>
+        <DocumentTableHandle orientation={orientation} hideOtherElements={() => undefined} />
+      </DocumentProjectProvider>,
+    );
+    const stem = orientation === 'row' ? 'doc-table-row-' : 'doc-table-col-';
+    fireEvent.click(screen.getByTestId(`${stem}handle`));
+
+    expect(rows(stem).slice(-2)).toEqual(['addToAgent', 'delete']);
+
+    fireEvent.click(screen.getByTestId(`${stem}addToAgent`));
+    await waitFor(() => expect(attachToChat).toHaveBeenCalledOnce());
+    expect(attachToChat.mock.calls[0][0]).toBe('project-1');
+    const text = (attachToChat.mock.calls[0][1] as { chip: { data_snapshot: { text: string } } }[])[0].chip.data_snapshot.text;
+    expect(text).toContain('a1');
+    expect(text).not.toContain(orientation === 'row' ? 'a2' : 'b1');
   });
 });
