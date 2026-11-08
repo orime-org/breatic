@@ -7,7 +7,7 @@ import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import { writeSpaceDoc, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId, timelineSizeHolds,
@@ -195,7 +195,7 @@ function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSessio
     added = null;
     holdStep = null;
     clipsBeforePop = new Set(doc.getMap('clips').keys());
-    const result = writeSpaceDoc(name, nextHistoryStep(history, direction), () => { history[direction](); });
+    const result = runHistoryStep(name, history, direction);
     refresh();
     return result;
   };

@@ -7,12 +7,11 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
-import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
@@ -342,7 +341,7 @@ export class SceneSession {
   historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
     if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
     this.endGesture(false);
-    const written = writeSpaceDoc(this.name, nextHistoryStep(this.history, direction), () => { this.history[direction](); });
+    const written = runHistoryStep(this.name, this.history, direction);
     this.commandError = written.ok ? null : written;
     this.refresh();
     return written.ok ? { ok: true, ids: [] } : written;

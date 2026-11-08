@@ -92,7 +92,6 @@ import {
   resetCopies,
   spyOnSteps,
   trialKind,
-  trialRan,
   type StepSpies,
 } from '@web/data/yjs/__tests__/helpers/history-fork-harness';
 import { COPY_V2_EN, P_FULL, P_OVER, type DocSizePushV2 } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
@@ -218,7 +217,6 @@ describe('H-05 undoing a creation over the ceiling', () => {
     act(() => { hook.result.current.undo(); });
 
     expect(has(board.doc, 'n9')).toBe(false);
-    expect(trialRan(spies, board.doc)).toBe(true);
     expect(spies.undo.mock.contexts).toContain(board.manager);
     expect(toast.warning).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();

@@ -77,7 +77,6 @@ import {
   resetCopies,
   spyOnSteps,
   trialKind,
-  trialRan,
   type StepKind,
   type StepSpies,
 } from '@web/data/yjs/__tests__/helpers/history-fork-harness';
@@ -326,12 +325,13 @@ function expectRefused(body: Body, run: () => void, sentence: string): void {
 }
 
 /**
- * Checks a press ran without a toast and was judged on a copy first.
+ * Checks a press ran without a toast. The copy trial that judged it is the
+ * one `trialKind` ran just before: an unchanged stack and document reuse that
+ * verdict (design 5.2).
  * @param body - The body.
  */
 function expectRan(body: Body): void {
   expect(spies.contexts()).toContain(body.handle.undoManager);
-  expect(trialRan(spies, body.doc)).toBe(true);
   expect(toast.warning).not.toHaveBeenCalled();
   expect(toast.error).not.toHaveBeenCalled();
 }

@@ -20,7 +20,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { nextHistoryStep } from '@web/data/yjs/history-step';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   usableUrls,
   writeNodeMedia,
@@ -578,17 +578,13 @@ export function useCanvasSpace(
     const manager = undoManagerRef.current;
     if (!manager) return;
     // A step with no effect still runs: yjs drops the dead entries (Q8).
-    writeSpaceDoc(name, { kind: nextHistoryStep(manager, 'undo').kind }, () => {
-      manager.undo();
-    });
+    runHistoryStep(name, manager, 'undo');
     syncAvailability();
   }, [name, syncAvailability]);
   const redo = React.useCallback((): void => {
     const manager = undoManagerRef.current;
     if (!manager) return;
-    writeSpaceDoc(name, { kind: nextHistoryStep(manager, 'redo').kind }, () => {
-      manager.redo();
-    });
+    runHistoryStep(name, manager, 'redo');
     syncAvailability();
   }, [name, syncAvailability]);
 

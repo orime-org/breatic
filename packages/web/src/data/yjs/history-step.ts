@@ -19,25 +19,48 @@ import { updateShape } from '@breatic/shared';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
-import type { SpaceWriteKind } from '@web/data/yjs/space-write';
+import { writeSpaceDoc, type SpaceWriteKind, type SpaceWriteResult } from '@web/data/yjs/space-write';
 
 /** One entry of an undo or redo stack. */
 type StackItem = Y.UndoManager['undoStack'][number];
 
-/** What the next undo or redo writes, as `writeSpaceDoc` takes it. */
-export interface HistoryStep {
+/** A manager's last trial and what it was judged on. */
+interface Verdict {
+  top: StackItem;
+  undo: number;
+  redo: number;
+  updates: number;
   kind: SpaceWriteKind;
-  /**
-   * The step writes nothing. Its kind is `remove`, which every state but
-   * `resyncing` lets through, so the entry still calls `undo()`/`redo()` and
-   * yjs pops the entries that change nothing, as it would anyway.
-   */
-  noEffect: boolean;
 }
 
-/** A step that brings content back, and one that cannot be tried (the strictest kind). */
-const ADD: HistoryStep = { kind: 'add', noEffect: false };
-const NO_EFFECT: HistoryStep = { kind: 'remove', noEffect: true };
+/**
+ * The kind of a step that writes nothing: every state but `resyncing` lets it
+ * through, so the entry still calls `undo()`/`redo()` and yjs pops the entries
+ * that change nothing, as it would anyway.
+ */
+const NO_EFFECT: SpaceWriteKind = 'remove';
+
+/** Each manager's last trial, so holding undo on a refused step copies the document once. */
+const verdicts = new WeakMap<Y.UndoManager, Verdict>();
+/** How many updates each judged document has had since its first trial. */
+const updateCounts = new WeakMap<Y.Doc, { count: number }>();
+
+/**
+ * The update counter of a document, started on first use.
+ * @param doc - The real document.
+ * @returns Its counter.
+ * @throws {never} Never.
+ */
+function updateCounter(doc: Y.Doc): { count: number } {
+  let counter = updateCounts.get(doc);
+  if (counter === undefined) {
+    const created = { count: 0 };
+    doc.on('update', () => { created.count += 1; });
+    updateCounts.set(doc, created);
+    counter = created;
+  }
+  return counter;
+}
 
 /**
  * The copy's counterpart of one type in the manager's scope.
@@ -98,10 +121,10 @@ function copyEntry(entry: StackItem): StackItem {
  * Runs the step on a copy of the document and judges what it wrote.
  * @param manager - The real undo manager.
  * @param direction - Which stack runs.
- * @returns The step.
+ * @returns Its kind.
  * @throws {Error} Whatever yjs or the manager's delete filter throws on the copy.
  */
-function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): HistoryStep {
+function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKind {
   const real = manager.doc;
   const copy = new Y.Doc({ gc: false });
   try {
@@ -110,7 +133,7 @@ function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): HistoryStep 
     for (const type of manager.scope) {
       const found = copyScopeType(type, real, copy);
       if (found === 'deleted') return NO_EFFECT;
-      if (found === null) return ADD;
+      if (found === null) return 'add';
       scope.push(found);
     }
     copyRedone(real, copy);
@@ -128,31 +151,56 @@ function trial(manager: Y.UndoManager, direction: 'undo' | 'redo'): HistoryStep 
     if (updates.length === 0) return NO_EFFECT;
     // The real store has not changed: it is the store before the step.
     const shape = updateShape(Y.mergeUpdates(updates), real.store);
-    if (!shape.pureDelete) return ADD;
-    return { kind: shape.wholeTypesOnly ? 'remove' : 'delete', noEffect: false };
+    if (!shape.pureDelete) return 'add';
+    return shape.wholeTypesOnly ? 'remove' : 'delete';
   } finally {
     copy.destroy();
   }
 }
 
 /**
- * What the next undo or redo writes, for `writeSpaceDoc` (design 5.2): every
- * entry runs `writeSpaceDoc(name, nextHistoryStep(manager, direction), () =>
- * manager[direction]())`. Below the limit (and while the size is unknown) the
- * step is not judged; while resyncing `writeSpaceDoc` refuses it whatever the
- * kind; full or over the ceiling, it is run on a copy first.
+ * What the next undo or redo writes, for `writeSpaceDoc` (design 5.2). Below
+ * the limit (and while the size is unknown) the step is not judged; while
+ * resyncing `writeSpaceDoc` refuses it whatever the kind; full or over the
+ * ceiling, it is run on a copy first, unless that stack is empty or the
+ * manager's last trial still holds (same top entry, stack lengths and
+ * document updates).
  * @param manager - The undo manager about to run.
  * @param direction - Which stack runs.
- * @returns Its kind, and whether it writes nothing; `add` when the trial cannot be run.
+ * @returns Its kind: `remove` for a step that writes nothing, `add` when the trial cannot be run.
  * @throws {never} A trial that throws is judged `add`.
  */
-export function nextHistoryStep(manager: Y.UndoManager, direction: 'undo' | 'redo'): HistoryStep {
+export function nextHistoryStep(manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteKind {
   const name = docNameOf(manager.doc);
-  if (name === null || readDocSize(name).phase !== 'full') return ADD;
+  if (name === null || readDocSize(name).phase !== 'full') return 'add';
+  const top = manager[direction === 'undo' ? 'undoStack' : 'redoStack'].at(-1);
+  if (top === undefined) return NO_EFFECT;
+  const updates = updateCounter(manager.doc).count;
+  const undo = manager.undoStack.length;
+  const redo = manager.redoStack.length;
+  const last = verdicts.get(manager);
+  if (last !== undefined && last.top === top && last.undo === undo && last.redo === redo && last.updates === updates) return last.kind;
+  let kind: SpaceWriteKind;
   try {
-    return trial(manager, direction);
+    kind = trial(manager, direction);
   } catch {
     // A step that cannot be tried is not let through a full Space.
-    return ADD;
+    kind = 'add';
   }
+  verdicts.set(manager, { top, undo, redo, updates, kind });
+  return kind;
+}
+
+/**
+ * Runs an undo or redo the way every entry does: judged by `nextHistoryStep`,
+ * then through `writeSpaceDoc`, which shows the toast and leaves the stacks
+ * alone when it refuses.
+ * @param name - Canonical document name.
+ * @param manager - The undo manager.
+ * @param direction - Which stack runs.
+ * @returns What `writeSpaceDoc` answered.
+ * @throws {Error} Whatever the step itself throws.
+ */
+export function runHistoryStep(name: string, manager: Y.UndoManager, direction: 'undo' | 'redo'): SpaceWriteResult {
+  return writeSpaceDoc(name, { kind: nextHistoryStep(manager, direction) }, () => { manager[direction](); });
 }
