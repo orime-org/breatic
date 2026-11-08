@@ -85,6 +85,7 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     const user = userEvent.setup();
     setup();
     expect(await screen.findByText(/will use referral code/)).toHaveTextContent('ALICE');
+    expect(screen.getByText('ALICE')).toHaveClass('font-semibold');
     await user.click(google());
     expect(authApi.google).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'ALICE', referralSource: 'signup_link' }));
     await waitFor(() => expect(carry.forget).toHaveBeenCalled());
@@ -110,7 +111,7 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     setup();
     await screen.findByText(/will use referral code/);
     await user.click(google());
-    expect(await screen.findByText('Referral code ALICE is no longer valid')).toBeInTheDocument();
+    expect(await screen.findByText(/is no longer valid/)).toHaveTextContent('Referral code ALICE is no longer valid');
     await user.click(google());
     expect(vi.mocked(authApi.google).mock.calls[1]![0]).not.toHaveProperty('referralCode');
   });
@@ -124,9 +125,9 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     await user.type(screen.getByLabelText('Referral code'), 'bob');
     await user.click(google());
     expect(authApi.google).toHaveBeenCalledWith(expect.objectContaining({ referralCode: 'bob', referralSource: 'signup_typed' }));
-    expect(await screen.findByText('This referral code is not valid.')).toBeInTheDocument();
+    expect(await screen.findByText('This referral code is not valid. Change it, or clear it to continue.')).toBeInTheDocument();
     await user.type(screen.getByLabelText('Referral code'), 'x');
-    expect(screen.queryByText('This referral code is not valid.')).toBeNull();
+    expect(screen.queryByText('This referral code is not valid. Change it, or clear it to continue.')).toBeNull();
   });
 
   it('warns before navigating when Google signs in to an existing account carrying a code', async () => {

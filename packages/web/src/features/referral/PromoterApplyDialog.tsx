@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { getLocale, PROMOTER_CHANNEL_INPUT_MAX, PROMOTER_CHANNELS_MAX, PROMOTER_PLAN_INPUT_MAX } from '@breatic/shared';
 import { referralApi, type AccountReferral, type PromoterApplicationForm } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
@@ -163,13 +163,13 @@ export function PromoterApplyDialog({
                     ) : null}
                   </div>
                 ))}
+                {errors.channels ? <FieldError>{errors.channels}</FieldError> : null}
                 {channels.length < PROMOTER_CHANNELS_MAX ? (
-                  <Button type='button' variant='link' size='compact' className='w-fit gap-1 px-0 text-xs text-muted-foreground'
-                    icon={<Plus className='h-3 w-3' />} onClick={() => editApplication({ channels: [...getReferralForms().apply.channels, ''] })}>
+                  <Button type='button' variant='outline' size='sm' className='w-fit gap-1'
+                    icon={<Plus className='h-3.5 w-3.5' />} onClick={() => editApplication({ channels: [...getReferralForms().apply.channels, ''] })}>
                     {t('membership.promoter.addChannel')}
                   </Button>
                 ) : null}
-                {errors.channels ? <FieldError>{errors.channels}</FieldError> : null}
               </div>
 
               <div className='flex flex-col gap-1.5'>
@@ -186,7 +186,12 @@ export function PromoterApplyDialog({
                 {errors.plan ? <FieldError>{errors.plan}</FieldError> : null}
               </div>
 
-              {termsNotice ? <FieldError role='alert'>{t('membership.promoter.termsChanged')}</FieldError> : null}
+              {termsNotice ? (
+                <div role='alert' className='flex items-start gap-2 rounded-chrome border border-status-error px-3 py-2 text-xs text-status-error'>
+                  <AlertCircle className='mt-0.5 h-3.5 w-3.5 shrink-0' />
+                  <span>{t('membership.promoter.termsChanged')}</span>
+                </div>
+              ) : null}
               <div className='flex flex-col gap-1'>
                 <label className='flex items-start gap-2 text-sm'>
                   <Checkbox

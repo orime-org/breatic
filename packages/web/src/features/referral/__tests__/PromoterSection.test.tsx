@@ -173,6 +173,8 @@ describe('the promoter program section (inner#1868 table 12.11)', () => {
   it('shows a removed promoter that they are no longer in the program', async () => {
     setup({ ...OPEN, promoter: { state: 'approved', code: 'ALICE', link: 'https://app.example/register?ref=ALICE', codeStatus: 'removed' } });
     expect(await screen.findByText(/no longer in the promoter program/)).toBeInTheDocument();
+    expect(screen.getByText('Removed')).toBeInTheDocument();
+    expect(screen.queryByText('Disabled')).toBeNull();
   });
 });
 
@@ -194,7 +196,9 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     expect(screen.getByText('Choose a country or region.')).toBeInTheDocument();
-    expect(screen.getByText('Add at least one channel.')).toBeInTheDocument();
+    // The channel error sits under the channel fields, before the button that adds one.
+    const channelError = screen.getByText('Add at least one channel.');
+    expect(channelError.compareDocumentPosition(screen.getByRole('button', { name: 'Add another' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('Describe how you will promote.')).toBeInTheDocument();
     expect(screen.getByText('Agree to the promoter terms to apply.')).toBeInTheDocument();
     expect(api.apply).not.toHaveBeenCalled();

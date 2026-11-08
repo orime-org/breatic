@@ -6,11 +6,13 @@ import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { referralApi, type AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
+import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { FieldError } from '@web/components/FieldError';
 import { useTranslation } from '@web/i18n/use-translation';
+import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
 import { toast } from '@web/lib/toast';
 import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
@@ -53,7 +55,7 @@ export function ReferralCodeSection(): React.JSX.Element | null {
     return null;
   }
   return (
-    <section className='flex flex-col gap-2'>
+    <section className='flex flex-col gap-4'>
       <SectionHeading>{t('membership.referral.heading')}</SectionHeading>
       {isPending || !isLoadingError ? (
         <Skeleton data-testid='referral-code-loading' className='h-14 w-full rounded-content-sm' />
@@ -80,14 +82,18 @@ function BoundCode({ view }: { view: AccountReferral }): React.JSX.Element {
   const percent = view.firstPeriodDiscountPercent;
   const figure = { percent, zhe: zheOf(percent) };
   return (
-    <section className='flex flex-col gap-2'>
+    <section className='flex flex-col gap-4'>
       <SectionHeading>{t('membership.referral.heading')}</SectionHeading>
       <div className='flex items-center justify-between rounded-content-sm border border-border px-4 py-3'>
         <div className='flex flex-col gap-0.5'>
-          <span className='text-sm'>{t('membership.referral.bound', { code: view.binding?.code ?? '' })}</span>
-          <span className='text-xs text-muted-foreground'>{t('membership.referral.boundDiscount', figure)}</span>
+          <span className='text-sm'>
+            {renderSlottedText(t('membership.referral.bound', { code: slotMarker('code') }), {
+              code: <span className='font-semibold'>{view.binding?.code ?? ''}</span>,
+            })}
+          </span>
+          <span className='text-xs text-foreground-secondary'>{t('membership.referral.boundDiscount')}</span>
         </div>
-        <span className='rounded-md bg-accent px-2 py-0.5 text-xs font-medium'>{t('membership.referral.badge', figure)}</span>
+        <Badge variant='secondary' className='text-status-success-foreground'>{t('membership.referral.badge', figure)}</Badge>
       </div>
     </section>
   );
@@ -149,26 +155,28 @@ function BindForm({ view }: { view: AccountReferral }): React.JSX.Element {
   }, [value, t, client, userId, figure]);
 
   return (
-    <section className='flex flex-col gap-2'>
+    <section className='flex flex-col gap-4'>
       <SectionHeading>{t('membership.referral.heading')}</SectionHeading>
-      <p className='text-sm text-muted-foreground'>{t('membership.referral.intro', figure)}</p>
-      <div className='flex items-start gap-2'>
-        <div className='flex w-64 flex-col gap-1'>
-          <Input
-            aria-label={t('membership.referral.heading')}
-            autoComplete='off'
-            value={value}
-            placeholder={t('membership.referral.placeholder')}
-            maxLength={REFERRAL_CODE_INPUT_MAX}
-            readOnly={pressing}
-            aria-invalid={!!draft.error || undefined}
-            onChange={(e) => editBind({ value: e.target.value, error: null })}
-          />
-          {draft.error ? <FieldError>{draft.error}</FieldError> : null}
+      <div className='flex flex-col gap-2'>
+        <p className='text-sm text-foreground-secondary'>{t('membership.referral.intro', figure)}</p>
+        <div className='flex items-start gap-2'>
+          <div className='flex w-64 flex-col gap-1'>
+            <Input
+              aria-label={t('membership.referral.heading')}
+              autoComplete='off'
+              value={value}
+              placeholder={t('membership.referral.placeholder')}
+              maxLength={REFERRAL_CODE_INPUT_MAX}
+              readOnly={pressing}
+              aria-invalid={!!draft.error || undefined}
+              onChange={(e) => editBind({ value: e.target.value, error: null })}
+            />
+            {draft.error ? <FieldError>{draft.error}</FieldError> : null}
+          </div>
+          <Button type='button' variant='outline' size='form' loading={pressing} onClick={bind}>
+            {t('membership.referral.add')}
+          </Button>
         </div>
-        <Button type='button' variant='outline' loading={pressing} onClick={bind}>
-          {t('membership.referral.add')}
-        </Button>
       </div>
     </section>
   );

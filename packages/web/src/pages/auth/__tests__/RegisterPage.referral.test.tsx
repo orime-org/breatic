@@ -123,7 +123,8 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     setup();
     await screen.findByLabelText('Referral code');
     await submit(user);
-    expect(await screen.findByText('This referral code is not valid.')).toBeInTheDocument();
+    // The page says what to do next instead of the server's bare refusal.
+    expect(await screen.findByText('This referral code is not valid. Change it, or clear it to continue.')).toBeInTheDocument();
     expect(screen.getByLabelText('Referral code')).toHaveAttribute('aria-invalid', 'true');
     expect(carry.refused).toHaveBeenCalledWith('ALICE');
     expect(screen.queryByTestId('recovery-page')).toBeNull();

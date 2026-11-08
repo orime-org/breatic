@@ -1797,6 +1797,7 @@
       "carriedInvalid": "Referral code {code} is no longer valid",
       "remove": "Don't use this code",
       "haveCode": "Have a referral code?",
+      "invalid": "This referral code is not valid. Change it, or clear it to continue.",
       "googleOnly": "Used when signing up with Google"
     }
   },
@@ -2970,7 +2971,7 @@
       "add": "Add",
       "required": "Enter a referral code.",
       "bound": "Referral code {code}",
-      "boundDiscount": "{percent}% off your first membership period, applied at checkout.",
+      "boundDiscount": "Applied at checkout.",
       "badge": "{percent}% off first period",
       "added": "Added. Choose a membership to get {percent}% off the first period.",
       "loadFailed": "Couldn't load referral information.",
@@ -2995,6 +2996,7 @@
       "copyFailed": "Could not copy to clipboard.",
       "shareHint": "People who sign up with this code, or add it before their first membership, get {percent}% off the first period.",
       "disabled": "Disabled",
+      "removed": "Removed",
       "disabledDetail": "This code is disabled, so new accounts can't use it. People who already added it still get their first-period discount.",
       "removedDetail": "You are no longer in the promoter program. This code is permanently disabled; people who already added it still get their first-period discount.",
       "dialogTitle": "Apply to become a promoter",
@@ -3002,7 +3004,7 @@
       "country": "Country or region",
       "countryPlaceholder": "Choose",
       "channels": "Where you will promote",
-      "channelsHint": "A link or a short description, up to 10",
+      "channelsHint": "Up to 10 links or short descriptions",
       "channelPlaceholder": "https://youtube.com/@yourchannel or a 200-person designers group",
       "addChannel": "Add another",
       "removeChannel": "Remove this one",

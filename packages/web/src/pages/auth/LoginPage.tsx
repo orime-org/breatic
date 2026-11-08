@@ -21,6 +21,7 @@ import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
 import { safeNextPath } from '@web/lib/safe-next-path';
+import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
 import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
@@ -105,7 +106,7 @@ export default function LoginPage(): React.JSX.Element {
     } catch (err) {
       if (!mounted.current) return;
       if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
-        referral.refused(err.message);
+        referral.refused(t('auth.referral.invalid'));
         if (!expanded && rowCode !== null) {
           setInvalidCode(rowCode);
           setRowCode(null);
@@ -140,12 +141,12 @@ export default function LoginPage(): React.JSX.Element {
       return (
         <div
           className={invalidCode !== null
-            ? 'flex items-center justify-between rounded-md border border-status-error px-3 py-1.5 text-xs text-status-error'
-            : 'flex items-center justify-between rounded-md bg-accent px-3 py-1.5 text-xs'}
+            ? 'flex items-center justify-between rounded-chrome border border-status-error px-3 py-1.5 text-xs text-status-error'
+            : 'flex items-center justify-between rounded-chrome bg-accent px-3 py-1.5 text-xs'}
         >
-          <span>{invalidCode !== null
-            ? t('auth.referral.carriedInvalid', { code: named })
-            : t('auth.referral.carried', { code: named })}</span>
+          <span>{renderSlottedText(invalidCode !== null
+            ? t('auth.referral.carriedInvalid', { code: slotMarker('code') })
+            : t('auth.referral.carried', { code: slotMarker('code') }), { code: <span className='font-semibold'>{named}</span> })}</span>
           <Button type='button' variant='ghost' size='compact' aria-label={t('auth.referral.remove')} onClick={removeCarried}>
             <X className='h-3.5 w-3.5' />
           </Button>

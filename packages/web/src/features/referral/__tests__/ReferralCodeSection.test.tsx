@@ -134,7 +134,8 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     expect(screen.getByLabelText('Referral code')).toHaveAttribute('maxLength', '40');
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     await user.click(screen.getByRole('button', { name: 'Add' }));
-    expect(await screen.findByText(/20% off your first membership period/)).toBeInTheDocument();
+    expect(await screen.findByText('Applied at checkout.')).toBeInTheDocument();
+    expect(screen.getByText('ALICE')).toHaveClass('font-semibold');
     expect(api.bind).toHaveBeenCalledWith('ALICE', expect.any(String));
     expect(toasts.success).toHaveBeenCalled();
     expect(carry.forget).toHaveBeenCalled();

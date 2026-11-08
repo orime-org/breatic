@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Copy } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 import type { AccountReferral } from '@web/data/api/referral';
+import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -41,7 +42,7 @@ export function PromoterSection(): React.JSX.Element | null {
     );
   }
   return (
-    <section className='flex flex-col gap-2'>
+    <section className='flex flex-col gap-4'>
       <SectionHeading>{t('membership.promoter.heading')}</SectionHeading>
       {body}
     </section>
@@ -88,31 +89,35 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
       <div className='flex flex-col gap-3 rounded-content-sm border border-border px-4 py-3'>
         <div className='flex items-center justify-between'>
           <span className='text-sm'>{t('membership.promoter.yourCode')}</span>
-          {off ? <span className='rounded-md bg-accent px-2 py-0.5 text-xs text-muted-foreground'>{t('membership.promoter.disabled')}</span> : null}
+          {off ? (
+            <Badge variant='secondary' className='text-muted-foreground'>
+              {promoter.codeStatus === 'removed' ? t('membership.promoter.removed') : t('membership.promoter.disabled')}
+            </Badge>
+          ) : null}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex items-center justify-between gap-2'>
           <span className={off ? 'text-lg font-semibold tracking-wide text-muted-foreground line-through' : 'text-lg font-semibold tracking-wide'}>
             {promoter.code}
           </span>
           {off ? null : (
-            <Button type='button' variant='ghost' size='sm' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.code, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
+            <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.code, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
               {t('membership.promoter.copyCode')}
             </Button>
           )}
         </div>
         {off ? (
-          <p className='text-xs text-muted-foreground'>
+          <p className='text-xs text-foreground-secondary'>
             {promoter.codeStatus === 'removed' ? t('membership.promoter.removedDetail') : t('membership.promoter.disabledDetail')}
           </p>
         ) : (
           <>
             <div className='flex items-center gap-2'>
               <Input readOnly value={promoter.link} aria-label={t('membership.promoter.copyLink')} className='text-muted-foreground' />
-              <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.link, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
+              <Button type='button' variant='outline' size='form' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.link, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
                 {t('membership.promoter.copyLink')}
               </Button>
             </div>
-            <p className='text-xs text-muted-foreground'>{t('membership.promoter.shareHint', figure)}</p>
+            <p className='text-xs text-foreground-secondary'>{t('membership.promoter.shareHint', figure)}</p>
           </>
         )}
       </div>
@@ -124,9 +129,9 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
       <div className={card}>
         <div className='flex flex-col gap-0.5'>
           <span className='text-sm'>{t('membership.promoter.pending')}</span>
-          <span className='text-xs text-muted-foreground'>{t('membership.promoter.pendingDetail', { date })}</span>
+          <span className='text-xs text-foreground-secondary'>{t('membership.promoter.pendingDetail', { date })}</span>
         </div>
-        <span className='rounded-md bg-accent px-2 py-0.5 text-xs'>{t('membership.promoter.pendingBadge')}</span>
+        <Badge variant='secondary'>{t('membership.promoter.pendingBadge')}</Badge>
       </div>
     );
   }
@@ -135,7 +140,7 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
       <div className={card}>
         <div className='flex flex-col gap-0.5'>
           <span className='text-sm'>{t('membership.promoter.rejected')}</span>
-          {promoter.note ? <span className='text-xs text-muted-foreground'>{t('membership.promoter.rejectedNote', { note: promoter.note })}</span> : null}
+          {promoter.note ? <span className='text-xs text-foreground-secondary'>{t('membership.promoter.rejectedNote', { note: promoter.note })}</span> : null}
         </div>
         {program.open ? <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('membership.promoter.applyAgain')}</Button> : null}
         {dialog}
@@ -149,7 +154,7 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
     <div className={card}>
       <div className='flex flex-col gap-0.5'>
         <span className='text-sm'>{t('membership.promoter.pitch')}</span>
-        <span className='text-xs text-muted-foreground'>{t('membership.promoter.pitchDetail', figure)}</span>
+        <span className='text-xs text-foreground-secondary'>{t('membership.promoter.pitchDetail', figure)}</span>
       </div>
       <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('membership.promoter.apply')}</Button>
       {dialog}

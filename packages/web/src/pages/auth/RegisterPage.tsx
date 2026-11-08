@@ -161,7 +161,7 @@ export default function RegisterPage(): React.JSX.Element {
       } catch (err) {
         setCodeSent(null);
         trackEvent('signup_failed', { method: 'email', success: false, error_code: failureCode(err) });
-        if (referralRefused(err)) referral.refused(err.message);
+        if (referralRefused(err)) referral.refused(t('auth.referral.invalid'));
         else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
         return null;
       }
@@ -208,7 +208,7 @@ export default function RegisterPage(): React.JSX.Element {
         void changeLocale(answer.user.locale);
         navigate(answer.created ? slugPath : next, { replace: true });
       } catch (err) {
-        if (referralRefused(err)) referral.refused(err.message);
+        if (referralRefused(err)) referral.refused(t('auth.referral.invalid'));
         else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
       } finally {
         setSubmitting(false);
