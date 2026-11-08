@@ -277,7 +277,7 @@ describe('placeWebAnimationClip, through both adding commands', () => {
 
   it('places the copy that land_execution adds by the same rule', () => {
     const doc = timeline([clip(cid(8), MAIN, 0, 100), clip(cid(9), V2, 0, 100)]);
-    const result = accepted(plan(doc, land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 5, newTrackId: NEW_TRACK, extent: { status: 'awaiting_landing', acceptedDurationFrames: 72, fps: FPS } })));
+    const result = accepted(plan(doc, land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 5, newTrackId: NEW_TRACK, extent: { acceptedDurationFrames: 72, fps: FPS } })));
     expect(createdCopy(result, cid(1))).toMatchObject({ trackId: NEW_TRACK, startFrame: 5, durationFrames: 72, contentBinding: waitingFor(EXEC_RUNNING) });
   });
 });
@@ -299,7 +299,7 @@ describe('land_execution', () => {
 
   it('is a command the schema accepts with and without a copy', () => {
     expect(TimelineEditCommandSchema.safeParse(land(ACTION, RECEIPT, OFF)).success).toBe(true);
-    expect(TimelineEditCommandSchema.safeParse(land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 0, newTrackId: NEW_TRACK, extent: { status: 'queued', acceptedDurationFrames: 24, fps: FPS } })).success).toBe(true);
+    expect(TimelineEditCommandSchema.safeParse(land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 0, newTrackId: NEW_TRACK, extent: { acceptedDurationFrames: 24, fps: FPS } })).success).toBe(true);
   });
 
   it('carries the receipts through every other command unchanged', () => {

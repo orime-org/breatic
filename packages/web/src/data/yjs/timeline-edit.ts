@@ -17,12 +17,11 @@ import {
 // The command bounds are the persisted clip format's own field schemas.
 const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity, trackId: trackIdentity } = TimelineVideoClipSchema.shape;
 const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
-const executionStatus = z.enum(['awaiting_landing', 'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'expired']);
 // The new reference's own extent, carried like add_video carries its source (inner#1711 design §3.3): a succeeded
 // result's length, or the length an execution accepted.
 const webExtent = z.union([
   z.object({ durationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
-  z.object({ status: executionStatus, acceptedDurationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
+  z.object({ acceptedDurationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
 ]);
 const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
 const webCopySchema = z.object(webCopy).strict();

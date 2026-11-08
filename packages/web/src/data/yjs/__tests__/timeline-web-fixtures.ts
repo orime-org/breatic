@@ -106,7 +106,7 @@ export function webClip(
 /** The extent an `add_web_animation` or `land_execution` command carries (design §3.3). */
 export type WebExtent =
   | { durationFrames: number; fps: { num: number; den: number } }
-  | { status: 'awaiting_landing' | 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled' | 'expired'; acceptedDurationFrames: number; fps: { num: number; den: number } };
+  | { acceptedDurationFrames: number; fps: { num: number; den: number } };
 
 /**
  * Add a succeeded result as a new copy.
@@ -145,7 +145,7 @@ export function addPlaceholder(
 ): TimelineEditCommand {
   return {
     operation: 'add_web_animation',
-    parameters: { clipId, from: { executionId }, startFrame, newTrackId, extent: { status: 'running', acceptedDurationFrames, fps: FPS } },
+    parameters: { clipId, from: { executionId }, startFrame, newTrackId, extent: { acceptedDurationFrames, fps: FPS } },
     placement,
   } as TimelineEditCommand;
 }

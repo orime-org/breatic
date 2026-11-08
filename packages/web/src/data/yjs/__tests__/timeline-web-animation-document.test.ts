@@ -22,7 +22,7 @@ import {
 
 const ACTION = 'a0000000-0000-4000-8000-000000000001';
 const RECEIPT = { executionId: EXEC_RUNNING, inputHash: 'sha256:abc', landedAt: '2026-11-07T08:00:00.000Z' };
-const PLACEHOLDER = { clipId: cid(1), startFrame: 24, newTrackId: 'track-new', extent: { status: 'awaiting_landing' as const, acceptedDurationFrames: 72, fps: FPS } };
+const PLACEHOLDER = { clipId: cid(1), startFrame: 24, newTrackId: 'track-new', extent: { acceptedDurationFrames: 72, fps: FPS } };
 const NAME = 'project-p/timeline-web';
 const docs: Y.Doc[] = [];
 

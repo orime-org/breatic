@@ -370,7 +370,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
    * @param addClip - Where the placeholder goes and how long it is.
    * @throws {never} Never.
    */
-  const land = React.useCallback((actionId: string, execution: Pick<TimelineExecution, 'id' | 'inputHash' | 'status'>, addClip?: { startFrame: number; acceptedDurationFrames: number }): void => {
+  const land = React.useCallback((actionId: string, execution: Pick<TimelineExecution, 'id' | 'inputHash'>, addClip?: { startFrame: number; acceptedDurationFrames: number }): void => {
     const { readOnly: locked, placement: switches } = landing.current;
     if (locked || !mounted.current) return;
     const receipt = { executionId: execution.id, inputHash: execution.inputHash, landedAt: new Date().toISOString() };
@@ -378,7 +378,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       operation: 'land_execution',
       parameters: addClip === undefined ? { actionId, receipt } : {
         actionId, receipt,
-        addClip: { clipId: newId(), startFrame: addClip.startFrame, newTrackId: newId(), extent: { status: execution.status, acceptedDurationFrames: addClip.acceptedDurationFrames, fps: document.settings.fps } },
+        addClip: { clipId: newId(), startFrame: addClip.startFrame, newTrackId: newId(), extent: { acceptedDurationFrames: addClip.acceptedDurationFrames, fps: document.settings.fps } },
       },
       placement: switches,
     });
@@ -448,7 +448,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const accepted = webAnimationDurationFrames(input);
     const parameters = row.status === 'succeeded' && row.resultSourceVersionId !== null
       ? { from: { sourceVersionId: row.resultSourceVersionId }, extent: { durationFrames: accepted, fps: input.fps } }
-      : { from: { executionId: row.id }, extent: { status: row.status, acceptedDurationFrames: accepted, fps: input.fps } };
+      : { from: { executionId: row.id }, extent: { acceptedDurationFrames: accepted, fps: input.fps } };
     if (commit({ operation: 'add_web_animation', parameters: { clipId: newId(), startFrame: frame, newTrackId: newId(), ...parameters }, placement })?.ok === true) refreshTasks();
   }, [commit, frame, placement, refreshTasks]);
   const retryExecution = React.useCallback((row: TimelineExecutionRow): void => {
