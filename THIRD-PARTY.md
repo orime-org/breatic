@@ -236,6 +236,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### three-vrm's Mixamo bone-name map
+
+| | |
+|---|---|
+| What | The Mixamo bone names and the VRM humanoid bone each stands for, used to recognise a Mixamo rig when posing a 3D model |
+| Where it lives here | [packages/web/src/spaces/three-d/viewport/pose-bone-names.ts](./packages/web/src/spaces/three-d/viewport/pose-bone-names.ts) |
+| Copied from | `packages/three-vrm/examples/humanoidAnimation/mixamoVRMRigMap.js` of https://github.com/pixiv/three-vrm at commit `b6f3d136577f200652a87d57b320c59598b1d418` |
+| Changes | The name pairs are folded into shared lookup tables: a name loses its `mixamorig` prefix and its side, and the rest is looked up as a VRM 1.0 bone name |
+| Licence | **MIT**, Copyright (c) 2019-2026 pixiv Inc. |
+
+```
+Copyright (c) 2019-2026 pixiv Inc.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
 ## Packages reachable from the front-end bundle
 
 ### BlockNote
