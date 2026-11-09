@@ -19,6 +19,7 @@ describe("Timeline content seeds", () => {
         tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
         clips: {},
         sources: {},
+        operationReceipts: {},
       });
     } finally {
       document.destroy();

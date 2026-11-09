@@ -147,6 +147,38 @@ class_name = "LongMediaContainer"
 type = "durable-object"
 storage = "sqlite"
 
+# Web-animation execution (inner#1711) is optional, and these blocks stay
+# commented out unless you are developing or deploying it: the image is large
+# (Node, Chromium and the DeepSeek Harness), and every `wrangler dev` with the
+# block enabled builds it. Without the block, or without
+# HARNESS_OPENROUTER_API_KEY in `.dev.vars`, the web-animation job routes
+# answer 501 `feature_disabled` and everything else works.
+#
+# To enable it, uncomment the four blocks below (the container, its binding,
+# its export and the static assets that serve the font set). `pnpm dev` lays
+# the font set out into `assets/` before starting wrangler whenever `[assets]`
+# is enabled. standard-2 is 1 vCPU, 6 GiB and 12 GB, the instance the worker
+# bills a run for (`web_animation.container` in config/timeline.yaml).
+#
+# [[containers]]
+# class_name = "WebAnimationContainer"
+# image = "./web-animation.Dockerfile"
+# image_build_context = "../.."
+# instance_type = "standard-2"
+# max_instances = <how many web-animation runs may run at once; start at 2>
+# image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
+#
+# [[durable_objects.bindings]]
+# name = "WEB_ANIMATION"
+# class_name = "WebAnimationContainer"
+#
+# [exports.WebAnimationContainer]
+# type = "durable-object"
+# storage = "sqlite"
+#
+# [assets]
+# directory = "./assets"
+
 # Nothing else here keeps state between requests. What one upload needs
 # remembered — its multipart upload id and the parts that landed — travels with
 # the browser and comes back on every request, which is how Cloudflare's own
@@ -294,3 +326,27 @@ class_name = "LongMediaContainer"
 [env.production.exports.LongMediaContainer]
 type = "durable-object"
 storage = "sqlite"
+
+# Web-animation execution, as at the top level; uncomment to deploy it, and set
+# the key with `wrangler secret put HARNESS_OPENROUTER_API_KEY --env production`.
+# Serve previews from a domain of their own (WEB_ANIMATION_PREVIEW_BASE_URL on
+# the server side), and keep the R2 `web-animation/` prefix off the public
+# asset domain.
+#
+# [[env.production.containers]]
+# class_name = "WebAnimationContainer"
+# image = "./web-animation.Dockerfile"
+# image_build_context = "../.."
+# instance_type = "standard-2"
+# max_instances = <how many web-animation runs may run at once>
+#
+# [[env.production.durable_objects.bindings]]
+# name = "WEB_ANIMATION"
+# class_name = "WebAnimationContainer"
+#
+# [env.production.exports.WebAnimationContainer]
+# type = "durable-object"
+# storage = "sqlite"
+#
+# [env.production.assets]
+# directory = "./assets"

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import { newId as createId, type TimelineDocumentV1, type TimelineVideoSource } from '@breatic/shared';
+import { newId as createId, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
 } from '@breatic/shared/space-content';
@@ -10,6 +10,7 @@ import {
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
 import { writeSpaceDoc, type SpaceRefusal, type SpaceWriteKind } from '@web/data/yjs/space-write';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords } from '@breatic/shared/space-content';
@@ -164,20 +165,25 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
 const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
- * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields in one
- * transaction under `origin`, after an untracked conversion of any plain-object record the edit changes. The two
- * go through the Space's size check as one write (inner#1790): a new record is `add`, a changed one `edit`; a
- * deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`. While the size holds
- * writes back a deletion is planned with the magnet off and sweeps no source.
+ * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields and any landing
+ * receipt in one transaction under `origin`, after an untracked conversion of any plain-object record the edit
+ * changes. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
+ * transactions go through the Space's size check as one write (inner#1790): a new record or receipt is `add`, a
+ * changed one `edit`; a deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`.
+ * While the size holds writes back a deletion is planned with the magnet off and sweeps no source.
  * @param doc - The current content document.
  * @param command - The normalized edit with the editing user's placement switches.
  * @param origin - The transaction origin; a Y.UndoManager tracking it undoes this edit in one step.
  * @param newId - Supplies ids for clips cut by an overwrite and tracks created by a linkage bump.
+ * @param web - The resolution of the document's web-animation references.
  * @param notify - Show the size refusal toast (default true).
  * @returns The applied plan, or why nothing was written.
  * @throws {Error} When the document is structurally invalid.
  */
-export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = createId, notify = true): TimelineEditPlan {
+export function applyTimelineEdit(
+  doc: Y.Doc, command: TimelineEditCommand, origin: unknown, newId: () => string = createId, web: TimelineWebResolution = EMPTY_TIMELINE_WEB_RESOLUTION,
+  notify = true,
+): TimelineEditPlan {
   const normalized = TimelineEditCommandSchema.safeParse(command);
   if (!normalized.success) return { ok: false, reason: 'invalid_range' };
   const name = timelineSizeName(doc);
@@ -185,11 +191,12 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   const onlyDelete = deleting && timelineSizeHolds(name);
   const planned = onlyDelete ? { ...normalized.data, placement: { ...normalized.data.placement, magnet: false } } : normalized.data;
   const current = readTimelineDocument(doc);
-  const plan = planTimelineEdit(current, planned, newId);
+  const plan = planTimelineEdit(current, planned, newId, web);
   if (!plan.ok) return plan;
   const { next } = plan;
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
-  if (sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips)) return plan;
+  const layoutSame = sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips);
+  if (layoutSame && sameRecords(current.operationReceipts, next.operationReceipts)) return plan;
   // A peer may have stored a record as a plain value. The ones this edit changes become maps outside the edit's own
   // origin, so undoing the edit reverts only the fields it set.
   const plain = [
@@ -199,24 +206,30 @@ export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand, orig
   const written = writeSpaceDoc(name, { kind: editKind(deleting, current, next), notify }, () => {
     if (plain.length > 0) doc.transact(() => { for (const [parent, id, value] of plain) attachRecord(parent, id, value); }, FORMAT_ORIGIN);
     doc.transact(() => {
+      // A receipt is one fact written once; it is stored whole.
+      for (const [actionId, receipt] of Object.entries(next.operationReceipts)) {
+        if (JSON.stringify(current.operationReceipts[actionId]) !== JSON.stringify(receipt)) doc.getMap<unknown>('operationReceipts').set(actionId, freezeRecord(structuredClone(receipt)));
+      }
+      // A landing that adds no copy changes no layout record, so it sweeps nothing and makes no undo step.
+      if (layoutSame) return;
       writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
       writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
-      if (!onlyDelete) reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => next.clips[id]?.sourceId ?? []));
+      if (!onlyDelete) reconcileTimelineSources(doc, next.sources, plan.created.flatMap((id) => { const clip = next.clips[id]; return clip?.kind === 'video' ? [clip.sourceId] : []; }));
     }, origin);
   });
   return written.ok ? plan : written;
 }
 
 /**
- * What an edit's records write in Yjs.
+ * What an edit's records and receipts write in Yjs.
  * @param deleting - Whether the user deleted something.
- * @param before - The records the plan started from.
- * @param after - The planned records.
- * @returns `add` for a new record, `remove` or `compound` for a deletion that does or does not only delete, else `edit`.
+ * @param before - The document the plan started from.
+ * @param after - The planned document.
+ * @returns `add` for a new record or receipt, `remove` or `compound` for a deletion that does or does not only delete, else `edit`.
  * @throws {never} Never.
  */
 function editKind(deleting: boolean, before: TimelineDocumentV1, after: TimelineDocumentV1): SpaceWriteKind {
-  const collections = [[before.tracks, after.tracks], [before.clips, after.clips]] as const;
+  const collections = [[before.tracks, after.tracks], [before.clips, after.clips], [before.operationReceipts, after.operationReceipts]] as const;
   if (collections.some(([was, now]) => Object.keys(now).some((id) => was[id] === undefined))) return 'add';
   if (!deleting) return 'edit';
   const rewrites = collections.some(([was, now]) => Object.entries(now).some(([id, record]) => JSON.stringify(was[id]) !== JSON.stringify(record)));

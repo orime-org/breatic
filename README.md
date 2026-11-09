@@ -41,11 +41,11 @@ The hosted service has a free Starter plan. AI generation credits are purchased 
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
 | **3D (DEV)** | Arrange built-in objects, imported glTF models and AI-generated models in a shared scene and edit their position, rotation and scale. |
-| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. |
+| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Describe a web animation, run it with DeepSeek, follow it in the execution list and add the result as clips that play on the Timeline clock. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
 | **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |
 
-Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video on multiple visual tracks. Additional media types, Web Animation and video export are planned. Annotations within the 3D scene are under development.
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video and web animations on multiple visual tracks; web animation runs only on deployments that enable it. Additional media types and video export are planned. Annotations within the 3D scene are under development.
 
 ## Review changes together
 

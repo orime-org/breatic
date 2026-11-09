@@ -31,6 +31,7 @@ import { createLogger, getTimelineConfig } from "@breatic/core";
 import { encodeInitialSpaceContent, parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
+import { acceptTimelineReceipts } from "@collab/services/timeline-receipt-acceptance.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
 import {
@@ -98,6 +99,13 @@ export async function storeDoc({
 }): Promise<void> {
   await acceptSpaceMediaReferences(documentName, state);
   await yjsDocumentsRepo.upsertDocData(documentName, state);
+  // After the store succeeded, from the bytes it stored (inner#1711): a failure here leaves the stored content in
+  // place, and the next store or the worker's sweep picks the row up.
+  try {
+    await acceptTimelineReceipts(documentName, state);
+  } catch (err) {
+    logger.error({ err, documentName }, "timeline_receipt_acceptance_failed");
+  }
 }
 
 /**

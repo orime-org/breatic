@@ -3381,7 +3381,8 @@
       "invalid_range": "超出视频范围",
       "incompatible_track": "所在轨道类型不符",
       "damaged": "该片段已无法读取",
-      "missing_source": "所用视频已丢失"
+      "missing_source": "所用视频已丢失",
+      "source_unresolved": "网页动画不可用"
     },
     "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
@@ -3436,7 +3437,8 @@
       "main_track": "主轨不能删除。",
       "track_not_empty": "只能删除空轨道。",
       "full": "这个 Space 已满，删除一些内容后才能继续编辑。",
-      "over_ceiling": "这个 Space 已超出上限，请删除整个片段。"
+      "over_ceiling": "这个 Space 已超出上限，请删除整个片段。",
+      "source_unresolved": "网页动画尚未就绪，请稍后重试。"
     },
     "mainTrack": "主轨",
     "track": "画面 {index}",
@@ -3453,8 +3455,8 @@
       "linkage": "联动",
       "zoom": "缩放",
       "track": "轨道",
-      "inPoint": "入点",
-      "duration": "时长",
+      "inPoint": "入点（帧）",
+      "duration": "时长（帧）",
       "newTrack": "新建画面轨",
       "newTrackZone": "拖到这里新建轨道",
       "trackRemoved": "轨道已移除",
@@ -3466,6 +3468,69 @@
       "splitOutside": "请把播放头移到选中片段内再分割。",
       "lowestTrack": "该片段已在最下面的画面轨。",
       "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。"
+    },
+    "webAnimation": {
+      "create": "制作网页动画",
+      "executions": "执行列表",
+      "copy": "网页动画副本",
+      "durationShort": "{seconds} 秒",
+      "dialog": {
+        "title": "制作网页动画",
+        "retryTitle": "重新执行网页动画",
+        "description": "填写要求后点击“执行”。",
+        "prompt": "要求",
+        "promptPlaceholder": "例如：蓝色背景，标题从左侧滑入",
+        "engine": "引擎",
+        "aspect": "比例",
+        "duration": "时长（秒）",
+        "addAtPlayhead": "在播放头位置加入 Timeline",
+        "execute": "执行"
+      },
+      "list": {
+        "close": "关闭执行列表",
+        "completed": "已完成",
+        "inProgress": "进行中",
+        "emptyCompleted": "还没有已完成的执行。",
+        "emptyInProgress": "没有进行中的执行。"
+      },
+      "status": {
+        "awaiting_landing": "保存中",
+        "queued": "排队中",
+        "running": "制作中",
+        "cancelling": "取消中",
+        "succeeded": "成功",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "expired": "已过期"
+      },
+      "step": {
+        "landing": "保存执行请求"
+      },
+      "phase": {
+        "writing": "编写网页",
+        "validating": "校验定位与清单",
+        "saving": "保存源包"
+      },
+      "usageLabel": "用量",
+      "usage": "{credits} 积分",
+      "usagePending": "结束后结算",
+      "unavailable": "网页动画不可用",
+      "cancel": "取消",
+      "addToTimeline": "添加到 Timeline",
+      "addPlaceholder": "先加入 Timeline",
+      "retry": "重新执行",
+      "failure": {
+        "feature_disabled": "网页动画暂不可用。",
+        "check": "页面没有通过检查。",
+        "stopped": "制作意外中断。",
+        "unknown": "执行失败。"
+      },
+      "preview": {
+        "pending": "{track}：网页动画{status, select, awaiting_landing {保存中} queued {排队中} running {制作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：网页动画{status, select, failed {失败} cancelled {已取消} expired {已过期} other {不可用}}，不显示",
+        "unavailable": "{track}：网页动画不可用",
+        "loading": "{track}：网页动画加载中…"
+      }
     }
   }
 }

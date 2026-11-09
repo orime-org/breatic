@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import type { TimelineVideoSource } from '@breatic/shared';
+import type { TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -12,6 +12,7 @@ import { writeSpaceDoc, type SpaceWriteResult } from '@web/data/yjs/space-write'
 import {
   applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId, timelineSizeHolds,
 } from '@web/data/yjs/timeline-document';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
@@ -38,6 +39,8 @@ export interface TimelineEditSession {
   select: (clipId: string | null) => void;
   endHold: () => void;
   setCanWrite: (canWrite: boolean) => void;
+  /** The current resolution of the document's web-animation references, which edits of web copies plan against. */
+  setWebResolution: (web: TimelineWebResolution) => void;
   dispose: () => void;
 }
 
@@ -158,6 +161,7 @@ function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSessio
   // copy is current, and only these are ever written back.
   const known: Record<string, TimelineVideoSource> = Object.create(null) as Record<string, TimelineVideoSource>;
   let canWrite = false;
+  let web = EMPTY_TIMELINE_WEB_RESOLUTION;
   /**
    * Remember the current readable sources and, for a session that may write, write back any referenced source a merge
    * removed. Concurrent writes to one key keep only one, so the remover's own write can win and then be swept,
@@ -216,7 +220,7 @@ function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSessio
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
         const before = snapshotRecords(doc);
-        const plan = applyTimelineEdit(doc, command, origin, undefined, options.notify);
+        const plan = applyTimelineEdit(doc, command, origin, undefined, web, options.notify);
         const item = history.undoStack.at(-1);
         if (!join) holdStep = options.hold === true && item !== top ? item : null;
         if (plan.ok && item !== undefined) {
@@ -248,6 +252,9 @@ function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSessio
     },
     setCanWrite(value) {
       canWrite = value;
+    },
+    setWebResolution(value) {
+      web = value;
     },
     dispose() {
       if (disposed) return;
