@@ -483,6 +483,21 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(done.map((entry) => entry.presentation)).toEqual(ids.map((id) => ({ pin: [requestOf(id).outputs[0]!.storageKey] })));
   });
 
+  // Design §5.4: a stage's jobs run in parallel up to its frozen count, so a running chunk holds back no other chunk or window.
+  it("TW03c a running encode chunk holds back no other chunk or window: every one is submitted in the same pickup", async () => {
+    const value = fade();
+    serve(plan(value));
+    const running = encId(0);
+    h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+      if (request.jobId === running) throw new StillRunning(Date.now() + 5000);
+      return advancePlan(request);
+    });
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId);
+    expect(opened).toEqual(expect.arrayContaining([...value.layout.encode.map((_window, k) => encId(k)), ...value.layout.window.map((_window, k) => winId(k))]));
+  });
+
   it("TW04 sends in each stage exactly the frozen stageJobs distinct jobs and no other job", async () => {
     const value = fade();
     serve(plan(value));

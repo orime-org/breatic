@@ -207,7 +207,14 @@ async function advanceChunk(execution: VideoTool, output: number, chunk: number,
       limits: execution.container.limits, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }],
       outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: webm(recipe) ? "video/webm" : "video/mp4", recipe }] };
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
-    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
+    let answer: Awaited<ReturnType<typeof advanceMiniToolPlanJob>>;
+    try {
+      answer = await advanceMiniToolPlanJob(request);
+    } catch (error) {
+      if (!(error instanceof StillRunning)) throw error;
+      return null;
+    }
+    const report = readMiniToolPlanJobReport(request, answer);
     if (report.state !== "done" && report.state !== "failed") return null;
     const key = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
@@ -242,13 +249,17 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
   const recipes = segmentRecipesOf(ledger, { range: recipe.range }, SOURCE_INPUT_ID, execution.container.encode, encode.chunks);
   const keys: string[] = [];
   let running = false;
+  let failed: string | null = null;
+  // Every chunk advances in each pickup (design §5.4 parallel stage); a segment with a chunk failed for good settles only
+  // once none of its chunks still runs, so each running chunk's object is recorded and pinned with the run.
   for (const [chunk] of encode.chunks.entries()) {
     const done = await advanceChunk(execution, outputIndex, chunk, recipes[chunk]!, deadlineAt);
     if (done === null) { running = true; continue; }
-    if (typeof done !== "string") { pickup.results.set(outputIndex, failedResult(done.failed)); return; }
+    if (typeof done !== "string") { failed ??= done.failed; continue; }
     keys.push(done);
   }
   if (running) { pickup.waiting = true; return; }
+  if (failed !== null) { pickup.results.set(outputIndex, failedResult(failed)); return; }
   const stitch = recipes.at(-1)!;
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const jobId = videoContainerJobId({ kind: "run-stitch", taskId: execution.taskId, output: outputIndex, attempt });

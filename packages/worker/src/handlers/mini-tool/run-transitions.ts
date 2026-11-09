@@ -119,7 +119,14 @@ async function advanceWork(execution: Transitions, spec: (attempt: number) => Vi
     const candidate: MiniToolPlanJobRequest = stored ?? { schemaVersion: 2, jobId, containerClass, deadlineAt, limits, inputs: built!.inputs,
       outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: execution.profile.alpha ? "video/webm" : "video/mp4", recipe: built!.recipe }] };
     const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
-    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
+    let answer: Awaited<ReturnType<typeof advanceMiniToolPlanJob>>;
+    try {
+      answer = await advanceMiniToolPlanJob(request);
+    } catch (error) {
+      if (!(error instanceof StillRunning)) throw error;
+      return null;
+    }
+    const report = readMiniToolPlanJobReport(request, answer);
     if (report.state !== "done" && report.state !== "failed") return null;
     const key = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,

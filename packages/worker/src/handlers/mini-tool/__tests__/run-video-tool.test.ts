@@ -202,13 +202,14 @@ async function openPlan(input: OpenMiniToolPlanJobInput): Promise<{ request: Min
 }
 
 /**
- * A chunk job's report: done with its one work output unless scripted to fail or run.
+ * A chunk job's report: done with its one work output unless scripted to fail; a running job throws StillRunning, as
+ * `advanceMiniToolPlanJob` does.
  * @param request - The chunk request.
  * @returns The report.
  */
 async function advancePlan(request: MiniToolPlanJobRequest): Promise<Record<string, unknown>> {
   const script = scripted.get(request.jobId);
-  if (script === "running") return { schemaVersion: 2, state: "running" };
+  if (script === "running") throw new StillRunning(Date.now() + 5000);
   const output = request.outputs[0]!;
   const written = [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }];
   return script !== undefined && script !== "throws" && script.state === "failed"
@@ -559,6 +560,33 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     // The failed attempt's own output is retired with its result, as on the preparation path.
     const failedChunk = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { retire?: string[] } }).find((value) => value.outcome === "failed");
     expect(failedChunk?.presentation?.retire).toEqual([videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))]);
+  });
+
+  // Design §5.4: the chunks of a stage run in parallel up to the frozen stage count, so a running chunk holds back neither
+  // the next chunk nor another segment's chunks.
+  it("VC05 a running chunk does not hold back the next chunk or another segment's chunks: all are submitted in one pickup", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] }, 0,
+      [WHOLE, RECIPES["video.split"][1]!]));
+    scripted.set(chunkId(0), "running");
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId);
+    expect(opened).toEqual(expect.arrayContaining([chunkId(0), chunkId(1), videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 1, chunk: 0, attempt: 1 })]));
+  });
+
+  it("VC06 a segment with a chunk failed for good waits for its running chunk, then fails with that chunk's object pinned", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE]));
+    scripted.set(chunkId(0), { written: [], state: "failed" });
+    scripted.set(chunkId(1), "running");
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    expect(h.finish).not.toHaveBeenCalled();
+    scripted.delete(chunkId(1));
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed"]);
+    const recorded = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { pin?: string[] } });
+    expect(recorded.find((value) => value.outcome === "done")?.presentation).toEqual({ pin: [videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))] });
+    expect(submitted()).toEqual([]);
   });
 
   // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so the stitch's retire
