@@ -349,7 +349,7 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect(detail).toBeVisible();
       await expect(detail.locator('ol > li')).toHaveCount(4);
       await expect(detail.locator('ol > li svg.lucide-check')).toHaveCount(4);
-      await expect(detail).toContainText(/Usage: [\d.,]+ credits/);
+      await expect(detail).toContainText(/Usage\s*[\d.,]+ credits/);
       await expect(detail.locator('hyperframes-player')).toHaveCount(1);
       await expect(list.getByTestId(`timeline-execution-add-${executionId}`)).toBeVisible();
       await expect(list.getByTestId(`timeline-execution-cancel-${executionId}`)).toHaveCount(0);
@@ -420,7 +420,7 @@ test('one real web animation is created, reused as three copies over a video, se
         await expect(detail).toBeVisible();
         await expect(detail.locator('ol > li svg.lucide-check')).toHaveCount(4);
         await expect(detail.locator('hyperframes-player')).toHaveCount(1);
-        await expect(detail).toContainText(/Usage: [\d.,]+ credits/);
+        await expect(detail).toContainText(/Usage\s*[\d.,]+ credits/);
         for (const action of ['cancel', 'add', 'add-placeholder', 'retry']) {
           await expect(list.getByTestId(`timeline-execution-${action}-${executionId}`)).toHaveCount(0);
         }
@@ -845,6 +845,10 @@ test('an execution started without adding a copy is cancelled and offers Run aga
     await expect(row).toHaveAttribute('data-status', 'cancelled');
     await expect(row).toContainText('Cancelled');
     await expect(list.getByTestId(`timeline-execution-detail-${id}`)).toBeVisible();
+    // The step the run stopped at carries its own mark; a cancel is told muted, without the error tone.
+    const stopped = list.getByTestId(`timeline-execution-detail-${id}`).locator('ol > li[data-mark="stopped"]');
+    await expect(stopped).toHaveCount(1);
+    await expect(stopped).not.toHaveClass(/text-status-error-foreground/);
     await expect(list.getByTestId(`timeline-execution-add-${id}`)).toHaveCount(0);
     await list.getByTestId(`timeline-execution-retry-${id}`).click();
     const dialog = page.getByRole('dialog', { name: 'Run web animation again', exact: true });
