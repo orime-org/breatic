@@ -18,7 +18,9 @@
 import crypto from "node:crypto";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
+import { SignupReferralRefused, createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
+import type { SignupReferral, SignupReferralOutcome } from "@server/modules/auth/auth.service.js";
+import { findActiveCode } from "@server/modules/referral/referral-binding.service.js";
 import { buildSignupCodeMail } from "@server/modules/auth/auth-mail.js";
 import { getSignupCodeConfig } from "@server/config/auth.js";
 import { logMailResult } from "@server/utils/log-mail.js";
@@ -31,7 +33,7 @@ import {
   logger,
   sendMail,
 } from "@breatic/core";
-import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import { getActiveLocale, normalizeEmail, SIGNUP_REFERRAL_SOURCES, t } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
 
 const CODE_SPACE = 1_000_000;
@@ -128,12 +130,12 @@ return 1
 `;
 
 /**
- * Replace the password and language of a pending sign-up for the same
+ * Replace the password and referral code of a pending sign-up for the same
  * address, keeping its lifetime. A pending sign-up for another address is
- * deleted.
+ * deleted; a blank code removes the stored one.
  *
  * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] password
- * hash.
+ * hash · ARGV[3] referral code or '' · ARGV[4] its source or ''.
  * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
  */
 const UPDATE_PENDING_SCRIPT = `
@@ -145,8 +147,27 @@ end
 local left = redis.call('PTTL', KEYS[1])
 if left <= 0 then return 0 end
 redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2])
+if ARGV[3] ~= '' then
+  redis.call('HSET', KEYS[1], 'referralCode', ARGV[3], 'referralSource', ARGV[4])
+else
+  redis.call('HDEL', KEYS[1], 'referralCode', 'referralSource')
+end
 return left
 `;
+
+/**
+ * Checks a sign-up's referral code before any code is mailed (inner#1868 §5).
+ * While payments are off the code is ignored.
+ * @param referral - The code the sign-up carried, if any.
+ * @returns The code in stored form with its source, or undefined for none.
+ * @throws {SignupReferralRefused} if the code is not an active code.
+ */
+async function checkSignupReferral(referral: SignupReferral | undefined): Promise<SignupReferral | undefined> {
+  if (referral === undefined || !env.PAYMENT_ENABLED) return undefined;
+  const found = await findActiveCode(referral.code);
+  if (found === null) throw new SignupReferralRefused();
+  return { code: found.code, source: referral.source };
+}
 
 /**
  * Mail a fresh code and, once it is out, store its hash on the pending
@@ -196,20 +217,24 @@ async function sendCode(ticket: string, email: string, locale: string): Promise<
  * @param input.password - The password as typed.
  * @param input.locale - The language the request was made in; the mail is written in it.
  * @returns The ticket and the two timings the page shows.
+ * @param input.referral - The referral code the sign-up carried; checked now and kept with the pending sign-up.
  * @throws {ConflictError} when the address already has an account.
  * @throws {TooManyRequestsError} when the address is inside its resend wait.
  * @throws {AppError} 503 when the mail was not sent.
+ * @throws {SignupReferralRefused} if the referral code is not an active code; no code is mailed.
  */
 export async function startSignup(input: {
   ticket: string | null;
   email: string;
   password: string;
   locale: string;
+  referral?: SignupReferral;
 }): Promise<SignupCodeSent> {
   const email = normalizeEmail(input.email);
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
+  const referral = await checkSignupReferral(input.referral);
   const redis = getRedis();
   const passwordHash = await hashPassword(input.password);
 
@@ -221,6 +246,8 @@ export async function startSignup(input: {
         signupKey(input.ticket),
         email,
         passwordHash,
+        referral?.code ?? "",
+        referral?.source ?? "",
       ),
     );
     if (leftMs > 0) {
@@ -243,7 +270,7 @@ export async function startSignup(input: {
   const { ttlSeconds } = getSignupCodeConfig();
   await redis
     .multi()
-    .hset(key, { email, passwordHash })
+    .hset(key, { email, passwordHash, ...(referral ? { referralCode: referral.code, referralSource: referral.source } : {}) })
     .expire(key, ttlSeconds)
     .exec();
   try {
@@ -280,7 +307,8 @@ export async function resendSignupCode(ticket: string | null): Promise<SignupCod
  * account.
  *
  * KEYS[1] pending sign-up · ARGV[1] sha256 of the submitted code · ARGV[2] comparisons allowed.
- * Returns {-1} missing · {-2} code used up · {0} wrong · {1, email, passwordHash} match.
+ * Returns {-1} missing · {-2} code used up · {0} wrong ·
+ * {1, email, passwordHash, referralCode or '', referralSource or ''} match.
  */
 const COMPARE_SCRIPT = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return {-1} end
@@ -288,9 +316,9 @@ local limit = tonumber(ARGV[2])
 local n = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
 if n > limit then return {-2} end
 if redis.call('HGET', KEYS[1], 'codeHash') == ARGV[1] then
-  local fields = redis.call('HMGET', KEYS[1], 'email', 'passwordHash')
+  local fields = redis.call('HMGET', KEYS[1], 'email', 'passwordHash', 'referralCode', 'referralSource')
   redis.call('DEL', KEYS[1])
-  return {1, fields[1], fields[2]}
+  return {1, fields[1], fields[2], fields[3] or '', fields[4] or ''}
 end
 if n == limit then return {-2} end
 return {0}
@@ -305,7 +333,7 @@ return {0}
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @param code - The code the user typed.
  * @param attribution - Campaign source the browser recorded before sign-up.
- * @returns The new account.
+ * @returns The new account, and what became of the referral code the sign-up carried.
  * @throws {AppError} 410 when there is no such pending sign-up.
  * @throws {AppError} 422 when this code has used up its comparisons.
  * @throws {AppError} 400 when the code does not match.
@@ -315,7 +343,7 @@ export async function verifySignupCode(
   ticket: string | null,
   code: string,
   attribution: Attribution | null = null,
-): Promise<UserEntity> {
+): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   if (ticket === null) throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   const { maxAttemptsPerCode } = getSignupCodeConfig();
   const reply = (await getRedis().eval(
@@ -324,7 +352,7 @@ export async function verifySignupCode(
     signupKey(ticket),
     sha256(code),
     String(maxAttemptsPerCode),
-  )) as [number, string?, string?];
+  )) as [number, string?, string?, string?, string?];
 
   switch (reply[0]) {
     case -1:
@@ -335,12 +363,14 @@ export async function verifySignupCode(
       throw new AppError(HTTP_BAD_REQUEST, t("server.auth.signup_code_invalid"));
   }
 
-  const [, email, hashedPassword] = reply;
+  const [, email, hashedPassword, referralCode, referralSource] = reply;
   if (email === undefined || hashedPassword === undefined) {
     throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   }
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
-  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution });
+  const source = SIGNUP_REFERRAL_SOURCES.find((known) => known === referralSource) ?? null;
+  const carried = referralCode && source !== null ? { code: referralCode, source, onRefused: "skip" as const } : undefined;
+  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution }, carried);
 }

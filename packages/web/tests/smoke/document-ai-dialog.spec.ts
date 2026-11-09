@@ -325,6 +325,119 @@ test('a stream that breaks off says so and leaves close and retry', async ({ pag
   await expect(page.getByTestId('doc-ai-replace')).toHaveCount(0);
 });
 
+/** A shot list of eight columns, wider than the dialog, as the storyboard tool answers. */
+const SHOT_LIST = [
+  '| Shot | Size | Angle | Movement | On screen | Dialogue and sound | Seconds | Notes |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| 1 | Wide | Eye level | Static | A girl rides through the foggy street | A bicycle bell | 4 | Dawn light |',
+  '| 2 | Close-up | Low | Push in | The baker hands her a warm loaf | "Thank you!" | 3 | Steam rising |',
+  '| 3 | Long | High | Crane up | She rides on toward the lighthouse | Waves | 5 | The lamp comes on |',
+].join('\n');
+
+test('draft a shot list: the preview scrolls the table sideways in its own frame, insert adds it, undo takes it away', async ({ page }) => {
+  const sent = await answerTextTool(page, { status: 200, body: streamOf(`The morning ride.\n\n${SHOT_LIST}`), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('A girl rides through the fog to the sea.');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'storyboard');
+
+  await expect(page.getByTestId('doc-ai-title')).toHaveText(/./);
+  await expect(page.getByTestId('doc-ai-insert')).toBeVisible({ timeout: 10_000 });
+  // The selection goes out as Markdown, its full stop escaped.
+  expect(sent[0]?.['tool']).toBe('storyboard');
+  expect(String(sent[0]?.['selection'])).toContain('A girl rides through the fog to the sea');
+  const preview = page.getByTestId('doc-ai-preview');
+  const frame = preview.locator('.doc-table [data-radix-scroll-area-viewport]');
+  await expect(frame).toHaveCount(1);
+  await expect(preview.locator('table tr').first().locator('td, th')).toHaveCount(8);
+  // Written, it shows from the header row, its columns sized by what they hold.
+  await expect.poll(() => page.evaluate(() => document.querySelector('[data-testid="doc-ai-preview"]')!.closest('[data-radix-scroll-area-viewport]')!.scrollTop)).toBe(0);
+  expect(await preview.locator('table col').evaluateAll((cols) => cols.map((col) => (col as HTMLElement).style.width)))
+    .toEqual(['64px', '88px', '88px', '88px', '220px', '180px', '64px', '140px']);
+  const sizes = await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="doc-ai-preview"]')!;
+    const outer = host.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const inner = host.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    const words = [...host.querySelectorAll<HTMLElement>('p')].find((p) => p.textContent === 'The morning ride.')!;
+    inner.scrollLeft = inner.scrollWidth;
+    const last = host.querySelector('table tr')!.lastElementChild!.getBoundingClientRect();
+    return {
+      outerWidth: outer.clientWidth,
+      outerScrolls: outer.scrollWidth > outer.clientWidth,
+      innerScrolls: inner.scrollWidth > inner.clientWidth,
+      wordsWidth: words.getBoundingClientRect().width,
+      lastInside: last.right <= inner.getBoundingClientRect().right + 1,
+    };
+  });
+  expect(sizes.innerScrolls).toBe(true);
+  expect(sizes.outerScrolls).toBe(false);
+  expect(sizes.wordsWidth).toBeLessThanOrEqual(sizes.outerWidth);
+  expect(sizes.lastInside).toBe(true);
+
+  await page.getByTestId('doc-ai-insert').click();
+
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('A girl rides through the fog to the sea.');
+  await expect(page.locator(`${BODY} table`)).toHaveCount(1);
+  await expect(page.locator(`${BODY} table tr`)).toHaveCount(4);
+  await expect(page.locator(`${BODY} table tr`).first().locator('td, th')).toHaveCount(8);
+  await page.keyboard.press(UNDO);
+  await expect(page.locator(`${BODY} table`)).toHaveCount(0);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('A girl rides through the fog to the sea.');
+});
+
+test('draft a shot list, replace puts the table where the description was', async ({ page }) => {
+  await answerTextTool(page, { status: 200, body: streamOf(SHOT_LIST), sse: true });
+  await openFreshDocument(page);
+  await page.keyboard.type('A girl rides through the fog to the sea.');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'storyboard');
+  await page.getByTestId('doc-ai-replace').click();
+
+  await expect(page.locator(DIALOG)).toHaveCount(0);
+  await expect(page.locator(`${BODY} table tr`)).toHaveCount(4);
+  await expect(page.locator(BODY)).not.toContainText('A girl rides through the fog to the sea.');
+  await page.keyboard.press(UNDO);
+  await expect(page.locator(`${BODY} table`)).toHaveCount(0);
+  await expect(page.locator(`${BODY} p`).first()).toHaveText('A girl rides through the fog to the sea.');
+});
+
+test('against the real model: a shot list from a Chinese description has eight columns headed in Chinese @needs-model', async ({ page }) => {
+  await openFreshDocument(page);
+  await page.keyboard.insertText('清晨，女孩骑车穿过起雾的小镇，在面包店接过一个刚出炉的面包，然后骑向海边的灯塔。');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'storyboard');
+  await expect(page.getByTestId('doc-ai-insert')).toBeVisible({ timeout: 90_000 });
+
+  const preview = page.getByTestId('doc-ai-preview');
+  await expect(preview.locator('table')).toHaveCount(1);
+  const header = preview.locator('table tr').first().locator('td, th');
+  await expect(header).toHaveCount(8);
+  expect(await header.first().innerText()).toMatch(/[一-鿿]/);
+  expect(await preview.locator('table tr').count()).toBeGreaterThan(1);
+});
+
+test('against the real model: a shot list from an English description has eight columns headed in English @needs-model', async ({ page }) => {
+  await openFreshDocument(page);
+  await page.keyboard.insertText('At dusk a fisherman rows back to the harbour, ties up his boat, and carries a basket of fish up the hill to his daughter.');
+  await selectParagraph(page, 0);
+
+  await pressAi(page, 'storyboard');
+  await expect(page.getByTestId('doc-ai-insert')).toBeVisible({ timeout: 90_000 });
+
+  const preview = page.getByTestId('doc-ai-preview');
+  await expect(preview.locator('table')).toHaveCount(1);
+  const header = preview.locator('table tr').first().locator('td, th');
+  await expect(header).toHaveCount(8);
+  const names = await header.allInnerTexts();
+  expect(names.join(' ')).toMatch(/[A-Za-z]/);
+  expect(names.join(' ')).not.toMatch(/[一-鿿]/);
+  expect(await preview.locator('table tr').count()).toBeGreaterThan(1);
+});
+
 test('against the real model: refine, replace, and undo brings the original back @needs-model', async ({ page }) => {
   await openFreshDocument(page);
   await page.keyboard.type('the cat sat on the mat and it was very very happy there');

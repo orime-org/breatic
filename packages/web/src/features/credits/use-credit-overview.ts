@@ -15,10 +15,9 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  * write that moves a purchase marks them stale. All three name the same key
  * through this, so a change of shape reaches every one of them.
  *
- * It carries the account, the way the membership panel's does: the query
- * client is a module singleton that a sign-out never clears, so a key without
- * the account would hand the next person to sign in on this tab the last
- * one's figures.
+ * It carries the account, the way the membership panel's does; the provider
+ * also empties the whole cache when the signed-in account changes
+ * (`QueryClientProvider`).
  * @param userId - Whose money, or null while nobody is signed in.
  * @returns That key.
  */

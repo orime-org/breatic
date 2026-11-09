@@ -80,12 +80,6 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
       if (document) msg += `\n\nReference document:\n---\n${document}\n---`;
       return msg;
     }
-    case "storyboard": {
-      let msg = instructions ?? "Create a storyboard.";
-      if (params.scene_count) msg += `\nTarget scene count: ${params.scene_count as number}`;
-      if (document) msg += `\n\nReference document:\n---\n${document}\n---`;
-      return msg;
-    }
     case "script": {
       let msg = `Scene: ${params.scene_description as string}`;
       const chars = params.characters as string[] | undefined;
