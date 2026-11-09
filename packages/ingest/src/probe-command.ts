@@ -102,7 +102,7 @@ function ffmpegSeconds(microseconds: bigint): string {
  * @param from - What it reads.
  * @returns The whitelist.
  */
-function protocolsFor(from: ReadFrom): string {
+export function protocolsFor(from: ReadFrom): string {
   return from === "object" ? PROTOCOLS : "file";
 }
 

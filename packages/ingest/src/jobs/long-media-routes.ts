@@ -7,6 +7,7 @@ import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import { buildLongMediaProbeReport } from "@ingest/long-media-probe-report.js";
+import { parseMeasuredStreamWindows, type MeasuredStreamWindow } from "@ingest/long-media-measured-window.js";
 import { askedKey } from "@ingest/object-url.js";
 import { serveOneObject } from "@ingest/media-object-route.js";
 import { hashStoredObject, sniffStoredObject, SourceReadError, writeStreamedObject } from "@ingest/stored-object.js";
@@ -330,14 +331,20 @@ export async function acceptLongMediaProbeReport(
   context: OutboundHandlerContext<LongMediaProbeCallbackContext>,
 ): Promise<Response> {
   let stdout: string | null = null;
+  let measured: MeasuredStreamWindow[] = [];
   let failed = false;
   try {
     const body: unknown = await request.json();
-    if (body === null || typeof body !== "object" || Object.keys(body).length !== 1) {
-      return new Response("Invalid probe report", { status: 400 });
-    }
-    if ("stdout" in body && typeof body.stdout === "string") stdout = body.stdout;
-    else if ("failure" in body && body.failure === "probe_failed") failed = true;
+    if (body === null || typeof body !== "object") return new Response("Invalid probe report", { status: 400 });
+    const keys = Object.keys(body).sort().join(",");
+    if ((keys === "stdout" || keys === "measured,stdout") && "stdout" in body && typeof body.stdout === "string") {
+      stdout = body.stdout;
+      if ("measured" in body) {
+        const windows = parseMeasuredStreamWindows(body.measured);
+        if (windows === null) return new Response("Invalid probe report", { status: 400 });
+        measured = windows;
+      }
+    } else if (keys === "failure" && "failure" in body && body.failure === "probe_failed") failed = true;
     else return new Response("Invalid probe report", { status: 400 });
   } catch {
     return new Response("Invalid probe report", { status: 400 });
@@ -358,7 +365,7 @@ export async function acceptLongMediaProbeReport(
   if (stdout === null) return new Response("Invalid probe report", { status: 400 });
   let report;
   try {
-    report = buildLongMediaProbeReport(stdout, context.params.sourceFingerprint, context.params.profileVersion);
+    report = buildLongMediaProbeReport(stdout, context.params.sourceFingerprint, context.params.profileVersion, measured);
   } catch (err) {
     noteFailure("ingest_long_media_probe_report_invalid", { containerId: context.containerId }, err);
     return new Response("Invalid probe report", { status: 400 });

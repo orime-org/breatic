@@ -25,7 +25,7 @@ import { objectUrlOn } from '@ingest/object-url.js';
 import { videoPresentationWorkKeyFor, videoSourceLedgerKeyFor } from '@shared/upload/video-presentation-keys.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { download } from '@ingest/container/mini-tool-run.js';
-import { declaresAudioWindow, decodedAudioProbeArgs, decodedAudioWindow } from '@ingest/container/decoded-audio-window.js';
+import { declaresAudioWindow, decodedAudioProbeArgs, decodedAudioWindow } from '@ingest/container/stream-window.js';
 import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';

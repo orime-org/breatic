@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
-import { declaresAudioWindow, decodedAudioWindow } from '@ingest/container/decoded-audio-window.js';
+import { declaresAudioWindow, decodedAudioWindow, videoPacketAccumulator } from '@ingest/container/stream-window.js';
 
 // Measured on a VP9 + Opus WebM from FFmpeg 7.1: packets run from -7 ms to 3014 ms, while decoding drops the 312-sample
 // pre-skip at the start and trims the last frame to 312 samples, so the stream plays from 0 to 2994 ms + 312 samples.
@@ -38,5 +38,30 @@ describe('the decoded audio window', () => {
     expect(decodedAudioWindow({ ...OPUS, sample_rate: undefined }, FRAMES)).toBeNull();
     expect(decodedAudioWindow({ ...OPUS, time_base: '1/0' }, FRAMES)).toBeNull();
     expect(decodedAudioWindow(OPUS, [{ pts: 0 }])).toBeNull();
+  });
+});
+
+describe('the video packet window', () => {
+  const VP9 = { index: 0, codec_type: 'video', time_base: '1/1000' };
+
+  it('runs from the earliest packet to the latest packet end, on the stream clock', () => {
+    const accumulator = videoPacketAccumulator(VP9)!;
+    for (const fields of [{ pts: 40, duration: 40 }, { pts: 0, duration: 40 }, { pts: 2960, duration: 40 }]) expect(accumulator.add(fields)).toBe(true);
+    expect(accumulator.window()).toEqual({ start: [0n, 1000n], end: [3000n, 1000n] });
+  });
+
+  it('ends a last packet without a duration after the largest known packet duration', () => {
+    const accumulator = videoPacketAccumulator(VP9)!;
+    for (const fields of [{ pts: 0, duration: 40 }, { pts: 40, duration: 100 }, { pts: 140 }]) accumulator.add(fields);
+    expect(accumulator.window()).toEqual({ start: [0n, 1000n], end: [240n, 1000n] });
+  });
+
+  it('knows no window when no packet carries a duration or a packet has no timestamp', () => {
+    const untimed = videoPacketAccumulator(VP9)!;
+    untimed.add({ pts: 0 });
+    expect(untimed.window()).toBeNull();
+    const broken = videoPacketAccumulator(VP9)!;
+    expect(broken.add({ pts: 'N/A', duration: 40 })).toBe(false);
+    expect(broken.window()).toBeNull();
   });
 });
