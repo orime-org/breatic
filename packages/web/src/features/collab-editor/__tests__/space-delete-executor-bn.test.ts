@@ -20,9 +20,9 @@
  * part of one `XmlText` is refused before planning (design 5.3 step 7).
  *
  * X-30 and X-31 cannot be reached from a real editor and feed the
- * executor's planning function directly (spec answer Q7). Its name and
- * signature are this file's choice, for the implementation to adopt:
- * `planSpaceDelete(tr, binding, { syncKey, overCeiling })` returns
+ * executor's planning function directly (spec answer Q7):
+ * `planSpaceDelete(tr, binding, { syncKey, overCeiling, deleteTriggered? })`
+ * returns
  * `{ ok: true, kind: 'delete' | 'remove', ... }` or
  * `{ ok: false, refusal: 'add' | 'compound' | 'over_ceiling' }`, where
  * `refusal` names the toast the filter then shows.

@@ -13,7 +13,7 @@
  * `writeSpaceDoc` with that kind. The plain-type cases drive it the way every
  * entry does (`gatedStep`, which is `runHistoryStep`).
  *
- * Round 6 (spec 14 head, H-01, H-14, H-19, 21.5, ST-01): `nextHistoryStep`
+ * Spec 14 head, H-01, H-14, H-19, 21.5 and ST-01: `nextHistoryStep`
  * returns the kind itself; an empty stack is not tried; a manager reuses its
  * last conclusion while the top entry of that direction and the real
  * document's update count are unchanged; every entry runs `runHistoryStep`.
@@ -162,7 +162,7 @@ describe('H-01 below the limit a step runs as it is, without a copy', () => {
 
     expect(gatedStep(NAME, p.manager, 'undo')).toEqual({ ok: true });
 
-    // Round 6: no copy is observed as no encoding of the real document.
+    // No copy is observed as no encoding of the real document.
     expect(copiesOf(p.doc)).toBe(0);
     expect(p.text.toString()).toBe('hello world');
     expect(spies.contexts()).toEqual([p.manager]);
@@ -271,7 +271,7 @@ describe('H-14 a scope the real document has deleted', () => {
     expect(nodes.has('n1')).toBe(false);
     enterSize(NAME, P_FULL);
 
-    // Round 6: the kind itself; no effect is `remove`.
+    // The kind itself; no effect is `remove`.
     expect(nextHistoryStep(manager, 'undo')).toBe('remove');
     spies.undo.mockClear();
     const before = Y.encodeStateAsUpdate(doc);
@@ -296,7 +296,7 @@ describe('H-15 a scope the copy cannot resolve', () => {
     detached.undoStack.push(p.manager.undoStack[0]);
     enterSize(NAME, P_FULL);
 
-    // Round 6 (spec 14 head): the kind itself; a scope that cannot be found is `add`.
+    // The kind itself; a scope that cannot be found is `add` (spec 14 head).
     expect(nextHistoryStep(detached, 'undo')).toBe('add');
     vi.mocked(toast.warning).mockClear();
     const before = Y.encodeStateAsUpdate(p.doc);

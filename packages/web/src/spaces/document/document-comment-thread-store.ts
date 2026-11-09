@@ -92,8 +92,9 @@ interface CommentEntry {
 }
 
 /**
- * Find a comment to delete as whole map entries, for a full Space; the checks
- * are the library's own `deleteComment`.
+ * Find a comment to delete as whole map entries, for a full Space. It checks
+ * what the library's own `deleteComment` checks except "already deleted": a
+ * soft-deleted comment's map is removed like any other.
  * @param store - The store.
  * @param doc - The document the threads live in.
  * @param target - The comment.

@@ -14,7 +14,7 @@
  * refuse the step, so a full Space letting the undo through is what shows the
  * nested scope was resolved.
  *
- * Round 6: the TipTap part of H-19 (`editor.commands.undo()` runs
+ * It also covers the TipTap part of H-19 (`editor.commands.undo()` runs
  * `runHistoryStep`; over the ceiling the same case says T_OVER), HC-03 (an
  * empty stack is not tried) and HC-09 (each undo manager reuses its own last
  * conclusion: three refused TipTap undos copy the canvas document once, the

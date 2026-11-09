@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Space document size cap, round 7 (inner#1790 web spec 23.0, `H7`): a
+ * Space document size cap (inner#1790 web spec 23.0, `H7`): a
  * scripted collab server behind a stand-in for the browser's `WebSocket`.
  *
  * Everything above the browser socket is production: `acquireDocProvider`
@@ -33,10 +33,10 @@
  * releases them, and {@link ScriptedWebSocket.drop} drops a connection the
  * way a network failure does (code 1006).
  *
- * Round 10 (spec 26.0) adds a SyncStatus frame a case sends when it chooses
- * ({@link ScriptedServer.syncStatus}; the default script never sends one), a
- * document CLOSE that can land in the case's own task, and
- * {@link recordProviderEvents}.
+ * A case can also send a SyncStatus frame when it chooses
+ * ({@link ScriptedServer.syncStatus}; the default script never sends one) and
+ * a document CLOSE that lands in the case's own task, and
+ * {@link recordProviderEvents} records the provider's events (spec 26.0).
  *
  * This module imports no production module of the package.
  */
@@ -49,7 +49,7 @@ import * as Y from 'yjs';
 
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, updateShape } from '@breatic/shared';
 
-/** One frame a client sent, decoded (the `SentFrame` vocabulary of `message-socket.ts`, plus round 7's kinds). */
+/** One frame a client sent, decoded (the `SentFrame` vocabulary of `message-socket.ts`, plus the handshake kinds). */
 export type ClientFrame =
   | { kind: 'update'; name: string; update: Uint8Array; shape: 'S' | 'D' | 'R' }
   | { kind: 'step1'; name: string }

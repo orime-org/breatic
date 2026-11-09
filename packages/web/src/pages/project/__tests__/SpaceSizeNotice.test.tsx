@@ -6,7 +6,7 @@
  * 16: the size notice (N-01 to N-08, N-12).
  *
  * Pushes arrive on the provider's stateless channel, as collab sends them
- * (`{ type: 'doc:size', bytes, limit, ceiling, phase }`). `SpaceOutlet`, the
+ * (`{ type: 'doc:size', seq, bytes, limit, ceiling, phase }`). `SpaceOutlet`, the
  * size notice and the read-only notice are the real components; only the
  * Space body is stood in for. Every Space type uses the same sentences; past
  * the hard ceiling the notice carries `data-over-ceiling` (lint/smoke spec

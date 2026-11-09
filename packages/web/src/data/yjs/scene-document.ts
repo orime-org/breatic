@@ -23,7 +23,11 @@ export type SceneCommand =
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] };
 
-/** A size reason: the Space's size refused the write (inner#1790), and `writeSpaceDoc` said so. */
+/**
+ * Why a scene command was refused. `full`, `over_ceiling` and `resyncing` come from the Space's size (inner#1790)
+ * and have already been told: `full` and `over_ceiling` by `writeSpaceDoc`'s toast, `resyncing` by the rebuild's
+ * own toast.
+ */
 export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | SpaceRefusalReason;
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 

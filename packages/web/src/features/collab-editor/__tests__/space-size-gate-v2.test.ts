@@ -5,7 +5,8 @@
  * inner#1790 v2 web test spec section 10 (the ProseMirror size filter: the
  * state table, remote transactions, step 0 appended transactions, step 1
  * refusal and toast choice) and section 13 (Backspace in an empty block,
- * taken over by the filter's `handleKeyDown` when full or over the ceiling).
+ * taken over by the filter's DOM `keydown` handler (`handleDOMEvents.keydown`)
+ * when full or over the ceiling).
  *
  * Every editor is the production one: the document body through
  * `getDocumentEditor`, the canvas text node body through
@@ -647,7 +648,7 @@ describe('10.3 step 1, refusal and toast choice', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 13. Backspace in an empty block, taken over by the filter's handleKeyDown.
+// 13. Backspace in an empty block, taken over by the filter's DOM keydown handler.
 
 /**
  * Puts the caret into the n-th empty paragraph-like textblock of the body.

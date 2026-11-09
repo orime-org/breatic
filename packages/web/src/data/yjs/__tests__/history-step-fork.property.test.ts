@@ -11,7 +11,7 @@
  * nested in a `Y.Map` (the shape of a canvas node's body). A peer replica
  * relays both ways, as the provider does.
  *
- * Round 6 (P-01): `nextHistoryStep` returns the kind itself, a real step that
+ * P-01: `nextHistoryStep` returns the kind itself, a real step that
  * writes nothing is judged `remove`, an empty stack is judged too (without a
  * trial), and a second judgement with the top entry and the real document's
  * update count unchanged (the reused conclusion) must equal the real kind as

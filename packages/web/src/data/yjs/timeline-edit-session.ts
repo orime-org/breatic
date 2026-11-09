@@ -93,7 +93,9 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
  * lacks, write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
  * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
  * fields or without its source, or a source without a clip. While the Space's size holds writes back nothing is
- * repaired: a pop allowed then only deletes, and the next transaction below the limit repairs (inner#1790).
+ * repaired: a pop allowed then only deletes. Once the Space is below the limit, the next transaction writes back
+ * any missing source (`restoreMissingSources`), and the next edit that writes, clip removal or pop drops the
+ * sources no clip names (inner#1790).
  * @param doc - The document.
  * @param name - Its canonical name.
  * @param records - The snapshot of the step just undone or redone, when the step has one.

@@ -10,7 +10,7 @@
  * the step on a copy of the document and judges what it wrote. Every stack
  * entry is made below the limit (no push), then the state is set.
  *
- * Round 6: the canvas part of H-19 (every entry runs `runHistoryStep`, and
+ * It also covers the canvas part of H-19 (every entry runs `runHistoryStep`, and
  * over the ceiling the same case says T_OVER) and HC-03 (an empty stack is
  * not tried: no copy of the document, counted as an `encodeStateAsUpdate` of
  * it with `yjs` mocked passing through).

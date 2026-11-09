@@ -5,14 +5,14 @@
  * Space document size cap, second design (inner#1790): the `doc:size` push
  * fixtures of web test spec 0.3 and the copy literals of spec 0.5.
  *
- * A v2 push carries only `bytes`, `limit`, `ceiling` and `phase`. Values are
+ * A fixture holds a push's `bytes`, `limit`, `ceiling` and `phase`. Values are
  * written out, never computed from the implementation. Default configuration:
  * limit 10485760, warning ratio 0.9, delete headroom 262144, ceiling 10747904.
  * Send one with `push(provider, P_FULL)` from `doc-size-driver.ts`, which adds
- * `type: 'doc:size'`.
+ * `type: 'doc:size'` and the next `seq`.
  */
 
-/** One valid v2 `doc:size` push without its `type` field. */
+/** One valid v2 `doc:size` push without its `type` and `seq` fields. */
 export interface DocSizePushV2 {
   bytes: number;
   limit: number;

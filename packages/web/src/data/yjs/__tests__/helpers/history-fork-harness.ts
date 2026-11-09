@@ -11,7 +11,7 @@
  * `S` is an add, `D` a delete, `R` a remove, nothing written is no effect).
  * The "trial kind" is what `nextHistoryStep` answers under a full Space.
  *
- * `nextHistoryStep` returns the kind itself (spec section 14, round 6): a step
+ * `nextHistoryStep` returns the kind itself (spec section 14): a step
  * that writes nothing (an empty stack, a trial that wrote nothing, a scope the
  * real document deleted) is `remove`, which every state but `resyncing` lets
  * through, so the entry still calls `undo()`/`redo()` (spec answer Q8); a

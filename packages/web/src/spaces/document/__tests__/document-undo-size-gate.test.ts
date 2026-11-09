@@ -16,7 +16,7 @@
  * Keys go through `view.someProp('handleKeyDown')`. jsdom is not a Mac, so
  * which modifier `Mod` is in this process is read from the keymap.
  *
- * Round 6: the body part of H-19 (the body runs `runHistoryStep`; over the
+ * It also covers the body part of H-19 (the body runs `runHistoryStep`; over the
  * ceiling the same case says T_OVER), HC-03 (an empty stack is not tried) and
  * HC-10 (holding undo on a refused step copies the document once). A copy is
  * counted as an `encodeStateAsUpdate` of the document, `yjs` mocked passing
