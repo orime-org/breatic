@@ -43,7 +43,10 @@ const LEGS_STRAIGHT: ScenePose = {
 /** Hips, spine and head upright. */
 const UPRIGHT: ScenePose = { 'h:hips': IDENTITY, 'h:spine': IDENTITY, 'h:head': IDENTITY };
 
-export const POSE_PRESETS: Readonly<Record<'stand' | 'sit' | 'lie' | 'walk' | 'wave', ScenePose>> = {
+/** The presets in the order the inspector shows them. */
+export const POSE_PRESET_NAMES = ['stand', 'sit', 'lie', 'walk', 'wave'] as const;
+
+export const POSE_PRESETS: Readonly<Record<(typeof POSE_PRESET_NAMES)[number], ScenePose>> = {
   stand: { ...UPRIGHT, ...ARMS_DOWN, ...LEGS_STRAIGHT },
   // Sitting on the ground, knees raised and feet flat in front, hands resting out to the sides.
   sit: {

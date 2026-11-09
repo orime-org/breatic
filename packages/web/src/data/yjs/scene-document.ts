@@ -12,9 +12,8 @@ import {
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
-// A gesture draft carries the pose it previews; a `patch` command writes only
-// the transform fields and the name, and a pose is written by `pose` commands.
-const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true, pose: true })
+// A `patch` command writes only the transform fields and the name; a pose is written by `pose` commands.
+const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
   .partial().extend({ id: z.string().uuid() }).strict();
 
 export type ScenePatch = z.infer<typeof PATCH_SCHEMA>;

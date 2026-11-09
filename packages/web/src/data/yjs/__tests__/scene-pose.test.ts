@@ -162,7 +162,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
     const doc = sceneDoc();
     applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
     const patch = { type: 'patch', patches: [{ id: ID, pose: { 'h:leftUpperArm': Q_Z180, 'h:spine': Q_HALF } }] } as unknown as SceneCommand;
-    applySceneCommand(doc, patch, Symbol(), true);
+    expect(applySceneCommand(doc, patch, Symbol(), true)).toEqual({ ok: false, reason: 'invalid' });
     expect(record(doc).has('pose')).toBe(false);
     expect(poseOf(doc)).toEqual(POSED.pose);
   });

@@ -82,7 +82,7 @@ function skinOf(keys: readonly string[]): Vector3[] {
 }
 
 /** How far inside the torso a leg vertex may sit, as a share of the torso's radius there (skinning bulges at the groin). */
-const TORSO_DEPTH = 0.6;
+const TORSO_DEPTH = 0.4;
 /** Height bands and directions the torso's rest radius is measured in. */
 const BANDS = 24;
 const SECTORS = 16;
@@ -178,7 +178,7 @@ describe('presets on the built-in figure (inner#1692)', () => {
     const depth = torsoDepth();
     rig.apply(pose);
     root.updateMatrixWorld(true);
-    const deep = skinOf(['h:leftUpperLeg', 'h:rightUpperLeg', 'h:leftLowerLeg', 'h:rightLowerLeg']).filter((point) => depth(point) > 1 - TORSO_DEPTH);
+    const deep = skinOf(['h:leftUpperLeg', 'h:rightUpperLeg', 'h:leftLowerLeg', 'h:rightLowerLeg']).filter((point) => depth(point) > TORSO_DEPTH);
     expect(deep).toHaveLength(0);
   });
 

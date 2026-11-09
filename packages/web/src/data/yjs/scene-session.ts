@@ -15,6 +15,9 @@ import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publ
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
+/** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
+type SceneGestureDraft = ScenePatch & { pose?: ScenePose };
+
 export interface SceneEnvironment {
   readOnly: boolean;
   connected: boolean;
@@ -59,7 +62,7 @@ export class SceneSession {
   private environment: SceneEnvironment = { readOnly: true, connected: false, hasEverSynced: false,
     writeAccess: 'unknown', refused: false, awareness: null };
   private selectedIds: string[] = [];
-  private gesture: ScenePatch[] | null = null;
+  private gesture: SceneGestureDraft[] | null = null;
   /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
   private gestureStartPoses = new Map<string, ScenePose>();
   /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
@@ -311,7 +314,7 @@ export class SceneSession {
    * Preview only fields supplied by the active control, keeping committed values independent.
    * @param patches - Complete transform fields previewed by the active local gesture.
    */
-  previewGesture(patches: readonly ScenePatch[]): void {
+  previewGesture(patches: readonly SceneGestureDraft[]): void {
     if (!this.gesture) return;
     if (patches.some((patch) => !this.selectedIds.includes(patch.id))) return;
     const committed = readSceneDocument(this.doc).objects;

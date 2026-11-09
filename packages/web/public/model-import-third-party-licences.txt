@@ -6,8 +6,9 @@ The npm dependency notices are in third-party-licences.txt.
 Built-in 3D figure: Mannequiny by GDQuest and contributors
 (https://www.gdquest.com/), from https://github.com/GDQuest/godot-3d-mannequin,
 licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
-Changed: animations, vertex colours and texture coordinates removed and the
-mesh quantized.
+Changed: animations, vertex colours and texture coordinates removed, the mesh
+quantized, each joint set to its bind pose and the figure scaled to 1.75 m
+tall.
 
 Draco decoder
 https://github.com/google/draco

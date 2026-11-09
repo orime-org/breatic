@@ -563,7 +563,7 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Sce
  * @param notice - What the user is told beside the model; null when nothing.
  * @returns True when this call wrote it.
  */
-export async function attachAsset(taskId: string, assetId: string, notice: SceneTaskNotice | null = null): Promise<boolean> {
+export async function attachAsset(taskId: string, assetId: string, notice: SceneTaskNotice | null): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
     .set({ assetId, notice })
