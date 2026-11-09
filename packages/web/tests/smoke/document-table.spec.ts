@@ -370,6 +370,8 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
   expect(rows).toEqual([
     'doc-block-row-insertBelow',
     'doc-block-row-duplicate',
+    'doc-block-row-copy',
+    'doc-block-row-cut',
     'doc-block-row-indent',
     'doc-block-row-unindent off',
     'doc-block-row-comment',
