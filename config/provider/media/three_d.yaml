@@ -1,4 +1,4 @@
-# Where each of our three d models runs, upstream by upstream.
+# Where each of our 3D models runs, upstream by upstream.
 # Weight is priority: the lowest configured weight is tried first, and weights
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as

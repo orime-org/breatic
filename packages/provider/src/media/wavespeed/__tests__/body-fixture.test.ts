@@ -9,7 +9,7 @@ import { buildBody } from "../../body.js";
 import { DEPARTURES, OFF_WAVESPEED } from "./departures.js";
 
 interface BodyFixture {
-  cases: { model: string; kind: "catalog" | "three_d"; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
+  cases: { model: string; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
 }
 
 /** What today's worker sends for each case (scripts/provider-fixtures.ts). */

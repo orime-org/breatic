@@ -325,7 +325,7 @@ for (const [modality, files] of sources) {
   }
   const path = `media/${modality}.yaml`;
   const merged = mergeMediaModels(current<{ models: typeof models }>(path)?.models, models);
-  write(path, MEDIA_HEADER.replace("{modality}", modality.replace("_", " ")), { models: merged });
+  write(path, MEDIA_HEADER.replace("{modality}", modality === "three_d" ? "3D" : modality), { models: merged });
 }
 
 const concurrency = new Set(

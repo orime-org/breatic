@@ -178,8 +178,6 @@ process.stdout.write(`${cases.length} cases, ${cases.filter((c) => c.usd === nul
 /** One frozen body case: our prepared params and prompt, and the body today's worker sends. */
 interface BodyCase {
   model: string;
-  /** "catalog" models run through `upstreamBody`; "three_d" models send every param as it is, plus the prompt. */
-  kind: "catalog" | "three_d";
   params: Record<string, unknown>;
   prompt: string;
   body: Record<string, unknown>;
@@ -359,7 +357,7 @@ for (const modality of MODALITIES) {
         if (seen.has(key)) continue;
         seen.add(key);
         const prepared = await prepare(model, given, written.neutral);
-        bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written.today) });
+        bodyCases.push({ model: model.name, ...prepared, body: await todayBody(model, given, written.today) });
       }
     }
   }
