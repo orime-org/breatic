@@ -1,0 +1,19 @@
+{
+  "model": "sync-lipsync-3",
+  "upstream": "fal",
+  "model_id": "fal-ai/sync-lipsync/v3",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "video_url": "https://example.com/video.mp4"
+      }
+    }
+  ],
+  "steps": []
+}

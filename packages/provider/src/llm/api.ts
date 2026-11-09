@@ -37,7 +37,11 @@ export interface PreparedCall {
   pendingCosts(): Cost[];
 }
 
-/** What a finished model call reports, as the AI SDK hands it over. */
+/**
+ * What a finished model call reports, as the AI SDK hands it over. Its `providerMetadata.breatic`
+ * is provider's own: who served the call and when the request that served it was sent (`sentAt`,
+ * which picks a direct price), so the caller measures nothing itself.
+ */
 export interface FinishedCall {
   model: string;
   usage: LanguageModelUsage;

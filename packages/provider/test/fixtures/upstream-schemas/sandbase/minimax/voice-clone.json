@@ -1,0 +1,43 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/voice-clone",
+  "fields": {
+    "accuracy": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    ],
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "need_volume_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "noise_reduction": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "maxLength": 1000,
+        "default": "Hello, this is a preview of your cloned voice! I hope you like it!"
+      }
+    ]
+  },
+  "required": [
+    "audio"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "minimax"
+}

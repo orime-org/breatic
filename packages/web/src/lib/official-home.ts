@@ -10,6 +10,9 @@ export const TERMS_URL = new URL('terms/', OFFICIAL_HOME_URL).href;
 /** The Privacy Policy, on the official website (#302). */
 export const PRIVACY_URL = new URL('privacy/', OFFICIAL_HOME_URL).href;
 
+/** The promoter program terms an applicant agrees to (inner#1868). */
+export const PROMOTER_TERMS_URL = new URL('promoter-terms/', OFFICIAL_HOME_URL).href;
+
 /** The user manual, on the official website. */
 export const TUTORIALS_URL = new URL('tutorials/', OFFICIAL_HOME_URL).href;
 

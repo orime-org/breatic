@@ -88,6 +88,12 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  ParamGate,
+  ThreeDGenerationMode,
+  SceneViewSlot,
+  ParamBound,
+  ParamForce,
+  ParamScalar,
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
@@ -109,6 +115,8 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
+  THREE_D_GENERATION_MODES,
+  SCENE_VIEW_SLOTS,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -118,7 +126,6 @@ export { paramValueAllowed, paramValues } from "@shared/types/param-values.js";
 export {
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
-export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type {
@@ -148,6 +155,8 @@ export {
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
 export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
+export type { SceneGenerationOrigin, SceneGenerationProposal } from "@shared/types/scene-generation-proposal.js";
+export { SCENE_GENERATION_ORIGINS, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
 
 export type {
   ReferenceRefusal,

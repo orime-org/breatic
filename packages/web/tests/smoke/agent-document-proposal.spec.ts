@@ -623,7 +623,7 @@ async function locatedGeometry(word: string): Promise<{ words: DOMRect | null; m
     return {
       words: text === null ? null : range.getBoundingClientRect(),
       mark: box(space?.querySelector('[data-testid="document-proposal-landed"]')),
-      body: box(space?.querySelector('[data-radix-scroll-area-viewport]')),
+      body: box(space?.querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')),
       table: box(text?.parentElement?.closest('.doc-table-frame')?.querySelector('[data-radix-scroll-area-viewport]')),
     };
   }, word).then((g) => ({

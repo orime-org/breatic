@@ -70,7 +70,7 @@ type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
  * @param id - The block id.
  * @returns The block's node (a `blockContainer`, or a table's own node) and where it starts, or null.
  */
-function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
+export function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
   let found: { node: ProseMirrorNode; pos: number } | null = null;
   doc.descendants((node, pos) => {
     if (found !== null) return false;
@@ -314,15 +314,63 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
 }
 
 /**
- * Prepares only new payload data, leaving target checks for synchronous commit.
- * @param proposal - The proposal.
+ * Markdown read into the blocks a write puts into the body: outside media
+ * left out the way a paste leaves them out, headings brought within the
+ * body's levels. Only new payload data; target checks wait for the
+ * synchronous commit.
+ * @param markdown - What is about to be written.
  * @returns Its filtered blocks and omitted media count.
  * @throws {Error} If Markdown parsing fails.
  */
-async function prepareBlocks(proposal: DocumentProposal): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
-  const parsed = await markdownBlocks(proposal.body);
-  const { blocks: kept, count } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+async function prepareWrittenBlocks(markdown: string): Promise<{ blocks: WrittenBlock[]; leftOut: number }> {
+  const parsed = await markdownBlocks(markdown);
+  return keepWritable(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+}
+
+/**
+ * What of some parsed blocks may be written into the body: our own media
+ * only, headings within the body's levels.
+ * @param blocks - The parsed blocks.
+ * @param ourPrefix - Where our own media live, or null when not known.
+ * @returns The blocks kept, and how many outside media were left out.
+ */
+export function keepWritable(blocks: readonly WrittenBlock[], ourPrefix: string | null): { blocks: WrittenBlock[]; leftOut: number } {
+  const { blocks: kept, count } = ownMediaOnly(blocks, ourPrefix);
   return { blocks: withinBodyLevels(kept), leftOut: count };
+}
+
+/** What `stopCapturing` is called on: the body's undo manager. */
+export interface UndoBoundary {
+  stopCapturing: () => void;
+}
+
+/**
+ * Runs one write into the body as an undo step of its own, apart from the
+ * typing just before and just after it.
+ * @param undoManager - The body's undo manager, or null for a body with none.
+ * @param write - The write.
+ * @throws {Error} Whatever the write throws.
+ */
+export function asOneUndoStep(undoManager: UndoBoundary | null, write: () => void): void {
+  undoManager?.stopCapturing();
+  try {
+    write();
+  } finally {
+    undoManager?.stopCapturing();
+  }
+}
+
+/**
+ * Why a write may not commit now, read from the lifecycle and the connection.
+ * @param admission - The current lifecycle and connection permission.
+ * @param editor - The body's editor.
+ * @returns `failed` while the lifecycle no longer admits the write or the
+ *   connection has not said whether it may write, `readOnly` when it may not, or null when the write may commit.
+ */
+export function writeRefusal(admission: ProposalAdmission, editor: Landable['editor']): 'failed' | 'readOnly' | null {
+  if (!admission.available || admission.writeAccess === 'unknown') return 'failed';
+  if (admission.writeAccess === 'denied' || !editor.isEditable) return 'readOnly';
+  return null;
 }
 
 /**
@@ -345,8 +393,7 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
   // Nothing between the answer and the write can change the size state.
   const refused = refusedForSize(handle);
   if (refused !== null) return refused;
-  undoManager.stopCapturing();
-  try {
+  asOneUndoStep(undoManager, () => {
     editor.transact(() => {
       if (proposal.kind === 'rewrite') {
         editor.replaceBlocks([targetId], written as never);
@@ -359,9 +406,7 @@ function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readon
         else editor.insertBlocks(written as never, targetId, 'after');
       }
     });
-  } finally {
-    undoManager.stopCapturing();
-  }
+  });
   return null;
 }
 
@@ -382,8 +427,8 @@ function currentResult(
   if (!admission.available) return { outcome: 'failed' };
   const already = landedAt(handle, proposal);
   if (already !== null) return { outcome: 'applied', ...already };
-  if (admission.writeAccess === 'unknown') return { outcome: 'failed' };
-  if (admission.writeAccess === 'denied' || !handle.editor.isEditable) return { outcome: 'readOnly' };
+  const refusal = writeRefusal(admission, handle.editor);
+  if (refusal !== null) return { outcome: refusal };
   const problem = blockProblem(handle, proposal);
   return problem === null ? null : { outcome: problem };
 }
@@ -420,7 +465,7 @@ export async function landProposal(
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }
-  const prepared = await prepareBlocks(proposal);
+  const prepared = await prepareWrittenBlocks(proposal.body);
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;

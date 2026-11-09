@@ -6,6 +6,7 @@ import fc from "fast-check";
 import {
   assertBindsCatalog,
   candidatesOf,
+  droppedValues,
   parseProviderConfig,
   ProviderConfigError,
   type CatalogShape,
@@ -72,6 +73,23 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("1");
   });
 
+  it("refuses a vendor limit whose from is not an ISO 8601 UTC time, naming where", () => {
+    const raw: ProviderConfigInput = { upstreams, media: { models: { seedance: { rejects: [{ when: "duration > 10", reason: "r", source: "https://vendor.example/limits", from: "December 3, 2026" }], upstreams: [bind("wavespeed", 1)] } } } };
+    expect(problemsOf(raw)).toEqual([expect.stringMatching(/^media\.models\.seedance\.rejects\.0\.from: /)]);
+  });
+
+  it("refuses a binding reject that reads a dotted body field", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { params: { duration: { field: "settings.duration" } }, rejects: [{ when: "settings.duration > 10", reason: "r" }] })]));
+    expect(problems).toEqual(['seedance: the binding to "wavespeed" rejects when "settings.duration > 10", which reads "settings.duration", a dotted field conditions do not read']);
+  });
+
+  it("refuses a fal upstream without the billing address its costs are read from, naming the upstream", () => {
+    const problems = problemsOf({ upstreams: { queue: { kind: "fal", base_url: "https://queue.fal.run", key_env: "FAL_KEY" } }, media: { models: {} } });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("queue");
+    expect(problems[0]).toContain("billing_url");
+  });
+
   it("refuses a binding to an upstream that upstreams.yaml does not declare", () => {
     const problems = problemsOf(input([bind("replicate", 1)]));
     expect(problems).toHaveLength(1);
@@ -100,7 +118,27 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("discount_rat");
   });
 
-  it.each(["fal", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
+  it("refuses a step that says whether a clone lets a later run skip it, which its kind decides", () => {
+    const step = { kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal", reused: true };
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]));
+    expect(problems.join("\n")).toContain("reused");
+  });
+
+  it.each([
+    ["no voice call of its own", {}, "after"],
+    ["a speak step before its voice call", { reused_by: "audio" }, "before"],
+  ])("refuses a binding that speaks with %s, naming model and upstream", (_label, extra, at) => {
+    const step = { kind: "speak", endpoint: "minimax/speech", at };
+    const problems = problemsOf(input([bind("wavespeed", 1, { ...extra, extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]));
+    expect(problems).toEqual([expect.stringMatching(/seedance.*"wavespeed".*speak/)]);
+  });
+
+  it("loads a binding that speaks after its own voice call", () => {
+    const step = { kind: "speak", endpoint: "minimax/speech", at: "after" };
+    expect(problemsOf(input([bind("wavespeed", 1, { reused_by: "audio", extra_steps: [step] as unknown as MediaBinding["extra_steps"] })]))).toEqual([]);
+  });
+
+  it.each(["falai", "openrouter", "toString"])("refuses a media binding on an upstream of kind %s, which no media adapter speaks to", (kind) => {
     const raw: ProviderConfigInput = {
       upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },
       media: { models: { seedance: { upstreams: [bind("typo", 1)] } } },
@@ -211,29 +249,53 @@ describe("assertBindsCatalog", () => {
   }
 
   it("passes a binding whose params and values all exist in the catalog", () => {
-    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "5": "5s", "10": "10s" } } } })])).toEqual([]);
+    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "5": "5s", "10": "10s" } } }, drops: { aspect_ratio: "*" } })])).toEqual([]);
   });
 
   it("reports a bound param that the model does not have", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { resolution: { field: "resolution" } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { resolution: { field: "resolution" } }, drops: { duration: "*", aspect_ratio: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("resolution");
   });
 
   it("reports a value mapping for a value the param does not offer", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "7": "7s" } } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration", values: { "7": "7s" } } }, drops: { aspect_ratio: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("7");
   });
 
   it("reports an absent_value the param does not offer", () => {
-    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio", absent_value: "1:1" } } })]);
+    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio", absent_value: "1:1" } }, drops: { duration: "*" } })]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("1:1");
   });
 
+  it("reports a value-list drop of a real value that states no reason the upstream's default gives it", () => {
+    const problems = catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio" } }, drops: { duration: [5] } })]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/fal.*duration|duration.*fal/);
+  });
+
+  it("passes a value-list drop that states why the upstream's default gives the value, and one of not-sent values", () => {
+    expect(catalogProblems([bind("fal", 2, { params: { aspect_ratio: { field: "aspect_ratio" } }, drops: { duration: { values: [5], equivalent: "fal runs 5 s when duration is left out (its schema default)" } } })])).toEqual([]);
+    expect(catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" } }, drops: { aspect_ratio: [""] } })])).toEqual([]);
+  });
+
+  it("reads the values a drop serves a run at, and none for a drop of every value", () => {
+    expect(droppedValues("*")).toBeUndefined();
+    expect(droppedValues({ all_values: "sampling only" })).toBeUndefined();
+    expect(droppedValues(undefined)).toBeUndefined();
+    expect(droppedValues([false])).toEqual([false]);
+    expect(droppedValues({ values: ["1k"], equivalent: "measured" })).toEqual(["1k"]);
+  });
+
+  it("reports a drop of a param the model does not have", () => {
+    const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" }, aspect_ratio: { field: "aspect_ratio" } }, drops: { colour: "*" } })]);
+    expect(problems).toEqual(['seedance: "fal" drops param "colour", which the model does not have']);
+  });
+
   it("reports a catalog model that has no binding at all", () => {
-    const problems = catalogProblems([bind("fal", 2)], { models: [...catalog.models, { name: "kling", params: {} }] });
+    const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" } })], { models: [...catalog.models, { name: "kling", params: {} }] });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("kling");
   });
@@ -260,11 +322,11 @@ describe("provider.assertBindsCatalog", () => {
   const joined: CatalogShape = { models: [{ name: "seedance", params: { images: {}, style: { joins: "images" } } }] };
 
   it("checks the configuration the instance was built from", () => {
-    expect(problems([bind("fal", 2, { params: { images: { field: "images" } }, mentions: { images: "@image{n}" } })], joined)).toEqual([]);
+    expect(problems([bind("fal", 2, { params: { images: { field: "images" } }, drops: { style: "*" }, mentions: { images: "@image{n}" } })], joined)).toEqual([]);
   });
 
   it("reports a param other params join whose binding has no mentions template, naming model, upstream and param", () => {
-    const found = problems([bind("fal", 2, { params: { images: { field: "images" } } })], joined);
+    const found = problems([bind("fal", 2, { params: { images: { field: "images" } }, drops: { style: "*" } })], joined);
     expect(found).toHaveLength(1);
     expect(found[0]).toContain("seedance");
     expect(found[0]).toContain("fal");
@@ -284,6 +346,19 @@ describe("deployment overrides of LLM routes", () => {
   };
   const order = (list: readonly { upstreams: readonly { upstream: string }[] }[]): string[] => list[0]!.upstreams.map((u) => u.upstream);
 
+  it("refuses an OpenRouter quantization level OpenRouter does not have, naming where", () => {
+    // A misspelled level, as a hand-edited llm.yaml would carry it.
+    const config: ProviderConfigInput = { upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, openrouter_quantizations: ["fp8", "fp-8"] } as unknown as ProviderConfigInput["llm"] };
+    expect(() => createProvider({ config, keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t })).toThrow(/llm\.openrouter_quantizations\.1/);
+    expect(parseProviderConfig({ ...config, llm: { ...llm, openrouter_quantizations: ["int4", "nvfp4", "unknown"] } }).llm.openrouter_quantizations).toEqual(["int4", "nvfp4", "unknown"]);
+  });
+
+  it("refuses an openrouter_prices_at that is not an ISO 8601 UTC time, naming where, and keeps a well-formed one", () => {
+    const config = (at: string): ProviderConfigInput => ({ upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, openrouter_prices_at: at } });
+    expect(problemsOf(config("November 8, 2026"))).toEqual([expect.stringMatching(/^llm\.openrouter_prices_at: /)]);
+    expect(parseProviderConfig(config("2026-11-08T05:12:33.456Z")).llm.openrouter_prices_at).toBe("2026-11-08T05:12:33.456Z");
+  });
+
   it("applies an llm override to the chat routes only", () => {
     const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
     expect(order(config.llm.routes)).toEqual(["openrouter", "google"]);
@@ -296,6 +371,72 @@ describe("deployment overrides of LLM routes", () => {
     expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
     const leaked = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 1, openrouter: 0 } } } } });
     expect(order(leaked.llm.routes)).toEqual(["google", "openrouter"]);
+  });
+
+  describe("direct prices with effective dates", () => {
+    const now = { input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 };
+    const later = { input_cache_miss_per_mtok: 1.5, output_per_mtok: 7.5 };
+    const load = (entries: unknown[]): ProviderConfigInput => ({ upstreams: llmUpstreams, media: { models: {} }, llm: { ...llm, prices: { "google/gemini-3.8-flash": entries } } as unknown as ProviderConfigInput["llm"] });
+    const refusal = (entries: unknown[]): unknown => {
+      try {
+        createProvider({ config: load(entries), keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t });
+        return undefined;
+      } catch (error) {
+        return error;
+      }
+    };
+
+    it("loads a price that changes on a stated date", () => {
+      expect(problemsOf(load([now, { ...later, from: "2027-01-01T00:00:00Z" }]))).toEqual([]);
+    });
+
+    it("refuses a first price with a date, naming where, so a listed model always has a price in effect", () => {
+      const error = refusal([{ ...now, from: "2027-01-01T00:00:00Z" }]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/^llm\.prices\.google\/gemini-3\.8-flash\.0: .*from/)]);
+    });
+
+    it("refuses a later price without a date, naming where", () => {
+      const error = refusal([now, later]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/^llm\.prices\.google\/gemini-3\.8-flash\.1\.from: /)]);
+    });
+
+    it("refuses dates that do not ascend, naming the model", () => {
+      const error = refusal([now, { ...later, from: "2027-01-01T00:00:00Z" }, { ...later, from: "2027-01-01T00:00:00Z" }]);
+      expect(error).toBeInstanceOf(ProviderConfigError);
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringMatching(/google\/gemini-3\.8-flash.*ascend/)]);
+    });
+
+    it("refuses an empty price list and a date that is not an ISO 8601 UTC time", () => {
+      expect(refusal([])).toBeInstanceOf(ProviderConfigError);
+      expect(refusal([now, { ...later, from: "January 1, 2027" }])).toBeInstanceOf(ProviderConfigError);
+    });
+
+    describe("an off-peak discount", () => {
+      const window = { days: [1, 2, 3, 4, 5], from: "01:00", to: "04:00" };
+      const offPeak = (extra: Record<string, unknown>): Record<string, unknown> => ({ factor: 0.5, peak_utc: [window], ...extra });
+
+      it("loads one on the first price and on a dated one, holidays optional", () => {
+        expect(problemsOf(load([{ ...now, off_peak: offPeak({}) }, { ...later, from: "2027-01-01T00:00:00Z", off_peak: offPeak({ holidays: ["2027-01-01"] }) }]))).toEqual([]);
+      });
+
+      it.each([
+        ["a factor of 0", offPeak({ factor: 0 })],
+        ["a factor above 1", offPeak({ factor: 1.5 })],
+        ["a malformed time", offPeak({ peak_utc: [{ ...window, from: "1:00" }] })],
+        ["a day past Saturday", offPeak({ peak_utc: [{ ...window, days: [7] }] })],
+        ["a window with no days", offPeak({ peak_utc: [{ ...window, days: [] }] })],
+        ["no window", offPeak({ peak_utc: [] })],
+        ["a malformed holiday", offPeak({ holidays: ["2027-1-1"] })],
+        ["a window whose from is its to", offPeak({ peak_utc: [{ ...window, to: "01:00" }] })],
+        ["a window whose from is after its to", offPeak({ peak_utc: [{ ...window, from: "10:00", to: "06:00" }] })],
+      ])("refuses %s, naming the model", (_name, off_peak) => {
+        const error = refusal([{ ...now, off_peak }]);
+        expect(error).toBeInstanceOf(ProviderConfigError);
+        expect((error as ProviderConfigError).problems).toEqual([expect.stringContaining("google/gemini-3.8-flash")]);
+      });
+    });
   });
 
   it("refuses an understand override naming a prefix no understand route has", () => {

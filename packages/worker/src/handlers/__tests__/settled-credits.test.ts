@@ -43,7 +43,6 @@ const h = vi.hoisted(() => {
     updateData: vi.fn(),
     info: vi.fn(),
     slotFull: { value: false },
-    threeD: vi.fn(),
     understandMediaAt: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
     chargeForGeneration: vi.fn(),
@@ -64,10 +63,6 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
 vi.mock("@worker/services/project-media.service.js", () => ({
   resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
-}));
-vi.mock("@worker/providers/three-d/index.js", () => ({
-  validateThreeDParams: (model: string, params: Record<string, unknown>) => [model, params],
-  generateAsync: h.threeD,
 }));
 vi.mock("@worker/providers/generate.js", () => ({
   validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],

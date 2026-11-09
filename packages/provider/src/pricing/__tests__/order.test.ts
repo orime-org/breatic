@@ -4,7 +4,9 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { createProvider } from "../../provider.js";
+import type { MediaBinding } from "../../config/schema.js";
 import { estimateCost, orderByPrice, parsePricingRules, type EstimateInput } from "../estimate.js";
+import { clipArb, overVendorLimit, vendorAudioLimit, vendorMaxArb } from "./vendor-limit.js";
 
 const input: EstimateInput = { params: {}, prompt: "a fox", durations: {}, placeholders: [], durationsMissing: [] };
 const NAMES = ["up_a", "up_b", "up_c"] as const;
@@ -13,15 +15,17 @@ const NAMES = ["up_a", "up_b", "up_c"] as const;
  * A provider whose one model is bound to three upstreams at flat prices.
  * @param prices - Each upstream's price, in millionths of a dollar.
  * @param configured - Which upstreams have a key.
+ * @param vendorMax - The longest audio clip the model's vendor takes, as the model's own reject; null for none.
  * @returns The provider.
  */
-function priced(prices: readonly number[], configured: readonly boolean[] = [true, true, true]): ReturnType<typeof createProvider> {
+function priced(prices: readonly number[], configured: readonly boolean[] = [true, true, true], vendorMax: number | null = null): ReturnType<typeof createProvider> {
   return createProvider({
     config: {
       upstreams: Object.fromEntries(NAMES.map((n) => [n, { kind: "wavespeed", base_url: "https://x.example", key_env: `${n.toUpperCase()}_KEY` }])),
       media: {
         models: {
           m: {
+            ...vendorAudioLimit(vendorMax),
             upstreams: NAMES.map((upstream, i) => ({
               upstream,
               weight: i + 1,
@@ -71,12 +75,15 @@ describe("orderByPrice and estimateCost", () => {
     }));
   });
 
-  it("property: the browser's estimate equals the server's for every route", async () => {
-    await fc.assert(fc.asyncProperty(pricesArb, configuredArb, fc.constantFrom(...NAMES), async (prices, configured, named) => {
-      const p = priced(prices, configured);
+  it("property: the browser's estimate equals the server's for every route, the model vendor's limits included", async () => {
+    await fc.assert(fc.asyncProperty(pricesArb, configuredArb, fc.constantFrom(...NAMES), vendorMaxArb, clipArb, async (prices, configured, named, vendorMax, clip) => {
+      const p = priced(prices, configured, vendorMax);
+      const run: EstimateInput = clip === null ? input : { ...input, params: { audio: "https://a/a.mp3" }, durations: { audio: [clip] } };
       for (const route of [{ mode: "default" as const }, { mode: "cheapest" as const }, { mode: "upstream" as const, upstream: named }]) {
         const rules = parsePricingRules(JSON.parse(JSON.stringify(p.pricingRules("m"))) as unknown);
-        expect(await estimateCost(rules, p.availability("m"), input, route)).toEqual(await p.estimate("m", input, route));
+        const server = await p.estimate("m", run, route);
+        expect(await estimateCost(rules, p.availability("m"), run, route)).toEqual(server);
+        if (overVendorLimit(vendorMax, clip)) expect(server).toBeNull();
       }
     }));
   });
@@ -90,16 +97,88 @@ describe("orderByPrice and estimateCost", () => {
   it("accepts rules that came over the wire and refuses anything else", () => {
     const wire = JSON.parse(JSON.stringify(priced([1, 2, 3]).pricingRules("m"))) as unknown;
     expect(parsePricingRules(wire).model).toBe("m");
-    expect(() => parsePricingRules({ nope: true })).toThrow();
+    expect(() => parsePricingRules({ nope: true })).toThrow("Not a model's pricing rules");
   });
 
   it.each([
     ["for_param", { for_param: 7 }],
     ["per_item", { per_item: "yes" }],
-    ["reused", { reused: "true" }],
+    ["kind", { kind: 7 }],
   ])("refuses a step whose %s is of the wrong type, which estimateCost would misread", (_field, step) => {
     const wire = JSON.parse(JSON.stringify(priced([1, 2, 3]).pricingRules("m"))) as { upstreams: { steps: unknown[] }[] };
     wire.upstreams[0]!.steps = [{ ...step }];
     expect(() => parsePricingRules(wire)).toThrow();
+  });
+});
+
+/**
+ * A provider whose one model is bound as given, every upstream configured.
+ * @param upstreams - The bindings.
+ * @returns The provider.
+ */
+function bound(upstreams: MediaBinding[]): ReturnType<typeof createProvider> {
+  return createProvider({
+    config: {
+      upstreams: Object.fromEntries(upstreams.map((b) => [b.upstream, { kind: "wavespeed", base_url: "https://x.example", key_env: "K" }])),
+      media: { models: { m: { upstreams } } },
+    },
+    keyOf: () => "k",
+    llmMaxRetries: 0,
+    cleanText: (t) => t,
+  });
+}
+
+const formula = (base: number, text = ""): MediaBinding["pricing"] => ({ kind: "formula", base_price: base, formula: text, discount_rate: 100 });
+
+describe("the order of estimates at its edges", () => {
+  it("keeps equal prices in weight order, whatever order the availability lists them in", async () => {
+    const p = priced([5, 5, 5]);
+    const reversed = { ...p.availability("m"), upstreams: [...p.availability("m").upstreams].reverse() };
+    for (const availability of [p.availability("m"), reversed]) {
+      expect((await orderByPrice(p.pricingRules("m"), availability, input)).map((e) => e.upstream)).toEqual(["up_a", "up_b", "up_c"]);
+    }
+  });
+
+  it("estimates the configured upstream of smallest weight by default, whatever order the availability lists them in", async () => {
+    const p = priced([300_000, 100_000, 200_000]);
+    const availability = { ...p.availability("m"), upstreams: [...p.availability("m").upstreams].reverse() };
+    expect(await estimateCost(p.pricingRules("m"), availability, input, { mode: "default" })).toMatchObject({ upstream: "up_a" });
+  });
+
+  it("is exact for a run of a model that clones nothing, though the caller does not know its clones", async () => {
+    const p = priced([300_000, 100_000, 200_000]);
+    expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "default" })).toMatchObject({ bound: "exact" });
+  });
+
+  it("puts a price that is only a lower bound after every known price", async () => {
+    const p = bound([
+      { upstream: "up_a", weight: 1, model_id: "m", params: { video: { field: "video" } }, pricing: formula(1, '{"total_price": get_duration(video) * base_price}') },
+      { upstream: "up_b", weight: 2, model_id: "m", params: { video: { field: "video" } }, pricing: formula(300_000) },
+    ]);
+    const run = { ...input, params: { video: "https://a/v.mp4" }, durationsMissing: ["video"] };
+    expect((await orderByPrice(p.pricingRules("m"), p.availability("m"), run)).map((e) => [e.upstream, e.bound])).toEqual([["up_b", "exact"], ["up_a", "at_least"]]);
+  });
+
+  it("is a lower bound when only an extra step's price reads a param still to be filled in", async () => {
+    const p = bound([{
+      upstream: "up_a",
+      weight: 1,
+      model_id: "m",
+      params: { song: { field: "song" } },
+      extra_steps: [{ kind: "upload_reference", endpoint: "u", at: "before", for_param: "song", pricing: formula(1, '{"total_price": $length(song) * base_price}') }],
+      pricing: formula(100_000),
+    }]);
+    const run = { ...input, params: { song: "https://a/s.mp3" }, placeholders: ["song"] };
+    expect(await estimateCost(p.pricingRules("m"), p.availability("m"), run, { mode: "default" })).toMatchObject({ bound: "at_least" });
+  });
+
+  it("are empty for a model the configuration does not bind", () => {
+    expect(priced([1, 2, 3]).pricingRules("unbound")).toEqual({ model: "unbound", upstreams: [] });
+  });
+
+  it("carries the values an upstream limits a param to over the wire", () => {
+    const p = bound([{ upstream: "up_a", weight: 1, model_id: "m", params: { size: { field: "size", supported: ["1k", 2, true] } }, pricing: formula(1) }]);
+    const wire = JSON.parse(JSON.stringify(p.pricingRules("m"))) as unknown;
+    expect((parsePricingRules(wire).upstreams[0] as { limits?: unknown } | undefined)?.limits).toEqual({ size: ["1k", 2, true] });
   });
 });

@@ -8,7 +8,7 @@
  */
 
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, openRouterLevels, ProviderConfigError, type LlmPrice, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
@@ -61,8 +61,40 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
     void pending.then(resolve, reject).finally(() => {
       signal.removeEventListener("abort", stop);
     });
-    if (signal.aborted) stop();
   });
+}
+
+/**
+ * The direct price entry in effect at a moment: the last that took effect at or before it, else the first.
+ * @param entries - A model's direct prices, their `from` ascending.
+ * @param at - The moment, in epoch ms.
+ * @returns The entry; its `from` is set when a later price is in effect.
+ */
+function entryAt(entries: ProviderConfig["llm"]["prices"][string], at: number): ProviderConfig["llm"]["prices"][string][number] & { from?: string } {
+  const [first, ...later] = entries;
+  return later.findLast((e) => Date.parse(e.from) <= at) ?? first;
+}
+
+/**
+ * The direct price in effect at a moment: the last that took effect at or before it (the first is in effect from the
+ * start), every per-million-token price times its off-peak factor when the moment is outside the price's peak hours
+ * (a UTC weekday of one window, a UTC time in `[from, to)`, a UTC date not among its holidays).
+ * @param entries - A model's direct prices, their `from` ascending, or none.
+ * @param at - The moment, in epoch ms.
+ * @returns The price, or undefined when the model has none.
+ */
+function priceAt(entries: ProviderConfig["llm"]["prices"][string] | undefined, at: number): LlmPrice | undefined {
+  if (entries === undefined) return undefined;
+  const entry = entryAt(entries, at);
+  const offPeak = entry.off_peak;
+  const moment = new Date(at);
+  const time = moment.toISOString().slice(11, 16);
+  const peak = offPeak === undefined
+    || (!offPeak.holidays.includes(moment.toISOString().slice(0, 10))
+      && offPeak.peak_utc.some((w) => w.days.includes(moment.getUTCDay()) && time >= w.from && time < w.to));
+  const factor = peak ? 1 : offPeak.factor;
+  // Every number of a price is a per-million-token price, so each is scaled, a field added later included.
+  return Object.fromEntries(Object.entries(entry).flatMap(([field, usd]) => (typeof usd === "number" ? [[field, usd * factor]] : []))) as LlmPrice;
 }
 
 /**
@@ -156,15 +188,25 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
     const candidates = candidatesOn(route);
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
-    // Cheapest by unit price: input first, then output; an upstream without a price goes last.
+    // Cheapest by unit price: input first, then output, then weight; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
+    // One moment for the whole ranking: the direct price in effect when the call is planned.
+    const at = Date.now();
+    const entries = config.llm.prices[modelId];
+    const direct = priceAt(entries, at);
+    // While a dated direct price is in effect, OpenRouter's prices read before it took effect (or read at a moment the
+    // file does not state) are another moment's prices: unknown, so OpenRouter ranks last. Under a model's first price,
+    // or with no direct price, they are ranked.
+    const changedAt = entries === undefined ? undefined : entryAt(entries, at).from;
+    const readAt = config.llm.openrouter_prices_at === undefined ? -Infinity : Date.parse(config.llm.openrouter_prices_at);
+    const stale = changedAt !== undefined && Date.parse(changedAt) > readAt;
     /**
      * An upstream's input and output unit prices.
      * @param c - The upstream.
      * @returns Both prices; infinite when unknown.
      */
     const price = (c: Candidate): [number, number] => {
-      const p = kindOf(c.upstream) === "openrouter" ? undefined : config.llm.prices[modelId];
+      const p = kindOf(c.upstream) === "openrouter" ? (stale ? undefined : config.llm.openrouter_prices[modelId]) : direct;
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
     const order = [...plan.order].sort((a, b) => {
@@ -194,18 +236,39 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
+   * The OpenRouter `provider` object of one call: in cheapest mode, its endpoints cheapest first within the
+   * model's quantizations (`openRouterLevels`; a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
+   * understand call the model's backend pin, which is understand's alone.
+   * @param upstream - The upstream the call goes to; only an OpenRouter one gets the object.
+   * @param modelId - Our model id.
+   * @param chosen - The caller's mode.
+   * @param pinned - Whether the call is held to the model's backend pin: an understand call is, a prepared call never.
+   * @returns The object, or undefined when the upstream is not OpenRouter or the object would be empty.
+   */
+  const openRouterRouting = (upstream: string, modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined => {
+    if (kindOf(upstream) !== "openrouter") return undefined;
+    const routing: VendorOptions = {
+      ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
+      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: openRouterLevels(config.llm.openrouter_quantizations, config.llm.openrouter_states_quantization.includes(modelId)) } : {}),
+    };
+    return Object.keys(routing).length === 0 ? undefined : routing;
+  };
+
+  /**
    * What a call sends each upstream of its plan, keyed by the SDK name each reads.
    * @param plan - The plan.
    * @param modelId - Our model id.
    * @param wants - What the call asks for.
+   * @param chosen - The caller's mode.
    * @returns The merged provider options.
    */
-  const providerOptionsFor = (plan: RoutePlan, modelId: string, wants: CallWants): Record<string, VendorOptions> => {
+  const providerOptionsFor = (plan: RoutePlan, modelId: string, wants: CallWants, chosen: Route): Record<string, VendorOptions> => {
     const merged: Record<string, VendorOptions> = {};
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
-      // The OpenRouter backend pin is understand's alone, never a prepared call's.
-      merged[vendor.sdkName] = optionsFor(vendor, modelId, wants);
+      // A prepared call is never pinned to a backend: the pin is understand's alone.
+      const provider = openRouterRouting(upstream, modelId, chosen, false);
+      merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...(provider === undefined ? {} : { provider }) };
     }
     return merged;
   };
@@ -216,7 +279,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns Known, pending or missing.
    */
   const costOf = (finished: FinishedCall): Cost => {
-    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown } | undefined;
+    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
     // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
     const tokens: TokenBuckets = {
@@ -235,7 +298,12 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         ? { state: "pending", lookup: { upstream: String(ref.upstream ?? upstream), generationId: ref.generationId } }
         : { state: "missing", reason: `${upstream} reported no cost and no generation id`, tokens };
     }
-    const price = config.llm.prices[finished.model];
+    // Priced when the request that served the call was sent, which provider stamped on its finish.
+    if (typeof breatic?.sentAt !== "number") return { state: "missing", reason: `the call of ${finished.model} on ${upstream} names no send time`, tokens };
+    // A finish with no token counts at all (a stream closed before its usage chunk) is unknown, never free; one count
+    // alone is priced, as Gemini answers a blocked prompt with its input tokens only.
+    if (usage.inputTokens === undefined && usage.outputTokens === undefined) return { state: "missing", reason: `${upstream} reported no token usage for ${finished.model}`, tokens };
+    const price = priceAt(config.llm.prices[finished.model], breatic.sentAt);
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
     const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
@@ -371,7 +439,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       return {
         model,
         // provider retries and switches itself; an AI SDK retry around it would resend what it gave up on.
-        options: { providerOptions: providerOptionsFor(plan, modelId, wants), maxRetries: 0, ...temperature },
+        options: { providerOptions: providerOptionsFor(plan, modelId, wants, chosen), maxRetries: 0, ...temperature },
         system(parts: SystemParts): SystemModelMessage[] {
           const marks: Record<string, VendorOptions> = {};
           for (const { upstream } of plan.order) {
@@ -414,7 +482,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             answering = c.upstream;
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
-            const pin = config.llm.openrouter_backends[request.model];
+            // Held to the model's backend pin, which is understand's alone, and in cheapest mode sorted by price as a prepared call is.
+            const provider = openRouterRouting(c.upstream, request.model, chosen, true);
             let answered;
             try {
               answered = await adapter.ask({
@@ -424,7 +493,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
                 question,
                 media: request.media,
                 maxOutputTokens: request.maxOutputTokens,
-                ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
+                ...(provider === undefined ? {} : { provider }),
                 deadlineAt: request.deadlineAt,
                 signal,
                 inlineMaxBytes: config.llm.gemini_inline_max_bytes,
@@ -460,7 +529,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
             billed.push(missing !== undefined
               ? { state: "missing", reason: missing }
-              : costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } }));
+              : costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, sentAt: answered.sentAt, ...(costRef ? { costRef } : {}) } } }));
             if ("error" in reading) throw new InBandError(reading.error, answered.status);
             return reading;
           },
@@ -525,8 +594,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         refreshing ??= refreshCatalog(policy).finally(() => {
           refreshing = undefined;
         });
-        await waitForCatalog(refreshing, signal);
-      } else if (refreshing !== undefined) {
         await waitForCatalog(refreshing, signal);
       }
       signal?.throwIfAborted();

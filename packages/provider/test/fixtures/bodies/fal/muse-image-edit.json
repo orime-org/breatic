@@ -1,0 +1,221 @@
+{
+  "model": "muse-image-edit",
+  "upstream": "fal",
+  "model_id": "meta/muse-image/edit",
+  "runs": [
+    {
+      "params": {
+        "aspect_ratio": "auto",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "21:9",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "21:9",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "16:9",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "16:9",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "4:3",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "4:3",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "3:2",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "3:2",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "1:1",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "2:3",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "2:3",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "3:4",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "3:4",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "9:16",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "9:16",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "9:21",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "aspect_ratio": "9:21",
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "png",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "auto",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "webp"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "webp",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "auto",
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "jpeg"
+      },
+      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "body": {
+        "image_urls": [
+          "https://example.com/images.png"
+        ],
+        "output_format": "jpeg",
+        "prompt": "a red fox running through fresh snow at dawn image 1"
+      }
+    }
+  ],
+  "steps": []
+}

@@ -1,0 +1,445 @@
+{
+  "model": "tripo-h3.1-i23d",
+  "upstream": "fal",
+  "model_id": "tripo3d/h3.1/image-to-3d",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": false,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": false,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "detailed",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "detailed",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "detailed",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "detailed",
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 1500000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "face_limit": 1500000,
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 20000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "face_limit": 20000,
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "detailed",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 2000000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "detailed",
+        "face_limit": 2000000,
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": true,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": true,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "model_seed": 0,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "model_seed": 0,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "model_seed": 2147483647,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "model_seed": 2147483647,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_seed": 0,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_seed": 0,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_seed": 2147483647,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_seed": 2147483647,
+        "texture_alignment": "original_image",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "geometry",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_alignment": "geometry",
+        "orientation": "default"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "align_image",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "auto_size": false,
+        "texture_alignment": "original_image",
+        "orientation": "align_image"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "texture": false,
+        "pbr": false,
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "texture": false,
+        "pbr": false,
+        "geometry_quality": "standard",
+        "texture_alignment": "original_image"
+      }
+    }
+  ],
+  "untaken": [
+    {
+      "param": "face_limit",
+      "value": 1
+    },
+    {
+      "param": "face_limit",
+      "value": 500
+    }
+  ],
+  "steps": []
+}

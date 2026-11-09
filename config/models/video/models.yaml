@@ -297,8 +297,8 @@ models:
       - name: "Static shot"
         sample_key: "camera-previews/minimax-h3/static-shot-640.mp4"
     tier: "optional"
-    description: "Silent 2K, 21:9 through 9:16"
-    guide: "A silent 2K clip in the widest range of framings, for a creator who will cut and score it themselves rather than accept generated audio."
+    description: "2K with sound, 21:9 through 9:16"
+    guide: "A 2K clip with generated sound, in the widest range of framings, from 21:9 through 9:16."
     generation_time: 600
     icon: "minimax"
     params:

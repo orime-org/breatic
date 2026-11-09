@@ -1,0 +1,65 @@
+{
+  "model": "kling-v3-pro-motion",
+  "upstream": "sandbase",
+  "model_id": "kwaivgi/kling-video/v3/pro/motion-control",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "negative_prompt": ""
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "video",
+        "keep_original_sound": true,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "image",
+        "keep_original_sound": true,
+        "negative_prompt": ""
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "image",
+        "keep_original_sound": true,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "video",
+        "keep_original_sound": false,
+        "negative_prompt": ""
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image": "https://example.com/image.png",
+        "video": "https://example.com/video.mp4",
+        "character_orientation": "video",
+        "keep_original_sound": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/v3/pro/motion-control"
+      }
+    }
+  ],
+  "steps": []
+}

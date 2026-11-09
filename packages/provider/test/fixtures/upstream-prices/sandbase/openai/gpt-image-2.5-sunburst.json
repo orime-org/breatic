@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/openai/gpt-image-2.5-sunburst",
+  "price_formula": "((params.quality ?? \"high\") == \"low\" ? ((params.resolution ?? \"1k\") == \"4k\" ? 0.03 : (params.resolution ?? \"1k\") == \"2k\" ? 0.02 : 0.01) : ((params.quality ?? \"high\") == \"medium\" ? ((params.resolution ?? \"1k\") == \"4k\" ? 0.07 : (params.resolution ?? \"1k\") == \"2k\" ? 0.04 : 0.024) : ((params.quality ?? \"high\") == \"xhigh\" ? ((params.resolution ?? \"1k\") == \"4k\" ? 0.48 : (params.resolution ?? \"1k\") == \"2k\" ? 0.27 : 0.16) : ((params.quality ?? \"high\") == \"max\" ? ((params.resolution ?? \"1k\") == \"4k\" ? 1.0 : (params.resolution ?? \"1k\") == \"2k\" ? 0.6 : 0.36) : ((params.resolution ?? \"1k\") == \"4k\" ? 0.27 : (params.resolution ?? \"1k\") == \"2k\" ? 0.15 : 0.09)))))"
+}

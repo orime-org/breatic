@@ -73,6 +73,13 @@ export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
 
 /**
+ * Proposes a 3D generation the user opens in a 3D Space (inner#1691). Named
+ * here because the turn's tool context hands this tool the project under its
+ * name.
+ */
+export const PROPOSE_SCENE_GENERATION = "propose_scene_generation";
+
+/**
  * Saves a found picture into our storage (inner#1315).
  *
  * Named here because the proposal check points the model at it when an

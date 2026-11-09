@@ -13,6 +13,9 @@ import type { CollaboratorNames } from '@web/features/collab-editor/use-collabor
 import type { SceneUploadEntry, SceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { toast } from '@web/lib/toast';
+import { t } from '@breatic/shared';
+import { ApiException } from '@web/data/api/types';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 
 const api = vi.hoisted(() => ({ listSpaceTasks: vi.fn(), removeSpaceTask: vi.fn() }));
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
@@ -22,8 +25,13 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/lib/toast')>();
-  return { ...actual, toast: { ...actual.toast, error: vi.fn() } };
+  return { ...actual, toast: { ...actual.toast, error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() } };
 });
+const request = vi.hoisted(() => ({ post: vi.fn() }));
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiPost: request.post,
+}));
 
 const P = 'project-1';
 const S = 'space-1';
@@ -77,18 +85,22 @@ const names: CollaboratorNames = { resolve: (id: string) => ({ [ME]: 'Me', 'user
  * @param props - Store, edit right, remote progress and place handler.
  * @param props.uploads - The page store.
  * @param props.canEdit - Whether the user may edit.
+ * @param props.canGenerate - Whether the user may generate in the project.
  * @param props.remoteUploads - Peers' progress.
  * @param props.onPlace - Place handler.
  * @param props.focusTaskId - The row handed over by a started upload.
  * @param props.onFocused - Told once the handed row has focus.
+ * @param props.onRetryGeneration - Opens the generation dialog filled from a generation row.
  * @returns The query client.
  */
-function renderList({ uploads = store(), canEdit = true, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null, onFocused }: {
-  uploads?: SceneUploads; canEdit?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
+function renderList({ uploads = store(), canEdit = true, canGenerate = canEdit, remoteUploads = {}, onPlace = vi.fn(async () => undefined), focusTaskId = null, onFocused, onRetryGeneration }: {
+  uploads?: SceneUploads; canEdit?: boolean; canGenerate?: boolean; remoteUploads?: Record<string, number>; onPlace?: (task: SpaceTask) => Promise<void>; focusTaskId?: string | null; onFocused?: () => void;
+  onRetryGeneration?: (task: SpaceTask) => void;
 } = {}): QueryClient {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><TooltipProvider><CollaboratorNamesProvider value={names}>
-    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused} />
+    <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit={canEdit} canGenerate={canGenerate} uploads={uploads} remoteUploads={remoteUploads} onPlace={onPlace} focusTaskId={focusTaskId} onFocused={onFocused}
+      {...(onRetryGeneration === undefined ? {} : { onRetryGeneration })} />
   </CollaboratorNamesProvider></TooltipProvider></QueryClientProvider>);
   return client;
 }
@@ -107,6 +119,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   api.listSpaceTasks.mockReset();
   api.removeSpaceTask.mockReset();
+  request.post.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -128,7 +141,7 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(await rowOf('zhang')).toHaveTextContent('Zhang · Uploading 78%');
     expect(await rowOf('li')).toHaveTextContent('Li · Uploading · 3 min');
     expect(await rowOf('done')).toHaveTextContent('You · Done');
-    expect(screen.getAllByTestId(/^scene-task-/).map((element) => element.dataset.testid)).toEqual(['scene-task-zhang', 'scene-task-li', 'scene-task-done']);
+    expect(screen.getAllByTestId(/^scene-task-(?!filter)/).map((element) => element.dataset.testid)).toEqual(['scene-task-zhang', 'scene-task-li', 'scene-task-done']);
   });
 
   it('names a starter it cannot resolve as a member, so every row says who and what', async () => {
@@ -179,13 +192,13 @@ describe('the 3D Space task list (inner#1690)', () => {
     api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'done', status: 'done', assetId: 'a' }), row({ id: 'failed', status: 'failed', errorMessage: 'aborted' })));
     renderList({ canEdit: false, uploads: store([{ taskId: 'failed', phase: 'retained' }]) });
     await rowOf('done');
-    expect(screen.queryAllByRole('button')).toEqual([]);
+    expect(within(screen.getByTestId('scene-tasks-panel')).queryAllByRole('button')).toEqual([]);
   });
 
   it('says so when the Space has no tasks', async () => {
     api.listSpaceTasks.mockResolvedValue(listed());
     renderList();
-    expect(await screen.findByText('Models you import appear here.')).toBeInTheDocument();
+    expect(await screen.findByText('Models you import or generate appear here.')).toBeInTheDocument();
   });
 
   it('reads the list again for a row this page just opened, then gives that row focus and says so once', async () => {
@@ -267,5 +280,239 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * A generation row as the server answers it (inner#1691 design 4.3).
+ * @param over - What differs from a running text-to-3D row started a minute ago in this Space.
+ * @returns The row.
+ */
+function generation(over: Record<string, unknown>): SpaceTask {
+  const { errorMessage: _unused, ...shared } = row({});
+  return {
+    ...shared, kind: 'generation', origin: 'space', model: { name: 'tripo-h3.1-t23d', displayName: 'Tripo H3.1' }, mode: 't23d',
+    prompt: 'A brass desk lamp', params: {}, inputs: [], errorMessage: null, label: 'A brass desk lamp', ...over,
+  } as unknown as SpaceTask;
+}
+
+/**
+ * Every toast message shown, whatever its type.
+ * @returns The messages, in no particular order across types.
+ */
+function toasts(): unknown[] {
+  return [toast.error, toast.warning, toast.info, toast.success].flatMap((fn) => (fn as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]));
+}
+
+/**
+ * The rows the list shows, by id, in order.
+ * @returns The ids.
+ */
+function shownIds(): string[] {
+  return screen.queryAllByTestId(/^scene-task-(?!filter)/).map((element) => element.dataset.testid!.replace('scene-task-', ''));
+}
+
+/**
+ * Pick one filter from the title bar's filter menu.
+ * @param user - The user driving the page.
+ * @param item - The filter item's test id suffix.
+ */
+async function filterBy(user: ReturnType<typeof userEvent.setup>, item: string): Promise<void> {
+  await user.click(screen.getByTestId('scene-task-filter'));
+  await user.click(await screen.findByTestId(`scene-task-filter-${item}`));
+}
+
+describe('the 3D Space task list with generation rows (inner#1691)', () => {
+  it('shows a generation row\'s input, model, starter, origin, state and elapsed time', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'text', startedByUserId: 'user-zhang', origin: 'agent', startedAt: new Date(NOW - 180_000).toISOString() }),
+      generation({ id: 'image', mode: 'i23d', model: { name: 'tripo-h3.1-multiview', displayName: 'Tripo H3.1' }, prompt: '', label: 'front.png', status: 'done', assetId: 'model-1',
+        inputs: [{ assetId: 'a1', url: 'https://cdn.test/a1.png' }, { assetId: 'a2', url: 'https://cdn.test/a2.png' }] }),
+      generation({ id: 'broken', status: 'failed', errorMessage: 'internal' }),
+      row({ id: 'import', status: 'done', assetId: 'x' }),
+    ));
+    renderList();
+
+    const text = await rowOf('text');
+    expect(text).toHaveTextContent('A brass desk lamp');
+    expect(text).toHaveTextContent(t('spaces.threeD.taskList.kindGeneration'));
+    expect(text).toHaveTextContent('Tripo H3.1 · Zhang · Agent');
+    expect(text).toHaveTextContent(t('spaces.threeD.taskList.generatingFor', { minutes: 3 }));
+
+    const image = await rowOf('image');
+    expect([...image.querySelectorAll('img')].map((element) => element.getAttribute('src'))).toEqual(['https://cdn.test/a1.png', 'https://cdn.test/a2.png']);
+    expect(image).toHaveTextContent(`Tripo H3.1 · You · ${t('spaces.threeD.taskList.originSpace')}`);
+    expect(image).toHaveTextContent('Done');
+
+    expect(await rowOf('broken')).toHaveTextContent(failureSentence('internal', t));
+    expect(await rowOf('import')).toHaveTextContent('Import');
+    expect(await rowOf('import')).not.toHaveTextContent(t('spaces.threeD.taskList.kindGeneration'));
+  });
+
+  it('filters by running only, kind, starter and origin, counting the filters set', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      row({ id: 'import', status: 'done', assetId: 'x', startedByUserId: 'user-zhang' }),
+      generation({ id: 'mine-running' }),
+      generation({ id: 'their-failed', status: 'failed', errorMessage: 'internal', startedByUserId: 'user-zhang', origin: 'agent' }),
+      generation({ id: 'mine-done', status: 'done', assetId: 'm', origin: 'agent' }),
+    ));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderList();
+    await rowOf('import');
+    expect(shownIds()).toEqual(['import', 'mine-running', 'their-failed', 'mine-done']);
+
+    await filterBy(user, 'running');
+    expect(shownIds()).toEqual(['mine-running']);
+    expect(screen.getByTestId('scene-task-filter-count')).toHaveTextContent(/^1$/);
+    await filterBy(user, 'running');
+    expect(shownIds()).toEqual(['import', 'mine-running', 'their-failed', 'mine-done']);
+    expect(screen.queryByTestId('scene-task-filter-count')).toBeNull();
+
+    await filterBy(user, 'kind-import');
+    expect(shownIds()).toEqual(['import']);
+    await filterBy(user, 'kind-generation');
+    expect(shownIds()).toEqual(['mine-running', 'their-failed', 'mine-done']);
+    await filterBy(user, 'starter-me');
+    expect(shownIds()).toEqual(['mine-running', 'mine-done']);
+    expect(screen.getByTestId('scene-task-filter-count')).toHaveTextContent(/^2$/);
+    await filterBy(user, 'kind-all');
+    await filterBy(user, 'starter-all');
+
+    await filterBy(user, 'origin-agent');
+    expect(shownIds()).toEqual(['their-failed', 'mine-done']);
+    await filterBy(user, 'origin-space');
+    expect(shownIds()).toEqual(['mine-running']);
+  });
+
+  it('offers Retry only to the starter with editing access, and Remove to every editor', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' }),
+      generation({ id: 'their-failed', status: 'failed', errorMessage: 'internal', startedByUserId: 'user-zhang' }),
+      generation({ id: 'mine-expired', status: 'expired' }),
+      generation({ id: 'mine-late', status: 'expired', assetId: 'm' }),
+    ));
+    renderList({ onRetryGeneration: vi.fn() });
+    const actions = async (id: string): Promise<string[]> => within(await rowOf(id)).queryAllByRole('button').map((button) => button.textContent ?? '');
+    expect(await actions('mine-failed')).toEqual(['Retry', 'Remove']);
+    expect(await actions('their-failed')).toEqual(['Remove']);
+    expect(await actions('mine-expired')).toEqual(['Retry', 'Remove']);
+    expect(await actions('mine-late')).toEqual(['Place in scene']);
+  });
+
+  it('shows the whole prompt of a text run when the pointer rests on its cut label', async () => {
+    const prompt = `A brass desk lamp ${'with a long description '.repeat(15)}`.trim();
+    const label = prompt.slice(0, 256);
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'long-text', prompt, label })));
+    renderList();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.hover(within(await rowOf('long-text')).getByText(label));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(prompt);
+  });
+
+  it('shows the prompt of a text run once, as its label', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'text', prompt: 'A brass desk lamp', label: 'A brass desk lamp' })));
+    renderList();
+    expect(within(await rowOf('text')).getAllByText('A brass desk lamp')).toHaveLength(1);
+  });
+
+  it('offers Retry and Remove on a generation row by the project role while the scene is not ready to edit', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' }),
+      generation({ id: 'mine-done', status: 'done', assetId: 'm' }),
+    ));
+    renderList({ canEdit: false, canGenerate: true, onRetryGeneration: vi.fn() });
+    const actions = async (id: string): Promise<string[]> => within(await rowOf(id)).queryAllByRole('button').map((button) => button.textContent ?? '');
+    expect(await actions('mine-failed')).toEqual(['Retry', 'Remove']);
+    // Placing writes the scene, so it waits for the scene.
+    expect(await actions('mine-done')).toEqual([]);
+  });
+
+  it('clears the filters of the page when the row a submit opened does not pass them, and focuses it', async () => {
+    const user = userEvent.setup();
+    const onFocused = vi.fn();
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'from-agent', origin: 'agent' }),
+      generation({ id: 'new-run', origin: 'space' }),
+    ));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (focusTaskId: string | null): React.JSX.Element => <QueryClientProvider client={client}><TooltipProvider><CollaboratorNamesProvider value={names}>
+      <SceneTaskList projectId={P} spaceId={S} userId={ME} canEdit canGenerate uploads={store()} remoteUploads={{}} onPlace={vi.fn(async () => undefined)}
+        focusTaskId={focusTaskId} onFocused={onFocused} />
+    </CollaboratorNamesProvider></TooltipProvider></QueryClientProvider>;
+    const { rerender } = render(tree(null));
+    await rowOf('new-run');
+    await filterBy(user, 'origin-agent');
+    expect(shownIds()).toEqual(['from-agent']);
+
+    rerender(tree('new-run'));
+    await waitFor(() => expect(shownIds()).toEqual(['from-agent', 'new-run']));
+    await waitFor(() => expect(onFocused).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).toBe(screen.getByTestId('scene-task-new-run'));
+  });
+
+  it('offers a read-only starter no Retry on their own failed generation', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal' })));
+    renderList({ canEdit: false, onRetryGeneration: vi.fn() });
+    expect(within(await rowOf('mine-failed')).queryAllByRole('button')).toEqual([]);
+  });
+
+  it('retries a failed generation by opening the dialog from the row, without a check', async () => {
+    const failed = generation({ id: 'mine-failed', status: 'failed', errorMessage: 'internal', params: { texture_quality: 'detailed', negative_prompt: 'base' } });
+    api.listSpaceTasks.mockResolvedValue(listed(failed));
+    const onRetryGeneration = vi.fn();
+    renderList({ onRetryGeneration });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('mine-failed')).getByRole('button', { name: 'Retry' }));
+    expect(onRetryGeneration).toHaveBeenCalledWith(failed);
+    expect(request.post).not.toHaveBeenCalled();
+  });
+
+  it('checks a timed-out generation before retrying: still running says so and opens nothing', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'late', status: 'expired' })));
+    request.post.mockResolvedValue({ outcome: 'running' });
+    const onRetryGeneration = vi.fn();
+    renderList({ onRetryGeneration });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('late')).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(request.post).toHaveBeenCalledWith(`/projects/${P}/three-d/${S}/tasks/late/check`, undefined, undefined));
+    await waitFor(() => expect(toasts()).toHaveLength(1));
+    expect(onRetryGeneration).not.toHaveBeenCalled();
+  });
+
+  it('checks a timed-out generation before retrying: a result found reads the list again and opens nothing', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'late', status: 'expired' })));
+    request.post.mockResolvedValue({ outcome: 'has_result' });
+    const onRetryGeneration = vi.fn();
+    renderList({ onRetryGeneration });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('late')).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(api.listSpaceTasks).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(toasts()).toHaveLength(1));
+    expect(onRetryGeneration).not.toHaveBeenCalled();
+  });
+
+  it('checks a timed-out generation before retrying: an ended run opens the dialog from the row', async () => {
+    const late = generation({ id: 'late', status: 'expired' });
+    api.listSpaceTasks.mockResolvedValue(listed(late));
+    request.post.mockResolvedValue({ outcome: 'ended' });
+    const onRetryGeneration = vi.fn();
+    renderList({ onRetryGeneration });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('late')).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(onRetryGeneration).toHaveBeenCalledWith(late));
+    expect(request.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('says what the server answers when it refuses to remove a timed-out generation, and reads the list again', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'late', status: 'expired' })));
+    const said = 'This generation is still finishing and may yet produce a result. Try again later.';
+    api.removeSpaceTask.mockRejectedValue(new ApiException({ status: 409, message: said, fromServer: true }));
+    renderList();
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(within(await rowOf('late')).getByRole('button', { name: 'Remove' }));
+    expect(api.removeSpaceTask).toHaveBeenCalledWith(P, S, 'late');
+    await waitFor(() => expect(toasts()).toEqual([said]));
+    await waitFor(() => expect(api.listSpaceTasks).toHaveBeenCalledTimes(2));
+  });
+
+  it('says imported and generated models appear here when the Space has no tasks', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed());
+    renderList();
+    expect(await screen.findByText('Models you import or generate appear here.')).toBeInTheDocument();
   });
 });

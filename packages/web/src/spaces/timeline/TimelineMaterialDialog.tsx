@@ -115,7 +115,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
             {list.hasNextPage && <Button type='button' variant='outline' onClick={moreVideos} loading={list.isFetchingNextPage}>{t('timeline.material.more')}</Button>}
           </div> : <div className='flex flex-col items-start gap-3 py-4'>
             <Input ref={fileInput} data-testid='timeline-file-input' type='file' accept='video/*' onChange={changeFile} disabled={state.busy} className='hidden' />
-            <Button type='button' variant='outline' onClick={chooseFile} disabled={state.busy} icon={<Upload className='size-4' />}>{t('timeline.material.chooseFile')}</Button>
+            <Button type='button' variant='outline' onClick={chooseFile} disabled={state.busy} icon={<Upload className='mr-2 size-4' />}>{t('timeline.material.chooseFile')}</Button>
             <p className='max-w-full break-words text-sm text-muted-foreground'>{state.file?.name ?? t('timeline.material.fileEmpty')}</p>
             {state.busy && <p className='text-sm text-muted-foreground'>{state.progress === null ? t('timeline.material.preparing') : t('timeline.material.progress', { progress: state.progress })}</p>}
           </div>}

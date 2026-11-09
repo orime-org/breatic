@@ -21,6 +21,7 @@ export { useCurrentUserStore } from '@web/stores/current-user';
 export type { CurrentUser, UserRole } from '@web/stores/current-user';
 export { useCanvasStore, isProposalIntent } from '@web/stores/canvas';
 export type { CreateIntent } from '@web/stores/canvas';
+export { useDocumentViewStore } from '@web/stores/document-view';
 export { useProjectStore } from '@web/stores/project';
 export type { ActiveProjectMeta } from '@web/stores/project';
 export { useToastStore } from '@web/stores/toast';

@@ -4,7 +4,7 @@
 /**
  * Whether the values a proposal sets on a generation are ones the panel offers.
  */
-import { PANEL_EDITOR_PARAM, type ControlGate, type ProposalNode } from "@breatic/shared";
+import { PANEL_EDITOR_PARAM, gateHolds, type ParamGate, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
@@ -49,10 +49,27 @@ function isDrawn(
   params: Record<string, unknown>,
   info: ParamInfo,
 ): boolean {
-  const gate = info.gate;
-  if (gate === undefined) return true;
-  const held = params[gate.param];
-  return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
+  if (info.gate === undefined) return true;
+  const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, declared]) => [name, declared.default]));
+  const given = Object.entries(params).filter(([, value]) => value !== null && value !== undefined);
+  return gateHolds(info.gate, { ...defaults, ...Object.fromEntries(given) });
+}
+
+/**
+ * The condition a gate states, in words.
+ * @param gate - The gate.
+ * @param quoted - Whether each param name is quoted.
+ * @returns The condition.
+ */
+export function gateWords(gate: ParamGate, quoted = true): string {
+  /**
+   * One param name as written.
+   * @param name - The name.
+   * @returns It, quoted when asked.
+   */
+  const named = (name: string): string => (quoted ? `"${name}"` : name);
+  const equals = Object.entries(gate.equals ?? {}).map(([name, value]) => `${named(name)} is ${JSON.stringify(value)}`);
+  return [...(gate.flag_on !== undefined ? [`${named(gate.flag_on)} is on`] : []), ...equals].join(" and ");
 }
 
 /** How many values a refusal lists before it falls back to the range and step. */
@@ -143,8 +160,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel
     const elsewhere = placedElsewhere(chosen, node, key, info, at);
     if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
-      const gate = info.gate as ControlGate;
-      return refuse("param-gated-off", `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off.`);
+      return refuse("param-gated-off", `"${key}" only counts while ${gateWords(info.gate ?? {})}, and this proposal leaves it off.`);
     }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {

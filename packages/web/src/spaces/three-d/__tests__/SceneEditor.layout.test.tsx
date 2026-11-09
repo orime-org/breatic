@@ -28,6 +28,12 @@ vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (): React.JSX.Element => <canvas tabIndex={0} data-testid='scene-native-boundary' />,
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({ readSceneView: () => null, writeSceneView: () => true }));
+// The generation dialog closes at once on a model list it cannot load, so it is served one.
+vi.mock('@web/data/api/models', async () => {
+  const { sanitizeModelCatalog } = await import('@breatic/shared');
+  const { RAW_CATALOG } = await import('@web/spaces/three-d/__tests__/scene-generate-fixtures');
+  return { modelsApi: { list: async () => sanitizeModelCatalog(RAW_CATALOG) } };
+});
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND = '22222222-2222-4222-8222-222222222222';
 const owners: Array<{ doc: Y.Doc; session: SceneSession; client: QueryClient }> = [];
@@ -143,24 +149,6 @@ describe('approved scene layout (inner#1724)', () => {
     expect(session.getSnapshot().selectedIds).toEqual([ID]);
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(session.getSnapshot().selectedIds).toEqual([]);
-  });
-  it('shows the approved generation capability state with disabled fields', async () => {
-    setup(); await screen.findByTestId('scene-native-boundary');
-    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent(t('spaces.threeD.generationDev'));
-    expect(within(dialog).getByLabelText(t('spaces.threeD.prompt'))).toBeDisabled();
-    expect(within(dialog).getByLabelText(t('spaces.threeD.reference'))).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: t('spaces.threeD.submit') })).toBeDisabled();
-  });
-  it('shows a translated reference button and hides the browser file control', async () => {
-    setup(); await screen.findByTestId('scene-native-boundary');
-    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    const dialog = await screen.findByRole('dialog');
-    const file = within(dialog).getByLabelText(t('spaces.threeD.reference'));
-    expect(file).not.toBeVisible();
-    expect(file).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: t('spaces.threeD.chooseReference') })).toBeDisabled();
   });
   it('keeps focus in the shared panel when an object row opens its properties', async () => {
     setup(); await screen.findByTestId('scene-native-boundary');
@@ -293,7 +281,7 @@ describe('approved scene layout (inner#1724)', () => {
     const input = within(group).getByLabelText('X', { exact: true });
     act(() => input.focus()); fireEvent.change(input, { target: { value: '-2' } }); fireEvent.keyDown(input, { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('common.cancel') }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByTestId('scene-properties-trigger'));
     const restored = within(within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') })).getByLabelText('X', { exact: true });
     expect(restored).toHaveValue('1'); expect(restored).toHaveAttribute('aria-invalid', 'false');

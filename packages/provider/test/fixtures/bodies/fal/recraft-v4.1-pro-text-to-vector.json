@@ -1,0 +1,58 @@
+{
+  "model": "recraft-v4.1-pro-text-to-vector",
+  "upstream": "fal",
+  "model_id": "fal-ai/recraft/v4.1/pro/text-to-vector",
+  "runs": [
+    {
+      "params": {
+        "aspect_ratio": "1:1"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_size": "square_hd",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "16:9"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_size": "landscape_16_9",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "9:16"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_size": "portrait_16_9",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "4:3"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_size": "landscape_4_3",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "3:4"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_size": "portrait_4_3",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": []
+}
