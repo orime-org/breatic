@@ -106,15 +106,34 @@ export function transcriptOf(scenario: Scenario, run: Run): string {
   return [[`USER: ${scenario.text}`, ...attached].join('\n'), ...doc, ...lines].join('\n\n');
 }
 
+/** The tools whose answer says whether the user sees a card. */
+const PROPOSAL_TOOLS = new Set(['propose_canvas_action', 'propose_document_edit']);
+
 /**
- * A `list_generation_models` answer cut to what the judge decides price
- * criteria by: each model's name, what it is good at, its speed, its price,
- * its cheapest settings and the values each setting takes. Anything that is
- * not an available model list comes back as it is.
+ * What of a call's answer the judge reads: for `list_generation_models`, each
+ * model's name, what it is good at, its speed, its price, its cheapest
+ * settings and the values each setting takes; for a proposal, whether it was
+ * placed and, when refused, why.
+ * @param tool - The tool called.
  * @param output - What the tool returned.
+ * @returns The slim answer, or undefined when the judge reads none of it.
+ */
+export function forJudge(tool: string, output: unknown): unknown {
+  if (PROPOSAL_TOOLS.has(tool)) {
+    const answer = output as { placed?: unknown; reason?: unknown } | null;
+    if (typeof answer !== 'object' || answer === null || typeof answer.placed !== 'boolean') return undefined;
+    return answer.placed ? { placed: true } : { placed: false, reason: answer.reason };
+  }
+  return tool === 'list_generation_models' ? modelListForJudge(output) : undefined;
+}
+
+/**
+ * A model list cut to what the judge decides price criteria by. Anything that
+ * is not an available model list comes back as it is.
+ * @param output - What `list_generation_models` returned.
  * @returns The slim answer.
  */
-export function forJudge(output: unknown): unknown {
+function modelListForJudge(output: unknown): unknown {
   const answer = output as { available?: unknown; models?: unknown } | null;
   if (typeof answer !== 'object' || answer === null || answer.available !== true || !Array.isArray(answer.models)) return output;
   type Model = { name: unknown; what: unknown; seconds: unknown; price?: unknown; lowestAt?: unknown; params?: Record<string, { options?: unknown; min?: unknown; max?: unknown }> };
@@ -144,7 +163,7 @@ export function forJudge(output: unknown): unknown {
  */
 export function judgePrompt(scenario: Scenario, run: Run): string {
   return [
-    'You judge one run of an AI assistant inside a content-creation tool. Decide whether the run meets the criterion below. Judge only what the run shows; tool calls are listed with their inputs, and a proposal call in state output-available is a card the user sees.',
+    'You judge one run of an AI assistant inside a content-creation tool. Decide whether the run meets the criterion below. Judge only what the run shows; tool calls are listed with their inputs.',
     `CRITERION:\n${scenario.pass}`,
     'Whatever the criterion says, the run fails when the reply says a card or proposal is already on screen and no proposal call is in state output-available.',
     'The run is listed in the order it happened: each answer the user gave comes right after the question card it answers.',
@@ -152,6 +171,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     'The agent writes in the language of the user\'s latest message.',
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
     'When the user says they will send material, waiting for it before making what depends on it is right.',
+    'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,
     'Answer with one JSON object {"pass": boolean, "reason": string} and nothing else; the reason is one sentence naming what decided it.',

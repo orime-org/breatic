@@ -118,6 +118,14 @@ describe('transcriptOf', () => {
     expect(text.split('\n').filter((one) => one.startsWith('RETURNED: '))).toHaveLength(1);
   });
 
+  it('writes a refused proposal call with its placed false answer on the RETURNED line', () => {
+    const text = transcriptOf(
+      scenario,
+      runOf({ kind: 'call', tool: 'propose_canvas_action', state: 'output-available', input: { nodes: ['N-TWO'] }, output: { placed: false, reason: 'R' } }),
+    );
+    expect(lineAfter(text, 'TOOL propose_canvas_action (output-available): {"nodes":["N-TWO"]}')).toBe('RETURNED: {"placed":false,"reason":"R"}');
+  });
+
   it('keeps a RETURNED line of 6000 characters whole and cuts a longer one to 6000 followed by an ellipsis', () => {
     const returned = (output: unknown): string | undefined =>
       lineAfter(
@@ -213,7 +221,7 @@ describe('forJudge', () => {
   };
 
   it('keeps each model\'s name, what, seconds, price, lowestAt and params as options or a min-to-max range', () => {
-    expect(forJudge(full)).toEqual({
+    expect(forJudge('list_generation_models', full)).toEqual({
       available: true,
       models: [
         {
@@ -230,7 +238,7 @@ describe('forJudge', () => {
   });
 
   it('drops every other field of a model and of its params, and leaves absent keys absent', () => {
-    const slim = forJudge(full) as { models: Record<string, unknown>[] };
+    const slim = forJudge('list_generation_models', full) as { models: Record<string, unknown>[] };
     const text = JSON.stringify(slim);
     for (const dropped of ['DISPLAY-FAST', 'VENDOR-DROPPED', 'PARAM-WHAT-DROPPED', 'NEEDS-DROPPED', '"default"', 'seed', 'prompt_extend']) {
       expect(text, dropped).not.toContain(dropped);
@@ -241,9 +249,32 @@ describe('forJudge', () => {
 
   it('returns anything that is not an available model list unchanged', () => {
     const unavailable = { available: false, offered: ['MODEL-A', 'MODEL-B'] };
-    expect(forJudge(unavailable)).toEqual(unavailable);
+    expect(forJudge('list_generation_models', unavailable)).toEqual(unavailable);
     for (const other of [null, undefined, 'TEXT', 42, [1, 2], { models: 'not-a-list' }]) {
-      expect(forJudge(other)).toEqual(other);
+      expect(forJudge('list_generation_models', other)).toEqual(other);
+    }
+  });
+
+  for (const tool of ['propose_canvas_action', 'propose_document_edit']) {
+    it(`keeps only placed true from a placed ${tool} answer`, () => {
+      expect(forJudge(tool, { placed: true, proposalId: 'PROPOSAL-ID', nodes: ['NODE-DROPPED'], summary: 'SUMMARY-DROPPED' })).toEqual({ placed: true });
+    });
+
+    it(`keeps placed false and the reason of a refused ${tool} answer`, () => {
+      expect(forJudge(tool, { placed: false, reason: 'REASON-REFUSED', extra: 'EXTRA-DROPPED' })).toEqual({ placed: false, reason: 'REASON-REFUSED' });
+    });
+
+    it(`records nothing for a ${tool} answer without a boolean placed`, () => {
+      for (const other of [null, undefined, 'TEXT', { reason: 'REASON-ONLY' }, { placed: 'yes' }]) {
+        expect(forJudge(tool, other)).toBeUndefined();
+      }
+    });
+  }
+
+  it('records nothing for any other tool', () => {
+    for (const tool of ['ask_user', 'list_models', 'read_document']) {
+      expect(forJudge(tool, { placed: true })).toBeUndefined();
+      expect(forJudge(tool, full)).toBeUndefined();
     }
   });
 });
@@ -286,6 +317,14 @@ describe('judgePrompt', () => {
     );
     expect(prompt).toContain(
       'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
+    );
+  });
+
+  it('says a proposal call is a card only when its RETURNED line does not say placed false', () => {
+    const prompt = judgePrompt(scenario, run);
+    expect(prompt).not.toContain('a proposal call in state output-available is a card the user sees');
+    expect(prompt).toContain(
+      'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     );
   });
 
