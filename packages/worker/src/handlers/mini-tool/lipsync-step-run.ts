@@ -343,20 +343,21 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
 async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category }> {
   const keys: string[] = [];
   let running = false;
+  // A transparent original's chunks are VP9 WebM with alpha, as its stitch is (§7.17 lipsync_composite row, §4.3).
+  const ledger = await ledgerOf(execution, deadlineAt);
+  const target = segmentTarget(ledger, execution.container.encode);
   for (const [chunk, window] of execution.layout.composite.entries()) {
     let ended: StepEnded;
     const stepKey = sharedKeyOf(execution, `composite:${chunk}`);
     try {
-      ended = await advanceContainer(stepRun(execution), { stepKey, contentType: "video/mp4",
+      ended = await advanceContainer(stepRun(execution), { stepKey, contentType: target.format === "webm-vp9" ? "video/webm" : "video/mp4",
         failed: () => ({ failed: "failed" }), build: async () => {
-          const ledger = await ledgerOf(execution, deadlineAt);
           const persons = await Promise.all(execution.persons.map(async (person, at) => ({
             ids: { result: inputOf(RESULT, at), faces: inputOf(FACES, at), track: inputOf(TRACK, at) },
             keys: { result: await objectOf(execution, person.personId, "gen", userId, deadlineAt), faces: await objectOf(execution, person.personId, "faces", userId, deadlineAt),
               track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
-          const target = segmentTarget(ledger, execution.container.encode);
           return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
-            entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target: { ...target, format: undefined },
+            entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target,
             timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
             rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather },
           inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)

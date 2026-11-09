@@ -32,7 +32,7 @@
  * carry `audioInputId` only); the model's `async_rejection` is read from today's lip-sync configuration by
  * `generator.modelId`.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getMiniToolsConfig, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
@@ -40,7 +40,7 @@ import type * as coreModule from "@breatic/core";
 import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
 import type * as domainModule from "@breatic/domain";
-import { isUploadableMediaType, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
+import { isUploadableMediaType, miniToolPlanJobRequestSchema, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
 import { lipsyncFailureReasonSchema, plannedStageJobs, trackingClips } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -132,6 +132,8 @@ let scripted: Map<string, Record<string, unknown>>;
 let genFault: Partial<Record<Person, unknown>>;
 // Container jobs a case makes fail on every attempt.
 let failJob: (request: Job) => boolean;
+// The full ledger bytes the stored-ledger fetch serves; a case may serve a variant with a receipt measuring it.
+let ledgerBytes: Buffer;
 
 /** Inject dummy external credentials only. @throws {Error} On invalid fixture configuration. */
 function configure(): void {
@@ -169,7 +171,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   vi.clearAllMocks(); configure();
-  submitted = []; scripted = new Map(); genFault = {}; failJob = () => false;
+  submitted = []; scripted = new Map(); genFault = {}; failJob = () => false; ledgerBytes = LEDGER;
   outside.config.rejection = { path: "error.code", equals: "lipsync_input_rejected" };
   outside.rename = false;
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -183,7 +185,7 @@ beforeEach(() => {
       const request = submitted.find((candidate) => candidate.jobId === id);
       return request === undefined ? new Response("missing", { status: 404 }) : Response.json(scripted.get(id) ?? (failJob(request) ? failedReport() : done(request)));
     }
-    if (url.pathname.includes(".video-source-ledger.")) return new Response(LEDGER, { headers: { "content-type": "application/json" } });
+    if (url.pathname.includes(".video-source-ledger.")) return new Response(ledgerBytes, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
   }));
   outside.runPrediction.mockImplementation(async (_connection: unknown, model: string, body: Record<string, unknown>, resume: { storedTaskId: string | null; persistTaskId: (id: string) => Promise<void> }) => {
@@ -609,6 +611,39 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
     const f = await seed(); genFault["person-1"] = new UpstreamTaskFailed("wavespeed", "rejected", { error: { code: "something_else" } });
     const result = await drive(f) as { error: { persons: unknown[] } };
     expect(result.error.persons).toContainEqual({ personId: "person-1", detectionNumber: 1, step: "gen", category: "failed" });
+  });
+});
+
+/**
+ * Serve a variant of the fixture's full ledger and return the receipt that measures it (the reader checks the bytes'
+ * size and SHA-256 against the receipt, and the plan's identities against it, never the plan against its hash).
+ * @param change - Edits the parsed ledger in place.
+ * @returns The receipt.
+ */
+function serveLedger(change: (ledger: { plan: { policy: { emptyFill: string }; display: { width: number; height: number } } }) => void): typeof RECEIPT {
+  const ledger = JSON.parse(LEDGER.toString("utf8")) as Parameters<typeof change>[0];
+  change(ledger);
+  ledgerBytes = Buffer.from(JSON.stringify(ledger));
+  return { ...RECEIPT, size: ledgerBytes.byteLength, sha256: createHash("sha256").update(ledgerBytes).digest("hex") };
+}
+
+// Frames-split §7.17 lipsync_composite row and §4.3 odd-size row: a transparent original's composite chunks are VP9 WebM
+// with straight alpha, as its stitch is, so every chunk request the worker builds is one the job schema admits.
+describe("a transparent original's lip-sync composite (§7.17 lipsync_composite row; §4.3)", () => {
+  it("LC10 builds every composite chunk as a webm-vp9 target declared video/webm, and the run registers", async () => {
+    const receipt = serveLedger((ledger) => { ledger.plan.policy.emptyFill = "transparent"; });
+    const f = await seed({ ledgerReceipts: { source: receipt } });
+    const result = await drive(f);
+    const composites = jobsOf("lipsync_composite");
+    expect(composites).toHaveLength(LAYOUT.composite.length);
+    for (const job of composites) {
+      expect(miniToolPlanJobRequestSchema.safeParse(job).success, "the job schema admits the chunk").toBe(true);
+      const output = job.outputs[0]!;
+      expect({ format: (output.recipe.target as { format?: string }).format, alpha: (output.recipe.target as { alpha?: string }).alpha, contentType: output.contentType })
+        .toEqual({ format: "webm-vp9", alpha: "straight", contentType: "video/webm" });
+      expect(output.storageKey).toBe(`${videoPresentationWorkKeyFor(SOURCE_KEY, job.jobId)}.webm`);
+    }
+    expect(result).toMatchObject({ status: "registered", kind: "video" });
   });
 });
 
