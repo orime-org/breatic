@@ -12,7 +12,7 @@
  * about the model: the catalog entry, the family, and param validation.
  */
 
-import { checkParamCombination, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, resolveParams, type ResolvableModel, type SceneTaskNotice } from "@breatic/shared";
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
@@ -32,7 +32,7 @@ export interface GenerationResult {
   /** What WaveSpeed billed, in USD; 0 when there was no prediction to bill. */
   cost: number;
   /** Set when an optional step failed and the run delivered without it (inner#1692). */
-  notice?: "rig_failed";
+  notice?: SceneTaskNotice;
 }
 
 /** Model name -> family, for the models that have one. */

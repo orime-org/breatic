@@ -13,7 +13,7 @@
  */
 
 import type { DbTx } from "@breatic/core";
-import type { SceneGenerationOrigin, TaskEntity, TaskFailureReason } from "@breatic/shared";
+import { SCENE_TASK_NOTICES, type SceneGenerationOrigin, type SceneTaskNotice, type TaskEntity, type TaskFailureReason } from "@breatic/shared";
 import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
@@ -105,7 +105,7 @@ export async function openGeneration(opts: {
  * or failed with a `task-failure` code.
  */
 export type SceneOutcome =
-  | { outcome: "done"; assetId: string; notice: repo.SceneTaskNotice | null }
+  | { outcome: "done"; assetId: string; notice: SceneTaskNotice | null }
   | { outcome: "failed"; errorMessage: string };
 
 /**
@@ -114,19 +114,18 @@ export type SceneOutcome =
  * The notice is read from the stored result too (inner#1692), so every path
  * that settles from it (the live run, a billed redelivery, the crash net, the
  * server's check) tells the user the same thing.
- * @param outputs - The run's persisted outputs; the catalog lane writes one.
- * @param result - The run's stored result, which carries the notice.
+ * @param result - The run's stored result: its persisted outputs (the catalog lane writes one) and the notice.
  * @returns The outcome the row settles with.
  */
 export function generationOutcome(
-  outputs: readonly { asset_id?: unknown }[] | null | undefined,
-  result?: Readonly<Record<string, unknown>> | null,
+  result: { readonly outputs?: readonly { asset_id?: unknown }[]; readonly notice?: unknown } | null | undefined,
 ): SceneOutcome {
   // ponytail: the first output is the model, as the catalog lane returns it;
   // a vendor listing the GLB elsewhere needs a model-level output index (design H4).
-  const assetId = outputs?.[0]?.asset_id;
+  const assetId = result?.outputs?.[0]?.asset_id;
   if (typeof assetId !== "string") return { outcome: "failed", errorMessage: "no_result" satisfies TaskFailureReason };
-  return { outcome: "done", assetId, notice: result?.notice === "rig_failed" ? "rig_failed" : null };
+  const notice = SCENE_TASK_NOTICES.find((known) => known === result?.notice) ?? null;
+  return { outcome: "done", assetId, notice };
 }
 
 /**

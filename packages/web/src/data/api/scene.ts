@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin } from '@breatic/shared';
+import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
 /**
  * Scene controls and model import budgets from the owning Project's readable API.
@@ -44,7 +44,7 @@ export interface SpaceTask {
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage?: string | null;
   /** Said beside a done generation: `rig_failed` when the model arrived without the skeleton asked for (inner#1692). */
-  notice?: 'rig_failed' | null;
+  notice?: SceneTaskNotice | null;
   origin?: SceneGenerationOrigin | null;
   model?: { name: string; displayName: string };
   mode?: string;

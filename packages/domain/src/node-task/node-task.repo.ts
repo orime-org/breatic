@@ -14,7 +14,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
-import type { NodeTaskAction, SceneGenerationOrigin } from "@breatic/shared";
+import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -58,9 +58,6 @@ export interface SceneTaskRow extends NodeTaskRow {
   /** What the user is told beside a done generation; null when there is nothing to tell. */
   notice: SceneTaskNotice | null;
 }
-
-/** A done generation's notice: the model arrived without the skeleton it was asked for (inner#1692). */
-export type SceneTaskNotice = "rig_failed";
 
 /**
  * A row as the list a user opens hands it out: the row plus what that task

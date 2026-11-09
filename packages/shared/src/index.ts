@@ -221,6 +221,7 @@ export type {
   CanvasProposal,
   DocumentProposal,
   SceneGenerationOrigin,
+  SceneTaskNotice,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -256,6 +257,7 @@ export {
   canvasProposalSchema,
   documentProposalSchema,
   SCENE_GENERATION_ORIGINS,
+  SCENE_TASK_NOTICES,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -1087,7 +1089,7 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_MAX_KEYS, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 

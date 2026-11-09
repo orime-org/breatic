@@ -32,7 +32,7 @@ export const SCENE_OBJECT_NAME_MAX = 256;
 export const SCENE_POSE_KEY_PREFIX = 'pose.';
 
 /** The most bones one object's pose may hold. */
-export const SCENE_POSE_MAX_KEYS = 256;
+const SCENE_POSE_MAX_KEYS = 256;
 
 /** The longest pose key, counted without {@link SCENE_POSE_KEY_PREFIX}. */
 export const SCENE_POSE_KEY_MAX_LENGTH = 128;

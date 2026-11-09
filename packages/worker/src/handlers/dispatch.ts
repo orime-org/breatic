@@ -462,7 +462,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs, storedResult), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedResult), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -830,7 +830,7 @@ async function runTaskBody(
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs, result), { rethrow: true });
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(result), { rethrow: true });
   }
 
   if (projectId) {

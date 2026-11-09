@@ -64,9 +64,8 @@ function poseOf(count: number): Record<string, unknown> {
 }
 
 describe("scene pose constants", () => {
-  it("names the prefix, the key cap and the key length cap", () => {
+  it("names the prefix and the key length cap", () => {
     expect(exported<string>("SCENE_POSE_KEY_PREFIX")).toBe("pose.");
-    expect(exported<number>("SCENE_POSE_MAX_KEYS")).toBe(256);
     expect(exported<number>("SCENE_POSE_KEY_MAX_LENGTH")).toBe(128);
   });
 });

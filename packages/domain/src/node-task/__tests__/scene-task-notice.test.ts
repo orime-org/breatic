@@ -52,27 +52,29 @@ describe("generationOutcome with a stored notice (inner#1692)", () => {
   const outputs = [{ url: "https://cdn/model.glb", asset_id: "asset-1" }];
 
   it("ends done with the model and the notice when the stored result says the rig failed", () => {
-    expect(generationOutcome(outputs, { outputs, notice: "rig_failed" })).toEqual({ outcome: "done", assetId: "asset-1", notice: "rig_failed" });
+    expect(generationOutcome({ outputs, notice: "rig_failed" })).toEqual({ outcome: "done", assetId: "asset-1", notice: "rig_failed" });
   });
 
-  it("ends done with no notice when the result carries none, or when no result is given", () => {
-    expect(generationOutcome(outputs, { outputs })).toEqual({ outcome: "done", assetId: "asset-1", notice: null });
-    expect(generationOutcome(outputs, null)).toEqual({ outcome: "done", assetId: "asset-1", notice: null });
-    expect(generationOutcome(outputs)).toEqual({ outcome: "done", assetId: "asset-1", notice: null });
+  it("ends done with no notice when the result carries none", () => {
+    expect(generationOutcome({ outputs })).toEqual({ outcome: "done", assetId: "asset-1", notice: null });
+  });
+
+  it("fails a run with no stored result", () => {
+    expect(generationOutcome(null)).toEqual({ outcome: "failed", errorMessage: "no_result" });
+    expect(generationOutcome(undefined)).toEqual({ outcome: "failed", errorMessage: "no_result" });
   });
 
   it("fails a run that produced no model, whatever notice it stored", () => {
-    expect(generationOutcome([], { outputs: [], notice: "rig_failed" })).toEqual({ outcome: "failed", errorMessage: "no_result" });
+    expect(generationOutcome({ outputs: [], notice: "rig_failed" })).toEqual({ outcome: "failed", errorMessage: "no_result" });
   });
 
   it("carries rig_failed exactly when the stored result says so (property)", () => {
     const notice = fc.oneof(fc.constant("rig_failed"), fc.string(), fc.integer(), fc.constant(null), fc.constant(undefined), fc.boolean());
     const assetId = fc.oneof(fc.uuid(), fc.constant(undefined), fc.constant(null), fc.integer());
     fc.assert(
-      fc.property(assetId, notice, fc.boolean(), (asset, given, withResult) => {
+      fc.property(assetId, notice, fc.boolean(), (asset, given, withNotice) => {
         const stored = [{ url: "https://cdn/model.glb", asset_id: asset }];
-        const result = withResult ? { outputs: stored, notice: given } : undefined;
-        const outcome = generationOutcome(stored, result);
+        const outcome = generationOutcome(withNotice ? { outputs: stored, notice: given } : { outputs: stored });
         if (typeof asset !== "string") {
           expect(outcome).toEqual({ outcome: "failed", errorMessage: "no_result" });
           return;
@@ -80,7 +82,7 @@ describe("generationOutcome with a stored notice (inner#1692)", () => {
         expect(outcome).toEqual({
           outcome: "done",
           assetId: asset,
-          notice: withResult && given === "rig_failed" ? "rig_failed" : null,
+          notice: withNotice && given === "rig_failed" ? "rig_failed" : null,
         });
       }),
     );
