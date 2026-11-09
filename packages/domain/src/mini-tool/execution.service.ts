@@ -77,7 +77,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
         if (canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
         outputs.push(held);
       } else if (output.result?.status === "registered") {
-        await requireRegistered(output);
+        await requireRegistered(output, tx);
         if (plan.task.status === "failed") await requireLateReceipt(id, output, tx);
         outputs.push({ ...output, late: plan.task.status === "failed" });
       } else {
@@ -142,7 +142,7 @@ export async function commitMiniToolExecutionProgress(taskId: string, progress: 
         if (output.result !== null && canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
         outputs.push(held);
       } else if (output.result?.status === "registered") {
-        await requireRegistered(output);
+        await requireRegistered(output, tx);
         outputs.push({ ...output, late: false });
       } else {
         outputs.push(held);
@@ -279,14 +279,15 @@ async function requireLateReceipt(taskId: string, output: MiniToolExecutionOutpu
 /**
  * Compare public output metadata with its live canonical registration and cover.
  * @param output - The worker's complete registered slot observation.
+ * @param tx - The commit's transaction, so the read uses its connection.
  * @throws {Error} When the original canonical row is missing or differs from the observation.
  */
-async function requireRegistered(output: MiniToolExecutionOutput): Promise<void> {
+async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Promise<void> {
   const media = output.result;
   if (media?.status !== "registered") throw new Error("Output has no canonical registration");
-  const asset = await assetRepo.findById(media.assetId);
+  const asset = await assetRepo.findById(media.assetId, tx);
   if (asset === null || asset.deletedAt !== null) throw new Error("Canonical output is unavailable");
-  const cover = await assetRepo.findCoverOf(asset.id);
+  const cover = await assetRepo.findCoverOf(asset.id, tx);
   const actual = {
     status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, mimeType: asset.mimeType,
     size: asset.sizeBytes, contentHash: asset.contentHash, width: asset.width, height: asset.height, duration: asset.durationSeconds,

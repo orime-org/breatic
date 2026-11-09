@@ -3,59 +3,33 @@
 
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPgClient, getNodeTaskConfig, initCore, loadLocales } from "@breatic/core";
-import { miniToolConsumptionKey, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
+import { createPgClient, initCore, loadLocales } from "@breatic/core";
+import type { MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
-  miniToolExecutionService, upstreamStepRepo, taskRepo, beginMiniToolStepAttempt, recordMiniToolStepIdentity, recordMiniToolStepResult,
-  claimMiniToolSettlement, confirmMiniToolConsumption, recordMiniToolConsumption,
+  miniToolExecutionService, upstreamStepRepo, recordMiniToolStepIdentity, recordMiniToolStepResult,
+  confirmMiniToolConsumption, recordMiniToolConsumption,
   openMiniToolConsumption, completeMiniToolConsumptionSet, settleMiniToolCharge,
   type MiniToolExecutionCompletion,
 } from "@domain/index.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
+import {
+  EXECUTION_ERROR as ERROR, PREDICTION_ID as P, claimExecutionSettlement, executionCompletion, executionIdentity,
+  publicExecutionRecord, terminalExecution,
+} from "./execution-step-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
 let pg: ReturnType<typeof createPgClient>;
-const ERROR = { code: "registration_failed", message: "Original registration failure" };
-const P = "planned-original-prediction";
 beforeAll(() => {
   initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1" }); loadLocales();
   pg = createPgClient(inject("DATABASE_URL"), { name: "execution-lifecycle", max: 8 });
 });
 afterAll(async () => { await pg.end(); initCore(process.env); });
 
-/** Build the independently prescribed complete indexed observation. */
-function completion(f: ExecutionFixture, failed = false, expectedVersion = 0): MiniToolExecutionCompletion {
-  return { planFingerprint: f.plan.planFingerprint, expectedVersion, consumptionSet: "uncertain", error: failed ? ERROR : null,
-    outputs: [{ ...f.plan.outputs[0]!, result: failed ? { status: "failed", error: ERROR } : f.registered, late: false }] };
-}
-/** Independently seed a terminal namespace so a late CAS test does not require start/finish to be GREEN.
- * @throws {Error} On a fixture SQL failure.
- */
-async function terminal(f: ExecutionFixture, failed = false): Promise<MiniToolExecutionRecord> {
-  const held = await publicRecord(f);
-  const r: MiniToolExecutionRecord = { ...held, status: failed ? "failed" : "completed", resultVersion: 1,
-    outputs: completion(f, failed).outputs, error: failed ? ERROR : null };
-  await pg`UPDATE tasks SET status=${r.status},error_message=${failed ? ERROR.code : null},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
-  await storeExecutionFixture(pg, f, r); return r;
-}
-/** Read the public JSON without going through the RED public-reader stub.
- * @throws {Error} On a fixture SQL failure.
- */
-async function publicRecord(f: ExecutionFixture): Promise<MiniToolExecutionRecord> {
-  const row = await executionSnapshot(pg, f); return row.result.miniToolExecution as MiniToolExecutionRecord;
-}
-/** Prepare a real durable intent and optionally its real pending expense.
- * @throws {Error} When an original SQL persistence owner fails.
- */
-async function identity(f: ExecutionFixture, chargeTo: "user" | "platform" = "user", save = true): Promise<{ stepId: string; attemptId: string; key: string; identity: { kind: "provider"; provider: "wavespeed"; predictionId: string } }> {
-  const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]);
-  if (!s) throw new Error("Fixture step disappeared"); const attemptId = randomUUID();
-  const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing fixture task");
-  await beginMiniToolStepAttempt({ taskId: f.taskId, stepId: s.id, attemptId, deadlineAt: task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, requestBody: { ...f.plan.body }, chargeTo });
-  const upstream = { kind: "provider" as const, provider: "wavespeed" as const, predictionId: P };
-  if (save) await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: s.id, attemptId, predictionId: P });
-  return { stepId: s.id, attemptId, key: await miniToolConsumptionKey({ taskId: f.taskId, stepId: s.id, identity: upstream }), identity: upstream };
-}
+const completion = executionCompletion;
+const identity = executionIdentity;
+const terminal = (f: ExecutionFixture, failed = false): Promise<MiniToolExecutionRecord> => terminalExecution(pg, f, failed);
+const publicRecord = (f: ExecutionFixture): Promise<MiniToolExecutionRecord> => publicExecutionRecord(pg, f);
+const claim = (f: ExecutionFixture): ReturnType<typeof claimExecutionSettlement> => claimExecutionSettlement(pg, f);
 /** Persist the original provider-returned boundary and its canonical receipt before a late delivery.
  * @throws {Error} When a real result or receipt write fails.
  */
@@ -64,14 +38,6 @@ async function returned(f: ExecutionFixture): Promise<void> {
   await recordMiniToolStepResult({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, outcome: "done", result: ["https://provider.example.test/original.webm"] },
     { kind: "generate", parse: () => ({ providerURL: "https://provider.example.test/original.webm" }) });
   await upstreamStepRepo.recordInline(i.stepId, { "miniToolAsset:0": f.registered.assetId }, 0);
-}
-/** Claim the existing database cycle, with no upstream query or fabricated lease.
- * @throws {Error} If the fixture's actual cycle is not claimable.
- */
-async function claim(f: ExecutionFixture): Promise<NonNullable<Awaited<ReturnType<typeof claimMiniToolSettlement>>>> {
-  const row = await executionSnapshot(pg, f); const period = row.result.settlement as { version: number };
-  const c = await claimMiniToolSettlement({ taskId: f.taskId, settlementVersion: period.version });
-  if (!c) throw new Error("Fixture settlement was not claimed"); return c;
 }
 /** Retain the complete independent DB snapshot across an injected transaction failure.
  * @throws {Error} On a fixture SQL failure.

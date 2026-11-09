@@ -186,11 +186,12 @@ export async function findLiveByKeyInStudio(
 /**
  * An asset row by id, deleted or not.
  * @param assetId - The row's id.
+ * @param tx - An enclosing transaction, when the caller holds one.
  * @returns The `StudioAssetEntity`, or null when no row has that id.
  * @throws {Error} When the database query fails.
  */
-export async function findById(assetId: string): Promise<StudioAssetEntity | null> {
-  const rows = await db
+export async function findById(assetId: string, tx?: DbTx): Promise<StudioAssetEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(studioAssets)
     .where(eq(studioAssets.id, assetId))
@@ -386,14 +387,16 @@ export async function setCoverAsset(
  * row and hold nothing else that names its cover. A cover that has been
  * soft-deleted reads as absent rather than as a row nobody may serve.
  * @param videoAssetId - The video row to read the cover of.
+ * @param tx - An enclosing transaction, when the caller holds one.
  * @returns The cover's `StudioAssetEntity`, or null when there is none.
  * @throws {Error} When the database query fails.
  */
 export async function findCoverOf(
   videoAssetId: string,
+  tx?: DbTx,
 ): Promise<StudioAssetEntity | null> {
   const cover = alias(studioAssets, "cover");
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ cover })
     .from(studioAssets)
     .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
