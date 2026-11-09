@@ -33,6 +33,7 @@ export async function readClipboardItems(): Promise<ClipboardItems | null> {
  * The first HTML and the first plain text among clipboard items.
  * @param items - The items.
  * @returns The text, each empty when no item holds it.
+ * @throws {DOMException} When an item's data cannot be read.
  */
 export async function clipboardTextOf(items: ClipboardItems): Promise<ClipboardText> {
   let html = '';
