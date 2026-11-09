@@ -195,6 +195,11 @@ test('a page found by search and read again under another spelling is one source
   await expect(rows.getByTestId('source-box-marks')).toHaveText(['1', '23', '4']);
   await expect(rows.nth(1)).toContainText('Beta notes');
   await expect(rows.nth(2)).toContainText('Gamma doc');
+  // The titles start at one left edge, the line with two numbers included.
+  const titleLefts = await rows.evaluateAll((els) =>
+    els.map((el) => Math.round(el.children[1]?.getBoundingClientRect().left ?? -1)),
+  );
+  expect(new Set(titleLefts).size).toBe(1);
   // The page that needed a login was not read and is not a source.
   await expect(box).not.toContainText('delta.example');
   const rowHrefs = await rows.evaluateAll((els) => els.map((el) => el.getAttribute('href')));

@@ -52,7 +52,9 @@ export const SourceBox = React.memo(function SourceBox({
       title={t('chat.sources.count', { count: sources.length })}
     >
       <ScrollArea className='min-h-0 flex-1' viewportClassName='px-2 py-2'>
-        <div className='flex flex-col gap-0.5'>
+        {/* Every row's numbers share one column, so the titles share one
+            left edge whichever row carries more numbers. */}
+        <div className='grid grid-cols-[fit-content(40%)_minmax(0,1fr)] gap-y-0.5'>
           {sources.map((s) => (
             <a
               key={s.url}
@@ -60,7 +62,7 @@ export const SourceBox = React.memo(function SourceBox({
               href={s.url}
               target='_blank'
               rel='noreferrer noopener'
-              className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+              className='col-span-2 grid grid-cols-subgrid gap-x-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               {/* Every number the turn handed this page, so a marker in the
                   prose can be found here whichever of them it carries. They
@@ -71,7 +73,7 @@ export const SourceBox = React.memo(function SourceBox({
                   out of the line. */}
               <span
                 data-testid='source-box-marks'
-                className='mt-px flex max-w-[40%] shrink-0 flex-wrap gap-0.5'
+                className='mt-px flex flex-wrap gap-0.5'
               >
                 {s.indexes.map((n) => (
                   <span key={n} className={CITATION_RING}>
