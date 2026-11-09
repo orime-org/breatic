@@ -478,6 +478,24 @@ describe('pasting copied rows and columns as new ones', () => {
     expect(grid(editor)).toEqual([['a1', 'b1'], ['a2', 'b2'], ['a3', 'b3'], ['Population', ''], ['City', 'Count'], ['A', '1']]);
   });
 
+  it('gives pasted blocks ids of their own, as Cmd+V does, when the clipboard HTML carries block ids', async () => {
+    const { editor } = open(SMALL);
+    const blocks = await editor.tryParseMarkdownToBlocks('| p | q |\n| --- | --- |\n| r | s |');
+    const full = editor.blocksToFullHTML(blocks as never);
+    readable = { 'text/html': full.slice(full.indexOf('<table'), full.lastIndexOf('</table>') + 8), 'text/plain': '' };
+    expect(readable['text/html']).toContain('data-id=');
+
+    await pasteTableLines(editor as never, cellOf(editor, 'a3'), 'below');
+    await pasteTableLines(editor as never, cellOf(editor, 'a3'), 'below');
+
+    const ids: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'blockContainer') ids.push(String(node.attrs['id']));
+    });
+    expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+    expect(grid(editor).slice(3)).toEqual([['p', 'q'], ['r', 's'], ['p', 'q'], ['r', 's']]);
+  });
+
   it('says there is no table to insert, and changes nothing, for other content', async () => {
     const { editor } = open(SMALL);
     readable = { 'text/html': '<p>words</p>', 'text/plain': 'words' };
