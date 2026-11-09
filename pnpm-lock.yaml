@@ -166,8 +166,8 @@ catalogs:
       specifier: ^13.1.3
       version: 13.1.3
     postgres:
-      specifier: ^3.4.9
-      version: 3.4.9
+      specifier: ^4.1.0
+      version: 4.1.0
     stripe:
       specifier: ^21.0.1
       version: 21.0.1
@@ -362,7 +362,7 @@ importers:
         version: 16.6.1
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0)
       lib0:
         specifier: 'catalog:'
         version: 0.2.117
@@ -441,7 +441,7 @@ importers:
         version: 5.81.3
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0)
       google-auth-library:
         specifier: 'catalog:'
         version: 10.9.1
@@ -462,7 +462,7 @@ importers:
         version: 13.1.3
       postgres:
         specifier: 'catalog:'
-        version: 3.4.9
+        version: 4.1.0
       stripe:
         specifier: 'catalog:'
         version: 21.0.1(@types/node@24.19.1)
@@ -532,7 +532,7 @@ importers:
         version: 7.0.68(zod@4.4.3)
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0)
       ipaddr.js:
         specifier: 'catalog:'
         version: 2.5.0
@@ -642,7 +642,7 @@ importers:
         version: 5.81.3
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0)
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
@@ -651,7 +651,7 @@ importers:
         version: 0.2.117
       postgres:
         specifier: 'catalog:'
-        version: 3.4.9
+        version: 4.1.0
       testcontainers:
         specifier: 'catalog:'
         version: 11.14.0
@@ -745,7 +745,7 @@ importers:
         version: 16.6.1
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0)
       google-auth-library:
         specifier: 'catalog:'
         version: 10.9.1
@@ -803,7 +803,7 @@ importers:
         version: 4.9.0
       postgres:
         specifier: 'catalog:'
-        version: 3.4.9
+        version: 4.1.0
       testcontainers:
         specifier: 'catalog:'
         version: 11.14.0
@@ -9732,9 +9732,9 @@ packages:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postgres@3.4.9:
-    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
-    engines: {node: '>=12'}
+  postgres@4.1.0:
+    resolution: {integrity: sha512-s+0WH67YAyLdBQUb6XczbziBhY+C9uiQsg9S8R5RHdZhk6sdyK6202E+T2tXpiInSEEjDLRSJ3OpYBe3PN6MsQ==}
+    engines: {node: '>=18'}
 
   posthtml-parser@0.11.0:
     resolution: {integrity: sha512-QecJtfLekJbWVo/dMAA+OSwY79wpRmbqS5TeXvXSX+f0c6pW4/SE6inzZ2qkU7oAMCPqIDkZDvd/bQsSFUnKyw==}
@@ -16979,11 +16979,11 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.12
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@4.1.0):
     optionalDependencies:
       '@cloudflare/workers-types': 5.20260830.1
       '@opentelemetry/api': 1.9.1
-      postgres: 3.4.9
+      postgres: 4.1.0
 
   duck@0.1.12:
     dependencies:
@@ -20598,7 +20598,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@4.1.0: {}
 
   posthtml-parser@0.11.0:
     dependencies:
