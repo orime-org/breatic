@@ -106,13 +106,17 @@ async function readDownload(
 }
 
 /**
- * How a page ends, judged from a navigation's response.
+ * How a page ends at a navigation's response, when its status and type
+ * already say so.
+ * @param url - The page asked for.
  * @param answer - The response.
- * @returns The page's status, or null when it should be read on.
+ * @param finalUrl - Where the page ended up; the response's own address by default.
+ * @returns The page, or null when it should be read on.
  */
-function endedBy(answer: Response): ReadPageResult["status"] | null {
+function endedAt(url: string, answer: Response, finalUrl = answer.url()): ReadPageResult | null {
   const headers = answer.headers();
-  return statusOfResponse(answer.status(), headers["content-type"] ?? null, headers[READER_UNREACHABLE_HEADER] === "1");
+  const status = statusOfResponse(answer.status(), headers["content-type"] ?? null, headers[READER_UNREACHABLE_HEADER] === "1");
+  return status === null ? null : { url, status, httpStatus: answer.status(), finalUrl };
 }
 
 /**
@@ -162,9 +166,7 @@ const INTERRUPTED = /is interrupted by another navigation/;
  * @returns The page.
  */
 function endedOnErrorPage(url: string, last: Response | undefined): ReadPageResult {
-  const ended = last === undefined ? null : endedBy(last);
-  if (last === undefined || ended === null) return { url, status: "unreachable" };
-  return { url, status: ended, httpStatus: last.status(), finalUrl: last.url() };
+  return (last === undefined ? null : endedAt(url, last)) ?? { url, status: "unreachable" };
 }
 
 /**
@@ -185,8 +187,8 @@ async function readDocument(
 ): Promise<ReadPageResult> {
   const httpStatus = shown.status();
   const finalUrl = page.url();
-  const ended = endedBy(shown);
-  if (ended !== null) return { url, status: ended, httpStatus, finalUrl };
+  const ended = endedAt(url, shown, finalUrl);
+  if (ended !== null) return ended;
   const headers = shown.headers();
   // A document that is not HTML is judged again by the type the browser
   // saw (an image sent with no type is still an image), and a text one is
@@ -329,8 +331,8 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
      */
     const readInstead = async (download: Promise<Download | null>): Promise<ReadPageResult | undefined> => {
       if (head !== undefined && !head.ok()) {
-        const ended = endedBy(head);
-        if (ended !== null) return { url, status: ended, httpStatus: head.status(), finalUrl: head.url() };
+        const ended = endedAt(url, head);
+        if (ended !== null) return ended;
       }
       const file = await download;
       return file === null ? undefined : readDownload(url, file, head, request.maxBytes);
@@ -344,12 +346,8 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       // document that never loads: the download is what is read.
       const instead = downloaded.then((download) => download ?? new Promise<never>(() => undefined));
       const first = await Promise.race([loading.then((loaded) => ({ loaded })), instead.then((download) => ({ download }))]);
-      if ("download" in first) {
-        const read = await readInstead(Promise.resolve(first.download));
-        if (read !== undefined) return read;
-      } else {
-        response = first.loaded;
-      }
+      if ("download" in first) return (await readInstead(Promise.resolve(first.download))) ?? { url, status: "unreachable" };
+      response = first.loaded;
     } catch (err) {
       if (oversized) return { url, status: "too_large" };
       // A PDF navigates into a download, which the headless shell has no viewer for.
