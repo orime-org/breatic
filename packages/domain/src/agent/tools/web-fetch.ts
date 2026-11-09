@@ -322,9 +322,10 @@ function isSpace(char: string | undefined): boolean {
 }
 
 /**
- * Where a cut goes so that no link crosses it: the end of a link that starts
- * before `to` and ends after it (the nearest end, when a link running on into
- * non-ASCII text is read both whole and cut there), or `to` itself.
+ * Where a cut goes so that no link crosses it: the farthest end of the links
+ * that start before `to` and end after it, or `to` itself. A link running on
+ * into non-ASCII text is read both whole and cut there, from one start, so
+ * the slice then lists both, as reading the whole page does.
  *
  * The links and where the text writes them (`pageLinkSpansIn`, so a link's
  * end is where its last kept character is written, escapes included) are
@@ -339,13 +340,13 @@ function cutPastLink(text: string, to: number): number {
   let runStart = to;
   while (runStart > lookBack && !isSpace(text[runStart - 1])) runStart -= 1;
   const window = text.slice(runStart, Math.min(to + READ_PAGE_MAX_URL_CHARS, text.length));
-  let cut = Infinity;
+  let cut = to;
   for (const span of pageLinkSpansIn(window)) {
     const start = runStart + span.start;
     const end = runStart + span.end;
-    if (start < to && end > to) cut = Math.min(cut, end);
+    if (start < to && end > to) cut = Math.max(cut, end);
   }
-  return cut === Infinity ? to : cut;
+  return cut;
 }
 
 /**
