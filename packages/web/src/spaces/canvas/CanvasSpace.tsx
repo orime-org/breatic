@@ -77,7 +77,7 @@ import {
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropControls';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
-import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { batchGroupName, batchLayoutAt } from '@web/spaces/canvas/drop-layout';
 import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { writeGroup } from '@web/spaces/canvas/group-write';
@@ -325,7 +325,6 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
 import {
-  centerToTopLeft,
   createAnnotationNode,
   isCreatableNodeType,
   type CreatableNodeType,
@@ -2572,14 +2571,9 @@ function CanvasSpaceInner({
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
-          const laid = batchCentresAt(origin, admitted.length);
-          const tops = laid.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
           // Two or more files arrive inside a Group, framed the way
           // `planGroupCreation` frames them below.
-          const frame =
-            tops.length >= 2
-              ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE })))
-              : null;
+          const { centres: laid, tops, frame } = batchLayoutAt(origin, admitted.length);
           // Only a paste steps the whole batch, its Group included, past nodes
           // already on its spot, so it shows (inner#1235 A20).
           const step =
@@ -2626,7 +2620,7 @@ function CanvasSpaceInner({
             plan,
             userId,
             groupBackgroundFor(Math.random()),
-            `${String(created.length)} files`,
+            batchGroupName(created.length),
           );
           // The Group is what the user acts on next. Its members were never
           // selected, so there is nothing to clear first: `selectAfterCreate`
