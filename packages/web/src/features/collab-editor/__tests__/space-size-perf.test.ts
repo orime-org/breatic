@@ -241,8 +241,11 @@ describe('21.4 timings on a 10 MiB body', () => {
       resetHarness();
       return planMs + writeMs;
     };
-    const small = await measure(4000);
-    const large = await measure(16000);
+    // Three runs a size: one collection pause in a single run moves the ratio
+    // past the bound by itself.
+    const runs = async (n: number): Promise<number[]> => [await measure(n), await measure(n), await measure(n)];
+    const small = median(await runs(4000));
+    const large = median(await runs(16000));
     expect(large).toBeLessThanOrEqual(8 * small);
   }, TEN_MINUTES);
 
