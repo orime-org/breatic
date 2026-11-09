@@ -10,7 +10,7 @@
  * both entries read the outside HTML the body writes.
  */
 
-import { isStoredObjectUrl } from '@breatic/shared';
+import { isStoredObjectUrl, MAX_NODE_NAME_LEN } from '@breatic/shared';
 
 import { batchGroupName, batchLayoutAt } from '@web/spaces/canvas/drop-layout';
 import type { Point } from '@web/spaces/canvas/group-geometry';
@@ -69,8 +69,9 @@ function mediumOf(element: Element): DocumentMedium | null {
   // figure when there is a caption. The caption is the medium's name on the
   // canvas, as a node's name becomes the caption on the way back.
   const caption = element.querySelector('figcaption')?.textContent ?? element.getAttribute('data-caption') ?? '';
-  const name = caption.trim() !== '' ? caption : element.getAttribute('data-name') ?? media.getAttribute('alt') ?? '';
-  return { type, url, name };
+  const named = caption.trim() !== '' ? caption : element.getAttribute('data-name') ?? media.getAttribute('alt') ?? '';
+  // Within the limit every other way of naming a node keeps.
+  return { type, url, name: named.trim().slice(0, MAX_NODE_NAME_LEN) };
 }
 
 /**

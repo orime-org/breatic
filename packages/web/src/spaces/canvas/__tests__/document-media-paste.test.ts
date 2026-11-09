@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { MAX_NODE_NAME_LEN } from '@breatic/shared';
+
 import { batchLayoutAt } from '@web/spaces/canvas/drop-layout';
 import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
@@ -44,6 +46,13 @@ describe('documentMediaPaste', () => {
     expect(documentMediaPaste(figure(media, url, 'file.bin', 'Opening shot'))?.media).toEqual([
       { type, url, name: 'Opening shot' },
     ]);
+  });
+
+  // A node name is at most MAX_NODE_NAME_LEN, as every other way of naming one keeps it.
+  it('trims the name and keeps it within the node name limit', () => {
+    const long = 'Screenshot 2026-11-09 at 10.15.32.png';
+    expect(documentMediaPaste(img(long))?.media[0]?.name).toBe(long.slice(0, MAX_NODE_NAME_LEN));
+    expect(documentMediaPaste(figure(`<img src="${IMAGE}" alt="">`, IMAGE, 'f.png', '  Opening shot  '))?.media[0]?.name).toBe('Opening shot');
   });
 
   it('falls back to the alt text, then to no name', () => {
