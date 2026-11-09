@@ -142,15 +142,36 @@ const CONTEXT_DESTROYED = /Execution context was destroyed/;
 const INTERRUPTED = /is interrupted by another navigation/;
 
 /**
+ * How a read ends on an error page Chromium committed in place of a document
+ * (a redirect loop, a failure answer sent as an attachment): with the status
+ * of the main frame's last navigation response when it gives one, else
+ * unreachable.
+ * @param url - The page asked for.
+ * @param last - The main frame's last navigation response, if any.
+ * @returns The page.
+ */
+function endedOnErrorPage(url: string, last: Response | undefined): ReadPageResult {
+  const ended = last === undefined ? null : endedBy(last);
+  if (last === undefined || ended === null) return { url, status: "unreachable" };
+  return { url, status: ended, httpStatus: last.status(), finalUrl: last.url() };
+}
+
+/**
  * Read the document a page shows, as its response describes it.
  * @param page - The page.
  * @param url - The page asked for.
  * @param shown - The response of the document the main frame last committed.
+ * @param last - The main frame's last navigation response; an error page has none of its own.
  * @returns The page.
  * @throws {Error} When the page goes on to another document while it is read,
  *   with Playwright's "Execution context was destroyed".
  */
-async function readDocument(page: Page, url: string, shown: Response): Promise<ReadPageResult> {
+async function readDocument(
+  page: Page,
+  url: string,
+  shown: Response,
+  last: Response | undefined,
+): Promise<ReadPageResult> {
   const httpStatus = shown.status();
   const finalUrl = page.url();
   const ended = endedBy(shown);
@@ -162,11 +183,13 @@ async function readDocument(page: Page, url: string, shown: Response): Promise<R
   // the file. Chromium hands a text body over already decoded in the charset
   // its content-type names, or as windows-1252 when it names none, which
   // `recoverUtf8` undoes for UTF-8. Readability goes only into HTML.
-  const [contentType, characterSet, documentTitle] = await page.evaluate(() => [
+  const [documentUrl, contentType, characterSet, documentTitle] = await page.evaluate(() => [
+    document.URL,
     document.contentType,
     document.characterSet,
     document.title,
   ]);
+  if (documentUrl.startsWith("chrome-error://")) return endedOnErrorPage(url, last);
   if (contentType !== "text/html" && contentType !== "application/xhtml+xml") {
     const seen = statusOfResponse(httpStatus, contentType);
     if (seen !== null) return { url, status: seen, httpStatus, finalUrl };
@@ -349,7 +372,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       const shown = committed ?? response;
       if (shown === null) return { url, status: "unreachable" };
       try {
-        return await readDocument(page, url, shown);
+        return await readDocument(page, url, shown, head);
       } catch (err) {
         if (!(err instanceof Error && CONTEXT_DESTROYED.test(err.message))) throw err;
       }
