@@ -266,7 +266,8 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   };
 
   let applied: string | null = null;
-  let boundsCurrent = false;
+  // The pose the skinned bounds describe: bounds follow the pose, not the bones moved by hand.
+  let bounded: string | null = null;
 
   return {
     kind: humanoid ? 'humanoid' : 'other',
@@ -275,11 +276,10 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
       const signature = JSON.stringify(Object.entries(pose).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
       if (signature !== applied) {
         applied = signature;
-        boundsCurrent = false;
         setBones(pose);
       }
-      if (!settled || boundsCurrent) return;
-      boundsCurrent = true;
+      if (!settled || bounded === signature) return;
+      bounded = signature;
       for (const mesh of meshes) {
         mesh.computeBoundingBox();
         mesh.computeBoundingSphere();

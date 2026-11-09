@@ -707,22 +707,22 @@ describe('PoseRig.apply: skinned bounds (inner#1692)', () => {
     }
   });
 
-  it('skips recomputing bounds for an equal pose until invalidated', () => {
+  it('recomputes bounds only for a settled pose they do not yet describe', () => {
     const figure = buildFigure();
     const rig = rigOf(figure.root);
     rig.apply(POSE_PRESETS.sit);
     const sphere = vi.spyOn(figure.mesh, 'computeBoundingSphere');
     const box = vi.spyOn(figure.mesh, 'computeBoundingBox');
     rig.apply(copyOf(POSE_PRESETS.sit));
-    expect(sphere).not.toHaveBeenCalled();
-    expect(box).not.toHaveBeenCalled();
+    // A cancelled drag: bones moved by hand, the rig invalidated, the same pose shown again.
+    rig.apply(POSE_PRESETS.walk, false);
     rig.invalidate();
     rig.apply(copyOf(POSE_PRESETS.sit));
-    expect(sphere).toHaveBeenCalled();
-    expect(box).toHaveBeenCalled();
-    sphere.mockClear();
+    expect(sphere).not.toHaveBeenCalled();
+    expect(box).not.toHaveBeenCalled();
     rig.apply(POSE_PRESETS.walk);
-    expect(sphere).toHaveBeenCalled();
+    expect(sphere).toHaveBeenCalledTimes(1);
+    expect(box).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the bounds alone while a pose is still being dragged and recomputes them once it settles', () => {
