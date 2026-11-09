@@ -529,10 +529,9 @@ describe('execution row header, steps, usage and actions', () => {
     const title = within(toggle).getByText('Brand name fades in');
     expect(meta.parentElement).not.toBe(title.parentElement);
     expect(meta).not.toContainElement(title);
-    // A row across the whole header sits at the level that also holds the kind icon and the status.
-    const status = within(toggle).getByText(t('timeline.webAnimation.status.succeeded'));
-    expect(meta.parentElement).toContainElement(status);
-    expect(meta.parentElement).toContainElement(toggle.querySelector('svg'));
+    // A row across the whole header sits directly in the header, which also holds the kind icon.
+    expect(meta.parentElement).toBe(toggle);
+    expect(toggle).toContainElement(toggle.querySelector('svg'));
     expect(meta).toHaveTextContent('DeepSeek');
     expect(meta).toHaveTextContent('9:16');
     expect(meta).toHaveTextContent(t('timeline.webAnimation.durationShort', { seconds: 4 }));
@@ -541,19 +540,22 @@ describe('execution row header, steps, usage and actions', () => {
 
   it.each(['awaiting_landing', 'queued', 'running', 'cancelling'] as const)('spins an icon before the status of a %s row', async (status) => {
     const target = row('90000000-0000-4000-8000-0000000000f1', status, { input: { prompt: 'Spinning row', engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps } });
-    const toggle = await showRow(target);
-    const spinners = toggle.querySelectorAll('svg.animate-spin');
+    await showRow(target);
+    const holder = within(screen.getByTestId(`timeline-execution-${target.id}`)).getByTestId(`timeline-execution-status-${target.id}`);
+    const spinners = holder.querySelectorAll('svg.animate-spin');
     expect(spinners).toHaveLength(1);
-    const holder = spinners[0]?.parentElement as HTMLElement;
+    expect(holder.firstChild).toBe(spinners[0]);
     expect(holder).toHaveTextContent(t(`timeline.webAnimation.status.${status}`));
     expect(holder).not.toHaveTextContent('Spinning row');
-    expect(holder.firstChild).toBe(spinners[0]);
   });
 
   it.each([DONE_ROW, FAILED_ROW, row('90000000-0000-4000-8000-0000000000c1', 'cancelled'), row('90000000-0000-4000-8000-0000000000c3', 'expired')])(
     'spins nothing in the header of a finished row ($status)', async (target) => {
       const toggle = await showRow(target);
-      expect(toggle.querySelector('.animate-spin')).toBeNull();
+      const holder = within(screen.getByTestId(`timeline-execution-${target.id}`)).getByTestId(`timeline-execution-status-${target.id}`);
+      expect(holder).toHaveTextContent(t(`timeline.webAnimation.status.${target.status}`));
+      expect(holder.querySelector('svg.animate-spin')).toBeNull();
+      expect(toggle.querySelector('svg.animate-spin')).toBeNull();
     });
 
   it('marks the page-writing step current for a running row that has reported no phase yet', async () => {
