@@ -69,7 +69,10 @@ const HELPER_MODEL = process.env.EVAL_HELPER_MODEL ?? 'google/gemini-3.8-flash';
 const AT_ONCE = Number(process.env.EVAL_AT_ONCE ?? '6');
 /** How many cards a run answers before it is read. */
 const FOLLOW_UPS = 2;
-/** Hand labels, one JSON object a line: the scenario, its criterion's {@link criterionOf}, the run and the person's verdict. */
+/**
+ * Hand labels, one JSON object a line: the scenario, its criterion's {@link criterionOf}, the run and the person's verdict;
+ * `origin` marks a run from an earlier prompt or one edited by hand to break its criterion, which keeps the fail side large enough to measure.
+ */
 const LABELS = join(__dirname, 'agent-cocreation.labels.jsonl');
 
 /** The zone a user writing each language would most likely report, as a browser does. */
