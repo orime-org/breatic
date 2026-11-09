@@ -17,7 +17,7 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -27,6 +27,7 @@ import { canDragFrom } from '@web/spaces/document/document-table-drag';
 import { PASTED_MEDIA_KEY, type PastedMediaJudge } from '@web/spaces/document/document-external-media';
 import { readTransfer, type Transfer } from '@web/spaces/document/document-paste-read';
 import { judgedTable } from '@web/spaces/document/document-put';
+import { withoutRowIds } from '@web/spaces/document/document-comment-paste';
 import { cellAt, deleteColumnAt, deleteRowAt, insertLinesOf } from '@web/spaces/document/document-table-run';
 import { holdPendingCell } from '@web/spaces/document/document-table-target';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -262,7 +263,10 @@ function clipboardTable(editor: LineEditor, pasted: PastedMediaJudge, text: Clip
   for (const [type, value] of [['text/html', text.html], ['text/plain', text.plain]] as const) {
     if (value === '') continue;
     const read = readTransfer(editor, transferOf(type, value), pasted.lands);
-    const table = judgedTable(read, pasted.judge, schema);
+    const judged = judgedTable(read, pasted.judge, schema);
+    // Block ids the HTML carries go, as a paste's do (`onTarget` in
+    // `document-put.ts`), so the editor gives the new blocks ids of their own.
+    const table = judged === null ? null : withoutRowIds(new Slice(Fragment.from(judged), 0, 0)).content.firstChild;
     if (table !== null) return { table, lost: read.lost };
   }
   return null;
