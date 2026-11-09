@@ -272,16 +272,16 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
   };
   try {
     const page = await context.newPage();
-    // A navigation that turns into a download has no response from goto; its
-    // headers come from here.
-    let head: Response | undefined;
+    // The main frame's last navigation response, a download's included: a
+    // navigation that turns into a download has no response from goto.
+    let last: Response | undefined;
     /**
      * Whether a download is how the main frame's navigation ended: another
      * frame's download (a landing page's hidden iframe) is not.
      * @param download - The download.
      * @returns True when it is the file of the last main-frame navigation response.
      */
-    const ofMainFrame = (download: Download): boolean => head !== undefined && sameDocument(download.url(), head.url());
+    const ofMainFrame = (download: Download): boolean => last !== undefined && sameDocument(download.url(), last.url());
     const downloaded = page
       .waitForEvent("download", { predicate: ofMainFrame, timeout: request.pageTimeoutMs })
       .catch(() => null);
@@ -309,18 +309,18 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     });
     page.on("response", (answer) => {
       if (!answer.request().isNavigationRequest() || answer.frame() !== page.mainFrame()) return;
-      head = answer;
+      last = answer;
       if (arriving && declaresMoreThan(answer, request.maxBytes)) tooLarge();
     });
     page.on("framenavigated", (frame) => {
       // A same-document navigation has no response of its own: pushState to another
       // address is skipped here, and a new fragment finds its document's own response.
-      if (frame !== page.mainFrame() || head === undefined || !sameDocument(head.url(), frame.url())) {
+      if (frame !== page.mainFrame() || last === undefined || !sameDocument(last.url(), frame.url())) {
         return;
       }
-      committed = head;
-      settle(head.request());
-      if (declaresMoreThan(head, request.maxBytes)) tooLarge();
+      committed = last;
+      settle(last.request());
+      if (declaresMoreThan(last, request.maxBytes)) tooLarge();
     });
     /**
      * Read a download that took the place of goto's document, as if its file
@@ -330,12 +330,12 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
      * @returns The page, or undefined when there is no download to read.
      */
     const readInstead = async (download: Promise<Download | null>): Promise<ReadPageResult | undefined> => {
-      if (head !== undefined && !head.ok()) {
-        const ended = endedAt(url, head);
+      if (last !== undefined && !last.ok()) {
+        const ended = endedAt(url, last);
         if (ended !== null) return ended;
       }
       const file = await download;
-      return file === null ? undefined : readDownload(url, file, head, request.maxBytes);
+      return file === null ? undefined : readDownload(url, file, last, request.maxBytes);
     };
     let response: Response | null = null;
     try {
@@ -381,7 +381,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       const shown = committed ?? response;
       if (shown === null) return { url, status: "unreachable" };
       try {
-        return await readDocument(page, url, shown, head);
+        return await readDocument(page, url, shown, last);
       } catch (err) {
         if (!(err instanceof Error && CONTEXT_DESTROYED.test(err.message))) throw err;
       }
