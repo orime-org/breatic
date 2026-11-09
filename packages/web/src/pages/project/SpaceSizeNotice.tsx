@@ -8,7 +8,7 @@ import { formatBytes } from '@breatic/shared';
 
 import { useDocSize } from '@web/data/yjs/doc-size';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
+import { SpaceNoticePill } from '@web/pages/project/SpaceNoticePill';
 
 interface SpaceSizeNoticeProps {
   /** Canonical name of the Space's content document. */
@@ -36,22 +36,16 @@ export function SpaceSizeNotice({ docName }: SpaceSizeNoticeProps): React.JSX.El
   const over = full && overCeiling;
   const sizes = { used: formatBytes(bytes), limit: formatBytes(limit) };
   const text = t(over ? 'spaces.sizeCap.noticeOver' : full ? 'spaces.sizeCap.noticeFull' : 'spaces.sizeCap.noticeWarning', sizes);
-  const Icon = full ? TriangleAlert : Info;
   return (
-    <div
+    <SpaceNoticePill
       role='status'
       data-testid='space-size-notice'
       data-phase={phase}
       data-over-ceiling={over ? '' : undefined}
-      className={cn(
-        'flex max-w-full items-center gap-2 rounded-overlay border px-3.5 py-1.5 text-sm shadow-md backdrop-blur-sm',
-        full
-          ? 'border-status-warning-border bg-status-warning-bg text-status-warning-foreground'
-          : 'border-status-info-border bg-status-info-bg text-status-info-foreground',
-      )}
+      tone={full ? 'warning' : 'info'}
+      icon={full ? TriangleAlert : Info}
     >
-      <Icon className='h-4 w-4 shrink-0' aria-hidden />
-      <span className='truncate font-medium'>{text}</span>
-    </div>
+      {text}
+    </SpaceNoticePill>
   );
 }
