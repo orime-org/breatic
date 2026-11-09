@@ -125,7 +125,7 @@ export interface SizeAckOptions {
    * answered when the server's SyncStep2 arrives.
    */
   autoAck?: boolean;
-  /** Runs in that callback when a `doc:size` arrives, before the buffered updates are flushed and the acknowledgement sent. */
+  /** Runs in that callback when a `doc:size` arrives after the handshake, before the buffered updates are flushed and the acknowledgement sent; a push held for the handshake does not run it. */
   beforeAck?: (key: string, push: Record<string, unknown>) => void;
 }
 
