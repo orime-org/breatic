@@ -364,7 +364,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Before you act on a message, tell for yourself which of four things it is; the sorting stays with you and never goes in the reply.");
     expect(text()).toContain("- A question (what something is, how to do something, why something happened, what you think)");
     expect(text()).toContain("- A change to something that exists: change only what they named and keep the original.");
-    expect(text()).toContain("- Something to make: settle what is open, then make it.");
+    expect(text()).toContain("- Something to make: settle what is open, then make it, and close with what they do next, never with an offer of more work.");
   });
 
   it("answers something the user tells briefly, as a person would, offers to make nothing and leaves making something of it to them", () => {
@@ -404,8 +404,9 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).not.toContain("who a character of theirs is is never one");
   });
 
-  it("waits for something the user says they will send before making what depends on it", () => {
-    expect(onlyTheUserKnows()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask. When they say they will send something, wait for it before making what depends on it.");
+  it("waits for something the user says they will send before making anything it could change, the look included", () => {
+    expect(onlyTheUserKnows()).toContain("Ask what is still open all at once: only what changes the result, and say why you ask. When they say they will send something, wait for it before making anything it could change, the look included.");
+    expect(onlyTheUserKnows()).not.toContain("before making what depends on it");
   });
 
   it("opens what only the user knows with who a character of theirs is, robots and creatures having these too, never assumed", () => {
@@ -429,11 +430,11 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(at).toBeLessThan(text().indexOf("- Taste with no right answer"));
   });
 
-  it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never alongside the takes, never as a list of options", () => {
+  it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never alongside the takes, never as a list of options nor folded into another question's options", () => {
     const taste = bullet("- Taste with no right answer", "- When what only the user knows and a taste");
     expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result, differing in every taste still open, say how they differ");
     expect(taste).toContain("list the later steps in words with their rough cost, and propose them only once they have picked one, never alongside the takes.");
-    expect(taste).toContain("A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
+    expect(taste).toContain("A taste is never asked as a list of options to pick from, nor folded into the options of another question; ask it in words only when no take can be made without it.");
     expect(taste).not.toContain("never on the same card as the takes");
     expect(taste).not.toContain("say how they differ, and propose the later steps only once");
     expect(taste).not.toContain("build the later steps on the one they pick");
@@ -558,9 +559,9 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips");
   });
 
-  it("makes Video trial shots as takes, leaving their cost to Try things cheaply", () => {
+  it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
     const para = paragraphs().get("Video") ?? "";
-    expect(para).toContain("trial shots made as takes;");
+    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model;");
     expect(para).not.toContain("trial shots short unless they named the length");
     expect(para).not.toContain("trial shots short and on a fast model");
   });
