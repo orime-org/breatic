@@ -81,6 +81,46 @@ function skinOf(keys: readonly string[]): Vector3[] {
   return points;
 }
 
+/** How far inside the torso a leg vertex may sit, as a share of the torso's radius there (skinning bulges at the groin). */
+const TORSO_DEPTH = 0.6;
+/** Height bands and directions the torso's rest radius is measured in. */
+const BANDS = 24;
+const SECTORS = 16;
+
+/**
+ * The torso's radius at rest by height band and direction around its axis, in the hips' frame.
+ * @returns How deep a point is inside it: 0 on the surface, 1 at the axis, below 0 outside.
+ * @throws {Error} When the figure does not map the torso.
+ */
+function torsoDepth(): (point: Vector3) => number {
+  const hips = boneOf('h:hips');
+  const toHips = hips.matrixWorld.clone().invert();
+  // The torso is whichever of these the rig maps; the built-in figure has no upper chest.
+  const torso = ['h:spine', 'h:chest', 'h:upperChest'].filter((key) => rig.joints.some((joint) => joint.key === key));
+  const points = skinOf(torso).map((point) => point.applyMatrix4(toHips));
+  const low = Math.min(...points.map((p) => p.y));
+  const high = Math.max(...points.map((p) => p.y));
+  const band = (y: number): number => Math.min(BANDS - 1, Math.max(0, Math.floor(((y - low) / (high - low)) * BANDS)));
+  const sector = (p: Vector3, centre: Vector3): number => Math.floor(((Math.atan2(p.z - centre.z, p.x - centre.x) + Math.PI) / (2 * Math.PI)) * SECTORS) % SECTORS;
+  const centres = Array.from({ length: BANDS }, (_, b) => {
+    const inBand = points.filter((p) => band(p.y) === b);
+    return inBand.reduce((sum, p) => sum.add(new Vector3(p.x, 0, p.z)), new Vector3()).divideScalar(Math.max(1, inBand.length));
+  });
+  const radii = Array.from({ length: BANDS }, () => new Array<number>(SECTORS).fill(0));
+  for (const p of points) {
+    const b = band(p.y);
+    const s = sector(p, centres[b]);
+    radii[b][s] = Math.max(radii[b][s], Math.hypot(p.x - centres[b].x, p.z - centres[b].z));
+  }
+  return (world) => {
+    const p = world.clone().applyMatrix4(hips.matrixWorld.clone().invert());
+    if (p.y < low || p.y > high) return -1;
+    const b = band(p.y);
+    const radius = radii[b][sector(p, centres[b])];
+    return radius === 0 ? -1 : 1 - Math.hypot(p.x - centres[b].x, p.z - centres[b].z) / radius;
+  };
+}
+
 beforeAll(async () => {
   // Through Response, so the buffer belongs to the realm GLTFLoader checks against.
   const bytes = await new Response(Uint8Array.from(readFileSync(FIGURE_PATH))).arrayBuffer();
@@ -113,10 +153,13 @@ describe('presets on the built-in figure (inner#1692)', () => {
       const thigh = knee.clone().sub(hip).normalize();
       const shin = ankle.clone().sub(knee).normalize();
       // Bent well past straight, with the knees raised above the hips.
-      expect(thigh.angleTo(shin), side).toBeGreaterThan(Math.PI / 3);
+      expect(thigh.angleTo(shin), side).toBeGreaterThan(Math.PI / 4);
       expect(knee.y, side).toBeGreaterThan(hip.y);
       expect(ankle.z, side).toBeGreaterThan(hip.z);
     }
+    // Seated: the buttocks rest on the ground with the feet.
+    const seat = Math.min(...skinOf(['h:hips', 'h:leftUpperLeg', 'h:rightUpperLeg']).map((point) => point.y));
+    expect(seat - restFloor).toBeLessThan(GROUND_TOLERANCE * 2);
   });
 
   it.each(PRESETS)('%s keeps the skin of both forearms and hands out of the head', (_name, pose) => {
@@ -127,6 +170,16 @@ describe('presets on the built-in figure (inner#1692)', () => {
       const inside = skinOf([`h:${side}LowerArm`, `h:${side}Hand`]).filter((point) => head.containsPoint(point));
       expect(inside, side).toHaveLength(0);
     }
+  });
+
+  it.each(PRESETS)('%s keeps the skin of both legs out of the torso', (_name, pose) => {
+    rig.apply({});
+    root.updateMatrixWorld(true);
+    const depth = torsoDepth();
+    rig.apply(pose);
+    root.updateMatrixWorld(true);
+    const deep = skinOf(['h:leftUpperLeg', 'h:rightUpperLeg', 'h:leftLowerLeg', 'h:rightLowerLeg']).filter((point) => depth(point) > 1 - TORSO_DEPTH);
+    expect(deep).toHaveLength(0);
   });
 
   it.each(PRESETS)('%s bends no elbow backward', (_name, pose) => {

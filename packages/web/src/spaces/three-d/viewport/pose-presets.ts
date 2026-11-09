@@ -50,9 +50,10 @@ export const POSE_PRESETS: Readonly<Record<'stand' | 'sit' | 'lie' | 'walk' | 'w
     ...UPRIGHT,
     'h:leftUpperArm': turn('z', -45), 'h:leftLowerArm': IDENTITY, 'h:leftHand': IDENTITY,
     'h:rightUpperArm': turn('z', 45), 'h:rightLowerArm': IDENTITY, 'h:rightHand': IDENTITY,
-    'h:leftUpperLeg': turn('x', -150), 'h:leftLowerLeg': turn('x', 100), 'h:leftFoot': turn('x', 50),
-    'h:rightUpperLeg': turn('x', -150), 'h:rightLowerLeg': turn('x', 100), 'h:rightFoot': turn('x', 50),
-    [SCENE_POSE_HIPS_KEY]: [0, -0.913, 0],
+    // Thighs 30 degrees above level: steeper sends them into the belly of a heavier body.
+    'h:leftUpperLeg': turn('x', -120), 'h:leftLowerLeg': turn('x', 50), 'h:leftFoot': turn('x', 70),
+    'h:rightUpperLeg': turn('x', -120), 'h:rightLowerLeg': turn('x', 50), 'h:rightFoot': turn('x', 70),
+    [SCENE_POSE_HIPS_KEY]: [0, -0.904, 0],
   },
   // Lying on the back, arms along the body.
   lie: {
