@@ -27,10 +27,15 @@ describe("idempotency scopes", () => {
         "mini-tool",
         "project",
         "referral",
+        "timeline-execution",
         "transcribe",
         "understand",
       ].sort(),
     );
+  });
+
+  it("keep a Timeline execution press for a day, like the other runs", () => {
+    expect(IDEMPOTENCY_RETENTION_SECONDS["timeline-execution"]).toBe(24 * 60 * 60);
   });
 
   it("each have a retention", () => {

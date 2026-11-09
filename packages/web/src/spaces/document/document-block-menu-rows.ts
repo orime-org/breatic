@@ -15,6 +15,7 @@
  */
 
 import {
+  ClipboardCopy,
   Copy,
   IndentDecrease,
   IndentIncrease,
@@ -22,6 +23,7 @@ import {
   MessageSquareText,
   Palette,
   Plus,
+  Scissors,
   TextAlignStart,
   Trash2,
   Type,
@@ -34,6 +36,8 @@ export interface BlockMenuRow {
   readonly id:
     | 'blockType'
     | 'duplicate'
+    | 'copy'
+    | 'cut'
     | 'insertBelow'
     | 'align'
     | 'color'
@@ -123,10 +127,13 @@ function rowOf(id: BlockMenuRow['id']): BlockMenuRow {
  * The rows of a table's entry (inner#1126 A5). A table is not a text block,
  * so the rows that set a block's type, its alignment and its colour have
  * nothing to act on; indenting takes their place, and delete names what goes.
+ * Copy and cut put the whole table on the clipboard (inner#1239).
  */
 export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
   rowOf('insertBelow'),
   rowOf('duplicate'),
+  { id: 'copy', labelKey: 'canvas.contextMenu.copy', Icon: ClipboardCopy },
+  { id: 'cut', labelKey: 'spaces.document.table.cut', Icon: Scissors },
   { id: 'indent', labelKey: 'spaces.document.blockHandle.indent', Icon: IndentIncrease },
   { id: 'unindent', labelKey: 'spaces.document.blockHandle.unindent', Icon: IndentDecrease },
   rowOf('comment'),

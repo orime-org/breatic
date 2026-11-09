@@ -304,6 +304,22 @@ describe("understand through Gemini's Files API steps", () => {
     expect((error as UpstreamRequestRejected).message).toBe("API key not valid. Please pass a valid API key.");
   });
 
+  it("ends as interrupted, with no cost, when an upload step gets no answer", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? "reset" : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+  });
+
+  it("ends as interrupted, with no cost, when an upload answer is cut part way", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", cut: true } : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+  });
+
   it("ends as interrupted, with no cost, when an upload answer's body never finishes", async () => {
     const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", hold: true } : undefined)));
     const error = await provider.llm.understand(question(1_000)).catch((e: unknown) => e);
@@ -317,6 +333,8 @@ describe("understand through Gemini's Files API steps", () => {
       r.path === "/upload-session/1" ? { status: 200, raw: "<html>proxy</html>", contentType: "text/html" } : undefined],
     ["the file's state answers null", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } } : r.method === "GET" ? { status: 200, raw: "null", contentType: "application/json" } : undefined],
+    ["the uploaded file has no state", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc" } } } : undefined],
   ])("rejects without a status or a cost when %s", async (_name, special) => {
     const error = await throughFiles(filesRoute(special)).llm.understand(question()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
@@ -332,6 +350,11 @@ describe("understand video types", () => {
     await llmProvider(fakes, keys).llm.understand({ ...question(), media: [mov] });
     const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
     expect(parts).toContainEqual({ inlineData: { mimeType: "video/mov", data: Buffer.from(mov.bytes).toString("base64") } });
+  });
+
+  it("names no OpenRouter backend for a model it pins none for", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), model: "google/gemini-2.5-flash" });
+    expect(posted(fakes.openrouter)[0]).not.toHaveProperty("provider");
   });
 
   it("sends a QuickTime video to OpenRouter as video/mov", async () => {
@@ -399,6 +422,11 @@ describe("reading Gemini's answer against one typed structure", () => {
   it("costs an answer without usage as missing, never a known $0", async () => {
     const { usageMetadata: _usage, ...rest } = GENERATE_CONTENT_REPLY;
     const answer = await googleAnswering(rest) as { costs: unknown[] };
+    expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
+  it("costs an answer whose usage carries no token count as missing, never a known $0", async () => {
+    const answer = await googleAnswering({ ...GENERATE_CONTENT_REPLY, usageMetadata: {} }) as { costs: unknown[] };
     expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
   });
 
@@ -471,3 +499,41 @@ describe("a refused understand answer whose body cannot be read is still its sta
   });
 });
 
+describe("understand in cheapest mode", () => {
+  /**
+   * A provider that prices OpenRouter below Google for both understand models.
+   * @returns The provider.
+   */
+  const cheaperOnOpenRouter = (): Provider => {
+    const config = llmConfig(fakes);
+    const cheap = { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1 };
+    config.llm!.openrouter_prices = { "google/gemini-3.8-flash": cheap, "google/gemini-2.5-flash": cheap };
+    return createProvider({ config, keyOf: (name) => (keys as Record<string, string>)[name], llmMaxRetries: 0, cleanText: (t) => t });
+  };
+  const quantizations = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+
+  it("asks OpenRouter for the pinned backend's cheapest endpoint at a quantization a cheapest call takes", async () => {
+    const answer = await cheaperOnOpenRouter().llm.understand(question(), { mode: "cheapest" });
+    expect(answer.upstream).toBe("openrouter");
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false, sort: "price", quantizations });
+  });
+
+  it("asks OpenRouter for the cheapest endpoint of an unpinned model", async () => {
+    await cheaperOnOpenRouter().llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations });
+  });
+
+  it("leaves unknown out of the quantizations of a model one of whose OpenRouter endpoints states a level", async () => {
+    const config = llmConfig(fakes);
+    config.llm!.openrouter_prices = { "google/gemini-2.5-flash": { input_cache_miss_per_mtok: 0.1, output_per_mtok: 1 } };
+    config.llm!.openrouter_states_quantization = ["google/gemini-2.5-flash"];
+    const provider = createProvider({ config, keyOf: (name) => (keys as Record<string, string>)[name], llmMaxRetries: 0, cleanText: (t) => t });
+    await provider.llm.understand({ ...question(), model: "google/gemini-2.5-flash" }, { mode: "cheapest" });
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ sort: "price", quantizations: quantizations.filter((q) => q !== "unknown") });
+  });
+
+  it("sends only the backend pin in default mode", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand(question());
+    expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
+  });
+});

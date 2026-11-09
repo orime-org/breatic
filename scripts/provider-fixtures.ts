@@ -43,6 +43,9 @@ interface RawParam {
   values?: unknown[];
   type?: string;
   accepts?: string;
+  min?: number;
+  /** Ranges that replace `min` and `max` while their condition holds. */
+  bounds?: { min?: number }[];
   min_items?: number;
   max_items?: number;
   fields?: Record<string, { type?: string; values?: unknown[] }>;
@@ -175,8 +178,6 @@ process.stdout.write(`${cases.length} cases, ${cases.filter((c) => c.usd === nul
 /** One frozen body case: our prepared params and prompt, and the body today's worker sends. */
 interface BodyCase {
   model: string;
-  /** "catalog" models run through `upstreamBody`; "three_d" models send every param as it is, plus the prompt. */
-  kind: "catalog" | "three_d";
   params: Record<string, unknown>;
   prompt: string;
   body: Record<string, unknown>;
@@ -211,6 +212,8 @@ function filled(name: string, spec: RawParam): unknown {
     );
   }
   if (spec.type === "text") return `some ${name}`;
+  // A whole number is typed as a number: the smallest value every one of its ranges takes, the highest of `min` and each `bounds` entry's `min`.
+  if (spec.type === "integer") return Math.max(spec.min ?? 0, ...(spec.bounds ?? []).map((b) => b.min ?? 0));
   if (spec.default != null || spec.values !== undefined) return undefined;
   // A param whose declaration says it is an image URL gets one; anything else a word.
   return /image url/i.test(spec.description ?? "") ? `https://cdn.example/${name}-1.png` : `some ${name}`;
@@ -354,7 +357,7 @@ for (const modality of MODALITIES) {
         if (seen.has(key)) continue;
         seen.add(key);
         const prepared = await prepare(model, given, written.neutral);
-        bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written.today) });
+        bodyCases.push({ model: model.name, ...prepared, body: await todayBody(model, given, written.today) });
       }
     }
   }

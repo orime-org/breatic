@@ -1,0 +1,29 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "creativity": [
+      {
+        "type": "number",
+        "minimum": -10,
+        "maximum": 10,
+        "default": 0
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "target_megapixels": [
+      {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 64,
+        "default": 4
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ]
+}

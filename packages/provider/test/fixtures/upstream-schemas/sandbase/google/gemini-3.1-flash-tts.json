@@ -1,0 +1,240 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/gemini-3.1-flash-tts",
+  "fields": {
+    "language_code": [
+      {
+        "type": "string",
+        "enum": [
+          "Arabic (Egypt)",
+          "Bangla (Bangladesh)",
+          "Dutch (Netherlands)",
+          "English (India)",
+          "English (US)",
+          "French (France)",
+          "German (Germany)",
+          "Hindi (India)",
+          "Indonesian (Indonesia)",
+          "Italian (Italy)",
+          "Japanese (Japan)",
+          "Korean (South Korea)",
+          "Marathi (India)",
+          "Polish (Poland)",
+          "Portuguese (Brazil)",
+          "Romanian (Romania)",
+          "Russian (Russia)",
+          "Spanish (Spain)",
+          "Tamil (India)",
+          "Telugu (India)",
+          "Thai (Thailand)",
+          "Turkish (Turkey)",
+          "Ukrainian (Ukraine)",
+          "Vietnamese (Vietnam)",
+          "Afrikaans (South Africa)",
+          "Albanian (Albania)",
+          "Amharic (Ethiopia)",
+          "Arabic (World)",
+          "Armenian (Armenia)",
+          "Azerbaijani (Azerbaijan)",
+          "Basque (Spain)",
+          "Belarusian (Belarus)",
+          "Bulgarian (Bulgaria)",
+          "Burmese (Myanmar)",
+          "Catalan (Spain)",
+          "Cebuano (Philippines)",
+          "Chinese Mandarin (China)",
+          "Chinese Mandarin (Taiwan)",
+          "Croatian (Croatia)",
+          "Czech (Czech Republic)",
+          "Danish (Denmark)",
+          "English (Australia)",
+          "English (UK)",
+          "Estonian (Estonia)",
+          "Filipino (Philippines)",
+          "Finnish (Finland)",
+          "French (Canada)",
+          "Galician (Spain)",
+          "Georgian (Georgia)",
+          "Greek (Greece)",
+          "Gujarati (India)",
+          "Haitian Creole (Haiti)",
+          "Hebrew (Israel)",
+          "Hungarian (Hungary)",
+          "Icelandic (Iceland)",
+          "Javanese (Java)",
+          "Kannada (India)",
+          "Konkani (India)",
+          "Lao (Laos)",
+          "Latin (Vatican City)",
+          "Latvian (Latvia)",
+          "Lithuanian (Lithuania)",
+          "Luxembourgish (Luxembourg)",
+          "Macedonian (North Macedonia)",
+          "Maithili (India)",
+          "Malagasy (Madagascar)",
+          "Malay (Malaysia)",
+          "Malayalam (India)",
+          "Mongolian (Mongolia)",
+          "Nepali (Nepal)",
+          "Norwegian Bokmal (Norway)",
+          "Norwegian Nynorsk (Norway)",
+          "Odia (India)",
+          "Pashto (Afghanistan)",
+          "Persian (Iran)",
+          "Portuguese (Portugal)",
+          "Punjabi (India)",
+          "Serbian (Serbia)",
+          "Sindhi (India)",
+          "Sinhala (Sri Lanka)",
+          "Slovak (Slovakia)",
+          "Slovenian (Slovenia)",
+          "Spanish (Latin America)",
+          "Spanish (Mexico)",
+          "Swahili (Kenya)",
+          "Swedish (Sweden)",
+          "Urdu (Pakistan)"
+        ]
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "ogg_opus"
+        ],
+        "default": "mp3"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 50000
+      }
+    ],
+    "speakers": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Pulcherrima",
+                  "Puck",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "speaker_id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "voice",
+                  "speaker_id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "voice",
+            "speaker_id"
+          ]
+        }
+      }
+    ],
+    "style_instructions": [
+      {
+        "type": "string",
+        "maxLength": 4000
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Pulcherrima",
+          "Puck",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ],
+        "default": "Kore"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "google"
+}

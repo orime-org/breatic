@@ -2198,7 +2198,16 @@
         "cellMenu": "셀 옵션",
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
-        "textHighlight": "배경(텍스트 강조)"
+        "textHighlight": "배경(텍스트 강조)",
+        "cut": "잘라내기",
+        "pasteAbove": "위에 붙여넣기",
+        "pasteBelow": "아래에 붙여넣기",
+        "pasteLeft": "왼쪽에 붙여넣기",
+        "pasteRight": "오른쪽에 붙여넣기",
+        "splitMergedFirst": "먼저 병합된 셀을 분할하세요",
+        "noTableToPaste": "먼저 표를 복사하세요",
+        "clipboardNotAllowed": "클립보드 접근이 허용되지 않았습니다",
+        "copyFailed": "클립보드에 복사하지 못했습니다"
       },
       "paste": {
         "unsupportedInCell": "이 형식은 붙여넣을 수 없습니다"
@@ -3375,7 +3384,8 @@
       "invalid_range": "동영상 범위를 벗어났습니다",
       "incompatible_track": "다른 종류의 트랙에 있습니다",
       "damaged": "이 클립을 더 이상 읽을 수 없습니다",
-      "missing_source": "동영상을 찾을 수 없습니다"
+      "missing_source": "동영상을 찾을 수 없습니다",
+      "source_unresolved": "웹 애니메이션을 사용할 수 없음"
     },
     "loadingMedia": "동영상 불러오는 중…",
     "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",
@@ -3428,7 +3438,8 @@
       "track_missing": "대상 트랙이 삭제되었습니다. 다른 트랙을 선택하세요.",
       "id_taken": "이미 있는 항목입니다. 다시 시도하세요.",
       "main_track": "메인 트랙은 삭제할 수 없습니다.",
-      "track_not_empty": "빈 트랙만 삭제할 수 있습니다."
+      "track_not_empty": "빈 트랙만 삭제할 수 있습니다.",
+      "source_unresolved": "웹 애니메이션이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요."
     },
     "mainTrack": "메인 트랙",
     "track": "영상 {index}",
@@ -3445,8 +3456,8 @@
       "linkage": "연동",
       "zoom": "확대/축소",
       "track": "트랙",
-      "inPoint": "인 포인트",
-      "duration": "길이",
+      "inPoint": "인 포인트(프레임)",
+      "duration": "길이(프레임)",
       "newTrack": "새 영상 트랙",
       "newTrackZone": "여기에 놓아 새 트랙 만들기",
       "trackRemoved": "트랙이 삭제됨",
@@ -3458,6 +3469,69 @@
       "splitOutside": "분할하려면 재생 헤드를 선택한 클립 안으로 옮기세요.",
       "lowestTrack": "이 클립은 이미 가장 아래 영상 트랙에 있습니다.",
       "bumped": "연동 클립 {count, plural, other {#개}}를 위 트랙으로 옮겼습니다."
+    },
+    "webAnimation": {
+      "create": "웹 애니메이션 만들기",
+      "executions": "실행 목록",
+      "copy": "웹 애니메이션 사본",
+      "durationShort": "{seconds}초",
+      "dialog": {
+        "title": "웹 애니메이션 만들기",
+        "retryTitle": "웹 애니메이션 다시 실행",
+        "description": "요청을 입력하고 \"실행\"을 누르세요.",
+        "prompt": "요청",
+        "promptPlaceholder": "예: 파란 배경에서 제목이 왼쪽에서 밀려 들어옴",
+        "engine": "엔진",
+        "aspect": "화면 비율",
+        "duration": "길이(초)",
+        "addAtPlayhead": "재생 헤드 위치에서 Timeline에 추가",
+        "execute": "실행"
+      },
+      "list": {
+        "close": "실행 목록 닫기",
+        "completed": "완료",
+        "inProgress": "진행 중",
+        "emptyCompleted": "아직 완료된 실행이 없습니다.",
+        "emptyInProgress": "진행 중인 실행이 없습니다."
+      },
+      "status": {
+        "awaiting_landing": "저장 중",
+        "queued": "대기 중",
+        "running": "제작 중",
+        "cancelling": "취소 중",
+        "succeeded": "성공",
+        "failed": "실패",
+        "cancelled": "취소됨",
+        "expired": "만료됨"
+      },
+      "step": {
+        "landing": "실행 요청 저장"
+      },
+      "phase": {
+        "writing": "페이지 작성",
+        "validating": "프레임과 매니페스트 검증",
+        "saving": "소스 저장"
+      },
+      "usageLabel": "사용량",
+      "usage": "{credits} 크레딧",
+      "usagePending": "종료 후 정산",
+      "unavailable": "웹 애니메이션을 사용할 수 없음",
+      "cancel": "취소",
+      "addToTimeline": "Timeline에 추가",
+      "addPlaceholder": "Timeline에 먼저 추가",
+      "retry": "다시 실행",
+      "failure": {
+        "feature_disabled": "지금은 웹 애니메이션을 사용할 수 없습니다.",
+        "check": "페이지가 검사를 통과하지 못했습니다.",
+        "stopped": "제작이 예기치 않게 중단되었습니다.",
+        "unknown": "실행에 실패했습니다."
+      },
+      "preview": {
+        "pending": "{track}: 웹 애니메이션 {status, select, awaiting_landing {저장 중} queued {대기 중} running {제작 중} cancelling {취소 중} other {대기 중}}…",
+        "failed": "{track}: 웹 애니메이션 {status, select, failed {실패} cancelled {취소됨} expired {만료됨} other {사용 불가}}, 표시되지 않음",
+        "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
+        "loading": "{track}: 웹 애니메이션 불러오는 중…"
+      }
     }
   }
 }

@@ -129,6 +129,10 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 WebKit's contenteditable deletes an element that becomes empty during a composition when it has `position: relative`; BlockNote sets that on `.bn-block-group .bn-block-group > .bn-block-outer`, so only indented rows split into two while typing with an input method in Safari. Upstream does not fix it, and the document editor installs `prosemirror-safari-ime-span` once per editor through `spaces/document/document-safari-ime.ts`. Check: an IME oddity in Safari that affects only some rows? Look at which selector gives those elements `position: relative`.
 
+### Content inserted outside a paste keeps its block ids
+
+**Clipboard content written into the document by our own code (a menu's paste, a command reading `navigator.clipboard`) goes through `withoutRowIds` (`spaces/document/document-comment-paste.ts`) first.** HTML from BlockNote's full export carries each block's `data-id`; a real paste clears them in UniqueID's `transformPasted`, but a direct `tr.replaceWith` keeps them, and UniqueID's `appendTransaction` renames duplicates only inside the changed range, so pasting the same content twice leaves two blocks with one id. `onTarget` in `document-put.ts` and `clipboardTable` in `document-table-line-clipboard.ts` both clear them.
+
 ### Moving a mounted editor moves its portal
 
 **When a mounted BlockNote editor is moved to another container, `editor.portalElement` moves with its surface.** `BlockNoteEditor.mount()` appends the portal to the parent only once, so after a Space switch the side-menu handles render outside the page with no error. `adoptDocumentEditor` (`spaces/document/document-editor-cache.ts`) moves both; after the first mount the container's children are `[surface, portal]`.

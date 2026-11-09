@@ -40,7 +40,15 @@ import {
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
-import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
+import {
+  JOB_PATH,
+  WEB_ANIMATION_CANCEL_PATH,
+  cancelWebAnimationJob,
+  readJob,
+  submitJob,
+  type JobsEnv,
+} from "@ingest/jobs/routes.js";
+import { WEB_ANIMATION_PREVIEW_PATH, serveWebAnimationPreview } from "@ingest/web-animation-preview.js";
 import {
   LONG_MEDIA_JOB_PATH,
   LONG_MEDIA_CANCEL_PATH,
@@ -98,6 +106,7 @@ export { MediaContainer } from "@ingest/media-container.js";
 export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
 export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
+export { WebAnimationContainer } from "@ingest/jobs/web-animation-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -1501,6 +1510,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   const job = JOB_PATH.exec(pathname);
   if (request.method === "GET" && job) {
     return readJob(request, env, job[1] ?? "", job[2] ?? "");
+  }
+
+  const webAnimationCancel = WEB_ANIMATION_CANCEL_PATH.exec(pathname);
+  if (request.method === "POST" && webAnimationCancel) {
+    return cancelWebAnimationJob(request, env, webAnimationCancel[1] ?? "");
+  }
+
+  const preview = WEB_ANIMATION_PREVIEW_PATH.exec(pathname);
+  if (request.method === "GET" && preview) {
+    return serveWebAnimationPreview(request, env.BUCKET, env.INGEST_SHARED_SECRET, preview[1] ?? "");
   }
 
   const part = PART_PATH.exec(pathname);

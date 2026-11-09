@@ -24,6 +24,9 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
+export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
+export { timelineOperationKey } from "@domain/timeline/operation-key.js";
 export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {
   containerCostUsd,

@@ -7,7 +7,19 @@
 # vendor_ids is the id an upstream serves one of our models under.
 # openrouter_backends pins the backend OpenRouter routes a model to. prices are
 # the direct token prices, in USD per million tokens, for upstreams that report
-# no cost of their own.
+# no cost of their own: per model a list whose first price holds from the start
+# and each later one from its from (a UTC time), so an announced change is
+# written ahead; off_peak multiplies every price by its factor outside the
+# peak_utc windows (UTC weekdays, 0 is Sunday, and times) and on its holidays
+# (UTC dates). A call is priced at the moment the request that served it was
+# sent. openrouter_prices are OpenRouter's token prices for the
+# same models, as pnpm provider:prices writes them, so a cheapest call can rank
+# OpenRouter beside the direct upstream; both read only the endpoints of the
+# quantizations openrouter_quantizations lists, unknown only for a model none
+# of whose endpoints states a level. openrouter_states_quantization lists the
+# models one of whose endpoints does, priced or not.
+# openrouter_prices_at is when they were read: a direct price that took effect
+# after it is not ranked against them.
 # gemini_inline_max_bytes is the request size past which media goes to Gemini
 # through its Files API rather than inline; gemini_file_poll_ms is how often an
 # uploaded file is asked about until it is ready.
@@ -58,26 +70,143 @@ openrouter_backends:
     allow_fallbacks: false
 prices:
   deepseek/deepseek-v4-pro:
-    input_cache_hit_per_mtok: 0.044
-    input_cache_miss_per_mtok: 1.32
-    output_per_mtok: 3.96
+    - input_cache_hit_per_mtok: 0.044
+      input_cache_miss_per_mtok: 1.32
+      output_per_mtok: 3.96
+      off_peak:
+        factor: 0.5
+        peak_utc:
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 01:00
+            to: 04:00
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 06:00
+            to: 10:00
+        holidays:
+          - 2027-01-01
+          - 2027-02-05
+          - 2027-02-08
+          - 2027-02-09
+          - 2027-02-10
+          - 2027-02-11
+          - 2027-02-12
+          - 2027-04-05
+          - 2027-05-03
+          - 2027-05-04
+          - 2027-05-05
+          - 2027-06-09
+          - 2027-09-15
+          - 2027-10-01
+          - 2027-10-04
+          - 2027-10-05
+          - 2027-10-06
+          - 2027-10-07
   deepseek/deepseek-v4.1-flash-1017:
-    input_cache_hit_per_mtok: 0.006
-    input_cache_miss_per_mtok: 0.3
-    output_per_mtok: 1.2
+    - input_cache_hit_per_mtok: 0.006
+      input_cache_miss_per_mtok: 0.3
+      output_per_mtok: 1.2
+      off_peak:
+        factor: 0.5
+        peak_utc:
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 01:00
+            to: 04:00
+          - days:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+            from: 06:00
+            to: 10:00
+        holidays:
+          - 2027-01-01
+          - 2027-02-05
+          - 2027-02-08
+          - 2027-02-09
+          - 2027-02-10
+          - 2027-02-11
+          - 2027-02-12
+          - 2027-04-05
+          - 2027-05-03
+          - 2027-05-04
+          - 2027-05-05
+          - 2027-06-09
+          - 2027-09-15
+          - 2027-10-01
+          - 2027-10-04
+          - 2027-10-05
+          - 2027-10-06
+          - 2027-10-07
   anthropic/claude-opus-5.5:
-    input_cache_hit_per_mtok: 0.2
+    - input_cache_hit_per_mtok: 0.2
+      input_cache_miss_per_mtok: 4
+      input_cache_write_5m_per_mtok: 5
+      input_cache_write_1h_per_mtok: 8
+      output_per_mtok: 20
+  google/gemini-2.5-flash:
+    - input_cache_hit_per_mtok: 0.03
+      input_cache_miss_per_mtok: 0.3
+      output_per_mtok: 2.5
+  google/gemini-3.8-flash:
+    - input_cache_hit_per_mtok: 0.075
+      input_cache_miss_per_mtok: 0.75
+      output_per_mtok: 3.75
+    - from: 2027-01-01T00:00:00Z
+      input_cache_hit_per_mtok: 0.15
+      input_cache_miss_per_mtok: 1.5
+      output_per_mtok: 7.5
+  anthropic/claude-sonnet-5.5:
+    - input_cache_hit_per_mtok: 0.1
+      input_cache_miss_per_mtok: 2
+      input_cache_write_5m_per_mtok: 2.5
+      input_cache_write_1h_per_mtok: 4
+      output_per_mtok: 10
+gemini_inline_max_bytes: 20000000
+gemini_file_poll_ms: 5000
+openrouter_quantizations:
+  - int8
+  - fp8
+  - mxfp8
+  - fp16
+  - bf16
+  - fp32
+  - unknown
+openrouter_prices:
+  deepseek/deepseek-v4-pro:
+    input_cache_miss_per_mtok: 0.28054
+    output_per_mtok: 0.56108
+  deepseek/deepseek-v4.1-flash-1017:
+    input_cache_miss_per_mtok: 0.022
+    output_per_mtok: 0.4
+  anthropic/claude-opus-5.5:
     input_cache_miss_per_mtok: 4
-    input_cache_write_5m_per_mtok: 5
-    input_cache_write_1h_per_mtok: 8
     output_per_mtok: 20
   google/gemini-2.5-flash:
-    input_cache_hit_per_mtok: 0.03
     input_cache_miss_per_mtok: 0.3
     output_per_mtok: 2.5
   google/gemini-3.8-flash:
-    input_cache_hit_per_mtok: 0.075
     input_cache_miss_per_mtok: 0.75
     output_per_mtok: 3.75
-gemini_inline_max_bytes: 20000000
-gemini_file_poll_ms: 5000
+  anthropic/claude-sonnet-5.5:
+    input_cache_miss_per_mtok: 2
+    output_per_mtok: 10
+openrouter_states_quantization:
+  - deepseek/deepseek-v4-pro
+  - deepseek/deepseek-v4.1-flash-1017
+openrouter_prices_at: 2026-11-08T11:27:09.117Z

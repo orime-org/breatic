@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { OFF_WAVESPEED } from "../../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../../provider.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
@@ -14,9 +15,9 @@ describe("the shipped provider configuration", () => {
     expect(() => assertBindsCatalog(config, catalog())).not.toThrow();
   });
 
-  it("puts every catalog model on WaveSpeed at weight 1", () => {
+  it("puts every catalog model WaveSpeed still serves on WaveSpeed at weight 1", () => {
     const { models } = parseProviderConfig(shipped());
-    const off = Object.entries(models).filter(([, bindings]) => bindings.find((b) => b.upstream === "wavespeed")?.weight !== 1);
+    const off = Object.entries(models).filter(([name, bindings]) => !OFF_WAVESPEED.has(name) && bindings.find((b) => b.upstream === "wavespeed")?.weight !== 1);
     expect(off.map(([name]) => name)).toEqual([]);
   });
 
@@ -77,20 +78,25 @@ describe("the shipped provider configuration", () => {
     expect(() => provider.llm.assertModelsPriced([agent.default_model, agent.consolidation_model, ...describers])).not.toThrow();
   });
 
+  it("states OpenRouter's unit price beside each direct price, for cheapest calls to rank both", () => {
+    const llm = shipped().llm!;
+    const missing = Object.keys(llm.prices ?? {}).filter((model) => llm.openrouter_prices?.[model] === undefined);
+    expect(missing).toEqual([]);
+  });
+
   it("declares every catalog extra step on WaveSpeed as the catalog does, its optional flag included", () => {
-    interface CatalogStep { endpoint: string; at: string; for_param?: string; per_item?: boolean; reused?: boolean; optional?: boolean; pricing: { base_price: number; formula: string; discount_rate: number } }
+    interface CatalogStep { endpoint: string; at: string; for_param?: string; per_item?: boolean; optional?: boolean; pricing: { base_price: number; formula: string; discount_rate: number } }
     const files = ["image", "video", "audio", "tts", "three_d"].map((m) => `models/${m}/models.yaml`);
     const { models } = parseProviderConfig(shipped());
     for (const file of files) {
       for (const model of yaml<{ models: { name: string; extra_steps?: CatalogStep[] }[] }>(file).models) {
         const declared = models[model.name]?.find((b) => b.upstream === "wavespeed")?.extra_steps ?? [];
-        const seen = declared.map((s) => ({ endpoint: s.endpoint, at: s.at, for_param: s.for_param, per_item: s.per_item, reused: s.reused, optional: s.optional, pricing: s.pricing }));
+        const seen = declared.map((s) => ({ endpoint: s.endpoint, at: s.at, for_param: s.for_param, per_item: s.per_item, optional: s.optional, pricing: s.pricing }));
         const wanted = (model.extra_steps ?? []).map((s) => ({
           endpoint: s.endpoint,
           at: s.at,
           for_param: s.for_param,
           per_item: s.per_item,
-          reused: s.reused,
           optional: s.optional,
           pricing: { kind: "formula", ...s.pricing },
         }));

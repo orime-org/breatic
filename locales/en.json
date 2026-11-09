@@ -2198,7 +2198,16 @@
         "cellMenu": "Cell options",
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
-        "textHighlight": "Highlight"
+        "textHighlight": "Highlight",
+        "cut": "Cut",
+        "pasteAbove": "Paste above",
+        "pasteBelow": "Paste below",
+        "pasteLeft": "Paste left",
+        "pasteRight": "Paste right",
+        "splitMergedFirst": "Split merged cells first",
+        "noTableToPaste": "Copy a table first",
+        "clipboardNotAllowed": "Clipboard access is not allowed",
+        "copyFailed": "Could not copy to the clipboard"
       },
       "paste": {
         "unsupportedInCell": "This format cannot be pasted here"
@@ -3375,7 +3384,8 @@
       "invalid_range": "Outside its video",
       "incompatible_track": "On a track of another kind",
       "damaged": "This clip can no longer be read",
-      "missing_source": "Its video is missing"
+      "missing_source": "Its video is missing",
+      "source_unresolved": "Its web animation is unavailable"
     },
     "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
@@ -3428,7 +3438,8 @@
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
-      "track_not_empty": "Only an empty track can be deleted."
+      "track_not_empty": "Only an empty track can be deleted.",
+      "source_unresolved": "This web animation is not ready yet. Try again shortly."
     },
     "mainTrack": "Main track",
     "track": "Visual {index}",
@@ -3445,8 +3456,8 @@
       "linkage": "Linkage",
       "zoom": "Zoom",
       "track": "Track",
-      "inPoint": "In point",
-      "duration": "Duration",
+      "inPoint": "In point (frames)",
+      "duration": "Duration (frames)",
       "newTrack": "New visual track",
       "newTrackZone": "Drop here for a new track",
       "trackRemoved": "Track removed",
@@ -3458,6 +3469,69 @@
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
       "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+    },
+    "webAnimation": {
+      "create": "Create web animation",
+      "executions": "Executions",
+      "copy": "Web animation copy",
+      "durationShort": "{seconds} s",
+      "dialog": {
+        "title": "Create web animation",
+        "retryTitle": "Run web animation again",
+        "description": "Describe the animation, then press Execute.",
+        "prompt": "Prompt",
+        "promptPlaceholder": "For example: on a blue background, a title slides in from the left",
+        "engine": "Engine",
+        "aspect": "Aspect ratio",
+        "duration": "Duration (seconds)",
+        "addAtPlayhead": "Add to the Timeline at the playhead",
+        "execute": "Execute"
+      },
+      "list": {
+        "close": "Close executions",
+        "completed": "Completed",
+        "inProgress": "In progress",
+        "emptyCompleted": "No completed executions yet.",
+        "emptyInProgress": "No executions in progress."
+      },
+      "status": {
+        "awaiting_landing": "Saving",
+        "queued": "Queued",
+        "running": "Creating",
+        "cancelling": "Cancelling",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "expired": "Expired"
+      },
+      "step": {
+        "landing": "Save the request"
+      },
+      "phase": {
+        "writing": "Write the page",
+        "validating": "Check frames and manifest",
+        "saving": "Save the source"
+      },
+      "usageLabel": "Usage",
+      "usage": "{credits} credits",
+      "usagePending": "Settled when it ends",
+      "unavailable": "Web animation unavailable",
+      "cancel": "Cancel",
+      "addToTimeline": "Add to Timeline",
+      "addPlaceholder": "Add to Timeline now",
+      "retry": "Run again",
+      "failure": {
+        "feature_disabled": "Web animation is unavailable right now.",
+        "check": "The page did not pass the check.",
+        "stopped": "Creation stopped unexpectedly.",
+        "unknown": "This execution failed."
+      },
+      "preview": {
+        "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",
+        "failed": "{track}: {status, select, failed {web animation failed} cancelled {web animation cancelled} expired {web animation expired} other {web animation not shown}}, not shown",
+        "unavailable": "{track}: web animation unavailable",
+        "loading": "{track}: web animation loading…"
+      }
     }
   }
 }

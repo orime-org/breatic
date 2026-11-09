@@ -1056,7 +1056,7 @@ export const nodeTasks = pgTable(
     origin: varchar("origin", { length: 16 }),
     // What the user is told beside a done 3D generation (inner#1692):
     // 'rig_failed' when the model was delivered without the skeleton it was
-    // asked for. Null on every other row; its CHECK lives in 0119.
+    // asked for. Null on every other row; its CHECK lives in 0121.
     notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
@@ -2218,6 +2218,117 @@ export const agentMemories = pgTable(
     index("agent_memories_conversation_idx")
       .on(table.conversationId, desc(table.updatedAt))
       .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * One Timeline execution the user accepted (0119, inner#1711).
+ *
+ * `status` moves only through `timelineExecutionRepo.transition`; `fence`
+ * names the attempt allowed to finish it and `billed_at` lets it be charged
+ * at most once. `space_id` has no foreign key, as with `tasks.space_id`. The
+ * kind, engine, status and phase CHECKs are written in 0119 only; the index
+ * declarations below mirror 0119, which is what runs.
+ */
+export const timelineExecutions = pgTable(
+  "timeline_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    actionId: text("action_id").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    inputHash: text("input_hash").notNull(),
+    engine: text("engine").notNull(),
+    status: text("status").notNull().default("awaiting_landing"),
+    phase: text("phase"),
+    steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    attempt: integer("attempt").notNull().default(0),
+    fence: uuid("fence"),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    resultSourceVersionId: uuid("result_source_version_id"),
+    failureReason: text("failure_reason"),
+    billedCredits: numeric("billed_credits"),
+    billedAt: timestamp("billed_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_executions_action_idx")
+      .on(table.projectId, table.spaceId, table.actionId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_space_idx")
+      .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_open_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+  ],
+);
+
+/**
+ * The immutable source version a web-animation execution produced (0120, inner#1711).
+ *
+ * At most one per execution: every settlement of the same terminal report
+ * lands on the row the first wrote. Insert-only, so `created_at` alone.
+ */
+export const timelineWebAnimationSources = pgTable(
+  "timeline_web_animation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .unique("timeline_web_animation_sources_execution_id_key")
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    packageKey: text("package_key").notNull(),
+    manifestKey: text("manifest_key").notNull(),
+    packageSha256: text("package_sha256").notNull(),
+    packageBytes: bigint("package_bytes", { mode: "number" }).notNull(),
+    manifestSha256: text("manifest_sha256").notNull(),
+    runtimeVersion: text("runtime_version").notNull(),
+    fontSetVersion: integer("font_set_version").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    fpsNum: integer("fps_num").notNull(),
+    fpsDen: integer("fps_den").notNull(),
+    durationFrames: integer("duration_frames").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+);
+
+/**
+ * Which Projects may resolve and preview an execution's result (0120, inner#1711).
+ *
+ * One live row per execution and Project; duplicating a Project copies every
+ * live row of its source.
+ */
+export const timelineExecutionGrants = pgTable(
+  "timeline_execution_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_execution_grants_live_idx")
+      .on(table.executionId, table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_project_idx")
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 

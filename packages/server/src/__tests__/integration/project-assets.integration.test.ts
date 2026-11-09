@@ -218,7 +218,41 @@ describe("Project registered media HTTP reads", () => {
     expect(await readData<unknown>(limitsPath!, cookie)).toEqual({
       defaults: { width: config.defaults.width, height: config.defaults.height, fps: config.defaults.fps },
       assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
+      webAnimation: {
+        promptMaxLength: config.web_animation.prompt_max_length,
+        durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
+        aspects: Object.keys(config.web_animation.viewports),
+        playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+        sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+        previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+        premountMs: config.web_animation.preview_premount_ms,
+        idleInstancesMax: config.web_animation.preview_idle_instances_max,
+      },
     });
+  });
+
+  it("gives web the web animation dialog bounds, preview timings and preview pool limits from config/timeline.yaml (inner#1711 design §7.4, §8, §10)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const config = getTimelineConfig();
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    expect(limits["webAnimation"]).toEqual({
+      promptMaxLength: config.web_animation.prompt_max_length,
+      durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
+      aspects: Object.keys(config.web_animation.viewports),
+      playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+      sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+      premountMs: config.web_animation.preview_premount_ms,
+      idleInstancesMax: config.web_animation.preview_idle_instances_max,
+    });
+    // The preview reuses an address within the signature validity, premounts two seconds ahead and keeps eight idle
+    // pages; toEqual alone would accept a missing key whose expected value is undefined.
+    expect(limits["webAnimation"]).toMatchObject({ previewTokenTtlMs: 3_600_000, premountMs: 2000, idleInstancesMax: 8 });
+    // The tracked yaml offers the dialog's three aspects in this order; the creation input accepts exactly these.
+    expect(limits["webAnimation"]).toMatchObject({ aspects: ["16:9", "9:16", "1:1"] });
+    // The dialog opens at the approved demo's four seconds.
+    expect(limits["webAnimation"]).toMatchObject({ durationSeconds: { default: 4 } });
   });
 
   it("returns 403 consistently to an authenticated nonmember across all three endpoints", async () => {

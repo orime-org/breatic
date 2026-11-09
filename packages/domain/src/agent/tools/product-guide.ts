@@ -1337,7 +1337,7 @@ export function renderProductGuide(): string {
     `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
-      `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the clip on the highest track at the playhead. ` +
+      `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the video on the highest track at the playhead, with any web animation copies on tracks above it stacked on top. ` +
       "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
@@ -1380,6 +1380,24 @@ export function renderProductGuide(): string {
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
       `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
+    `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
+      `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
+      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
+      `${quoted(t("timeline.webAnimation.dialog.addAtPlayhead"))}, which starts on. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts the run; ` +
+      "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
+      "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
+      `${quoted(t("timeline.webAnimation.executions"))}, next to it, opens the list in the right panel (an X at its top right closes it), with ${quoted(t("timeline.webAnimation.list.completed"))} and ` +
+      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, the step a run stopped at and why a failed run failed, a preview of a finished result with its own slider ` +
+      `(${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))} when it cannot be loaded) and what you can do with it: ` +
+      `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
+      `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
+      `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
+      "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
+      "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
+      "In the preview a copy above a video shows on top of it, and one under a higher video is hidden. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
+      "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
+      "and a copy whose page cannot be loaded is noted there as unavailable with " +
+      `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
       "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
@@ -1719,22 +1737,46 @@ export function renderProductGuide(): string {
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
-      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
-      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("canvas.contextMenu.copy"))} puts the ` +
+      `whole table on the clipboard and ${quoted(t("spaces.document.table.cut"))} does the same, then deletes the ` +
+      "table; pasted with Cmd/Ctrl+V outside a table it makes a new table, and pasted in a table's cell it fills " +
+      `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
       "when no cell has words.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
-      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.table.pasteAbove"))}, ` +
+      `${quoted(t("spaces.document.table.pasteBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
       `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("canvas.contextMenu.copy"))}, ${quoted(t("spaces.document.table.cut"))}, ` +
+      `${quoted(t("spaces.document.table.pasteLeft"))}, ${quoted(t("spaces.document.table.pasteRight"))}, ` +
       `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
-      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.cellFill"))}, ${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
+      `${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("canvas.contextMenu.copy"))} puts the row or column on the clipboard, as selecting its cells and ` +
+      `pressing Cmd/Ctrl+C does, and ${quoted(t("spaces.document.table.cut"))} copies it, then deletes it. ` +
+      `${quoted(t("spaces.document.table.pasteAbove"))} and the other paste items insert the table on the ` +
+      "clipboard as new rows (or columns) beside this one and change no cell already there: rows copied from " +
+      "this or another table, a spreadsheet or a web page all work; a narrower copy leaves the remaining new cells " +
+      "empty and a wider one adds columns (or rows) to the table. The browser may ask to allow reading the " +
+      `clipboard first; refused, a notice says ${quoted(t("spaces.document.table.clipboardNotAllowed"))}, and ` +
+      `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
+      `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
+      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "row or column, the copy, cut, paste and " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
+      `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
       `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
       `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
       `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +

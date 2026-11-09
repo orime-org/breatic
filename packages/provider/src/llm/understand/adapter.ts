@@ -11,6 +11,7 @@ import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import { HttpStatus } from "@provider/http/errors.js";
 import { answerText, deliver, isSuccess, parsed, type OutgoingRequest } from "@provider/http/request.js";
+import type { VendorOptions } from "@provider/llm/vendors.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
 export interface UploadedFile {
@@ -36,11 +37,11 @@ export interface UnderstandCall {
   question: string;
   media: { bytes: Uint8Array; contentType: string }[];
   maxOutputTokens: number;
-  /** OpenRouter's backend pin for the model, when it has one. */
-  backend?: { only: string[]; allow_fallbacks: boolean };
+  /** OpenRouter's `provider` object for the call, sent as given: the model's backend pin and, for a cheapest call, the price sort. */
+  provider?: VendorOptions;
   deadlineAt: number;
   signal: AbortSignal;
-  /** The size past which Gemini takes media through its Files API, in bytes. */
+  /** The size of the inline request (question and base64 media) past which Gemini takes media through its Files API, in bytes. */
   inlineMaxBytes: number;
   /** How often an uploaded file's state is asked about, in ms. */
   filePollMs: number;
@@ -50,6 +51,8 @@ export interface UnderstandCall {
 /** The upstream's answer as it came: its status, parsed body and text. */
 export interface Answered {
   url: string;
+  /** When the request left, in epoch ms: a model answer's direct price is the one in effect then. */
+  sentAt: number;
   status: number;
   headers: Headers;
   body: unknown;
@@ -151,6 +154,7 @@ export class AnswerUnread extends Error {
  */
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
+  const sentAt = Date.now();
   const response = await deliver(request, bounds);
   let text: string;
   try {
@@ -158,7 +162,7 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
   } catch (error) {
     throw new AnswerUnread(request.url, response.status, error);
   }
-  return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
+  return { url: request.url, sentAt, status: response.status, body: parsed(text), text, headers: response.headers };
 }
 
 /**

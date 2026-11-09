@@ -1,0 +1,353 @@
+{
+  "model": "tripo-h3.1-multiview",
+  "upstream": "sandbase",
+  "model_id": "tripo3d/tripo-h3.1/multiview-to-3d",
+  "runs": [
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": false,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": false,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "detailed",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "detailed",
+        "geometry_quality": "standard",
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "detailed",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "detailed",
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 1500000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "face_limit": 1500000,
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 20000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "face_limit": 20000,
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "detailed",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "face_limit": 2000000,
+        "auto_size": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "detailed",
+        "face_limit": 2000000,
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "model_seed": 0,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "seed": 0,
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "texture_version": "v3.0",
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "auto_size": false,
+        "export_uv": true,
+        "model_seed": 2147483647,
+        "texture_alignment": "original_image",
+        "orientation": "default",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": true,
+        "pbr": true,
+        "texture_quality": "standard",
+        "geometry_quality": "standard",
+        "seed": 2147483647,
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    },
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": false,
+        "pbr": false,
+        "geometry_quality": "standard",
+        "smart_low_poly": false,
+        "generate_parts": false,
+        "export_uv": true,
+        "texture_alignment": "original_image",
+        "enable_image_autofix": false
+      },
+      "prompt": "",
+      "body": {
+        "images": [
+          "https://example.com/images.png",
+          "https://example.com/images.png"
+        ],
+        "texture": false,
+        "pbr": false,
+        "geometry_quality": "standard",
+        "mode": "async",
+        "model": "tripo3d/tripo-h3.1/multiview-to-3d"
+      }
+    }
+  ],
+  "untaken": [
+    {
+      "param": "face_limit",
+      "value": 1
+    },
+    {
+      "param": "face_limit",
+      "value": 500
+    }
+  ],
+  "steps": []
+}
