@@ -86,7 +86,7 @@
     "space": "document",
     "doc": [],
     "user": "Writing a YA mystery novel; readers are teenagers. Has no fixed tone in mind and will pick between options shown. Answers in Simplified Chinese.",
-    "pass": "Before writing the full chapter, the agent gives an outline for the user to approve, or two short openings in different tones for the user to pick; the tone is settled by those openings, not asked as a questionnaire question. It does not write the full 3000-character chapter in this turn before the user picks."
+    "pass": "Before writing the full chapter, the agent gives an outline for the user to approve, or two or three short openings in different tones for the user to pick; the tone is settled by those openings, not asked as a questionnaire question. It does not write the full 3000-character chapter in this turn before the user picks."
   },
   {
     "id": "bgm",
