@@ -350,14 +350,20 @@ function cutPastLink(text: string, to: number): number {
 }
 
 /**
- * The links a slice of page text holds, one per page key, each in the
- * spelling the slice first writes it.
- * @param text - The slice's text.
+ * The links a slice lists: the title's, then the whole page's links whose
+ * place in the page lies within the slice, one per page key, each in the
+ * spelling first written. Read from the whole page, a slice lists only links
+ * reading the whole page lists, never a piece of text its cut made look like one.
+ * @param title - The page's title.
+ * @param text - The page's whole text.
+ * @param from - Where the slice starts in it.
+ * @param to - Where the slice ends in it.
  * @returns The links.
  */
-function linksOf(text: string): string[] {
+function linksOf(title: string, text: string, from: number, to: number): string[] {
+  const inSlice = pageLinkSpansIn(text).flatMap((span) => (span.start >= from && span.end <= to ? [span.link] : []));
   const byKey = new Map<string, string>();
-  for (const link of pageLinksIn(text)) {
+  for (const link of [...pageLinksIn(title), ...inSlice]) {
     const key = pageLinkKey(link);
     if (!byKey.has(key)) byKey.set(key, link);
   }
@@ -365,8 +371,8 @@ function linksOf(text: string): string[] {
 }
 
 /**
- * The part of a page one call hands over, with the links its own text and
- * the page's title hold.
+ * The part of a page one call hands over, with the links its title and the
+ * part of the page it covers hold (`linksOf`).
  *
  * A cut that falls inside a link, where the text writes it, moves to that
  * link's end there (`cutPastLink`), so a link is never handed over in two
@@ -398,7 +404,7 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
     end: to,
     next_start: to < total ? to : null,
     text,
-    links: linksOf(`${page.title ?? ""}\n${text}`),
+    links: linksOf(page.title ?? "", page.text, from, to),
     index,
     ...(page.truncated === true && { truncated: true }),
   };
