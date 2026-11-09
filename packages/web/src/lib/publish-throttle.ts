@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-/** A run that has been asked for and not happened yet. */
 /**
  * The shortest gap allowed between two awareness writes, in ms.
  *
@@ -12,6 +11,7 @@
  */
 export const PRESENCE_WRITE_INTERVAL_MS = 33;
 
+/** A run that has been asked for and not happened yet. */
 export interface PublishThrottle {
   /** Ask for a run; repeat calls before it happens fold into that one run. */
   schedule: () => void;
