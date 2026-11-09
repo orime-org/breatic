@@ -327,19 +327,10 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
       const onBeforeObservers = (transaction: Y.Transaction): void => {
         local = transaction.local;
       };
-      let yDoc: Y.Doc | null = null;
-      /** Listens on the binding's document once the sync plugin has made it. */
-      const attach = (): void => {
-        if (yDoc !== null) return;
-        const binding = (options.syncKey.getState(editorView.state) as { binding?: SpaceDeleteWriteBinding | null } | undefined)?.binding;
-        if (!binding) return;
-        yDoc = binding.doc;
-        yDoc.on('beforeObserverCalls', onBeforeObservers);
-      };
-      attach();
+      const yDoc = bindingOf(editorView).doc;
+      yDoc.on('beforeObserverCalls', onBeforeObservers);
       return {
         update: (updated): void => {
-          attach();
           const redrawn = key.getState(updated.state) ?? null;
           if (redrawn === null || redrawn === handled || updated.state.doc === redrawn) return;
           handled = redrawn;
@@ -347,7 +338,7 @@ export function spaceSizeFilterPlugin(options: SpaceSizeFilterOptions): Plugin {
         },
         destroy: (): void => {
           editorView.dom.removeEventListener('compositionend', onEnd);
-          yDoc?.off('beforeObserverCalls', onBeforeObservers);
+          yDoc.off('beforeObserverCalls', onBeforeObservers);
           view = null;
         },
       };
