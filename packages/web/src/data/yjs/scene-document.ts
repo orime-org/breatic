@@ -23,7 +23,7 @@ export type SceneCommand =
   | { type: 'delete'; ids: readonly string[] }
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
-  | { type: 'pose'; id: string; set: Readonly<Record<string, readonly number[]>>; replace: boolean };
+  | { type: 'pose'; id: string; set: ScenePose; replace: boolean };
 
 export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate';
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };

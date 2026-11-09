@@ -62,6 +62,8 @@ export const POSE_PRESETS: Readonly<Record<(typeof POSE_PRESET_NAMES)[number], S
   lie: {
     'h:hips': turn('x', -90), 'h:spine': IDENTITY, 'h:head': IDENTITY,
     ...ARMS_DOWN, ...LEGS_STRAIGHT,
+    // The thighs stretch back 5 degrees: at the standing hip angle the seat lifts the heels off the ground.
+    'h:leftUpperLeg': turn('x', 5), 'h:rightUpperLeg': turn('x', 5),
     [SCENE_POSE_HIPS_KEY]: [0, -0.863, 0],
   },
   walk: {

@@ -162,6 +162,15 @@ describe('presets on the built-in figure (inner#1692)', () => {
     expect(seat - restFloor).toBeLessThan(GROUND_TOLERANCE * 2);
   });
 
+  it('lie rests the heels on the ground with the head', () => {
+    rig.apply(POSE_PRESETS.lie);
+    root.updateMatrixWorld(true);
+    for (const side of SIDES) {
+      const heel = Math.min(...skinOf([`h:${side}Foot`]).map((point) => point.y));
+      expect(Math.abs(heel - restFloor), side).toBeLessThan(GROUND_TOLERANCE);
+    }
+  });
+
   it.each(PRESETS)('%s keeps the skin of both forearms and hands out of the head', (_name, pose) => {
     rig.apply(pose);
     root.updateMatrixWorld(true);
