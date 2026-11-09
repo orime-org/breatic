@@ -30,3 +30,14 @@ export function displayedObjects(
       ...(value.pose === undefined ? {} : { pose: value.pose }) };
   });
 }
+
+/**
+ * The objects drawn from a drag still in progress, this page's or a
+ * collaborator's; their poses leave the skinned bounds for when they settle.
+ * @param localGestureIds - Objects this page is dragging.
+ * @param remotePeers - Collaborators.
+ * @returns Their IDs.
+ */
+export function previewedObjectIds(localGestureIds: ReadonlySet<string>, remotePeers: readonly SceneRemotePeer[]): ReadonlySet<string> {
+  return new Set([...localGestureIds, ...remotePeers.flatMap((peer) => (peer.gesture ?? []).map((value) => value.id))]);
+}

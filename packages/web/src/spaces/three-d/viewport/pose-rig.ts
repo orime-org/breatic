@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { Bone, Box3, Matrix4, Quaternion, SkinnedMesh, Vector3, type Object3D } from 'three';
-import { SCENE_POSE_KEY_MAX_LENGTH, type ScenePose } from '@breatic/shared';
+import { SCENE_POSE_HIPS_KEY, SCENE_POSE_KEY_MAX_LENGTH, type ScenePose } from '@breatic/shared';
 
 import { REQUIRED_HUMAN_BONES, humanoidBoneOf, type VrmHumanBoneName } from '@web/spaces/three-d/viewport/pose-bone-names';
 
@@ -41,15 +41,19 @@ interface RigBone {
 export interface PoseRig {
   readonly kind: 'humanoid' | 'other';
   readonly joints: readonly { key: string; bone: Bone }[];
-  /** Set every bone from a pose; a missing key leaves its bone at rest. */
-  apply(pose: ScenePose): void;
+  /**
+   * Set every bone from a pose; a missing key leaves its bone at rest. A pose
+   * still being dragged (`settled` false) leaves the skinned bounds as they
+   * are, since recomputing them visits every vertex; the settled pose brings
+   * them up to date.
+   */
+  apply(pose: ScenePose, settled?: boolean): void;
   /** The pose value a key holds now, or null when the rig has no such key. */
   keyValue(key: string): readonly number[] | null;
   /** Forget the last pose applied, so the next apply sets every bone again. */
   invalidate(): void;
 }
 
-const HIPS_TRANSLATION_KEY = 't:hips';
 const Y_AXIS = new Vector3(0, 1, 0);
 
 /** Each limb segment, the mapped bone its direction points to and its T-pose direction. */
@@ -185,6 +189,10 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
       .map((entry) => ({ key: `n:${entry.bone.name}`, bone: entry.bone }));
   const byKey = new Map(joints.map((joint) => [joint.key, byBone.get(joint.bone)!]));
   const hips = human.get('hips');
+  // Instance space to the hips' parent at rest, where the hips position is written. The
+  // hips' ancestors are never posed (the hips top the humanoid chain), so rest is now.
+  const hipsParent = hips?.bone.parent;
+  const toHipsParent = hipsParent ? new Matrix4().multiplyMatrices(toModel, hipsParent.matrixWorld).invert() : new Matrix4();
 
   /**
    * A mapped bone's normalized global rotation from its rotation in instance space.
@@ -208,56 +216,63 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
     return model;
   };
 
+  /**
+   * Set every bone of the instance from a pose and update its world matrices.
+   * @param pose - The pose; a missing key leaves its bone at rest.
+   */
+  const setBones = (pose: ScenePose): void => {
+    const model = new Map<RigBone, Quaternion>();
+    const global = new Map<RigBone, Quaternion>();
+    for (const entry of rig) {
+      const parent = entry.parent === null ? entry.outsideParent : model.get(entry.parent)!;
+      const value = humanoid
+        ? (entry.human === null ? undefined : pose[`h:${entry.human}`])
+        : pose[`n:${entry.bone.name}`];
+      let current: Quaternion;
+      if (value !== undefined && humanoid) {
+        const g = (entry.humanParent === null ? new Quaternion() : global.get(entry.humanParent)!.clone()).multiply(quaternionOf(value));
+        // W' = Y · G · C · Y⁻¹ · W_rest
+        current = facing.clone().multiply(g).multiply(entry.correction).multiply(unfacing).multiply(entry.restModel);
+        entry.bone.quaternion.copy(parent.clone().invert().multiply(current));
+      } else {
+        entry.bone.quaternion.copy(entry.restLocal);
+        if (value !== undefined) entry.bone.quaternion.multiply(quaternionOf(value));
+        current = parent.clone().multiply(entry.bone.quaternion);
+      }
+      model.set(entry, current);
+      if (entry.human !== null) global.set(entry, globalOf(entry, current));
+      entry.bone.position.copy(entry.restPosition);
+    }
+    const translation = pose[SCENE_POSE_HIPS_KEY];
+    if (humanoid && hips && translation !== undefined) {
+      const target = hips.restModelPosition.clone()
+        .add(new Vector3(translation[0], translation[1], translation[2]).multiplyScalar(hipHeight).applyQuaternion(facing));
+      hips.bone.position.copy(target.applyMatrix4(toHipsParent));
+    }
+    instance.updateMatrixWorld(true);
+  };
+
   let applied: string | null = null;
+  let boundsCurrent = false;
 
   return {
     kind: humanoid ? 'humanoid' : 'other',
     joints,
-    apply(pose) {
+    apply(pose, settled = true) {
       const signature = JSON.stringify(Object.entries(pose).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-      if (signature === applied) return;
-      applied = signature;
-      const model = new Map<RigBone, Quaternion>();
-      const global = new Map<RigBone, Quaternion>();
-      for (const entry of rig) {
-        const parent = entry.parent === null ? entry.outsideParent : model.get(entry.parent)!;
-        const value = humanoid
-          ? (entry.human === null ? undefined : pose[`h:${entry.human}`])
-          : pose[`n:${entry.bone.name}`];
-        let current: Quaternion;
-        if (value !== undefined && humanoid) {
-          const g = (entry.humanParent === null ? new Quaternion() : global.get(entry.humanParent)!.clone()).multiply(quaternionOf(value));
-          // W' = Y · G · C · Y⁻¹ · W_rest
-          current = facing.clone().multiply(g).multiply(entry.correction).multiply(unfacing).multiply(entry.restModel);
-          entry.bone.quaternion.copy(parent.clone().invert().multiply(current));
-        } else {
-          entry.bone.quaternion.copy(entry.restLocal);
-          if (value !== undefined) entry.bone.quaternion.multiply(quaternionOf(value));
-          current = parent.clone().multiply(entry.bone.quaternion);
-        }
-        model.set(entry, current);
-        if (entry.human !== null) global.set(entry, globalOf(entry, current));
-        entry.bone.position.copy(entry.restPosition);
+      if (signature !== applied) {
+        applied = signature;
+        boundsCurrent = false;
+        setBones(pose);
       }
-      const translation = pose[HIPS_TRANSLATION_KEY];
-      if (humanoid && hips && translation !== undefined) {
-        const target = hips.restModelPosition.clone()
-          .add(new Vector3(translation[0], translation[1], translation[2]).multiplyScalar(hipHeight).applyQuaternion(facing));
-        hips.bone.position.copy(target.applyMatrix4(parentRestMatrix(hips, toModel).invert()));
-      }
-      instance.updateMatrixWorld(true);
+      if (!settled || boundsCurrent) return;
+      boundsCurrent = true;
       for (const mesh of meshes) {
         mesh.computeBoundingBox();
         mesh.computeBoundingSphere();
       }
     },
     keyValue(key) {
-      if (key === HIPS_TRANSLATION_KEY) {
-        if (!humanoid || !hips) return null;
-        const position = hips.bone.position.clone().applyMatrix4(parentRestMatrix(hips, toModel));
-        const t = position.sub(hips.restModelPosition).applyQuaternion(unfacing).divideScalar(hipHeight);
-        return [t.x, t.y, t.z];
-      }
       const entry = byKey.get(key);
       if (!entry) return null;
       if (!humanoid) return stored(entry.restLocal.clone().invert().multiply(entry.bone.quaternion));
@@ -270,19 +285,6 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
       applied = null;
     },
   };
-}
-
-/**
- * The parent's rest transform in instance space, which the hips position is written in.
- * @param entry - The hips.
- * @param toModel - Instance space from world space, at rest.
- * @returns The matrix.
- */
-function parentRestMatrix(entry: RigBone, toModel: Matrix4): Matrix4 {
-  // ponytail: the hips' ancestors are never posed (the hips top the humanoid chain), so
-  // their rest transform is their transform.
-  const parent = entry.bone.parent;
-  return parent === null ? new Matrix4() : new Matrix4().multiplyMatrices(toModel, parent.matrixWorld);
 }
 
 /**
@@ -322,7 +324,8 @@ export function poseRigOf(instance: Object3D): PoseRig | null {
  * Pose an instance; every pose shown goes through here.
  * @param instance - The model instance.
  * @param pose - The pose; absent means rest.
+ * @param settled - False for a pose still being dragged, which leaves the skinned bounds for later.
  */
-export function applyPose(instance: Object3D, pose: ScenePose | undefined): void {
-  poseRigOf(instance)?.apply(pose ?? {});
+export function applyPose(instance: Object3D, pose: ScenePose | undefined, settled = true): void {
+  poseRigOf(instance)?.apply(pose ?? {}, settled);
 }

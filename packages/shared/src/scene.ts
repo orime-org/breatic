@@ -38,7 +38,7 @@ export const SCENE_POSE_MAX_KEYS = 256;
 export const SCENE_POSE_KEY_MAX_LENGTH = 128;
 
 /** The hips translation key; the only pose entry that is a vector. */
-const HIPS_TRANSLATION_KEY = 't:hips';
+export const SCENE_POSE_HIPS_KEY = 't:hips';
 
 /** A humanoid bone (`h:`) or a node of another rig (`n:`), each carrying a rotation. */
 const ROTATION_KEY = /^[hn]:.+$/su;
@@ -56,7 +56,7 @@ export type ScenePose = Readonly<Record<string, readonly number[]>>;
  * @returns Whether the entry is well formed.
  */
 function isPoseEntry(key: string, value: unknown): boolean {
-  if (key === HIPS_TRANSLATION_KEY) return SceneVectorSchema.safeParse(value).success;
+  if (key === SCENE_POSE_HIPS_KEY) return SceneVectorSchema.safeParse(value).success;
   return key.length <= SCENE_POSE_KEY_MAX_LENGTH && ROTATION_KEY.test(key) && SceneRotationSchema.safeParse(value).success;
 }
 

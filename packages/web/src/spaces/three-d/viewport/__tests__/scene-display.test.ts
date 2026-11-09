@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import type { SceneObject } from '@breatic/shared';
-import { displayedObjects } from '@web/spaces/three-d/viewport/scene-display';
+import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import type { SceneRemotePeer } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -114,5 +114,13 @@ describe('values the viewport shows for collaborators\' gestures (inner#1692)', 
         });
       },
     ));
+  });
+});
+
+describe('objects drawn from a drag still in progress (inner#1692)', () => {
+  it('holds this page\'s own drag and every collaborator\'s, and nothing once both end', () => {
+    expect([...previewedObjectIds(NONE, [])]).toEqual([]);
+    expect([...previewedObjectIds(NONE, [peer(7, null, [A])])]).toEqual([]);
+    expect(new Set(previewedObjectIds(new Set([A]), [peer(7, [object(B, { pose: ARM_UP })])]))).toEqual(new Set([A, B]));
   });
 });

@@ -44,10 +44,16 @@ describe('overview shows each object\'s document pose (inner#1692)', () => {
       expect(instance).toBeInstanceOf(Group);
     });
     expect(instance).not.toBe(mainRoot);
-    expect(applyPose).toHaveBeenLastCalledWith(instance, LYING);
+    expect(applyPose).toHaveBeenLastCalledWith(instance, LYING, true);
 
     map.update([{ ...OBJECT, pose: WAVING }], new Set([OBJECT.id]), new Vector3());
-    expect(applyPose).toHaveBeenLastCalledWith(instance, WAVING);
+    expect(applyPose).toHaveBeenLastCalledWith(instance, WAVING, true);
+
+    // A drag still in progress is shown unsettled, and its release settles the same pose.
+    map.update([{ ...OBJECT, pose: LYING }], new Set([OBJECT.id]), new Vector3(), new Set([OBJECT.id]));
+    expect(applyPose).toHaveBeenLastCalledWith(instance, LYING, false);
+    map.update([{ ...OBJECT, pose: LYING }], new Set([OBJECT.id]), new Vector3());
+    expect(applyPose).toHaveBeenLastCalledWith(instance, LYING, true);
 
     const { pose: _pose, ...rest } = OBJECT;
     map.update([rest], new Set([OBJECT.id]), new Vector3());

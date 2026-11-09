@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
 import type { SceneObject, ScenePose } from '@breatic/shared';
-import { displayedObjects } from '@web/spaces/three-d/viewport/scene-display';
+import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
@@ -152,6 +152,8 @@ export class SceneViewportRuntime {
   private joint: JointGesture | null = null;
   /** What each object is drawn with: the document, or a collaborator's drag (design 5.4). */
   private displayed: readonly SceneObject[] = [];
+  /** Objects drawn from a drag still in progress, this page's or a collaborator's. */
+  private previewed: ReadonlySet<string> = new Set();
   private readonly markers = new Group();
   private readonly markerGeometry = new SphereGeometry(1, 16, 12);
   private markerOwner: Group | null = null;
@@ -229,7 +231,7 @@ export class SceneViewportRuntime {
       }
     }
     const ready = new Set([...this.items].filter(([, item]) => item.state === 'ready').map(([id]) => id));
-    this.overview?.update(this.displayed, ready, this.orbit.target);
+    this.overview?.update(this.displayed, ready, this.orbit.target, this.previewed);
   }
 
   /**
@@ -239,7 +241,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onOverviewNavigate = (x: number, z: number): void => {
-    if (this.gesture || this.joint) return;
+    if (this.dragging) return;
     const delta = new Vector3(x - this.orbit.target.x, 0, z - this.orbit.target.z);
     this.camera.position.add(delta); this.orbit.target.add(delta); this.orbit.update(); this.onViewChange();
   };
@@ -295,6 +297,7 @@ export class SceneViewportRuntime {
     }
     const local = this.localGestureIds();
     this.displayed = displayedObjects(props.objects, local, props.remotePeers);
+    this.previewed = previewedObjectIds(local, props.remotePeers);
     for (const object of this.displayed) {
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
@@ -308,10 +311,10 @@ export class SceneViewportRuntime {
       if (!item) this.loadObject(object, source);
       else if (item.root && !local.has(object.id)) {
         applyObject(item.root, object);
-        applyPose(item.root, object.pose);
+        applyPose(item.root, object.pose, !this.previewed.has(object.id));
       }
     }
-    if (!this.gesture && !this.joint && !this.sameView(props.view)) {
+    if (!this.dragging && !this.sameView(props.view)) {
       this.camera.position.fromArray(props.view.position);
       this.orbit.target.fromArray(props.view.target);
       this.orbit.update();
@@ -320,6 +323,15 @@ export class SceneViewportRuntime {
     if (props.focusRevision !== previous.focusRevision) this.focus();
     this.onThemeChange();
     this.inspect();
+  }
+
+  /**
+   * Whether this page is dragging an object or a joint.
+   * @returns True while either drag lasts.
+   * @throws {never} Never.
+   */
+  private get dragging(): boolean {
+    return this.gesture !== null || this.joint !== null;
   }
 
   /**
@@ -358,7 +370,7 @@ export class SceneViewportRuntime {
       // The rig is measured first, while the fresh instance is still at rest.
       const rig = poseRigOf(root);
       applyObject(root, latest);
-      applyPose(root, latest.pose);
+      applyPose(root, latest.pose, !this.previewed.has(object.id));
       this.scene.add(root);
       this.props.onModelStateChange?.(object.id, 'ready');
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
@@ -403,7 +415,7 @@ export class SceneViewportRuntime {
    * @throws {Error} When the installed helper is not the approved r173 gizmo.
    */
   private syncControls(): void {
-    if (this.gesture || this.joint) return;
+    if (this.dragging) return;
     this.controls.detach();
     const target = this.jointTarget();
     this.syncMarkers(target);
@@ -547,7 +559,7 @@ export class SceneViewportRuntime {
       }
       // The drag-start pose with this bone's new value; the rest of the pose is set again, so children follow.
       const pose = { ...joint.start, [joint.key]: value };
-      joint.rig.apply(pose);
+      joint.rig.apply(pose, false);
       this.changed = true;
       this.props.onGestureChange([{ id: joint.id, pose }]);
       this.rebuildOutlines();
@@ -613,7 +625,7 @@ export class SceneViewportRuntime {
     if (joint) {
       // The bones were moved by hand; the next pose shown sets every bone again.
       joint.rig.invalidate();
-      if (!commit) applyPose(joint.root, this.displayed.find((object) => object.id === joint.id)?.pose);
+      if (!commit) applyPose(joint.root, joint.start);
     }
     if (!gesture && !joint) return;
     if (!commit && gesture) {
@@ -720,7 +732,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onLostPointerCapture = (event: PointerEvent): void => {
-    if (event.pointerId !== this.releasingPointer && (this.gesture || this.joint)) this.endGesture(false);
+    if (event.pointerId !== this.releasingPointer && this.dragging) this.endGesture(false);
   };
 
   /**
@@ -740,7 +752,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onViewChange = (): void => {
-    if (this.disposed || this.gesture || this.joint) return;
+    if (this.disposed || this.dragging) return;
     this.props.onViewChange({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
     this.syncOverview();
     this.inspect();
@@ -841,7 +853,7 @@ export class SceneViewportRuntime {
   private onFrame = (): void => {
     this.frame = 0;
     if (this.disposed || document.visibilityState === 'hidden') return;
-    if (!this.gesture && !this.joint && !this.controls.dragging) this.orbit.update();
+    if (!this.dragging && !this.controls.dragging) this.orbit.update();
     this.placeMarkers();
     const bounds = new Box3();
     for (const item of this.items.values()) {
@@ -909,7 +921,7 @@ export class SceneViewportRuntime {
    */
   private inspect(): void {
     const canvas = this.renderer.domElement;
-    canvas.dataset.gestureActive = String(this.gesture !== null || this.joint !== null);
+    canvas.dataset.gestureActive = String(this.dragging);
     canvas.dataset.view = JSON.stringify({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
     canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray() }] : []));
   }

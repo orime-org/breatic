@@ -22,7 +22,7 @@ const PRESETS = Object.entries(POSE_PRESETS) as readonly (readonly [string, Scen
 
 type Vec = readonly [number, number, number];
 type Side = typeof SIDES[number];
-type Scheme = 'vrm' | 'mixamo' | 'unreal' | 'mannequiny' | 'biped';
+type Scheme = 'vrm' | 'mixamo' | 'unreal' | 'mannequiny' | 'biped' | 'rigify';
 type BodyPart = 'hips' | 'spine' | 'chest' | 'neck' | 'head';
 type LimbPart = 'Shoulder' | 'UpperArm' | 'LowerArm' | 'Hand' | 'HandTip' | 'UpperLeg' | 'LowerLeg' | 'Foot' | 'Toes';
 
@@ -91,6 +91,7 @@ const BODY_NAMES: Readonly<Record<Scheme, Readonly<Record<BodyPart, string>>>> =
   unreal: { hips: 'pelvis', spine: 'spine_01', chest: 'spine_02', neck: 'neck_01', head: 'head' },
   mannequiny: { hips: 'pelvis', spine: 'spine_01', chest: 'spine_02', neck: 'neck_01', head: 'head' },
   biped: { hips: 'Bip001_Pelvis', spine: 'Bip001_Spine', chest: 'Bip001_Spine1', neck: 'Bip001_Neck', head: 'Bip001_Head' },
+  rigify: { hips: 'DEF-spine', spine: 'DEF-spine001', chest: 'DEF-spine002', neck: 'DEF-spine004', head: 'DEF-spine006' },
 };
 
 const MIXAMO_PARTS: Readonly<Record<LimbPart, string>> = {
@@ -101,6 +102,11 @@ const MIXAMO_PARTS: Readonly<Record<LimbPart, string>> = {
 const UNREAL_PARTS: Readonly<Record<LimbPart, string>> = {
   Shoulder: 'clavicle', UpperArm: 'upperarm', LowerArm: 'lowerarm', Hand: 'hand', HandTip: 'middle_01',
   UpperLeg: 'thigh', LowerLeg: 'calf', Foot: 'foot', Toes: 'ball',
+};
+
+const RIGIFY_PARTS: Readonly<Record<LimbPart, string>> = {
+  Shoulder: 'shoulder', UpperArm: 'upper_arm', LowerArm: 'forearm', Hand: 'hand', HandTip: 'f_middle01',
+  UpperLeg: 'thigh', LowerLeg: 'shin', Foot: 'foot', Toes: 'toe',
 };
 
 const BIPED_PARTS: Readonly<Record<LimbPart, string>> = {
@@ -156,6 +162,7 @@ function limbName(scheme: Scheme, side: Side, part: LimbPart): string {
     case 'unreal': return `${UNREAL_PARTS[part]}_${side[0]}`;
     case 'mannequiny': return part === 'HandTip' ? '' : `${UNREAL_PARTS[part]}${side[0]}`;
     case 'biped': return `Bip001_${side === 'left' ? 'L' : 'R'}_${BIPED_PARTS[part]}`;
+    case 'rigify': return `DEF-${RIGIFY_PARTS[part]}${side === 'left' ? 'L' : 'R'}`;
   }
 }
 
@@ -423,7 +430,7 @@ describe('createPoseRig: what a rig is (inner#1692)', () => {
     expect(createPoseRig(root)).toBeNull();
   });
 
-  it.each(['vrm', 'mixamo', 'unreal', 'mannequiny', 'biped'] as const)('recognises a %s-named skeleton as humanoid', (scheme) => {
+  it.each(['vrm', 'mixamo', 'unreal', 'mannequiny', 'biped', 'rigify'] as const)('recognises a %s-named skeleton as humanoid', (scheme) => {
     const figure = buildFigure({ scheme });
     const rig = rigOf(figure.root);
     expect(rig.kind).toBe('humanoid');
@@ -475,6 +482,10 @@ describe('createPoseRig: what a rig is (inner#1692)', () => {
     for (const joint of rig.joints) expect(joint.key).toBe(`n:${joint.bone.name}`);
   });
 
+  it('reads no value for the hips translation, which no joint drags', () => {
+    expect(rigOf(buildFigure().root).keyValue('t:hips')).toBeNull();
+  });
+
   it('reads no value for a key the rig does not have', () => {
     const rig = rigOf(buildFigure().root);
     expect(rig.keyValue('h:notABone')).toBeNull();
@@ -513,7 +524,7 @@ describe('PoseRig.apply: retargeting invariants (inner#1692)', () => {
     }), { numRuns: 15 });
   });
 
-  it('round-trips random rotations and hips translations through apply and keyValue', () => {
+  it('round-trips random rotations through apply and keyValue, with or without a hips translation', () => {
     const figures: readonly FigureOptions[] = [...VARIANTS, { label: 'partial humanoid', omit: ['leftFoot'] }];
     const vector = fc.tuple(coordinate, coordinate, coordinate);
     fc.assert(fc.property(
@@ -530,12 +541,11 @@ describe('PoseRig.apply: retargeting invariants (inner#1692)', () => {
         if (hips && rig.kind === 'humanoid') pose['t:hips'] = hips;
         rig.apply(pose);
         for (const [key, value] of Object.entries(pose)) {
+          // Joints only turn; the hips translation is written by presets and never read back.
+          if (key === 't:hips') continue;
           const read = rig.keyValue(key);
           expect(read, key).not.toBeNull();
-          if (key === 't:hips') {
-            expect(read, key).toHaveLength(3);
-            for (let index = 0; index < 3; index += 1) expect(Math.abs((read?.[index] ?? Number.NaN) - value[index]), key).toBeLessThan(1e-6);
-          } else expectSameRotation(read ?? [], value, `${figures[which].label} ${key}`);
+          expectSameRotation(read ?? [], value, `${figures[which].label} ${key}`);
         }
       },
     ), { numRuns: 60 });
@@ -567,6 +577,28 @@ describe('PoseRig.apply: retargeting invariants (inner#1692)', () => {
       placedRig.apply(pose);
       for (const [role, bone] of plain.bones) {
         const other = placed.bones.get(role);
+        if (!other) throw new Error(role);
+        expect(bone.quaternion.angleTo(other.quaternion), `${name} ${role}`).toBeLessThan(1e-6);
+        expect(bone.position.distanceTo(other.position), `${name} ${role}`).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('keeps the pose in model space when the object moves after the rig was measured', () => {
+    const plain = buildFigure({ roll: FIXED_ROLL });
+    const moved = buildFigure({ roll: FIXED_ROLL });
+    const plainRig = rigOf(plain.root);
+    // The viewport measures a fresh instance at rest and only then places it.
+    const movedRig = rigOf(moved.root);
+    moved.root.position.set(1.6, 0, -2);
+    moved.root.quaternion.setFromEuler(new Euler(0, 0.9, 0));
+    moved.root.scale.setScalar(1.5);
+    moved.root.updateMatrixWorld(true);
+    for (const [name, pose] of PRESETS) {
+      plainRig.apply(pose);
+      movedRig.apply(pose);
+      for (const [role, bone] of plain.bones) {
+        const other = moved.bones.get(role);
         if (!other) throw new Error(role);
         expect(bone.quaternion.angleTo(other.quaternion), `${name} ${role}`).toBeLessThan(1e-6);
         expect(bone.position.distanceTo(other.position), `${name} ${role}`).toBeLessThan(1e-6);
@@ -675,6 +707,30 @@ describe('PoseRig.apply: skinned bounds (inner#1692)', () => {
     sphere.mockClear();
     rig.apply(POSE_PRESETS.walk);
     expect(sphere).toHaveBeenCalled();
+  });
+
+  it('leaves the bounds alone while a pose is still being dragged and recomputes them once it settles', () => {
+    const figure = buildFigure();
+    const rig = rigOf(figure.root);
+    rig.apply(POSE_PRESETS.stand);
+    const sphere = vi.spyOn(figure.mesh, 'computeBoundingSphere');
+    const box = vi.spyOn(figure.mesh, 'computeBoundingBox');
+    // Wave raises the right hand.
+    const hand = figure.bones.get('rightHand');
+    if (!hand) throw new Error('no hand');
+    const before = hand.getWorldPosition(new Vector3());
+    rig.apply(POSE_PRESETS.wave, false);
+    // The bones follow the preview at once; only the bounds wait.
+    expect(hand.getWorldPosition(new Vector3()).distanceTo(before)).toBeGreaterThan(0.1);
+    rig.apply(POSE_PRESETS.walk, false);
+    expect(sphere).not.toHaveBeenCalled();
+    expect(box).not.toHaveBeenCalled();
+    // The committed value equals the last preview, and still brings the bounds up to date.
+    rig.apply(copyOf(POSE_PRESETS.walk));
+    expect(sphere).toHaveBeenCalledTimes(1);
+    expect(box).toHaveBeenCalledTimes(1);
+    rig.apply(copyOf(POSE_PRESETS.walk));
+    expect(sphere).toHaveBeenCalledTimes(1);
   });
 
   it('puts the document pose back after a local bone change once invalidated', () => {
