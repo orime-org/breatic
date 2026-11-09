@@ -543,6 +543,39 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(done.passedOverCosts).toEqual([]);
   });
 
+  it("delivers the generated model with rig_failed when the upstream says it has no rig model", async () => {
+    a.answer((req) => (req.method === "POST" && req.path === RIG ? { status: 400, body: { message: "Model not found." } } : tripoUpstream("rigged")(req)));
+    const r = runner();
+    const done = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(knownUsd(done.costs)).toBeCloseTo(0.4, 9);
+    expect(done.passedOverCosts).toEqual([]);
+  });
+
+  it("passes over a rig submit whose answer cannot be read on the caller's final try, reporting the lost answer apart", async () => {
+    a.answer((req) => (req.method === "POST" && req.path === RIG ? { status: 200, raw: "<html>", contentType: "text/html" } : tripoUpstream("rigged")(req)));
+    const r = runner();
+    const generating = expectState(await r.send(stored(expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send").ticket), live()), "running");
+    const toRig = expectState(await r.poll(stored(generating.ticket), live()), "send");
+    await expect(r.send(stored(toRig.ticket), live())).rejects.toBeInstanceOf(NoAnswer);
+    const done = expectState(await r.send(stored(toRig.ticket), { ...live(), final: true }), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(knownUsd(done.costs)).toBeCloseTo(0.4, 9);
+    expect(done.passedOverCosts.filter((c) => c.state === "missing")).toHaveLength(1);
+  });
+
+  it("passes over a rig the upstream answers 4xx about while it runs, reporting its prediction apart", async () => {
+    a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 404, body: { message: "gone" } } : tripoUpstream("rigged")(req)));
+    const r = runner();
+    const done = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(knownUsd(done.costs)).toBeCloseTo(0.4, 9);
+    expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
+  });
+
   it("still throws for a busy generation on the final try: only an optional step is passed over", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     a.answer(() => ({ status: 503, body: {} }));
@@ -610,8 +643,8 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
   });
 
   describe("property (critical path): whatever the generation and the rig answer", () => {
-    const SUBMITS = ["accept", "finishNow", "finishEmpty", "busy", "refused", "unreadable"] as const;
-    const POLLS = ["processing", "completed", "empty", "failed"] as const;
+    const SUBMITS = ["accept", "finishNow", "finishEmpty", "busy", "refused", "unreadable", "noModel"] as const;
+    const POLLS = ["processing", "completed", "empty", "failed", "gone"] as const;
 
     it("every accepted prediction reaches the caller once, an optional rig never fails the run, and the outputs and notice follow the rig", async () => {
       await fc.assert(
@@ -639,6 +672,12 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
                 const isRig = id.startsWith("rig-");
                 const next = pollScript[p++] ?? "completed";
                 if (next === "processing") return result(id, "processing");
+                // The generation is never refused while it runs here: only the rig is passed over.
+                if (next === "gone") {
+                  if (!isRig) return result(id, "processing");
+                  rigFate = "lost";
+                  return { status: 404, body: { message: "gone" } };
+                }
                 if (next === "completed") {
                   if (isRig) rigFate = "rigged";
                   return result(id, "completed", [isRig ? RIGGED : MODEL]);
@@ -659,9 +698,11 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
               }
               if (next === "unreadable") {
                 unreadable++;
+                if (isRig) rigFate = "lost";
                 return { status: 200, raw: "<html>", contentType: "text/html" };
               }
-              if (next === "refused" && isRig) rigFate = "lost";
+              if ((next === "refused" || next === "noModel") && isRig) rigFate = "lost";
+              if (next === "noModel") return { status: 400, body: { message: "Model not found." } };
               if (next === "busy" && isRig) rigFate = "lost";
               return next === "busy" ? { status: 503, body: {} } : { status: 400, body: { message: "bad" } };
             };
@@ -681,8 +722,10 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
                 answer = await r.send(ticket, { ...live(), final: notAccepted >= triesBeforeFinal });
               } catch (error) {
                 reached.push(...costsOf(error));
-                if (error instanceof NoAnswer) answer = await r.recover(ticket, live());
-                else if (!(error instanceof SendNotAccepted)) throw error;
+                if (error instanceof NoAnswer) {
+                  notAccepted++;
+                  answer = await r.recover(ticket, live());
+                } else if (!(error instanceof SendNotAccepted)) throw error;
                 else notAccepted++;
               }
             }
@@ -705,7 +748,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
                 expect(answer.outputs).toEqual([{ kind: "url", url: MODEL }]);
                 expect(answer.notice).toBe("rig_failed");
                 // The passed-over rig's prediction, when one was accepted, is reported apart from the delivered run.
-                expect(answer.passedOverCosts).toHaveLength(rigAccepted);
+                expect(answer.passedOverCosts.filter((c) => c.state !== "missing")).toHaveLength(rigAccepted);
               } else {
                 expect(answer.outputs).toEqual([{ kind: "url", url: MODEL }]);
                 expect(answer.notice).toBeUndefined();
