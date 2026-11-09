@@ -3402,8 +3402,6 @@
       "more": "더 불러오기",
       "chooseFile": "동영상 선택",
       "fileEmpty": "로컬 동영상 파일을 선택하세요.",
-      "preparing": "동영상 준비 중…",
-      "progress": "업로드 중 {progress}%",
       "confirm": "Timeline에 추가",
       "insertAfter": "{name} 뒤에 삽입",
       "insertFirst": "메인 트랙 맨 앞에 삽입"
@@ -3417,7 +3415,6 @@
       "invalid_range": "동영상 범위 안의 프레임을 입력하세요.",
       "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
       "clip_removed": "이 클립은 다른 멤버가 삭제했습니다.",
-      "upload": "업로드에 실패했습니다. 선택한 파일로 다시 시도할 수 있습니다.",
       "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요.",
       "track_missing": "대상 트랙이 삭제되었습니다. 다른 트랙을 선택하세요.",
       "id_taken": "이미 있는 항목입니다. 다시 시도하세요.",
@@ -3516,6 +3513,14 @@
         "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
         "loading": "{track}: 웹 애니메이션 불러오는 중…"
       }
+    },
+    "upload": {
+      "uploading": "업로드 중",
+      "progress": "업로드 중 {progress}%",
+      "failed": "업로드 실패",
+      "waiting": "업로드됨, 편집 권한 대기 중",
+      "unfinished": "미완료",
+      "preview": "{track}: {state, select, failed {동영상 업로드 실패, 표시 안 함} unfinished {동영상 미완료, 표시 안 함} other {동영상 업로드 중…}}"
     }
   }
 }

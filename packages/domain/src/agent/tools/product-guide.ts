@@ -1373,10 +1373,16 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
       `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
       `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time; on the main track with the magnet on, the form names the clip it will follow and the clip is inserted there, keeping the main track end to end. ` +
-      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A local file is placed at once at that captured position as a clip named after the file, the form closes and the file uploads in the background; ` +
+      `the Space tab shows a spinner while it uploads, and the clip becomes the uploaded video when it finishes. Until then the clip has a dashed border and reads ` +
+      `${quoted(t("timeline.upload.progress", { progress: 42 }))} or ${quoted(t("timeline.upload.uploading"))}; it can be moved, trimmed, split, duplicated or deleted like a video, ` +
+      `and the preview shows nothing for it, only a note at the top right with its track. A failed upload turns the clip red with the reason, or ${quoted(t("timeline.upload.failed"))} for another member; ` +
+      `when sending the same file again can help, the uploader's properties panel offers ${quoted(t("timeline.retry"))}. ` +
+      `An upload that finished while its uploader may not edit reads ${quoted(t("timeline.upload.waiting"))}, and if the uploader leaves before it finishes the clip reads ` +
+      `${quoted(t("timeline.upload.unfinished"))}; anyone who can edit deletes it. Undoing the placement removes the clip while the upload continues. ` +
       `A permission change requires another confirmation after editing is available. ` +
-      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
-      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      `${quoted(t("timeline.cancel"))} ends the current material selection. ` +
+      "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
       `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,

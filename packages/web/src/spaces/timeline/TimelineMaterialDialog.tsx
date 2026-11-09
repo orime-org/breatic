@@ -118,7 +118,6 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
             <Input ref={fileInput} data-testid='timeline-file-input' type='file' accept='video/*' onChange={changeFile} disabled={state.busy} className='hidden' />
             <Button type='button' variant='outline' onClick={chooseFile} disabled={state.busy} icon={<Upload className='mr-2 size-4' />}>{t('timeline.material.chooseFile')}</Button>
             <p className='max-w-full break-words text-sm text-muted-foreground'>{state.file?.name ?? t('timeline.material.fileEmpty')}</p>
-            {state.busy && <p className='text-sm text-muted-foreground'>{state.progress === null ? t('timeline.material.preparing') : t('timeline.material.progress', { progress: state.progress })}</p>}
           </div>}
         </ScrollArea>
         <div className='flex shrink-0 flex-col gap-3 border-t border-border p-4'>
@@ -128,7 +127,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
               <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
             </Select></div>
           <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='number' autoComplete='off' min={0} step={1} value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
-          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: beforeAsset.data?.displayName || t('timeline.video') })}</p>}
+          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeAsset.data?.displayName || t('timeline.video') })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}
         </div>

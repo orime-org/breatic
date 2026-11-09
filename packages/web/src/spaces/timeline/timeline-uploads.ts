@@ -62,6 +62,16 @@ function writeAccessOf(name: string, provider: HocuspocusProvider | null): Write
 }
 
 /**
+ * This page's write access to an open Timeline document.
+ * @param name - The document name.
+ * @returns The access.
+ * @throws {never} Never.
+ */
+export function timelineUploadWriteAccess(name: string): WriteAccess {
+  return writeAccessOf(name, readDocProvider(name));
+}
+
+/**
  * Create the upload controller of one Timeline document.
  * @param doc - The document.
  * @param inputs - Where its uploads land, and its document name.

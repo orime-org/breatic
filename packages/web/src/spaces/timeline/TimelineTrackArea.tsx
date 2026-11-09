@@ -19,6 +19,7 @@ import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-la
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { TIMELINE_TRACK_HEADER_PX, timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
+import { timelineUploadText, type TimelineUploadView } from '@web/spaces/timeline/use-timeline-upload-views';
 
 const DRAG_ACTIVATION_PX = 3;
 const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
@@ -58,6 +59,8 @@ interface TimelineTrackAreaProps {
   placement: TimelineEditPlacement;
   web: TimelineWebResolution;
   webClips: ReadonlyMap<string, TimelineWebClipView>;
+  /** What each upload placeholder shows, by clip id. */
+  uploads: ReadonlyMap<string, TimelineUploadView>;
   onSelect: (clipId: string | null) => void;
   onSeek: (frame: number) => void;
   onCommit: (command: TimelineEditCommand) => void;
@@ -75,6 +78,7 @@ interface ClipProps {
   clip: TimelineClipRecord;
   assetId: string;
   webView: TimelineWebClipView | undefined;
+  uploadView: TimelineUploadView | undefined;
   selected: boolean;
   conflict: boolean;
   dragging: boolean;
@@ -106,6 +110,7 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
  * @param props.webView - What a web-animation copy shows.
+ * @param props.uploadView - What an upload placeholder shows.
  * @param props.selected - Whether it is selected.
  * @param props.conflict - Whether the arrangement reports a conflict.
  * @param props.dragging - Whether a gesture is moving it.
@@ -116,16 +121,18 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @returns The clip.
  * @throws {never} Never.
  */
-const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, selected, conflict, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
+const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, uploadView, selected, conflict, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
   const assetName = useTimelineAsset(projectId, assetId).data?.displayName || null;
   const isWeb = clip.kind === 'web-animation';
-  const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : assetName ?? t('timeline.video');
+  const upload = clip.kind === 'upload' ? uploadView ?? null : null;
+  const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
-  const detail = status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+  const detail = upload !== null ? timelineUploadText(t, upload) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
     : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
-  const failedCopy = isWeb && webView?.state === 'failed';
+  const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
+  const waiting = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
   // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
   // attributes would mark a read-only clip aria-disabled although it stays selectable.
   const { listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
@@ -133,9 +140,9 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const style = React.useMemo(() => ({ left: clip.startFrame * pixelsPerFrame, width: Math.max(2, clip.durationFrames * pixelsPerFrame) }), [clip.startFrame, clip.durationFrames, pixelsPerFrame]);
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
-      data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : undefined} aria-pressed={selected} onClick={select} onFocus={select}
+      data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : upload?.state} aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-clip rounded-chrome border px-2 text-left text-xs',
-        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, isWeb && webView?.state === 'pending' && 'border-dashed',
+        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, waiting && 'border-dashed',
         selected && 'border-active-border', selected && !conflict && !failedCopy && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>
@@ -207,7 +214,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
+  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
@@ -324,7 +331,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
               {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                webView={webClips.get(clip.id)} selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
+                webView={webClips.get(clip.id)} uploadView={uploads.get(clip.id)} selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} fps={document.settings.fps} onSelect={onSelect} />)}
               {showGhost && preview !== null && <>
                 <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle} />

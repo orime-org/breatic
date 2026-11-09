@@ -3402,8 +3402,6 @@
       "more": "Load more",
       "chooseFile": "Choose video",
       "fileEmpty": "Choose a local video file.",
-      "preparing": "Preparing video…",
-      "progress": "Uploading {progress}%",
       "confirm": "Add to Timeline",
       "insertAfter": "Inserts after {name}",
       "insertFirst": "Inserts at the start of the main track"
@@ -3417,7 +3415,6 @@
       "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
-      "upload": "Upload failed. Retry with the selected file.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
@@ -3516,6 +3513,14 @@
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
       }
+    },
+    "upload": {
+      "uploading": "Uploading",
+      "progress": "Uploading {progress}%",
+      "failed": "Upload failed",
+      "waiting": "Uploaded, waiting for edit access",
+      "unfinished": "Unfinished",
+      "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
     }
   }
 }

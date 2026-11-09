@@ -328,3 +328,21 @@ describe('undo and redo around a conversion (design §2.2)', () => {
     }
   });
 });
+
+describe('a page that cannot read the clip kind (an older client, B7)', () => {
+  it('lists the record as damaged, and its edits keep the record and every source a readable clip names', () => {
+    // A kind this build does not know stands in for `upload` as an older build sees it: the same mechanism decides.
+    const doc = docWith([clip(cid(9), MAIN, 0, 48)]);
+    const unknown = { ...uploadClip(cid(1), V2, 0), kind: 'future-kind' };
+    doc.transact(() => {
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(cid(1), record);
+      for (const [key, value] of Object.entries(unknown)) record.set(key, value);
+    });
+    expect(readTimelineContent(doc).damaged.clips).toEqual([cid(1)]);
+    expect(applyTimelineEdit(doc, move(cid(9), 10), Symbol('old-edit')).ok).toBe(true);
+    expect(applyTimelineEdit(doc, { operation: 'duplicate', parameters: { clipId: cid(9), newClipId: cid(2) }, placement: OFF }, Symbol('old-edit')).ok).toBe(true);
+    expect(clipRecords(doc)[cid(1)]).toEqual(unknown);
+    expect(readTimelineDocument(doc).sources[SOURCE.id]).toEqual(SOURCE);
+  });
+});
