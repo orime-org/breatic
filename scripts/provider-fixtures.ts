@@ -212,7 +212,7 @@ function filled(name: string, spec: RawParam): unknown {
     );
   }
   if (spec.type === "text") return `some ${name}`;
-  // A whole number is typed as a number, the lowest each of its ranges takes (`min` and every `bounds` entry's).
+  // A whole number is typed as a number: the smallest value every one of its ranges takes, the highest of `min` and each `bounds` entry's `min`.
   if (spec.type === "integer") return Math.max(spec.min ?? 0, ...(spec.bounds ?? []).map((b) => b.min ?? 0));
   if (spec.default != null || spec.values !== undefined) return undefined;
   // A param whose declaration says it is an image URL gets one; anything else a word.
