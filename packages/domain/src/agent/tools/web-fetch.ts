@@ -27,7 +27,7 @@ import type {
 
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
-import { pageLinksIn } from "@domain/agent/page-links.js";
+import { pageLinkSpansIn, pageLinksIn } from "@domain/agent/page-links.js";
 import { publisherOf, type CitationNumbers } from "@domain/agent/tools/citation.js";
 import { usageRecorderSchema } from "@domain/agent/tools/usage-context.js";
 import {
@@ -326,10 +326,10 @@ function isSpace(char: string | undefined): boolean {
  * before `to` and ends after it (the nearest end, when a link running on into
  * non-ASCII text is read both whole and cut there), or `to` itself.
  *
- * The links are read from the run of non-space characters that holds `to`,
- * looked back on and ahead of at most `READ_PAGE_MAX_URL_CHARS` each way. A
- * link whose spelling the text does not hold as written (its Markdown escapes
- * were removed) is taken to end where that run does.
+ * The links and where the text writes them (`pageLinkSpansIn`, so a link's
+ * end is where its last kept character is written, escapes included) are
+ * read from the run of non-space characters that holds `to`, looked back on
+ * and ahead of at most `READ_PAGE_MAX_URL_CHARS` each way.
  * @param text - The page's text.
  * @param to - Where the share would cut it.
  * @returns The cut.
@@ -338,15 +338,11 @@ function cutPastLink(text: string, to: number): number {
   const lookBack = Math.max(0, to - READ_PAGE_MAX_URL_CHARS);
   let runStart = to;
   while (runStart > lookBack && !isSpace(text[runStart - 1])) runStart -= 1;
-  const windowEnd = Math.min(to + READ_PAGE_MAX_URL_CHARS, text.length);
-  let runEnd = to;
-  while (runEnd < windowEnd && !isSpace(text[runEnd])) runEnd += 1;
-  const window = text.slice(runStart, windowEnd);
+  const window = text.slice(runStart, Math.min(to + READ_PAGE_MAX_URL_CHARS, text.length));
   let cut = Infinity;
-  for (const link of pageLinksIn(window)) {
-    const at = window.indexOf(link);
-    const start = at < 0 ? runStart : runStart + at;
-    const end = at < 0 ? runEnd : start + link.length;
+  for (const span of pageLinkSpansIn(window)) {
+    const start = runStart + span.start;
+    const end = runStart + span.end;
     if (start < to && end > to) cut = Math.min(cut, end);
   }
   return cut === Infinity ? to : cut;
@@ -371,8 +367,9 @@ function linksOf(text: string): string[] {
  * The part of a page one call hands over, with the links its own text and
  * the page's title hold.
  *
- * A cut that falls inside a link moves to the link's end (`cutPastLink`), so
- * a link is never handed over in two halves; any other cut stays at the share.
+ * A cut that falls inside a link, where the text writes it, moves to that
+ * link's end there (`cutPastLink`), so a link is never handed over in two
+ * halves; any other cut stays at the share.
  * @param url - The address asked for.
  * @param page - The page in full.
  * @param start - Where the model asked to start.
