@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
+import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   agreement,
   agreementByScenario,
   fixedAnswers,
+  forJudge,
   judgePrompt,
   parseUserAnswers,
   parseVerdict,
@@ -128,6 +130,122 @@ describe('transcriptOf', () => {
     const long = 'y'.repeat(5999);
     expect(returned(long)).toBe(`RETURNED: ${JSON.stringify(long).slice(0, 6000)} \u2026`);
   });
+
+  it('renders a scenario without doc or chips as the first message then the steps, nothing between', () => {
+    expect(transcriptOf(scenario, run)).toBe([lines.first, lines.ask, lines.answer, lines.propose, lines.reply].join('\n\n'));
+  });
+
+  const withMaterial: Scenario = {
+    ...scenario,
+    space: 'document',
+    chips: [
+      { id: 'CHIP-ID-ONE', name: 'CHIP-NAME-ONE', url: 'https://example.test/one.png' },
+      { id: 'CHIP-ID-TWO', name: 'CHIP-NAME-TWO', url: 'https://example.test/two.png' },
+    ],
+    doc: [
+      ['heading', 'DOC-TEXT-ONE the title'],
+      ['paragraph', 'DOC-TEXT-TWO the body'],
+      ['paragraph', 'DOC-TEXT-THREE the end'],
+    ],
+  };
+
+  it('writes one ATTACHED line per chip, its name and url, after the first message and before the steps', () => {
+    const text = transcriptOf(withMaterial, run);
+    const textLines = text.split('\n');
+    const one = 'ATTACHED: CHIP-NAME-ONE https://example.test/one.png';
+    const two = 'ATTACHED: CHIP-NAME-TWO https://example.test/two.png';
+    expect(textLines).toContain(one);
+    expect(textLines).toContain(two);
+    expect(textLines.filter((line) => line.startsWith('ATTACHED: '))).toHaveLength(2);
+    const order = [lines.first, one, two, lines.ask].map((part) => text.indexOf(part));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('writes the open document once, each block numbered from 1 as the agent receives it, after the first message and before the steps', () => {
+    const text = transcriptOf(withMaterial, run);
+    const blocks = '<!-- b:1 -->\nDOC-TEXT-ONE the title\n\n<!-- b:2 -->\nDOC-TEXT-TWO the body\n\n<!-- b:3 -->\nDOC-TEXT-THREE the end';
+    expect(text).toContain(blocks);
+    expect(text.split('\n').filter((line) => line === 'OPEN DOCUMENT:')).toHaveLength(1);
+    const order = [lines.first, 'OPEN DOCUMENT:', blocks, lines.ask].map((part) => text.indexOf(part));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text).not.toContain('<!-- b:0 -->');
+    expect(text).not.toContain('<!-- b:4 -->');
+  });
+
+  it('writes chips without a document block, and a document without ATTACHED lines', () => {
+    const chipsOnly = transcriptOf({ ...withMaterial, doc: undefined }, run);
+    expect(chipsOnly).toContain('ATTACHED: CHIP-NAME-ONE https://example.test/one.png');
+    expect(chipsOnly).not.toContain('OPEN DOCUMENT:');
+    const docOnly = transcriptOf({ ...withMaterial, chips: undefined }, run);
+    expect(docOnly).toContain('OPEN DOCUMENT:');
+    expect(docOnly).not.toContain('ATTACHED: ');
+  });
+});
+
+describe('forJudge', () => {
+  const full = {
+    available: true,
+    models: [
+      {
+        name: 'MODEL-FAST',
+        displayName: 'DISPLAY-FAST',
+        what: 'WHAT-FAST a quick video model',
+        seconds: [5, 10],
+        price: 'PRICE-FAST',
+        lowestAt: { resolution: '480p' },
+        vendor: 'VENDOR-DROPPED',
+        params: {
+          resolution: { what: 'PARAM-WHAT-DROPPED', options: ['480p', '720p'], default: '720p' },
+          duration: { what: 'PARAM-WHAT-DROPPED', min: 2, max: 12, default: 5, needs: 'NEEDS-DROPPED' },
+          seed: { what: 'PARAM-WHAT-DROPPED', min: 0 },
+          prompt_extend: { what: 'PARAM-WHAT-DROPPED', default: true },
+        },
+      },
+      {
+        name: 'MODEL-PLAIN',
+        what: 'WHAT-PLAIN',
+        seconds: 8,
+        params: { ratio: { options: ['16:9', '9:16'], needs: 'NEEDS-DROPPED' } },
+      },
+    ],
+  };
+
+  it('keeps each model\'s name, what, seconds, price, lowestAt and params as options or a min-to-max range', () => {
+    expect(forJudge(full)).toEqual({
+      available: true,
+      models: [
+        {
+          name: 'MODEL-FAST',
+          what: 'WHAT-FAST a quick video model',
+          seconds: [5, 10],
+          price: 'PRICE-FAST',
+          lowestAt: { resolution: '480p' },
+          params: { resolution: ['480p', '720p'], duration: '2 to 12' },
+        },
+        { name: 'MODEL-PLAIN', what: 'WHAT-PLAIN', seconds: 8, params: { ratio: ['16:9', '9:16'] } },
+      ],
+    });
+  });
+
+  it('drops every other field of a model and of its params, and leaves absent keys absent', () => {
+    const slim = forJudge(full) as { models: Record<string, unknown>[] };
+    const text = JSON.stringify(slim);
+    for (const dropped of ['DISPLAY-FAST', 'VENDOR-DROPPED', 'PARAM-WHAT-DROPPED', 'NEEDS-DROPPED', '"default"', 'seed', 'prompt_extend']) {
+      expect(text, dropped).not.toContain(dropped);
+    }
+    expect(slim.models[1]).not.toHaveProperty('price');
+    expect(slim.models[1]).not.toHaveProperty('lowestAt');
+  });
+
+  it('returns anything that is not an available model list unchanged', () => {
+    const unavailable = { available: false, offered: ['MODEL-A', 'MODEL-B'] };
+    expect(forJudge(unavailable)).toEqual(unavailable);
+    for (const other of [null, undefined, 'TEXT', 42, [1, 2], { models: 'not-a-list' }]) {
+      expect(forJudge(other)).toEqual(other);
+    }
+  });
 });
 
 describe('judgePrompt', () => {
@@ -168,6 +286,12 @@ describe('judgePrompt', () => {
     );
     expect(prompt).toContain(
       'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
+    );
+  });
+
+  it('says waiting for material the user will send is right', () => {
+    expect(judgePrompt(scenario, run)).toContain(
+      'When the user says they will send material, waiting for it before making what depends on it is right.',
     );
   });
 });
@@ -287,6 +411,29 @@ describe('parseUserAnswers', () => {
     const long = 'w'.repeat(501);
     const answers = parseUserAnswers(JSON.stringify([{ index: 0, choice: null, other: long }]), [{ question: 'q', options: ['A'] }]);
     expect(answers).toEqual([{ index: 0, selected: [], other: long.slice(0, 500) }]);
+  });
+
+  it('falls back to a non-blank choice that is not an option when other is blank', () => {
+    const one: CardQuestion[] = [{ question: 'q', options: ['A'] }];
+    for (const other of [null, '', '   ']) {
+      expect(parseUserAnswers(JSON.stringify([{ index: 0, choice: 'CHOICE-WORDS', other }]), one), String(other)).toEqual([
+        { index: 0, selected: [], other: 'CHOICE-WORDS' },
+      ]);
+    }
+  });
+
+  it('gives nothing selected and no other key when both choice and other are blank', () => {
+    const answers = parseUserAnswers('[{"index":0,"choice":"  ","other":""}]', [{ question: 'q', options: ['A'] }]);
+    expect(answers).toEqual([{ index: 0, selected: [] }]);
+    expect(answers[0]).not.toHaveProperty('other');
+  });
+
+  it('cuts words from either other or a fallback choice to ASK_USER_OTHER_MAX_CHARS', () => {
+    const one: CardQuestion[] = [{ question: 'q', options: ['A'] }];
+    const long = 'z'.repeat(ASK_USER_OTHER_MAX_CHARS + 10);
+    const cut = [{ index: 0, selected: [], other: long.slice(0, ASK_USER_OTHER_MAX_CHARS) }];
+    expect(parseUserAnswers(JSON.stringify([{ index: 0, choice: null, other: long }]), one)).toEqual(cut);
+    expect(parseUserAnswers(JSON.stringify([{ index: 0, choice: long, other: null }]), one)).toEqual(cut);
   });
 
   it('throws when a question is left unanswered', () => {

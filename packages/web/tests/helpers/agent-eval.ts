@@ -100,7 +100,39 @@ export function transcriptOf(scenario: Scenario, run: Run): string {
     }
     return step.kind === 'text' ? `AGENT: ${step.text}` : `USER ANSWERED: ${step.text}`;
   });
-  return [`USER: ${scenario.text}`, ...lines].join('\n\n');
+  const attached = (scenario.chips ?? []).map((chip) => `ATTACHED: ${chip.name} ${chip.url}`);
+  // Numbered the way the agent receives the open document.
+  const doc = scenario.doc === undefined ? [] : [`OPEN DOCUMENT:\n${scenario.doc.map(([, text], i) => `<!-- b:${String(i + 1)} -->\n${text}`).join('\n\n')}`];
+  return [[`USER: ${scenario.text}`, ...attached].join('\n'), ...doc, ...lines].join('\n\n');
+}
+
+/**
+ * A `list_generation_models` answer cut to what the judge decides price
+ * criteria by: each model's name, what it is good at, its speed, its price,
+ * its cheapest settings and the values each setting takes. Anything that is
+ * not an available model list comes back as it is.
+ * @param output - What the tool returned.
+ * @returns The slim answer.
+ */
+export function forJudge(output: unknown): unknown {
+  const answer = output as { available?: unknown; models?: unknown } | null;
+  if (typeof answer !== 'object' || answer === null || answer.available !== true || !Array.isArray(answer.models)) return output;
+  type Model = { name: unknown; what: unknown; seconds: unknown; price?: unknown; lowestAt?: unknown; params?: Record<string, { options?: unknown; min?: unknown; max?: unknown }> };
+  return {
+    available: true,
+    models: (answer.models as Model[]).map(({ name, what, seconds, price, lowestAt, params }) => ({
+      name,
+      what,
+      seconds,
+      ...(price === undefined ? {} : { price }),
+      ...(lowestAt === undefined ? {} : { lowestAt }),
+      params: Object.fromEntries(
+        Object.entries(params ?? {}).flatMap(([key, spec]) =>
+          spec.options !== undefined ? [[key, spec.options]] : spec.min !== undefined && spec.max !== undefined ? [[key, `${String(spec.min)} to ${String(spec.max)}`]] : [],
+        ),
+      ),
+    })),
+  };
 }
 
 /**
@@ -119,6 +151,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
     'The agent writes in the language of the user\'s latest message.',
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
+    'When the user says they will send material, waiting for it before making what depends on it is right.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,
     'Answer with one JSON object {"pass": boolean, "reason": string} and nothing else; the reason is one sentence naming what decided it.',
@@ -204,9 +237,8 @@ export function parseUserAnswers(text: string, questions: readonly CardQuestion[
     const choice = typeof entry.choice === 'string' ? entry.choice : undefined;
     if (choice !== undefined && question.options.includes(choice)) answers.set(entry.index, { index: entry.index, selected: [choice] });
     else {
-      // The chat route rejects an empty other and one past its cap.
-      const words = (typeof entry.other === 'string' && entry.other.trim() !== '' ? entry.other : choice ?? '').slice(0, ASK_USER_OTHER_MAX_CHARS);
-      answers.set(entry.index, words.trim() === '' ? { index: entry.index, selected: [] } : { index: entry.index, selected: [], other: words });
+      const words = [entry.other, choice].find((one): one is string => typeof one === 'string' && one.trim() !== '')?.slice(0, ASK_USER_OTHER_MAX_CHARS);
+      answers.set(entry.index, words === undefined ? { index: entry.index, selected: [] } : { index: entry.index, selected: [], other: words });
     }
   }
   return questions.map((_, index) => {

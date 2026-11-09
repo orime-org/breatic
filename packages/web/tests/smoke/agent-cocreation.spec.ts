@@ -37,6 +37,7 @@ import { stateFile, test } from '../helpers/slot';
 import {
   agreement,
   agreementByScenario,
+  forJudge,
   fixedAnswers,
   judgePrompt,
   parseUserAnswers,
@@ -55,9 +56,11 @@ import {
 const ROOT_ENV = join(__dirname, '../../../../.env');
 if (process.env.OPENROUTER_API_KEY === undefined && existsSync(ROOT_ENV)) process.loadEnvFile(ROOT_ENV);
 
-const SCENARIOS = (JSON.parse(readFileSync(join(__dirname, 'agent-cocreation.scenarios.json'), 'utf8')) as Scenario[]).filter(
-  (one) => (process.env.EVAL_ONLY ?? '') === '' || (process.env.EVAL_ONLY ?? '').split(',').includes(one.id),
-);
+const ALL_SCENARIOS = JSON.parse(readFileSync(join(__dirname, 'agent-cocreation.scenarios.json'), 'utf8')) as Scenario[];
+const ONLY = (process.env.EVAL_ONLY ?? '').split(',').filter((id) => id !== '');
+/** Ids in EVAL_ONLY that name no scenario; a run with any of them fails before it starts. */
+const UNKNOWN_IDS = ONLY.filter((id) => !ALL_SCENARIOS.some((one) => one.id === id));
+const SCENARIOS = ALL_SCENARIOS.filter((one) => ONLY.length === 0 || ONLY.includes(one.id));
 const RUNS = Number(process.env.EVAL_RUNS ?? '5');
 /** The model a conversation runs on when it names none: the deployment's default. */
 const DEFAULT_MODEL = undefined;
@@ -115,7 +118,7 @@ function toolOf(part: StoredPart): string | undefined {
  * @param prompt - The prompt.
  * @param asObject - Ask for one JSON object as the whole answer, as the judge answers.
  * @returns What the model wrote.
- * @throws {Error} When the provider refuses the call.
+ * @throws {Error} When the provider refuses the call or answers empty, twice.
  */
 async function askHelper(api: APIRequestContext, prompt: string, asObject = false): Promise<string> {
   // One retry, after the provider's Retry-After or five seconds: an empty or
@@ -249,7 +252,7 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
       const tool = toolOf(part);
       if (tool === undefined) return part.type === 'text' ? [{ kind: 'text', text: part.text ?? '' }] : [];
       // The model list is the one answer the judge needs: which model is fast or cheap, and each setting's cheapest value.
-      const returned = tool === 'list_generation_models' && part.output !== undefined ? { output: part.output } : {};
+      const returned = tool === 'list_generation_models' && part.output !== undefined ? { output: forJudge(part.output) } : {};
       const call: RunStep = { kind: 'call', tool, state: part.status ?? part.state ?? '', input: part.input, ...returned };
       const answer = answered.get(part.toolCallId ?? '');
       return answer === undefined ? [call] : [call, { kind: 'answer', text: answer }];
@@ -301,14 +304,6 @@ async function pooled<T>(jobs: readonly (() => Promise<T>)[], atOnce: number): P
 }
 
 /**
- * Every scenario on one model, judged, with the rows that missed four in five.
- * @param label - The model's name in the report.
- * @param model - The model, or undefined for the default.
- * @param scenarios - The scenarios to run.
- * @param baseURL - Where the app under test is served.
- * @returns The rows that did not pass.
- */
-/**
  * A short fingerprint of a scenario's criterion, kept with every run and label
  * so a label made against older words is found.
  * @param scenario - The scenario.
@@ -318,6 +313,14 @@ function criterionOf(scenario: Scenario): string {
   return createHash('sha256').update(scenario.pass).digest('hex').slice(0, 12);
 }
 
+/**
+ * Every scenario on one model, judged, with the rows that missed four in five.
+ * @param label - The model's name in the report.
+ * @param model - The model, or undefined for the default.
+ * @param scenarios - The scenarios to run.
+ * @param baseURL - Where the app under test is served.
+ * @returns The rows that did not pass.
+ */
 async function evaluate(label: string, model: string | undefined, scenarios: readonly Scenario[], baseURL: string | undefined): Promise<string[]> {
   // Both of the slot's accounts take turns, so the per-account limits on
   // creating Projects and conversations are reached half as fast.
@@ -355,7 +358,8 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
       const row = judged.filter((one) => one.scenario === scenario.id);
       const errored = results.filter((one) => one.scenario === scenario.id && 'error' in one);
       const ok = row.filter((one) => one.verdict.pass).length;
-      if (row.length === 0 || !rowPasses(ok, row.length)) failing.push(scenario.id);
+      // A row judged on fewer than four in five of its runs was not measured.
+      if (row.length < RUNS * 0.8 || !rowPasses(ok, row.length)) failing.push(scenario.id);
       const misses = [
         ...row.filter((one) => !one.verdict.pass).map((one) => `#${String(one.index + 1)} ${one.verdict.reason}`),
         ...errored.map((one) => `#${String(one.index + 1)} errored, not judged: ${'error' in one ? one.error : ''}`),
@@ -374,22 +378,25 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
 
 test('the default model co-creates as the scenarios say @needs-model @needs-internet', async ({ baseURL }) => {
   test.setTimeout(4 * 60 * 60_000);
+  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   expect(await evaluate('default', DEFAULT_MODEL, SCENARIOS, baseURL)).toEqual([]);
 });
 
 test('the comparison model co-creates as the scenarios say @needs-model @needs-internet', async ({ baseURL }) => {
   test.setTimeout(4 * 60 * 60_000);
+  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   const compared = SCENARIOS.filter((one) => one.compare === true);
   expect(await evaluate('compare', COMPARE_MODEL, compared, baseURL)).toEqual([]);
 });
 
 test('the judge agrees with hand labels @needs-model @needs-internet', async () => {
   test.setTimeout(60 * 60_000);
+  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   const byId = new Map(SCENARIOS.map((one) => [one.id, one]));
   const labelled = readFileSync(LABELS, 'utf8')
     .split('\n')
     .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as { scenario: string; criterion: string; run: Run; human: boolean })
+    .map((line) => JSON.parse(line) as { scenario: string; criterion: string; origin?: string; run: Run; human: boolean })
     .filter((one) => byId.has(one.scenario));
   // A label made against a criterion since rewritten judges other words.
   const stale = labelled.filter((one) => one.criterion !== criterionOf(byId.get(one.scenario) as Scenario)).map((one) => one.scenario);
@@ -400,18 +407,26 @@ test('the judge agrees with hand labels @needs-model @needs-internet', async () 
     const judged = await pooled(
       labelled.map((one) => async () => {
         const verdict = await judge(helper, byId.get(one.scenario) as Scenario, one.run);
-        return { scenario: one.scenario, human: one.human, judge: verdict.pass, reason: verdict.reason };
+        return { scenario: one.scenario, origin: one.origin, human: one.human, judge: verdict.pass, reason: verdict.reason };
       }),
       AT_ONCE,
     );
     mkdirSync(test.info().outputDir, { recursive: true });
     writeFileSync(test.info().outputPath('agent-cocreation-judge.json'), JSON.stringify(judged, null, 2));
     const share = (x: number | undefined): string => (x === undefined ? '-' : `${(x * 100).toFixed(0)}%`);
+    // A row whose own agreement is under 90% on either side is a row whose verdicts a person reads.
+    const weak = (one: ReturnType<typeof agreement>): boolean => (one.truePass ?? 1) < 0.9 || (one.trueFail ?? 1) < 0.9;
     const rows = [...agreementByScenario(judged)].map(
-      ([scenario, one]) => `${scenario}: passes ${share(one.truePass)} of ${String(one.passes)}, fails ${share(one.trueFail)} of ${String(one.fails)}`,
+      ([scenario, one]) => `${scenario}: passes ${share(one.truePass)} of ${String(one.passes)}, fails ${share(one.trueFail)} of ${String(one.fails)}${weak(one) ? '  [read by hand]' : ''}`,
     );
     const said = agreement(judged);
-    console.warn(`judge against hand labels: passes ${share(said.truePass)} of ${String(said.passes)}, fails ${share(said.trueFail)} of ${String(said.fails)}\n${rows.join('\n')}`);
+    const real = agreement(judged.filter((one) => !(one.origin ?? '').startsWith('perturbed')));
+    console.warn(
+      `judge against hand labels: passes ${share(said.truePass)} of ${String(said.passes)}, fails ${share(said.trueFail)} of ${String(said.fails)}` +
+        ` (real runs only: fails ${share(real.trueFail)} of ${String(real.fails)})\n${rows.join('\n')}`,
+    );
+    // The whole set needs enough failures to measure the fail side; a narrowed run does not.
+    if (ONLY.length === 0) expect(said.fails, 'fail-side labels').toBeGreaterThanOrEqual(50);
     // A side with no labels has nothing to agree with.
     if (said.truePass !== undefined) expect(said.truePass).toBeGreaterThanOrEqual(0.9);
     if (said.trueFail !== undefined) expect(said.trueFail).toBeGreaterThanOrEqual(0.9);
