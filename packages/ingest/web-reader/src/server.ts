@@ -106,7 +106,32 @@ async function readDownload(
 }
 
 /**
+ * How a page ends, judged from a navigation's response.
+ * @param answer - The response.
+ * @returns The page's status, or null when it should be read on.
+ */
+function endedBy(answer: Response): ReadPageResult["status"] | null {
+  const headers = answer.headers();
+  return statusOfResponse(answer.status(), headers["content-type"] ?? null, headers[READER_UNREACHABLE_HEADER] === "1");
+}
+
+/**
+ * Whether a response declares more bytes than the call reads.
+ * @param answer - The response.
+ * @param maxBytes - The largest page read.
+ * @returns True when its content-length is past `maxBytes`.
+ */
+function declaresMoreThan(answer: Response, maxBytes: number): boolean {
+  const length = Number(answer.headers()["content-length"]);
+  return Number.isFinite(length) && length > maxBytes;
+}
+
+/**
  * Read one page.
+ *
+ * A document the page goes on to after it loaded (by script or refresh) is
+ * checked and read as if it had been asked for; a download it starts then
+ * leaves the page as it was read.
  * @param url - The page.
  * @param signal - Fires when the call's reading must stop.
  * @param request - The call's limits.
@@ -127,24 +152,35 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
   signal.addEventListener("abort", stop, { once: true });
   // A page whose headers declare more than the limit ends at its headers:
   // reading it whole would take its whole transfer, or crash the renderer.
-  // Judged only while the page itself is arriving: a download the page starts
-  // after it loaded leaves the page as it was read.
+  // While goto is pending every navigation response is judged, downloads
+  // included; after it, only a document the main frame commits.
   let oversized = false;
   let arriving = true;
+  /**
+   * End the read as too large.
+   */
+  const tooLarge = (): void => {
+    oversized = true;
+    void context.close();
+  };
   try {
     const page = await context.newPage();
     const downloaded = page.waitForEvent("download", { timeout: request.pageTimeoutMs }).catch(() => null);
     // A navigation that turns into a download has no response from goto; its
     // headers come from here.
     let head: Response | undefined;
+    // The response of the last document the main frame committed after goto.
+    let wentOnTo: Response | undefined;
     page.on("response", (answer) => {
       if (!answer.request().isNavigationRequest() || answer.frame() !== page.mainFrame()) return;
       head = answer;
-      const length = Number(answer.headers()["content-length"]);
-      if (arriving && Number.isFinite(length) && length > request.maxBytes) {
-        oversized = true;
-        void context.close();
-      }
+      if (arriving && declaresMoreThan(answer, request.maxBytes)) tooLarge();
+    });
+    page.on("framenavigated", (frame) => {
+      // A same-document navigation (pushState, a fragment) has no response of its own.
+      if (arriving || frame !== page.mainFrame() || head === undefined || head.url() !== frame.url()) return;
+      wentOnTo = head;
+      if (declaresMoreThan(head, request.maxBytes)) tooLarge();
     });
     let response;
     try {
@@ -156,13 +192,8 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
         // A failure answer the browser turns into a download ends as its
         // status says, without waiting for the file.
         if (head !== undefined && !head.ok()) {
-          const failed = head;
-          const ended = statusOfResponse(
-            failed.status(),
-            failed.headers()["content-type"] ?? null,
-            failed.headers()[READER_UNREACHABLE_HEADER] === "1",
-          );
-          if (ended !== null) return { url, status: ended, httpStatus: failed.status(), finalUrl: failed.url() };
+          const ended = endedBy(head);
+          if (ended !== null) return { url, status: ended, httpStatus: head.status(), finalUrl: head.url() };
         }
         const download = await downloaded;
         if (download !== null) return await readDownload(url, download, head, request.maxBytes);
@@ -173,12 +204,19 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       arriving = false;
     }
     if (response === null) return { url, status: "unreachable" };
-    const httpStatus = response.status();
-    const headers = response.headers();
-    const ended = statusOfResponse(httpStatus, headers["content-type"] ?? null, headers[READER_UNREACHABLE_HEADER] === "1");
-    if (ended !== null) return { url, status: ended, httpStatus, finalUrl: page.url() };
+    const ended = endedBy(response);
+    if (ended !== null) return { url, status: ended, httpStatus: response.status(), finalUrl: page.url() };
 
     await page.waitForLoadState("networkidle", { timeout: request.settleMs }).catch(() => undefined);
+    let shown = response;
+    if (wentOnTo !== undefined) {
+      await page.waitForLoadState("domcontentloaded", { timeout: request.pageTimeoutMs });
+      shown = wentOnTo;
+      const endedThere = endedBy(shown);
+      if (endedThere !== null) return { url, status: endedThere, httpStatus: shown.status(), finalUrl: page.url() };
+    }
+    const httpStatus = shown.status();
+    const headers = shown.headers();
     // A document that is not HTML is judged again by the type the browser
     // saw (an image sent with no type is still an image), and a text one is
     // read as the body the site sent: what the browser renders of it is not
@@ -193,7 +231,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     if (contentType !== "text/html" && contentType !== "application/xhtml+xml") {
       const seen = statusOfResponse(httpStatus, contentType);
       if (seen !== null) return { url, status: seen, httpStatus, finalUrl: page.url() };
-      const text = recoverUtf8(await response.text(), headers["content-type"] ?? null, characterSet);
+      const text = recoverUtf8(await shown.text(), headers["content-type"] ?? null, characterSet);
       return textPage(url, { httpStatus, finalUrl: page.url(), title: documentTitle }, text);
     }
     await page.addScriptTag({ content: READABILITY }).catch(() => undefined);
