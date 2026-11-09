@@ -3239,6 +3239,7 @@
       "create": "ウェブアニメーションを作成",
       "executions": "実行リスト",
       "copy": "ウェブアニメーションのコピー",
+      "durationShort": "{seconds} 秒",
       "dialog": {
         "title": "ウェブアニメーションを作成",
         "retryTitle": "ウェブアニメーションを再実行",
@@ -3276,8 +3277,9 @@
         "validating": "フレームとマニフェストを検証",
         "saving": "ソースを保存"
       },
-      "usage": "使用量：{credits} クレジット",
-      "usagePending": "使用量は終了後に精算されます",
+      "usageLabel": "使用量",
+      "usage": "{credits} クレジット",
+      "usagePending": "終了後に精算",
       "unavailable": "ウェブアニメーションを利用できません",
       "cancel": "キャンセル",
       "addToTimeline": "Timeline に追加",
@@ -3285,11 +3287,13 @@
       "retry": "再実行",
       "failure": {
         "feature_disabled": "ウェブアニメーションは現在利用できません。",
+        "check": "ページがチェックを通過しませんでした。",
+        "stopped": "作成が予期せず停止しました。",
         "unknown": "実行に失敗しました。"
       },
       "preview": {
-        "pending": "{track}：ウェブアニメーション{status}…",
-        "failed": "{track}：ウェブアニメーション{status}、表示されません",
+        "pending": "{track}：ウェブアニメーション{status, select, awaiting_landing {保存中} queued {待機中} running {作成中} cancelling {キャンセル中} other {待機中}}…",
+        "failed": "{track}：ウェブアニメーション{status, select, failed {失敗} cancelled {キャンセル済み} expired {期限切れ} other {利用不可}}、表示されません",
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
       }

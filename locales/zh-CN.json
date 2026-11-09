@@ -3239,6 +3239,7 @@
       "create": "制作网页动画",
       "executions": "执行列表",
       "copy": "网页动画副本",
+      "durationShort": "{seconds} 秒",
       "dialog": {
         "title": "制作网页动画",
         "retryTitle": "重新执行网页动画",
@@ -3276,8 +3277,9 @@
         "validating": "校验定位与清单",
         "saving": "保存源包"
       },
-      "usage": "用量：{credits} 积分",
-      "usagePending": "结束后结算用量",
+      "usageLabel": "用量",
+      "usage": "{credits} 积分",
+      "usagePending": "结束后结算",
       "unavailable": "网页动画不可用",
       "cancel": "取消",
       "addToTimeline": "添加到 Timeline",
@@ -3285,11 +3287,13 @@
       "retry": "重新执行",
       "failure": {
         "feature_disabled": "网页动画暂不可用。",
+        "check": "页面没有通过检查。",
+        "stopped": "制作意外中断。",
         "unknown": "执行失败。"
       },
       "preview": {
-        "pending": "{track}：网页动画{status}…",
-        "failed": "{track}：网页动画{status}，不显示",
+        "pending": "{track}：网页动画{status, select, awaiting_landing {保存中} queued {排队中} running {制作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：网页动画{status, select, failed {失败} cancelled {已取消} expired {已过期} other {不可用}}，不显示",
         "unavailable": "{track}：网页动画不可用",
         "loading": "{track}：网页动画加载中…"
       }

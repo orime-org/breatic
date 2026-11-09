@@ -18,8 +18,6 @@ import type { CreationDraftInput, CreationDraftState } from '@web/spaces/timelin
 /** Engine names are the vendor's own and stay in English. */
 export const WEB_ANIMATION_ENGINE_NAMES: Readonly<Record<CreationDraftInput['engine'], string>> = { deepseek: 'DeepSeek' };
 
-const LABEL = 'text-xs text-muted-foreground';
-
 /** The open creation dialog's draft and actions. */
 interface TimelineWebAnimationDialogProps {
   spaceId: string;
@@ -76,30 +74,30 @@ export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEd
       </DialogHeader>
       <form noValidate onSubmit={submit}>
         <DialogBody className='flex flex-col gap-4'>
-          <div className='flex flex-col gap-1'>
-            <Label htmlFor={`${fieldId}-prompt`} className={LABEL}>{t('timeline.webAnimation.dialog.prompt')}</Label>
+          <div className='flex flex-col gap-1.5'>
+            <Label htmlFor={`${fieldId}-prompt`}>{t('timeline.webAnimation.dialog.prompt')}</Label>
             <Textarea id={`${fieldId}-prompt`} data-testid='web-animation-prompt' rows={4} autoComplete='off' maxLength={limits.promptMaxLength} className='resize-none'
               placeholder={t('timeline.webAnimation.dialog.promptPlaceholder')} value={input.prompt} disabled={submitting} onChange={changePrompt} />
             <span className='self-end text-xs tabular-nums text-muted-foreground'>{`${input.prompt.length} / ${limits.promptMaxLength}`}</span>
           </div>
           <div className='grid grid-cols-3 gap-3'>
-            <div className='flex min-w-0 flex-col gap-1'>
-              <Label htmlFor={`${fieldId}-engine`} className={LABEL}>{t('timeline.webAnimation.dialog.engine')}</Label>
+            <div className='flex min-w-0 flex-col gap-1.5'>
+              <Label htmlFor={`${fieldId}-engine`}>{t('timeline.webAnimation.dialog.engine')}</Label>
               <Select value={input.engine} onValueChange={changeEngine} disabled={submitting}>
-                <SelectTrigger id={`${fieldId}-engine`} data-testid='web-animation-engine' className='h-8 w-full'><SelectValue /></SelectTrigger>
+                <SelectTrigger id={`${fieldId}-engine`} data-testid='web-animation-engine' className='w-full'><SelectValue /></SelectTrigger>
                 <SelectContent>{Object.entries(WEB_ANIMATION_ENGINE_NAMES).map(([value, name]) => <SelectItem key={value} value={value}>{name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className='flex min-w-0 flex-col gap-1'>
-              <Label htmlFor={`${fieldId}-aspect`} className={LABEL}>{t('timeline.webAnimation.dialog.aspect')}</Label>
+            <div className='flex min-w-0 flex-col gap-1.5'>
+              <Label htmlFor={`${fieldId}-aspect`}>{t('timeline.webAnimation.dialog.aspect')}</Label>
               <Select value={input.aspect} onValueChange={changeAspect} disabled={submitting}>
-                <SelectTrigger id={`${fieldId}-aspect`} data-testid='web-animation-aspect' className='h-8 w-full'><SelectValue /></SelectTrigger>
+                <SelectTrigger id={`${fieldId}-aspect`} data-testid='web-animation-aspect' className='w-full'><SelectValue /></SelectTrigger>
                 <SelectContent>{limits.aspects.map((aspect) => <SelectItem key={aspect} value={aspect}>{aspect}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className='flex min-w-0 flex-col gap-1'>
-              <Label htmlFor={`${fieldId}-duration`} className={LABEL}>{t('timeline.webAnimation.dialog.duration')}</Label>
-              <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='h-8 w-full'
+            <div className='flex min-w-0 flex-col gap-1.5'>
+              <Label htmlFor={`${fieldId}-duration`}>{t('timeline.webAnimation.dialog.duration')}</Label>
+              <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='w-full'
                 value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
             </div>
           </div>

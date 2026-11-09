@@ -59,8 +59,8 @@ export function usePlayerDefined(needed: boolean): PlayerModule {
 }
 
 /**
- * Whether an instance has a picture to draw: it answered a position since it last (re)loaded. Until then the player's
- * own black background would cover what is beneath it; a later seek keeps the last picture while it waits.
+ * Whether an instance has a picture to draw: it answered a position since it last (re)loaded. Until then it has no
+ * picture of this copy to show; a later seek keeps the last picture while it waits.
  * @param state - The instance's current state.
  * @returns Whether to draw it.
  * @throws {never} Never.
@@ -184,7 +184,7 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
   const loading = shown && !drawn && !unavailable;
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
-      data-instance-key={key} data-clip-id={entry.clip.id} data-web-state={state ?? 'loading'} className='absolute inset-0 size-full' style={style} />}
+      data-instance-key={key} data-clip-id={entry.clip.id} data-web-state={state ?? 'loading'} className='absolute inset-0 size-full bg-transparent' style={style} />}
     {loading && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.loading', { track: entry.track })} />, notes)}
     {unavailable && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.unavailable', { track: entry.track })}>
       <Button data-testid={`timeline-web-retry-${entry.clip.id}`} variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
@@ -231,7 +231,7 @@ export function TimelineWebPreview({ projectId, entries, states, sharing, onPlay
       playerFailed={player.failed} notes={notes} sharing={sharing} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} onUnavailable={onUnavailable} />)}
     <div ref={setNotes} className='absolute right-3 top-3 flex flex-col items-end gap-1.5' style={notesStyle}>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
-        const status = entry.status === null ? '' : t(`timeline.webAnimation.status.${entry.status}`);
+        const status = entry.status ?? '';
         const ended = entry.status !== null && timelineExecutionFailed(entry.status);
         return <WebNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
           text={t(ended ? 'timeline.webAnimation.preview.failed' : 'timeline.webAnimation.preview.pending', { track: entry.track, status })} />;

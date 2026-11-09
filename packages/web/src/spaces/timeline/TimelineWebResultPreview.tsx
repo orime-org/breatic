@@ -86,7 +86,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
         </div>
         : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
       {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
-        className='absolute inset-0 size-full' style={playerStyle} />}
+        className='absolute inset-0 size-full bg-transparent' style={playerStyle} />}
     </div>
     <div className='flex items-center gap-2'>
       <Slider aria-label={t('timeline.seek')} value={value} onValueChange={scrub} min={0} max={Math.max(1, durationFrames - 1)} step={1} className='min-w-0 flex-1' />

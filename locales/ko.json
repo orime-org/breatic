@@ -3239,6 +3239,7 @@
       "create": "웹 애니메이션 만들기",
       "executions": "실행 목록",
       "copy": "웹 애니메이션 사본",
+      "durationShort": "{seconds}초",
       "dialog": {
         "title": "웹 애니메이션 만들기",
         "retryTitle": "웹 애니메이션 다시 실행",
@@ -3276,8 +3277,9 @@
         "validating": "프레임과 매니페스트 검증",
         "saving": "소스 저장"
       },
-      "usage": "사용량: {credits} 크레딧",
-      "usagePending": "사용량은 종료 후 정산됩니다",
+      "usageLabel": "사용량",
+      "usage": "{credits} 크레딧",
+      "usagePending": "종료 후 정산",
       "unavailable": "웹 애니메이션을 사용할 수 없음",
       "cancel": "취소",
       "addToTimeline": "Timeline에 추가",
@@ -3285,11 +3287,13 @@
       "retry": "다시 실행",
       "failure": {
         "feature_disabled": "지금은 웹 애니메이션을 사용할 수 없습니다.",
+        "check": "페이지가 검사를 통과하지 못했습니다.",
+        "stopped": "제작이 예기치 않게 중단되었습니다.",
         "unknown": "실행에 실패했습니다."
       },
       "preview": {
-        "pending": "{track}: 웹 애니메이션 {status}…",
-        "failed": "{track}: 웹 애니메이션 {status}, 표시되지 않음",
+        "pending": "{track}: 웹 애니메이션 {status, select, awaiting_landing {저장 중} queued {대기 중} running {제작 중} cancelling {취소 중} other {대기 중}}…",
+        "failed": "{track}: 웹 애니메이션 {status, select, failed {실패} cancelled {취소됨} expired {만료됨} other {사용 불가}}, 표시되지 않음",
         "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
         "loading": "{track}: 웹 애니메이션 불러오는 중…"
       }

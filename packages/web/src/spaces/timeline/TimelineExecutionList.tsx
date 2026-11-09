@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Check, CircleDashed, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
+import { Check, CircleSlash, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
 import { formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
@@ -19,8 +19,13 @@ import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResult
 export type TimelineExecutionView = 'completed' | 'inProgress';
 
 const PHASES = ['writing', 'validating', 'saving'] as const;
-// Failure reasons that have a sentence of their own; any other reads as a general failure.
-const EXPLAINED_FAILURES: ReadonlySet<string> = new Set(['feature_disabled']);
+// The sentence each failure reason is told with; a reason not listed reads as a general failure.
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped'>> = {
+  feature_disabled: 'feature_disabled',
+  validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
+  viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
+  harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',
+};
 
 /**
  * The input an execution froze, when it can be read.
@@ -54,18 +59,21 @@ interface RowActions {
 interface ExecutionRowProps extends RowActions { projectId: string; row: TimelineExecutionRow; open: boolean; readOnly: boolean; onToggle: (id: string) => void }
 
 /**
- * Where a step stands: done, running now, or not reached.
+ * Where a step stands: done, running now, where a run that did not succeed stopped, or not reached. A running row that
+ * has reported no phase yet is writing the page.
  * @param row - The execution.
  * @param index - The step: 0 is saving the request, then the phases.
  * @returns Its mark.
  * @throws {never} Never.
  */
-function stepMark(row: TimelineExecutionRow, index: number): 'done' | 'current' | 'pending' {
+function stepMark(row: TimelineExecutionRow, index: number): 'done' | 'current' | 'stopped' | 'pending' {
   if (row.status === 'succeeded') return 'done';
   if (index === 0) return row.status === 'awaiting_landing' ? 'current' : 'done';
-  const reached = row.phase === null ? -1 : PHASES.indexOf(row.phase);
+  const stopped = row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired';
+  const reached = row.phase === null ? (row.status === 'running' || stopped ? 0 : -1) : PHASES.indexOf(row.phase);
   if (index - 1 < reached) return 'done';
-  return index - 1 === reached && row.status === 'running' ? 'current' : 'pending';
+  if (index - 1 > reached) return 'pending';
+  return row.status === 'running' ? 'current' : stopped ? 'stopped' : 'pending';
 }
 
 /**
@@ -104,53 +112,65 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
   const retry = React.useCallback((): void => onRetry(row), [onRetry, row]);
   const status = t(`timeline.webAnimation.status.${row.status}`);
   const phase = row.status === 'running' && row.phase !== null ? t(`timeline.webAnimation.phase.${row.phase}`) : null;
+  const statusText = phase === null ? status : `${status} · ${phase}`;
   const created = new Date(row.createdAt).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' });
   const summary = input === null ? created
-    : `${WEB_ANIMATION_ENGINE_NAMES[input.engine]} · ${input.aspect} · ${t('timeline.material.duration', { seconds: input.durationSeconds })} · ${created}`;
+    : `${WEB_ANIMATION_ENGINE_NAMES[input.engine]} · ${input.aspect} · ${t('timeline.webAnimation.durationShort', { seconds: input.durationSeconds })} · ${created}`;
   const steps = ['timeline.webAnimation.step.landing', ...PHASES.map((item) => `timeline.webAnimation.phase.${item}`)];
   return <li data-testid={`timeline-execution-${row.id}`} data-status={row.status} className='border-b border-border last:border-b-0'>
-    <Button data-testid={`timeline-execution-toggle-${row.id}`} type='button' variant={null} size={null} aria-expanded={open} onClick={toggle}
-      className='flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left text-xs hover-enabled:bg-accent'>
-      <Code className='mt-0.5 size-4 shrink-0 text-[color:var(--color-palette-violet)]' />
-      <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
-        <span className='truncate text-sm font-medium leading-normal'>{input?.prompt ?? t('timeline.webAnimation.copy')}</span>
-        <span className='truncate text-muted-foreground'>{summary}</span>
+    <div className='relative'>
+      <Button data-testid={`timeline-execution-toggle-${row.id}`} type='button' variant={null} size={null} aria-expanded={open} onClick={toggle}
+        className='flex w-full min-w-0 flex-col items-stretch gap-0.5 px-3 py-2.5 text-left text-xs hover-enabled:bg-accent'>
+        <span className='flex min-w-0 items-start gap-2'>
+          <Code className='mt-0.5 size-4 shrink-0 text-[color:var(--color-palette-violet)]' />
+          <span className='min-w-0 flex-1 truncate text-sm font-medium leading-normal'>{input?.prompt ?? t('timeline.webAnimation.copy')}</span>
+          {/* Holds the status's room, so the title stops where the status starts. */}
+          <span aria-hidden className='invisible flex shrink-0 items-center gap-1 whitespace-nowrap'>{unfinished && <span className='size-3.5' />}{statusText}</span>
+        </span>
+        {/* The summary runs under the status too, starting where the title starts. */}
+        <span data-testid={`timeline-execution-meta-${row.id}`} className='truncate pl-6 text-muted-foreground'>{summary}</span>
+      </Button>
+      {/* The status tells the execution's own progress, so it sits over the row and leaves presses to the row. */}
+      <span data-testid={`timeline-execution-status-${row.id}`}
+        className={cn('pointer-events-none absolute right-3 top-2.5 flex items-center gap-1 whitespace-nowrap text-xs', statusTone(row.status))}>
+        {unfinished && <LoaderCircle className='size-3.5 animate-spin' />}
+        {statusText}
       </span>
-      <span className={cn('flex shrink-0 items-center gap-1 whitespace-nowrap', statusTone(row.status))}>
-        {unfinished && <CircleDashed className='size-3.5' />}
-        {phase === null ? status : `${status} · ${phase}`}
-      </span>
-    </Button>
+    </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);
-          return <li key={key} className={cn('flex items-center gap-2', mark === 'pending' && 'text-muted-foreground')}>
-            {mark === 'done' ? <Check className='size-3.5 shrink-0' /> : mark === 'current' ? <LoaderCircle className='size-3.5 shrink-0 animate-spin' /> : <Dot className='size-3.5 shrink-0' />}
+          const failedHere = mark === 'stopped' && row.status !== 'cancelled';
+          return <li key={key} data-mark={mark} className={cn('flex items-center gap-2', failedHere && 'text-status-error-foreground',
+            (mark === 'pending' || (mark === 'stopped' && !failedHere)) && 'text-muted-foreground')}>
+            {mark === 'done' ? <Check className='size-3.5 shrink-0' /> : mark === 'current' ? <LoaderCircle className='size-3.5 shrink-0 animate-spin' />
+              : mark === 'stopped' ? (failedHere ? <X className='size-3.5 shrink-0' /> : <CircleSlash className='size-3.5 shrink-0' />) : <Dot className='size-3.5 shrink-0' />}
             {t(key)}
           </li>;
         })}
       </ol>
       {row.status === 'failed' && <p className='text-status-error-foreground'>
-        {t(row.failureReason !== null && EXPLAINED_FAILURES.has(row.failureReason) ? `timeline.webAnimation.failure.${row.failureReason}` : 'timeline.webAnimation.failure.unknown')}
+        {t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`)}
       </p>}
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         <dt className='text-muted-foreground'>{t('timeline.webAnimation.dialog.prompt')}</dt>
         <dd className='min-w-0 break-words'>{input?.prompt ?? ''}</dd>
-        <dd className='col-span-2 text-muted-foreground'>
+        <dt className='text-muted-foreground'>{t('timeline.webAnimation.usageLabel')}</dt>
+        <dd className={cn(unfinished && 'text-muted-foreground')}>
           {unfinished ? t('timeline.webAnimation.usagePending') : t('timeline.webAnimation.usage', { credits: formatCredits(row.usageCredits, getLocale()) })}
         </dd>
       </dl>
       {row.status === 'succeeded' && row.resultSourceVersionId !== null && input !== null
         && <TimelineWebResultPreview projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={input} />}
       {!readOnly && <div className='flex flex-wrap gap-2'>
-        {unfinished && row.status !== 'cancelling' && <Button data-testid={`timeline-execution-cancel-${row.id}`} variant='outline' size='sm' loading={cancelling} onClick={cancel}
+        {unfinished && row.status !== 'cancelling' && <Button data-testid={`timeline-execution-cancel-${row.id}`} className='gap-1.5' variant='outline' size='sm' loading={cancelling} onClick={cancel}
           icon={<X className='size-4' />}>{t('timeline.webAnimation.cancel')}</Button>}
-        {(row.status === 'queued' || row.status === 'running') && <Button data-testid={`timeline-execution-add-placeholder-${row.id}`} variant='outline' size='sm' onClick={add}
+        {(row.status === 'queued' || row.status === 'running') && <Button data-testid={`timeline-execution-add-placeholder-${row.id}`} className='gap-1.5' variant='outline' size='sm' onClick={add}
           icon={<Plus className='size-4' />}>{t('timeline.webAnimation.addPlaceholder')}</Button>}
-        {row.status === 'succeeded' && row.resultSourceVersionId !== null && <Button data-testid={`timeline-execution-add-${row.id}`} size='sm' onClick={add}
+        {row.status === 'succeeded' && row.resultSourceVersionId !== null && <Button data-testid={`timeline-execution-add-${row.id}`} className='gap-1.5' size='sm' onClick={add}
           icon={<Plus className='size-4' />}>{t('timeline.webAnimation.addToTimeline')}</Button>}
-        {(row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired') && <Button data-testid={`timeline-execution-retry-${row.id}`} variant='outline' size='sm' onClick={retry}
+        {(row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired') && <Button data-testid={`timeline-execution-retry-${row.id}`} className='gap-1.5' variant='outline' size='sm' onClick={retry}
           icon={<RotateCcw className='size-4' />}>{t('timeline.webAnimation.retry')}</Button>}
       </div>}
     </div>}

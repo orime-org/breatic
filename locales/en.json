@@ -3239,6 +3239,7 @@
       "create": "Create web animation",
       "executions": "Executions",
       "copy": "Web animation copy",
+      "durationShort": "{seconds} s",
       "dialog": {
         "title": "Create web animation",
         "retryTitle": "Run web animation again",
@@ -3276,8 +3277,9 @@
         "validating": "Check frames and manifest",
         "saving": "Save the source"
       },
-      "usage": "Usage: {credits} credits",
-      "usagePending": "Usage is settled when it ends",
+      "usageLabel": "Usage",
+      "usage": "{credits} credits",
+      "usagePending": "Settled when it ends",
       "unavailable": "Web animation unavailable",
       "cancel": "Cancel",
       "addToTimeline": "Add to Timeline",
@@ -3285,11 +3287,13 @@
       "retry": "Run again",
       "failure": {
         "feature_disabled": "Web animation is unavailable right now.",
+        "check": "The page did not pass the check.",
+        "stopped": "Creation stopped unexpectedly.",
         "unknown": "This execution failed."
       },
       "preview": {
-        "pending": "{track}: web animation {status}…",
-        "failed": "{track}: web animation {status}, not shown",
+        "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",
+        "failed": "{track}: {status, select, failed {web animation failed} cancelled {web animation cancelled} expired {web animation expired} other {web animation not shown}}, not shown",
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
       }

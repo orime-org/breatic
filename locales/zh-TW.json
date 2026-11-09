@@ -3239,6 +3239,7 @@
       "create": "製作網頁動畫",
       "executions": "執行列表",
       "copy": "網頁動畫副本",
+      "durationShort": "{seconds} 秒",
       "dialog": {
         "title": "製作網頁動畫",
         "retryTitle": "重新執行網頁動畫",
@@ -3276,8 +3277,9 @@
         "validating": "校驗定位與清單",
         "saving": "儲存源包"
       },
-      "usage": "用量：{credits} 點",
-      "usagePending": "結束後結算用量",
+      "usageLabel": "用量",
+      "usage": "{credits} 點",
+      "usagePending": "結束後結算",
       "unavailable": "網頁動畫不可用",
       "cancel": "取消",
       "addToTimeline": "新增至 Timeline",
@@ -3285,11 +3287,13 @@
       "retry": "重新執行",
       "failure": {
         "feature_disabled": "網頁動畫暫不可用。",
+        "check": "頁面沒有通過檢查。",
+        "stopped": "製作意外中斷。",
         "unknown": "執行失敗。"
       },
       "preview": {
-        "pending": "{track}：網頁動畫{status}…",
-        "failed": "{track}：網頁動畫{status}，不顯示",
+        "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：網頁動畫{status, select, failed {失敗} cancelled {已取消} expired {已過期} other {不可用}}，不顯示",
         "unavailable": "{track}：網頁動畫不可用",
         "loading": "{track}：網頁動畫載入中…"
       }
