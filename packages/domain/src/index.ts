@@ -123,6 +123,7 @@ export {
   REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
@@ -209,6 +210,13 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
+export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";
+export { resolveProjectImageInputs, type ProjectImageInput } from "@domain/asset/project-image-inputs.js";
+export {
+  planSceneGeneration,
+  type SceneGenerationPlan,
+  type SceneGenerationProblem,
+} from "@domain/model-catalog/scene-generation.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {

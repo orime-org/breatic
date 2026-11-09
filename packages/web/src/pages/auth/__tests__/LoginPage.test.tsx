@@ -26,6 +26,7 @@ import { authApi } from '@web/data/api/auth';
 import LoginPage from '@web/pages/auth/LoginPage';
 import { useCurrentUserStore } from '@web/stores';
 import { getLocale } from '@breatic/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 
 // Mock only the network call; the projection into the store stays real.
@@ -33,18 +34,22 @@ vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@web/data/api/auth')>(
     '@web/data/api/auth',
   );
-  return { ...actual, authApi: { login: vi.fn() } };
+  return { ...actual, authApi: { login: vi.fn(), options: vi.fn(async () => ({ emailVerification: false, referralEnabled: false })) } };
 });
 
 /** Render the login route with the destinations it can navigate to. */
 function setup() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false });
   return render(
-    <MemoryRouter initialEntries={['/login']}>
-      <Routes>
-        <Route path='/login' element={<LoginPage />} />
-        <Route path='/studio' element={<div data-testid='studio-page' />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path='/login' element={<LoginPage />} />
+          <Route path='/studio' element={<div data-testid='studio-page' />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

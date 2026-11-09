@@ -332,64 +332,44 @@ describe("会话载荷", () => {
 });
 
 describe("Idempotency-Key", () => {
-  it("形状不合法时当场答 422，不等到模型跑完才发现", async () => {
-    // This header travels all the way to `chargeOnceForGeneration`'s refKey,
-    // where `REFKEY_PATTERN` rejects it. That is too late: by then the model
-    // has been called and paid for, and the error the charge throws is
-    // swallowed by the catch in `chargeRecorded`, so the user gets a
-    // response that looks like a success. Validation belongs at the entry.
+  /**
+   * A project the caller edits, in a studio that can pay: the text tool now
+   * takes a project, checks the caller's role on it and prechecks its credits
+   * before it reads anything else (inner#1860).
+   * @returns The fixture.
+   */
+  async function seedFundedEditor(): Promise<Fixture> {
     const fx = await seedFixture();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${fx.projectId}, ${fx.userId}, 'owner', null)
+    `;
+    const { sessionId } = await seedPendingPayment(fx.userId, 100);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
+    return fx;
+  }
+
+  it("ignores the Idempotency-Key header: the charge key is minted by the server", async () => {
+    // The text tool records and charges every run under a key the route mints
+    // per request (inner#1860), so whatever the client sends in this header —
+    // nothing, a well-formed key, or one REFKEY_PATTERN would refuse — never
+    // reaches the charge and changes nothing about the request.
+    const fx = await seedFundedEditor();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);
 
-    // 全都是真能发出去的：header 值限 latin-1，所以非 ASCII 的键在 HTTP
-    // 层就被拒了，编一个进来只会测到 fetch 自己。
-    for (const bad of ["a b", "a/b", "a,b", "x".repeat(256), ""]) {
+    for (const header of [undefined, "texttool.retry-1:abc_DEF", "a b", "a/b", "x".repeat(256), ""]) {
       const res = await app.request("/api/v1/mini-tools/text", {
         method: "POST",
         headers: {
           Cookie: `${sessionCookieName()}=${token}`,
           "Content-Type": "application/json",
-          "Idempotency-Key": bad,
+          ...(header === undefined ? {} : { "Idempotency-Key": header }),
         },
-        body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
+        body: JSON.stringify({ tool: "generate", instructions: "write something", project_id: fx.projectId }),
       });
-      expect(res.status, `Idempotency-Key = ${JSON.stringify(bad)}`).toBe(422);
+      expect(res.status, `Idempotency-Key = ${JSON.stringify(header)}`).toBe(200);
     }
-  });
-
-  it("形状合法时照常放行", async () => {
-    const fx = await seedFixture();
-    const token = crypto.randomBytes(24).toString("hex");
-    await setSession(getRedis(), token, fx.userId);
-
-    const res = await app.request("/api/v1/mini-tools/text", {
-      method: "POST",
-      headers: {
-        Cookie: `${sessionCookieName()}=${token}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": "texttool.retry-1:abc_DEF",
-      },
-      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
-    });
-    expect(res.status).toBe(200);
-  });
-
-  it("不给这个 header 也照常放行", async () => {
-    // 缺省时服务端自己发一个 uuid，每次重试各算一次 —— 文本工具每次都重新
-    // 生成内容，这是它本来的语义。
-    const fx = await seedFixture();
-    const token = crypto.randomBytes(24).toString("hex");
-    await setSession(getRedis(), token, fx.userId);
-
-    const res = await app.request("/api/v1/mini-tools/text", {
-      method: "POST",
-      headers: {
-        Cookie: `${sessionCookieName()}=${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ tool: "generate", instructions: "写点什么" }),
-    });
-    expect(res.status).toBe(200);
   });
 });

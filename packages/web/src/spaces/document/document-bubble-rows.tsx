@@ -12,6 +12,7 @@
  */
 
 import * as React from 'react';
+import { ChevronRight } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
@@ -84,6 +85,31 @@ export function BubbleMenuRow({
     </Button>
   );
 }
+
+/**
+ * A row that opens a second level beside it (the AI menu's translate and
+ * change tone, inner#1860), drawn with the `›` that says so.
+ *
+ * Pressing it does not close the menu: what it opens is the next step of the
+ * same pick, and only a press in the second level ends it. It is the trigger
+ * of that level's own `DocumentBubbleMenu`, which hands it its handlers and
+ * ref, so it passes both on to the button.
+ * @param props - Anything `Button` takes.
+ * @param props.className - Extra classes.
+ * @param props.children - The row's label.
+ * @param ref - The button, for the second level to anchor to.
+ * @returns The row.
+ */
+export const BubbleMenuSubmenuRow = React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof Button>>(
+  function BubbleMenuSubmenuRow({ className, children, ...rest }, ref): React.JSX.Element {
+    return (
+      <Button ref={ref} variant='ghost' size='menu-item' tabIndex={-1} className={cn(ROW, className)} {...rest}>
+        <span className='flex-1 text-left'>{children}</span>
+        <ChevronRight className='text-muted-foreground' />
+      </Button>
+    );
+  },
+);
 
 /**
  * A heading over a group of rows.

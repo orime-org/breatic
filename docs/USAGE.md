@@ -8,7 +8,7 @@ Use Breatic in a desktop browser. [Register or sign in](https://breatic.ai/login
 
 After completing installation:
 
-1. Open the instance in a desktop browser, register an account and finish your personal Studio setup. With email enabled you confirm the six-digit code mailed to you; with email disabled you save the recovery code shown after signing up. There is no shared default password or login bypass.
+1. Open the instance in a desktop browser, register an account and finish your personal Studio setup. With email enabled you confirm the six-digit code mailed to you; with email disabled you save the recovery code shown after signing up. There is no shared default password or login bypass. On an instance that takes payments, the form also has an optional referral code field, filled in for you when you arrive through a promoter's link.
 2. Create a project for the work you want to make and choose its initial Space type.
 3. Use the **+** button in the project's Space bar to add a **Document** Space. Name it “Script and brief” and write the story or requirements. If you started with a Document Space, use that one.
 4. Add one or more **Canvas** Spaces for your scenes or creative directions. Give each a meaningful name, then upload references or add nodes to begin working.
@@ -56,17 +56,21 @@ Choose **3D** when creating a project or adding a Space. The type picker orders 
 | Control or action | Result |
 | --- | --- |
 | Left **Add** button | Open the built-in object menu and add a box or figure. |
+| Left upload-arrow button | Open **Import model** and choose glTF or GLB files, a folder or a ZIP; the upload appears in the Tasks panel, where any member can place the model in the scene. |
+| Left sparkle button | Open **AI generation**: choose Text to 3D or Image to 3D from the mode button at the bottom left, write a prompt or fill the front, left, back and right views from your computer or the Project, adjust the settings and press the round generate button. The run appears in the Tasks panel. |
 | Click an object; Shift-click more objects | Select objects in the viewport or object list. Click empty scene space to clear the selection. |
 | Bottom-centre selection menu | Choose Move, Rotate or Scale and drag the native scene handles; frame, duplicate or delete the selection. Multiple objects scale uniformly. |
 | Right **Properties** panel | Edit one object's name, position in metres, rotation in degrees and positive scale. Enter or leaving a field applies the value; Escape cancels its draft. |
 | Padlock beside the panel's X | Lock or unlock selected objects. An Editor can unlock an object another collaborator locked. Copies start unlocked. |
-| Bottom-right bar | From left to right: Undo, Redo, Properties, Scene objects, Generation tasks and the minimap switch. Panel buttons toggle the corresponding right floating panel; its X also closes it. |
+| Bottom-right bar | From left to right: Undo, Redo, Properties, Scene objects, Tasks and the minimap switch. Panel buttons toggle the corresponding right floating panel; its X also closes it. |
 | Minimap | Click its top view to navigate your personal viewing camera. |
-| AI generation and annotations | The AI dialog and task panel show the development status. Prompt, reference-image selection and generation submission are disabled. The dimmed annotation button explains its status on hover. |
+| Tasks panel | Lists every member's imports and generations, newest first, with filters. A finished row offers **Place in scene**; a row whose model is in the scene offers **Locate in scene**, which selects every copy and frames them. A failed generation offers **Retry** and **Remove**. |
+| Agent proposals | Ask the Agent for a 3D model; its card opens the AI generation dialog of the 3D Space in front, filled from the proposal. |
+| Annotations | The dimmed annotation button explains on hover that annotations are still under development. |
 
 Collaborators share scene objects. Selection, viewing camera and undo history belong to each user. A Viewer can browse and select. Selecting or dragging an unlocked object allows concurrent editing by other Editors. Switching Spaces keeps the live collaborative document, personal selection and undo history while releasing the hidden viewport; closing the Space tab releases that session. The last viewing camera is stored for the current account, Project and Space in this browser.
 
-Switching Spaces retains unfinished property input; reopen Properties on return to continue. Closing the panel, opening another panel or overlay, or changing the selection ends that input. Opening a header menu transfers keyboard focus to the menu. The reference-image entry uses a localized button within the AI dialog.
+Switching Spaces retains unfinished property input; reopen Properties on return to continue. Closing the panel, opening another panel or overlay, or changing the selection ends that input. Opening a header menu transfers keyboard focus to the menu.
 
 <a id="keyboard-shortcuts"></a>
 ## Keyboard shortcuts

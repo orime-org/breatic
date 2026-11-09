@@ -19,15 +19,8 @@
  * TDD: red because the card has no actions yet.
  */
 
-import {
-  render,
-  screen,
-  waitFor,
-  renderHook,
-  act,
-  cleanup,
-  fireEvent,
-} from '@testing-library/react';
+import { screen, waitFor, renderHook, act, cleanup, fireEvent } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';

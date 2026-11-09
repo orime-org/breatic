@@ -9,10 +9,11 @@
  * export uploads like any other file.
  */
 
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
-import { createQueue, defaultJobOpts } from "@breatic/core";
+import { defaultJobOpts } from "@breatic/core";
 import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
@@ -29,7 +30,6 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 
 miniTools.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
 
 /**
  * Run one mini-tool onto the result nodes the browser built.
@@ -75,7 +75,7 @@ miniTools.post(
     label: spec.id,
     credits: () => Promise.resolve(run.credits),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-mini-tool",
         {
           taskId: task.id,

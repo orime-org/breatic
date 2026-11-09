@@ -5,7 +5,7 @@ import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -13,6 +13,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CreditOverview } from '@breatic/shared';
 
 import { authApi } from '@web/data/api/auth';
+import type { AccountReferral } from '@web/data/api/referral';
+import { ApiException } from '@web/data/api/types';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
@@ -50,6 +52,28 @@ const overviewMock = vi.fn();
 vi.mock('@web/data/api/credits', () => ({
   fetchCreditOverview: () => overviewMock(),
 }));
+
+const referralMock = vi.fn();
+vi.mock('@web/data/api/referral', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/referral')>()),
+  referralApi: { get: () => referralMock(), bind: vi.fn(), apply: vi.fn() },
+}));
+
+/**
+ * The account's referral view, as `/account/referral` answers it.
+ * @param over - Fields to override.
+ * @returns The view.
+ */
+function referral(over: Partial<AccountReferral> = {}): AccountReferral {
+  return {
+    firstPeriodDiscountPercent: 20,
+    binding: null,
+    canBind: true,
+    program: { open: true, termsVersion: '2026-11-08' },
+    promoter: { state: 'none' },
+    ...over,
+  };
+}
 
 /**
  * What the account holds, as the overview endpoint answers it.
@@ -148,6 +172,7 @@ describe('StudioAccountMenu', () => {
     membershipMock.mockReset();
     confirmMock.mockReset();
     overviewMock.mockReset().mockResolvedValue(overview());
+    referralMock.mockReset().mockResolvedValue(referral());
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -211,12 +236,99 @@ describe('StudioAccountMenu', () => {
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(5);
+    expect(labels).toHaveLength(6);
     expect(labels[0]).toContain('Account settings');
-    expect(labels[1]).toContain('Membership');
-    expect(labels[2]).toContain('Credits');
-    expect(labels[3]).toBe('Sign out of other devices');
-    expect(labels[4]).toBe('Sign out');
+    expect(labels[1]).toBe('Promoter program');
+    expect(labels[2]).toContain('Membership');
+    expect(labels[3]).toContain('Credits');
+    expect(labels[4]).toBe('Sign out of other devices');
+    expect(labels[5]).toBe('Sign out');
+  });
+
+  describe('promoter program entry (inner#1868)', () => {
+    it('is not offered where the deployment takes no payments', async () => {
+      referralMock.mockRejectedValue(new ApiException({ status: 404, message: 'off', fromServer: true }));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => expect(referralMock).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(screen.queryByRole('menuitem', { name: 'Promoter program' })).toBeNull(),
+      );
+    });
+
+    it('only says the program is not open when nobody has applied and applications are closed', async () => {
+      referralMock.mockResolvedValue(referral({ program: { open: false, termsVersion: '' } }));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: 'Promoter program' }));
+
+      await waitFor(() =>
+        expect(toastMock.info).toHaveBeenCalledWith('Promoter applications are not open yet.'),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('opens the promoter dialog with the apply button while applications are open', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: 'Promoter program' }));
+
+      const dialog = await screen.findByRole('dialog', { name: 'Promoter program' });
+      expect(dialog).toHaveTextContent('Apply to become a promoter');
+      expect(toastMock.info).not.toHaveBeenCalled();
+    });
+
+    it('still shows an approved promoter their code after applications close', async () => {
+      referralMock.mockResolvedValue(referral({
+        program: { open: false, termsVersion: '' },
+        promoter: { state: 'approved', code: 'ALICE', link: 'https://example.test/register?ref=ALICE', codeStatus: 'active' },
+      }));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: 'Promoter program' }));
+
+      const dialog = await screen.findByRole('dialog', { name: 'Promoter program' });
+      expect(dialog).toHaveTextContent('ALICE');
+      expect(toastMock.info).not.toHaveBeenCalled();
+    });
+
+    it('waits for a read still on its way before deciding', async () => {
+      let answer: (view: AccountReferral) => void = () => undefined;
+      referralMock.mockReturnValue(new Promise<AccountReferral>((resolve) => { answer = resolve; }));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: 'Promoter program' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+
+      answer(referral({ program: { open: false, termsVersion: '' } }));
+      await waitFor(() =>
+        expect(toastMock.info).toHaveBeenCalledWith('Promoter applications are not open yet.'),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('opens the dialog with a retry when the read fails', async () => {
+      referralMock.mockRejectedValue(new Error('network down'));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: 'Promoter program' }));
+
+      const dialog = await screen.findByRole('dialog', { name: 'Promoter program' });
+      expect(await within(dialog).findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    });
   });
 
   it('takes Credits to the credits overlay, over the page below', async () => {
@@ -560,9 +672,9 @@ describe('StudioAccountMenu', () => {
     });
 
     it('keeps one account’s figure away from the next one to sign in', async () => {
-      // The query client is a module singleton that a sign-out never clears,
-      // so a key without the account would hand the second user the first
-      // one's figures out of cache.
+      // This client is not wrapped in the app's provider, which also empties
+      // the cache on an account change, so the key alone keeps the second
+      // user away from the first one's figures here.
       const user = userEvent.setup();
       // One client across both sign-ins, which is what the app has: it is
       // created once at module scope and outlives every session on this tab.

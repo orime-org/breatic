@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The lifecycle of a 3D Space's own task rows (inner#1690).
+ * The lifecycle of a 3D Space's own task rows (inner#1690, inner#1691).
  *
- * A model upload opens a row with no node: the Space's task list is where
+ * A model upload or a 3D generation opens a row with no node: the Space's task list is where
  * every member sees it, and where a finished one is placed into the scene
  * from. The rows share `node_tasks` and its state rule with the Canvas rows,
  * so a row still moves out of `running` exactly once, through
@@ -13,9 +13,11 @@
  */
 
 import type { DbTx } from "@breatic/core";
+import type { SceneGenerationOrigin, TaskEntity, TaskFailureReason } from "@breatic/shared";
+import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
-import type { NodeTaskRow } from "@domain/node-task/node-task.repo.js";
+import type { NodeTaskRow, SceneTaskRow } from "@domain/node-task/node-task.repo.js";
 
 /** Where one settle left a Space-level row. */
 export interface SceneSettleResult {
@@ -74,6 +76,58 @@ export async function openDone(opts: {
 }
 
 /**
+ * Open a running row for a 3D generation (inner#1691), before its job is
+ * queued: the job names this row, and the worker settles it.
+ * @param opts - The row.
+ * @param opts.projectId - Owning project.
+ * @param opts.spaceId - The 3D Space it was submitted in.
+ * @param opts.startedByUserId - Who submitted it.
+ * @param opts.budgetMs - The task budget.
+ * @param opts.label - The cleaned prompt, the front image's name or the model's.
+ * @param opts.taskId - The AIGC job.
+ * @param opts.origin - The Space's own dialog, or an agent proposal.
+ * @returns The row's id.
+ */
+export async function openGeneration(opts: {
+  projectId: string;
+  spaceId: string;
+  startedByUserId: string;
+  budgetMs: number;
+  label: string;
+  taskId: string;
+  origin: SceneGenerationOrigin;
+}): Promise<string> {
+  return repo.insertSceneGenerationRow(opts);
+}
+
+/** How a row ends: done with its model, or failed with a `task-failure` code. */
+export type SceneOutcome = { outcome: "done"; assetId: string } | { outcome: "failed"; errorMessage: string };
+
+/**
+ * How a 3D generation's row ends from what its run stored (inner#1691): done
+ * with the registered model, or `no_result` when the run came back with none.
+ * @param outputs - The run's persisted outputs; the catalog lane writes one.
+ * @returns The outcome the row settles with.
+ */
+export function generationOutcome(outputs: readonly { asset_id?: unknown }[] | null | undefined): SceneOutcome {
+  // ponytail: the first output is the model, as the catalog lane returns it;
+  // a vendor listing the GLB elsewhere needs a model-level output index (design H4).
+  const assetId = outputs?.[0]?.asset_id;
+  return typeof assetId === "string" ? { outcome: "done", assetId } : { outcome: "failed", errorMessage: "no_result" satisfies TaskFailureReason };
+}
+
+/**
+ * Settle the row with this id ({@link settle}).
+ * @param rowId - The row.
+ * @param outcome - What happened.
+ * @returns Where the row stands, or null when there is no such row.
+ */
+export async function settleById(rowId: string, outcome: SceneOutcome): Promise<SceneSettleResult | null> {
+  const row = await repo.findSceneRow(rowId);
+  return row === null ? null : settle(row, outcome);
+}
+
+/**
  * Record how a model upload ended.
  *
  * A success that finds the row already expired still lands its model there
@@ -88,7 +142,7 @@ export async function openDone(opts: {
  */
 export async function settle(
   row: NodeTaskRow,
-  outcome: { outcome: "done"; assetId: string } | { outcome: "failed"; errorMessage: string },
+  outcome: SceneOutcome,
 ): Promise<SceneSettleResult> {
   if (outcome.outcome === "done") {
     const applied = await repo.settleRunning(row.id, "done", { assetId: outcome.assetId });
@@ -111,10 +165,21 @@ export async function settle(
 export async function harvestAndList(
   projectId: string,
   spaceId: string,
-): Promise<{ tasks: NodeTaskRow[]; harvested: number }> {
+): Promise<{ tasks: SceneTaskRow[]; harvested: number }> {
   const harvested = await repo.harvestExpiredInSpace(projectId, spaceId);
   const tasks = await repo.listSpace(projectId, spaceId);
   return { tasks, harvested };
+}
+
+/**
+ * The runs behind a list's generation rows (inner#1691), which hold what each
+ * was asked for: the model and the job's params.
+ * @param rows - The rows a list read.
+ * @returns Each generation row's run, by task id.
+ */
+export async function runsOf(rows: readonly SceneTaskRow[]): Promise<Map<string, TaskEntity>> {
+  const ids = rows.flatMap((row) => (row.action === "generate" && row.taskId !== null ? [row.taskId] : []));
+  return new Map((await findLiveTasksByIds(ids)).map((task) => [task.id, task]));
 }
 
 /**
@@ -124,6 +189,15 @@ export async function harvestAndList(
  */
 export async function remove(taskId: string): Promise<boolean> {
   return repo.softDeleteSceneTask(taskId);
+}
+
+/**
+ * Read a Space-level row by id, whatever state it is in.
+ * @param taskId - Which row.
+ * @returns The row, or null when no row without a node has that id.
+ */
+export async function findById(taskId: string): Promise<(SceneTaskRow & { deletedAt: Date | null }) | null> {
+  return repo.findSceneRow(taskId);
 }
 
 /**

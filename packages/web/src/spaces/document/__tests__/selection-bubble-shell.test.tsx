@@ -408,7 +408,8 @@ describe('the bubble bar shell', () => {
     });
 
     it.each([
-      ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
+      // The illustration row still reaches nothing (inner#1866).
+      ['doc-bubble-ai', 'doc-bubble-ai-item-illustrate'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const editor = openSharedBody('<p>hello world</p>');

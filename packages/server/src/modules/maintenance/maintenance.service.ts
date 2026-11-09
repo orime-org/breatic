@@ -4,7 +4,8 @@
 /**
  * Signed operations API: immutable decisions and durable, versioned maintenance.
  */
-import { db, createQueue, defaultJobOpts, maintenanceRepo as repo, type ReclaimScope, type ReclaimDecision, type ReclaimControlDecision, type ReclaimOperationView, type MaintenanceState, type ReclaimRun } from "@breatic/core";
+import { db, defaultJobOpts, maintenanceRepo as repo, type ReclaimScope, type ReclaimDecision, type ReclaimControlDecision, type ReclaimOperationView, type MaintenanceState, type ReclaimRun } from "@breatic/core";
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { storageReclaimRepo } from "@breatic/domain";
 import { maintenanceAvailability, maintenanceConfig, maintenanceNow, getMaintenanceDependencies } from "@server/modules/maintenance/dependencies.js";
@@ -20,16 +21,13 @@ export interface MaintenanceAnswer<T> {
     code: string;
   };
 }
-let taskQueue: ReturnType<typeof createQueue> | null = null;
-
 /**
  * Read all physical BullMQ categories independently, including paused and prioritized.
  * @returns Fresh queue counts and the actual job failure retention.
  * @throws {Error} On queue or configuration infrastructure failure.
  */
 export async function queue(): Promise<MaintenanceAnswer<unknown>> {
-  taskQueue ??= createQueue("tasks");
-  const counts = await taskQueue.getJobCounts("wait", "paused", "prioritized", "active", "delayed", "failed", "waiting-children");
+  const counts = await tasksQueue().getJobCounts("wait", "paused", "prioritized", "active", "delayed", "failed", "waiting-children");
   const retention = defaultJobOpts().removeOnFail;
   return {
     status: 200, body: {

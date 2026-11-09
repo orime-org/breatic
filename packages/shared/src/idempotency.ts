@@ -21,6 +21,7 @@ export const IDEMPOTENCY_SCOPES = [
   "membership",
   "project",
   "credits-checkout",
+  "referral",
   "timeline-execution",
 ] as const;
 
@@ -48,6 +49,7 @@ export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, nu
   membership: DAY_SECONDS,
   project: DAY_SECONDS,
   "credits-checkout": 2 * 60 * 60,
+  referral: DAY_SECONDS,
   "timeline-execution": DAY_SECONDS,
 };
 

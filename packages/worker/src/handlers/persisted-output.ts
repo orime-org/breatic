@@ -22,6 +22,11 @@ import type { StoredAsset } from "@breatic/domain";
 export interface PersistedOutput {
   url?: string;
   /**
+   * The asset the file registered as (inner#1691): a 3D Space's row holds
+   * the asset, and a billed run delivered again settles it from here.
+   */
+  asset_id?: string;
+  /**
    * The text a read answered with, for a run that produces no file.
    *
    * Beside `url` rather than sharing it: `persistOutputs` decides what to
@@ -54,6 +59,7 @@ export function storedAsOutput(
 ): PersistedOutput & { url: string } {
   return {
     url: stored.fileUrl,
+    asset_id: stored.assetId,
     // Absent rather than null when there is none, so a caller spreading this
     // over an output that already carries one does not blank it.
     ...(stored.coverUrl !== null && { cover_url: stored.coverUrl }),

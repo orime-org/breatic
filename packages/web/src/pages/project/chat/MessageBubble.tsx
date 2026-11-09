@@ -9,6 +9,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
+import { SceneGenerationProposalCard } from '@web/pages/project/chat/SceneGenerationProposalCard';
 import { QuestionnaireCard } from '@web/pages/project/chat/QuestionnaireCard';
 import { SpaceRequestCard } from '@web/pages/project/chat/SpaceRequestCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
@@ -19,7 +20,7 @@ import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { UserWords } from '@web/pages/project/chat/UserWords';
 import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
-import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
+import { WaitingDot } from '@web/components/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
@@ -203,6 +204,11 @@ export const MessageBubble = React.memo(function MessageBubble({
             ? null
             : message.documentProposals.map((proposal) => (
               <DocumentProposalCard key={proposal.proposalId} proposal={proposal} />
+            ))}
+          {running || message.sceneProposals === undefined
+            ? null
+            : message.sceneProposals.map((proposal) => (
+              <SceneGenerationProposalCard key={proposal.proposalId} proposal={proposal} />
             ))}
           {/* What the turn asked the user, after everything it offered: the
             turn stopped there and waits on it (inner#1542). Drawn while the

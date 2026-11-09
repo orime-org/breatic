@@ -1010,7 +1010,11 @@ describe('text that cannot carry a link', () => {
     const editor = mount('<p>run <code>npm ci</code> first</p>');
     await selectWithFocus(editor, 4, 10);
 
-    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
+    // Greyed, it still takes the press (it shows its name on hover), and the
+    // press opens nothing.
+    fireEvent.click(screen.getByTestId('doc-bubble-tool-link'));
+    expect(screen.queryByTestId('doc-link-input')).not.toBeInTheDocument();
   });
 
   it('offers it dead for a selection that only partly holds code', async () => {
@@ -1020,7 +1024,7 @@ describe('text that cannot carry a link', () => {
     const editor = mount('<p>run <code>npm ci</code> first</p>');
     await selectWithFocus(editor, 0, 10);
 
-    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('offers it dead inside a code block', async () => {
@@ -1031,20 +1035,20 @@ describe('text that cannot carry a link', () => {
     const editor = mount('<pre><code>npm install</code></pre>');
     await selectWithFocus(editor, 0, 11);
 
-    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('offers it dead for a selection running from prose into a code block', async () => {
     const editor = mount('<p>see this</p><pre><code>npm i x</code></pre>');
     await selectWithFocus(editor, 0, 15);
 
-    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('leaves it live over ordinary text beside code', async () => {
     const editor = mount('<p>run <code>npm ci</code> first</p>');
     await selectWithFocus(editor, 11, 16);
 
-    expect(screen.getByTestId('doc-bubble-tool-link')).toBeEnabled();
+    expect(screen.getByTestId('doc-bubble-tool-link')).not.toHaveAttribute('aria-disabled');
   });
 });

@@ -1,0 +1,1258 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * The AI output dialog on screen (inner#1860 A1, A4, A5, A7, A8, design §5.3,
+ * §6.2): reached from the bubble bar of a mounted document, its buttons per
+ * state, closing (close, Escape; not a click outside) aborting the fetch, the
+ * custom instruction box and its Enter, the failure toast, the preview drawn
+ * the way the body draws blocks, and the body untouched until insert or
+ * replace.
+ *
+ * The network is the only thing replaced: `textToolsApi` is driven by hand
+ * (`ai-stream-fake.ts`); the editor, the bar and the dialog are the real ones.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { BlockNoteEditor } from '@blocknote/core';
+
+import { TextSelection } from '@tiptap/pm/state';
+import { TEXT_TOOL_INSTRUCTIONS_MAX, t } from '@breatic/shared';
+
+const stream = vi.hoisted(() => vi.fn());
+const config = vi.hoisted(() => vi.fn());
+vi.mock('@web/data/api/text-tools', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  textToolsApi: { stream, config },
+}));
+
+import { toast } from '@web/lib/toast';
+import { BODY_SURFACE_CLASS } from '@web/spaces/document/build-document-editor';
+import {
+  closeShared,
+  focusBody,
+  hoverOpenSlot,
+  mountDocumentEditor,
+  openSharedBody,
+  selectTextRange,
+  sharedBodyMarkup,
+  waitForBar,
+  type HarnessEditor,
+} from './bubble-bar-harness';
+import { fakeStreams, type FakeStream } from './ai-stream-fake';
+
+let calls: FakeStream[] = [];
+/** Whether the connection says it may write; the harness has no connection of its own. */
+const connection = vi.hoisted(() => ({ granted: false }));
+
+vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+  return {
+    ...actual,
+    useSpaceConnection: (...args: Parameters<typeof actual.useSpaceConnection>) => {
+      const real = actual.useSpaceConnection(...args);
+      return connection.granted ? { ...real, writeAccess: 'granted' as const } : real;
+    },
+  };
+});
+
+/** A shot list as the storyboard tool answers: eight columns, a header and two shots. */
+const SHOT_LIST = [
+  '| Shot | Size | Angle | Movement | On screen | Sound | Seconds | Notes |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| 1 | Wide | Eye level | Static | A girl rides through fog | Bell | 4 | Dawn |',
+  '| 2 | Close-up | Low | Push in | Bread handed over | Thanks | 3 | Warm |',
+].join('\n');
+
+/** Every frame the preview put around a table, and whether it was taken down. */
+const framed = vi.hoisted(() => ({ roots: [] as { unmounted: boolean }[] }));
+
+vi.mock('@web/spaces/document/document-table-nodes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/document/document-table-nodes')>();
+  return {
+    ...actual,
+    frameStaticTable: (...args: Parameters<typeof actual.frameStaticTable>) => {
+      const root = actual.frameStaticTable(...args);
+      const seen = { unmounted: false };
+      const unmount = root.unmount.bind(root);
+      root.unmount = () => {
+        seen.unmounted = true;
+        unmount();
+      };
+      framed.roots.push(seen);
+      return root;
+    },
+  };
+});
+
+let toastError: MockInstance<typeof toast.error>;
+
+beforeEach(() => {
+  stream.mockReset();
+  config.mockReset();
+  // Shown at once unless a case is about the reading pace.
+  config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
+  calls = fakeStreams(stream);
+  framed.roots = [];
+  toastError = vi.spyOn(toast, 'error').mockImplementation(() => '');
+});
+
+afterEach(() => {
+  toastError.mockRestore();
+  closeShared();
+});
+
+const BUTTONS = ['doc-ai-close', 'doc-ai-start', 'doc-ai-stop', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace'] as const;
+
+/**
+ * The dialog's buttons that are on screen.
+ * @returns Their test ids, in a fixed order.
+ */
+function shownButtons(): string[] {
+  return BUTTONS.filter((id) => screen.queryByTestId(id) !== null);
+}
+
+/**
+ * Whether a button says it cannot be pressed now, whichever way it says so.
+ * @param id - Its test id.
+ * @returns True when disabled.
+ */
+function isDisabled(id: string): boolean {
+  const button = screen.getByTestId(id) as HTMLButtonElement;
+  return button.disabled || button.getAttribute('aria-disabled') === 'true';
+}
+
+/**
+ * Opens a body in a project and selects some of it.
+ * @param html - The body.
+ * @param from - The first character.
+ * @param to - One past the last.
+ * @returns The editor.
+ */
+async function selected(html: string, from: number, to: number): Promise<HarnessEditor> {
+  const editor = openSharedBody(html);
+  mountDocumentEditor(editor, false, 'project-1');
+  await selectAgain(editor, from, to);
+  return editor;
+}
+
+/**
+ * Selects again in an open body and waits for the bar.
+ * @param editor - The editor.
+ * @param from - The first character.
+ * @param to - One past the last.
+ */
+async function selectAgain(editor: HarnessEditor, from: number, to: number): Promise<void> {
+  act(() => {
+    focusBody(editor);
+    selectTextRange(editor, from, to);
+  });
+  await waitForBar();
+}
+
+/**
+ * Presses a row of the AI menu and waits for the dialog.
+ * @param row - The row's id: refine, expand, custom, …
+ */
+async function press(row: string): Promise<void> {
+  const menu = await hoverOpenSlot('doc-bubble-ai');
+  await act(async () => {
+    fireEvent.click(menu.querySelector(`[data-testid="doc-bubble-ai-item-${row}"]`)!);
+  });
+  await waitFor(() => {
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+  });
+}
+
+/**
+ * Selects "hello" in "hello world" and presses Polish.
+ * @param html - The body, "hello world" by default.
+ * @returns The editor and the request it sent.
+ */
+async function polishing(html = '<p>hello world</p>'): Promise<{ editor: HarnessEditor; call: FakeStream }> {
+  const editor = await selected(html, 0, 5);
+  await press('refine');
+  await waitFor(() => {
+    expect(calls).toHaveLength(1);
+  });
+  return { editor, call: calls[0]! };
+}
+
+/**
+ * Delivers frames of the current request.
+ * @param call - The request.
+ * @param texts - The text deltas, then done when `done` is set.
+ * @param done - Whether the server then says done.
+ */
+async function streams(call: FakeStream, texts: readonly string[], done = false): Promise<void> {
+  await act(async () => {
+    for (const text of texts) call.emit({ type: 'text_delta', text });
+    if (done) call.emit({ type: 'done' });
+  });
+}
+
+/**
+ * The words the preview shows.
+ * @returns Its text.
+ */
+function previewText(): string {
+  return screen.getByTestId('doc-ai-preview').textContent ?? '';
+}
+
+describe('while the result streams in', () => {
+  it('shows the command name, close and stop', async () => {
+    await polishing();
+
+    expect(screen.getByTestId('doc-ai-title').textContent).toContain(t('spaces.document.commands.ai_refine'));
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-stop']);
+  });
+
+  it('shows the waiting dot until the first words arrive, and only the words after', async () => {
+    const { call } = await polishing();
+    const dialog = screen.getByTestId('doc-ai-dialog');
+
+    expect(dialog.querySelectorAll('[data-testid="chat-waiting-dot"]')).toHaveLength(1);
+
+    await streams(call, ['Hi']);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi');
+    });
+    expect(dialog.querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
+  it('shows no waiting dot once the run has ended without words', async () => {
+    const { call } = await polishing();
+
+    await streams(call, [], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+    });
+    expect(screen.getByTestId('doc-ai-dialog').querySelector('[data-testid="chat-waiting-dot"]')).toBeNull();
+  });
+
+  it('shows what arrived at a reading pace, and offers insert and replace once all of it is on screen', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+    const { call } = await polishing();
+    const long = 'word '.repeat(120).trim();
+
+    await streams(call, [long], true);
+
+    expect(shownButtons()).not.toContain('doc-ai-replace');
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    }, { timeout: 5_000 });
+    await waitFor(() => {
+      expect(previewText()).toContain(long);
+    });
+  });
+
+  it('offers stop while the answer is still being written after the server is done, and stop shows the rest at once', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+    const { call } = await polishing();
+    const long = 'word '.repeat(120).trim();
+    await streams(call, [long], true);
+
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-stop']);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-stop'));
+    });
+
+    expect(shownButtons()).toContain('doc-ai-replace');
+    await waitFor(() => {
+      expect(previewText()).toContain(long);
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('shows each piece as it arrives and leaves the body as it was', async () => {
+    const { call } = await polishing();
+    const before = sharedBodyMarkup();
+
+    await streams(call, ['Hi', ' there']);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi there');
+    });
+    expect(sharedBodyMarkup()).toBe(before);
+  });
+});
+
+describe('when the result is complete', () => {
+  it('offers close, retry, insert and replace, and the body is still as it was', async () => {
+    const { call } = await polishing();
+    const before = sharedBodyMarkup();
+
+    await streams(call, ['Hello there.'], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace']);
+    });
+    expect(isDisabled('doc-ai-insert')).toBe(false);
+    expect(isDisabled('doc-ai-replace')).toBe(false);
+    expect(sharedBodyMarkup()).toBe(before);
+  });
+
+  it('offers only close and retry when the result is only blanks', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['  \n '], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+    });
+  });
+});
+
+describe('stop', () => {
+  it('aborts the fetch and keeps what came, with retry, insert and replace', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hello']);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-stop'));
+    });
+
+    expect(call.signal?.aborted).toBe(true);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace']);
+    expect(previewText()).toContain('Hello');
+  });
+
+  it('before any text, leaves only close and retry', async () => {
+    await polishing();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-stop'));
+    });
+
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+  });
+});
+
+describe('a press on stop', () => {
+  it('a double click while the answer is still being written shows the rest and sends nothing more', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 60 });
+    const { call } = await polishing();
+    await streams(call, ['word '.repeat(120).trim()], true);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 2 });
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry', 'doc-ai-insert', 'doc-ai-replace']);
+  });
+
+  it('a double click while the answer streams stops it and sends nothing more', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hello']);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 1 });
+    });
+    await act(async () => {
+      fireEvent.pointerDown(button);
+      fireEvent.click(button, { detail: 2 });
+    });
+
+    expect(call.signal?.aborted).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a press that began on stop does not retry when the answer finishes before it is released', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 600 });
+    const { call } = await polishing();
+    await streams(call, ['word '.repeat(60).trim()], true);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    act(() => {
+      fireEvent.pointerDown(button);
+    });
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    }, { timeout: 5_000 });
+    await act(async () => {
+      fireEvent.click(button, { detail: 1 });
+    });
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it('the repeats of a held Enter do not press the retry that stop turned into', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hello']);
+    const button = screen.getByTestId('doc-ai-stop');
+
+    await act(async () => {
+      fireEvent.keyDown(button, { key: 'Enter' });
+      fireEvent.click(button, { detail: 0 });
+    });
+
+    expect(screen.getByTestId('doc-ai-retry')).toBe(button);
+    expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('a failure', () => {
+  it('toasts once and leaves close and retry over an empty result', async () => {
+    const { call } = await polishing();
+    await streams(call, ['Hel']);
+
+    await act(async () => {
+      call.fail();
+    });
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+    expect(previewText()).not.toContain('Hel');
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+  });
+
+  it('from an error event fails the same way', async () => {
+    const { call } = await polishing();
+
+    await act(async () => {
+      call.emit({ type: 'error', message: 'The model is unavailable.' });
+    });
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+  });
+
+  it('retry sends the request again, as a new one', async () => {
+    const { call } = await polishing();
+    await act(async () => {
+      call.fail();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-retry'));
+    });
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
+    expect(calls[1]!.body).toEqual(call.body);
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-stop']);
+  });
+});
+
+describe('closing', () => {
+  it('Escape closes the dialog and aborts the fetch', async () => {
+    const { call } = await polishing();
+
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId('doc-ai-dialog'), { key: 'Escape' });
+    });
+
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(call.signal?.aborted).toBe(true);
+  });
+
+  it('one Escape in the body closes the dialog and the body keeps the keyboard', async () => {
+    const { editor, call } = await polishing();
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.focus();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(view.dom, { key: 'Escape' });
+    });
+
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(call.signal?.aborted).toBe(true);
+    expect(view.hasFocus()).toBe(true);
+  });
+
+  it('Escape in the body while the link toolbar is up takes the toolbar away and leaves the dialog', async () => {
+    const editor = await selected('<p>hello <a href="https://example.com/">world</a></p>', 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.focus();
+      let inLink = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (inLink < 0 && node.isText && node.marks.some((mark) => mark.type.name === 'link')) inLink = pos + 1;
+      });
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, inLink)));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(view.dom, { key: 'Escape' });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).toBeNull();
+    });
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect(calls[0]!.signal?.aborted).toBe(false);
+  });
+
+  it('Escape typed in a field outside the dialog and the body leaves it open', async () => {
+    const { call } = await polishing();
+    const field = document.createElement('input');
+    document.body.append(field);
+    field.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(field, { key: 'Escape' });
+    });
+
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect(call.signal?.aborted).toBe(false);
+    field.remove();
+  });
+
+  it('the close button closes the dialog and aborts the fetch', async () => {
+    const { call } = await polishing();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+    });
+
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(call.signal?.aborted).toBe(true);
+  });
+
+  it('a click outside the dialog does not close it', async () => {
+    const { editor, call } = await polishing();
+
+    for (const target of [editor.prosemirrorView!.dom, document.body]) {
+      await act(async () => {
+        fireEvent.pointerDown(target);
+        fireEvent.mouseDown(target);
+        fireEvent.pointerUp(target);
+        fireEvent.mouseUp(target);
+        fireEvent.click(target);
+      });
+    }
+
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect(call.signal?.aborted).toBe(false);
+  });
+
+  it('a new command from the bar closes the open dialog, aborting its request, and opens the new one', async () => {
+    const { editor, call } = await polishing();
+
+    await selectAgain(editor, 6, 11);
+    await press('expand');
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
+    expect(call.signal?.aborted).toBe(true);
+    expect(calls[1]!.body).toMatchObject({ tool: 'expand', selection: 'world' });
+    expect(screen.getAllByTestId('doc-ai-dialog')).toHaveLength(1);
+  });
+});
+
+describe('how long a session lives', () => {
+  it('lives on while its Space tab is hidden, request and all, and shows again with it', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    act(() => {
+      setHidden(true);
+    });
+    expect(calls[0]!.signal?.aborted).toBe(false);
+    act(() => {
+      setHidden(false);
+    });
+    await streams(calls[0]!, ['Hi'], true);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi');
+    });
+    expect(shownButtons()).toContain('doc-ai-replace');
+  });
+
+  it('shows its answer and buttons as they were, not written out again, after its tab was hidden and shown again', async () => {
+    // At a reading pace a panel drawn anew would write the answer out again
+    // and offer insert only once it had.
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 40 });
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['Hi there.'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    act(() => {
+      setHidden(true);
+    });
+    act(() => {
+      setHidden(false);
+    });
+
+    expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi there.');
+    }, { timeout: 100 });
+  });
+
+  it('keeps drawing the words that come after its tab was hidden and shown again', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['Before']);
+    await waitFor(() => {
+      expect(previewText()).toContain('Before');
+    });
+    // Hidden while a parse is still waiting its turn.
+    await streams(calls[0]!, [' mid']);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    act(() => {
+      setHidden(true);
+    });
+    act(() => {
+      setHidden(false);
+    });
+    await streams(calls[0]!, [' after']);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('Before mid after');
+    });
+  });
+
+  it('ends with the editor, aborting its request', async () => {
+    const { editor, call } = await polishing();
+
+    act(() => {
+      editor.unmount();
+    });
+
+    expect(call.signal?.aborted).toBe(true);
+  });
+});
+
+describe('the keyboard', () => {
+  it('goes to the dialog as it shows, and Tab can reach its buttons', async () => {
+    await polishing();
+    const dialog = screen.getByTestId('doc-ai-dialog');
+
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it('stays in the dialog when the button holding it goes away', async () => {
+    const { call } = await polishing();
+    act(() => {
+      screen.getByTestId('doc-ai-stop').focus();
+    });
+
+    await streams(call, ['Hi'], true);
+
+    await waitFor(() => {
+      expect(shownButtons()).toContain('doc-ai-replace');
+    });
+    expect(screen.getByTestId('doc-ai-dialog').contains(document.activeElement)).toBe(true);
+  });
+
+  it('goes back to the body when the dialog closes', async () => {
+    const { editor } = await polishing();
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-dialog').contains(document.activeElement)).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+    });
+
+    expect(editor.prosemirrorView!.hasFocus()).toBe(true);
+  });
+});
+
+describe('the custom instruction', () => {
+  // Words with space and a line break at the ends: Enter and start both send
+  // the instruction exactly as the box shows it.
+  const SPACED = '  Make it rhyme\n';
+
+  /**
+   * Opens the dialog on a custom instruction and writes one.
+   * @param words - What the user writes.
+   * @returns The box.
+   */
+  async function writing(words: string): Promise<HTMLTextAreaElement> {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('custom');
+    const box = screen.getByTestId('doc-ai-instructions') as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: words } });
+    return box;
+  }
+
+  it('holds no more than the server accepts', async () => {
+    const box = await writing('');
+
+    expect(box.maxLength).toBe(TEXT_TOOL_INSTRUCTIONS_MAX);
+  });
+
+  it('starts with the box, close, and a start that cannot be pressed until there are words', async () => {
+    await writing('');
+
+    expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-start']);
+    expect(isDisabled('doc-ai-start')).toBe(true);
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('start does what Enter does once there are words', async () => {
+    await writing(SPACED);
+
+    expect(isDisabled('doc-ai-start')).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-start'));
+    });
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: SPACED });
+    expect(screen.getByTestId('doc-ai-instruction').textContent).toContain('Make it rhyme');
+    expect(screen.queryByTestId('doc-ai-instructions')).toBeNull();
+    expect(screen.queryByTestId('doc-ai-start')).toBeNull();
+  });
+
+  it('start stays unpressable over words that are only spaces and line breaks and starts nothing', async () => {
+    await writing(' \n ');
+
+    expect(isDisabled('doc-ai-start')).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-start'));
+    });
+
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('Enter starts it with the instruction; the title stays and the instruction stays on as a read-only line', async () => {
+    const box = await writing(SPACED);
+    const title = screen.getByTestId('doc-ai-title').textContent;
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13 });
+    });
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toEqual({ tool: 'custom', project_id: 'project-1', selection: 'hello', document: 'hello world', instructions: SPACED });
+    expect(screen.getByTestId('doc-ai-title').textContent).toBe(title);
+    expect(title).not.toContain('spaces.document');
+    const line = screen.getByTestId('doc-ai-instruction');
+    expect(line.textContent).toContain('Make it rhyme');
+    expect(line.matches('textarea, input, [contenteditable="true"]')).toBe(false);
+    expect(line.querySelector('textarea, input, [contenteditable="true"]')).toBeNull();
+    expect(screen.queryByTestId('doc-ai-instructions')).toBeNull();
+  });
+
+  it('Shift+Enter makes a new line and starts nothing', async () => {
+    const box = await writing('Make it rhyme');
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13, shiftKey: true });
+    });
+
+    expect(stream).not.toHaveBeenCalled();
+    expect(screen.getByTestId('doc-ai-instructions')).toBeInTheDocument();
+  });
+
+  it('Enter with nothing written starts nothing', async () => {
+    const box = await writing('   ');
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13 });
+    });
+
+    expect(stream).not.toHaveBeenCalled();
+  });
+
+  it('an Escape that belongs to the input method leaves the dialog and the instruction', async () => {
+    const box = await writing('Make it rhyme');
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 27, isComposing: true });
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 229 });
+      fireEvent.compositionStart(box);
+      fireEvent.compositionEnd(box);
+      fireEvent.keyDown(box, { key: 'Escape', keyCode: 27 });
+    });
+
+    expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+    expect((screen.getByTestId('doc-ai-instructions') as HTMLTextAreaElement).value).toBe('Make it rhyme');
+  });
+
+  it('an Enter that belongs to the input method starts nothing', async () => {
+    const box = await writing('Make it rhyme');
+
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13, isComposing: true });
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 });
+      fireEvent.compositionStart(box);
+      fireEvent.compositionEnd(box);
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13 });
+    });
+
+    expect(stream).not.toHaveBeenCalled();
+
+    // The key the user presses after the composition's own has gone by is theirs.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter', keyCode: 13 });
+    });
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+  });
+});
+
+describe('when the original words or their block go (A7)', () => {
+  it('the words deleted, the block still there: replace is disabled, insert is not', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['Hi.'], true);
+
+    const view = editor.prosemirrorView!;
+    let from = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (from < 0 && node.isText && (node.text ?? '').startsWith('hello')) from = pos;
+      return from < 0;
+    });
+    act(() => {
+      view.dispatch(view.state.tr.delete(from, from + 'hello'.length));
+    });
+
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-replace')).toBe(true);
+    });
+    expect(isDisabled('doc-ai-insert')).toBe(false);
+  });
+
+  it('the whole block deleted: both are disabled', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['Hi.'], true);
+
+    act(() => {
+      editor.removeBlocks([(editor.document as Array<{ id: string }>)[0]!.id]);
+    });
+
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-insert')).toBe(true);
+    });
+    expect(isDisabled('doc-ai-replace')).toBe(true);
+  });
+
+  it('the block deleted and then undone: insert is available again, replace stays off', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['Hi.'], true);
+    act(() => {
+      editor.removeBlocks([(editor.document as Array<{ id: string }>)[0]!.id]);
+    });
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-insert')).toBe(true);
+    });
+
+    act(() => {
+      editor.undo();
+    });
+
+    await waitFor(() => {
+      expect(isDisabled('doc-ai-insert')).toBe(false);
+    });
+    expect(isDisabled('doc-ai-replace')).toBe(true);
+  });
+});
+
+describe('the preview', () => {
+  it('leaves outside media out, as insert and replace do, and never loads them', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['![a cat](https://elsewhere.example/cat.png)\n\nA cat.'], true);
+
+    await waitFor(() => {
+      expect(previewText()).toContain('A cat.');
+    });
+    const preview = screen.getByTestId('doc-ai-preview');
+    expect(preview.querySelector('img[src*="elsewhere.example"]')).toBeNull();
+    expect(preview.innerHTML).not.toContain('elsewhere.example');
+  });
+
+  it('draws the result as the body draws blocks, inside copies of the body\'s own elements', async () => {
+    await selected('<p>hello</p><p>world</p>', 0, 10);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    await streams(calls[0]!, ['**Bold** words\n\n- item one'], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('strong')?.textContent).toBe('Bold');
+    });
+    expect(preview.querySelector('.doc-preview-shell')).not.toBeNull();
+    expect(preview.querySelector(`.doc-preview-shell.${BODY_SURFACE_CLASS}`)).not.toBeNull();
+    expect(preview.querySelectorAll('.bn-block-content').length).toBeGreaterThanOrEqual(2);
+    expect(preview.textContent).toContain('item one');
+  });
+
+  it('puts a table in the body\'s own frame, which scrolls it sideways, the block attributes on the frame', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['A line.\n\n| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('table')).not.toBeNull();
+    });
+    const table = preview.querySelector('table')!;
+    const frame = table.closest('.doc-table');
+    expect(frame).not.toBeNull();
+    expect(frame!.getAttribute('data-node-type')).toBe('docTable');
+    expect(table.hasAttribute('data-node-type')).toBe(false);
+    expect(table.closest('.doc-table-scroller [data-radix-scroll-area-viewport]')).not.toBeNull();
+    expect(preview.textContent).toContain('A line.');
+  });
+
+  it('leaves a table and where it was scrolled sideways alone when the body changes elsewhere', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const first = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    first.scrollLeft = 120;
+
+    // A collaborator's edit anywhere in the body reads the answer again.
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 2));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    const now = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]');
+    expect(now).toBe(first);
+    expect(now!.scrollLeft).toBe(120);
+  });
+
+  it('keeps where the preview and its table were scrolled while its Space tab is hidden and shown again', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const frame = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    const outer = preview.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    frame.scrollLeft = 120;
+    fireEvent.scroll(frame);
+    outer.scrollTop = 40;
+    fireEvent.scroll(outer);
+
+    act(() => {
+      setHidden(true);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      setHidden(false);
+    });
+
+    await waitFor(() => {
+      const shown = screen.getByTestId('doc-ai-preview');
+      expect(shown.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')?.scrollLeft).toBe(120);
+      expect(shown.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollTop).toBe(40);
+    });
+  });
+
+  it('takes down the frames it drew once they are drawn again and once the dialog closes', async () => {
+    const { call } = await polishing();
+    await streams(call, ['| Shot |\n| --- |\n| 1 |']);
+    await waitFor(() => {
+      expect(framed.roots).toHaveLength(1);
+    });
+    await streams(call, ['\n| 2 |'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-preview').textContent).toContain('2');
+    });
+    expect(framed.roots.length).toBeGreaterThan(1);
+    // Each draw holds one table: every frame but the latest is already gone.
+    await waitFor(() => {
+      expect(framed.roots.slice(0, -1).every((root) => root.unmounted)).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(framed.roots.every((root) => root.unmounted)).toBe(true);
+    });
+  });
+
+  it('draws a shot list of eight columns at widths that fit what each column holds', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    await streams(calls[0]!, [SHOT_LIST], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(
+      ['64px', '88px', '88px', '88px', '220px', '180px', '64px', '140px'],
+    );
+  });
+
+  it('leaves a shot list of another width at the default column width', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| a | b |\n| --- | --- |\n| 1 | 2 |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(2);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(['', '']);
+  });
+
+  it('leaves an eight-column table from another command at the default column width', async () => {
+    const { call } = await polishing();
+    await streams(call, [SHOT_LIST], true);
+    const again = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(again.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...again.querySelectorAll<HTMLElement>('table col')].every((col) => col.style.width === '')).toBe(true);
+  });
+
+  it('shows a shot list from its header once it is written', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      await selected('<p>hello world</p>', 0, 5);
+      await press('storyboard');
+      await waitFor(() => {
+        expect(calls).toHaveLength(1);
+      });
+      await streams(calls[0]!, [SHOT_LIST], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual({ top: 0 });
+      });
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
+  it('leaves the answer of another command where it ended', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      const { call } = await polishing();
+      await streams(call, ['Hello.'], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      expect(scrollTo.mock.calls.some(([arg]) => (arg as { top?: number } | undefined)?.top === 0)).toBe(false);
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
+  it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {
+    const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['HELLO\n\nWORLD'], true);
+    await waitFor(() => {
+      expect(previewText()).toContain('WORLD');
+    });
+    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
+    try {
+      await act(async () => {
+        selectTextRange(editor, 1, 2);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      });
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it('parses a burst of pieces fewer times than they arrived, and shows the latest', async () => {
+    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
+    try {
+      const { call } = await polishing();
+      const pieces = Array.from({ length: 40 }, (_, i) => `w${String(i)} `);
+
+      await streams(call, pieces);
+
+      await waitFor(() => {
+        expect(previewText()).toContain('w39');
+      });
+      expect(previewText()).toContain('w0 w1');
+      const ours = parse.mock.calls.filter(([markdown]) => String(markdown).startsWith('w0'));
+      expect(ours.length).toBeGreaterThan(0);
+      expect(ours.length).toBeLessThan(pieces.length);
+      // The last parse taken is of the whole text, not of an earlier part.
+      expect(String(ours.at(-1)![0]).trim()).toBe(pieces.join('').trim());
+    } finally {
+      parse.mockRestore();
+    }
+  });
+});
+
+describe('what a command sends (design §5.2)', () => {
+  it('sends the whole blocks of a selection across blocks as Markdown, and shows them selected', async () => {
+    const editor = await selected('<p>one</p><p>two</p>', 1, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]!.body).toMatchObject({ selection: 'one\n\ntwo' });
+    const { selection, doc } = editor.prosemirrorState;
+    expect(doc.textBetween(selection.from, selection.to, '|')).toBe('one|two');
+  });
+
+  it('starts nothing over budget measured on the Markdown sent, and says so without numbers', async () => {
+    config.mockResolvedValue({ selectionMaxChars: 4, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
+    await selected('<p>hello world</p>', 0, 5);
+    const menu = await hoverOpenSlot('doc-bubble-ai');
+    await act(async () => {
+      fireEvent.click(menu.querySelector('[data-testid="doc-bubble-ai-item-refine"]')!);
+    });
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+    expect(calls).toHaveLength(0);
+    expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
+    expect(String(toastError.mock.calls[0]![0])).not.toMatch(/\d/);
+    expect(String(toastError.mock.calls[0]![0])).not.toContain('spaces.document');
+  });
+});
+
+describe('pressing replace and insert (A6)', () => {
+  beforeEach(() => {
+    connection.granted = true;
+  });
+  afterEach(() => {
+    connection.granted = false;
+  });
+
+  it('insert writes a shot list with its column widths', async () => {
+    const editor = await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, [SHOT_LIST], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-insert'));
+    });
+
+    await waitFor(() => {
+      expect((editor.document as unknown as { type: string }[]).some((block) => block.type === 'docTable')).toBe(true);
+    });
+    const table = (editor.document as unknown as { type: string; children: { children: { props: { colwidth?: unknown } }[] }[] }[])
+      .find((block) => block.type === 'docTable')!;
+    expect(table.children.map((row) => row.children.map((cell) => cell.props.colwidth))).toEqual(
+      Array.from({ length: 3 }, () => [[64], [88], [88], [88], [220], [180], [64], [140]]),
+    );
+  });
+
+  it('replace writes the answer over the selected words', async () => {
+    const { editor, call } = await polishing();
+    await streams(call, ['Hi'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-replace')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-replace'));
+    });
+
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toBe('Hi world');
+    });
+  });
+
+  it('insert writes the answer under the block', async () => {
+    const { editor, call } = await polishing();
+    await streams(call, ['Hi'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-insert'));
+    });
+
+    await waitFor(() => {
+      expect((editor.document as Array<{ content: Array<{ text?: string }> }>).map((b) => b.content.map((c) => c.text ?? '').join(''))).toEqual(['hello world', 'Hi']);
+    });
+  });
+});

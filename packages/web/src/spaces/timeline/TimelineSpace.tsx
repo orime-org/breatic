@@ -93,7 +93,7 @@ function TimelineDamagedRow({ clipId, readOnly, onDelete }: TimelineDamagedRowPr
   return <div data-testid={`timeline-conflict-${clipId}`} className='flex w-full min-w-0 items-center gap-2 rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-2 text-xs'>
     <Film className='size-4 shrink-0' />
     <span className='min-w-0 flex-1 truncate leading-normal text-status-error-foreground'>{t('timeline.conflictReason.damaged')}</span>
-    {!readOnly && <Button data-testid={`timeline-damaged-delete-${clipId}`} variant='outline' size='compact' onClick={remove} icon={<Trash2 className='size-3.5' />}>{t('timeline.edit.delete')}</Button>}
+    {!readOnly && <Button data-testid={`timeline-damaged-delete-${clipId}`} variant='outline' size='compact' onClick={remove} icon={<Trash2 className='mr-1.5 size-3.5' />}>{t('timeline.edit.delete')}</Button>}
   </div>;
 }
 

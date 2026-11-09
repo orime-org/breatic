@@ -26,6 +26,7 @@ describe("idempotency scopes", () => {
         "membership",
         "mini-tool",
         "project",
+        "referral",
         "timeline-execution",
         "transcribe",
         "understand",

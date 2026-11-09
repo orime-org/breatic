@@ -478,6 +478,8 @@ export interface ProjectMediaQuery {
   projectId: string;
   studioId: string;
   assetId?: string;
+  /** The kind a list reads; a read by `assetId` ignores it. Defaults to video. */
+  kind?: "image" | "video";
   cursor?: ProjectAssetCursor;
   limit: number;
 }
@@ -646,7 +648,7 @@ export async function readProjectMedia(input: ProjectMediaQuery, tx?: DbTx): Pro
     isNull(studioAssets.deletedAt),
   ];
   if (input.assetId !== undefined) conditions.push(eq(studioAssets.id, input.assetId));
-  else conditions.push(eq(studioAssets.kind, "video"));
+  else conditions.push(eq(studioAssets.kind, input.kind ?? "video"));
   if (input.cursor !== undefined) {
     conditions.push(sql`(${projectAssetRefs.createdAt}, ${projectAssetRefs.id}) < (${input.cursor.createdAt}::timestamptz, ${input.cursor.id}::uuid)`);
   }

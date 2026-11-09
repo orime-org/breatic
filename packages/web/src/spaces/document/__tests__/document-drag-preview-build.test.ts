@@ -15,13 +15,12 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { DRAG_IMAGE_CLASS } from '@web/lib/drag-image';
 import {
-  PREVIEW_LONGEST_SIDE,
   blockPreviewContent,
   buildDragPreview,
   measureDrawn,
   setDragPreview,
-  previewScale,
   tableLinePreviewContent,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
@@ -146,21 +145,6 @@ function heldTable(content: HTMLElement): unknown {
   };
 }
 
-describe('previewScale', () => {
-  it('fits the width to 512 when the content is wider than tall', () => {
-    expect(previewScale(768, 40)).toBeCloseTo(PREVIEW_LONGEST_SIDE / 768);
-  });
-
-  it('fits the height to 512 when the content is taller than wide', () => {
-    expect(previewScale(300, 1200)).toBeCloseTo(PREVIEW_LONGEST_SIDE / 1200);
-  });
-
-  it('keeps content no longer than 512 on any side at its own size', () => {
-    expect(previewScale(121, 127)).toBe(1);
-    expect(previewScale(512, 40)).toBe(1);
-  });
-});
-
 describe('buildDragPreview', () => {
   it('sizes the root to the scaled size and scales an inner layer, which carries no class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
@@ -170,7 +154,7 @@ describe('buildDragPreview', () => {
     expect(root.isConnected).toBe(true);
     // Its own class: the library's carries `opacity: 0.001`, and Firefox and
     // WebKit draw the root's opacity into the image (inner#1350 design §4).
-    expect(root.classList.contains('doc-drag-preview')).toBe(true);
+    expect(root.classList.contains(DRAG_IMAGE_CLASS)).toBe(true);
     expect(root.classList.contains('bn-drag-preview')).toBe(false);
     expect(root.style.opacity).toBe('');
     expect(root.style.width).toBe('512px');
@@ -194,7 +178,7 @@ describe('buildDragPreview', () => {
 
     expect(setDragImage).toHaveBeenCalledTimes(1);
     const [root, x, y] = setDragImage.mock.calls[0] as [HTMLElement, number, number];
-    expect(root.classList.contains('doc-drag-preview')).toBe(true);
+    expect(root.classList.contains(DRAG_IMAGE_CLASS)).toBe(true);
     expect([x, y]).toEqual([0, 0]);
   });
 

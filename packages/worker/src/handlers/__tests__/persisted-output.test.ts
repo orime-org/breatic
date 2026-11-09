@@ -35,6 +35,7 @@ describe("an output built from the row its bytes registered as", () => {
   it("carries the cover and what the ledger settled, not just the URL", () => {
     expect(storedAsOutput(STORED)).toEqual({
       url: STORED.fileUrl,
+      asset_id: STORED.assetId,
       cover_url: STORED.coverUrl,
       width: 1920,
       height: 1080,
