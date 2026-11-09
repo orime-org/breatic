@@ -236,10 +236,19 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
   };
   try {
     const page = await context.newPage();
-    const downloaded = page.waitForEvent("download", { timeout: request.pageTimeoutMs }).catch(() => null);
     // A navigation that turns into a download has no response from goto; its
     // headers come from here.
     let head: Response | undefined;
+    /**
+     * Whether a download is how the main frame's navigation ended: another
+     * frame's download (a landing page's hidden iframe) is not.
+     * @param download - The download.
+     * @returns True when it is the file of the last main-frame navigation response.
+     */
+    const ofMainFrame = (download: Download): boolean => download.url() === head?.url();
+    const downloaded = page
+      .waitForEvent("download", { predicate: ofMainFrame, timeout: request.pageTimeoutMs })
+      .catch(() => null);
     // The response of the last document the main frame committed.
     let committed: Response | undefined;
     // A main-frame navigation that has not yet committed, turned into a download or ended.
@@ -259,7 +268,9 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     });
     page.on("requestfailed", settle);
     page.on("requestfinished", settle);
-    page.on("download", () => settle());
+    page.on("download", (download) => {
+      if (ofMainFrame(download)) settle();
+    });
     page.on("response", (answer) => {
       if (!answer.request().isNavigationRequest() || answer.frame() !== page.mainFrame()) return;
       head = answer;
