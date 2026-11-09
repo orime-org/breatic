@@ -18,6 +18,7 @@ import { env,
   getAgentConfig,
   getSubscriptionPlans,
 } from "@breatic/core";
+import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
 import { startMaintenanceLoop } from "@server/modules/maintenance/maintenance-loop.js";
@@ -47,6 +48,7 @@ import { textToolModels } from "@server/config/text-tools.js";
 const monitoring = initSentry();
 
 initLogger("server");
+onDatabaseWaitTimeout((event) => logger.error({ ...event }, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,
