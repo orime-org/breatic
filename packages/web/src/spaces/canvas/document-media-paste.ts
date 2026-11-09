@@ -12,10 +12,9 @@
 
 import { isStoredObjectUrl } from '@breatic/shared';
 
-import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
-import { EMPTY_NODE_SIZE, groupRectForMembers, type Point } from '@web/spaces/canvas/group-geometry';
+import { batchGroupName, batchLayoutAt } from '@web/spaces/canvas/drop-layout';
+import type { Point } from '@web/spaces/canvas/group-geometry';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
-import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
 
 /** A media node type the body can hand over. */
 export type DocumentMediaType = 'image' | 'video' | 'audio';
@@ -50,7 +49,7 @@ const EMPTY_BLOCK_PLACEHOLDER = '￼';
  * @returns True when it holds nothing.
  */
 function holdsNothing(element: Element): boolean {
-  if (element.querySelector('img, video, audio') !== null) return false;
+  if (element.matches('img, video, audio') || element.querySelector('img, video, audio') !== null) return false;
   return (element.textContent ?? '').replaceAll(EMPTY_BLOCK_PLACEHOLDER, '').trim() === '';
 }
 
@@ -137,8 +136,7 @@ export function documentMediaPayload(
   centre: Point,
   backgroundColor: string,
 ): ClipboardPayload {
-  const tops = batchCentresAt(centre, media.length).map((point) => centerToTopLeft(point, EMPTY_NODE_SIZE));
-  const frame = media.length >= 2 ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE }))) : null;
+  const { tops, frame } = batchLayoutAt(centre, media.length);
   if (frame === null) {
     const node = nodeOf(media[0]!, 'm0', tops[0]!);
     return { version: CLIPBOARD_VERSION, picked: [node.id], nodes: [node], edges: [] };
@@ -149,7 +147,7 @@ export function documentMediaPayload(
     position: { x: frame.x, y: frame.y },
     width: frame.width,
     height: frame.height,
-    data: { name: `${String(media.length)} files`, width: frame.width, height: frame.height, backgroundColor },
+    data: { name: batchGroupName(media.length), width: frame.width, height: frame.height, backgroundColor },
     original: true,
   };
   const members = media.map((medium, i) => nodeOf(medium, `m${String(i)}`, tops[i]!, group.id));

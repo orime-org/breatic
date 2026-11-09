@@ -3,9 +3,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { batchLayoutAt } from '@web/spaces/canvas/drop-layout';
 import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
-import { EMPTY_NODE_SIZE, groupRectForMembers } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
 
 const HOST = 'https://resource-dev.breatic.cc';
@@ -67,6 +67,8 @@ describe('documentMediaPaste', () => {
     ['a heading with words', `<h2>Shots</h2>${img()}`],
     ['a picture from elsewhere', '<img src="https://example.com/a.png" alt="a">'],
     ['a list with words', `<ul><li><p>one</p></li></ul>${video}`],
+    ['a stored picture next to one from elsewhere', `${img()}<img src="https://example.com/a.png" alt="">`],
+    ['a figure holding more than a medium and its caption', `<figure><img src="${IMAGE}"><figcaption>c</figcaption><p>x</p></figure>`],
   ])('leaves a copy holding %s to the text paste', (_label, html) => {
     expect(documentMediaPaste(html)).toBeNull();
   });
@@ -115,8 +117,9 @@ describe('documentMediaPayload', () => {
       { type: 'video', url: VIDEO, name: 'two.webm' },
     ] as const;
     const payload = documentMediaPayload(media, centre, '#abc');
-    const tops = batchCentresAt(centre, 2).map((point) => centerToTopLeft(point, EMPTY_NODE_SIZE));
-    const frame = groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE })))!;
+    // Laid out by the one function a batch of files is laid out by.
+    const { tops, frame: framed } = batchLayoutAt(centre, 2);
+    const frame = framed!;
     const [group, ...members] = payload.nodes;
     expect(group).toEqual({
       id: 'g',
