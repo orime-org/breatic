@@ -33,6 +33,11 @@
  * releases them, and {@link ScriptedWebSocket.drop} drops a connection the
  * way a network failure does (code 1006).
  *
+ * Round 10 (spec 26.0) adds a SyncStatus frame a case sends when it chooses
+ * ({@link ScriptedServer.syncStatus}; the default script never sends one), a
+ * document CLOSE that can land in the case's own task, and
+ * {@link recordProviderEvents}.
+ *
  * This module imports no production module of the package.
  */
 
@@ -384,18 +389,40 @@ export class ScriptedServer {
   }
 
   /**
-   * Closes one document on every connection (a Hocuspocus CLOSE message).
+   * Closes one document on every connection (a Hocuspocus CLOSE message);
+   * the connection itself stays open.
    * @param name - Canonical document name.
    * @param reason - The close reason.
+   * @param now - Deliver synchronously instead of on a later task, so a frame
+   * the case sends right after it lands in the same task (spec 26.0).
    * @throws {never} Never.
    */
-  closeDocument(name: string, reason: string): void {
+  closeDocument(name: string, reason: string, now = false): void {
     for (const socket of this.socketsOf(name)) {
       this.attached.get(socket)?.delete(name);
       this.send(socket, name, (encoder) => {
         encoding.writeVarUint(encoder, 7);
         encoding.writeVarString(encoder, reason);
-      });
+      }, now);
+    }
+  }
+
+  /**
+   * Sends a SyncStatus frame for a document, synchronously, encoded as
+   * Hocuspocus 4.6.0 `writeSyncStatus` (spec 26.0). Like the real server's
+   * `Connection.send` it goes to every open connection whether or not the
+   * document is still open on it, so it can reach the provider of a
+   * reopened or rebuilt document.
+   * @param name - Canonical document name.
+   * @param applied - 1 when the server applied the client's sync message, 0 when it did not.
+   * @throws {never} Never.
+   */
+  syncStatus(name: string, applied: 0 | 1): void {
+    for (const socket of this.sockets.filter((open) => open.readyState === ScriptedWebSocket.OPEN)) {
+      this.send(socket, name, (encoder) => {
+        encoding.writeVarUint(encoder, 8);
+        encoding.writeVarUint(encoder, applied);
+      }, true);
     }
   }
 
@@ -630,6 +657,32 @@ export async function settle(rounds = 8): Promise<void> {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+/** What {@link recordProviderEvents} listens to. */
+export interface EventSource {
+  on: (event: string, listener: (data: unknown) => void) => void;
+}
+
+/** The events a provider emitted since {@link recordProviderEvents} (spec 26.0). */
+export interface ProviderEvents {
+  /** How many `synced` events. */
+  synced: number;
+  /** The `number` of each `unsyncedChanges` event, in order. */
+  unsynced: number[];
+}
+
+/**
+ * Records a provider's `synced` events and the counts its `unsyncedChanges` events carry.
+ * @param provider - The provider.
+ * @returns The record, updated as events arrive.
+ * @throws {never} Never.
+ */
+export function recordProviderEvents(provider: EventSource): ProviderEvents {
+  const events: ProviderEvents = { synced: 0, unsynced: [] };
+  provider.on('synced', () => { events.synced += 1; });
+  provider.on('unsyncedChanges', (data) => { events.unsynced.push((data as { number: number }).number); });
+  return events;
 }
 
 /** What the `H7` preconditions read on a provider. */
