@@ -1,0 +1,19 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "video"
+  ]
+}

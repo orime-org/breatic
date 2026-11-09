@@ -21,13 +21,14 @@ import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
   modelsForMode,
+  sceneModelsForMode,
   waysIn,
   type ModelInfo,
   type ModelsForMode,
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
-import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
+import { checkParams, gateWords } from "@domain/agent/tools/proposal-params-check.js";
 import { nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -47,15 +48,25 @@ const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   ...GenerationNodeType[],
 ];
 
+// One object root: the OpenAI-compatible endpoint the agent calls takes no
+// other, so which fields a target needs is judged in `execute`.
 const inputSchema = z
   .object({
+    target: z
+      .enum(["canvas", "3d"])
+      .optional()
+      .describe(
+        "Where the generation runs: canvas (the default) for a generation node, or 3d for the 3D Space's " +
+          "generate dialog, which only generates 3D models (t23d text-to-3D, i23d image-to-3D) and takes no nodeType",
+      ),
     nodeType: z
       .enum(NODE_TYPES)
-      .describe("The kind of generation node, from get_canvas_capabilities"),
+      .optional()
+      .describe("The kind of generation node, from get_canvas_capabilities; required for canvas, left out for 3d"),
     mode: z
       .string()
       .min(1)
-      .describe("The mode on that node, from get_canvas_capabilities"),
+      .describe("The mode on that node, from get_canvas_capabilities; for 3d, t23d or i23d"),
     params: z
       .record(z.string(), z.unknown())
       .optional()
@@ -251,7 +262,7 @@ function renderModel(model: PricedModelInfo): string {
           : shape;
     // The control exists but does not count yet, which asks something of the
     // user that "no control" does not: satisfy the gate and setting it works.
-    const waits = spec.gate === undefined ? "" : ` it applies only while ${spec.gate.param} is on;`;
+    const waits = spec.gate === undefined ? "" : ` it applies only while ${gateWords(spec.gate, false)};`;
     // Takes go out at the lowest value of every setting that moves the price,
     // which the agent cannot tell from the values alone.
     const lowest = model.lowestAt !== undefined && name in model.lowestAt ? ` sets the price, lowest at ${JSON.stringify(model.lowestAt[name])};` : "";
@@ -262,7 +273,25 @@ function renderModel(model: PricedModelInfo): string {
       : ` defaults to ${JSON.stringify(spec.default)}.`;
     return `    ${name}:${domain}${howMany}${waits}${lowest}${tail} ${spec.what}`;
   });
-  return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
+  const forces = renderForces(model);
+  return params.length > 0 ? [head, "  parameters:", ...params, ...forces].join("\n") : [head, ...forces].join("\n");
+}
+
+/**
+ * The values the model forces, in the order they apply, as lines under its
+ * parameters: a value given against one is refused, naming its id.
+ * @param model - The model.
+ * @returns The lines, or none for a model that forces nothing.
+ */
+function renderForces(model: PricedModelInfo): string[] {
+  if (model.forces === undefined || model.forces.length === 0) return [];
+  return [
+    "  forced values (applied in this order; a value given against one is refused):",
+    ...model.forces.map((force) => {
+      const sets = Object.entries(force.set).map(([name, value]) => `${name} to ${JSON.stringify(value)}`).join(" and ");
+      return `    ${force.id}: while ${gateWords(force.when, false)}, ${sets}${force.lock ? ", locked in the dialog" : ""}.`;
+    }),
+  ];
 }
 
 /**
@@ -341,7 +370,9 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "and mode to pass here. Propose only a model this returns, and only " +
     `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}, section "Source slots". ` +
     "To price a step at the settings it will run at, pass them as params. " +
-    "What a model is good at is what its line here says; a strength its line does not name, such as lettering, is not one of its strengths.",
+    "What a model is good at is what its line here says; a strength its line does not name, such as lettering, is not one of its strengths. " +
+    "With target 3d it lists the 3D Space's models for t23d or i23d instead, with no nodeType, each with " +
+    "the values it forces and why; propose those with propose_scene_generation.",
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
@@ -353,15 +384,21 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     value: renderGenerationModelsForModel(output),
   }),
   execute: async (
-    { nodeType, mode, params }: z.infer<typeof inputSchema>,
+    { target = "canvas", nodeType, mode, params }: z.infer<typeof inputSchema>,
     // Unused: reads a cached catalog and prices it locally, so there is
     // nothing to abandon. Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
   ): Promise<PricedModelsForMode> => {
-    const answer = modelsForMode(nodeType, mode);
+    if (target === "3d" && nodeType !== undefined) {
+      throw new Error(`target 3d takes no nodeType: the 3D Space has no nodes, so ask with target "3d" and mode t23d or i23d alone, not nodeType "${nodeType}".`);
+    }
+    if (target === "canvas" && nodeType === undefined) {
+      throw new Error("target canvas needs a nodeType, from get_canvas_capabilities.");
+    }
+    const answer = nodeType === undefined ? sceneModelsForMode(mode) : modelsForMode(nodeType, mode);
     if (!answer.available) return answer;
     const models = await Promise.all(
-      answer.models.map(async (model): Promise<PricedModelInfo> => priceModel(model, await lowestValues(model), params === undefined ? undefined : takenParams(model, nodeType, mode, params))),
+      answer.models.map(async (model): Promise<PricedModelInfo> => priceModel(model, await lowestValues(model), params === undefined || nodeType === undefined ? undefined : takenParams(model, nodeType, mode, params))),
     );
     return { available: true, models };
   },

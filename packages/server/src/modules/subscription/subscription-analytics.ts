@@ -16,21 +16,30 @@ import { readCheckoutSnapshot } from "@server/modules/analytics/checkout-snapsho
 /**
  * The plan a stored subscription is on, for its price.
  * @param write - The stored snapshot.
+ * @param chargedCents - What was actually charged, when known; the price list otherwise.
  * @returns The event properties shared by start and renewal, or null for a tier with no plan.
  */
-function planProperties(write: Pick<SubscriptionWrite, "tier" | "period">): Record<string, unknown> | null {
+function planProperties(
+  write: Pick<SubscriptionWrite, "tier" | "period">,
+  chargedCents: number | null = null,
+): Record<string, unknown> | null {
   if (!(SUBSCRIBABLE_MEMBERSHIP_TIERS as readonly string[]).includes(write.tier)) return null;
   const plan = getSubscriptionPlan(write.tier as SubscribableMembershipTier, write.period);
-  return { tier: write.tier, interval: write.period, amount_cents: plan.priceCents, currency: plan.currency };
+  return { tier: write.tier, interval: write.period, amount_cents: chargedCents ?? plan.priceCents, currency: plan.currency };
 }
 
 /**
  * Report a subscription's first activation, after the write that stamped it committed.
  * @param write - The stored snapshot.
  * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
+ * @param firstInvoiceAmountCents - What the first invoice charged before tax, or null to use the price list.
  */
-export function reportSubscriptionStarted(write: SubscriptionWrite, metadata: Record<string, unknown> | null): void {
-  const properties = planProperties(write);
+export function reportSubscriptionStarted(
+  write: SubscriptionWrite,
+  metadata: Record<string, unknown> | null,
+  firstInvoiceAmountCents: number | null,
+): void {
+  const properties = planProperties(write, firstInvoiceAmountCents);
   if (properties === null) return;
   const { consent, click } = readCheckoutSnapshot(metadata);
   const transactionId = `sub:${write.stripeSubscriptionId}`;
@@ -72,13 +81,15 @@ export async function reportSubscriptionRenewed(input: {
  * tag, once the subscription is active (inner#1442 design §4.9). Shares its
  * transaction id with the server-side upload.
  * @param write - The stored snapshot the return page confirmed.
+ * @param firstInvoiceAmountCents - What the first invoice charged before tax, or null to use the price list.
  * @returns The conversion, or null while the subscription is not active.
  */
 export function subscriptionConversion(
   write: Pick<SubscriptionWrite, "stripeSubscriptionId" | "status" | "tier" | "period">,
+  firstInvoiceAmountCents: number | null,
 ): { transactionId: string; amountCents: number; currency: string } | null {
   if (write.status !== "active" && write.status !== "trialing") return null;
-  const properties = planProperties(write);
+  const properties = planProperties(write, firstInvoiceAmountCents);
   if (properties === null) return null;
   return {
     transactionId: `sub:${write.stripeSubscriptionId}`,

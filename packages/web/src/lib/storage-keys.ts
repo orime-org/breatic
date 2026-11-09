@@ -67,6 +67,8 @@ export const STORAGE_KEYS = {
    * (inner#1442 §4.5). See `data/analytics/attribution`.
    */
   attribution: 'breatic.attribution',
+  /** The referral code from a share link, kept only while cookies are accepted (inner#1868). */
+  referralCode: 'breatic.referralCode',
 } as const;
 
 /** Union of every valid persisted key value. */

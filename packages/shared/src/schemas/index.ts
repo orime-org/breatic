@@ -6,6 +6,11 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -46,10 +51,14 @@ export {
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/api.js";
 
 export type {
+  SceneGenerationAnswer,
+  SceneGenerationBody,
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,

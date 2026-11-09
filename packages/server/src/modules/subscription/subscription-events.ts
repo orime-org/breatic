@@ -314,7 +314,7 @@ export async function handleSubscriptionEvent(
   // After the commit, never inside it: an email about a change that then rolls
   // back cannot be recalled, and a send failure must not fail the webhook.
   if (endedFrom) await sendMembershipEndedMail(userId, endedFrom);
-  if (started) reportSubscriptionStarted(write, subscription.metadata);
+  if (started) reportSubscriptionStarted(write, subscription.metadata, read.firstInvoiceAmountCents);
 
   return outcome;
 }

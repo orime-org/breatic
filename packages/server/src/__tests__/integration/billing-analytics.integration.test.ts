@@ -291,12 +291,12 @@ describe("subscriptions", () => {
   it("hands the return page the conversion once the subscription is active", async () => {
     const { subscriptionConversion } = await import("@server/modules/subscription/subscription-analytics.js");
     const write = { stripeSubscriptionId: "sub_x", status: "active", tier: "pro", period: "month" } as const;
-    expect(subscriptionConversion(write)).toEqual({
+    expect(subscriptionConversion(write, null)).toEqual({
       transactionId: "sub:sub_x",
       amountCents: plan.priceCents,
       currency: plan.currency,
     });
-    expect(subscriptionConversion({ ...write, status: "incomplete" })).toBeNull();
+    expect(subscriptionConversion({ ...write, status: "incomplete" }, null)).toBeNull();
   });
 
   it("ignores a paid invoice that is not a renewal", async () => {

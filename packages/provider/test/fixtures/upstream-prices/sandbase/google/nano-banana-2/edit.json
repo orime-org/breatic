@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/nano-banana-2/edit",
+  "price_formula": "((params.resolution ?? \"1K\") == \"0.5K\" ? 0.045 : (params.resolution ?? \"1K\") == \"2K\" ? 0.101 : (params.resolution ?? \"1K\") == \"4K\" ? 0.151 : 0.067) + (((params.enable_web_search ?? false) || (params.enable_image_search ?? false)) ? 0.014 : 0.0)"
+}

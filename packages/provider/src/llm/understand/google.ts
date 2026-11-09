@@ -10,7 +10,7 @@
 
 import type { FinishReason } from "ai";
 import { z } from "zod";
-import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
+import { deliver, sideBounds, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
   AnswerUnread,
   assertSucceeded,
@@ -50,13 +50,16 @@ const generatedSchema = z.looseObject({
   promptFeedback: z.looseObject({ blockReason: z.string().nullish() }).nullish(),
 });
 
-/** The answer's usage; an answer without one it can read is costed as missing. */
+/**
+ * The answer's usage, refused when it carries neither an input nor an output count, so an answer that reports no counts
+ * is costed as missing, never a known $0; one count alone is read, the other as none.
+ */
 const usageSchema = z.looseObject({
   promptTokenCount: z.number().optional(),
   cachedContentTokenCount: z.number().optional(),
   candidatesTokenCount: z.number().optional(),
   thoughtsTokenCount: z.number().optional(),
-});
+}).refine((u) => u.promptTokenCount !== undefined || u.candidatesTokenCount !== undefined);
 
 /**
  * Gemini's finish reason in the AI SDK's words.
@@ -110,7 +113,7 @@ function fileOf(answered: Answered, wrapped: boolean): GeminiFile {
   const body = answered.body;
   const file = wrapped ? (typeof body === "object" && body !== null ? (body as { file?: unknown }).file : undefined) : body;
   const parsed = fileSchema.safeParse(file);
-  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${z.prettifyError(parsed.error)}`);
   return parsed.data;
 }
 
@@ -165,7 +168,7 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
   // Deleted once the whole call ends; each delete is sent once in its own window, apart from the
   // call's deadline and signal, and a file left behind expires on Google's side.
   call.session.cleanups.push(() => {
-    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, deadlineAt: Date.now() + SIDE_REQUEST_MS })
+    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, ...sideBounds() })
       .then((r) => r.body?.cancel())
       .catch(() => undefined);
   });
@@ -233,7 +236,7 @@ export const googleUnderstand: UnderstandAdapter = {
 
   read(body) {
     const generated = generatedSchema.safeParse(body);
-    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${generated.error.issues[0]?.message ?? "unknown"}` };
+    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${z.prettifyError(generated.error)}` };
     const candidate = generated.data.candidates?.[0];
     if (candidate === undefined) {
       const blockReason = generated.data.promptFeedback?.blockReason;

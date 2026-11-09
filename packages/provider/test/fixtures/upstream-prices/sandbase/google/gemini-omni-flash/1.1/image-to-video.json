@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/gemini-omni-flash/1.1/image-to-video",
+  "price_formula": "(params.duration ?? 8) * ((params.resolution ?? \"720p\") == \"360p\" ? 0.03 : (params.resolution ?? \"720p\") == \"1080p\" ? 0.15 : (params.resolution ?? \"720p\") == \"4k\" ? 0.30 : 0.10)"
+}

@@ -74,6 +74,12 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  ParamGate,
+  ThreeDGenerationMode,
+  SceneViewSlot,
+  ParamBound,
+  ParamForce,
+  ParamScalar,
   RemoteParamSource,
   ModelProvider,
   ModelEntry,
@@ -203,7 +209,6 @@ export {
   ProjectActivityPageSchema,
   isMemberLeave,
 } from "@shared/types/index.js";
-export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
@@ -215,6 +220,8 @@ export type {
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
+  SceneGenerationOrigin,
+  SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/index.js";
@@ -236,6 +243,8 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
+  THREE_D_GENERATION_MODES,
+  SCENE_VIEW_SLOTS,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -246,6 +255,8 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  SCENE_GENERATION_ORIGINS,
+  sceneGenerationProposalSchema,
   hasWords,
   occurrences,
   feedsOf,
@@ -298,6 +309,12 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  googleAuthSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -337,10 +354,12 @@ export {
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/index.js";
 
 export type {
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
@@ -372,6 +391,8 @@ export type {
   ChatCreateConversationInput,
   ChatRenameConversationInput,
   ChatSetModelInput,
+  SceneGenerationAnswer,
+  SceneGenerationBody,
 } from "@shared/schemas/index.js";
 
 export {
@@ -414,6 +435,13 @@ export {
 export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
 
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
+export {
+  TEXT_TOOL_INSTRUCTIONS_MAX,
+  TEXT_TOOL_LANGUAGES,
+  TEXT_TOOL_TONES,
+  type TextToolLanguage,
+  type TextToolTone,
+} from "@shared/text-tools.js";
 
 export {
   addressWithoutQuery,
@@ -601,6 +629,9 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { applyForces, checkParamCombination, gateHolds, gateParams, resolveParams } from "@shared/param-resolution.js";
+export { modesOf, picturesOf } from "@shared/scene-generation.js";
+export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {
@@ -1056,7 +1087,7 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 

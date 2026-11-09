@@ -201,9 +201,10 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
-    // 四条，五组之间各一条（demo 里条下面那句说明）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
-    // 下划线 ｜ 链接 行内代码 颜色 评论 ｜ AI。
-    expect(geo.separators).toHaveLength(4);
+    // Five, one between each of the six groups: block type | alignment | bold
+    // italic strike underline | link inline-code colour | add to Agent, AI |
+    // comment (user 2026-11-08: comment alone at the far right).
+    expect(geo.separators).toHaveLength(5);
     for (const sep of geo.separators) {
       expect(sep.width).toBe(1);
       expect(sep.height).toBe(16);
@@ -305,7 +306,7 @@ test('keeps the side it came up on as its line scrolls to the top (E3)', async (
   expect(after.gap).toBe(8);
 });
 
-test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台', async ({ page }) => {
+test('every dropdown opens on hover with the demo\'s contents, and an AI row opens the AI dialog', async ({ page }) => {
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox jumps');
   await selectFirstParagraph(page);
@@ -354,22 +355,21 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
 
   // Set up before the menu opens. A menu closes once the pointer has been off
   // it for its grace period, so anything done between opening and pressing is
-  // time the menu spends on its way out.
-  const lines: string[] = [];
-  page.on('console', (m) => {
-    if (m.type() === 'warning') lines.push(m.text());
-  });
+  // time the menu spends on its way out. The text tool is answered here, so no
+  // model is called.
+  await page.route('**/mini-tools/text', (route) => route.abort());
   const bodyBefore = await page.evaluate(
     (space: string) =>
       document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
-        ?.innerHTML ?? '', VISIBLE_SPACE
+        ?.textContent ?? '', VISIBLE_SPACE
   );
 
   const ai = await hoverOpenSlot(page, 'doc-bubble-ai');
-  expect(await rowsOf(ai)).toHaveLength(8);
+  expect(await rowsOf(ai)).toHaveLength(7);
 
-  // Pressing a row that reaches no command: the console carries it, the
-  // document is untouched, and the menu goes away like any other.
+  // Pressing a command row (inner#1860): the menu goes away like any other,
+  // the AI dialog opens, and the words stay as they were (the dialog paints
+  // the range it acts on, so the markup gains a span while it is open).
   //
   // The pointer walks onto the row and presses there. `click()` teleports and
   // holds the press until the element reports itself stable, and a menu that
@@ -383,14 +383,16 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   await page.mouse.down();
   await page.mouse.up();
   await expect(page.getByTestId('doc-bubble-ai-menu')).toBeHidden({ timeout: 5_000 });
-  expect(lines.filter((l) => l.includes('not implemented yet'))).toHaveLength(1);
+  await expect(page.getByTestId('doc-ai-dialog')).toBeVisible();
   expect(
     await page.evaluate(
       (space: string) =>
         document.querySelector(`${space} [data-testid="document-space"] .ProseMirror`)
-          ?.innerHTML ?? '', VISIBLE_SPACE
+          ?.textContent ?? '', VISIBLE_SPACE
     ),
   ).toBe(bodyBefore);
+  await page.getByTestId('doc-ai-close').click();
+  await expect(page.getByTestId('doc-ai-dialog')).toBeHidden();
 
   // The pointer goes back outside the body, the way the cases here leave it.
   await page.mouse.move(8, 8);

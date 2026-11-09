@@ -24,6 +24,8 @@ import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
+import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
+import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -50,10 +52,40 @@ export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().m
  */
 const attributionField = z.unknown().optional();
 
+/**
+ * The longest referral code text any request carries (inner#1868): room for a
+ * code with stray spaces, well short of a pasted link. Inputs stop at it too,
+ * so too-long text gets the field's own refusal.
+ */
+export const REFERRAL_CODE_INPUT_MAX = 40;
+
+/** How many channels a promoter application lists (inner#1868 §7). */
+export const PROMOTER_CHANNELS_MAX = 10;
+
+/** The longest one channel of a promoter application may be. */
+export const PROMOTER_CHANNEL_INPUT_MAX = 200;
+
+/** The longest the promotion plan of a promoter application may be. */
+export const PROMOTER_PLAN_INPUT_MAX = 2000;
+
+/** Where a sign-up's referral code came from: a share link, or typed by the user. */
+export const SIGNUP_REFERRAL_SOURCES = ["signup_link", "signup_typed"] as const;
+export type SignupReferralSource = (typeof SIGNUP_REFERRAL_SOURCES)[number];
+
+/**
+ * A referral code a sign-up carries (inner#1868): from a share link, or typed.
+ * Blank means none; the server parses the code itself.
+ */
+const signupReferralFields = {
+  referralCode: z.string().max(REFERRAL_CODE_INPUT_MAX).optional(),
+  referralSource: z.enum(SIGNUP_REFERRAL_SOURCES).optional(),
+};
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
   attribution: attributionField,
+  ...signupReferralFields,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -180,6 +212,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: attributionField,
+  ...signupReferralFields,
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
@@ -915,3 +949,30 @@ export const chatEarlierMessagesQuerySchema = z.object({
   before_turn: z.coerce.number().int().positive(),
 });
 export type ChatEarlierMessagesQueryInput = z.infer<typeof chatEarlierMessagesQuerySchema>;
+
+// ── 3D generation (inner#1691) ───────────────────────────────────────
+
+/** What the generation dialog submits. */
+export const sceneGenerationBodySchema = z.object({
+  mode: z.enum(THREE_D_GENERATION_MODES),
+  /** `tasks.model` is varchar(100). */
+  model: z.string().min(1).max(100),
+  prompt: z.string().max(8192).optional(),
+  // The settings, `negative_prompt` among them; each is judged against the
+  // model's own declarations, so the shape here only bounds the values.
+  params: z.record(z.string().max(64), z.union([z.string().max(8192), z.number(), z.boolean(), z.null()])),
+  // The views in front, left, back, right order. How many the model takes is
+  // its rule, said with its name when broken; the cap here only bounds work.
+  image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
+  origin: z.enum(SCENE_GENERATION_ORIGINS),
+});
+
+/** A submission, as {@link sceneGenerationBodySchema} describes it. */
+export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;
+
+/** What a submission answers: the task, its row, and whether the job was queued. */
+export interface SceneGenerationAnswer {
+  task_id: string;
+  row_id: string;
+  status: "pending" | "failed";
+}

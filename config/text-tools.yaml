@@ -1,4 +1,24 @@
 # Text Mini-Tool Configuration
-# Model used for all 10 text tools (polish, expand, summarize, translate,
-# rewrite, continue, generate, character, storyboard, script).
-model: google/gemini-2.5-flash
+# One model for every text tool (polish, expand, shorten, summarize, translate,
+# rewrite, custom, continue, generate, character, storyboard, script).
+model: google/gemini-3.8-flash
+
+# How long the model thinks before answering: low | medium | high. Google
+# recommends low for latency-sensitive everyday tasks; Gemini 3.8 Flash
+# defaults to medium when nothing is sent.
+thinking_level: low
+
+# Longest selection, in characters, a text tool runs on. A longer selection is
+# refused with 422 before the model runs.
+selection_max_chars: 40000
+
+# Longest document context, in characters, sent alongside the selection. The
+# browser sends a window around the selection that fits; the server refuses
+# anything longer with 422. Must be at least selection_max_chars.
+context_max_chars: 200000
+
+# How fast the user's screen shows the answer, in characters per second.
+# The model sends its text in bursts; the AI dialog shows what has arrived at
+# this pace and speeds up on its own when it falls behind. Sent to the browser
+# by GET /mini-tools/text/config.
+reveal_chars_per_second: 60

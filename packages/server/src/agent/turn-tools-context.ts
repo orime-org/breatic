@@ -8,7 +8,8 @@
  * entry, so one entry carries everything that tool needs: every tool keeps
  * the turn's usage recorder, and the ones that need something of the turn
  * carry it in the shape they use: the save and the canvas proposal the
- * project (inner#1315), the document proposal the open document (inner#1509),
+ * project (inner#1315), the 3D generation proposal the project whose images
+ * it resolves (inner#1691), the document proposal the open document (inner#1509),
  * the record tools the user's records (inner#1469), and the memory tools the
  * user's memory (#1363).
  */
@@ -18,6 +19,7 @@ import { canonicalMediaSourceFor } from "@server/agent/canonical-media-source.js
 import {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   RECORD_TOOL_NAMES,
   MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
@@ -74,6 +76,9 @@ export function turnToolsContext(
   }
   if (context[PROPOSE_CANVAS_ACTION]) {
     context[PROPOSE_CANVAS_ACTION] = { ...context[PROPOSE_CANVAS_ACTION], studioId: turn.studioId };
+  }
+  if (context[PROPOSE_SCENE_GENERATION] && turn.projectId) {
+    context[PROPOSE_SCENE_GENERATION] = { ...context[PROPOSE_SCENE_GENERATION], projectId: turn.projectId };
   }
   if (context[PROPOSE_DOCUMENT_EDIT]) {
     context[PROPOSE_DOCUMENT_EDIT] = { ...context[PROPOSE_DOCUMENT_EDIT], openDocument: turn.openDocument };

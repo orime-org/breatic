@@ -311,7 +311,7 @@ test.beforeEach(async ({ browser }) => {
     DataTransfer.prototype.setDragImage = function (el: Element, x: number, y: number) {
       // Ours alone: a row drag hands the browser BlockNote's preview first and
       // ours over it in the same dragstart.
-      if (el.classList.contains('doc-drag-preview')) {
+      if (el.classList.contains('drag-image')) {
         const copy = el.cloneNode(true) as Element;
         document.body.append(copy);
         kept.push(copy);

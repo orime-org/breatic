@@ -47,7 +47,7 @@
 
 `pnpm --filter @breatic/web test:smoke` 不需要任何事先配置。两档默认用 4 个 worker 并行跑(`playwright.config.ts` 的 `WORKERS`,`--workers` 可覆盖),每个 worker 按它的 `parallelIndex`(下称槽位)用自己的一对账号 A / B 和它们的 project:setup 按本轮的 worker 数逐个槽位准备，缺账号的槽位由 `scripts/seed-smoke-account.ts` 直接建账号(调服务端注册接口背后的 `authService.register`,不经 `POST /auth/register`,不占注册限流),再登录、建 studio 和 project,凭据和登录状态写进 `playwright/.auth/`(已 gitignore,`accounts.json` 按槽位分，登录状态是 `<槽位>-a.json` / `<槽位>-b.json`)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会建账号、会归档 project,所以它拒绝对着 localhost 以外的地址跑。spec 和 helper 一律从 `tests/helpers/slot.ts` 取 `test`,它打开的页面默认登录成本槽位的 A;从 `playwright/test` 直接取 `test` 会被 ESLint 拦下。
 
-服务端开着邮件时，测注册的那几条 spec(`email-case`、`signup-code`、`trial-credits`)要读寄到 Mailpit 的验证码，所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起：它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
+服务端开着邮件时，测注册的那几条 spec(`email-case`、`signup-code`、`trial-credits`、`referral-signup`)要读寄到 Mailpit 的验证码，所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起：它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
 
 同一套服务同一时间只跑一轮 playwright(见 2.3 末尾)。一轮里的几个 worker 各用各的账号，互不干扰。
 

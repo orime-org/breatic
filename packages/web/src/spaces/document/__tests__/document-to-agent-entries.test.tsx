@@ -67,17 +67,23 @@ function handed(): TrayItem {
 }
 
 describe('the bubble bar entry', () => {
-  it('sits right after Comment', async () => {
+  it('sits with the AI menu, right before it, with Comment alone at the far right', async () => {
     const editor = openSharedBody('<p>alpha bravo</p>');
     mountDocumentEditor(editor, false, 'project-1');
     focusBody(editor);
     selectBlockText(editor, 'alpha bravo');
     await waitForBar();
 
-    const ids = [...document.querySelectorAll('[data-testid^="doc-bubble-tool-"]')].map((el) =>
-      el.getAttribute('data-testid'),
-    );
-    expect(ids.indexOf('doc-bubble-tool-addToAgent')).toBe(ids.indexOf('doc-bubble-tool-comment') + 1);
+    const ids = [...document.querySelectorAll('[data-testid^="doc-bubble-"]')]
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => id?.startsWith('doc-bubble-sep-') || id?.startsWith('doc-bubble-tool-') || id === 'doc-bubble-ai');
+    expect(ids.slice(-5)).toEqual([
+      'doc-bubble-sep-ai',
+      'doc-bubble-tool-addToAgent',
+      'doc-bubble-ai',
+      'doc-bubble-sep-comment',
+      'doc-bubble-tool-comment',
+    ]);
   });
 
   it('hands the selected words to the project the document is in', async () => {
@@ -102,7 +108,13 @@ describe('the bubble bar entry', () => {
     selectTextRange(editor, 1, 4);
     await waitForBar();
 
-    expect(screen.getByTestId('doc-bubble-tool-addToAgent')).toHaveProperty('disabled', true);
+    const entry = screen.getByTestId('doc-bubble-tool-addToAgent');
+    expect((entry as HTMLButtonElement).disabled || entry.getAttribute('aria-disabled') === 'true').toBe(true);
+
+    // Greyed, it still takes the press (it shows its name on hover), and the
+    // press does nothing.
+    fireEvent.click(entry);
+    expect(attachToChat).not.toHaveBeenCalled();
   });
 
   it('is not shown to a viewer', async () => {

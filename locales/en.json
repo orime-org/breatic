@@ -90,7 +90,9 @@
       "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "text_tool": {
-      "already_running": "Another text tool is already running. Please wait."
+      "selection_too_long": "The selection is too long for AI: {actual} characters, the limit is {limit}.",
+      "document_too_long": "The text sent with the selection is too long: {actual} characters, the limit is {limit}.",
+      "failed": "AI couldn't finish this request. Please try again."
     },
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
@@ -304,6 +306,33 @@
       },
       "credits_amount": "{credits}",
       "fact_line": "{label}: {value}"
+    },
+    "referral": {
+      "invalid_code": "This referral code is not valid.",
+      "already_bound": "This account already has a referral code.",
+      "already_paid": "A referral code can only be added before your first membership payment.",
+      "not_eligible": "Enterprise accounts cannot add a referral code.",
+      "program_closed": "Promoter applications are not open yet.",
+      "terms_changed": "The promoter terms have been updated. Read them again before applying.",
+      "application_pending": "You already have an application under review.",
+      "already_promoter": "You are already a promoter."
+    },
+    "three_d": {
+      "model_not_offered": "{model} is not a 3D model for {mode}.",
+      "prompt_required": "Text to 3D needs a prompt.",
+      "prompt_not_taken": "{model} generates from pictures and takes no prompt.",
+      "image_count": "{model} takes {max, plural, =0 {no images} =1 {one image} other {{min} to {max} images}}, and this request has {actual}.",
+      "not_a_setting": "{model} has no setting \"{param}\".",
+      "setting_forced": "\"{param}\" cannot be {given} with these settings: the rule {force} sets it to {value}.",
+      "setting_values": "\"{param}\" takes one of {values}, not {value}.",
+      "setting_integer": "\"{param}\" takes a whole number, not {value}.",
+      "setting_text": "\"{param}\" takes text, not {value}.",
+      "setting_bounds": "\"{param}\" takes {min} to {max} with these settings, not {value}.",
+      "setting_too_long": "\"{param}\" takes at most {max} characters, and this one has {length}.",
+      "view_not_found": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): {input} is not an image in this Project.",
+      "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
+      "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
+      "has_result": "This generation finished with a result, which is now on the task list."
     }
   },
   "chat": {
@@ -440,8 +469,10 @@
         "readMemory": "Reading memory",
         "other": "Calling {tool}",
         "readTemplate": "Reading the template",
-        "requestSpace": "Asking to look at Spaces"
-      }
+        "requestSpace": "Asking to look at Spaces",
+        "proposeScene": "Drafting a 3D generation"
+      },
+      "proposingSceneGeneration": "Drafting a 3D generation"
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {
@@ -552,6 +583,13 @@
         "timedOut": "Timed out",
         "failed": "Couldn't read"
       }
+    },
+    "sceneProposal": {
+      "title": "3D generation",
+      "open": "Open in 3D Space",
+      "needScene": "Open a 3D Space first.",
+      "credits": "About {credits} credits",
+      "setting": "{name}: {value}"
     }
   },
   "canvas": {
@@ -871,7 +909,23 @@
         "light_color_hex": "Custom light colour",
         "light_intensity": "Intensity",
         "light_quality": "Light quality",
-        "strength": "Strength"
+        "strength": "Strength",
+        "texture": "Texture",
+        "pbr": "PBR",
+        "texture_quality": "Texture quality",
+        "texture_version": "Texture version",
+        "delight": "Remove lighting",
+        "geometry_quality": "Geometry quality",
+        "smart_low_poly": "Smart low-poly",
+        "generate_parts": "Separate parts",
+        "face_limit": "Face limit",
+        "auto_size": "Auto size",
+        "export_uv": "Export UV",
+        "model_seed": "Model seed",
+        "texture_seed": "Texture seed",
+        "texture_alignment": "Texture alignment",
+        "orientation": "Orientation",
+        "enable_image_autofix": "Image autofix"
       },
       "paramField": {
         "speaker": "Name",
@@ -914,7 +968,8 @@
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
       },
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
-      "notePrefix": "Note: "
+      "notePrefix": "Note: ",
+      "integerBlank": "Blank for auto"
     },
     "edge": {
       "delete": "Delete connection"
@@ -1776,6 +1831,19 @@
       "notice": "By continuing, you agree to our {terms} and acknowledge our {privacy}.",
       "termsLink": "Terms of Service",
       "privacyLink": "Privacy Policy"
+    },
+    "referral": {
+      "label": "Referral code",
+      "optional": "Optional",
+      "placeholder": "Leave empty if you have none",
+      "notApplied": "The referral code is no longer valid and was not used. You can add a code in the membership panel.",
+      "existingAccount": "This account already exists, so the referral code was not used. If you have not had a membership yet, you can add it in the membership panel.",
+      "carried": "A new account made with Google will use referral code {code}",
+      "carriedInvalid": "Referral code {code} is no longer valid",
+      "remove": "Don't use this code",
+      "haveCode": "Have a referral code?",
+      "invalid": "This referral code is not valid. Change it, or clear it to continue.",
+      "googleOnly": "Used when signing up with Google"
     }
   },
   "roleTag": {
@@ -2003,7 +2071,6 @@
         "code": "Inline code",
         "comment": "Comment",
         "ai": "AI",
-        "comingLabel": "{name} (not open yet)",
         "link": "Link",
         "blockType": "Block type",
         "paragraph": "Text",
@@ -2022,17 +2089,35 @@
         "textColor": "Text colour",
         "fillColor": "Background colour",
         "colorReset": "Reset to default",
-        "aiRewriteGroup": "Rewrite the selection",
-        "aiProduceGroup": "Make something from the selection",
-        "aiOtherGroup": "Other",
         "ai_refine": "Polish",
         "ai_expand": "Expand",
         "ai_shorten": "Shorten",
         "ai_translate": "Translate",
         "ai_tone": "Change tone",
         "ai_storyboard": "Draft a shot list",
-        "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
+      },
+      "ai": {
+        "customTitle": "Custom instruction",
+        "tone": {
+          "professional": "More professional",
+          "casual": "More casual",
+          "straightforward": "More straightforward",
+          "confident": "More confident",
+          "friendly": "More friendly"
+        },
+        "close": "Close",
+        "stop": "Stop",
+        "retry": "Retry",
+        "start": "Start",
+        "insert": "Insert",
+        "replace": "Replace",
+        "instructionsPlaceholder": "What should AI do with the selection? Enter to start, Shift+Enter for a new line",
+        "instruction": "Instruction: {text}",
+        "rangeGone": "The selected text has been deleted",
+        "blockGone": "The paragraph it was in has been deleted",
+        "notWritable": "You can't edit right now",
+        "selectionTooLong": "Too much text is selected. Select less and try again."
       },
       "comment": {
         "placeholder": "Write a comment…",
@@ -2063,6 +2148,11 @@
         "risksLead": "Before you refresh:",
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
+      },
+      "outline": {
+        "show": "Show outline",
+        "hide": "Hide outline",
+        "empty": "No headings yet"
       },
       "docMenu": {
         "label": "Whole-document commands",
@@ -2107,7 +2197,16 @@
         "cellMenu": "Cell options",
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
-        "textHighlight": "Highlight"
+        "textHighlight": "Highlight",
+        "cut": "Cut",
+        "pasteAbove": "Paste above",
+        "pasteBelow": "Paste below",
+        "pasteLeft": "Paste left",
+        "pasteRight": "Paste right",
+        "splitMergedFirst": "Split merged cells first",
+        "noTableToPaste": "Copy a table first",
+        "clipboardNotAllowed": "Clipboard access is not allowed",
+        "copyFailed": "Could not copy to the clipboard"
       },
       "paste": {
         "unsupportedInCell": "This format cannot be pasted here"
@@ -2189,10 +2288,6 @@
       "controls": "Controls",
       "tasks": "Tasks",
       "minimap": "Scene minimap",
-      "generationDev": "3D model generation is in development",
-      "prompt": "Describe the 3D model you want to generate",
-      "reference": "Reference image (optional)",
-      "chooseReference": "Choose reference image",
       "submit": "Generate",
       "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
       "closePanel": "Close",
@@ -2258,10 +2353,77 @@
         "place": "Place in scene",
         "retry": "Retry",
         "remove": "Remove",
-        "empty": "Models you import appear here.",
+        "empty": "Models you import or generate appear here.",
         "loadFailed": "Couldn’t load tasks.",
         "removeFailed": "Couldn’t remove the task. Try again.",
-        "placeFailed": "The model couldn’t be placed in the scene."
+        "placeFailed": "The model couldn’t be placed in the scene.",
+        "kindGeneration": "Generate",
+        "originSpace": "In Space",
+        "originAgent": "Agent",
+        "generating": "Generating",
+        "generatingFor": "Generating · {minutes} min",
+        "stillRunning": "This generation is still finishing. Try again later.",
+        "hasResult": "This generation has a result. You can place it in the scene.",
+        "checkFailed": "Couldn’t check this generation. Try again.",
+        "locate": "Locate in scene",
+        "filter": "Filter",
+        "filterRunning": "Running only",
+        "filterKind": "Type",
+        "filterAll": "All",
+        "filterStarter": "Started by",
+        "filterEveryone": "All members",
+        "filterMe": "Me",
+        "filterOrigin": "Origin",
+        "filterEmpty": "No tasks match the filters."
+      },
+      "proposalBusy": "Another generation is being submitted.",
+      "readOnlyCreate": "Viewers can’t add, import or generate models.",
+      "force": {
+        "parts_geometry_only": "Separate parts generates geometry only.",
+        "pbr_needs_texture": "PBR needs texture.",
+        "fast_uses_v35": "Fast texture uses v3.5 only."
+      },
+      "generateDialog": {
+        "descriptionBlank": "The model goes to the task list and can be placed in the scene when it’s done.",
+        "descriptionAgent": "Filled in from the Agent’s proposal. Check it, then generate.",
+        "descriptionRetry": "Filled in from the earlier task. Check it, then generate.",
+        "common": "Common settings",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Describe the 3D model you want",
+        "views": "Reference images",
+        "viewsHint": "Fill views in front, left, back, right order. A front view alone makes a single-image model; any other view makes a multi-view one.",
+        "view": {
+          "front": "Front",
+          "left": "Left",
+          "back": "Back",
+          "right": "Right"
+        },
+        "required": "Required",
+        "upload": "Upload",
+        "pickProject": "Choose from Project",
+        "removeView": "Remove",
+        "changeView": "Change {view} image",
+        "addView": "Add {view} image",
+        "uploadFailed": "Upload failed",
+        "fillEarlier": "Fill the previous view first",
+        "rule": {
+          "bounds": "Enter {min} to {max}.",
+          "integer": "Enter a whole number.",
+          "length": "At most {max} characters.",
+          "values": "Choose one of the options."
+        }
+      },
+      "picker": {
+        "title": "Choose image",
+        "description": "Choose an image from this Project, or upload one.",
+        "project": "Project",
+        "local": "Local",
+        "loadFailed": "Couldn’t load images.",
+        "empty": "This Project has no images yet.",
+        "unnamed": "Untitled image",
+        "more": "Load more",
+        "formats": "PNG, JPEG or WebP",
+        "chooseFile": "Choose file"
       }
     }
   },
@@ -2940,7 +3102,64 @@
       "enterpriseScale": "Capacity by agreement",
       "enterpriseGovernance": "SSO, audit, IP indemnity"
     },
-    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately."
+    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately.",
+    "referral": {
+      "heading": "Referral code",
+      "intro": "Add a referral code before your first membership to get {percent}% off the first period. It can't be changed afterwards.",
+      "placeholder": "Enter a referral code",
+      "add": "Add",
+      "required": "Enter a referral code.",
+      "bound": "Referral code {code}",
+      "boundDiscount": "Applied at checkout.",
+      "badge": "{percent}% off first period",
+      "added": "Added. Choose a membership to get {percent}% off the first period.",
+      "loadFailed": "Couldn't load referral information.",
+      "retry": "Retry"
+    }
+  },
+  "promoter": {
+    "heading": "Promoter program",
+    "closed": "Promoter applications are not open yet.",
+    "pitch": "Recommend breatic and earn commission on the memberships of people you refer.",
+    "pitchDetail": "Once approved you get your own referral code and link; people you refer get {percent}% off their first membership period.",
+    "apply": "Apply to become a promoter",
+    "applyAgain": "Apply again",
+    "pending": "Application under review",
+    "pendingDetail": "Submitted {date}. The result will show here.",
+    "pendingBadge": "Under review",
+    "rejected": "Your last application was not approved",
+    "rejectedNote": "Note: {note}",
+    "yourCode": "Your referral code",
+    "copyCode": "Copy code",
+    "copyLink": "Copy link",
+    "copied": "Copied",
+    "copyFailed": "Could not copy to clipboard.",
+    "shareHint": "People who sign up with this code, or add it before their first membership, get {percent}% off the first period.",
+    "disabled": "Disabled",
+    "removed": "Removed",
+    "disabledDetail": "This code is disabled, so no one can add it now. People who already added it still get their first-period discount.",
+    "removedDetail": "You are no longer in the promoter program. This code is permanently disabled; people who already added it still get their first-period discount.",
+    "dialogTitle": "Apply to become a promoter",
+    "dialogDescription": "We review every application and show the result here.",
+    "country": "Country or region",
+    "countryPlaceholder": "Choose",
+    "channels": "Where you will promote",
+    "channelsHint": "Up to 10 links or short descriptions",
+    "channelPlaceholder": "https://youtube.com/@yourchannel or a 200-person designers group",
+    "addChannel": "Add another",
+    "removeChannel": "Remove this one",
+    "plan": "How you will promote",
+    "planPlaceholder": "Who your audience is and how you will introduce breatic",
+    "agreeLead": "I have read and agree to the",
+    "termsLink": "promoter terms",
+    "agreeRequired": "Agree to the promoter terms to apply.",
+    "countryRequired": "Choose a country or region.",
+    "channelsRequired": "Add at least one channel.",
+    "planRequired": "Describe how you will promote.",
+    "termsChanged": "The promoter terms have been updated. Read them again, then agree.",
+    "cancel": "Cancel",
+    "submit": "Submit application",
+    "submitted": "Application submitted"
   },
   "credits": {
     "panelTitle": "Credits",

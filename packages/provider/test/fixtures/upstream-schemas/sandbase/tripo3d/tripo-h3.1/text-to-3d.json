@@ -1,0 +1,73 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/tripo3d/tripo-h3.1/text-to-3d",
+  "fields": {
+    "face_limit": [
+      {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 2000000
+      }
+    ],
+    "geometry_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "negative_prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "pbr": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 1024
+      }
+    ],
+    "quad": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "texture": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "tripo3d"
+}

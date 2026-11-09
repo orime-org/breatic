@@ -6,3 +6,9 @@
 # The terms live on the marketing site (https://breatic.ai/terms/), outside
 # this repository. Change this value when they are republished.
 terms_version: "2026-10-02"
+
+# Promoter program terms (inner#1868), published at
+# https://breatic.ai/promoter-terms/. This value is the version the terms
+# carry; change it whenever they are republished. Empty keeps promoter
+# applications closed.
+promoter_terms_version: "2026-11-08"

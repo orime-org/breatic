@@ -1,0 +1,76 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "distance": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "horizontal_angle": [
+      {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 359,
+        "default": 0
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "jpeg"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "size": [
+      {
+        "type": "string",
+        "minimum": 256,
+        "maximum": 1536
+      }
+    ],
+    "vertical_angle": [
+      {
+        "type": "integer",
+        "minimum": -30,
+        "maximum": 60,
+        "default": 0
+      }
+    ]
+  },
+  "required": [
+    "images"
+  ]
+}

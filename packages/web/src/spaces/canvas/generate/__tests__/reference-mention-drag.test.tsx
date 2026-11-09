@@ -19,6 +19,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { DRAG_IMAGE_CLASS } from '@web/lib/drag-image';
 
 // The `@` chips inherit the ONE app-level TooltipProvider at runtime (App.tsx);
 // supply the real Radix provider here (single-provider mandate).
@@ -1080,13 +1081,14 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
     });
 
     expect(ghost).not.toBeNull();
+    // Mounted the way every editor's drag image is (`lib/drag-image.ts`).
+    expect((ghost as unknown as HTMLElement).classList.contains(DRAG_IMAGE_CLASS)).toBe(true);
     const layers = [ghost as unknown as HTMLElement, ...(ghost as unknown as HTMLElement).querySelectorAll<HTMLElement>('*')];
     expect(layers.filter((el) => el.style.opacity !== '')).toHaveLength(0);
   });
 
-  it('a plain-text drag keeps the native ghost (no setDragImage)', () => {
-    // A chip-free editor removes any selection ambiguity: no range in this
-    // doc can contain a chip, so the ghost must never be replaced.
+  it('a plain-text drag draws the dragged words the way a chip drag does (inner#1515)', () => {
+    // A chip-free editor: no range in this doc can contain a chip.
     const editor = new CoreEditor({
       element: document.createElement('div'),
       extensions: [
@@ -1105,11 +1107,19 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
     try {
       editor.chain().insertContent('plain words only').run();
       editor.commands.setTextSelection({ from: 2, to: 8 });
-      const setDragImage = vi.fn();
+      let ghost: HTMLElement | null = null;
+      const setDragImage = vi.fn((el: HTMLElement) => {
+        ghost = el;
+      });
       const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
-      attachDataTransfer(dragstart, setDragImage);
+      attachDataTransfer(dragstart, setDragImage as unknown as () => void);
       editor.view.dom.dispatchEvent(dragstart);
-      expect(setDragImage).not.toHaveBeenCalled();
+      expect(setDragImage).toHaveBeenCalledTimes(1);
+      const image = ghost as unknown as HTMLElement;
+      expect(image.classList.contains(DRAG_IMAGE_CLASS)).toBe(true);
+      expect(image.textContent).toBe('lain w');
+      const layers = [image, ...image.querySelectorAll<HTMLElement>('*')];
+      expect(layers.filter((el) => el.style.opacity !== '')).toHaveLength(0);
     } finally {
       editor.destroy();
     }

@@ -1,0 +1,369 @@
+{
+  "model": "nano-banana-2",
+  "upstream": "sandbase",
+  "model_id": "google/nano-banana-2",
+  "runs": [
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "3:2",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "3:2",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "2:3",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "2:3",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "3:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "3:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "4:3",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "4:3",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "4:5",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "4:5",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "5:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "5:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "9:16",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "9:16",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "16:9",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "16:9",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "21:9",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "21:9",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:4",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "4:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "4:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:8",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:8",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "8:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "8:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": true,
+        "enable_web_search": false,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": true,
+        "enable_web_search": false,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": true,
+        "resolution": "1k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": true,
+        "resolution": "1K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "0.5k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "0.5K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "2k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "2K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    },
+    {
+      "params": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "4k",
+        "enable_camera": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "aspect_ratio": "1:1",
+        "enable_image_search": false,
+        "enable_web_search": false,
+        "resolution": "4K",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/nano-banana-2"
+      }
+    }
+  ],
+  "steps": []
+}
