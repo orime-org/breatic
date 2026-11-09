@@ -142,11 +142,24 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   for (const entry of rig) entry.parent = entry.bone.parent instanceof Bone ? byBone.get(entry.bone.parent) ?? null : null;
 
   // The first bone to claim a humanoid name keeps it; a second one (a hip under a pelvis) stays unmapped.
-  const human = new Map<VrmHumanBoneName, RigBone>();
+  const claims = new Map<VrmHumanBoneName, RigBone>();
   for (const entry of rig) {
     const name = humanoidBoneOf(entry.bone.name);
-    if (name !== null && !human.has(name)) human.set(name, entry);
+    if (name !== null && !claims.has(name)) claims.set(name, entry);
   }
+  // A humanoid bone that does not hang under the hips cannot follow them, as in a raw Rigify
+  // export, whose limbs hang from the armature; Unity warns of the same split hierarchy.
+  const hipsClaim = claims.get('hips');
+  /**
+   * Whether a bone hangs, at any depth, under the bone that claimed the hips.
+   * @param entry - A rig bone.
+   * @returns True when the hips are among its ancestors.
+   */
+  const underHips = (entry: RigBone): boolean => {
+    for (let up = entry.parent; up !== null; up = up.parent) if (up === hipsClaim) return true;
+    return false;
+  };
+  const human = new Map([...claims].filter(([name, entry]) => name === 'hips' || underHips(entry)));
   const humanoid = REQUIRED_HUMAN_BONES.every((name) => human.has(name));
   if (humanoid) for (const [name, entry] of human) entry.human = name;
   for (const entry of rig) {
@@ -161,11 +174,12 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
 
   // Facing: the turn about Y from VRM's left (+X) to this rig's left, read from the legs.
   const facing = new Quaternion();
+  const unfacing = new Quaternion();
   let hipHeight = 1;
   if (humanoid) {
     const left = human.get('leftUpperLeg')!.restModelPosition.clone().sub(human.get('rightUpperLeg')!.restModelPosition);
     facing.setFromAxisAngle(Y_AXIS, Math.atan2(-left.z, left.x));
-    const unfacing = facing.clone().invert();
+    unfacing.copy(facing).invert();
     for (const [name, segment] of Object.entries(SEGMENTS) as [VrmHumanBoneName, { to: VrmHumanBoneName; direction: Vector3 }][]) {
       const from = human.get(name);
       const to = human.get(segment.to);
@@ -181,7 +195,6 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
     hipHeight = human.get('hips')!.restModelPosition.y - restFloor(toModel, meshes, rig);
     if (!(hipHeight > 0)) hipHeight = 1;
   }
-  const unfacing = facing.clone().invert();
 
   const joints = humanoid
     ? rig.filter((entry) => entry.human !== null).map((entry) => ({ key: `h:${entry.human}`, bone: entry.bone }))

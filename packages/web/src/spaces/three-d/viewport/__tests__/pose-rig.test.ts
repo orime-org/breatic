@@ -58,6 +58,8 @@ interface FigureOptions {
   /** Put the bones under an `Armature` node rotated 90 degrees about X and scaled 0.01. */
   readonly armature?: boolean;
   readonly omit?: readonly string[];
+  /** Hang these joints straight from the model root, as a Rigify deform-only export does with each limb. */
+  readonly detach?: readonly string[];
   readonly extras?: readonly { readonly name: string; readonly parent: string; readonly at: Vec }[];
   /** World rest rotation per joint, in joint order; random roll that keeps the rest geometry. */
   readonly roll?: readonly Quaternion[];
@@ -311,6 +313,11 @@ function buildFigure(options: FigureOptions = {}): Figure {
     for (const joint of joints) if (joint.parent === role) joint.parent = gone.parent;
     joints = joints.filter((joint) => joint !== gone);
   }
+  for (const role of options.detach ?? []) {
+    const joint = joints.find((candidate) => candidate.role === role);
+    if (!joint) throw new Error(`no ${role}`);
+    joint.parent = null;
+  }
   if (options.arms === 'A') {
     for (const side of SIDES) {
       const pivot = joints.find((joint) => joint.role === `${side}UpperArm`)?.at.clone() ?? new Vector3();
@@ -462,6 +469,15 @@ describe('createPoseRig: what a rig is (inner#1692)', () => {
     const figure = buildFigure({ omit: ['chest', 'neck', 'leftShoulder', 'rightShoulder'] });
     const keys = rigOf(figure.root).joints.map((joint) => joint.key);
     expect([...keys].sort()).toEqual(FULL_VRM_KEYS.filter((key) => !['h:chest', 'h:neck', 'h:leftShoulder', 'h:rightShoulder'].includes(key)).sort());
+  });
+
+  it.each([
+    ['legs', ['leftUpperLeg', 'rightUpperLeg']],
+    ['one arm', ['leftShoulder']],
+  ] as const)('treats a skeleton whose %s do not hang under the hips as another rig, as a raw Rigify export', (_what, detach) => {
+    const rig = rigOf(buildFigure({ scheme: 'rigify', detach }).root);
+    expect(rig.kind).toBe('other');
+    expect(rig.joints.every((joint) => joint.key.startsWith('n:'))).toBe(true);
   });
 
   it('treats a skeleton missing a required bone as another rig keyed by node name', () => {
