@@ -364,8 +364,7 @@ export const FILL_BLANKS = "write each one from what the user said, or ask them,
 /**
  * Whether the agent's proposal sends every generation with its words filled.
  * A blank left in them is something the result is made without, whoever
- * wrote it (#1361); a template's own blanks are refused earlier, naming the
- * template. The panel applies a template with its blanks for the user to
+ * wrote it (#1361), a template's own blanks among them. The panel applies a template with its blanks for the user to
  * fill, so only the agent's entry asks this.
  * @param proposal - The proposal, templates expanded.
  * @returns The verdict.

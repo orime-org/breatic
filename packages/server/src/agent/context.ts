@@ -3,8 +3,8 @@
 
 /**
  * The base prompt: the persona, where the model sits in our product, what its
- * job there is, how to behave with tools in general, and what a reply can look
- * like on screen.
+ * job there is, how it co-creates with the user, how to behave with tools in
+ * general, and what a reply can look like on screen.
  *
  * The memory entries themselves are not assembled here -- see
  * `buildSystemPrompt` for why -- but the protocol for using them is: when the
