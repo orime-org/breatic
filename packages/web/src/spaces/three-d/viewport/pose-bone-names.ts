@@ -33,6 +33,14 @@ export const REQUIRED_HUMAN_BONES: readonly VrmHumanBoneName[] = [
 /** Prefixes a convention puts before every bone name, after cleaning. */
 const PREFIX = /^(?:mixamorig\d*|def|ccbase|bip\d+|armature)/u;
 
+/** Rigify's deform prefix: its torso is one numbered chain, read by {@link RIGIFY_TORSO}. */
+const RIGIFY = /^def/u;
+
+/** Rigify's torso, `DEF-spine` (the pelvis) to `DEF-spine.006` (the head); `.005` is the upper neck. */
+const RIGIFY_TORSO: Readonly<Record<string, Unsided>> = {
+  spine: 'hips', spine001: 'spine', spine002: 'chest', spine003: 'upperChest', spine004: 'neck', spine006: 'head',
+};
+
 /** A cleaned name without its side, to its VRM name or sided suffix. */
 const UNSIDED_NAMES: Readonly<Record<string, Unsided>> = {
   hips: 'hips', hip: 'hips', pelvis: 'hips',
@@ -81,21 +89,20 @@ function fingerNames(): Record<string, Sided> {
 const VROID = /^jbip([clr])(.+)$/u;
 
 /**
- * The side a cleaned name carries and the name without it.
+ * Every way a cleaned name can split into a side token and the rest, most likely first.
  * @param name - Lower-case letters and digits only.
- * @returns The side and the rest, or null when no side token is found.
+ * @returns The candidate splits; a name ending in `l` or `r` (`lshoulder`) also offers its leading letter.
  */
-function splitSide(name: string): { side: 'left' | 'right'; rest: string } | null {
+function sideSplits(name: string): { side: 'left' | 'right'; rest: string }[] {
+  const splits: { side: 'left' | 'right'; rest: string }[] = [];
   for (const side of ['left', 'right'] as const) {
-    if (name.startsWith(side)) return { side, rest: name.slice(side.length) };
-    if (name.endsWith(side)) return { side, rest: name.slice(0, -side.length) };
+    if (name.startsWith(side)) splits.push({ side, rest: name.slice(side.length) });
+    if (name.endsWith(side)) splits.push({ side, rest: name.slice(0, -side.length) });
   }
   // One-letter tokens: the end first, so `lowerarml` keeps its own leading `l`.
-  if (name.endsWith('l')) return { side: 'left', rest: name.slice(0, -1) };
-  if (name.endsWith('r')) return { side: 'right', rest: name.slice(0, -1) };
-  if (name.startsWith('l')) return { side: 'left', rest: name.slice(1) };
-  if (name.startsWith('r')) return { side: 'right', rest: name.slice(1) };
-  return null;
+  for (const [letter, side] of [['l', 'left'], ['r', 'right']] as const) if (name.endsWith(letter)) splits.push({ side, rest: name.slice(0, -1) });
+  for (const [letter, side] of [['l', 'left'], ['r', 'right']] as const) if (name.startsWith(letter)) splits.push({ side, rest: name.slice(1) });
+  return splits;
 }
 
 /**
@@ -104,8 +111,10 @@ function splitSide(name: string): { side: 'left' | 'right'; rest: string } | nul
  * @returns The humanoid bone, or null for a bone that is not one (a twist bone, a tail, a helper).
  */
 export function humanoidBoneOf(name: string): VrmHumanBoneName | null {
-  const cleaned = name.toLowerCase().replace(/[^a-z0-9]/gu, '').replace(PREFIX, '');
+  const lowered = name.toLowerCase().replace(/[^a-z0-9]/gu, '');
+  const cleaned = lowered.replace(PREFIX, '');
   if (cleaned === '') return null;
+  if (RIGIFY.test(lowered) && Object.hasOwn(RIGIFY_TORSO, cleaned)) return RIGIFY_TORSO[cleaned];
   const vroid = VROID.exec(cleaned);
   if (vroid) {
     const [, side, rest] = vroid;
@@ -115,8 +124,9 @@ export function humanoidBoneOf(name: string): VrmHumanBoneName | null {
   }
   const unsided = UNSIDED_NAMES[cleaned];
   if (unsided !== undefined) return unsided;
-  const split = splitSide(cleaned);
-  if (split === null) return null;
-  const suffix = SIDED_NAMES[split.rest];
-  return suffix === undefined ? null : `${split.side}${suffix}`;
+  for (const split of sideSplits(cleaned)) {
+    const suffix = SIDED_NAMES[split.rest];
+    if (suffix !== undefined) return `${split.side}${suffix}`;
+  }
+  return null;
 }

@@ -42,8 +42,14 @@ const UNREAL: readonly Case[] = [
   ['thigh_r', 'rightUpperLeg'], ['calf_r', 'rightLowerLeg'], ['foot_r', 'rightFoot'], ['ball_r', 'rightToes'],
 ];
 
-/** Rigify deform bones; GLTFLoader turns `DEF-upper_arm.L` into `DEF-upper_armL`. */
+/**
+ * Rigify deform bones; GLTFLoader turns `DEF-upper_arm.L` into `DEF-upper_armL`. The torso is one numbered
+ * chain: `DEF-spine` is the pelvis, `.001` to `.003` the spine and chest, `.004` the neck, `.006` the head.
+ */
 const RIGIFY: readonly Case[] = [
+  ['DEF-spine', 'hips'], ['DEF-spine001', 'spine'], ['DEF-spine002', 'chest'], ['DEF-spine003', 'upperChest'],
+  ['DEF-spine004', 'neck'], ['DEF-spine006', 'head'],
+  ['DEF-shoulderL', 'leftShoulder'], ['DEF-shoulderR', 'rightShoulder'], ['DEF-toeL', 'leftToes'], ['DEF-toeR', 'rightToes'],
   ['DEF-upper_armL', 'leftUpperArm'], ['DEF-forearmL', 'leftLowerArm'], ['DEF-handL', 'leftHand'],
   ['DEF-upper_armR', 'rightUpperArm'], ['DEF-forearmR', 'rightLowerArm'], ['DEF-handR', 'rightHand'],
   ['DEF-thighL', 'leftUpperLeg'], ['DEF-shinL', 'leftLowerLeg'], ['DEF-footL', 'leftFoot'],
@@ -105,6 +111,23 @@ const VROID_RIG: readonly string[] = [
   ...VROID.map(([name]) => name),
 ];
 
+/** Every deform bone of a generated Rigify human rig (Blender 4), as GLTFLoader names them. */
+const RIGIFY_RIG: readonly string[] = [
+  'DEF-spine', 'DEF-spine001', 'DEF-spine002', 'DEF-spine003', 'DEF-spine004', 'DEF-spine005', 'DEF-spine006',
+  ...['L', 'R'].flatMap((side) => [
+    `DEF-pelvis${side}`, `DEF-thigh${side}`, `DEF-thigh${side}001`, `DEF-shin${side}`, `DEF-shin${side}001`,
+    `DEF-foot${side}`, `DEF-toe${side}`, `DEF-breast${side}`, `DEF-shoulder${side}`,
+    `DEF-upper_arm${side}`, `DEF-upper_arm${side}001`, `DEF-forearm${side}`, `DEF-forearm${side}001`, `DEF-hand${side}`,
+    `DEF-thumb01${side}`, `DEF-f_index01${side}`, `DEF-f_middle02${side}`,
+  ]),
+];
+
+/** A single-letter side in front of a bone word that itself ends in `l` or `r`. */
+const LEADING_LETTER: readonly Case[] = [
+  ['L_Shoulder', 'leftShoulder'], ['R_Shoulder', 'rightShoulder'], ['L_Ball', 'leftToes'], ['R_IndexDistal', 'rightIndexDistal'],
+  ['L_ThumbMetacarpal', 'leftThumbMetacarpal'],
+];
+
 /** Neighbouring conventions with numbered fingers that a VRoid rule must leave as they are. */
 const FINGER_NEIGHBOURS: readonly Case[] = [
   ['mixamorigLeftHandRing1', 'leftRingProximal'], ['mixamorigRightHandThumb3', 'rightThumbDistal'],
@@ -118,7 +141,7 @@ const FINGER_NEIGHBOURS: readonly Case[] = [
 const NOT_HUMANOID: readonly string[] = [
   '', 'Tail_1', 'hair_01', 'Armature', 'Root', 'root', 'Body', 'Leg_FL', 'Left', 'l', 'mixamorig', 'Bip001',
   'mixamorigHeadTop_End', 'upperarm_twist_01_l', 'lowerarm_twist_01_r', 'thigh_twist_01_l',
-  'CC_Base_L_UpperarmTwist01', 'DEF-upper_armL001',
+  'CC_Base_L_UpperarmTwist01', 'DEF-upper_armL001', 'DEF-spine005', 'DEF-pelvisL', 'DEF-thighL001',
 ];
 
 describe('humanoidBoneOf (inner#1692)', () => {
@@ -177,6 +200,23 @@ describe('humanoidBoneOf (inner#1692)', () => {
     for (const required of REQUIRED_HUMAN_BONES) {
       expect(bones.filter((bone) => bone === required), required).toHaveLength(1);
     }
+  });
+
+  it('finds every required bone exactly once in a Rigify human rig', () => {
+    const bones = RIGIFY_RIG.map(humanoidBoneOf).filter((bone): bone is VrmHumanBoneName => bone !== null);
+    expect(new Set(bones).size).toBe(bones.length);
+    for (const required of REQUIRED_HUMAN_BONES) {
+      expect(bones.filter((bone) => bone === required), required).toHaveLength(1);
+    }
+  });
+
+  it('keeps a Rigify-less spine as the spine', () => {
+    expect(humanoidBoneOf('spine')).toBe('spine');
+    expect(humanoidBoneOf('Spine')).toBe('spine');
+  });
+
+  it.each(LEADING_LETTER)('maps %s, whose side letter leads, to %s', (name, bone) => {
+    expect(humanoidBoneOf(name)).toBe(bone);
   });
 
   it.each(FINGER_NEIGHBOURS)('still maps the numbered finger %s to %s', (name, bone) => {
