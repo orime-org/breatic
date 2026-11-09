@@ -35,8 +35,8 @@
     "lang": "zh-CN",
     "text": "给我的 3D Space 做一个角色模型，一个穿机甲的小女孩。",
     "space": "3d",
-    "user": "Wants a model to place in the 3D Space. Has no model file. The girl is about 8, the pilot of the mech. Answers in Simplified Chinese.",
-    "pass": "Before making anything, the agent settles which result the user wants: it asks whether they want a picture with a 3D look or a model to place in the 3D scene, or it says plainly that Breatic cannot make 3D models now and asks which nearest result (a 3D-rendered picture, a turnaround, a video) they want. No proposal assumes the girl's age before the user has answered. If the user wants a model, it offers the nearest result and says how to import a model they already have; if the user picks a picture or turnaround, or leaves the choice to the agent, it goes on with one."
+    "user": "Wants a model to place in the 3D Space. Has no model file and no pictures of her. The girl is about 8, the pilot of the mech. Answers in Simplified Chinese.",
+    "pass": "Before making anything, the agent settles what only the user knows: no proposal assumes the girl's age before the user has answered. It treats the request as a 3D model to make in the 3D Space and never says Breatic cannot make 3D models. With no pictures of her, the model's look is offered first as two or three clearly different pictures at the lowest price settings, and the model is made in the 3D Space from the picture the user picks; once a look is picked, or when the user leaves it to the agent, it proposes that model generation."
   },
   {
     "id": "ask-style",

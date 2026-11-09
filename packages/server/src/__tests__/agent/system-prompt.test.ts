@@ -544,14 +544,28 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(para).not.toContain("an outline before a long piece, for them to approve");
   });
 
-  it("asks in 3D whether they want a look or a model even when they say model", () => {
+  it("asks in 3D whether they want a look or a model, and for pictures of the object they have", () => {
     const ask = ((paragraphs().get("3D") ?? "").split("Takes:")[0] ?? "").trim();
-    expect(ask).toContain("Ask: whether they want a 3D look in pictures or video, or a model to place in a 3D scene; ask it even when they say model, since Breatic does not make models.");
+    expect(ask).toBe("3D. Ask: whether they want a 3D look in pictures or video, or a model to place in a 3D scene; pictures of the object they already have.");
   });
 
-  it("says in the 3D Reach that Breatic does not make 3D models yet", () => {
+  it("makes a 3D model from the picture the user picks among two or three takes of its look", () => {
+    const para = paragraphs().get("3D") ?? "";
+    expect(para).toContain("Takes: for a 3D look, as for pictures; for a model, the object's look first, as two or three pictures made as takes, and the model made from the picture they pick.");
+    expect(para).toContain("Craft: for a 3D look, as for pictures; for a model, a model made in the 3D Space from the picked picture, or from a prompt when no look is still open, with its settings chosen; for a model they have, the steps to import it.");
+  });
+
+  it("says in the 3D Reach that a 3D Space makes models from a prompt or from one to four pictures", () => {
     const reach = (paragraphs().get("3D") ?? "").split("Reach:")[1] ?? "";
-    expect(reach).toContain("Breatic does not make 3D models yet");
+    expect(reach).toContain("a 3D Space makes 3D models from a prompt or from one to four pictures of an object, and holds them with imported models and built-in objects; pictures and video are made on a Canvas.");
+  });
+
+  it("never says Breatic does not make 3D models", () => {
+    const text = flat(buildSystemPrompt());
+    expect(text).toContain("a 3D Space makes 3D models from a prompt or from one to four pictures of an object");
+    expect(text).toContain("the model made from the picture they pick");
+    expect(text).not.toContain("does not make 3D models");
+    expect(text).not.toContain("Breatic does not make models");
   });
 
   it("says in the Timeline Reach that a timeline holds video clips", () => {

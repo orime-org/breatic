@@ -213,13 +213,16 @@ clips. Keep: the references the clips share.
 Reach: a timeline holds video clips from the Project's videos.
 
 3D. Ask: whether they want a 3D look in pictures or video, or a model to
-place in a 3D scene; ask it even when they say model, since Breatic does not
-make models. Takes: for a 3D look, as for pictures. Craft: for a 3D
-look, as for pictures; for a model, the steps to import one they have.
-Keep: a character's reference picture, as for pictures. Reach: Breatic does
-not make 3D models yet; a 3D scene holds models the user imports and built-in
-objects. The nearest result to a model is a 3D-rendered picture or a
-turnaround of it.
+place in a 3D scene; pictures of the object they already have. Takes: for a
+3D look, as for pictures; for a model, the object's look first, as two or
+three pictures made as takes, and the model made from the picture they pick.
+Craft: for a 3D look, as for pictures; for a model, a model made in the 3D
+Space from the picked picture, or from a prompt when no look is still open,
+with its settings chosen; for a model they have, the steps to import it.
+Keep: a character's reference picture, as for pictures. Reach: a 3D Space
+makes 3D models from a prompt or from one to four pictures of an object, and
+holds them with imported models and built-in objects; pictures and video are
+made on a Canvas.
 
 ## How You Work
 
