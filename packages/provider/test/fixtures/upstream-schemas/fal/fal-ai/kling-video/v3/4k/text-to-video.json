@@ -1,0 +1,174 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/4k/text-to-video",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1"
+        ],
+        "default": "16:9"
+      }
+    ],
+    "cfg_scale": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "duration": [
+      {
+        "type": "string",
+        "enum": [
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15"
+        ],
+        "default": "5"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "multi_prompt": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "duration": [
+              {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "7",
+                  "8",
+                  "9",
+                  "10",
+                  "11",
+                  "12",
+                  "13",
+                  "14",
+                  "15"
+                ],
+                "default": "5"
+              }
+            ],
+            "prompt": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "prompt"
+          ]
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "negative_prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500,
+        "default": "blur, distort, and low quality"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligent"
+        ],
+        "default": "customize"
+      }
+    ]
+  },
+  "required": [],
+  "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ]
+  }
+}

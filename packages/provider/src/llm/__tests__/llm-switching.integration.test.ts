@@ -128,6 +128,15 @@ describe("switching before the first content", () => {
     expect(posted(fakes.openrouter)).toHaveLength(1);
   });
 
+  it("finishes a stream that closes before any content, with no words and the upstream that served it", async () => {
+    const closing = `data: ${JSON.stringify({ id: "gen-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1, cost: 0.0001 } })}\n\ndata: [DONE]\n\n`;
+    fakes.openrouter.answer(() => ({ status: 200, raw: closing, contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 0 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(await stream.text).toBe("");
+    expect((await stream.providerMetadata)?.breatic?.upstream).toBe("openrouter");
+  });
+
   it("moves a stream on before any content arrived", async () => {
     fakes.deepseek.answer(() => ({ status: 503, body: {} }));
     fakes.openrouter.answer(() => ({ status: 200, raw: sse(true), contentType: "text/event-stream" }));

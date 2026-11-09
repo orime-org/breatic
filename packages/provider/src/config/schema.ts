@@ -4,8 +4,9 @@
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
-import { hasMediaAdapter } from "@provider/media/wavespeed/adapter.js";
-import { pricingRuleSchema } from "@provider/pricing/estimate.js";
+import { mediaAdapter } from "@provider/media/adapters.js";
+import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
+import { formulaProblem } from "@provider/pricing/evaluate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -19,21 +20,46 @@ const weighted = z.strictObject({ upstream: z.string(), weight: z.number().int()
  */
 const pricingRule = z.unknown().pipe(pricingRuleSchema).transform((rule): unknown => rule);
 
+/** How long a SandBase run answered completed without outputs is waited for by default, in ms. */
+const EMPTY_OUTPUT_WAIT_MS = 600_000;
+
 const upstreamSchema = z.strictObject({
   kind: z.string().min(1),
   base_url: z.string().min(1),
   key_env: z.string().min(1),
   concurrency: z.number().int().positive().optional(),
+  /** Where the upstream answers billing questions, when that is not `base_url`; a fal upstream needs its platform API here. */
+  billing_url: z.string().min(1).optional(),
+  /** How long a run answered completed without outputs may still be storing them, in ms; SandBase reads it. */
+  empty_output_wait_ms: z.number().int().positive().default(EMPTY_OUTPUT_WAIT_MS),
+});
+
+/** How a written value is converted after its spelling: to a string, a number, or a one-item list. */
+const conversion = z.enum(["string", "number", "list"]);
+
+/** How one sub-field of an item of a list param is written. */
+const itemFieldSchema = z.strictObject({
+  field: z.string().min(1),
+  values: z.record(z.string(), choice).optional(),
+  as: conversion.optional(),
 });
 
 const paramSchema = z.strictObject({
+  /** The upstream field; dots write it under nested objects. */
   field: z.string().min(1),
   /** Our value to the upstream's spelling. */
   values: z.record(z.string(), choice).optional(),
+  as: conversion.optional(),
+  /** The only values of ours this upstream takes; any other keeps it out of the candidates. */
+  supported: z.array(choice).optional(),
+  /** For a list of items: how each item's sub-fields are written; sub-fields not named are left out. */
+  item_fields: z.record(z.string(), itemFieldSchema).optional(),
   /** Each list entry is wrapped under this key. */
   item_key: z.string().optional(),
   /** Holding this value sends nothing. */
   absent_value: choice.optional(),
+  /** Written to the field when the run's value is null, absent, "" or [], where the upstream's own default differs from leaving it out elsewhere. */
+  unset: choice.optional(),
   /** `pronunciation_pairs` writes `{ text, pronunciation }` items as `text/pronunciation` strings. */
   transform: z.literal("pronunciation_pairs").optional(),
 });
@@ -57,8 +83,6 @@ const extraStepSchema = z.strictObject({
   describe: describeSchema.optional(),
   /** What one call of this step costs. */
   pricing: pricingRule.optional(),
-  /** The step is skipped on a later run whose source it already made a clone of. */
-  reused: z.boolean().optional(),
 });
 
 // Every binding carries its price: the cheapest mode and the
@@ -75,7 +99,31 @@ const bindingSchema = z.strictObject({
   /** The param a clone made by this binding is reused by; the model's own call is then a clone. */
   reused_by: z.string().optional(),
   mentions: z.record(z.string(), z.string()).optional(),
-  voice_map: z.record(z.string(), z.string()).optional(),
+  /** Per param holding voices: our voice id to this upstream's; a voice not listed keeps the upstream out of the candidates. */
+  voice_map: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+  /** Upstream fields sent with the same value on every call. */
+  fixed: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Our params this upstream has no field for, and when it can still serve a run:
+   * `"*"` whatever the value, a list of values that send nothing (`[false]`, `[""]`, `[]`: only when the run leaves
+   * the param out or sets one of them), `{ values, equivalent }` for those values, with why the upstream's default
+   * gives them (the catalog check refuses a bare list of any other value), `{ all_values }` whatever the value, for
+   * the reason given.
+   */
+  drops: z.record(z.string(), z.union([
+    z.literal("*"),
+    z.array(choice),
+    z.strictObject({ values: z.array(choice).min(1), equivalent: z.string().min(1) }),
+    z.strictObject({ all_values: z.string().min(1) }),
+  ])).optional(),
+  /** Where a fal result puts its output files, as a dotted path. */
+  output_field: z.string().min(1).optional(),
+  /**
+   * The upstream's own input limits our catalog lets a run exceed: a JSONata condition read as a pricing formula reads
+   * the run (top-level fields under the upstream's names, the prompt under `prompt_field`, `get_duration`; values, and the
+   * sub-fields of list items, as our catalog spells them), and the limit as the upstream states it.
+   */
+  rejects: z.array(rejectSchema).optional(),
   pricing: pricingRule,
 });
 
@@ -89,8 +137,56 @@ const llmPriceSchema = z.strictObject({
   output_per_mtok: z.number().min(0),
 });
 
+/** One token price a call is charged at, in USD per million tokens. */
+export type LlmPrice = z.infer<typeof llmPriceSchema>;
+
+/** A time of day in UTC, "HH:MM". */
+const utcTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+
+/**
+ * A vendor's repeating discount on a direct price: every per-million-token price times `factor` outside its peak hours.
+ * Peak is a UTC weekday in one window's `days` (0 = Sunday, as `Date.getUTCDay`), at a UTC time in `[from, to)`, on a
+ * UTC date not in `holidays`.
+ */
+const offPeakSchema = z.strictObject({
+  factor: z.number().gt(0).max(1),
+  peak_utc: z.array(
+    z.strictObject({ days: z.array(z.number().int().min(0).max(6)).min(1), from: utcTime, to: utcTime })
+      // Only a window whose times are well formed is compared, so a malformed time is one problem.
+      .refine((w) => w.from < w.to, { message: "an off-peak window's from is not before its to", when: (payload) => payload.issues.length === 0 }),
+  ).min(1),
+  holidays: z.array(z.iso.date()).default([]),
+});
+
+/** One direct price, as a model's first price states it: in effect from the start, with any off-peak discount. */
+const directPriceSchema = llmPriceSchema.extend({ off_peak: offPeakSchema.optional() });
+
 /** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
 const GEMINI_INLINE_MAX_BYTES = 20_000_000;
+
+/**
+ * OpenRouter's quantization levels, the only values its `provider.quantizations` takes (an unknown level answers 400
+ * `expected one of "int4"|...|"unknown"`, measured 2026-11-07).
+ */
+const openRouterQuantization = z.enum(["int4", "int8", "fp4", "mxfp4", "nvfp4", "fp6", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"]);
+/**
+ * The levels of 8 bits and more, and `unknown`: 4- and 6-bit endpoints serve a coarser model. OpenRouter defines `unknown`
+ * only as "Unknown", so a model takes it only when none of its endpoints states a level (`openRouterLevels`), as a
+ * closed-weight model's own and its cloud partners' endpoints state none.
+ */
+const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
+
+/**
+ * The quantizations a cheapest OpenRouter call of one model takes: `openrouter_quantizations`, without `unknown` when one of
+ * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
+ * @param quantizations - `openrouter_quantizations`.
+ * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (it is in `openrouter_states_quantization`).
+ * @returns The levels the model's call takes.
+ */
+export function openRouterLevels<T extends string>(quantizations: T[], statesQuantization: boolean): T[] {
+  return statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations;
+}
+
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 
@@ -99,8 +195,39 @@ const llmSchema = z.strictObject({
   understand_routes: z.array(llmRouteSchema).optional(),
   vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
-  /** Direct token prices in USD per million tokens, by our model id. */
-  prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * Direct token prices in USD per million tokens, by our model id: a list whose first price has no `from`, so a listed
+   * model always has a price in effect, and each later one takes effect at its `from` (an ISO 8601 UTC time, strictly
+   * ascending), so a price the vendor has announced is in place before its day.
+   */
+  prices: z.record(
+    z.string(),
+    z.tuple([directPriceSchema], directPriceSchema.extend({ from: z.iso.datetime() }))
+      .refine(([, ...later]) => later.every((entry, i) => i === 0 || Date.parse(entry.from) > Date.parse(later[i - 1]!.from)), { message: "the from dates of its direct prices do not ascend", when: (payload) => payload.issues.length === 0 }),
+  ).optional(),
+  /**
+   * OpenRouter's token prices in USD per million tokens, by our model id, as `pnpm provider:prices` writes them: its
+   * cheapest standard-tier endpoint at the model's levels (`openRouterLevels`). A model none of whose endpoints there
+   * has a fixed price has none.
+   */
+  openrouter_prices: z.record(z.string(), llmPriceSchema).optional(),
+  /**
+   * Our models one of whose OpenRouter endpoints states a quantization level other than `unknown`, as
+   * `pnpm provider:prices` writes them, priced or not: a fact about the model's endpoints, kept apart from its price so
+   * it holds for a model that cannot be priced. Such a model's cheapest calls take `openrouter_quantizations` without
+   * `unknown` (`openRouterLevels`).
+   */
+  openrouter_states_quantization: z.array(z.string()).optional(),
+  /**
+   * When `openrouter_prices` was read, an ISO 8601 UTC time `pnpm provider:prices` writes: a direct price that took effect
+   * after it is not ranked against them.
+   */
+  openrouter_prices_at: z.iso.datetime().optional(),
+  /**
+   * The quantizations a cheapest OpenRouter call may take, deployment-wide (its `provider.quantizations`); a model in
+   * `openrouter_states_quantization` takes them without `unknown` (`openRouterLevels`).
+   */
+  openrouter_quantizations: z.array(openRouterQuantization).min(1).default([...OPENROUTER_QUANTIZATIONS]),
   /** The request size past which Gemini takes media through its Files API, in bytes. */
   gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
   /** How often an uploaded Gemini file's state is asked about, in ms. */
@@ -117,7 +244,13 @@ const routingSchema = z.strictObject({
 
 const inputSchema = z.strictObject({
   upstreams: z.record(z.string(), upstreamSchema),
-  media: z.strictObject({ models: z.record(z.string(), z.strictObject({ upstreams: z.array(bindingSchema) })) }),
+  media: z.strictObject({
+    models: z.record(z.string(), z.strictObject({
+      /** The model vendor's own input limits, in our param names, each with the vendor page that states it; no upstream takes a run past them. */
+      rejects: z.array(vendorRejectSchema).optional(),
+      upstreams: z.array(bindingSchema),
+    })),
+  }),
   /** `config/provider/llm.yaml`. */
   llm: llmSchema.optional(),
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
@@ -139,14 +272,27 @@ export type LlmRoute = z.infer<typeof llmRouteSchema>;
 export interface ProviderConfig {
   upstreams: Record<string, UpstreamDecl>;
   models: Record<string, MediaBinding[]>;
-  /** The LLM routing file, every field filled. */
-  llm: Required<z.infer<typeof llmSchema>>;
+  /** The model vendor's input limits, by model; a model without any is absent. */
+  rejects: Record<string, Reject[]>;
+  /** The LLM routing file, every field filled but `openrouter_prices_at`, which a file that never synced lacks. */
+  llm: Required<Omit<z.infer<typeof llmSchema>, "openrouter_prices_at">> & Pick<z.infer<typeof llmSchema>, "openrouter_prices_at">;
 }
 
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
 export interface CatalogShape {
   /** Each param's offered values, and the pool param a slot joins, when it joins one. */
-  models: { name: string; params: Record<string, { values?: (string | number | boolean)[]; joins?: string }> }[];
+  models: {
+    name: string;
+    params: Record<string, {
+      values?: (string | number | boolean)[];
+      joins?: string;
+      /** `items` for a list of items, whose sub-fields are `fields`. */
+      type?: string;
+      fields?: Record<string, unknown>;
+      /** `voices` for a param whose values are the catalog's voices. */
+      remote_source?: string;
+    }>;
+  }[];
 }
 
 /** Every problem found while loading the provider configuration, one line each. */
@@ -225,6 +371,47 @@ function issueLine(input: ProviderConfigInput, path: readonly PropertyKey[], mes
 }
 
 /**
+ * Whether one upstream field path writes into another: the same path, or one nested under the other.
+ * @param a - A dotted path.
+ * @param b - Another.
+ * @returns True when they overlap.
+ */
+function overlaps(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b}.`) || b.startsWith(`${a}.`);
+}
+
+/**
+ * The problems with what one binding writes: a fixed field another entry also writes, a pricing formula or a
+ * `rejects` condition reading a dotted field, and a condition that is not JSONata.
+ * @param model - The model.
+ * @param binding - Its binding.
+ * @returns The problem lines.
+ */
+function bindingFieldProblems(model: string, binding: MediaBinding): string[] {
+  const problems: string[] = [];
+  const written = [...Object.values(binding.params ?? {}).map((p) => p.field), ...(binding.prompt_field === undefined ? [] : [binding.prompt_field])];
+  for (const fixed of Object.keys(binding.fixed ?? {})) {
+    for (const field of written) {
+      if (overlaps(fixed, field)) problems.push(`${model}: the binding to "${binding.upstream}" fixes "${fixed}", which "${field}" also writes`);
+    }
+  }
+  const formulas = [binding.pricing, ...(binding.extra_steps ?? []).map((s) => s.pricing)].flatMap((rule) => {
+    const read = pricingRuleSchema.safeParse(rule);
+    return read.success ? [read.data.formula] : [];
+  });
+  for (const field of written.filter((f) => f.includes("."))) {
+    if (formulas.some((f) => f.includes(field))) problems.push(`${model}: the binding to "${binding.upstream}" prices on "${field}", a dotted field pricing does not read`);
+  }
+  for (const { when } of binding.rejects ?? []) {
+    const problem = formulaProblem(when);
+    if (problem !== undefined) problems.push(`${model}: the binding to "${binding.upstream}" rejects when "${when}", which is not JSONata: ${problem}`);
+    const dotted = written.find((f) => f.includes(".") && when.includes(f));
+    if (dotted !== undefined) problems.push(`${model}: the binding to "${binding.upstream}" rejects when "${when}", which reads "${dotted}", a dotted field conditions do not read`);
+  }
+  return problems;
+}
+
+/**
  * Validate the configuration and apply the deployment's weight overrides.
  * @param input - The raw files.
  * @returns The validated configuration.
@@ -235,14 +422,40 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   if (!parsed.success) throw new ProviderConfigError(parsed.error.issues.map((issue) => issueLine(input, issue.path, issue.message)));
   const raw = parsed.data;
   const problems: string[] = [];
+  for (const [name, decl] of Object.entries(raw.upstreams)) {
+    if (decl.kind === "fal" && decl.billing_url === undefined) problems.push(`upstream "${name}": a fal upstream needs billing_url, the platform API its costs are read from`);
+  }
   const models: Record<string, MediaBinding[]> = {};
-  for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
+  const rejects: Record<string, Reject[]> = {};
+  for (const [model, { rejects: vendor, upstreams }] of Object.entries(raw.media.models)) {
+    for (const { when } of vendor ?? []) {
+      const problem = formulaProblem(when);
+      if (problem !== undefined) problems.push(`${model}: the vendor's limit "${when}" is not JSONata: ${problem}`);
+    }
+    if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ source: _source, ...limit }) => limit);
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
-    for (const { upstream } of bindings) {
+    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
+    for (const binding of bindings) {
+      const { upstream } = binding;
       // An undeclared upstream is already reported by checkList.
       const kind = raw.upstreams[upstream]?.kind;
-      if (kind !== undefined && !hasMediaAdapter(kind)) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+      const adapter = kind === undefined ? undefined : mediaAdapter(kind);
+      if (kind !== undefined && adapter === undefined) problems.push(`${model}: upstream "${upstream}" is of kind "${kind}", which no media adapter speaks to`);
+      if (adapter !== undefined) {
+        for (const step of binding.extra_steps ?? []) {
+          if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
+          if (step.kind === "speak" && (binding.reused_by === undefined || step.at !== "after")) problems.push(`${model}: the binding to "${upstream}" has a speak step that does not follow its own voice call (it needs reused_by and at: after)`);
+        }
+      }
+      if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
+      if (kind !== undefined && kind !== "fal" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal binding reads`);
+      problems.push(...bindingFieldProblems(model, binding));
+      if (kind !== "wavespeed") {
+        for (const [param, drop] of Object.entries(binding.drops ?? {})) {
+          if (drop === "*" && sentByWaveSpeed.has(param)) problems.push(`${model}: the binding to "${upstream}" drops "${param}" whatever its value, which the WaveSpeed binding sends`);
+        }
+      }
     }
     models[model] = [...bindings].sort((a, b) => a.weight - b.weight);
   }
@@ -267,6 +480,10 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     vendor_ids: raw.llm?.vendor_ids ?? {},
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
+    openrouter_prices: raw.llm?.openrouter_prices ?? {},
+    openrouter_states_quantization: raw.llm?.openrouter_states_quantization ?? [],
+    openrouter_prices_at: raw.llm?.openrouter_prices_at,
+    openrouter_quantizations: raw.llm?.openrouter_quantizations ?? [...OPENROUTER_QUANTIZATIONS],
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
     gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
   };
@@ -295,7 +512,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
   checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
   if (problems.length > 0) throw new ProviderConfigError(problems);
-  return { upstreams: raw.upstreams, models, llm };
+  return { upstreams: raw.upstreams, models, rejects, llm };
 }
 
 /**
@@ -337,6 +554,59 @@ export function candidateOf(config: ProviderConfig, upstream: string, weight: nu
 }
 
 /**
+ * The values a drop serves a run at.
+ * @param drop - One entry of a binding's `drops`, or none.
+ * @returns Its listed values; undefined for a drop of every value (`"*"`, `{ all_values }`) and for no drop.
+ */
+export function droppedValues(drop: NonNullable<MediaBinding["drops"]>[string] | undefined): readonly (string | number | boolean)[] | undefined {
+  if (Array.isArray(drop)) return drop;
+  return typeof drop === "object" && "values" in drop ? drop.values : undefined;
+}
+
+/**
+ * The problems with how one binding covers a model's params: each param bound or dropped exactly once, offered values only,
+ * item sub-fields the catalog item has, and a voice map wherever a reseller takes our voices.
+ * @param model - The model.
+ * @param binding - One of its bindings.
+ * @param params - The model's catalog params.
+ * @param kind - The kind of the binding's upstream.
+ * @returns The problem lines.
+ */
+function coverageProblems(model: string, binding: MediaBinding, params: CatalogShape["models"][number]["params"], kind: string | undefined): string[] {
+  const problems: string[] = [];
+  const at = `${model}: "${binding.upstream}"`;
+  for (const param of Object.keys(binding.drops ?? {})) {
+    if (params[param] === undefined) problems.push(`${at} drops param "${param}", which the model does not have`);
+  }
+  for (const [param, declared] of Object.entries(params)) {
+    const bound = binding.params?.[param];
+    const dropped = binding.drops?.[param];
+    if (bound === undefined && dropped === undefined) problems.push(`${at} neither binds nor drops param "${param}"`);
+    if (bound !== undefined && dropped !== undefined) problems.push(`${at} both binds and drops param "${param}"`);
+    const offered = declared.values === undefined ? undefined : new Set(declared.values.map(String));
+    for (const value of [...(bound?.supported ?? []), ...(droppedValues(dropped) ?? [])]) {
+      // "" is a value that sends nothing, not one the param offers.
+      if (offered !== undefined && value !== "" && !offered.has(String(value))) problems.push(`${at} lists value "${String(value)}" of "${param}", which the param does not offer`);
+    }
+    if (Array.isArray(dropped) && dropped.some((v) => v !== false && v !== "")) {
+      problems.push(`${at} drops "${param}" for ${JSON.stringify(dropped)} without saying why its default gives those values; write { values, equivalent }`);
+    }
+    if (bound?.item_fields !== undefined) {
+      if (declared.type !== "items") problems.push(`${at} gives item_fields to "${param}", which is not a list of items`);
+      else {
+        for (const sub of Object.keys(bound.item_fields)) {
+          if (declared.fields?.[sub] === undefined) problems.push(`${at} maps sub-field "${sub}" of "${param}", which the catalog item does not have`);
+        }
+      }
+    }
+    if (declared.remote_source === "voices" && bound !== undefined && kind !== "wavespeed" && binding.voice_map?.[param] === undefined) {
+      problems.push(`${at} takes voices in "${param}" without a voice_map`);
+    }
+  }
+  return problems;
+}
+
+/**
  * Check every binding against our catalog.
  * @param config - The validated configuration.
  * @param catalog - Our models and their params.
@@ -352,6 +622,7 @@ export function assertBindsCatalog(config: ProviderConfig, catalog: CatalogShape
     }
     const pools = new Set(Object.values(params).flatMap((p) => (p.joins === undefined ? [] : [p.joins])));
     for (const binding of bindings) {
+      problems.push(...coverageProblems(name, binding, params, config.upstreams[binding.upstream]?.kind));
       // A joined slot is named in the prompt by its pool's mention, so every binding writes one.
       for (const pool of pools) {
         if (binding.mentions?.[pool] === undefined) problems.push(`${name}: "${binding.upstream}" has no mentions template for "${pool}", which other params join`);

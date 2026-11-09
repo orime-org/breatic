@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/alibaba/happy-horse/1.1/reference-to-video",
+  "price_formula": "(params.resolution ?? \"720p\") == \"1080p\" ? (params.duration ?? 5) * 0.18 : (params.resolution ?? \"720p\") == \"480p\" ? (params.duration ?? 5) * 0.07 : (params.duration ?? 5) * 0.14"
+}

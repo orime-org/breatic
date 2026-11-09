@@ -4,38 +4,56 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import type { MediaBinding } from "../../../config/schema.js";
-import { buildBody } from "../body.js";
+import { catalog, shipped } from "../../../config/__tests__/shipped.js";
+import { buildBody } from "../../body.js";
+import { DEPARTURES, OFF_WAVESPEED } from "./departures.js";
 
 interface BodyFixture {
-  cases: { model: string; kind: "catalog" | "three_d"; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
+  cases: { model: string; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
 }
-
-const ROOT = resolve(__dirname, "../../../../../..");
 
 /** What today's worker sends for each case (scripts/provider-fixtures.ts). */
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../../../test/fixtures/upstream-body.json"), "utf8")) as BodyFixture;
 
 /** Every model's WaveSpeed binding, from the binding files the configuration migration writes. */
-const bindings = new Map<string, MediaBinding>();
-for (const modality of ["image", "video", "audio", "tts", "three_d"]) {
-  const file = parse(readFileSync(resolve(ROOT, `config/provider/media/${modality}.yaml`), "utf8")) as {
-    models: Record<string, { upstreams: MediaBinding[] }>;
-  };
-  for (const [model, { upstreams }] of Object.entries(file.models)) {
-    const wavespeed = upstreams.find((b) => b.upstream === "wavespeed");
-    if (wavespeed !== undefined) bindings.set(model, wavespeed);
-  }
+const bindings = new Map(Object.entries(shipped().media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream === "wavespeed").map((b) => [model, b] as const)));
+
+/** Params the application writes into the prompt (`into_prompt`); a run never sends them as fields. */
+const intoPrompt = new Map(catalog().models.flatMap((model) => {
+  const fields = Object.entries(model.params as Record<string, { into_prompt?: string; upstream?: string }>).filter(([, p]) => p.into_prompt !== undefined).map(([name, p]) => p.upstream ?? name);
+  return fields.length === 0 ? [] : [[model.name, new Set(fields)] as const];
+}));
+
+/**
+ * Today's body as the binding now writes it: the departures applied.
+ * @param model - The model.
+ * @param body - Today's body.
+ * @returns The body the binding is expected to build.
+ */
+function expectedBody(model: string, body: Record<string, unknown>): Record<string, unknown> {
+  const departure = DEPARTURES[model] ?? {};
+  const omitted = new Set([...(departure.omit ?? []), ...(intoPrompt.get(model) ?? [])]);
+  return Object.fromEntries(
+    Object.entries(body).filter(([field]) => !omitted.has(field)).map(([field, value]) => [
+      departure.rename?.[field] ?? field,
+      field === "prompt" && typeof value === "string" && departure.prompt !== undefined ? departure.prompt(value) : value,
+    ]),
+  );
 }
 
-describe("buildBody — equal to today's WaveSpeed body on every case", () => {
-  it("has a WaveSpeed binding for every model in the fixture", () => {
-    expect([...new Set(fixture.cases.map((c) => c.model))].filter((m) => !bindings.has(m))).toEqual([]);
+const liveCases = fixture.cases.filter((c) => !OFF_WAVESPEED.has(c.model));
+
+describe("buildBody — today's WaveSpeed body on every case, departures applied", () => {
+  it("has a WaveSpeed binding for every model WaveSpeed still serves", () => {
+    expect([...new Set(liveCases.map((c) => c.model))].filter((m) => !bindings.has(m))).toEqual([]);
   });
 
-  it.each(fixture.cases.map((c, i) => [`${i} ${c.model}`, c] as const))("%s", (_label, c) => {
-    expect(buildBody(bindings.get(c.model)!, { params: c.params, prompt: c.prompt })).toEqual(c.body);
+  it("binds no model WaveSpeed no longer serves", () => {
+    expect([...OFF_WAVESPEED].filter((m) => bindings.has(m))).toEqual([]);
+  });
+
+  it.each(liveCases.map((c, i) => [`${i} ${c.model}`, c] as const))("%s", (_label, c) => {
+    expect(buildBody(bindings.get(c.model)!, { params: c.params, prompt: c.prompt })).toEqual(expectedBody(c.model, c.body));
   });
 });
 
@@ -50,10 +68,10 @@ function carried(value: unknown, absent: unknown): boolean {
 }
 
 describe("the body fixture samples every input the bindings read", () => {
-  it("carries every bound param with a value in some case of its model, except those an extra step serves", () => {
+  it("carries every bound param with a value in some case of its model, except those an extra step serves or the comparison omits", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
-      const served = new Set((binding.extra_steps ?? []).map((step) => step.for_param));
+      const served = new Set([...(binding.extra_steps ?? []).map((step) => step.for_param), ...(DEPARTURES[model]?.omit ?? [])]);
       const cases = fixture.cases.filter((c) => c.model === model);
       for (const [name, spec] of Object.entries(binding.params ?? {})) {
         if (served.has(name)) continue;
@@ -84,6 +102,8 @@ const DELISTED_WAVESPEED_IDS: ReadonlySet<string> = new Set([
   "reve/2.1/text-to-image",
   "topaz/image/enhance",
   "wavespeed-ai/rife/video-interpolation",
+  "veed/clean-audio",
+  "recraft-ai/recraft-v4-style/text-to-image",
 ]);
 
 describe("WaveSpeed bindings stay live", () => {

@@ -6,9 +6,9 @@ import fc from "fast-check";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
 import { planRoute, type Candidate } from "../route.js";
 
-const official: Candidate = { upstream: "kling", weight: 0, configured: true, envVar: "KLING_ACCESS_KEY", estimateUsd: 0.5 };
-const wavespeed: Candidate = { upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY", estimateUsd: 0.4 };
-const fal: Candidate = { upstream: "fal", weight: 2, configured: true, envVar: "FAL_KEY", estimateUsd: 0.45 };
+const official: Candidate = { upstream: "kling", weight: 0, configured: true, envVar: "KLING_ACCESS_KEY", estimate: { usd: 0.5, atLeast: false } };
+const wavespeed: Candidate = { upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY", estimate: { usd: 0.4, atLeast: false } };
+const fal: Candidate = { upstream: "fal", weight: 2, configured: true, envVar: "FAL_KEY", estimate: { usd: 0.45, atLeast: false } };
 
 describe("planRoute — default", () => {
   it("orders configured upstreams by weight, lowest first", () => {
@@ -79,7 +79,7 @@ describe("planRoute — explicit upstream", () => {
 
 describe("planRoute — cheapest", () => {
   it("puts an upstream with no estimate after every priced one, whatever its weight", () => {
-    const plan = planRoute("m", { mode: "cheapest" }, [{ ...official, estimateUsd: undefined }, fal]);
+    const plan = planRoute("m", { mode: "cheapest" }, [{ ...official, estimate: undefined }, fal]);
     expect(plan.order.map((c) => c.upstream)).toEqual(["fal", "kling"]);
   });
 
@@ -89,7 +89,7 @@ describe("planRoute — cheapest", () => {
   });
 
   it("breaks an estimate tie by weight", () => {
-    const plan = planRoute("m", { mode: "cheapest" }, [{ ...fal, estimateUsd: 0.4 }, wavespeed]);
+    const plan = planRoute("m", { mode: "cheapest" }, [{ ...fal, estimate: { usd: 0.4, atLeast: false } }, wavespeed]);
     expect(plan.order.map((c) => c.upstream)).toEqual(["wavespeed", "fal"]);
   });
 
@@ -98,11 +98,11 @@ describe("planRoute — cheapest", () => {
       const configured = candidates.filter((c) => c.configured);
       fc.pre(configured.length > 0);
       const plan = planRoute("m", { mode: "cheapest" }, candidates);
-      const cheapest = Math.min(...configured.map((c) => c.estimateUsd!));
-      expect(plan.order[0]?.estimateUsd).toBe(cheapest);
+      const cheapest = Math.min(...configured.map((c) => c.estimate!.usd));
+      expect(plan.order[0]?.estimate?.usd).toBe(cheapest);
       for (let i = 1; i < plan.order.length; i++) {
         const [a, b] = [plan.order[i - 1]!, plan.order[i]!];
-        expect(a.estimateUsd! < b.estimateUsd! || (a.estimateUsd === b.estimateUsd && a.weight < b.weight)).toBe(true);
+        expect(a.estimate!.usd < b.estimate!.usd || (a.estimate!.usd === b.estimate!.usd && a.weight < b.weight)).toBe(true);
       }
     }));
   });
@@ -119,7 +119,7 @@ function candidatesArb(): fc.Arbitrary<Candidate[]> {
       weight: fc.constant(weight),
       configured: fc.boolean(),
       envVar: fc.constant(`KEY_${i}`),
-      estimateUsd: fc.integer({ min: 0, max: 50 }).map((cents) => cents / 100),
+      estimate: fc.integer({ min: 0, max: 50 }).map((cents) => ({ usd: cents / 100, atLeast: false })),
     }))));
 }
 

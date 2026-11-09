@@ -1,0 +1,121 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mirelo-ai/sfx1.6/text-to-audio",
+  "fields": {
+    "ambience": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "double_output": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "duration": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 60,
+        "default": 10
+      }
+    ],
+    "num_samples": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 2
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer",
+        "minimum": -1,
+        "maximum": 18446744073709552000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "text_prompt": [
+      {
+        "type": "string",
+        "minLength": 4
+      }
+    ],
+    "upload_audio_format": [
+      {
+        "type": "string",
+        "enum": [
+          "wav",
+          "mp3",
+          "aac",
+          "flac"
+        ],
+        "default": "wav"
+      }
+    ]
+  },
+  "required": [
+    "text_prompt"
+  ],
+  "outputs": {
+    "audio": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "model": [
+      {
+        "type": "string",
+        "pattern": "^sfx-[0-9]+\\.[0-9]+$"
+      }
+    ]
+  }
+}

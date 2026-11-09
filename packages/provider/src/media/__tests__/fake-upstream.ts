@@ -3,6 +3,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { MediaAnswer, MediaRunner, MediaTicket } from "../runner.js";
 
 /** One request a fake upstream received. */
 export interface Seen {
@@ -23,10 +24,10 @@ export interface Seen {
  * raw text, left open when `hold` is set or its connection cut after it when `cut` is set;
  * a reset after the request arrived; or no answer.
  */
-export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; hold?: boolean; cut?: boolean } | "reset" | "hang";
+export type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | { status: number; raw: string; contentType: string; headers?: Record<string, string>; hold?: boolean; cut?: boolean } | "reset" | "hang";
 
-/** Answers a request by its method and path; the default answers 404. */
-export type Route = (req: { method: string; path: string; body: unknown }) => Reply | undefined;
+/** Answers a request by its method, path and query string; the default answers 404. */
+export type Route = (req: { method: string; path: string; query: string; body: unknown }) => Reply | undefined;
 
 /** A loopback HTTP server standing in for an upstream, recording what it received. */
 export interface FakeUpstream {
@@ -69,7 +70,7 @@ function write(req: IncomingMessage, res: ServerResponse, reply: Reply): void {
   }
   if (reply === "hang") return;
   if ("raw" in reply) {
-    res.writeHead(reply.status, { "content-type": reply.contentType });
+    res.writeHead(reply.status, { "content-type": reply.contentType, ...reply.headers });
     if (reply.cut === true) res.write(reply.raw, () => setTimeout(() => req.socket.destroy(), 20));
     else if (reply.hold === true) res.write(reply.raw);
     else res.end(reply.raw);
@@ -96,7 +97,7 @@ export async function fakeUpstream(route: Route = () => undefined): Promise<Fake
       const [path = "/", query = ""] = (req.url ?? "/").split("?");
       const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : (v ?? "")]));
       seen.push({ method, path, query, headers, body, authorization: req.headers.authorization, at });
-      write(req, res, current({ method, path, body }) ?? { status: 404, body: { message: "no route" } });
+      write(req, res, current({ method, path, query, body }) ?? { status: 404, body: { message: "no route" } });
     });
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()));
@@ -156,4 +157,37 @@ export function billedIds(seen: readonly Seen[]): string[] {
  */
 export function submits(seen: readonly Seen[]): Seen[] {
   return seen.filter((s) => s.method === "POST" && s.path !== "/billings/search");
+}
+
+/**
+ * Drive a run step by step, its ticket through a JSON round trip between calls as the application stores it: a `send`
+ * answer is sent and a `running` one polled, until the run ends or, with `stopAfter`, a step of that kind is running.
+ * @param runner - The runner.
+ * @param first - The answer the run starts from.
+ * @param options - How to drive it.
+ * @param options.bounds - The bounds of each call.
+ * @param options.stopAfter - The kind of step whose running answer ends the drive.
+ * @param options.beforeSend - Called with each step's kind before it is sent.
+ * @returns The last answer and the kinds of the steps sent, in order.
+ * @throws {Error} When the run takes more than 50 calls.
+ */
+export async function driven(
+  runner: MediaRunner,
+  first: MediaAnswer,
+  options: { bounds: () => Parameters<MediaRunner["send"]>[1]; stopAfter?: string; beforeSend?: (kind: string) => void },
+): Promise<{ answer: MediaAnswer; kinds: string[] }> {
+  const kinds: string[] = [];
+  let answer = first;
+  for (let turn = 0; turn < 50; turn++) {
+    if (answer.state === "send") {
+      options.beforeSend?.(answer.step.kind);
+      kinds.push(answer.step.kind);
+      answer = await runner.send(JSON.parse(JSON.stringify(answer.ticket)) as MediaTicket, options.bounds());
+    } else if (answer.state === "running" && kinds.at(-1) !== options.stopAfter) {
+      answer = await runner.poll(JSON.parse(JSON.stringify(answer.ticket)) as MediaTicket, options.bounds());
+    } else {
+      return { answer, kinds };
+    }
+  }
+  throw new Error("The run did not end within 50 calls");
 }
