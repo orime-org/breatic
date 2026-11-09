@@ -1070,7 +1070,7 @@ async function pageWithHeldFrames(
 ): Promise<{ p: Page; hold: (on: boolean) => void }> {
   const p = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   let held: (() => void)[] | null = null;
-  await p.routeWebSocket('**/ws', (route) => {
+  await p.routeWebSocket((url) => url.pathname === '/ws', (route) => {
     const server = route.connectToServer();
     route.onMessage((data) => {
       if (held === null) server.send(data);
