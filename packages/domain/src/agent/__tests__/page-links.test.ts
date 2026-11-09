@@ -14,7 +14,7 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { READ_PAGE_MAX_URL_CHARS, pageLinkKey } from "@breatic/shared";
 
-import { pageLinksIn } from "@domain/agent/page-links.js";
+import { pageLinkSpansIn, pageLinksIn } from "@domain/agent/page-links.js";
 
 describe("pageLinksIn: which links a piece of text holds", () => {
   it("finds http and https links in the order they appear", () => {
@@ -526,6 +526,135 @@ describe("pageLinksIn properties", () => {
         const link = spellings[pick % spellings.length] as string;
         const text = JSON.stringify(`${before} ${link}\n${after}`);
         expect(pageLinksIn(text), text).toEqual(expectedFor(link));
+      }),
+      { numRuns: 300 },
+    );
+  });
+});
+
+// Plan §16 rows 1 and 2: where each link sits in the text it was read from,
+// so a slice of page text can be cut outside every link. `start` and `end`
+// are positions in the text as written: a Markdown escape's backslash is part
+// of the link there, and what `trimEnd` drops is not.
+describe("pageLinkSpansIn: where each link sits in the text", () => {
+  it("gives a plain link's position in the text", () => {
+    const text = "see https://a.test/x now";
+
+    expect(pageLinkSpansIn(text)).toEqual([{ link: "https://a.test/x", start: 4, end: 20 }]);
+    expect(text.slice(4, 20)).toBe("https://a.test/x");
+  });
+
+  it("gives a host written without a scheme its position", () => {
+    expect(pageLinkSpansIn("see example.com/x ok")).toEqual([{ link: "example.com/x", start: 4, end: 17 }]);
+  });
+
+  it("ends a Markdown-escaped link after the escaped character, backslash included", () => {
+    const written = "https://a.test/a\\_b";
+    const text = `go ${written} now`;
+
+    const [span] = pageLinkSpansIn(text);
+
+    expect(span).toEqual({ link: "https://a.test/a_b", start: 3, end: 3 + written.length });
+    expect(text.slice(span!.start, span!.end)).toBe(written);
+  });
+
+  it("ends an escape whose backslash JSON doubled after the escaped character", () => {
+    const written = "https://a.test/a\\\\_b";
+    const text = `go ${written} now`;
+
+    expect(pageLinkSpansIn(text)).toEqual([{ link: "https://a.test/a_b", start: 3, end: 3 + written.length }]);
+  });
+
+  it("leaves the punctuation trimEnd drops outside the link", () => {
+    expect(pageLinkSpansIn("see https://a.test/x. Then")).toEqual([{ link: "https://a.test/x", start: 4, end: 20 }]);
+    expect(pageLinkSpansIn("(https://a.test/x)")).toEqual([{ link: "https://a.test/x", start: 1, end: 17 }]);
+  });
+
+  it("ends a link before an escaped character trimEnd drops, and before its backslash", () => {
+    const text = "go https://a.test/a\\_ now";
+
+    expect(pageLinkSpansIn(text)).toEqual([{ link: "https://a.test/a", start: 3, end: 3 + "https://a.test/a".length }]);
+  });
+
+  it("ends the spelling cut at a non-ASCII character before that character", () => {
+    const text = "\u770bhttps://a.test/a\u4e2d\u6587 then";
+
+    expect(pageLinkSpansIn(text)).toEqual([
+      { link: "https://a.test/a\u4e2d\u6587", start: 1, end: 1 + "https://a.test/a".length + 2 },
+      { link: "https://a.test/a", start: 1, end: 1 + "https://a.test/a".length },
+    ]);
+  });
+
+  it("gives each of two writings of one link its own position", () => {
+    const text = '{"url":"https://a.test/p/abc","self":"https://a.test/p/abc"}';
+    const second = text.lastIndexOf("https");
+
+    expect(pageLinkSpansIn(text)).toEqual([
+      { link: "https://a.test/p/abc", start: text.indexOf("https"), end: text.indexOf("https") + 20 },
+      { link: "https://a.test/p/abc", start: second, end: second + 20 },
+    ]);
+  });
+
+  it.each([
+  "",
+  "'example.com/a'",
+  "'https://example.com/a'",
+  "(https://en.wikipedia.org/wiki/Foo_(bar))",
+  "(https://example.com/a).",
+  "(see https://example.com/a)中文",
+  "Is it https://example.com/a?!...",
+  "See [fish](https://en.wikipedia.org/wiki/Fish_\\(food\\)).",
+  "[one](https://a.org/1) and [two](https://b.org/wiki/X_(y))",
+  "\u2018example.com/a\u2019",
+  "first example.com then https://a.org/x then docs.python.org/3/",
+  "he said \u201Chttps://example.com/a\u201D twice",
+  "https://example.com/a\nnext",
+  "https://example.com/a\tnext",
+  "https://example.com/a　next",
+  "https://x.org/a\\(b\\) end",
+  "https://x.org/a\\(b\\)c end",
+  "https://x.org/a\\[b\\]c end",
+  "https://x.org/snake\\_case end",
+  "look at github.com/a/b please",
+  "no links in this sentence",
+  "open <https://x.example/a> now",
+  "open example.com#pricing now",
+  "open example.com:8080/docs now",
+  "open example.com?id=42 now",
+  "open https://github.com/a/b now",
+  "see https://en.wikipedia.org/wiki/Foo_(bar) for it",
+  "see https://example.com/a and then http://b.org/x for more",
+  "see https://example.com/a.中文",
+  "see https://example.com/a/b?q=1 now",
+  "see https://example.com/it's/page now",
+  "see:example.com/pricing",
+  "the [docs](https://example.com/docs) say so",
+  "the docs (see https://example.com/a) say so",
+  "the site example.com has it",
+  "the site example.com: it has it",
+  "version 1.2 of file.c is 3.14 times a.b2 bigger",
+  "官网:example.com/pricing",
+  "看 example.com/news今天的",
+  "看https://example.com/a中文页面 then",
+  '<a href="https://x.example/a">A</a>',
+  'He wrote "https://x.example/a" here',
+  '{"url":"https://x.example/a","n":1}',
+  ])("reads the same links as pageLinksIn from %j", (text) => {
+    expect(pageLinkSpansIn(text).map((span) => span.link)).toEqual(pageLinksIn(text));
+  });
+
+  it("reads the same links as pageLinksIn, each span inside the text and in order, for any text", () => {
+    fc.assert(
+      fc.property(linkPartsArb, fc.nat(), proseArb, enderArb, proseArb, (parts, pick, before, ender, after) => {
+        const spellings = spellingsOf(parts);
+        const text = `${before} ${spellings[pick % spellings.length] as string}${ender}${after}`;
+
+        const spans = pageLinkSpansIn(text);
+
+        expect(spans.map((span) => span.link)).toEqual(pageLinksIn(text));
+        for (const span of spans) {
+          expect(0 <= span.start && span.start < span.end && span.end <= text.length, JSON.stringify(span)).toBe(true);
+        }
       }),
       { numRuns: 300 },
     );

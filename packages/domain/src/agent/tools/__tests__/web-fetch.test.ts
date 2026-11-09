@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Tool } from "ai";
 import type { z } from "zod";
-import { FAILURE_LINES, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
+import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
 import type { ReadPageResult, ReadPagesAnswer, ReadPagesRequest, ToolFailure } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 
@@ -63,6 +63,7 @@ import {
   type ReadPages,
 } from "@domain/agent/tools/web-fetch.js";
 import { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
+import { pageLinkSpansIn } from "@domain/agent/page-links.js";
 import { usageSpy, type UsageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 const A = "https://example.com/article";
@@ -502,6 +503,147 @@ describe("a page the reader cut at its byte cap (plan §9 S)", () => {
     const next = await fetchWith(tools, { pages: [{ url: A, start: 100 }] }, readPages);
 
     expect(next.pages[0]).toMatchObject({ start: 100, truncated: true });
+  });
+});
+
+/**
+ * Read one page whole through `web_fetch`, a call at a time, following
+ * next_start, with every call's share set to `share`.
+ * @param text - The page's text.
+ * @param share - web_fetch_max_chars for the run, which is one page's share.
+ * @returns Every slice handed over, in order.
+ * @throws {Error} When next_start never reaches null.
+ */
+async function slicesOf(text: string, share: number): Promise<FetchedPage[]> {
+  fetchConfig.web_fetch_max_chars = share;
+  const tools = turn();
+  const readPages = reader({ [A]: okPage(text) });
+  const slices: FetchedPage[] = [];
+  let start: number | null = 0;
+  while (start !== null) {
+    const answer = await fetchWith(tools, { pages: [{ url: A, start }] }, readPages);
+    const page = answer.pages[0]!;
+    slices.push(page);
+    if (slices.length > text.length + 1) throw new Error("next_start never reached null");
+    start = page.next_start ?? null;
+  }
+  return slices;
+}
+
+// Plan §16 rows 1 and 2: a cut moves only when a link, at the place the text
+// writes it, starts before the cut and ends after it; it moves to that
+// link's end in the text as written. Another writing of the link, or a
+// shorter link that is its prefix, elsewhere in the text moves nothing.
+describe("where a slice is cut, by the links' own positions (plan §16 rows 1 and 2)", () => {
+  it("moves the cut to the end of the link that crosses it, though a shorter link it starts with is written later", async () => {
+    const before = "x ".repeat(20);
+    const text = `${before}https://a.test/docs/intro and see https://a.test/docs too`;
+
+    const [first] = await slicesOf(text, before.length + 18);
+
+    const end = before.length + "https://a.test/docs/intro".length;
+    expect(first).toMatchObject({ start: 0, end, next_start: end });
+    expect(first!.links).toContain("https://a.test/docs/intro");
+  });
+
+  it("does not split the second writing of a link a JSON body writes twice", async () => {
+    const text = '{"url":"https://a.test/p/abc","self":"https://a.test/p/abc"}';
+    const second = text.lastIndexOf("https");
+
+    const slices = await slicesOf(text, text.indexOf("self") + 15);
+
+    expect(slices[0]).toMatchObject({ start: 0, end: second + 20 });
+    expect(slices[0]!.text?.endsWith("https://a.test/p/abc")).toBe(true);
+    expect(slices[0]!.links).toEqual(["https://a.test/p/abc"]);
+  });
+
+  it("moves the cut to the end of the second of two links in Chinese prose, listing no part of a link", async () => {
+    const text = "请看https://a.test/path，然后https://a.test/p，谢谢";
+    const second = text.lastIndexOf("https");
+
+    const [first] = await slicesOf(text, second + 12);
+
+    expect(first).toMatchObject({ start: 0, end: second + "https://a.test/p".length });
+    expect(first!.links).toEqual(["https://a.test/path", "https://a.test/p"]);
+    expect(first!.links).not.toContain("https://a.te");
+  });
+
+  it("leaves a cut inside a plain word at the share, though an escaped link follows in the window", async () => {
+    const text = "supercalifragilisticexpialidocious and https://a.test/a\\_b end";
+
+    const [first] = await slicesOf(text, 10);
+
+    expect(first).toMatchObject({ start: 0, end: 10, next_start: 10 });
+  });
+
+  it("leaves a cut in a Chinese run with no spaces at the share, though an escaped link opens the run", async () => {
+    const text = `见https://a.test/a\\_b。${"中".repeat(150)} tail`;
+
+    const [first] = await slicesOf(text, 80);
+
+    expect(first).toMatchObject({ start: 0, end: 80, next_start: 80 });
+  });
+
+  it("leaves a cut in a long run at the share, though an escaped link sits further on in the run", async () => {
+    const text = `{"a":"${"k".repeat(3000)}","u":"https://a.test/x\\_y"} end`;
+
+    const [first] = await slicesOf(text, 2000);
+
+    expect(first).toMatchObject({ start: 0, end: 2000, next_start: 2000 });
+  });
+
+  it("moves a cut inside an escaped link to the link's end as written, after the escape, not to the end of its run", async () => {
+    const written = "https://a.test/x\\_y/more";
+    const text = `{"u":"${written}","v":12345} end`;
+    const at = text.indexOf("https");
+
+    const [first] = await slicesOf(text, at + 16);
+
+    expect(first).toMatchObject({ start: 0, end: at + written.length, next_start: at + written.length });
+    expect(first!.links).toEqual(["https://a.test/x_y/more"]);
+  });
+
+  it("cuts every page so that the slices cover it, none empty, no link split, and every cut not inside a link at the share", async () => {
+    const piece = fc.oneof(
+      fc.constantFrom("word", "harbour", "supercalifragilistic", "abc"),
+      fc.constantFrom(
+        "https://a.test/docs",
+        "https://a.test/docs/intro",
+        "https://a.test/p/abc",
+        "https://a.test/a\\_b",
+        "https://a.test/x\\_y/more",
+        "example.com/x",
+      ),
+      fc.constantFrom("中文段落", "网页", "资料读取用户"),
+    );
+    // Every separator ends a link, so no link runs on into the next piece.
+    const separator = fc.constantFrom(" ", "，", '"', "\n", "。");
+    const textArb = fc
+      .array(fc.tuple(piece, separator), { minLength: 1, maxLength: 24 })
+      .map((parts) => parts.map(([word, sep]) => word + sep).join(""));
+
+    await fc.assert(
+      fc.asyncProperty(textArb, fc.integer({ min: 1, max: 60 }), async (text, share) => {
+        const slices = await slicesOf(text, share);
+        const spans = pageLinkSpansIn(text).filter((span) => span.end - span.start <= READ_PAGE_MAX_URL_CHARS);
+
+        expect(slices.map((slice) => slice.text).join("")).toBe(text);
+        for (const slice of slices) {
+          expect(slice.text?.length ?? 0, JSON.stringify({ text, share })).toBeGreaterThan(0);
+          const from = slice.start ?? 0;
+          const to = slice.end ?? 0;
+          if (to === text.length) continue;
+          for (const span of spans) {
+            expect(span.start < to && span.end > to, JSON.stringify({ text, share, to, span })).toBe(false);
+          }
+          const target = from + share;
+          const crossing = spans.filter((span) => span.start < target && span.end > target);
+          if (crossing.length === 0) expect(to, JSON.stringify({ text, share })).toBe(target);
+          else expect(crossing.map((span) => span.end), JSON.stringify({ text, share })).toContain(to);
+        }
+      }),
+      { numRuns: 100 },
+    );
   });
 });
 

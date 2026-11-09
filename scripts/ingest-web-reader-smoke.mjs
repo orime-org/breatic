@@ -10,8 +10,11 @@
 // with no charset, an RSS feed, a CSV download, a latin1 CSV with no charset, a
 // JavaScript file; a 503 and a 403 that arrive as downloads; an HTML page that
 // declares a length past the limit; two articles that go on to a large
-// download after they load (by script and by meta refresh); and a malformed
-// request to the service itself.
+// download after they load (by script and by meta refresh); articles that go
+// on after they load to an HTML page past the size limit (by script and by
+// meta refresh), to a slow HTML page (and that slow page read directly), to a
+// text file and to another article; and a malformed request to the service
+// itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -85,7 +88,6 @@ const RENDERED = `<!doctype html><html><head><title>Rendered</title></head><body
   document.getElementById('app').innerHTML = '<article><h2>Written by the page</h2><p>${RENDERED_PARAGRAPH} ' +
     '${'Each line of this story is plain text worth keeping. '.repeat(8)}</p></article>';
 });</script></body></html>`;
-// Its parser never reaches the end of the head.
 // Plan section 15 rows 4 and 7: an article that, once it has loaded, sends
 // the browser on to a large download; the article is what is read.
 const LEAVING_PARAGRAPH = 'The harbour master posts the evening tide times on the board beside the ferry gate.';
@@ -95,6 +97,14 @@ const LEAVES_BY_SCRIPT = `<!doctype html><html><head><title>Leaves by script</ti
   "<script>setTimeout(() => { location.href = '/big.bin'; }, 50);</script></body></html>";
 const LEAVES_BY_REFRESH = '<!doctype html><html><head><title>Leaves by refresh</title>' +
   `<meta http-equiv="refresh" content="0;url=/big.bin"></head><body>${LEAVING_BODY}</body></html>`;
+// Plan section 16 rows 3 and 4: an article that, once it has loaded, goes on
+// to another document; that document is checked and read as if asked for.
+const goesOnTo = (title, target, how) => {
+  const head = how === 'refresh' ? `<meta http-equiv="refresh" content="0;url=${target}">` : '';
+  const tail = how === 'script' ? `<script>setTimeout(() => { location.href = '${target}'; }, 50);</script>` : '';
+  return `<!doctype html><html><head><title>${title}</title>${head}</head><body>${LEAVING_BODY}${tail}</body></html>`;
+};
+// Its parser never reaches the end of the head.
 const BUSY = '<!doctype html><html><head><title>Busy</title><script>for (;;) {}</script></head><body><p>Never shown</p></body></html>';
 // Markdown-looking text a plain-text file holds, which must come back unescaped.
 const PLAIN_LINES = ['# Install', '* run `pnpm i`', '/\\d+/'];
@@ -143,6 +153,20 @@ async function sendBigPage(res) {
  * reading it whole would take 15 s: only a reader that stops at the declared
  * length answers quickly.
  */
+/**
+ * Send an HTML page with no declared length that never finishes arriving
+ * within a page timeout: a little text every half second for a minute.
+ */
+async function sendSlowPage(res) {
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.write('<!doctype html><html><head><title>Slow</title></head><body><p>');
+  for (let i = 0; i < 120 && !res.destroyed; i++) {
+    res.write('slow words arriving one part at a time ');
+    await setTimeout(500);
+  }
+  res.end('</p></body></html>');
+}
+
 async function sendBigDownload(res) {
   res.writeHead(200, {
     'content-type': 'application/octet-stream',
@@ -181,6 +205,18 @@ const origin = createServer((req, res) => {
     res.writeHead(403, { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="x.bin"' })
       .end('no');
   } else if (req.url === '/big.html') void sendBigPage(res);
+  else if (req.url === '/slow.html') void sendSlowPage(res);
+  else if (req.url === '/goes-to-big-by-script') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To big', '/big.html', 'script'));
+  } else if (req.url === '/goes-to-big-by-refresh') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To big', '/big.html', 'refresh'));
+  } else if (req.url === '/goes-to-slow') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To slow', '/slow.html', 'script'));
+  } else if (req.url === '/goes-to-text') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To text', '/readme.txt', 'script'));
+  } else if (req.url === '/goes-to-article') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To article', '/article', 'script'));
+  }
   else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
   else if (req.url === '/binary.pdf') {
@@ -298,8 +334,6 @@ try {
   assert.equal(big.body.pages[0].status, 'too_large', `big download: too_large, got ${big.body.pages[0].status}`);
   assert.ok(big.ms < 5000, `big download: answered in ${big.ms} ms, not after reading it whole`);
 
-  // Plan section 9 row O: a page that never stops running ends at its own page
-  // timeout, not at the call's deadline a minute away.
   // Plan section 15 rows 4 and 7: the size check applies only while the page
   // itself is arriving; a download the page starts after it loaded leaves the
   // article as it was read.
@@ -309,6 +343,29 @@ try {
     assert.ok(page.text.replace(/\s+/g, ' ').includes(LEAVING_PARAGRAPH), `article that leaves ${label}: its text kept`);
   }
 
+  // Plan section 16 rows 3 and 4: a document the page goes on to after it
+  // loaded is checked and read as if it had been asked for: past the size
+  // limit it is too_large, too slow to arrive it is too_slow (as when read
+  // directly), and otherwise it is what is read, from its own address.
+  const { body: goneOn } = await read(
+    ['/goes-to-big-by-script', '/goes-to-big-by-refresh', '/goes-to-text', '/goes-to-article'],
+    { maxBytes: MAX_BYTES },
+  );
+  const [toBigByScript, toBigByRefresh, toText, toArticle] = goneOn.pages;
+  assert.equal(toBigByScript.status, 'too_large', `page that goes on to a big page by script: too_large, got ${toBigByScript.status}`);
+  assert.equal(toBigByRefresh.status, 'too_large', `page that goes on to a big page by refresh: too_large, got ${toBigByRefresh.status}`);
+  assert.equal(toText.status, 'ok', `page that goes on to a text file: read, got ${toText.status}`);
+  assert.equal(toText.text, PLAIN, `page that goes on to a text file: the file's text, got ${JSON.stringify(toText.text)}`);
+  assert.ok(toText.finalUrl.endsWith('/readme.txt'), `page that goes on to a text file: its address, got ${toText.finalUrl}`);
+  assert.equal(toArticle.status, 'ok', `page that goes on to an article: read, got ${toArticle.status}`);
+  assert.ok(toArticle.text.replace(/\s+/g, ' ').includes(PARAGRAPH), 'page that goes on to an article: that article');
+  assert.ok(toArticle.finalUrl.endsWith('/article'), `page that goes on to an article: its address, got ${toArticle.finalUrl}`);
+  const { body: slowOnes } = await read(['/slow.html', '/goes-to-slow'], { pageTimeoutMs: 5000 });
+  assert.equal(slowOnes.pages[0].status, 'too_slow', `slow page read directly: too_slow, got ${slowOnes.pages[0].status}`);
+  assert.equal(slowOnes.pages[1].status, 'too_slow', `page that goes on to a slow page: too_slow, got ${slowOnes.pages[1].status}`);
+
+  // Plan section 9 row O: a page that never stops running ends at its own page
+  // timeout, not at the call's deadline a minute away.
   const busy = await read(['/busy'], { pageTimeoutMs: 3000 });
   assert.equal(busy.body.pages[0].status, 'too_slow', `busy page: too_slow, got ${busy.body.pages[0].status}`);
   assert.ok(busy.ms < 6000, `busy page: answered in ${busy.ms} ms`);
@@ -361,7 +418,8 @@ try {
     'CSP page, XML page, empty app shell, script-written page, plain text, GBK text, JSON, x-pdf download, ' +
     'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
     'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
-    'two articles that leave for a download.');
+    'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
+    'another article.');
   process.exit(0);
 } catch (error) {
   console.error(error);
