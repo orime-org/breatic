@@ -44,7 +44,7 @@ export const DocumentTableFullscreenExit = React.memo(function DocumentTableFull
           size='icon'
           aria-label={label}
           data-testid='doc-table-fullscreen-exit'
-          className='absolute right-3 top-3 z-30 size-[var(--doc-entry-size)]'
+          className='absolute right-3 top-3 z-30'
           onClick={exit}
         >
           <Minimize2 className='h-4 w-4' />

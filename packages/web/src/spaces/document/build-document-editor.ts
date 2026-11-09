@@ -83,7 +83,7 @@ import {
   documentPastedMediaExtension,
   type PastedMediaOptions,
 } from '@web/spaces/document/document-external-media';
-import { documentTableFullscreenExtension } from '@web/spaces/document/document-table-fullscreen';
+import { documentTableFullscreenExtension, inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import {
   documentFileDropExtension,
   fileDropPosition,
@@ -235,6 +235,16 @@ export function buildDocumentEditor(
     ],
   });
 
+  // A table open full screen takes every drop (breatic#1427), so no line says
+  // where one would land; a table's own row and column drags draw none either.
+  const tableDrags = holdDropLineInTableDrags(fileDropPosition);
+  /**
+   * Where the drop line stands, or nowhere while a table is full screen.
+   * @param context - The drag the library is asking about.
+   * @returns The line's position, or null for none.
+   */
+  const dropLine: typeof tableDrags = (context) => (inTableFullscreen(context.view.state) ? null : tableDrags(context));
+
   return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
     links: { onClick: openLinkInANewTab },
@@ -252,7 +262,7 @@ export function buildDocumentEditor(
     // draws a band across the whole 768px column; two reads as a line, which
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
-    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
+    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: dropLine } },
     // The gutter left of the body counts as the row beside it, as far out as
     // a strip stands, a table's own being the furthest: it is reached there,
     // level with the table and past its first column's strips, since over its

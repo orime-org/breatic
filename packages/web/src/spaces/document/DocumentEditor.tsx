@@ -369,6 +369,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // the body and the bubble bar over the entry, and neither of those two
     // relationships is anyone else's business. Without it both numbers would
     // be compared against every other layer on the page.
+    // Full screen covers the window with `fixed`, which holds while no ancestor
+    // up to <html> has a transform, filter, contain or will-change (each would
+    // become the containing block) and while z-30 sits above the project chrome
+    // (z-10) and below the workspace mask (z-40) and connection banner (z-50).
+    // Should either change, the area has to move into a portal on the body.
     <div
       className={cn(inFullscreen ? 'fixed inset-0 z-30 bg-background' : 'relative', 'isolate flex min-h-0 flex-1 flex-col')}
       data-table-fullscreen={inFullscreen ? '' : undefined}
@@ -388,9 +393,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
       <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
-        {inFullscreen ? null : (
-          <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
-        )}
+        <DocumentOutline
+          editor={handle.editor}
+          viewport={viewport}
+          readOnly={readOnly}
+          commentsOpen={railOpen}
+          hidden={inFullscreen}
+        />
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}

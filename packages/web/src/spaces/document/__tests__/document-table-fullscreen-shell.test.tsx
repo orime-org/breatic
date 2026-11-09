@@ -146,7 +146,8 @@ describe('the editor area in full screen', () => {
     enter(editor);
 
     await waitFor(() => expect(document.querySelector('[data-table-fullscreen]')).not.toBeNull());
-    expect(screen.queryByTestId('doc-outline-column')).toBeNull();
+    // Hidden, still mounted: its folded headings come back with it.
+    expect(screen.getByTestId('doc-outline-column')).not.toBeVisible();
     expect(screen.queryByTestId('doc-doc-menu-trigger')).toBeNull();
     const exit = screen.getByTestId('doc-table-fullscreen-exit');
     expect(exit.getAttribute('aria-label')).toBe(t('spaces.document.table.exitFullscreen'));
@@ -249,5 +250,42 @@ describe('the editor area in full screen', () => {
 
     expect(screen.getByTestId('doc-bubble-tool-comment')).toBeInTheDocument();
     expect(screen.getByTestId('doc-bubble-tool-addToAgent')).toBeInTheDocument();
+  });
+});
+
+describe('round 1 of the implementation review (breatic#1427)', () => {
+  it('leaves full screen alone for an Escape outside the editor that something else already took', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const id = enter(editor);
+    const exit = await screen.findByTestId('doc-table-fullscreen-exit');
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    event.preventDefault();
+
+    exit.dispatchEvent(event);
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+
+  it('keeps the place in a long table when its Space is hidden and shown again', async () => {
+    const { editor, surface } = open();
+    /**
+     * The area inside a Space tab that can be hidden.
+     * @param hidden - Whether the tab is hidden.
+     * @returns The element tree.
+     */
+    const tab = (hidden: boolean): React.JSX.Element => (
+      <React.Activity mode={hidden ? 'hidden' : 'visible'}>{area(editor, surface, false)}</React.Activity>
+    );
+    const { rerender } = render(tab(false));
+    enter(editor);
+    await screen.findByTestId('doc-table-fullscreen-exit');
+    const scrolled = vi.spyOn(Element.prototype, 'scrollTo');
+
+    rerender(tab(true));
+    rerender(tab(false));
+
+    expect(scrolled).not.toHaveBeenCalledWith({ top: 0 });
+    scrolled.mockRestore();
   });
 });

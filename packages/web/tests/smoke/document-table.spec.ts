@@ -423,10 +423,12 @@ test('breatic#1427: Full screen lays the table over the window for editing, and 
   expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
   await expect(area).toBeVisible();
 
-  // The table's own icon is not there; the row handle is.
+  // The row handle is there; the table's own icon and the cell blocks' dots are not.
   const cell = await page.locator(`${EDITOR} td`).first().boundingBox();
   await page.mouse.move(cell!.x + 20, cell!.y + 10, { steps: 3 });
+  await expect(page.getByTestId('doc-table-row-handle')).toBeVisible();
   await expect(page.getByTestId('doc-block-table-handle')).toHaveCount(0);
+  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
 
   await page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }).click();
   await page.keyboard.press('Escape');

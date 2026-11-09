@@ -41,6 +41,8 @@ import {
   type HarnessEditor,
 } from './bubble-bar-harness';
 import { fakeStreams, type FakeStream } from './ai-stream-fake';
+import { setTableFullscreen, tableFullscreenIn } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 let calls: FakeStream[] = [];
 /** Whether the connection says it may write; the harness has no connection of its own. */
@@ -1222,6 +1224,30 @@ describe('pressing replace and insert (A6)', () => {
     expect(table.children.map((row) => row.children.map((cell) => cell.props.colwidth))).toEqual(
       Array.from({ length: 3 }, () => [[64], [88], [88], [88], [220], [180], [64], [140]]),
     );
+  });
+
+  it('ends a table full screen before writing outside the table, so the user sees the result (breatic#1427)', async () => {
+    const { editor, call } = await polishing();
+    await streams(call, ['Hi'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-replace')).toBeInTheDocument();
+    });
+    act(() => {
+      editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as unknown as { id: string }[])[0]!.id, 'after');
+    });
+    const tableId = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    act(() => {
+      setTableFullscreen(editor, { table: tableId, scrollTop: 0, offset: 0 });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-replace'));
+    });
+
+    await waitFor(() => {
+      expect(editor.prosemirrorState.doc.textContent).toContain('Hi world');
+    });
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
 
   it('replace writes the answer over the selected words', async () => {

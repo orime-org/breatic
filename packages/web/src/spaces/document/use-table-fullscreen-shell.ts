@@ -72,12 +72,17 @@ export function useTableFullscreenShell(
     if (open && readOnly) exit();
   }, [open, readOnly, exit]);
 
+  // The entry this area has started at the top. A Space shown again runs its
+  // layout effects again and must leave a long table where the user was.
+  const started = React.useRef<TableFullscreen | null>(null);
   React.useLayoutEffect(() => {
     if (viewport === null) return;
     if (fullscreen.table !== null) {
-      viewport.scrollTo({ top: 0 });
+      if (started.current !== fullscreen) viewport.scrollTo({ top: 0 });
+      started.current = fullscreen;
       return;
     }
+    started.current = null;
     if (fullscreen.returnTo === null) return;
     scrollBack(editor, viewport, fullscreen.returnTo);
     clearFullscreenReturn(editor);

@@ -45,6 +45,11 @@ interface DocumentOutlineProps {
   readOnly: boolean;
   /** Whether the comment panel is open beside the body; it takes width from the text. */
   commentsOpen: boolean;
+  /**
+   * Hidden while a table is open full screen (breatic#1427), kept mounted so
+   * the headings folded in it come back folded.
+   */
+  hidden?: boolean;
 }
 
 /** A jump on its way to a heading, until the body arrives or the user takes over. */
@@ -265,6 +270,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   viewport,
   readOnly,
   commentsOpen,
+  hidden = false,
 }: DocumentOutlineProps): React.JSX.Element {
   const t = useTranslation();
   const visible = useDocumentViewStore((s) => s.outlineVisible);
@@ -458,7 +464,8 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       ref={column}
       data-testid='doc-outline-column'
       data-layout={floating ? 'floating' : 'tiled'}
-      className='relative flex min-h-0 flex-none flex-col'
+      hidden={hidden}
+      className={cn('relative flex min-h-0 flex-none flex-col', hidden && 'hidden')}
       style={open && !floating ? OPEN_WIDTH : SHUT_WIDTH}
     >
       {/* One element tree for both layouts, only its classes change, so the

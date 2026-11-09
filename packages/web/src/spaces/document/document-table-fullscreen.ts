@@ -27,7 +27,7 @@ import {
   type EditorState,
   type Transaction,
 } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
+import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
@@ -36,7 +36,9 @@ import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
 import { PASTED_MEDIA_KEY } from '@web/spaces/document/document-external-media';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { blockById } from '@web/spaces/document/document-proposal-landing';
+import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { fromYjs, undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** Where the body goes back to once full screen has ended. */
@@ -81,9 +83,6 @@ const DOCUMENT_TABLE_FULLSCREEN = new PluginKey<TableFullscreen>('document-table
 /** Not in full screen, nothing to return to. One object, so `===` holds. */
 const BODY: TableFullscreen = { table: null, returnTo: null };
 
-/** The cells' node names. */
-const CELLS = new Set(['docTableCell', 'docTableHeader']);
-
 /**
  * Full screen in this state.
  * @param state - The editor state.
@@ -103,70 +102,50 @@ export function inTableFullscreen(state: EditorState): boolean {
 }
 
 /**
- * The table with this block id.
+ * The open table, as long as it still has a cell to stand in. A table left
+ * with only empty rows (two people deleting its last two columns at once)
+ * counts as gone: full screen has nothing left to edit.
  * @param doc - The document.
- * @param id - The block id.
- * @returns Its position and node, or null when it is not there.
+ * @param id - The table's block id.
+ * @returns Its position and node, or null.
  */
-function tableById(doc: PMNode, id: string): { pos: number; node: PMNode } | null {
-  let found: { pos: number; node: PMNode } | null = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name === DOC_TABLE && node.attrs['id'] === id) {
-      found = { pos, node };
-      return false;
-    }
-    return true;
-  });
-  return found;
+function tableById(doc: PMNode, id: string): TableAt | null {
+  const block = blockById(doc, id);
+  if (block === null || block.node.type.name !== DOC_TABLE) return null;
+  return TableMap.get(block.node).map.length > 0 ? block : null;
 }
 
 /**
- * The positions before a table's cells, in document order.
- * @param table - The table and its position.
- * @param table.pos - Where it starts.
- * @param table.node - The table node.
- * @returns The positions.
+ * The positions before a table's top-left and bottom-right grid cells. Read
+ * off the grid: in document order the last cell need not be in the last
+ * column when a cell merged down covers it.
+ * @param table - The table.
+ * @returns The two positions.
  */
-function cellsOf(table: { pos: number; node: PMNode }): number[] {
-  const out: number[] = [];
-  table.node.descendants((node, offset) => {
-    if (CELLS.has(node.type.name)) {
-      out.push(table.pos + 1 + offset);
-      return false;
-    }
-    return true;
-  });
-  return out;
+function cornersOf(table: TableAt): { first: number; last: number } {
+  const { map } = TableMap.get(table.node);
+  return { first: table.pos + 1 + map[0]!, last: table.pos + 1 + map[map.length - 1]! };
 }
 
 /**
  * Whether a position sits in one of a table's cells.
  * @param doc - The document.
  * @param pos - The position.
- * @param table - The table and its position.
- * @param table.pos - Where it starts.
- * @param table.node - The table node.
+ * @param table - The table.
  * @returns True inside a cell of that table.
  */
-function inCellOf(doc: PMNode, pos: number, table: { pos: number; node: PMNode }): boolean {
-  if (pos <= table.pos || pos >= table.pos + table.node.nodeSize) return false;
+function inCellOf(doc: PMNode, pos: number, table: TableAt): boolean {
   const $pos = doc.resolve(pos);
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (CELLS.has($pos.node(depth).type.name)) return true;
-  }
-  return false;
+  return tableAround($pos)?.pos === table.pos && cellDepthOf($pos) > 0;
 }
 
 /**
  * Whether a selection lies wholly in a table's cells.
  * @param selection - The selection.
- * @param table - The table and its position.
- * @param table.pos - Where it starts.
- * @param table.node - The table node.
+ * @param table - The table.
  * @returns True when both its ends are in that table's cells.
  */
-function selectionIn(selection: Selection, table: { pos: number; node: PMNode }): boolean {
+function selectionIn(selection: Selection, table: TableAt): boolean {
   if (selection instanceof CellSelection) {
     return selection.$anchorCell.pos > table.pos && selection.$headCell.pos < table.pos + table.node.nodeSize;
   }
@@ -177,13 +156,11 @@ function selectionIn(selection: Selection, table: { pos: number; node: PMNode })
 /**
  * The caret at the start of a table's first cell.
  * @param doc - The document.
- * @param table - The table and its position.
- * @param table.pos - Where it starts.
- * @param table.node - The table node.
+ * @param table - The table.
  * @returns The selection.
  */
-function startOf(doc: PMNode, table: { pos: number; node: PMNode }): Selection {
-  return Selection.near(doc.resolve(cellsOf(table)[0]! + 1));
+function startOf(doc: PMNode, table: TableAt): Selection {
+  return Selection.near(doc.resolve(cornersOf(table).first + 1));
 }
 
 /**
@@ -204,12 +181,10 @@ function changedSpan(before: PMNode, after: PMNode): { from: number; to: number 
  * @param span - The changed span, in the document before.
  * @param span.from - Where it starts.
  * @param span.to - Where it ends.
- * @param table - The table there, and its position.
- * @param table.pos - Where it starts.
- * @param table.node - The table node.
+ * @param table - The table there.
  * @returns True when the change touches nothing outside it.
  */
-function spanWithin(span: { from: number; to: number }, table: { pos: number; node: PMNode }): boolean {
+function spanWithin(span: { from: number; to: number }, table: TableAt): boolean {
   return span.from >= table.pos && span.to <= table.pos + table.node.nodeSize;
 }
 
@@ -251,25 +226,13 @@ export function leaveFullscreenForWrite(editor: FullscreenEditor, target: { from
   if (view === null || view === undefined) return;
   const now = tableFullscreenIn(view.state);
   if (now.table === null) return;
-  const table = tableById(view.state.doc, now.table);
   const doc = view.state.doc;
+  const table = tableById(doc, now.table);
   const $from = doc.resolve(target.from);
+  const cell = cellDepthOf($from);
   const sameCell = table !== null && inCellOf(doc, target.from, table) && inCellOf(doc, target.to, table)
-    && $from.sharedDepth(target.to) >= cellDepth($from);
+    && $from.sharedDepth(target.to) >= cell;
   if (!sameCell) setTableFullscreen(editor, null);
-}
-
-/**
- * How deep the cell around a position sits.
- * @param $pos - The position.
- * @returns The cell's depth, or the position's own depth past the end when
- *   it is in no cell.
- */
-function cellDepth($pos: ReturnType<PMNode['resolve']>): number {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (CELLS.has($pos.node(depth).type.name)) return depth;
-  }
-  return $pos.depth + 1;
 }
 
 /**
@@ -365,8 +328,8 @@ function keepSelectionIn(transactions: readonly Transaction[], before: EditorSta
   if (table === null) return null;
   const { selection } = after;
   if (selection instanceof AllSelection) {
-    const cells = cellsOf(table);
-    return after.tr.setSelection(CellSelection.create(after.doc, cells[0]!, cells[cells.length - 1]!));
+    const { first, last } = cornersOf(table);
+    return after.tr.setSelection(CellSelection.create(after.doc, first, last));
   }
   if (selectionIn(selection, table)) return null;
   const local = !transactions.some(fromYjs);
@@ -388,16 +351,18 @@ function keepSelectionIn(transactions: readonly Transaction[], before: EditorSta
 /**
  * Ends full screen on an Escape nobody else answered, typed in a cell.
  *
- * ProseMirror does not hand this handler a key typed during or right after a
- * composition (`inOrNearComposition`), and `isFreeEscape` leaves an Escape
- * an input method or a layer above already took.
+ * `isFreeEscape` leaves an Escape an input method or a layer above already
+ * took; `ended` leaves the one Chrome sends again right after a composition
+ * ends, which ProseMirror's own composition guard lets through outside Safari
+ * (see `document-enter.ts`).
  * @param editor - The BlockNote editor, for the layers that keep the key.
+ * @param ended - This editor's composition ends.
  * @param view - The view.
  * @param event - The keydown.
  * @returns True when it ended full screen.
  */
-function escapeOut(editor: ExtensionEditor, view: EditorView, event: KeyboardEvent): boolean {
-  if (!inTableFullscreen(view.state) || !isFreeEscape(event)) return false;
+function escapeOut(editor: ExtensionEditor, ended: CompositionEnd, view: EditorView, event: KeyboardEvent): boolean {
+  if (!inTableFullscreen(view.state) || !isFreeEscape(event) || ended.justEnded()) return false;
   if (aiRangeIn(view.state) !== null) return false;
   if ((editor.getExtension(SuggestionMenu) as { shown?: () => boolean } | undefined)?.shown?.() === true) return false;
   if (documentBarsOf(editor).linkToolbarUp) return false;
@@ -416,6 +381,8 @@ function escapeOut(editor: ExtensionEditor, view: EditorView, event: KeyboardEve
  */
 function takeDrag(view: EditorView, event: Event): boolean {
   if (!inTableFullscreen(view.state)) return false;
+  const transfer = (event as DragEvent).dataTransfer;
+  if (transfer) transfer.dropEffect = 'none';
   event.preventDefault();
   return true;
 }
@@ -425,52 +392,59 @@ function takeDrag(view: EditorView, event: Event): boolean {
  * key and edge handlers it has to answer before.
  * @returns The extension, for the assembly to register.
  */
-export const documentTableFullscreenExtension = createExtension(({ editor }: { readonly editor: ExtensionEditor }) => ({
-  key: 'document-table-fullscreen',
-  runsBefore: [
-    'documentFileDrop',
-    PASTED_MEDIA_KEY,
-    'document-drag-drop',
-    'document-table-keys',
-    'document-keyboard-move',
-    'document-body-edge-pointer',
-    'document-ai-range',
-  ],
-  prosemirrorPlugins: [
-    new Plugin<TableFullscreen>({
-      key: DOCUMENT_TABLE_FULLSCREEN,
-      state: {
+export const documentTableFullscreenExtension = createExtension(({ editor }: { readonly editor: ExtensionEditor }) => {
+  const ended = compositionEnd();
+  return {
+    key: 'document-table-fullscreen',
+    runsBefore: [
+      'documentFileDrop',
+      PASTED_MEDIA_KEY,
+      'document-drag-drop',
+      'document-table-keys',
+      'document-keyboard-move',
+      'document-body-edge-pointer',
+      'document-ai-range',
+    ],
+    prosemirrorPlugins: [
+      new Plugin<TableFullscreen>({
+        key: DOCUMENT_TABLE_FULLSCREEN,
+        state: {
         /**
          * Starts in the body.
          * @returns The body state.
          */
-        init: (): TableFullscreen => BODY,
-        apply: next,
-      },
-      filterTransaction: allowed,
-      appendTransaction: keepSelectionIn,
-      view: tableFullscreenWatch.view,
-      props: {
+          init: (): TableFullscreen => BODY,
+          apply: next,
+        },
+        filterTransaction: allowed,
+        appendTransaction: keepSelectionIn,
+        view: tableFullscreenWatch.view,
+        props: {
         /**
          * Marks the open table, which is what the stylesheet shows.
          * @param state - The editor state.
          * @returns The mark, or none.
          */
-        decorations: (state): DecorationSet | null => {
-          const now = tableFullscreenIn(state);
-          if (now.table === null) return null;
-          const table = tableById(state.doc, now.table);
-          if (table === null) return null;
-          return DecorationSet.create(state.doc, [
-            Decoration.node(table.pos, table.pos + table.node.nodeSize, { 'data-fullscreen-table': '' }),
-          ]);
+          decorations: (state): DecorationSet | null => {
+            const now = tableFullscreenIn(state);
+            if (now.table === null) return null;
+            const table = tableById(state.doc, now.table);
+            if (table === null) return null;
+            return DecorationSet.create(state.doc, [
+              Decoration.node(table.pos, table.pos + table.node.nodeSize, { 'data-fullscreen-table': '' }),
+            ]);
+          },
+          handleKeyDown: (view, event): boolean => event.key === 'Escape' && escapeOut(editor, ended, view, event),
+          handleDOMEvents: {
+            dragover: takeDrag,
+            drop: takeDrag,
+            compositionend: (): boolean => {
+              ended.mark();
+              return false;
+            },
+          },
         },
-        handleKeyDown: (view, event): boolean => event.key === 'Escape' && escapeOut(editor, view, event),
-        handleDOMEvents: {
-          dragover: takeDrag,
-          drop: takeDrag,
-        },
-      },
-    }),
-  ],
-}));
+      }),
+    ],
+  };
+});

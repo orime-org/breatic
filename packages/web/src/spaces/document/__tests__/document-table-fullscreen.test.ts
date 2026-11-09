@@ -24,6 +24,8 @@ import { postComment } from '@web/spaces/document/document-comment-post';
 import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { setLinkToolbarUp } from '@web/spaces/document/document-bars';
 import {
   clearFullscreenReturn,
   leaveFullscreenForWrite,
@@ -645,5 +647,100 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
     leaveFullscreenForWrite(editor, { from: after, to: after + 5 });
 
     expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: null });
+  });
+});
+
+describe('round 1 of the implementation review (breatic#1427)', () => {
+  it('takes every cell on a select-all when a cell merged down covers the last column', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'Before' },
+      tableBlock({ rows: [{ cells: ['A', { content: 'B', props: { rowspan: 2 } }] }, { cells: ['C'] }] }),
+    ]);
+    enter(editor);
+    const view = editor.prosemirrorView!;
+
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    const covered: string[] = [];
+    (editor.prosemirrorState.selection as CellSelection).forEachCell((node) => covered.push(node.textContent));
+    expect(covered.sort()).toEqual(['A', 'B', 'C']);
+  });
+
+  it('ends full screen, without throwing, when the table is left with no cells', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const view = editor.prosemirrorView!;
+    const tr = view.state.tr;
+    [...cellsIn(view.state.doc)].reverse().forEach((pos) => {
+      tr.delete(pos, pos + view.state.doc.nodeAt(pos)!.nodeSize);
+    });
+
+    expect(() => view.dispatch(tr)).not.toThrow();
+
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'scrollTop', value: 120 } });
+  });
+
+  it('shows a dragover as nothing to drop', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const event = new Event('dragover', { bubbles: true, cancelable: true });
+    const dataTransfer = { dropEffect: 'copy', types: ['Files'], files: [], items: [], getData: () => '' };
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+
+    editor.prosemirrorView!.dom.firstElementChild!.dispatchEvent(event);
+
+    expect(dataTransfer.dropEffect).toBe('none');
+  });
+
+  it('leaves full screen alone for the Escape that comes right after an input method ends', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    caretAt(editor, wordsAt(editor.prosemirrorState.doc, 'a1') + 1);
+
+    editor.prosemirrorView!.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }));
+    press(editor, { key: 'Escape' });
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+
+  it('lets the AI dialog and the link toolbar take an Escape typed in a cell', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    const view = editor.prosemirrorView!;
+    const a1 = wordsAt(view.state.doc, 'a1');
+    caretAt(editor, a1 + 1);
+
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, { range: { from: a1, to: a1 + 2 }, firstId: null, lastId: null, insertId: 'x' }));
+    press(editor, { key: 'Escape' });
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, null));
+    setLinkToolbarUp(editor, true);
+    press(editor, { key: 'Escape' });
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+    setLinkToolbarUp(editor, false);
+  });
+
+  it('keeps the caret in the table when a collaborator moves the block above it past it', () => {
+    const a = new Y.Doc();
+    const b = new Y.Doc();
+    a.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin !== 'peer') Y.applyUpdate(b, update, 'peer');
+    });
+    b.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin !== 'peer') Y.applyUpdate(a, update, 'peer');
+    });
+    const ours = mount(a);
+    const theirs = mount(b);
+    ours.replaceBlocks(ours.document, BETWEEN as never);
+    const id = enter(ours);
+    caretAt(ours, wordsAt(ours.prosemirrorState.doc, 'b2') + 1);
+
+    caretAt(theirs, wordsAt(theirs.prosemirrorState.doc, 'Before'));
+    press(theirs, { key: 'ArrowDown', shiftKey: true, ctrlKey: true });
+
+    expect((ours.document as unknown as { type: string }[]).map((block) => block.type)[0]).toBe('docTable');
+    expect(tableFullscreenIn(ours.prosemirrorState).table).toBe(id);
+    expect(selectionInTable(ours)).toBe(true);
   });
 });
