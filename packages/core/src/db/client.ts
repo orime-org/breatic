@@ -123,13 +123,13 @@ function getDb(): Database {
 }
 
 /**
- * A transaction opened in one async flow, whether it still is, and the
- * transaction it was opened inside, if any.
+ * The transaction bound to one async flow, whether it is still open, and the
+ * open binding it was opened inside, if any.
  */
-interface OpenTransaction {
+interface TransactionBinding {
   tx: unknown;
   open: boolean;
-  parent: OpenTransaction | undefined;
+  parent: TransactionBinding | undefined;
 }
 
 /**
@@ -138,10 +138,11 @@ interface OpenTransaction {
  * `target` is the pool, or the transaction already open in this flow, in
  * which case Drizzle opens a savepoint and `config` does not apply. The
  * binding closes when `fn` settles: a query issued through the handle after
- * that runs on the transaction `fn` was opened inside while it is still open,
- * and on the pool otherwise. A query built inside `fn` keeps the session it
+ * that runs on the nearest enclosing transaction that is still open, and on
+ * the pool when there is none. A query built inside `fn` keeps the session it
  * was built on, as one built on `tx` does, so it must be awaited inside `fn`.
  * @param target - The pool or the open transaction.
+ * @param parent - The open binding `target` belongs to, if any.
  * @param scope - The flow-to-transaction binding for this database.
  * @param fn - The transaction body.
  * @param config - Transaction settings, used only when `target` is the pool.
@@ -150,13 +151,14 @@ interface OpenTransaction {
  */
 function runBound(
   target: Record<string | symbol, unknown>,
-  scope: AsyncLocalStorage<OpenTransaction>,
+  parent: TransactionBinding | undefined,
+  scope: AsyncLocalStorage<TransactionBinding>,
   fn: (tx: unknown) => unknown,
   config: unknown,
 ): unknown {
   const begin = target.transaction as (body: (tx: unknown) => Promise<unknown>, config?: unknown) => unknown;
   return begin.call(target, async (tx) => {
-    const binding: OpenTransaction = { tx, open: true, parent: scope.getStore() };
+    const binding: TransactionBinding = { tx, open: true, parent };
     try {
       return await scope.run(binding, () => fn(tx));
     } finally {
@@ -179,14 +181,14 @@ function runBound(
  * @returns The bound handle.
  */
 function bindToOpenTransaction(getReal: () => Database): Database {
-  const scope = new AsyncLocalStorage<OpenTransaction>();
+  const scope = new AsyncLocalStorage<TransactionBinding>();
   return new Proxy({} as Database, {
     get(_target, prop) {
       let current = scope.getStore();
       while (current !== undefined && !current.open) current = current.parent;
       const target = (current?.tx ?? getReal()) as Record<string | symbol, unknown>;
       if (prop === "transaction") {
-        return (fn: (tx: unknown) => unknown, config?: unknown) => runBound(target, scope, fn, config);
+        return (fn: (tx: unknown) => unknown, config?: unknown) => runBound(target, current, scope, fn, config);
       }
       const value = target[prop];
       return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
