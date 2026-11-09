@@ -352,8 +352,8 @@ async function runStep(
       return { urls: [outputUrls(run)[0]!], prediction: run.taskId };
     }
     case "rig": {
-      // The generated model goes to the rig by its address; VRM bone names
-      // let a preset pose it with no name table (inner#1692).
+      // The generated model goes to the rig by its address; spec=vrm names the
+      // joints VRoid-style (J_Bip_*), which the web pose rig maps (inner#1692).
       const model = carried.urls?.[0];
       if (model === undefined) throw new Error("No generated model to rig");
       const run = await predict(deps, ctx, resolved, step, { model, rig_type: "auto", spec: "vrm", out_format: "glb" });
