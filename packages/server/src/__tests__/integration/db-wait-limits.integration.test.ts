@@ -61,45 +61,56 @@ function gate(): { wait: Promise<void>; open: () => void } {
 }
 
 /**
- * Let pending timers and diagnostics callbacks run.
+ * Wait a fixed time.
  * @param ms - How long to wait.
  */
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Hold `count` connections of `pool` in transactions until released.
+ * @param count - How many connections to hold.
+ * @param begin - Opens one transaction on the pool.
+ * @returns Resolves once every transaction has its connection; `release` lets them finish.
+ */
+async function holdConnections(
+  count: number,
+  begin: (body: () => Promise<void>) => Promise<unknown>,
+): Promise<{ release: () => Promise<void> }> {
+  const held = gate();
+  const ready = Array.from({ length: count }, () => gate());
+  const holders = ready.map((got) => begin(async () => {
+    got.open();
+    await held.wait;
+  }));
+  await Promise.all(ready.map((got) => got.wait));
+  return {
+    release: async () => {
+      held.open();
+      await Promise.all(holders);
+    },
+  };
+}
+
 describe("waiting for a pooled connection", () => {
   it("fails a query after the queue limit, reports it once, and serves the next query after release", async () => {
     const pool = smallPool(1);
-    const held = gate();
-    const holder = pool.begin(async (tx) => {
-      await tx`select 1`;
-      await held.wait;
-    });
-    await sleep(100);
+    const held = await holdConnections(1, (body) => pool.begin(async (tx) => { await tx`select 1`; await body(); }));
     const started = Date.now();
     await expect(pool`select 2`).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
     expect(Date.now() - started).toBeLessThan(2_500);
-    await sleep(50);
     expect(events.map((e) => e.code)).toEqual(["QUEUE_TIMEOUT"]);
-    held.open();
-    await holder;
+    await held.release();
     expect((await pool`select 3 as n`)[0]?.n).toBe(3);
   });
 
   it("reports a transaction that cannot get a connection once", async () => {
     const pool = smallPool(1);
-    const held = gate();
-    const holder = pool.begin(async (tx) => {
-      await tx`select 1`;
-      await held.wait;
-    });
-    await sleep(100);
+    const held = await holdConnections(1, (body) => pool.begin(async (tx) => { await tx`select 1`; await body(); }));
     await expect(pool.begin((tx) => tx`select 2`)).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
-    await sleep(50);
     expect(events.map((e) => e.code)).toEqual(["QUEUE_TIMEOUT"]);
-    held.open();
-    await holder;
+    await held.release();
   });
 
   it("reports a pool query issued inside a transaction once, not again for the transaction", async () => {
@@ -110,44 +121,35 @@ describe("waiting for a pooled connection", () => {
         return pool`select 2`;
       }),
     ).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
-    await sleep(50);
     expect(events.map((e) => e.code)).toEqual(["QUEUE_TIMEOUT"]);
   });
 
-  it("times out a transaction while every connection runs a query, and reports it", async () => {
+  it("times out a transaction while every connection runs a query, and reports it once", async () => {
     const pool = smallPool(2);
-    const warm = gate();
-    const opened = [0, 1].map(() => pool.begin(async (tx) => {
-      await tx`select 1`;
-      await warm.wait;
-    }));
-    await sleep(200);
-    warm.open();
-    await Promise.all(opened);
+    const warm = await holdConnections(2, (body) => pool.begin(async (tx) => { await tx`select 1`; await body(); }));
+    await warm.release();
     expect(pool.stats).toMatchObject({ connections: 2, leased: 0 });
     const busy = [pool`select pg_sleep(2.5)`.execute(), pool`select pg_sleep(2.5)`.execute()];
+    // Nothing signals that a query has been sent; give both a moment to leave.
     await sleep(200);
     await expect(pool.begin((tx) => tx`select 1`)).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
     await Promise.all(busy);
-    expect(events.map((e) => e.code)).toContain("QUEUE_TIMEOUT");
+    expect(events.map((e) => e.code)).toEqual(["QUEUE_TIMEOUT"]);
   });
 
-  it("reports the main pool's size and state when its own connections are all held", async () => {
-    const held = gate();
-    const holders = [0, 1].map(() =>
-      db.transaction(async (tx) => {
-        await tx.execute(sql`select 1`);
-        await held.wait;
-      }),
-    );
-    await sleep(200);
-    await expect(db.execute(sql`select 2`)).rejects.toThrow();
-    await sleep(50);
-    const event = events.find((e) => e.code === "QUEUE_TIMEOUT");
-    expect(event?.pools.main).toMatchObject({ max: 2, connections: 2, leased: 2, idle: 0 });
-    held.open();
-    await Promise.all(holders);
-  }, 45_000);
+  it("reports the main pool's size and state with each timeout", async () => {
+    const main = await holdConnections(2, (body) => db.transaction(async (tx) => {
+      await tx.execute(sql`select 1`);
+      await body();
+    }));
+    const pool = smallPool(1);
+    const held = await holdConnections(1, (body) => pool.begin(async (tx) => { await tx`select 1`; await body(); }));
+    await expect(pool`select 2`).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.pools.main).toMatchObject({ max: 2, connections: 2, leased: 2, idle: 0 });
+    await held.release();
+    await main.release();
+  });
 });
 
 describe("opening a connection", () => {
