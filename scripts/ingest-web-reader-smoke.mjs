@@ -17,8 +17,11 @@
 // HTML page past the size limit at addresses with a fragment; pages that a
 // script in their head replaces with a missing page, a text file and a CSV
 // attachment (and that attachment read directly); an article that goes on to
-// a page answering after the settle wait; and a malformed request to the
-// service itself.
+// a page answering after the settle wait; a download landing page whose
+// hidden iframe downloads a zip; an article that goes on to a redirect loop
+// (and the loop read directly); a page its head replaces with a 404 attachment
+// and an article that goes on to a 503 attachment (and both attachments read
+// directly); and a malformed request to the service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -131,6 +134,12 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><
   `<item><title>${FEED_ITEM}</title><link>https://example.com/lights</link></item></channel></rss>`;
 // Chromium downloads a text/csv response rather than showing it.
 const CSV = 'pier,tide_m\nnorth,2.4\nsouth,1.9\n';
+// Plan section 18: a download landing page, the kind a site shows while a
+// hidden iframe starts the file; its own article is what is read.
+const LANDING_ZIP = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(200)]);
+const LANDING = '<!doctype html><html><head><title>Download</title></head><body>' +
+  `${LEAVING_BODY}<iframe src='/landing.zip' style='display:none'></iframe>` +
+  "<script src='/landing.js'></script></body></html>";
 // Sent as an attachment: a download whether opened directly or reached from a page.
 const NOTES_CSV = 'name,count\napples,3\n';
 // Plan section 14: a latin1 CSV that names no charset ("Z\xfcrich,caf\xe9").
@@ -243,6 +252,26 @@ const origin = createServer((req, res) => {
   else if (req.url === '/notes.csv') {
     res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="notes.csv"' })
       .end(NOTES_CSV);
+  } else if (req.url === '/download-landing') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(LANDING);
+  } else if (req.url === '/landing.zip') {
+    res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="landing.zip"' })
+      .end(LANDING_ZIP);
+  } else if (req.url === '/landing.js') {
+    // Holds the page's DOMContentLoaded back a little, past the iframe's download.
+    void setTimeout(300).then(() => res.writeHead(200, { 'content-type': 'text/javascript' }).end('void 0;'));
+  } else if (req.url === '/loop') res.writeHead(302, { location: '/loop' }).end();
+  else if (req.url === '/goes-to-loop') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To loop', '/loop', 'script'));
+  } else if (req.url === '/missing.txt') {
+    res.writeHead(404, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="missing.txt"' }).end('missing');
+  } else if (req.url === '/head-replace-to-missing-attachment') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/missing.txt', 'head-replace'));
+  } else if (req.url === '/busy.bin') {
+    res.writeHead(503, { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename="busy.bin"' })
+      .end('busy');
+  } else if (req.url === '/goes-to-busy-attachment') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To busy', '/busy.bin', 'script'));
   } else if (req.url === '/head-replace-to-download') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/notes.csv', 'head-replace'));
   } else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
@@ -420,6 +449,31 @@ try {
   assert.equal(notesDirect.text, NOTES_CSV, `attachment csv read directly: its text, got ${JSON.stringify(notesDirect.text)}`);
   assert.equal(notesReplaced.status, 'ok', `page replaced in its head by a download: read, got ${notesReplaced.status}`);
   assert.equal(notesReplaced.text, NOTES_CSV, `page replaced in its head by a download: the file's text, got ${JSON.stringify(notesReplaced.text)}`);
+  // Plan section 18: how a main-frame navigation ends decides the answer. A
+  // download another frame starts is not the page's ending; an error page the
+  // browser commits ends the read with the status of the last response (or
+  // unreachable when there is none to judge).
+  const { body: endings } = await read(
+    ['/download-landing', '/goes-to-loop', '/loop', '/head-replace-to-missing-attachment', '/missing.txt',
+      '/goes-to-busy-attachment', '/busy.bin'],
+    { pageTimeoutMs: 15000 },
+  );
+  const [landing, toLoop, loopDirect, toMissingAttachment, missingAttachment, toBusyAttachment, busyAttachment] =
+    endings.pages;
+  assert.equal(landing.status, 'ok', `download landing page: read, got ${landing.status}`);
+  assert.ok((landing.text ?? '').replace(/\s+/g, ' ').includes(LEAVING_PARAGRAPH),
+    `download landing page: its own article, got ${JSON.stringify((landing.text ?? '').slice(0, 80))}`);
+  assert.ok((landing.finalUrl ?? '').endsWith('/download-landing'), `download landing page: its own address, got ${landing.finalUrl}`);
+  assert.equal(loopDirect.status, 'unreachable', `redirect loop read directly: unreachable, got ${loopDirect.status}`);
+  assert.equal(toLoop.status, 'unreachable', `page that goes on to a redirect loop: unreachable, got ${toLoop.status}`);
+  assert.equal(missingAttachment.status, 'unreachable', `404 attachment read directly: unreachable, got ${missingAttachment.status}`);
+  assert.equal(busyAttachment.status, 'busy', `503 attachment read directly: busy, got ${busyAttachment.status}`);
+  assert.equal(toMissingAttachment.status, 'unreachable', `page replaced in its head by a 404 attachment: unreachable, got ${toMissingAttachment.status}`);
+  assert.equal(toMissingAttachment.httpStatus, 404, `page replaced in its head by a 404 attachment: 404, got ${toMissingAttachment.httpStatus}`);
+  assert.ok((toMissingAttachment.finalUrl ?? '').endsWith('/missing.txt'), `page replaced in its head by a 404 attachment: its address, got ${toMissingAttachment.finalUrl}`);
+  assert.equal(toBusyAttachment.status, 'busy', `page that goes on to a 503 attachment: busy, got ${toBusyAttachment.status}`);
+  assert.equal(toBusyAttachment.httpStatus, 503, `page that goes on to a 503 attachment: 503, got ${toBusyAttachment.httpStatus}`);
+
   const { body: late } = await read(['/goes-to-late'], { settleMs: 1000, pageTimeoutMs: 10000 });
   const [toLate] = late.pages;
   assert.equal(toLate.status, 'ok', `page that goes on to a page answering late: read, got ${toLate.status}`);
@@ -485,7 +539,8 @@ try {
     'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
     'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
     'another article, a missing page, a text file and a big page at a fragment, pages their head replaces with a ' +
-    'missing page, a text file and a download, and a page gone on to that answers late.');
+    'missing page, a text file and a download, a page gone on to that answers late, a download landing page, a ' +
+    'redirect loop, and 404 and 503 attachments reached from a page.');
   process.exit(0);
 } catch (error) {
   console.error(error);
