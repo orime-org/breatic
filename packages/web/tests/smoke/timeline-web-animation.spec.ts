@@ -5,7 +5,8 @@
  * Web animation in a Timeline (inner#1711): a real execution, its reuse as independent copies, the preview's seek,
  * play and click behaviour, trim to the source end, a split off the second boundary, a portrait source on a landscape
  * Timeline, the video held while a copy loads, play entering, replaying into and revealing a copy prepared by the
- * preview's instance pool, cancel and Run again, and what a Viewer sees. Each case spends one real
+ * preview's instance pool, cancel and Run again, what a Viewer sees, an Editor following another member's run and
+ * undoing only their own edit, and a Project duplicated mid-run previewing the result. Each case spends one real
  * model run, so every check that needs a finished result shares the one run its case makes.
  */
 import { expect, type Locator, type Page } from 'playwright/test';
@@ -819,6 +820,95 @@ test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not st
     expect(Math.abs((shown.x + shown.width / 2) - (stage.x + stage.width / 2))).toBeLessThanOrEqual(2);
     expect(errors.unexpected).toEqual([]);
   } finally {
+    await deleteSpace(page, spaceId);
+  }
+});
+
+test('an Editor follows a run another member starts, undoes only their own edit, and a Project duplicated mid-run previews the result @needs-model @needs-ingest', async ({ page, browser }) => {
+  // One real model run, a second member and a duplicated Project.
+  test.setTimeout(480_000);
+  const errors = watchTimelineErrors(page);
+  await openSmokeProject(page);
+  const projectId = smokeProjectId();
+  const projectUrl = page.url();
+  const spaceId = await createSpace(page, 'timeline', `Timeline web peer ${crypto.randomUUID()}`);
+  let copyId = '';
+  const copyPage = await page.context().newPage();
+  const copyErrors = watchTimelineErrors(copyPage);
+  try {
+    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
+      const peerErrors = watchTimelineErrors(peer);
+      await peer.goto(projectUrl);
+      await openTimeline(peer, spaceId);
+      const view = visibleSpace(peer);
+      await expect(view.getByTestId('timeline-space-empty')).toBeVisible();
+
+      const id = await executeWebAnimation(page, true);
+      const placeholder = visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
+      await expect(placeholder).toHaveCount(1);
+      const clipId = (await placeholder.getAttribute('data-clip-id')) ?? '';
+      expect(clipId).not.toBe('');
+
+      // The other member sees the placeholder at once and the row once collab accepts the receipt and signals the
+      // Space, after a save of the document.
+      const peerClip = view.getByTestId(`timeline-clip-${clipId}`);
+      await expect(peerClip).toHaveAttribute('data-state', 'pending', { timeout: 30_000 });
+      await view.getByTestId('timeline-open-executions').click();
+      const peerList = view.getByTestId('timeline-executions');
+      await expect(peerList.getByRole('tab', { name: /^In progress/ })).toHaveText(/In progress\s*1/, { timeout: 60_000 });
+      await expect(peerList.getByTestId(`timeline-execution-${id}`)).toBeVisible();
+
+      // Duplicated while the run is going: the copy holds the placeholder and a grant to the execution.
+      const duplicated = await page.request.post(`/api/v1/projects/${projectId}/duplicate`);
+      expect(duplicated.status(), await duplicated.text()).toBe(201);
+      copyId = ((await duplicated.json()) as { data: { id: string } }).data.id;
+      await copyPage.goto(`/project/${copyId}`);
+      await openTimeline(copyPage, spaceId);
+      const copied = visibleSpace(copyPage).getByTestId(`timeline-clip-${clipId}`);
+      await expect(copied).toHaveAttribute('data-kind', 'web-animation');
+      await expect(copied).toHaveAttribute('data-state', 'pending');
+
+      // The finish reaches the other member through the Space's task signal.
+      await expect(peerList.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
+      await expect(peerClip).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+      await peerList.getByRole('tab', { name: /^Completed/ }).click();
+      await expect(peerList.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'succeeded');
+      await peerList.getByTestId(`timeline-execution-toggle-${id}`).click();
+      await expect(peerList.getByTestId(`timeline-execution-detail-${id}`).locator('hyperframes-player')).toHaveCount(1);
+      await expect(peerList.getByTestId(`timeline-execution-add-${id}`)).toBeVisible();
+      await closeExecutions(peer);
+
+      // The other member's undo takes back their own duplicate and never the clip the run placed.
+      await peerClip.click();
+      await expect(peerClip).toHaveAttribute('aria-pressed', 'true');
+      await peer.keyboard.press('ControlOrMeta+d');
+      await expect.poll(async () => (await timelineClipIds(peer)).length).toBe(2);
+      await peer.keyboard.press('ControlOrMeta+z');
+      await expect.poll(async () => (await timelineClipIds(peer)).length).toBe(1);
+      await peer.keyboard.press('ControlOrMeta+z');
+      await expect(peerClip).toHaveAttribute('data-state', 'ready');
+      expect(await timelineClipIds(peer)).toEqual([clipId]);
+      await expect.poll(async () => timelineClipIds(page)).toEqual([clipId]);
+      expect(peerErrors.unexpected).toEqual([]);
+    });
+
+    // The duplicate, open since mid-run, turns its placeholder into the result on its refresh interval and draws it.
+    const copyView = visibleSpace(copyPage);
+    const copied = copyView.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
+    await expect(copied).toHaveCount(1);
+    await expect(copied).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+    await seekPreview(copyPage, 1);
+    const preview = copyView.getByTestId('timeline-preview');
+    await copiesAnswered(preview);
+    await expect(preview.locator(`${DRAWN}[data-clip-id="${await copied.getAttribute('data-clip-id')}"]`)).toHaveCount(1);
+    expect(copyErrors.unexpected).toEqual([]);
+    expect(errors.unexpected).toEqual([]);
+  } finally {
+    await copyPage.close();
+    if (copyId !== '') {
+      const archived = await page.request.post(`/api/v1/projects/${copyId}/archive`);
+      expect(archived.ok(), `archive the duplicated Project ${copyId}`).toBe(true);
+    }
     await deleteSpace(page, spaceId);
   }
 });
