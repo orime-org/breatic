@@ -1,0 +1,42 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import { describe, expect, it } from 'vitest';
+import { declaresAudioWindow, decodedAudioWindow } from '@ingest/container/decoded-audio-window.js';
+
+// Measured on a VP9 + Opus WebM from FFmpeg 7.1: packets run from -7 ms to 3014 ms, while decoding drops the 312-sample
+// pre-skip at the start and trims the last frame to 312 samples, so the stream plays from 0 to 2994 ms + 312 samples.
+const OPUS = { index: 1, codec_type: 'audio', time_base: '1/1000', sample_rate: '48000', start_pts: -7 };
+const FRAMES = [{ pts: 0, nb_samples: 648 }, { pts: 14, nb_samples: 960 }, { pts: 2994, nb_samples: 312 }];
+
+/**
+ * Whether an exact pair equals a decimal number of seconds given as a fraction.
+ * @param value - The pair.
+ * @param numerator - The expected numerator.
+ * @param denominator - The expected denominator.
+ * @returns True when equal.
+ */
+function equals(value: readonly [bigint, bigint], numerator: bigint, denominator: bigint): boolean {
+  return value[0] * denominator === numerator * value[1];
+}
+
+describe('the decoded audio window', () => {
+  it('starts at the first decoded frame and ends where the latest decoded frame ends', () => {
+    const window = decodedAudioWindow(OPUS, FRAMES)!;
+    expect(equals(window.start, 0n, 1n)).toBe(true);
+    // 2994 ms + 312 / 48000 s = 144024 / 48000 s.
+    expect(equals(window.end, 144024n, 48000n)).toBe(true);
+  });
+
+  it('a stream with only a start declares no window, so its frames are read', () => {
+    expect(declaresAudioWindow(OPUS)).toBe(false);
+    expect(declaresAudioWindow({ ...OPUS, duration_ts: 3000 })).toBe(true);
+  });
+
+  it('answers null when a clock fact is missing or nothing was decoded', () => {
+    expect(decodedAudioWindow(OPUS, [])).toBeNull();
+    expect(decodedAudioWindow({ ...OPUS, sample_rate: undefined }, FRAMES)).toBeNull();
+    expect(decodedAudioWindow({ ...OPUS, time_base: '1/0' }, FRAMES)).toBeNull();
+    expect(decodedAudioWindow(OPUS, [{ pts: 0 }])).toBeNull();
+  });
+});

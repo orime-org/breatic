@@ -25,6 +25,7 @@ import { objectUrlOn } from '@ingest/object-url.js';
 import { videoPresentationWorkKeyFor, videoSourceLedgerKeyFor } from '@shared/upload/video-presentation-keys.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { download } from '@ingest/container/mini-tool-run.js';
+import { declaresAudioWindow, decodedAudioProbeArgs, decodedAudioWindow } from '@ingest/container/decoded-audio-window.js';
 import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
@@ -173,17 +174,23 @@ function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint
 }
 
 /**
- * The selected audio's window: the first audio stream in ffprobe order, from its declared start and duration.
+ * The selected audio's window: the first audio stream in ffprobe order, from its declared start and duration or,
+ * without them, from its decoded frames.
  * @param stream - The stream, or undefined without audio.
+ * @param frames - Its decoded frames, read when the stream declares no window.
  * @returns Its window, or null.
  * @throws {ProbeFailure} When its clock is unknown.
  */
-function audioWindow(stream: Record<string, unknown> | undefined): { start: PresentationRational; end: PresentationRational } | null {
+function audioWindow(stream: Record<string, unknown> | undefined, frames: readonly unknown[] | undefined): { start: PresentationRational; end: PresentationRational } | null {
   if (stream === undefined) return null;
-  if (stream.start_pts === undefined || stream.duration_ts === undefined) throw new ProbeFailure('audio_clock_unknown');
-  const base = timeBase(stream.time_base);
-  const start = integer(stream.start_pts);
-  return { start: at(start, base), end: at(start + integer(stream.duration_ts), base) };
+  if (declaresAudioWindow(stream)) {
+    const base = timeBase(stream.time_base);
+    const start = integer(stream.start_pts);
+    return { start: at(start, base), end: at(start + integer(stream.duration_ts), base) };
+  }
+  const window = frames === undefined ? null : decodedAudioWindow(stream, frames);
+  if (window === null) throw new ProbeFailure('audio_clock_unknown');
+  return { start: exactPresentationTime(...window.start), end: exactPresentationTime(...window.end) };
 }
 
 /**
@@ -333,7 +340,12 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     }
   }
 
-  const window = audioWindow(audio);
+  let audioFrames: unknown[] | undefined;
+  if (audio !== undefined && !declaresAudioWindow(audio)) {
+    const listed = json(await runPlanCommand('ffprobe', decodedAudioProbeArgs(input, Number(audio.index)), { ...options, stdoutBytes: ledger.probeStdoutBytes })).frames;
+    audioFrames = Array.isArray(listed) ? listed : [];
+  }
+  const window = audioWindow(audio, audioFrames);
   const colorSpace = video.color_space;
   const matrixTagged = typeof colorSpace === 'string' && colorSpace !== '' && colorSpace !== 'unknown';
   const transfer = typeof video.color_transfer === 'string' && video.color_transfer !== '' && video.color_transfer !== 'unknown' ? video.color_transfer : null;

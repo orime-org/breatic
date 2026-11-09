@@ -128,6 +128,10 @@ beforeAll(async () => {
   // 110251 samples at 44.1 kHz end at 2.500023 s, between two 48 kHz samples: the end snaps to sample 120001.
   await make('long-audio.mov', [...video2s.slice(0, 4), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=44100,atrim=end_sample=110251', ...video2s.slice(4), '-c:a', 'pcm_s16le']);
   await make('two-audio.mov', ['-i', join(dir, 'long-audio.mov'), '-f', 'lavfi', '-i', 'sine=f=220:sample_rate=48000:d=3', '-map', '0:v', '-map', '0:a', '-map', '1:a', '-c:v', 'copy', '-c:a', 'pcm_s16le']);
+  // Matroska writes no stream duration (only a DURATION tag), so an Opus track's window comes from its packets.
+  const vp9 = ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2'];
+  await make('opus-long.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus']);
+  await make('opus.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-shortest']);
   // Frames at 0, 100, 400 and 500 ms; FFmpeg writes a DefaultDuration, which is replaced by an EBML Void of the same
   // length, so no frame declares a duration (as MediaRecorder recordings in the 2026-10-31 evidence).
   await make('vfr-default.webm', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=10:d=0.4,setpts='if(eq(N\\,2)\\,0.4/TB\\,if(eq(N\\,3)\\,0.5/TB\\,PTS))'", '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
@@ -512,6 +516,14 @@ describe('audio window, Matroska last frame and leading start (design §4.2, §4
     const answer = planned(await probed('cfr-aac.mp4'));
     expect(equals(answer.plan.display.duration, 2)).toBe(true);
     expect(answer.plan.originMapping.lastSource.hold).toBeNull();
+  });
+
+  it('AU04 a WebM whose Opus track carries no stream duration takes its window from the audio packets', async () => {
+    const longer = planned(await probed('opus-long.webm'));
+    expect(Number(longer.plan.display.duration.numerator) / Number(longer.plan.display.duration.denominator)).toBeGreaterThan(2.4);
+    expect(longer.plan.originMapping.lastSource.hold?.kind).toBe('derived-hold');
+    const even = planned(await probed('opus.webm'));
+    expect(Number(even.plan.display.duration.numerator) / Number(even.plan.display.duration.denominator)).toBeLessThan(2.1);
   });
 
   it('MK01 a Matroska last frame without BlockDuration or DefaultDuration takes the largest earlier frame duration (previous-max)', async () => {

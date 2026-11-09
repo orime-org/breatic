@@ -33,6 +33,7 @@
     "./unedited-iso-video-presentation.ts",
     "./alpha-presentation.ts",
     "./presentation-run.ts",
+    "./decoded-audio-window.ts",
     "./presentation-recipes.ts",
     "./plan-command.ts",
     "./plan-run.ts",
