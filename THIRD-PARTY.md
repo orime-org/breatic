@@ -382,11 +382,13 @@ enough that listing every one of them would bury the entries that matter. The
 project's rule on which licences may be taken at all, and which need a decision
 first, lives in the collaboration spec.
 
-The npm half of that rule is a check rather than a habit: the
+For the pnpm workspace that rule is a check rather than a habit: the
 `notice-covers-dependencies` check in `repo-lint` runs `pnpm licenses list
 --json --prod`, and reports any package under a licence that is not wholly
 permissive unless this file names it above the "Build and development tools"
-heading and states the same licence. There are three reads, one per part of
+heading and states the same licence. The transition renderer's packages are
+installed by npm from their own lockfile, outside the workspace, so that check
+never sees them; they are read by hand. There are four reads, one per part of
 this file.
 
 Two further checks keep the front-end half honest. `dependencies-declare-what-ships`
@@ -402,7 +404,8 @@ file, not this one, is what carries full licence texts to a browser.
 
 | Part | How it is read |
 |---|---|
-| The distributed npm packages | `pnpm licenses list --json --prod` — the same source the check reads |
+| The distributed npm packages of the pnpm workspace | `pnpm licenses list --json --prod` — the same source the check reads |
+| The transition renderer's packages | The `license` field of every entry in [packages/ingest/container/gl-renderer/package-lock.json](./packages/ingest/container/gl-renderer/package-lock.json), which is what `npm ci` installs into the MiniToolContainerGl image; the dependency path comes from `npm ls --all --json` in that directory after `npm ci`. An entry with no `license` field is read from the licence file in its own tarball, as `weakmap-shim` was |
 | The build and development tools | `pnpm licenses list --json` without `--prod`, minus the packages the line above reports. Read it for a licence the project may not take, not to transcribe it — nothing here is distributed |
 | The FFmpeg build | The version comes from the package: `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` in the media container. **The licence comes from the binary**: `ffmpeg -hide_banner -L`, which names the version of the GPL that build actually landed on. Both readings go into the media container's own `SOURCE` file |
 
