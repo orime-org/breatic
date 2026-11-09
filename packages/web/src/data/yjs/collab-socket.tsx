@@ -177,8 +177,8 @@ class SpaceProvider extends HocuspocusProvider {
   }
 
   /**
-   * Counts a SyncStatus receipt without marking the provider synced: only
-   * this connection's server SyncStep2 does. Collab answers an Update with
+   * Counts a SyncStatus receipt without marking the provider synced: only a
+   * server SyncStep2 does. Collab answers an Update with
    * SyncStatus even after it closed that document connection, so a receipt
    * from the previous connection can reach a reopened or rebuilt provider
    * before its handshake (inner#1790).
