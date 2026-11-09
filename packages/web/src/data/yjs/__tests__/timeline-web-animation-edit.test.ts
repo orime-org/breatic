@@ -130,7 +130,7 @@ describe('resolveTimelineArrangement with web copies', () => {
   });
 });
 
-describe('1708 commands on web copies', () => {
+describe('inner#1708 commands on web copies', () => {
   it('moves a copy and checks its range against the resolved source', () => {
     const doc = timeline([webClip(cid(1), V2, 0, 48)]);
     expect(accepted(plan(doc, move(cid(1), 30))).next.clips[cid(1)]).toMatchObject({ startFrame: 30, contentBinding: boundTo(SRC_A) });

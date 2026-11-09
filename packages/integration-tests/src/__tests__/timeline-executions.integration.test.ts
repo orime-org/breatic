@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The Timeline execution record (inner#1711 design §3.4, §5.3; main design §7.1; execution design §5.4).
+ * The Timeline execution record (inner#1711 design §3.4, §5.3).
  *
  * `timelineExecutionRepo.transition` is the one writer of `status`. These tests drive it against the real database:
  * every state crossed with every event, the attempt fence, the invariants that hold for any event sequence, and the

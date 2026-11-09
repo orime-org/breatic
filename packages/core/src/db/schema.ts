@@ -2223,8 +2223,8 @@ export const agentMemories = pgTable(
  * `status` moves only through `timelineExecutionRepo.transition`; `fence`
  * names the attempt allowed to finish it and `billed_at` lets it be charged
  * at most once. `space_id` has no foreign key, as with `tasks.space_id`. The
- * kind, engine, status and phase CHECKs and the partial indexes are written in
- * 0117 only.
+ * kind, engine, status and phase CHECKs are written in 0119 only; the index
+ * declarations below mirror 0119, which is what runs.
  */
 export const timelineExecutions = pgTable(
   "timeline_executions",

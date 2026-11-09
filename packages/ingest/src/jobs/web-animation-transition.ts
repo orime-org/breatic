@@ -6,9 +6,10 @@
  * job per job id and writes it only through `transitionWebAnimationJob`, the way the mini-tool object writes through
  * `transition()`: it stores the returned record in one write, then carries out the effects.
  *
- * One model call is in flight at a time. A cancel, the deadline or the container's own final report first puts the
- * job in `stopping`, which refuses new calls; the transition that ends the last open call also ends the job, so the
- * stop, the terminal state and the frozen registry are one record. A terminal record never changes again.
+ * One model call is in flight at a time. A cancel, the deadline or the container's own final report ends the job at
+ * once when no call is in flight; with one in flight it first puts the job in `stopping`, which refuses new calls, and
+ * the transition that ends that call also ends the job, so the stop, the terminal state and the frozen registry are one
+ * record. A terminal record never changes again.
  */
 
 import type { WebAnimationJobCall, WebAnimationJobReport, WebAnimationJobRequest } from "@breatic/shared/space-content";

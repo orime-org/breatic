@@ -5,7 +5,7 @@
  * Stacking web-animation copies with video in the preview (inner#1711 design §7.3).
  *
  * `visibleTimelineClipsAt(document, readyIds, frame)` replaces `activeTimelineClipAt`: every ready clip covering
- * the frame, bottom-up by track rank, keeping 1708's video rule that the highest video hides everything below it, so
+ * the frame, bottom-up by track rank, keeping the inner#1708 video rule that the highest video hides everything below it, so
  * only web copies above it stack on it. `nextTimelinePlaybackBoundary` counts the start and end of every web copy
  * above the highest visible video.
  */

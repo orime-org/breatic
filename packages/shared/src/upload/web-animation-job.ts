@@ -22,7 +22,7 @@ const webAnimationKey = z.string().min(1).max(500).startsWith("web-animation/");
 export const webAnimationJobRequestSchema = z.object({
   containerClass: z.literal(WEB_ANIMATION_CONTAINER_CLASS),
   jobId: z.string().min(1).max(200),
-  /** Epoch ms; the job fails when it is reached. */
+  /** Epoch ms; the job expires when it is reached. */
   deadlineAt: positiveInteger,
   prompt: z.string().min(1),
   viewport: z.object({ width: positiveInteger, height: positiveInteger }),

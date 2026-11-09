@@ -5,8 +5,8 @@
  * The web-animation job endpoints (inner#1711 design §3.7, §6): `POST /jobs` dispatching on `containerClass`,
  * `GET /jobs/WebAnimationContainer/<id>` and `POST /jobs/WebAnimationContainer/<id>/cancel`.
  *
- * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding, its containers
- * entry and the `HARNESS_OPENROUTER_API_KEY` secret stay out of `REQUIRED_SETTINGS`. Missing any of them, the three
+ * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the
+ * `HARNESS_OPENROUTER_API_KEY` secret stay out of `REQUIRED_SETTINGS`. Missing either, the three
  * endpoints answer 501 `feature_disabled` before the namespace is touched, which the worker reads as a terminal answer,
  * while every other endpoint keeps working. 503 keeps its meaning: the container could not start this time.
  *
