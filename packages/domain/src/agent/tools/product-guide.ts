@@ -1751,7 +1751,9 @@ export function renderProductGuide(): string {
       `(${quoted(t("spaces.sizeCap.text"))}), a file already uploaded into a document waits with ` +
       `${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
       `could not start fails with ${quoted(t("spaces.sizeCap.reason"))} and can be retried. Adding media to a ` +
-      "timeline or importing a 3D model shows the same sentence inside its dialog. If a change still goes over " +
+      "timeline or importing a 3D model shows the same sentence inside its dialog as a refused edit: " +
+      `${quoted(t("spaces.sizeCap.add"))} or, past the hard ceiling, ${quoted(t("spaces.sizeCap.over"))} ` +
+      "If a change still goes over " +
       `the limit, the space reloads from the server and ${quoted(t("spaces.sizeCap.resync"))} shows: that last change is lost.`,
     `- When the project page itself cannot load, it shows ${quoted(t("pageLoadError.message"))} with ` +
       `${quoted(t("pageLoadError.retry"))}.`,

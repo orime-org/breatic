@@ -7,7 +7,8 @@
  * production peer hooks lives in `src/__tests__/inbound-filter-hooks.test.ts`).
  *
  * Per `(socketId, documentName)` it keeps a handshake mark (a SyncStep2 frame
- * of that document passed) and a refusal mark (`beforeSync` refused). Frames
+ * of that document passed) and a refusal mark (the size cap refused an update
+ * of that document). Frames
  * are judged from their own bytes only. "Passes" means `filter` returns the
  * input bytes unchanged; "dropped" means it returns undefined. No case may
  * close the socket. `isRefused` is the query `beforeSync` step 0 reads the

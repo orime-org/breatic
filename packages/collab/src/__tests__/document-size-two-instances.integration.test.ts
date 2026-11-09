@@ -16,9 +16,8 @@
  * its synchronous part, so the case sees what that one call counted whatever
  * a measurement does later.
  *
- * R7-34 (round 7, corrected spec): a bystander on instance 2 answers the
- * forwarded rename with a follow-up write before the full push reaches it,
- * so collab admits it as from a connection that has not acknowledged full.
+ * R7-34: a bystander on instance 2 answers the forwarded rename with a
+ * follow-up write before the full push reaches it, so collab admits it as from a connection that has not acknowledged full.
  * `beforeSync` is wrapped like `onChange`, recording each call with the
  * record read around its synchronous part (the size judgement and `admit`),
  * and warn / error lines are captured for the refusal log.

@@ -8,8 +8,8 @@ import { z } from "zod";
  * The bytes counted for one split endpoint or one delete range past the
  * server's clock of its client: either can add up to two ids (a client id
  * takes up to 5 varuint bytes, a clock up to 8), an info byte and a length
- * field to the encoded document. Collab charges an update with it and both
- * ends judge an update with {@link updateShape}, so they read this one value.
+ * field to the encoded document. Collab charges an update with it for each
+ * split endpoint and beyond-clock range that {@link updateShape} counts.
  */
 export const DOC_SIZE_EVENT_BYTES = 32;
 
@@ -60,9 +60,9 @@ export interface UpdateShape {
   /** Delete ranges ending past the store's clock of their client (they pend). */
   beyondClockRanges: number;
   /**
-   * Every live item the deletes cover is covered whole and is a Y type, a
-   * Map entry, or sits under a type item this update deletes whole. True
-   * when the deletes cover no live item.
+   * Every live item the deletes cover either is covered whole and is a Y
+   * type or a Map entry, or sits under a type item this update deletes
+   * whole. True when the deletes cover no live item.
    */
   wholeTypesOnly: boolean;
   /** The deletes cover at least one live item. */

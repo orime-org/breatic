@@ -12,18 +12,15 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@shared/doc-size.js";
 
-/** The round 7 shape: `coversLive` is read off the result whether or not the type has it yet. */
-type Shape7 = UpdateShape & { coversLive?: boolean };
-
 /**
- * Design 4.1 cost (round 7): the message length plus 32 per split endpoint
+ * Design 4.1 cost: the message length plus 32 per split endpoint
  * and beyond-clock range; 0 for a pure delete covering no live item, with
  * neither.
  * @param update - The update.
  * @param shape - Its shape.
  * @returns Bytes.
  */
-function costOf(update: Uint8Array, shape: Shape7): number {
+function costOf(update: Uint8Array, shape: UpdateShape): number {
   if (shape.pureDelete && shape.coversLive === false && shape.splitEndpoints === 0 && shape.beyondClockRanges === 0) return 0;
   return update.byteLength + DOC_SIZE_EVENT_BYTES * (shape.splitEndpoints + shape.beyondClockRanges);
 }
@@ -278,14 +275,14 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
     const a = nodeDoc();
     a.client.getMap("nodes").delete("n1");
     const step2 = Y.encodeStateAsUpdate(a.client, Y.encodeStateVector(a.server));
-    const sa: Shape7 = updateShape(step2, a.server.store);
+    const sa: UpdateShape = updateShape(step2, a.server.store);
     expect(sa).toMatchObject({ pureDelete: true, coversLive: false, splitEndpoints: 0, beyondClockRanges: 0 });
     expect(costOf(step2, sa)).toBe(0);
 
     // (b) SH-02: deleting the live `locked` entry.
     const b = nodeDoc();
     const sh02 = capture(b.client, b.server, () => b.data.delete("locked"));
-    const sb: Shape7 = updateShape(sh02.update, sh02.store);
+    const sb: UpdateShape = updateShape(sh02.update, sh02.store);
     expect(sb.coversLive).toBe(true);
     expect(costOf(sh02.update, sb)).toBe(6);
 
@@ -293,18 +290,18 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
     const c = nodeDoc();
     const sh14 = capture(c.client, c.server, () => c.data.delete("color"));
     const withOld = Y.encodeStateAsUpdate(c.client, Y.encodeStateVector(c.server));
-    expect((updateShape(withOld, sh14.store) as Shape7).coversLive).toBe(true);
+    expect(updateShape(withOld, sh14.store).coversLive).toBe(true);
 
     // (d) SH-03: deleting inside a text.
     const d = nodeDoc();
     const sh03 = capture(d.client, d.server, () => d.text.delete(2, 3));
-    const sd: Shape7 = updateShape(sh03.update, sh03.store);
+    const sd: UpdateShape = updateShape(sh03.update, sh03.store);
     expect(sd.coversLive).toBe(true);
     expect(costOf(sh03.update, sd)).toBe(70);
 
     // (e) SH-08: a beyond-clock range is not free.
     const beyond = beyondDs(4242, 100, 1);
-    const se: Shape7 = updateShape(beyond, new Y.Doc().store);
+    const se: UpdateShape = updateShape(beyond, new Y.Doc().store);
     expect(se).toMatchObject({ coversLive: false, beyondClockRanges: 1 });
     expect(costOf(beyond, se)).toBe(7 + 32);
 
@@ -315,7 +312,7 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
       f.client.getMap("nodes").set("n2", n2);
       n2.set("name", "abc");
     });
-    const sf: Shape7 = updateShape(sh12.update, sh12.store);
+    const sf: UpdateShape = updateShape(sh12.update, sh12.store);
     expect(sf).toMatchObject({ pureDelete: false, coversLive: false });
     expect(costOf(sh12.update, sf)).toBe(32);
 
@@ -325,14 +322,14 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
     g.client.getMap("nodes").delete("n1");
     g.client.getMap("nodes").set("n2", new Y.Map<unknown>());
     const mixed = Y.encodeStateAsUpdate(g.client, svBefore);
-    const sg: Shape7 = updateShape(mixed, g.server.store);
+    const sg: UpdateShape = updateShape(mixed, g.server.store);
     expect(g.server.getMap("nodes").has("n1")).toBe(false);
     expect(sg.pureDelete).toBe(false);
     expect(costOf(mixed, sg)).toBe(mixed.byteLength);
 
     // (h) a pure delete with an empty delete set.
     const empty = new Uint8Array([0, 0]);
-    const sh: Shape7 = updateShape(empty, new Y.Doc().store);
+    const sh: UpdateShape = updateShape(empty, new Y.Doc().store);
     expect(sh.coversLive).toBe(false);
     expect(costOf(empty, sh)).toBe(0);
   });
@@ -341,7 +338,7 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
     const { client, server, t } = alt2000(11);
     t.delete(10, 10);
     const again = dsUpdate(11, [[10, 10]]);
-    const shape: Shape7 = updateShape(again, server.store);
+    const shape: UpdateShape = updateShape(again, server.store);
     expect(shape).toMatchObject({ coversLive: false, splitEndpoints: 0 });
     expect(costOf(again, shape)).toBe(0);
     const before = Y.encodeStateAsUpdate(server).byteLength;
@@ -354,7 +351,7 @@ describe("updateShape coversLive and the zero cost of deletes covering only dele
     const { client, server, t } = alt2000(11);
     t.delete(10, 10);
     const across = dsUpdate(11, [[15, 10]]);
-    const shape: Shape7 = updateShape(across, server.store);
+    const shape: UpdateShape = updateShape(across, server.store);
     expect(shape).toMatchObject({ coversLive: true, splitEndpoints: 1 });
     expect(costOf(across, shape)).toBe(across.byteLength + 32);
     client.destroy();
@@ -486,8 +483,8 @@ describe("updateShape on random nesting (spec 14b.1 R7-05)", () => {
           return [a % (state + 1), len + 1];
         });
         const update = dsUpdate(7, ranges);
-        const shape: Shape7 = updateShape(update, server.store);
-        const mergedShape: Shape7 = updateShape(mergedUpdate(update), server.store);
+        const shape: UpdateShape = updateShape(update, server.store);
+        const mergedShape: UpdateShape = updateShape(mergedUpdate(update), server.store);
         expect(shape.wholeTypesOnly).toBe(naiveWholeTypesOnly(update, server.store));
         expect({ pureDelete: shape.pureDelete, splitEndpoints: shape.splitEndpoints, coversLive: shape.coversLive }).toEqual({
           pureDelete: mergedShape.pureDelete,

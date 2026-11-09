@@ -29,8 +29,9 @@ export const COLLAB_REAUTH_REASONS = {
 } as const;
 
 /**
- * Why collab closed one document because an update would take it past its
- * size limit. It is not a re-auth reason: the client drops its copy of the
+ * Why collab closed one document after the size cap refused one of its
+ * updates: the document is full or past its hard ceiling, or the update was
+ * of a kind the cap never admits. It is not a re-auth reason: the client drops its copy of the
  * document and syncs a fresh one instead of re-sending the refused update.
  */
 export const COLLAB_DOCUMENT_TOO_LARGE_REASON = "Document size limit reached";

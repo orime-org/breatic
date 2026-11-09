@@ -94,7 +94,7 @@ export function filter(peer: FilterPeer, whole: Uint8Array): Uint8Array | undefi
  * Drop every later message of a document on a socket until it authenticates
  * that document again.
  * @param socketId - The Hocuspocus socket id.
- * @param documentName - The document `beforeSync` refused.
+ * @param documentName - The document the size cap refused an update of.
  */
 export function markRefused(socketId: string, documentName: string): void {
   const docs = marks.get(socketId);

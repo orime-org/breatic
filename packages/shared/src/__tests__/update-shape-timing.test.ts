@@ -8,10 +8,12 @@
  * 4.1 sorts and merges each client's ranges first, so the walk visits every
  * struct once; the bound is 100 ms for K = 2000 ranges (design 8).
  *
- * Kept apart from `update-shape.test.ts` because the current walk takes
- * seconds on these inputs; each case carries a long vitest timeout.
+ * Kept apart from `update-shape.test.ts` because the inputs are large and a
+ * regression to a naive walk takes seconds on them; each case carries a long
+ * vitest timeout, so such a regression fails on the bound and not on the
+ * timeout.
  *
- * Round 7 (spec 14b.1, R7-01 to R7-04): deep nesting. Design 4.1 keeps the
+ * Deep nesting (spec 14b.1, R7-01 to R7-04). Design 4.1 keeps the
  * ancestor conclusion per parent type, so every type is judged at most once
  * and the time does not grow with the nesting depth.
  */

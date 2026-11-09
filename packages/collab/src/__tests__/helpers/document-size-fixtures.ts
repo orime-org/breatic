@@ -8,9 +8,9 @@
  * spec's measured values came from.
  *
  * Nothing here computes a judgement the production code makes: `cost` is the
- * design 4.1 formula (round 6: the message length plus `C` per event) over
- * the production `updateShape` result, and `enc` is
- * the encoded size the design names as the exact measure.
+ * design 4.1 formula (the message length plus `C` per event) over the
+ * production `updateShape` result, and `enc` is the encoded size the design
+ * names as the exact measure.
  */
 
 import { DOC_SIZE_EVENT_BYTES, updateShape } from "@breatic/shared";
@@ -66,7 +66,7 @@ export function enc(doc: Y.Doc): number {
 }
 
 /**
- * Design 4.1 cost of an update against a document as it is now (round 7):
+ * Design 4.1 cost of an update against a document as it is now:
  * the message length plus `C` per split endpoint and per beyond-clock range;
  * 0 for a pure delete covering no live item, with no split endpoint and no
  * beyond-clock range.
@@ -337,7 +337,7 @@ export function chunk(id: number, n: number): { tail: Uint8Array; full: Uint8Arr
 
 /**
  * Spec 0.3 `mass(N)`: `N` canvas nodes with nine data keys each, edited in
- * four interleaved rounds (`dadv-v2/mass-delete-cost.cjs`).
+ * four interleaved rounds.
  * @param n - How many nodes.
  * @returns The synced server copy and the client.
  */
@@ -513,7 +513,7 @@ export function reconnectStep2(member: Y.Doc, server: Y.Doc): Uint8Array {
 
 /**
  * Read one of the `pendingBefore` / `pendingAfter` values of a step 2a
- * refusal log (design 4.3, round 6). Answer Q22 gives the pending structs'
+ * refusal log (design 4.3). Answer Q22 gives the pending structs'
  * and the pending delete set's coverage apart and leaves the key names to the
  * implementation: the key naming structs is the structs' coverage, the other
  * key the delete set's.
