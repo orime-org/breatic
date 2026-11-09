@@ -1056,7 +1056,7 @@ export const nodeTasks = pgTable(
     origin: varchar("origin", { length: 16 }),
     // What the user is told beside a done 3D generation (inner#1692):
     // 'rig_failed' when the model was delivered without the skeleton it was
-    // asked for. Null on every other row; its CHECK lives in 0118.
+    // asked for. Null on every other row; its CHECK lives in 0119.
     notice: varchar("notice", { length: 24 }),
 
     ...timestamps,

@@ -1405,7 +1405,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.catalogOffline"))} ` +
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share, in two columns with each setting's name at the left of its row: switches, choices that show the value set and list every value when clicked, and number boxes. ` +
-      `The last of them, ${quoted(t("canvas.generatePanel.param.rig_skeleton"))}, is off by default; turned on, the finished model also gets a skeleton so it can be posed, and the estimate includes that step. ` +
+      `The last switch, ${quoted(t("canvas.generatePanel.param.rig_skeleton"))}, is off by default; turned on, the finished model also gets a skeleton so it can be posed, and the estimate includes that step. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
       `${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
       "A value a setting does not accept shows the rule it breaks under that setting. " +
