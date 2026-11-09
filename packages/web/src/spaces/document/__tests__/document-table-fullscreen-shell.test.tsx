@@ -171,6 +171,7 @@ describe('the editor area in full screen', () => {
     fireEvent.click(exit);
 
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+    expect(editor.prosemirrorView!.hasFocus()).toBe(true);
     await waitFor(() => expect(document.querySelector('[data-table-fullscreen]')).toBeNull());
     expect(screen.getByTestId('doc-outline-column')).toBeInTheDocument();
   });

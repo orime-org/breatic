@@ -31,8 +31,10 @@ export const DocumentTableFullscreenExit = React.memo(function DocumentTableFull
 }: DocumentTableFullscreenExitProps): React.JSX.Element {
   const t = useTranslation();
   const label = t('spaces.document.table.exitFullscreen');
+  // Back to the body with the caret where it was, so typing goes on there.
   const exit = React.useCallback(() => {
     setTableFullscreen(editor, null);
+    editor.focus();
   }, [editor]);
   return (
     <Tooltip>
