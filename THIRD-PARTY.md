@@ -206,7 +206,7 @@ its packages under other licences are listed after the server-side ones.
 | `gl-format-compiler-error` | `1.0.3` | `gl-transition` → `gl-shader` | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/wwwtyro/gl-format-compiler-error |
 | `isexe` | `3.1.5` | `gl` → `node-gyp` → `which` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/isexe |
 | `jackspeak` | `3.4.3` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/jackspeak |
-| `minipass` | `7.1.3` | `gl` → `node-gyp` → `tar` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass |
+| `minipass` | `7.1.3` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass |
 | `minipass-flush` | `1.0.7` | `gl` → `node-gyp` → `make-fetch-happen` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass-flush |
 | `package-json-from-dist` | `1.0.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/package-json-from-dist |
 | `path-scurry` | `1.11.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/path-scurry |
