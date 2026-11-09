@@ -8,6 +8,7 @@ import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
+import { POSE_PRESETS } from '../../src/spaces/three-d/viewport/pose-presets';
 
 interface Joint { key: string; center: number[]; selected: boolean }
 
@@ -30,12 +31,12 @@ async function rendered(page: Page): Promise<Array<{ id: string; position: numbe
 }
 
 /**
- * The first object's committed pose, read from the app's own live session.
+ * Every object's committed pose, in document order, read from the app's own live session.
  * @param page - A page showing the scene.
  * @param spaceId - The 3D Space.
- * @returns The pose as stored, absent keys left out.
+ * @returns The poses as stored, absent keys left out.
  */
-async function committedPose(page: Page, spaceId: string): Promise<Record<string, readonly number[]>> {
+async function committedPoses(page: Page, spaceId: string): Promise<Array<Record<string, readonly number[]>>> {
   const managerAt = await liveModuleUrl(page, 'data/yjs/manager.ts');
   const sceneAt = await liveModuleUrl(page, 'data/yjs/scene-session.ts');
   return page.evaluate(async ({ managerAt, sceneAt, projectId, spaceId }) => {
@@ -43,8 +44,18 @@ async function committedPose(page: Page, spaceId: string): Promise<Record<string
     const scene = await import(/* @vite-ignore */ sceneAt) as typeof SceneSessionModule;
     const session = scene.peekSceneSession(manager.docName.threeDSpace(projectId, spaceId));
     if (!session || session.getSnapshot().status !== 'ready') throw new Error('The displayed scene has no live ready session.');
-    return { ...session.getSnapshot().objects[0].pose };
+    return session.getSnapshot().objects.map((object) => ({ ...object.pose }));
   }, { managerAt, sceneAt, projectId: smokeProjectId(), spaceId });
+}
+
+/**
+ * The first object's committed pose.
+ * @param page - A page showing the scene.
+ * @param spaceId - The 3D Space.
+ * @returns The pose as stored, absent keys left out.
+ */
+async function committedPose(page: Page, spaceId: string): Promise<Record<string, readonly number[]>> {
+  return (await committedPoses(page, spaceId))[0];
 }
 
 /**
@@ -232,6 +243,46 @@ test('a second connection sees the real figure move and bend while the drag last
     expect(Math.hypot(settled[0] - before[0], settled[1] - before[1])).toBeGreaterThan(0.005);
   } finally {
     await peerContext.close();
+    await deleteSpace(page, id);
+  }
+});
+
+test('a seated figure is still seated after a reload, and reset, duplicate and undo each act on one figure', async ({ page }) => {
+  const id = await sceneWithFigure(page, 'scene-pose-sit');
+  try {
+    const section = page.getByTestId('scene-pose-section');
+    await section.getByRole('button', { name: 'Sit', exact: true }).click();
+    await expect.poll(() => committedPose(page, id)).toEqual(POSE_PRESETS.sit);
+
+    await page.reload();
+    await expect.poll(async () => (await rendered(page)).length, { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => committedPose(page, id)).toEqual(POSE_PRESETS.sit);
+    await visibleSpace(page).getByTestId('scene-objects-trigger').click();
+    const original = (await rendered(page))[0].id;
+    await page.getByTestId(`scene-object-${original}`).click();
+    // Seated on the ground with the knees raised: on screen each knee is above its hip.
+    await page.getByTestId('scene-pose-joint-mode').click();
+    await expect.poll(async () => (await joints(page)).length).toBeGreaterThanOrEqual(15);
+    for (const side of ['left', 'right']) {
+      expect((await jointAt(page, `h:${side}LowerLeg`))[1], side).toBeGreaterThan((await jointAt(page, `h:${side}UpperLeg`))[1]);
+    }
+    await page.getByTestId('scene-pose-joint-mode').click();
+
+    await page.getByTestId('scene-pose-reset').click();
+    await expect.poll(() => committedPose(page, id)).toEqual({});
+    const undo = visibleSpace(page).getByRole('button', { name: 'Undo', exact: true });
+    await undo.click();
+    await expect.poll(() => committedPose(page, id)).toEqual(POSE_PRESETS.sit);
+
+    await visibleSpace(page).getByRole('button', { name: 'Duplicate', exact: true }).click();
+    await expect.poll(async () => (await rendered(page)).length, { timeout: 30_000 }).toBe(2);
+    await expect.poll(() => committedPoses(page, id)).toEqual([POSE_PRESETS.sit, POSE_PRESETS.sit]);
+    // The copy is selected; waving it leaves the original seated.
+    await page.getByTestId('scene-pose-section').getByRole('button', { name: 'Wave', exact: true }).click();
+    await expect.poll(() => committedPoses(page, id)).toEqual([POSE_PRESETS.sit, POSE_PRESETS.wave]);
+    await undo.click();
+    await expect.poll(() => committedPoses(page, id)).toEqual([POSE_PRESETS.sit, POSE_PRESETS.sit]);
+  } finally {
     await deleteSpace(page, id);
   }
 });
