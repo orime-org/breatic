@@ -48,11 +48,11 @@ import { env } from "@core/config/env.js";
  *   regardless of activity, so a slowly-leaking connection
  *   doesn't outlive its safe window;
  * - `max: <pool size>` - caller-supplied;
- * - `queue_timeout` / `connect_timeout` - from `config/database.yaml`, so a
- *   query that cannot get a connection, or a connection that cannot be
- *   opened, fails instead of waiting without limit;
- * - `infer: true` - parameters are typed from their JavaScript values, as
- *   postgres.js 3 did.
+ * - `queue_timeout` / `connect_timeout` - from `config/database.yaml`;
+ *   postgres.js queues a query without limit by default (its connect limit
+ *   defaults to 30 s and is set here so both live in config);
+ * - `infer: true` - keeps postgres.js 3's typing: parameters typed from their
+ *   JavaScript values, and `timestamp` columns read in local time.
  *
  * Callers override individual fields via `opts`; the factory
  * spreads `opts` last, so `opts.idle_timeout = 0` (postgres.js

@@ -34,7 +34,7 @@ describe("database config", () => {
     expect(databaseConfigSchema.safeParse({ pool: { connect_timeout_s: value } }).success).toBe(false);
   });
 
-  it("gives every pool built by createPgClient both limits and v3 parameter typing", () => {
+  it("gives every pool built by createPgClient both limits and postgres.js 3 typing", () => {
     const sql = createPgClient("postgres://user:pw@localhost:1/none", { name: "config-test" });
     clients.push(sql);
     const { connectTimeoutS, queueTimeoutS } = getDatabaseTimeouts();

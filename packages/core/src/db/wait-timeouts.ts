@@ -18,7 +18,9 @@
  * which leaves the queue before it is rejected. With equal limits a request may
  * fail with QUEUE_TIMEOUT while the database is unreachable, because its queue
  * timer starts before the connection attempt it causes, so the pool state, not
- * the code, tells the two apart.
+ * the code, tells the two apart. A wait on a pool other than these two, such
+ * as the connection postgres.js keeps for `listen`, is reported too, with the
+ * main and Yjs pools' state; a report in which both look idle is one of those.
  */
 
 import { tracingChannel, type TracingChannelSubscribers } from "node:diagnostics_channel";
