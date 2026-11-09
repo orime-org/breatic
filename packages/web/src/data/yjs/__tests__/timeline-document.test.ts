@@ -16,7 +16,7 @@ import { TimelineDocumentV1Schema } from '@breatic/shared';
 import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import {
-  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip as fixtureClip, idFactory, starts, timeline,
+  MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, cid, clip as fixtureClip, idFactory, sourceIdOf, starts, timeline,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -179,7 +179,7 @@ function expectedChanges(before: TimelineDocumentV1, after: TimelineDocumentV1):
   }
   // Sources (inner#1708 L2, L4): every created clip re-sets its source, a new source is added, an unreferenced one deleted.
   const sources = new Set<string>();
-  for (const [id, item] of Object.entries(after.clips)) if (before.clips[id] === undefined) sources.add(item.sourceId);
+  for (const [id, item] of Object.entries(after.clips)) if (before.clips[id] === undefined) sources.add(sourceIdOf(item) ?? '');
   for (const id of Object.keys(after.sources)) if (before.sources[id] === undefined) sources.add(id);
   for (const id of Object.keys(before.sources)) if (after.sources[id] === undefined) sources.add(id);
   for (const id of sources) changes.push(`sources:${id}`);
@@ -918,7 +918,7 @@ describe('Edits that create clips re-set their sources against a concurrent swee
     for (const doc of [mine, peer]) {
       const document = readTimelineDocument(doc);
       expect(document.sources[SHORT_SOURCE.id]).toEqual(SHORT_SOURCE);
-      expect(document.clips[createdId]?.sourceId).toBe(SHORT_SOURCE.id);
+      expect(sourceIdOf(document.clips[createdId])).toBe(SHORT_SOURCE.id);
     }
     expect(readTimelineDocument(mine)).toEqual(readTimelineDocument(peer));
   }

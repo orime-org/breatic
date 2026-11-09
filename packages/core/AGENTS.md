@@ -8,6 +8,10 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 **The Drizzle schema, migrations and database clients live only in `src/db/`; worker has no `drizzle-orm` dependency and reaches the database through repository and service APIs in `@breatic/core` and `@breatic/domain`.** Repos in server, domain and collab all query through core's `db` / `yjsDb`, so a second schema or client elsewhere would split the pool and the migration history.
 
+### Queries bind to the open transaction
+
+**While a transaction is open, a query issued through `db` or `yjsDb` in the same async flow runs on that transaction, and a transaction opened inside it is a savepoint (`bindToOpenTransaction` in `src/db/client.ts`).** A transaction that waits for a second pool connection deadlocks the service once every connection is held by such a transaction. A query built inside the transaction keeps the session it was built on, as one built on `tx` does, so await it before the callback returns. Passing `tx` explicitly stays correct; a test that needs a separate session while holding a transaction starts it from an `AsyncLocalStorage.snapshot()` taken before the transaction began.
+
 ### Two Postgres databases
 
 **There are two databases: the product database (`db/schema.ts`, `db/migrations/`, clients `db` / `rawPg`) and the Yjs database (`db/yjs-schema.ts`, `db/migrations-yjs/` with its own journal, clients `yjsDb` / `yjsRawPg`, URL `YJS_DATABASE_URL`).** Every migration belongs to exactly one of them, so name which one, and pass `--yjs` to `pnpm db:journal-add` for the Yjs database.

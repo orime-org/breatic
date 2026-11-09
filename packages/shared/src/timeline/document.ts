@@ -4,8 +4,9 @@
 import * as Y from "yjs";
 import type { z } from "zod";
 import {
-  TimelineDocumentV1Schema, TimelineSettingsSchema, TimelineTrackSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
-  TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineSettings, type TimelineVideoSource,
+  TimelineClipSchema, TimelineDocumentV1Schema, TimelineOperationReceiptSchema, TimelineSettingsSchema, TimelineTrackSchema,
+  TimelineVideoSourceSchema, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineSettings,
+  type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
 
 /**
@@ -103,6 +104,23 @@ function readRecords<T extends { id: string }>(collection: Y.Map<unknown>, schem
 }
 
 /**
+ * Every readable operation receipt, by action id. A document written before receipts existed has no such root and
+ * reads as having none; the root is not created by reading.
+ * @param doc - The content document.
+ * @returns The receipts that pass their schema.
+ * @throws {never} Never.
+ */
+function readOperationReceipts(doc: Y.Doc): Record<string, TimelineOperationReceipt> {
+  const receipts: Record<string, TimelineOperationReceipt> = {};
+  if (!doc.share.has("operationReceipts")) return receipts;
+  doc.getMap("operationReceipts").forEach((value, actionId) => {
+    const parsed = TimelineOperationReceiptSchema.safeParse(timelineRecordJson(value));
+    if (parsed.success) receipts[actionId] = parsed.data;
+  });
+  return receipts;
+}
+
+/**
  * Read one stored source value, by the rule every Timeline record follows.
  * @param value - The value stored under `id` in the sources map.
  * @param id - Its key.
@@ -128,8 +146,9 @@ export function readTimelineContent(doc: Y.Doc): { document: TimelineDocumentV1;
     schemaVersion: timeline.get("schemaVersion"),
     settings: timeline.get("settings"),
     tracks: readRecords(doc.getMap("tracks"), TimelineTrackSchema),
-    clips: readRecords(doc.getMap("clips"), TimelineVideoClipSchema, damaged.clips),
+    clips: readRecords(doc.getMap("clips"), TimelineClipSchema, damaged.clips),
     sources: readRecords(doc.getMap("sources"), TimelineVideoSourceSchema),
+    operationReceipts: readOperationReceipts(doc),
   });
   return { document, damaged };
 }

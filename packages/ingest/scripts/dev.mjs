@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 const HERE = process.cwd();
@@ -66,6 +66,13 @@ if (unnamed.length > 0) {
     ].join("\n"),
   );
   process.exit(0);
+}
+
+// The web-animation font set is served as static assets; with `[assets]`
+// enabled, wrangler refuses to start until its directory exists.
+if (/^\s*\[assets\]/m.test(topLevel)) {
+  const fonts = spawnSync(process.execPath, [join(HERE, "scripts/web-animation-fonts.mjs")], { stdio: "inherit" });
+  if (fonts.status !== 0) process.exit(0);
 }
 
 const child = spawn("wrangler", ["dev"], { stdio: "inherit", shell: true });

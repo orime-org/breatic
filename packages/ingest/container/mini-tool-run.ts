@@ -13,7 +13,7 @@
  */
 
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -26,7 +26,7 @@ import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
-import { runCommand, runSteps } from "./run-steps.js";
+import { cpuUsec, runCommand, runSteps } from "./run-steps.js";
 
 /** What the Durable Object sends to `/run`. */
 export interface RunBody {
@@ -73,17 +73,6 @@ async function download(url: string, file: string): Promise<void> {
   if (Number.isFinite(announced) && announced > 0 && arrived !== announced) {
     throw new Error(`the read of ${url} stopped at ${arrived} of ${announced} bytes`);
   }
-}
-
-/**
- * The CPU time the container's cgroup has counted.
- * @returns Microseconds, or null when the file is not there to read.
- */
-async function cpuUsec(): Promise<number | null> {
-  const stats = await readFile("/sys/fs/cgroup/cpu.stat", "utf8").catch(() => null);
-  const line = stats?.split("\n").find((entry) => entry.startsWith("usage_usec "));
-  const value = line === undefined ? NaN : Number(line.split(" ")[1]);
-  return Number.isFinite(value) ? value : null;
 }
 
 /**
