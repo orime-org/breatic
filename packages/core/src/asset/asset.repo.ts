@@ -403,6 +403,25 @@ export async function findCoverOf(
 }
 
 /**
+ * A live cover that some live row under a storage key points at, from any
+ * studio. Rows under one key describe the same bytes, but a row filed without
+ * its cover (a document paste names only the video) does not say there is one.
+ * @param storageKey - The video's storage key.
+ * @returns One such cover row, or null when no row under the key has one.
+ * @throws {Error} When the database query fails.
+ */
+export async function findCoverUnderKey(storageKey: string): Promise<StudioAssetEntity | null> {
+  const cover = alias(studioAssets, "cover");
+  const rows = await db
+    .select({ cover })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt), isNull(cover.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0].cover) : null;
+}
+
+/**
  * Total live storage a studio uses, in bytes (sum of its assets' sizes).
  * @param studioId - Studio to sum.
  * @returns The byte total (0 when the studio owns no live assets).

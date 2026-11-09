@@ -9,14 +9,16 @@
  * an address the target Studio already holds by content hash is used as it
  * is, and one it lacks is registered against the same key, counted toward its
  * storage. A video is handled with its cover, the way an upload files them:
- * cover first, then the video pointing at it. Each copy then gets one history
- * row from its own data, its addresses taken from this answer rather than the
- * request.
+ * cover first, then the video pointing at it; a video named without its cover
+ * (a document block holds only the video's address) brings the cover the
+ * ledger knows for its key. Each copy then gets one history row from its own
+ * data, its addresses taken from this answer rather than the request, and
+ * what the copy lacks taken from the target Studio's ledger.
  */
 
 import { accountActivityRepo, getStorageAdapter, logger } from "@breatic/core";
-import type { PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
-import { assetRepo, assetService, ingestReportService, nodeHistoryService } from "@breatic/domain";
+import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
+import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 
@@ -40,12 +42,13 @@ interface Miss {
  * Register a paste's resources in the target Studio and write each copy's
  * history.
  * @param input - Where the paste lands, who pastes, and what the copy names.
- * @returns Old address → address in the target Studio; a cover that could
- *   not be filed maps to null. Addresses no ledger knows are left out.
+ * @returns Old address → address in the target Studio (a cover that could
+ *   not be filed maps to null; addresses no ledger knows are left out), and
+ *   what the target Studio's ledger holds for each address it maps to.
  * @throws {AppError} 507 when something must be registered and the target
  *   Studio has no storage left; nothing is written then.
  */
-export async function pasteAssets(input: PasteInput): Promise<Record<string, string | null>> {
+export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer> {
   const studioId = await assetService.resolveOwnerStudioId(input.projectId);
   const storage = await getStorageAdapter();
   const map: Record<string, string | null> = {};
@@ -66,7 +69,18 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
   const coverRows = new Map<string, StudioAssetEntity>();
   // Each video's source row and its hit in the target Studio, if any.
   const videos: Array<{ pair: PastePair; video: StudioAssetEntity; hit: StudioAssetEntity | null }> = [];
-  for (const pair of input.pairs) {
+  const pairs = [...input.pairs];
+  const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
+  for (const address of new Set(input.urls)) {
+    if (paired.has(address)) continue;
+    const source = await sourceOf(address);
+    if (source?.kind !== "video") continue;
+    // Any row under the key may be the one sourceOf found, and one filed
+    // without its cover does not say there is one.
+    const cover = await assetRepo.findCoverUnderKey(source.storageKey);
+    if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
+  }
+  for (const pair of pairs) {
     const video = await sourceOf(pair.url);
     if (video === null) continue;
     const cover = await sourceOf(pair.cover);
@@ -156,6 +170,13 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
     await file(miss);
   }
 
+  // What the target Studio's ledger holds for every address the copy now names.
+  const media: Record<string, NodeMediaFields> = {};
+  const mapped = Object.values(map).filter((address): address is string => address !== null);
+  for (const [address, facts] of await materialFacts(studioId, mapped)) {
+    if (facts !== "missing") media[address] = facts.media;
+  }
+
   for (const item of input.history) {
     if (item.kind === "text") {
       if (item.content.trim().length === 0) continue;
@@ -169,7 +190,8 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
     }
     const content = map[item.content];
     if (content === undefined || content === null) continue;
-    const thumbnail = item.coverUrl === undefined ? undefined : map[item.coverUrl];
+    const held = media[content];
+    const thumbnail = item.coverUrl === undefined ? held?.coverUrl : map[item.coverUrl];
     await nodeHistoryService.recordUpload({
       projectId: input.projectId,
       nodeId: item.node_id,
@@ -177,14 +199,14 @@ export async function pasteAssets(input: PasteInput): Promise<Record<string, str
       content,
       ...(typeof thumbnail === "string" && { thumbnailUrl: thumbnail }),
       media: {
-        width: item.width ?? null,
-        height: item.height ?? null,
-        duration: item.duration ?? null,
-        mimeType: item.mimeType ?? null,
-        size: item.size ?? null,
+        width: item.width ?? held?.width ?? null,
+        height: item.height ?? held?.height ?? null,
+        duration: item.duration ?? held?.duration ?? null,
+        mimeType: item.mimeType ?? held?.mimeType ?? null,
+        size: item.size ?? held?.size ?? null,
       },
     });
   }
-  return map;
+  return { map, media };
 }
 
