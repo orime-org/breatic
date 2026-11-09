@@ -67,7 +67,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 ### Redeploy after an ingest PR merges
 
-**After a PR that changed `packages/ingest` merges, redeploy the deployed Worker from a clean `origin/main`, never from a task branch.** Local checkouts whose `INGEST_BASE_URL` points at the deployed Worker sign tickets against `main`, and a stale Worker fails their uploads. Check: `git diff --name-only <merge>^1 <merge> | grep ^packages/ingest/` prints anything → redeploy.
+**After a PR that changed `packages/ingest` merges, the production Worker is redeployed from a clean `origin/main`, never from a task branch, through the production handoff in [the root rule](../../AGENTS.md#cloudflare-worker-environments).** Production services sign tickets with `main`'s code, and a stale Worker fails their uploads. Check: `git diff --name-only <merge>^1 <merge> | grep ^packages/ingest/` prints anything → hand over a redeploy.
 
 1. Check out `origin/main` in a separate worktree, run `pnpm install --frozen-lockfile`, and copy your `wrangler.toml` in.
 2. Compare with what is live: `npx wrangler deployments list --env production`, then `npx wrangler versions view <id> --env production --json`; `npx wrangler deploy --env production --dry-run` must list the same bindings and vars (`containers` and Durable Object bindings do not inherit into `[env.production]`).
