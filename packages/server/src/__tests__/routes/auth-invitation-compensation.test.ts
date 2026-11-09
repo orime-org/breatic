@@ -59,7 +59,7 @@ const USER: UserEntity = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  spies.verifySignupCode.mockResolvedValue(USER);
+  spies.verifySignupCode.mockResolvedValue({ user: USER, referral: null });
   spies.getUserById.mockResolvedValue(USER);
 });
 

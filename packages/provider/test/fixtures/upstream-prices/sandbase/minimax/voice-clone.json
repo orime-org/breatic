@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/voice-clone",
+  "price_formula": "1.5 + Math.ceil(len(params.text ?? \"Hello, this is a preview of your cloned voice! I hope you like it!\") / 1000) * 0.3"
+}

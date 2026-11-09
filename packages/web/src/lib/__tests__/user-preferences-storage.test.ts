@@ -43,6 +43,7 @@ describe('user preferences storage', () => {
       timelineMagnet: true,
       timelineSnap: true,
       timelineLinkage: true,
+      documentOutlineVisible: true,
     });
     expect(DEFAULT_USER_PREFERENCES).toEqual(readUserPreferences(ALICE));
   });
@@ -89,6 +90,7 @@ describe('user preferences storage', () => {
         snapToGrid: true,
         agentColumnWidth: 'wide',
         railCollapsed: { personal: 1, mine: true, joined: false },
+        documentOutlineVisible: 'no',
       },
     });
 
@@ -100,6 +102,7 @@ describe('user preferences storage', () => {
       timelineMagnet: true,
       timelineSnap: true,
       timelineLinkage: true,
+      documentOutlineVisible: true,
     });
   });
 

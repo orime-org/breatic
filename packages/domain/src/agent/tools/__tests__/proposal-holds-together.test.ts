@@ -715,8 +715,9 @@ describe("what the model is allowed to fill in", () => {
     const found = reachableModes()
       .flatMap((at) =>
         Object.entries(at.params)
-          .filter(([, p]) => p.gate?.kind === "flagOn")
-          .map(([name, p]) => ({ at, name, value: (p.options ?? [])[0], flag: (p.gate as { param: string }).param })),
+          .flatMap(([name, p]) => (p.gate?.flag_on !== undefined && p.gate.equals === undefined
+            ? [{ at, name, value: (p.options ?? [])[0], flag: p.gate.flag_on }]
+            : [])),
       )
       .find((x) => x.value !== undefined);
     if (!found) throw new Error("the catalog offers no control behind a switch");
@@ -730,8 +731,9 @@ describe("what the model is allowed to fill in", () => {
     const found = reachableModes()
       .flatMap((at) =>
         Object.entries(at.params)
-          .filter(([, p]) => p.gate?.kind === "flagOn")
-          .map(([name, p]) => ({ at, name, value: (p.options ?? [])[0], flag: (p.gate as { param: string }).param })),
+          .flatMap(([name, p]) => (p.gate?.flag_on !== undefined && p.gate.equals === undefined
+            ? [{ at, name, value: (p.options ?? [])[0], flag: p.gate.flag_on }]
+            : [])),
       )
       .find((x) => x.value !== undefined);
     if (!found) throw new Error("the catalog offers no control behind a switch");

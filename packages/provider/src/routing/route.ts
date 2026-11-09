@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { NoUpstreamAvailable, UpstreamRequestRejected, type UnavailableReason } from "@provider/errors.js";
-import type { Route } from "@provider/pricing/estimate.js";
+import { byPrice, type RejectedInput, type Route } from "@provider/pricing/estimate.js";
 
 export type { Route } from "@provider/pricing/estimate.js";
 
@@ -15,8 +15,13 @@ export interface Candidate {
   configured: boolean;
   /** The environment variable that holds the key. */
   envVar: string;
-  /** This call's estimate on this upstream, in USD; used by the cheapest mode. */
-  estimateUsd?: number;
+  /**
+   * This call's estimate on this upstream, used by the cheapest mode: `usd` in USD, and `atLeast` when it is only a
+   * lower bound (a source it bills by the length of has no known length), which ranks after every known price.
+   */
+  estimate?: { usd: number; atLeast: boolean };
+  /** Why the upstream cannot take this run (a param and value, one of the model vendor's limits or its own, or a check that failed to evaluate); it is then skipped. */
+  unsupported?: RejectedInput;
 }
 
 /** The upstreams to try, in order, and the ones skipped before trying. */
@@ -31,8 +36,8 @@ export interface RoutePlan {
  * @param model - Our model id.
  * @param route - The caller's mode.
  * @param candidates - Every upstream the model is bound to.
- * @returns The configured upstreams in try order, and the unconfigured ones as reasons.
- * @throws {NoUpstreamAvailable} When no upstream of the route is configured.
+ * @returns The configured upstreams that can take the run, in try order, and the others as reasons (a missing key or an input they do not take).
+ * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
  * @throws {UpstreamRequestRejected} When the route names an upstream the model has no binding for.
  */
 export function planRoute(model: string, route: Route, candidates: readonly Candidate[]): RoutePlan {
@@ -45,12 +50,20 @@ export function planRoute(model: string, route: Route, candidates: readonly Cand
     }
   }
   if (route.mode === "cheapest") {
-    pool.sort((a, b) => (a.estimateUsd ?? Infinity) - (b.estimateUsd ?? Infinity) || a.weight - b.weight);
+    /**
+     * A candidate as `byPrice` orders it; no estimate at all is no more known than a lower bound.
+     * @param c - The candidate.
+     * @returns Its price, bound and weight.
+     */
+    const priced = (c: Candidate): { usd: number; atLeast: boolean; weight: number } => ({ usd: Infinity, atLeast: true, ...c.estimate, weight: c.weight });
+    pool.sort((a, b) => byPrice(priced(a), priced(b)));
   }
-  const skipped: UnavailableReason[] = pool
-    .filter((c) => !c.configured)
-    .map((c) => ({ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }));
-  const order = pool.filter((c) => c.configured);
+  const skipped: UnavailableReason[] = pool.flatMap((c): UnavailableReason[] => {
+    if (!c.configured) return [{ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }];
+    if (c.unsupported !== undefined) return [{ upstream: c.upstream, kind: "unsupported_input", ...c.unsupported }];
+    return [];
+  });
+  const order = pool.filter((c) => c.configured && c.unsupported === undefined);
   if (order.length === 0) throw new NoUpstreamAvailable(model, skipped);
   return { model, order, skipped };
 }

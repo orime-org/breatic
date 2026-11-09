@@ -116,7 +116,9 @@
       "unavailable": "這個部署不出售點數。"
     },
     "text_tool": {
-      "already_running": "另一個文字工具正在執行,請稍候。"
+      "selection_too_long": "選取的內容太長，AI 處理不了：{actual} 個字元，上限是 {limit}。",
+      "document_too_long": "隨選取內容送出的上下文太長：{actual} 個字元，上限是 {limit}。",
+      "failed": "AI 沒能完成這次請求，請重試。"
     },
     "conversation": {
       "not_found": "找不到這個對話",
@@ -304,6 +306,33 @@
       },
       "credits_amount": "{credits} 點",
       "fact_line": "{label}：{value}"
+    },
+    "referral": {
+      "invalid_code": "推廣碼無效。",
+      "already_bound": "這個帳號已經綁定過推廣碼。",
+      "already_paid": "推廣碼只能在第一次付會員費之前填寫。",
+      "not_eligible": "企業版帳號不能綁定推廣碼。",
+      "program_closed": "推廣計畫暫未開放申請。",
+      "terms_changed": "推廣條款已更新，請重新閱讀後再申請。",
+      "application_pending": "你已經有一份申請在審核中。",
+      "already_promoter": "你已經是推廣者。"
+    },
+    "three_d": {
+      "model_not_offered": "{model} 不是用於 {mode} 的 3D 模型。",
+      "prompt_required": "文生 3D 需要填寫提示詞。",
+      "prompt_not_taken": "{model} 根據圖片生成，不接受提示詞。",
+      "image_count": "{model} 需要{max, plural, =0 {不帶圖片} =1 {一張圖片} other {{min} 到 {max} 張圖片}}，這次請求給了 {actual} 張。",
+      "not_a_setting": "{model} 沒有「{param}」這項設定。",
+      "setting_forced": "在目前設定下「{param}」不能是 {given}：規則 {force} 會把它設為 {value}。",
+      "setting_values": "「{param}」只能取 {values}，不能是 {value}。",
+      "setting_integer": "「{param}」需要整數，不能是 {value}。",
+      "setting_text": "「{param}」需要文字，不能是 {value}。",
+      "setting_bounds": "在目前設定下「{param}」的範圍是 {min} 到 {max}，不能是 {value}。",
+      "setting_too_long": "「{param}」最多 {max} 個字元，現在有 {length} 個。",
+      "view_not_found": "第 {index} 個視圖槽（{slot, select, front {正面} left {左側} back {背面} right {右側} other {多餘}}）：{input} 不是本 Project 裡的圖片。",
+      "view_not_image": "第 {index} 個視圖槽（{slot, select, front {正面} left {左側} back {背面} right {右側} other {多餘}}）：這個檔案是{kind, select, video {影片} audio {音訊} other {模型或其他檔案}}，不是圖片。",
+      "still_running": "這次生成還在收尾，可能還會出結果，請稍後再試。",
+      "has_result": "這次生成已經出了結果，結果已回到任務列表。"
     }
   },
   "chat": {
@@ -449,8 +478,10 @@
         "readMemory": "查記憶",
         "other": "呼叫 {tool}",
         "readTemplate": "讀範本",
-        "requestSpace": "請求查看 Space"
-      }
+        "requestSpace": "請求查看 Space",
+        "proposeScene": "擬 3D 生成建議"
+      },
+      "proposingSceneGeneration": "正在擬一份 3D 生成建議"
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -561,6 +592,13 @@
         "timedOut": "讀取逾時",
         "failed": "讀取失敗"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 生成",
+      "open": "在 3D Space 中開啟",
+      "needScene": "先開啟一個 3D Space。",
+      "credits": "約 {credits} 積分",
+      "setting": "{name}：{value}"
     }
   },
   "canvas": {
@@ -867,7 +905,23 @@
         "light_color_hex": "自訂光色",
         "light_intensity": "強度",
         "light_quality": "光質",
-        "strength": "強度"
+        "strength": "強度",
+        "texture": "貼圖",
+        "pbr": "PBR",
+        "texture_quality": "貼圖品質",
+        "texture_version": "貼圖版本",
+        "delight": "去除光照",
+        "geometry_quality": "幾何品質",
+        "smart_low_poly": "智慧低面數",
+        "generate_parts": "拆分部件",
+        "face_limit": "面數上限",
+        "auto_size": "自動尺寸",
+        "export_uv": "匯出 UV",
+        "model_seed": "模型種子",
+        "texture_seed": "貼圖種子",
+        "texture_alignment": "貼圖對齊",
+        "orientation": "朝向",
+        "enable_image_autofix": "圖片自動修正"
       },
       "paramField": {
         "speaker": "名字",
@@ -910,7 +964,8 @@
         "loadFailed": "3D 視圖載入失敗，重新整理頁面後可用"
       },
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
-      "notePrefix": "注意事項："
+      "notePrefix": "注意事項：",
+      "integerBlank": "留空為自動"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1785,6 +1840,19 @@
       "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
       "termsLink": "使用條款",
       "privacyLink": "隱私政策"
+    },
+    "referral": {
+      "label": "推廣碼",
+      "optional": "選填",
+      "placeholder": "沒有可以不填",
+      "notApplied": "推廣碼已失效，沒有使用。可以在會員面板補填。",
+      "existingAccount": "這個帳號已存在，推廣碼沒有使用。還沒開過會員的話，可以在會員面板補填。",
+      "carried": "用 Google 新註冊時會使用推廣碼 {code}",
+      "carriedInvalid": "推廣碼 {code} 已失效",
+      "remove": "不使用這個推廣碼",
+      "haveCode": "有推廣碼？",
+      "invalid": "推廣碼無效。改一下，或清空後繼續。",
+      "googleOnly": "用 Google 新註冊時使用"
     }
   },
   "roleTag": {
@@ -2012,7 +2080,6 @@
         "code": "行內程式碼",
         "comment": "批註",
         "ai": "AI",
-        "comingLabel": "{name}（未開放）",
         "link": "連結",
         "blockType": "區塊類型",
         "paragraph": "內文",
@@ -2031,17 +2098,35 @@
         "textColor": "文字顏色",
         "fillColor": "背景顏色",
         "colorReset": "恢復預設",
-        "aiRewriteGroup": "改寫選取的文字",
-        "aiProduceGroup": "依選取的文字產出新東西",
-        "aiOtherGroup": "其他",
         "ai_refine": "潤飾",
         "ai_expand": "擴寫",
         "ai_shorten": "縮寫",
         "ai_translate": "翻譯",
         "ai_tone": "改語氣",
         "ai_storyboard": "產生分鏡表",
-        "ai_illustrate": "依這段產生示意圖",
         "ai_custom": "自訂要求…"
+      },
+      "ai": {
+        "customTitle": "自訂要求",
+        "tone": {
+          "professional": "更專業",
+          "casual": "更輕鬆",
+          "straightforward": "更直白",
+          "confident": "更自信",
+          "friendly": "更親切"
+        },
+        "close": "關閉",
+        "stop": "停止",
+        "retry": "重試",
+        "start": "開始",
+        "insert": "插入",
+        "replace": "取代",
+        "instructionsPlaceholder": "寫下你要 AI 對選取的文字做什麼，按 Enter 開始，Shift+Enter 換行",
+        "instruction": "要求：{text}",
+        "rangeGone": "原本選取的文字已被刪除",
+        "blockGone": "原本所在的段落已被刪除",
+        "notWritable": "你目前沒有編輯權限",
+        "selectionTooLong": "選取的內容太多，請少選一些再試"
       },
       "comment": {
         "placeholder": "寫一條批註…",
@@ -2072,6 +2157,11 @@
         "risksLead": "重新整理前請留意：",
         "riskUploads": "正在進行的上傳會被中斷，可以先切到對應的 Space 看一眼。",
         "action": "重新整理頁面"
+      },
+      "outline": {
+        "show": "顯示大綱",
+        "hide": "隱藏大綱",
+        "empty": "還沒有標題"
       },
       "docMenu": {
         "label": "整個 Document 的命令",
@@ -2116,7 +2206,16 @@
         "cellMenu": "儲存格選項",
         "splitCell": "分割儲存格",
         "mergeCells": "合併儲存格",
-        "textHighlight": "背景（醒目提示文字）"
+        "textHighlight": "背景（醒目提示文字）",
+        "cut": "剪下",
+        "pasteAbove": "貼上到上方",
+        "pasteBelow": "貼上到下方",
+        "pasteLeft": "貼上到左側",
+        "pasteRight": "貼上到右側",
+        "splitMergedFirst": "請先分割合併的儲存格",
+        "noTableToPaste": "請先複製一個表格",
+        "clipboardNotAllowed": "沒有讀取剪貼簿的權限",
+        "copyFailed": "無法複製到剪貼簿"
       },
       "paste": {
         "unsupportedInCell": "目前格式不支援貼上"
@@ -2198,10 +2297,6 @@
       "controls": "操作說明",
       "tasks": "任務",
       "minimap": "場景小地圖",
-      "generationDev": "3D 模型生成正在開發中",
-      "prompt": "描述你想生成的 3D 模型",
-      "reference": "參考圖（選填）",
-      "chooseReference": "選擇參考圖",
       "submit": "生成",
       "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
       "closePanel": "關閉",
@@ -2267,10 +2362,77 @@
         "place": "放入場景",
         "retry": "重試",
         "remove": "移除",
-        "empty": "你匯入的模型會顯示在這裡。",
+        "empty": "匯入或生成的模型會顯示在這裡。",
         "loadFailed": "任務載入失敗。",
         "removeFailed": "移除失敗，請重試。",
-        "placeFailed": "模型未能放入場景。"
+        "placeFailed": "模型未能放入場景。",
+        "kindGeneration": "生成",
+        "originSpace": "Space 內",
+        "originAgent": "Agent",
+        "generating": "生成中",
+        "generatingFor": "生成中 · 已用 {minutes} 分鐘",
+        "stillRunning": "這次生成還在收尾，請稍後再試。",
+        "hasResult": "這次生成已有結果，可以放入場景。",
+        "checkFailed": "無法查詢這次生成，請重試。",
+        "locate": "在場景中定位",
+        "filter": "篩選",
+        "filterRunning": "只看進行中",
+        "filterKind": "類型",
+        "filterAll": "全部",
+        "filterStarter": "發起人",
+        "filterEveryone": "所有成員",
+        "filterMe": "我",
+        "filterOrigin": "來源",
+        "filterEmpty": "沒有符合篩選的任務。"
+      },
+      "proposalBusy": "正在提交另一次生成。",
+      "readOnlyCreate": "Viewer 不能新增、匯入或生成模型。",
+      "force": {
+        "parts_geometry_only": "拆分部件只生成幾何。",
+        "pbr_needs_texture": "PBR 需要貼圖。",
+        "fast_uses_v35": "Fast 貼圖只有 v3.5。"
+      },
+      "generateDialog": {
+        "descriptionBlank": "生成的模型進入任務列表，完成後可放入場景。",
+        "descriptionAgent": "已按 Agent 的建議填好，確認後點生成。",
+        "descriptionRetry": "已按原任務填好，確認後點生成。",
+        "common": "通用設定",
+        "prompt": "提示詞",
+        "promptPlaceholder": "描述你想生成的 3D 模型",
+        "views": "參考圖",
+        "viewsHint": "視圖按正、左、後、右依次填寫。只有正面時按單圖生成，有其他視圖時按多視圖生成。",
+        "view": {
+          "front": "正面",
+          "left": "左",
+          "back": "後",
+          "right": "右"
+        },
+        "required": "必填",
+        "upload": "上傳",
+        "pickProject": "從 Project 選擇",
+        "removeView": "移除",
+        "changeView": "更換{view}圖",
+        "addView": "新增{view}圖",
+        "uploadFailed": "上傳失敗",
+        "fillEarlier": "先填前一個視圖",
+        "rule": {
+          "bounds": "請輸入 {min} 到 {max}。",
+          "integer": "請輸入整數。",
+          "length": "最多 {max} 個字元。",
+          "values": "請選擇一個選項。"
+        }
+      },
+      "picker": {
+        "title": "選擇圖片",
+        "description": "從本 Project 的圖片中選擇，或上傳。",
+        "project": "Project",
+        "local": "本機",
+        "loadFailed": "圖片載入失敗。",
+        "empty": "本 Project 還沒有圖片。",
+        "unnamed": "未命名圖片",
+        "more": "載入更多",
+        "formats": "PNG、JPEG 或 WebP",
+        "chooseFile": "選擇檔案"
       }
     }
   },
@@ -2949,7 +3111,64 @@
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },
-    "noCreditsIncluded": "會員不含生成點數，點數單獨購買。"
+    "noCreditsIncluded": "會員不含生成點數，點數單獨購買。",
+    "referral": {
+      "heading": "推廣碼",
+      "intro": "有推廣碼的話，在第一次開會員前填上，首期會員 {zhe} 折。綁定後不能修改。",
+      "placeholder": "輸入推廣碼",
+      "add": "綁定",
+      "required": "請輸入推廣碼。",
+      "bound": "已綁定推廣碼 {code}",
+      "boundDiscount": "結帳時自動生效。",
+      "badge": "首期 {zhe} 折",
+      "added": "已綁定，選擇會員即享首期 {zhe} 折。",
+      "loadFailed": "沒有讀到推廣資訊。",
+      "retry": "重試"
+    }
+  },
+  "promoter": {
+    "heading": "推廣計畫",
+    "closed": "推廣計畫暫未開放申請。",
+    "pitch": "推薦別人用 breatic，按他們的會員付款拿佣金。",
+    "pitchDetail": "審核通過後你會拿到自己的推廣碼和專屬連結；被推薦的人首期會員 {zhe} 折。",
+    "apply": "申請成為推廣者",
+    "applyAgain": "再次申請",
+    "pending": "申請審核中",
+    "pendingDetail": "{date} 提交。審核結果會顯示在這裡。",
+    "pendingBadge": "審核中",
+    "rejected": "上次的申請沒有通過",
+    "rejectedNote": "說明：{note}",
+    "yourCode": "你的推廣碼",
+    "copyCode": "複製推廣碼",
+    "copyLink": "複製連結",
+    "copied": "已複製",
+    "copyFailed": "複製到剪貼簿失敗。",
+    "shareHint": "別人用這個碼註冊，或在第一次開會員前填上，首期會員 {zhe} 折。",
+    "disabled": "已停用",
+    "removed": "已移出",
+    "disabledDetail": "這個推廣碼已停用，現在不能再填寫。已經用了它的人照常享受首期折扣。",
+    "removedDetail": "你已不在推廣計畫中，這個推廣碼永久停用。已經用了它的人照常享受首期折扣。",
+    "dialogTitle": "申請成為推廣者",
+    "dialogDescription": "我們審核後會在這裡告訴你結果。",
+    "country": "國家或地區",
+    "countryPlaceholder": "選擇",
+    "channels": "推廣管道",
+    "channelsHint": "網址或一句描述，最多 10 條",
+    "channelPlaceholder": "https://youtube.com/@yourchannel 或「200 人的設計師群」",
+    "addChannel": "再加一條",
+    "removeChannel": "刪除這一條",
+    "plan": "推廣方式",
+    "planPlaceholder": "你的受眾是誰、打算怎麼介紹 breatic",
+    "agreeLead": "我已閱讀並同意",
+    "termsLink": "推廣條款",
+    "agreeRequired": "需要同意推廣條款才能提交。",
+    "countryRequired": "請選擇國家或地區。",
+    "channelsRequired": "至少寫一個推廣管道。",
+    "planRequired": "請寫一下你打算怎麼推廣。",
+    "termsChanged": "推廣條款已更新，請重新閱讀後再勾選。",
+    "cancel": "取消",
+    "submit": "提交申請",
+    "submitted": "申請已提交"
   },
   "credits": {
     "panelTitle": "點數",
@@ -3158,7 +3377,8 @@
       "invalid_range": "超出影片範圍",
       "incompatible_track": "所在軌道類型不符",
       "damaged": "該片段已無法讀取",
-      "missing_source": "所用影片已遺失"
+      "missing_source": "所用影片已遺失",
+      "source_unresolved": "網頁動畫不可用"
     },
     "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",
@@ -3211,7 +3431,8 @@
       "track_missing": "目標軌道已被移除，請選擇其他軌道。",
       "id_taken": "此項目已存在，請重試。",
       "main_track": "主軌無法刪除。",
-      "track_not_empty": "只能刪除空軌道。"
+      "track_not_empty": "只能刪除空軌道。",
+      "source_unresolved": "網頁動畫尚未就緒，請稍後重試。"
     },
     "mainTrack": "主軌",
     "track": "畫面 {index}",
@@ -3228,8 +3449,8 @@
       "linkage": "連動",
       "zoom": "縮放",
       "track": "軌道",
-      "inPoint": "入點",
-      "duration": "時長",
+      "inPoint": "入點（影格）",
+      "duration": "時長（影格）",
       "newTrack": "新增畫面軌",
       "newTrackZone": "拖到這裡新增軌道",
       "trackRemoved": "軌道已移除",
@@ -3241,6 +3462,69 @@
       "splitOutside": "請將播放頭移到選取片段內再分割。",
       "lowestTrack": "此片段已在最下方的畫面軌。",
       "bumped": "{count, plural, other {# 個連動片段}}已移到上方軌道。"
+    },
+    "webAnimation": {
+      "create": "製作網頁動畫",
+      "executions": "執行列表",
+      "copy": "網頁動畫副本",
+      "durationShort": "{seconds} 秒",
+      "dialog": {
+        "title": "製作網頁動畫",
+        "retryTitle": "重新執行網頁動畫",
+        "description": "填寫要求後點擊「執行」。",
+        "prompt": "要求",
+        "promptPlaceholder": "例如：藍色背景，標題從左側滑入",
+        "engine": "引擎",
+        "aspect": "比例",
+        "duration": "時長（秒）",
+        "addAtPlayhead": "在播放頭位置加入 Timeline",
+        "execute": "執行"
+      },
+      "list": {
+        "close": "關閉執行列表",
+        "completed": "已完成",
+        "inProgress": "進行中",
+        "emptyCompleted": "還沒有已完成的執行。",
+        "emptyInProgress": "沒有進行中的執行。"
+      },
+      "status": {
+        "awaiting_landing": "儲存中",
+        "queued": "排隊中",
+        "running": "製作中",
+        "cancelling": "取消中",
+        "succeeded": "成功",
+        "failed": "失敗",
+        "cancelled": "已取消",
+        "expired": "已過期"
+      },
+      "step": {
+        "landing": "儲存執行請求"
+      },
+      "phase": {
+        "writing": "編寫網頁",
+        "validating": "校驗定位與清單",
+        "saving": "儲存源包"
+      },
+      "usageLabel": "用量",
+      "usage": "{credits} 點",
+      "usagePending": "結束後結算",
+      "unavailable": "網頁動畫不可用",
+      "cancel": "取消",
+      "addToTimeline": "新增至 Timeline",
+      "addPlaceholder": "先加入 Timeline",
+      "retry": "重新執行",
+      "failure": {
+        "feature_disabled": "網頁動畫暫不可用。",
+        "check": "頁面沒有通過檢查。",
+        "stopped": "製作意外中斷。",
+        "unknown": "執行失敗。"
+      },
+      "preview": {
+        "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：網頁動畫{status, select, failed {失敗} cancelled {已取消} expired {已過期} other {不可用}}，不顯示",
+        "unavailable": "{track}：網頁動畫不可用",
+        "loading": "{track}：網頁動畫載入中…"
+      }
     }
   }
 }

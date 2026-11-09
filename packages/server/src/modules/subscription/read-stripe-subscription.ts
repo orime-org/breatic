@@ -66,7 +66,12 @@ export interface ActualPrice {
  * still holds the old plan.
  */
 export type SubscriptionRead =
-  | { readonly ok: true; readonly write: SubscriptionWrite }
+  | {
+      readonly ok: true;
+      readonly write: SubscriptionWrite;
+      /** What the subscription's first invoice charged before tax, when `latest_invoice` is that invoice. */
+      readonly firstInvoiceAmountCents: number | null;
+    }
   | { readonly ok: false; readonly reason: "priceUnknown" }
   | {
       readonly ok: false;
@@ -101,6 +106,21 @@ function actualPriceOf(item: Stripe.SubscriptionItem | undefined): ActualPrice {
     currency: price.currency ?? null,
     interval: price.recurring?.interval ?? null,
   };
+}
+
+/**
+ * What the first invoice of a subscription charged before tax.
+ *
+ * Only an expanded invoice created with the subscription counts: a webhook
+ * handled after an early upgrade sees the upgrade's invoice in
+ * `latest_invoice`, whose amount is not what the purchase cost.
+ * @param invoice - Whatever sits in `latest_invoice`.
+ * @returns The amount in cents, or null when that invoice is not the first.
+ */
+function firstInvoiceAmountOf(invoice: Stripe.Subscription["latest_invoice"]): number | null {
+  if (!invoice || typeof invoice === "string") return null;
+  if (invoice.billing_reason !== "subscription_create") return null;
+  return invoice.total_excluding_tax ?? null;
 }
 
 /**
@@ -184,5 +204,6 @@ export function readStripeSubscription(
       payableInvoiceUrl: payableUrlOf(subscription.latest_invoice),
       observedAt,
     },
+    firstInvoiceAmountCents: firstInvoiceAmountOf(subscription.latest_invoice),
   };
 }

@@ -614,25 +614,21 @@ body {
     box-shadow: none;
   }
 
-  /* ---- A drag preview ----
-     The lift itself. Every preview — a row, a table line, what is selected, a
-     caption's words — is a copy of the body's own content inside copies of the
-     elements it sits in in the body (`document-preview-styles.ts`), so it
+  /* ---- A drag image ----
+     The image that follows the pointer while content is dragged out of the
+     prompt box, the Agent input, a canvas text node or the document body
+     (`lib/drag-image.ts`).
+     A document preview is a copy of the body's own content inside copies of
+     the elements it sits in in the body (`document-preview-styles.ts`), so it
      already has the body's type and spacing.
 
-     Its opacity has to live on a CHILD: Chrome ignores `opacity` on the
-     element handed to `setDragImage` when it takes the snapshot, while a
-     descendant's opacity survives on every engine (measured for the prompt
-     editor's own lift, user 2026-07-14). The value is the user's call
-     (2026-10-14); inner#1515 sets one look for every editor's drag image.
-
-     The root itself is opaque and fixed at the viewport's top left: Firefox and
-     WebKit draw the root's own opacity into the image, and Safari cancels a
-     drag whose image is wholly off screen. It is never painted on the page:
-     `buildDragPreview` takes it off in the next animation frame or at the
-     drag's next event, whichever comes first, and the browser has the image
-     by then (inner#1350 design §4). */
-  .doc-drag-preview {
+     It is drawn at full strength, and nothing here sets an opacity: Firefox
+     and WebKit draw the root's own opacity into the image. The root is fixed
+     at the viewport's top left, since Safari cancels a drag whose image is
+     wholly off screen. It is never painted on the page: `mountDragImage` takes
+     it off in the next animation frame or at the drag's next event, whichever
+     comes first, and the browser has the image by then (inner#1350 design §4). */
+  .drag-image {
     position: fixed;
     top: 0;
     left: 0;
@@ -640,13 +636,9 @@ body {
     pointer-events: none;
   }
 
-  .doc-drag-preview > * {
-    opacity: 1;
-  }
-
-  /* A preview takes no pointer: one over the pointer as the drag starts ends
+  /* An image takes no pointer: one over the pointer as the drag starts ends
      the drag in Chromium, and the body's rules let some of its elements take it. */
-  .doc-drag-preview * {
+  .drag-image * {
     pointer-events: none !important;
   }
 
@@ -1008,30 +1000,6 @@ body {
      asking you to. The switch is the Editor's `injectCSS` option, which defaults
      to true and is left alone. Measured with a 180-character URL: two lines, no
      horizontal overflow, with and without an `overflow-wrap` of our own. */
-  /* The body's right gutter, and the whole-document entry that stands in
-     it. Declared together on their common ancestor because the gutter is
-     built out of the other three: the button, the gap it keeps from the padding
-     box on its left, and the gap it keeps from the viewport edge on its right.
-
-     The entry sits in the gutter with a negative margin that cancels its own
-     width plus the clearance (`DocumentMenuEntry`), which is everything from the
-     padding box's right edge to its own. So the two edges land where each number
-     says: padding-box-right to button is the clearance, button to viewport edge
-     is the inset. The page itself is capped at `max-w-3xl` and centres inside
-     the padding box, so what it leaves the button is the clearance at the narrow
-     end and more than that once it stops filling the box.
-
-     The margin reads size and clearance, the gutter is all three, so the two
-     move together. Raise the gutter alone and the button follows the padding box
-     inward, growing the inset; drop it below size + clearance and the button
-     overruns the viewport edge and gets clipped. The left gutter is sized by
-     the strips it holds (`BODY_GUTTER_START`, `document-strip-alignment.ts`). */
-  .doc-body-scroller {
-    --doc-entry-size: 32px;
-    --doc-entry-inset: 16px;
-    --doc-entry-clearance: 8px;
-    --doc-body-gutter: calc(var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance));
-  }
 
   .doc-body {
     line-height: var(--doc-leading-body);

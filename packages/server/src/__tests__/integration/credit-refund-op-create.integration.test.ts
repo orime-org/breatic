@@ -43,6 +43,7 @@ vi.mock("ai", () => ({
 }));
 
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { assessRefundCreate } from "@server/modules/credit-refund/assess.js";
@@ -621,9 +622,12 @@ describe("(no row) × E1: a lot's dispositions are ordered as they were inserted
     // A: begins, fixes its now(), then waits while B (send_back) runs and
     // commits on another connection; only then does A take the lot lock and
     // insert its approval on the refund_pending lot B left.
+    // B runs in the context from before A began, so it opens its own
+    // transaction instead of joining A's.
+    const outsideA = AsyncLocalStorage.snapshot();
     const [s, p] = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT now()`);
-      const sendBack = await inTx((other) => transitionOperation(other, null, e1(lot, "send_back")));
+      const sendBack = await outsideA(() => inTx((other) => transitionOperation(other, null, e1(lot, "send_back"))));
       const approve = await transitionOperation(tx, null, e1(lot, "approve"));
       return [sendBack!, approve!] as const;
     });
@@ -748,8 +752,9 @@ describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", 
     // T's now() is fixed at BEGIN (postgres-js runs begin before the callback);
     // the approve is inserted and committed on another connection after that,
     // so now() in T is before its created_at.
+    const outsideT = AsyncLocalStorage.snapshot();
     const approveId = await db.transaction(async (tx) => {
-      const approve = await inTx((other) => transitionOperation(other, null, e1(lot, "approve")));
+      const approve = await outsideT(() => inTx((other) => transitionOperation(other, null, e1(lot, "approve"))));
       await transitionOperation(tx, { id: approve!.id }, {
         type: "E6",
         failure: failure(400, { type: "invalid_request_error" }),

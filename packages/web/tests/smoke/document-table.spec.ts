@@ -370,6 +370,8 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
   expect(rows).toEqual([
     'doc-block-row-insertBelow',
     'doc-block-row-duplicate',
+    'doc-block-row-copy',
+    'doc-block-row-cut',
     'doc-block-row-indent',
     'doc-block-row-unindent off',
     'doc-block-row-comment',
@@ -419,6 +421,37 @@ test('A6: the row and column handles insert, delete and set the header', async (
   await page.getByTestId('doc-table-row-handle').click();
   await page.getByTestId('doc-table-row-header').click();
   expect(await grids(page)).toEqual([[['#a1'], ['a2'], ['']]]);
+});
+
+test('inner#1239: a row copied from its handle pastes below another row as a new one, every cell left as it was', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await smallTable(page);
+
+  await hoverCell(page, 'a1');
+  await page.getByTestId('doc-table-row-handle').click();
+  await page.getByTestId('doc-table-row-copy').click();
+  await hoverCell(page, 'a2');
+  await page.getByTestId('doc-table-row-handle').click();
+  await page.getByTestId('doc-table-row-pasteBelow').click();
+
+  await expect.poll(() => grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2'], ['a1', 'b1']]]);
+});
+
+test('inner#1239: a table copied from its menu pastes outside it as a new table', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await smallTable(page);
+
+  await hoverTable(page);
+  await page.getByTestId('doc-block-table-handle').click();
+  await page.getByTestId('doc-block-row-copy').click();
+  await page.locator(TOP).first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect.poll(() => grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']], [['a1', 'b1'], ['a2', 'b2']]]);
 });
 
 test('A7: dragging a row by its handle moves it, with a line where it lands', async () => {

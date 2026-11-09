@@ -13,6 +13,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  char,
   text,
   boolean,
   doublePrecision,
@@ -46,7 +47,7 @@ import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-gr
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { StripeWebhookResult } from "@breatic/shared";
+import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -995,8 +996,9 @@ export const nodeTasks = pgTable(
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
     // Same: the node lives in the canvas document. Null on a 3D Space's
-    // model upload (inner#1690), which belongs to the Space's own list; 0113
-    // allows that for the scene import action only.
+    // model upload (inner#1690) or generation (inner#1691), which belong to
+    // the Space's own list; 0113 and 0117 allow that for the scene import and
+    // generate actions only.
     nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
@@ -1048,6 +1050,10 @@ export const nodeTasks = pgTable(
     // when a dedup hit opens the row already done, by the settle into `done`,
     // or onto an expired row its result outlived.
     assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    // Where a 3D Space's generation was started from (inner#1691): 'space'
+    // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
+    // only, null on every other row; its CHECK lives in 0117.
+    origin: varchar("origin", { length: 16 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1164,6 +1170,57 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   requestedBy: uuid("requested_by").notNull(),
   requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
   result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
+export const promoterApplications = pgTable("promoter_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
+  country: char("country", { length: 2 }).notNull(),
+  channels: jsonb("channels").$type<string[]>().notNull(),
+  plan: text("plan").notNull(),
+  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: varchar("decided_by", { length: 64 }),
+  decisionReason: text("decision_reason"),
+  applicantNote: text("applicant_note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
+  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** The one code an account carries, written once and kept for commission. */
+export const referralBindings = pgTable("referral_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
+  source: text("source").$type<SignupReferralSource | "later">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every back-office referral write under its idempotency key, with its original answer. */
+export const referralOperations = pgTable("referral_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
+  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -2157,6 +2214,117 @@ export const agentMemories = pgTable(
     index("agent_memories_conversation_idx")
       .on(table.conversationId, desc(table.updatedAt))
       .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * One Timeline execution the user accepted (0119, inner#1711).
+ *
+ * `status` moves only through `timelineExecutionRepo.transition`; `fence`
+ * names the attempt allowed to finish it and `billed_at` lets it be charged
+ * at most once. `space_id` has no foreign key, as with `tasks.space_id`. The
+ * kind, engine, status and phase CHECKs are written in 0119 only; the index
+ * declarations below mirror 0119, which is what runs.
+ */
+export const timelineExecutions = pgTable(
+  "timeline_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    actionId: text("action_id").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    inputHash: text("input_hash").notNull(),
+    engine: text("engine").notNull(),
+    status: text("status").notNull().default("awaiting_landing"),
+    phase: text("phase"),
+    steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    attempt: integer("attempt").notNull().default(0),
+    fence: uuid("fence"),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    resultSourceVersionId: uuid("result_source_version_id"),
+    failureReason: text("failure_reason"),
+    billedCredits: numeric("billed_credits"),
+    billedAt: timestamp("billed_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_executions_action_idx")
+      .on(table.projectId, table.spaceId, table.actionId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_space_idx")
+      .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_open_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+  ],
+);
+
+/**
+ * The immutable source version a web-animation execution produced (0120, inner#1711).
+ *
+ * At most one per execution: every settlement of the same terminal report
+ * lands on the row the first wrote. Insert-only, so `created_at` alone.
+ */
+export const timelineWebAnimationSources = pgTable(
+  "timeline_web_animation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .unique("timeline_web_animation_sources_execution_id_key")
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    packageKey: text("package_key").notNull(),
+    manifestKey: text("manifest_key").notNull(),
+    packageSha256: text("package_sha256").notNull(),
+    packageBytes: bigint("package_bytes", { mode: "number" }).notNull(),
+    manifestSha256: text("manifest_sha256").notNull(),
+    runtimeVersion: text("runtime_version").notNull(),
+    fontSetVersion: integer("font_set_version").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    fpsNum: integer("fps_num").notNull(),
+    fpsDen: integer("fps_den").notNull(),
+    durationFrames: integer("duration_frames").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+);
+
+/**
+ * Which Projects may resolve and preview an execution's result (0120, inner#1711).
+ *
+ * One live row per execution and Project; duplicating a Project copies every
+ * live row of its source.
+ */
+export const timelineExecutionGrants = pgTable(
+  "timeline_execution_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_execution_grants_live_idx")
+      .on(table.executionId, table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_project_idx")
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 

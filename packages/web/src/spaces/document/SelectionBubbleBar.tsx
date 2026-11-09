@@ -99,7 +99,8 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { onEditorSettled, useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
@@ -147,23 +148,23 @@ interface BubbleGroup {
     openId: string | null;
     onOpenChange: (id: string, open: boolean) => void;
   }>;
+  /**
+   * Whether the slot belongs on the bar over a selection of table cells. Left
+   * out, it does. A group left with nothing in it stands down, separator and
+   * all.
+   */
+  slotOverCells?: boolean;
 }
 
 /**
- * The controls this carrier shows, grouped the way the demo draws them.
+ * The controls this carrier shows, in six groups split by five separators:
+ * block type | alignment | bold italic strike underline | link inline-code
+ * colour | add to Agent, AI | comment (user 2026-11-08: comment stands alone
+ * at the far right, and the two that hand the words to a model sit together).
  *
- * Five groups split by four separators, the order the demo's own caption gives
- * (`2026-08-21-editor-command-surface.html`, the note under its bar): block
- * type | alignment |
- * bold italic strike underline | link inline-code colour comment | AI.
- *
- * Four of the five hold a slot that opens a menu on hover; the three block
- * commands that used to sit flat in the first group now live inside the block
- * type menu, which is where the demo draws them.
- *
- * Block type, alignment, colour and comment all reach their commands. No AI
- * command does yet: each needs schema or a model call that arrives with its
- * own slice, and the AI slot is drawn the way the demo draws it.
+ * Four groups hold a slot that opens a menu on hover; the three block commands
+ * that used to sit flat in the first group live inside the block type menu,
+ * which is where the demo draws them.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },
@@ -174,9 +175,15 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    after: [commentTool, addToAgentTool, mergeCellsTool],
+    after: [mergeCellsTool],
   },
-  { key: 'ai', tools: [], panels: [], slot: AiSlot },
+  // The AI commands rewrite words, and a selection of several cells is not
+  // words (inner#1860 design §5.2): Notion offers only its autofill over
+  // cells, Word Copilot rewrites plain paragraphs only. Words selected inside
+  // one cell are an ordinary text selection and keep the menu. Add to Agent
+  // hands over cells as well, so the group stays.
+  { key: 'ai', tools: [addToAgentTool], panels: [], slot: AiSlot, slotOverCells: false },
+  { key: 'comment', tools: [commentTool], panels: [] },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -528,6 +535,31 @@ function BubbleBar({
   // defect — it is the initial value meaning what the name says.)
   const wasSelectAllRef = React.useRef(
     editor.prosemirrorState.selection instanceof AllSelection,
+  );
+  // Which controls the bar carries: a slot that does not act on table cells
+  // stands down while cells are selected, an entry that hands the words to the
+  // project needs a project, and a group left empty goes, separator and all.
+  const overCells = useEditorSnapshot(
+    editor,
+    (current) => current.prosemirrorState.selection instanceof CellSelection,
+  );
+  const projectId = useDocumentProjectId();
+  const groups = React.useMemo(
+    () => BUBBLE_GROUPS.flatMap((group): BubbleGroup[] => {
+      /**
+       * The entries that can be on the bar here.
+       * @param tools - A group's entries.
+       * @returns Those that need no project, and the rest when there is one.
+       */
+      const placed = (tools: ToolDef[]): ToolDef[] =>
+        tools.filter((tool) => tool.needsProject !== true || projectId !== null);
+      const slot = overCells && group.slotOverCells === false ? undefined : group.slot;
+      const tools = placed(group.tools);
+      const after = placed(group.after ?? []);
+      if (slot === undefined && tools.length === 0 && after.length === 0 && group.panels.length === 0) return [];
+      return [{ ...group, slot, tools, after }];
+    }),
+    [overCells, projectId],
   );
 
   /**
@@ -1136,7 +1168,7 @@ function BubbleBar({
             && 'invisible pointer-events-none',
         )}
       >
-        {BUBBLE_GROUPS.map((group, index) => (
+        {groups.map((group, index) => (
           <React.Fragment key={group.key}>
             {index > 0 ? (
               <Separator

@@ -36,6 +36,11 @@ interface ParamOptionGroupProps {
   even?: boolean;
   /** Whether the options list one to a row, for long labels of equal weight. */
   stack?: boolean;
+  /**
+   * Set while a rule holds the value: the options stay pressable but marked
+   * `aria-disabled`, and a press calls this to say why instead of picking.
+   */
+  onLocked?: () => void;
 }
 
 /**
@@ -90,6 +95,7 @@ export const PARAM_OPTION_CLASS =
  * @param root0.className - Extra classes on the wrapper.
  * @param root0.even - Whether every option takes the same width.
  * @param root0.stack - Whether the options list one to a row.
+ * @param root0.onLocked - Says why the value is held, while a rule holds it.
  * @returns The option group, or null when there is nothing to offer.
  */
 export function ParamOptionGroup({
@@ -101,11 +107,12 @@ export function ParamOptionGroup({
   className,
   even = false,
   stack = false,
+  onLocked,
 }: ParamOptionGroupProps): React.JSX.Element | null {
   if (options.length === 0) return null;
   return (
     <div className={className}>
-      <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
+      {label === '' ? null : <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>}
       {/*
         Rows that fill the popover's width, rather than options sized to their
         own text. Natural widths leave whatever the last row could not fit as
@@ -121,9 +128,10 @@ export function ParamOptionGroup({
             size={null}
             data-testid={`${testIdPrefix}-${String(option.value)}`}
             aria-current={value === option.value}
+            aria-disabled={onLocked === undefined ? undefined : true}
             disabled={option.disabled}
-            onClick={() => onSelect(option.value)}
-            className={cn(PARAM_OPTION_CLASS, even && 'basis-0 min-w-fit px-1')}
+            onClick={() => (onLocked === undefined ? onSelect(option.value) : onLocked())}
+            className={cn(PARAM_OPTION_CLASS, even && 'basis-0 min-w-fit px-1', onLocked !== undefined && 'opacity-50')}
           >
             {option.label}
           </Button>

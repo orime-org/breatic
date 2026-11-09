@@ -1,0 +1,25 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "mask_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "mask_image",
+    "prompt"
+  ]
+}

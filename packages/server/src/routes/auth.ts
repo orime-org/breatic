@@ -9,12 +9,13 @@
  */
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, signupVerifySchema, loginSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import { registerSchema, signupVerifySchema, loginSchema, googleAuthSchema, setupStudioSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -23,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
-import type { PersonalStudioRef } from "@breatic/shared";
+import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -97,11 +98,42 @@ function getGoogleClient(): OAuth2Client {
  * `GET /auth/options` - what the sign-up and recovery pages need to know
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
- * @returns `200` with `{ emailVerification }`
+ * Also whether the referral code field exists: only while payments are on
+ * (inner#1868 §2).
+ * @returns `200` with `{ emailVerification, referralEnabled }`
  */
 auth.get("/options", (c) => {
-  return c.json({ data: { emailVerification: signupCodeService.emailVerificationEnabled() } });
+  return c.json({
+    data: { emailVerification: signupCodeService.emailVerificationEnabled(), referralEnabled: env.PAYMENT_ENABLED },
+  });
 });
+
+/**
+ * The referral code a sign-up request carries; blank means none.
+ * @param body - The request body's referral fields.
+ * @param body.referralCode - What the code field held.
+ * @param body.referralSource - Whether it came from a share link.
+ * @returns The code to bind, or undefined.
+ */
+function signupReferral(body: {
+  referralCode?: string;
+  referralSource?: SignupReferralSource;
+}): authService.SignupReferral | undefined {
+  const code = body.referralCode?.trim();
+  return code ? { code, source: body.referralSource ?? "signup_typed" } : undefined;
+}
+
+/**
+ * Answers a sign-up refused for its referral code, as an error on that field.
+ * @param c - Hono context.
+ * @returns `422` naming the field and the reason.
+ */
+function refuseSignupReferral(c: Context): Response {
+  return c.json(
+    { error: { code: 422, message: t("server.referral.invalid_code"), reason: "invalid_code", field: "referralCode" } },
+    422,
+  );
+}
 
 /**
  * `POST /auth/register` - step 1 of an email sign-up.
@@ -122,15 +154,23 @@ auth.get("/options", (c) => {
  * @throws {AppError} `503` when the code mail was not sent
  */
 auth.post("/register", rateLimitFor("register"), validate("json", registerSchema), async (c) => {
-  const { email, password, attribution } = c.req.valid("json");
+  const body = c.req.valid("json");
+  const { email, password, attribution } = body;
 
   if (signupCodeService.emailVerificationEnabled()) {
-    const sent = await signupCodeService.startSignup({
-      ticket: readSignupTicketCookie(c),
-      email,
-      password,
-      locale: getActiveLocale(),
-    });
+    let sent: Awaited<ReturnType<typeof signupCodeService.startSignup>>;
+    try {
+      sent = await signupCodeService.startSignup({
+        ticket: readSignupTicketCookie(c),
+        email,
+        password,
+        locale: getActiveLocale(),
+        referral: signupReferral(body),
+      });
+    } catch (err) {
+      if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
+      throw err;
+    }
     setSignupTicketCookie(c, sent.ticket, sent.expiresInSeconds);
     return c.json({
       data: {
@@ -141,7 +181,14 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
     }, 202);
   }
 
-  const { user, recoveryCode } = await authService.register(email, password, parseAttribution(attribution));
+  let registered: Awaited<ReturnType<typeof authService.register>>;
+  try {
+    registered = await authService.register(email, password, parseAttribution(attribution), signupReferral(body));
+  } catch (err) {
+    if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
+    throw err;
+  }
+  const { user, recoveryCode } = registered;
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
   // Audit log moved here from auth.service.ts per
@@ -188,7 +235,8 @@ auth.post("/register/resend", rateLimitFor("register-resend"), async (c) => {
  * `POST /auth/register/verify` - finish an email sign-up: a matching code
  * writes the account (address verified) and signs it in.
  * @param c - Hono context with validated `signupVerifySchema` body and the ticket cookie
- * @returns `201` `{ user }` + session cookie; the ticket cookie is cleared
+ * @returns `201` `{ user, referral? }` + session cookie; the ticket cookie is
+ *   cleared. `referral` says whether the code the sign-up carried was bound.
  * @throws {NotFoundError} `404` when no email backend is enabled
  * @throws {AppError} `400` wrong code · `410` sign-up gone · `422` code used up · `409` address taken
  */
@@ -201,7 +249,7 @@ auth.post(
       throw new NotFoundError(t("server.error.not_found"));
     }
     const { code, attribution } = c.req.valid("json");
-    const user = await signupCodeService.verifySignupCode(
+    const { user, referral } = await signupCodeService.verifySignupCode(
       readSignupTicketCookie(c),
       code,
       parseAttribution(attribution),
@@ -213,7 +261,7 @@ auth.post(
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     // Same shape as the created branch of `/register`: the personal studio
     // is the next step, and the key must be present for the onboarding gate.
-    return c.json({ data: { user: { ...user, personalStudio: null } } }, 201);
+    return c.json({ data: { user: { ...user, personalStudio: null }, ...(referral ? { referral } : {}) } }, 201);
   },
 );
 
@@ -279,18 +327,6 @@ auth.post(
 );
 
 /**
- * `POST /auth/logout` - invalidate the current session.
- *
- * Requires a valid Bearer token in the Authorization header.
- * @param c - Hono context with authenticated user
- * @returns `200` with `{ message: "Logged out" }`
- */
-const googleAuthSchema = z.object({
-  credential: z.string().min(1),
-  attribution: z.unknown().optional(),
-});
-
-/**
  * `POST /auth/google` - authenticate with a Google ID token.
  *
  * The ID token must be verified cryptographically - otherwise any
@@ -322,7 +358,8 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
   }
 
-  const { credential, attribution } = c.req.valid("json");
+  const googleBody = c.req.valid("json");
+  const { credential, attribution } = googleBody;
 
   let payload: TokenPayload | undefined;
 
@@ -357,12 +394,20 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   }
 
   const email = normalizeEmail(payload.email);
-  const { user, token, created } = await authService.loginOrCreateGoogle(
-    payload.sub,
-    email,
-    email.endsWith("@gmail.com") || Boolean(payload.hd),
-    parseAttribution(attribution),
-  );
+  let signedIn: Awaited<ReturnType<typeof authService.loginOrCreateGoogle>>;
+  try {
+    signedIn = await authService.loginOrCreateGoogle(
+      payload.sub,
+      email,
+      email.endsWith("@gmail.com") || Boolean(payload.hd),
+      parseAttribution(attribution),
+      signupReferral(googleBody),
+    );
+  } catch (err) {
+    if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
+    throw err;
+  }
+  const { user, token, created, referral } = signedIn;
 
   setSessionCookie(c, token);
   const [shown, studio] = await Promise.all([
@@ -381,7 +426,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   }
   // `created` tells the page to report the sign-up conversion (inner#1442 §4.9).
   return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created },
+    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created, ...(referral ? { referral } : {}) },
   });
 });
 
@@ -407,6 +452,13 @@ auth.get("/me", requireAuth, async (c) => {
   return c.json({ data: { ...shown, personalStudio: toPersonalStudioRef(studio) } });
 });
 
+/**
+ * `POST /auth/logout` - invalidate the current session.
+ *
+ * Requires a session cookie; ends that session and clears the cookie.
+ * @param c - Hono context with authenticated user
+ * @returns `200` with `{ message: "Logged out" }`
+ */
 auth.post("/logout", requireAuth, async (c) => {
   const token = readSessionCookie(c);
   if (token) {

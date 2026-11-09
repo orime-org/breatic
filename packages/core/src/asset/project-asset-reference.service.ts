@@ -23,8 +23,8 @@ export interface RecordProjectAssetReferencesInput {
 /** A current member reading one Project's registered media. */
 export interface ResolveProjectAssetInput { projectId: string; assetId: string; userId: string }
 
-/** A keyset read of one Project's registered videos. */
-export interface ListProjectVideosInput { projectId: string; userId: string; cursor?: string; limit?: number }
+/** A keyset read of one Project's registered videos, or of its images when `kind` says so. */
+export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
 
 /** Explicit media identities captured from an accepted Space or provider result. */
 export interface ReferenceRegisteredProjectMediaInput { projectId: string; assetIds?: readonly string[]; urls?: readonly string[] }
@@ -269,7 +269,7 @@ async function studioForMember(projectId: string, userId: string): Promise<strin
  * Read the public Timeline configuration after checking current Project access.
  * @param projectId - The Project being opened.
  * @param userId - The authenticated current member.
- * @returns Only the creation defaults and Project media limits.
+ * @returns Only the creation defaults, Project media limits and the web-animation dialog and preview settings.
  * @throws {ForbiddenError} When current Project access is absent.
  * @throws {Error} When configuration or authorization cannot be read.
  */
@@ -279,6 +279,16 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
   return {
     defaults: { width: config.defaults.width, height: config.defaults.height, fps: { ...config.defaults.fps } },
     assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
+    webAnimation: {
+      promptMaxLength: config.web_animation.prompt_max_length,
+      durationSeconds: { ...config.web_animation.duration_seconds },
+      aspects: Object.keys(config.web_animation.viewports),
+      playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+      sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+      premountMs: config.web_animation.preview_premount_ms,
+      idleInstancesMax: config.web_animation.preview_idle_instances_max,
+    },
   };
 }
 
@@ -298,14 +308,14 @@ export async function resolveProjectAsset(input: ResolveProjectAssetInput): Prom
 }
 
 /**
- * Read one canonical Project-video page at PostgreSQL cursor precision.
+ * Read one page of a Project's videos, or of its images by `kind`, at PostgreSQL cursor precision.
  * @param input - The current member, Project and page boundary.
  * @returns The current page and next cursor.
  * @throws {ForbiddenError} When current Project access is absent.
  * @throws {AppError} When the supplied cursor or limit is malformed.
  * @throws {Error} When a database query fails.
  */
-export async function listProjectVideos(input: ListProjectVideosInput): Promise<ProjectAssetPage> {
+export async function listProjectMedia(input: ListProjectMediaInput): Promise<ProjectAssetPage> {
   const studioId = await studioForMember(input.projectId, input.userId);
   const limits = getTimelineConfig().assets;
   const requested = input.limit ?? limits.page_size;
@@ -313,7 +323,7 @@ export async function listProjectVideos(input: ListProjectVideosInput): Promise<
   const limit = Math.min(requested, limits.page_max);
   const cursor = input.cursor === undefined ? undefined : decodeActivityCursor(input.cursor);
   if (cursor === null) throw new AppError(400, t("server.error.validation"));
-  const rows = await assetRepo.readProjectMedia({ projectId: input.projectId, studioId, cursor, limit: limit + 1 });
+  const rows = await assetRepo.readProjectMedia({ projectId: input.projectId, studioId, kind: input.kind, cursor, limit: limit + 1 });
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {

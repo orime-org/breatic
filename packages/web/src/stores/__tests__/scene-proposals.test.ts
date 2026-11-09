@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * The mailbox that opens the 3D Space in front's generation dialog filled
+ * (inner#1691, design §4.6 · §6.2 · §8.5). Like the canvas mailbox, it is
+ * bound to no Space: whichever 3D Space is showing says it is listening, a
+ * proposal card or a Retry hands a fill in, and that Space takes it out.
+ */
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useSceneProposals, type SceneGenerateFill } from '@web/stores/scene-proposals';
+
+/**
+ * A text-to-3D fill from an Agent proposal.
+ * @param prompt - Its prompt.
+ * @returns The fill.
+ */
+function proposal(prompt: string): SceneGenerateFill {
+  return {
+    source: 'agent',
+    origin: 'agent',
+    mode: 't23d',
+    prompt,
+    params: { texture: true, pbr: true, texture_quality: 'standard', negative_prompt: '' },
+    images: [],
+  };
+}
+
+const store = (): ReturnType<typeof useSceneProposals.getState> => useSceneProposals.getState();
+
+beforeEach(() => {
+  store().reset();
+});
+
+describe('the 3D proposal mailbox', () => {
+  it('starts with nobody listening and nothing waiting', () => {
+    expect(store().listening).toBe(false);
+    expect(store().incoming).toBeNull();
+  });
+
+  it('holds a proposal handed in while a 3D Space listens', () => {
+    store().setListening(true);
+    store().request(proposal('p1'));
+
+    expect(store().incoming).toEqual(proposal('p1'));
+  });
+
+  it('gives the proposal to whoever takes it, and is empty afterwards', () => {
+    store().setListening(true);
+    store().request(proposal('p1'));
+
+    const taken = store().take();
+
+    expect(taken).toEqual(proposal('p1'));
+    expect(store().incoming).toBeNull();
+    expect(store().take()).toBeNull();
+  });
+
+  it('says nobody is listening once the 3D Space stops', () => {
+    store().setListening(true);
+    expect(store().listening).toBe(true);
+
+    store().setListening(false);
+
+    expect(store().listening).toBe(false);
+  });
+
+  it('forgets both the listener and the waiting proposal on reset', () => {
+    store().setListening(true);
+    store().request(proposal('p1'));
+
+    store().reset();
+
+    expect(store().listening).toBe(false);
+    expect(store().incoming).toBeNull();
+  });
+});

@@ -461,6 +461,15 @@ describe("authorisation table (§4.3)", () => {
         "POST /internal/v1/maintenance/reclaim/operations/:key/control",
         "GET /internal/v1/maintenance/reclaim/controls/:key",
         "POST /internal/v1/maintenance/reclaim/operations/:key/resume",
+        "GET /internal/v1/promoter-applications",
+        "GET /internal/v1/promoter-applications/:id",
+        "POST /internal/v1/promoter-applications/:id/approve",
+        "POST /internal/v1/promoter-applications/:id/reject",
+        "GET /internal/v1/referral-codes",
+        "POST /internal/v1/referral-codes/:id/disable",
+        "POST /internal/v1/referral-codes/:id/enable",
+        "POST /internal/v1/referral-codes/:id/remove",
+        "GET /internal/v1/referral-operations/:key",
       ].sort(),
     );
   });

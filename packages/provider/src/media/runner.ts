@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { candidatesOf, type MediaBinding } from "@provider/config/schema.js";
+import { candidateOf, candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
-import { boundSignal, isServerError } from "@provider/http/request.js";
-import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
-import { buildBody } from "@provider/media/wavespeed/body.js";
-import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
+import { boundSignal, sideBounds } from "@provider/http/request.js";
+import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
+import { adapterOf } from "@provider/media/adapters.js";
+import { buildBody } from "@provider/media/body.js";
+import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -34,11 +35,7 @@ export type MediaOutput =
   | { kind: "bytes"; bytes: Uint8Array; contentType: string };
 
 /** One cached clone, as the caller stores it. */
-export interface MediaClone {
-  upstream: string;
-  kind: "voice" | "vocal" | "element";
-  /** The source asset's sha256, with a suffix for an element. */
-  sourceKey: string;
+export interface MediaClone extends HeldClone {
   upstreamId: string;
 }
 
@@ -63,7 +60,8 @@ export type MediaAnswer = AnswerCommon &
     | { state: "send"; ticket: MediaTicket; step: { kind: StepKind } }
     | { state: "running"; ticket: MediaTicket; askAgainAt: number }
     | { state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string }
-    | { state: "failed"; reason: Error; costs: Cost[] }
+    /** Why: no upstream could take the run, one refused it, its task failed, a source was refused, or another error. */
+    | { state: "failed"; reason: NoUpstreamAvailable | UpstreamRequestRejected | UpstreamTaskFailed | MediaRefused | Error; costs: Cost[] }
   );
 
 /** What the run is asked to make. */
@@ -81,8 +79,13 @@ export interface PlanOptions {
   sourceKeys: Record<string, string>;
   /** Live clones of these sources on every upstream. */
   clones: MediaClone[];
-  /** Clip lengths in seconds of the sources whose lengths are known, by our param name; priced in cheapest mode. */
-  durations?: Record<string, number[]>;
+  /**
+   * Clip lengths in seconds of the sources whose lengths are known, by our param name. Every mode reads them: each
+   * upstream's input limits (`rejects`) and its price, which decide whether it can take the run and, in cheapest mode,
+   * the order. Pass every source whose length is known; a source left out passes every length limit, and an upstream
+   * that bills by its length ranks after every upstream with a known price.
+   */
+  durations: Record<string, number[]>;
 }
 
 /** The bounds of one call. */
@@ -137,26 +140,6 @@ export interface MediaRunnerOptions {
   pollIntervalMs: number;
 }
 
-/** What one step answered, for the steps after it and for billing. */
-interface StepOutput {
-  /** The source param an upload or vocal id replaces, and that id. */
-  param?: string;
-  id?: string;
-  voiceId?: string;
-  /** An element's place in its pool, and its id. */
-  index?: number;
-  elementId?: string;
-  urls?: string[];
-  /** One url, as steps stored it before lists. */
-  url?: string;
-  /** Whether the id came from the caller's clone cache. */
-  cached?: boolean;
-  /** The prediction to bill. */
-  prediction?: string;
-  /** An element's description, as legacy rows stored it. */
-  description?: string;
-  error?: string;
-}
 
 /** One upstream call of a run. */
 interface Step {
@@ -167,6 +150,8 @@ interface Step {
   itemIndex: number | null;
   status: "pending" | "submitted" | "done";
   predictionId?: string;
+  /** What the adapter needs to ask about the prediction again. */
+  handle?: Record<string, string>;
   output?: StepOutput;
   /** For an element step: what its describe step wrote. */
   description?: string;
@@ -194,12 +179,27 @@ interface Ticket {
   costs: Cost[];
 }
 
-/** What a done step of each kind reads off its outputs. */
-const UPLOAD_PURPOSE: Readonly<Partial<Record<StepKind, string>>> = { upload_reference: "reference", upload_melody: "melody" };
 /** The image types the understand models read (shared's understand/media-formats.ts IMAGE_TYPES). */
 const IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 /** Kling caps an element's description at 100 characters. */
 const ELEMENT_DESCRIPTION_MAX = 100;
+
+/**
+ * One output as the caller takes it: a data URI as its bytes, any other url as it is.
+ * @param url - The output url.
+ * @returns The output.
+ */
+function mediaOutputOf(url: string): MediaOutput {
+  const comma = url.indexOf(",");
+  if (!url.startsWith("data:") || comma < 0) return { kind: "url", url };
+  const [type = "", ...flags] = url.slice("data:".length, comma).split(";");
+  const data = url.slice(comma + 1);
+  const bytes = new Uint8Array(flags.includes("base64")
+    ? Buffer.from(data, "base64")
+    // Each %XX is one byte, read as Latin-1 so no byte is turned into UTF-8; a stray "%" stays as it is.
+    : Buffer.from(data.replace(/%([0-9a-fA-F]{2})/g, (_escape, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))), "latin1"));
+  return { kind: "bytes", bytes, contentType: type === "" ? "text/plain" : type };
+}
 
 /**
  * The common part of an answer.
@@ -211,15 +211,28 @@ function common(extra: Partial<AnswerCommon> = {}): AnswerCommon {
 }
 
 /**
+ * Whether an upstream's failure is a lasting answer: it lacks the model or the balance, so retrying the same ticket would get it again.
+ * @param failure - The failure's kind.
+ * @returns True for a lasting answer.
+ */
+function lasting(failure: string): boolean {
+  return failure === "model_not_found" || failure === "insufficient_balance";
+}
+
+/**
  * The failure class of a media submit's error.
  * @param error - What the submit threw.
+ * @param adapter - The upstream's adapter, which reads its refusals.
  * @returns Its class, or null for anything else.
  */
-function classify(error: unknown): Failure | null {
+function classify(error: unknown, adapter: MediaAdapter): Failure | null {
   if (error instanceof NotSent) return { kind: "not_sent" };
   if (error instanceof NoAnswer) return { kind: "no_answer" };
   if (error instanceof Aborted) return { kind: "aborted" };
-  if (error instanceof HttpStatus) return modelNotFound(error) ? { kind: "model_not_found" } : { kind: "http_status", status: error.status };
+  if (error instanceof HttpStatus) {
+    const refusal = adapter.refusal(error);
+    return refusal === undefined ? { kind: "http_status", status: error.status } : { kind: refusal };
+  }
   return null;
 }
 
@@ -247,33 +260,6 @@ function inChain(error: unknown, test: (e: Error) => boolean): boolean {
     if (test(current)) return true;
   }
   return false;
-}
-
-/**
- * A step's first structured output field.
- * @param outputs - The prediction's outputs.
- * @param field - The field.
- * @returns Its value.
- * @throws {Error} When the output carries no such string.
- */
-function outputField(outputs: readonly unknown[], field: string): string {
-  const first = outputs[0];
-  const value = typeof first === "object" && first !== null ? (first as Record<string, unknown>)[field] : undefined;
-  if (typeof value !== "string" || value === "") throw new Error(`No ${field} in the upstream answer`);
-  return value;
-}
-
-/**
- * Every output as a url.
- * @param outputs - The prediction's outputs.
- * @returns The urls.
- * @throws {Error} When there is none, or one is not a url.
- */
-function outputUrls(outputs: readonly unknown[]): string[] {
-  if (outputs.length === 0 || !outputs.every((u): u is string => typeof u === "string" && u !== "")) {
-    throw new Error("The upstream answered no output url");
-  }
-  return [...outputs];
 }
 
 /**
@@ -359,6 +345,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const reach = (upstream: string): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyOf(config.upstreams[upstream]!.key_env) ?? "" });
 
   /**
+   * The adapter of an upstream.
+   * @param upstream - The upstream.
+   * @returns Its kind's adapter.
+   * @throws {Error} When provider has no adapter for the kind.
+   */
+  const adapterFor = (upstream: string): MediaAdapter => adapterOf(config.upstreams[upstream]!.kind);
+
+  /**
    * A model's binding to one upstream.
    * @param ticket - The ticket.
    * @param upstream - The upstream; the ticket's own when omitted.
@@ -372,36 +366,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   };
 
   /**
-   * The sha256 key a source is cached under.
-   * @param ticket - The ticket.
-   * @param url - The source.
-   * @returns The key, or undefined when the source is not an asset the caller knows.
-   */
-  const shaOf = (ticket: Ticket, url: unknown): string | undefined => (typeof url === "string" ? ticket.sourceKeys[url] : undefined);
-
-  /**
-   * The cache key of the clone a step makes, and its kind.
+   * The cache key of the clone a step makes, and its kind, by the rule every estimate keys clones with.
    * @param ticket - The ticket.
    * @param step - The step.
    * @returns The kind and key, or undefined for a step that makes no clone or a source without a key.
    */
-  const cloneKeyOf = (ticket: Ticket, step: Step): { kind: MediaClone["kind"]; sourceKey: string } | undefined => {
-    const params = ticket.input.params;
-    if (step.kind === "vocal") {
-      const sha = shaOf(ticket, params[step.param ?? ""]);
-      return sha === undefined ? undefined : { kind: "vocal", sourceKey: sha };
-    }
-    if (step.kind === "voice") {
-      const sha = shaOf(ticket, params[bindingOf(ticket).reused_by ?? ""]);
-      return sha === undefined ? undefined : { kind: "voice", sourceKey: sha };
-    }
-    if (step.kind === "element") {
-      const list = params[step.param ?? ""];
-      const sha = shaOf(ticket, Array.isArray(list) ? list[step.itemIndex ?? 0] : undefined);
-      return sha === undefined ? undefined : { kind: "element", sourceKey: `${sha}:Element ${(step.itemIndex ?? 0) + 1}` };
-    }
-    return undefined;
-  };
+  const stepCloneKey = (ticket: Ticket, step: Step): { kind: CloneKind; sourceKey: string } | undefined =>
+    cloneKeyOf(step.kind, step.kind === "voice" ? bindingOf(ticket).reused_by : step.param, ticket.input.params, ticket.sourceKeys, step.itemIndex);
 
   /**
    * The output a step has when the caller's cache already holds its clone.
@@ -410,10 +381,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The cached output, or undefined.
    */
   const cachedOutput = (ticket: Ticket, step: Step): StepOutput | undefined => {
-    const key = cloneKeyOf(ticket, step);
-    const hit = key === undefined
-      ? undefined
-      : ticket.clones.find((c) => c.upstream === ticket.upstream && c.kind === key.kind && c.sourceKey === key.sourceKey);
+    const hit = heldClone(ticket.clones, ticket.upstream, stepCloneKey(ticket, step));
     if (hit === undefined) return undefined;
     if (step.kind === "voice") return { voiceId: hit.upstreamId, cached: true };
     if (step.kind === "element") return { index: step.itemIndex ?? 0, elementId: hit.upstreamId, cached: true };
@@ -449,10 +417,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       }
       for (const extra of (binding.extra_steps ?? []).filter((s) => s.at === at)) {
         const base = { kind: extra.kind, endpoint: extra.endpoint, ...(extra.for_param === undefined ? {} : { param: extra.for_param }), status: "pending" as const };
-        const value = extra.for_param === undefined ? undefined : ticket.input.params[extra.for_param];
-        if (extra.for_param !== undefined && !isPresent(value)) continue;
-        const items = extra.per_item === true && Array.isArray(value) ? value.map((_, i) => i) : [null];
-        for (const itemIndex of items) add({ ...base, itemIndex }, extra.kind === "element" && extra.describe !== undefined);
+        for (const itemIndex of stepCalls(extra, ticket.input.params)) add({ ...base, itemIndex }, extra.kind === "element" && extra.describe !== undefined);
       }
     }
     return steps;
@@ -487,9 +452,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {Error} When the param carries none.
    */
   const sourceOf = (ticket: Ticket, step: Step): string => {
-    const value = ticket.input.params[step.param ?? ""];
-    const url = step.itemIndex === null ? value : Array.isArray(value) ? value[step.itemIndex] : undefined;
-    if (typeof url !== "string" || url === "") throw new Error(`The ${step.kind} step needs a source in '${step.param ?? ""}'`);
+    const url = stepSource(ticket.input.params, step.param, step.itemIndex);
+    if (url === undefined) throw new Error(`The ${step.kind} step needs a source in '${step.param ?? ""}'`);
     return url;
   };
 
@@ -501,6 +465,44 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const customVoiceId = (ticket: Ticket): string => `Breatic${ticket.idempotencyKey.replace(/[^A-Za-z0-9]/g, "")}`;
 
   /**
+   * What an extra step needs to write its request and read its answer.
+   * @param ticket - The ticket.
+   * @param step - The step.
+   * @returns The context.
+   */
+  const contextOf = (ticket: Ticket, step: Step): StepContext => ({
+    source: () => sourceOf(ticket, step),
+    params: ticket.input.params,
+    prompt: ticket.input.prompt,
+    binding: bindingOf(ticket),
+    customVoiceId: customVoiceId(ticket),
+    voice: () => {
+      const { voiceId } = carried(ticket);
+      // The configuration load refuses a speak step that does not follow the binding's own voice call, whose output
+      // or cached clone carries the voice id.
+      /* v8 ignore next -- @preserve */
+      if (voiceId === undefined) throw new Error("No cloned voice to speak with");
+      return voiceId;
+    },
+    description: step.description,
+    itemIndex: step.itemIndex,
+    param: step.param,
+  });
+
+  /**
+   * How the ticket's upstream writes and reads an extra step.
+   * @param ticket - The ticket.
+   * @param kind - The step's kind.
+   * @returns The codec.
+   * @throws {Error} When the upstream does not speak the kind.
+   */
+  const codecOf = (ticket: Ticket, kind: StepKind): StepCodec => {
+    const codec = kind === "generate" || kind === "describe" ? undefined : adapterFor(ticket.upstream).steps[kind];
+    if (codec === undefined) throw new Error(`${ticket.upstream} has no ${kind} step`);
+    return codec;
+  };
+
+  /**
    * The body one step submits.
    * @param ticket - The ticket.
    * @param step - The step.
@@ -508,30 +510,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {Error} When the step lacks what it needs.
    */
   const bodyOf = (ticket: Ticket, step: Step): Record<string, unknown> => {
+    if (step.kind !== "generate") return codecOf(ticket, step.kind).body(contextOf(ticket, step));
     const binding = bindingOf(ticket);
     const done = carried(ticket);
-    switch (step.kind) {
-      case "upload_reference":
-      case "upload_melody":
-        return { audio: sourceOf(ticket, step), purpose: UPLOAD_PURPOSE[step.kind] };
-      case "vocal":
-        return { audio: sourceOf(ticket, step) };
-      case "voice":
-        return { ...buildBody(binding, { params: ticket.input.params, prompt: "" }), custom_voice_id: customVoiceId(ticket) };
-      case "speak":
-        if (done.voiceId === undefined) throw new Error("No cloned voice to speak with");
-        return { text: ticket.input.prompt, voice_id: done.voiceId };
-      case "element": {
-        const image = sourceOf(ticket, step);
-        return { name: `Element ${(step.itemIndex ?? 0) + 1}`, description: step.description ?? "", image, element_refer_list: [image] };
-      }
-      default: {
-        const params: Record<string, unknown> = { ...ticket.input.params, ...done.ids };
-        const elementParam = binding.extra_steps?.find((s) => s.kind === "element")?.for_param;
-        if (elementParam !== undefined && done.elementIds.length > 0) params[elementParam] = done.elementIds.map((id) => ({ element_id: id }));
-        return buildBody(binding, { params, prompt: ticket.input.prompt });
-      }
-    }
+    const params: Record<string, unknown> = { ...ticket.input.params, ...done.ids };
+    const elementParam = binding.extra_steps?.find((s) => s.kind === "element")?.for_param;
+    if (elementParam !== undefined && done.elementIds.length > 0) params[elementParam] = done.elementIds.map((id) => ({ element_id: id }));
+    return buildBody(binding, { params, prompt: ticket.input.prompt });
   };
 
   /**
@@ -545,21 +530,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    */
   const outputOf = (ticket: Ticket, step: Step, outputs: readonly unknown[], prediction: string | undefined): StepOutput => {
     const billedAs = prediction === undefined ? {} : { prediction };
-    switch (step.kind) {
-      case "upload_reference":
-      case "upload_melody":
-        return { param: step.param, id: outputField(outputs, `${UPLOAD_PURPOSE[step.kind]!}_id`), ...billedAs };
-      case "vocal":
-        return { param: step.param, id: outputField(outputs, "vocal_id"), ...billedAs };
-      case "voice":
-        return { voiceId: customVoiceId(ticket), ...billedAs };
-      case "element":
-        return { index: step.itemIndex ?? 0, elementId: outputField(outputs, "element_id"), ...billedAs };
-      case "speak":
-        return { urls: [outputUrls(outputs)[0]!], ...billedAs };
-      default:
-        return { urls: outputUrls(outputs), ...billedAs };
-    }
+    if (step.kind === "generate") return { urls: outputUrls(outputs), ...billedAs };
+    return { ...codecOf(ticket, step.kind).output(outputs, contextOf(ticket, step)), ...billedAs };
   };
 
   /**
@@ -569,7 +541,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The clone, or none.
    */
   const madeClones = (ticket: Ticket, step: Step): MediaClone[] => {
-    const key = cloneKeyOf(ticket, step);
+    const key = stepCloneKey(ticket, step);
     const id = step.output?.id ?? step.output?.voiceId ?? step.output?.elementId;
     return key === undefined || id === undefined || step.output?.cached === true ? [] : [{ upstream: ticket.upstream, ...key, upstreamId: id }];
   };
@@ -629,7 +601,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const failed = (ticket: Ticket, reason: Error, warnings: MediaWarning[] = []): MediaAnswer => {
     const retired = reason instanceof UpstreamTaskFailed
       ? carried(ticket).cached.flatMap(({ kind, id }) => {
-        if (!gone(kind, reason.upstreamError, id)) return [];
+        if (!adapterFor(ticket.upstream).gone(kind, reason.upstreamError, id)) return [];
         return ticket.clones.filter((c) => c.upstream === ticket.upstream && c.kind === kind && c.upstreamId === id);
       })
       : [];
@@ -640,7 +612,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   /**
    * Finish a run whose steps are all done: its outputs and what each prediction cost.
    * @param ticket - The ticket.
-   * @param bounds - The bounds billing is asked under.
+   * @param bounds - The call's deadline and signal; the billing reads share one side request's bounds within them (`sideBounds`).
    * @param extra - Clones and warnings to carry.
    * @returns The done answer, or failed when the run produced no output.
    */
@@ -650,13 +622,15 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const costs = [...ticket.costs];
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
+    // Outside the cap, as the worker read it: a run that finished must not queue behind new submits. The reads share
+    // one side request's bounds, so a hung billing endpoint holds the outputs for SIDE_REQUEST_MS at most.
+    const side = sideBounds(bounds);
     for (const prediction of done.predictions) {
-      // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
-      const read = await billed(up, prediction, bounds, false);
+      const read = await adapterFor(ticket.upstream).billed(up, prediction, side, false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
-    return { state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, servedBy: ticket.upstream, ...common({ ...extra, warnings }) };
+    return { state: "done", outputs: done.urls.map(mediaOutputOf), costs, servedBy: ticket.upstream, ...common({ ...extra, warnings }) };
   };
 
   /**
@@ -691,34 +665,46 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param model - The model.
    * @param input - The run.
    * @param chosen - The caller's mode.
-   * @param durations - Known clip lengths, by our param name.
+   * @param planOptions - The task's source keys, live clones and known clip lengths (by our param name).
    * @returns The plan.
-   * @throws {NoUpstreamAvailable} When no upstream is configured.
+   * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
-  const route = async (model: string, input: MediaInput, chosen: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
-    let candidates = candidatesOf(config, model, keyOf);
-    if (chosen.mode === "cheapest") {
-      const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
-        params: input.params,
-        prompt: input.prompt,
-        durations,
-        placeholders: [],
-        durationsMissing: [],
-      });
-      candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.usd }));
-    }
+  const route = async (model: string, input: MediaInput, chosen: Route, planOptions: PlanOptions): Promise<RoutePlan> => {
+    const rules = provider.pricingRules(model);
+    const { durations } = planOptions;
+    // A source sent without a known length is priced as a lower bound, and ranks after every known price.
+    const durationsMissing = Object.keys(input.params).filter((p) => isPresent(input.params[p]) && durations[p] === undefined);
+    // The live clones leave out each call an upstream holds, as planSteps does.
+    const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, known: { sourceKeys: planOptions.sourceKeys, clones: planOptions.clones } };
+    const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
+      const read = await assess(rules, c.upstream, run);
+      // The rules come from the same configuration as the candidates, so every candidate has one; undefined is for the type.
+      /* v8 ignore next -- @preserve */
+      if (read === undefined) return c;
+      return "rejected" in read ? { ...c, unsupported: read.rejected } : { ...c, estimate: { usd: read.estimate.usd, atLeast: read.estimate.bound === "at_least" } };
+    }));
     return planRoute(model, chosen, candidates);
   };
 
   /**
-   * The first ticket of a run, or the failed answer when no upstream can take it.
+   * A warning for each upstream skipped because a check of the run could not be made on it.
+   * @param model - The model.
+   * @param skipped - Why the upstreams were skipped.
+   * @returns The warnings.
+   */
+  const checkFailures = (model: string, skipped: readonly UnavailableReason[]): MediaWarning[] =>
+    skipped.flatMap((r) => (r.kind === "unsupported_input" && "reason" in r && r.evaluationError !== undefined
+      ? [{ code: "input_check_failed", detail: { model, upstream: r.upstream, reason: r.reason, error: r.evaluationError } }]
+      : []));
+
+  /**
+   * The first ticket of a run and what to log about its planning, or the failed answer when no upstream can take it.
    * @param model - The model.
    * @param input - The run.
    * @param chosen - The caller's mode.
-   * @param planOptions - Keys and clones.
-   * @param pick - Picks the upstream from the ordered candidates.
-   * @returns The ticket, or the answer.
+   * @param planOptions - The task's key, source keys, clones and known clip lengths.
+   * @returns The ticket on the first upstream of the order and its warnings, or the answer.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
   const open = async (
@@ -726,33 +712,40 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     input: MediaInput,
     chosen: Route,
     planOptions: PlanOptions,
-    pick: (order: Candidate[]) => Candidate,
-  ): Promise<Omit<Ticket, "steps"> | MediaAnswer> => {
+  ): Promise<{ opened: Omit<Ticket, "steps">; warnings: MediaWarning[] } | MediaAnswer> => {
     let plan: RoutePlan;
     try {
-      plan = await route(model, input, chosen, planOptions.durations ?? {});
+      plan = await route(model, input, chosen, planOptions);
     } catch (error) {
-      if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common() };
+      if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common({ warnings: checkFailures(model, error.reasons) }) };
       throw error;
     }
-    const order = plan.order;
-    const first = pick(order);
-    return {
-      version: 1,
-      model,
-      route: chosen,
-      phase: "send",
-      input,
-      idempotencyKey: planOptions.idempotencyKey,
-      sourceKeys: planOptions.sourceKeys,
-      clones: planOptions.clones,
-      upstream: first.upstream,
-      next: order.filter((c) => c !== first).map((c) => c.upstream),
-      reasons: plan.skipped,
-      accepted: false,
-      costs: [],
-    };
+    const [first, ...rest] = plan.order;
+    const opened = ticketBase(model, input, chosen, planOptions, { upstream: first!.upstream, next: rest.map((c) => c.upstream), reasons: plan.skipped, accepted: false });
+    return { opened, warnings: checkFailures(model, plan.skipped) };
   };
+
+  /**
+   * A ticket before its steps are planned.
+   * @param model - The model.
+   * @param input - The run.
+   * @param chosen - The caller's mode.
+   * @param planOptions - The task's key, source keys and clones.
+   * @param at - The upstream, the ones the run may move to, why earlier ones were skipped, and whether a step was accepted.
+   * @returns The ticket.
+   */
+  const ticketBase = (model: string, input: MediaInput, chosen: Route, planOptions: PlanOptions, at: Pick<Ticket, "upstream" | "next" | "reasons" | "accepted">): Omit<Ticket, "steps"> => ({
+    version: 1,
+    model,
+    route: chosen,
+    phase: "send",
+    input,
+    idempotencyKey: planOptions.idempotencyKey,
+    sourceKeys: planOptions.sourceKeys,
+    clones: planOptions.clones,
+    ...at,
+    costs: [],
+  });
 
   /**
    * Read the caller's ticket.
@@ -816,8 +809,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     } catch (error) {
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
-        const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.failure === "model_not_found");
-        if (lasting) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
+        if (error.reasons.every((r) => r.kind !== "failed" || lasting(r.failure))) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
         // The error stays as the cause: it carries what the answers it moved past cost.
         throw new SendNotAccepted(ticket.upstream, error);
       }
@@ -838,8 +830,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
 
   return {
     async plan(model, input, chosen, planOptions) {
-      const opened = await open(model, input, chosen, planOptions, (order) => order[0]!);
-      return "state" in opened ? opened : waiting(planned(opened));
+      const result = await open(model, input, chosen, planOptions);
+      return "state" in result ? result : waiting(planned(result.opened), { warnings: result.warnings });
     },
 
     async send(raw, bounds) {
@@ -850,9 +842,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const body = bodyOf(ticket, at.step);
       let answer;
       try {
-        answer = await capped(ticket.upstream, bounds, () => submit(reach(ticket.upstream), at.step.endpoint, body, bounds));
+        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }, at.step.kind));
       } catch (error) {
-        const failure = classify(error);
+        const failure = classify(error, adapterFor(ticket.upstream));
         if (failure === null || failure.kind === "no_answer") throw error;
         if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
         if (decide(failure, "media_submit", 0, 0) === "stop") {
@@ -863,18 +855,25 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
         if (ticket.accepted || to === undefined) {
-          // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
-          if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
+          if (lasting(failure.kind)) return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
           throw new SendNotAccepted(ticket.upstream, error);
         }
         const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
         return waiting(moved, { warnings: [{ code: "upstream_switched", detail: { model: ticket.model, from: ticket.upstream, to, failure: failure.kind } }] });
       }
+      if (answer.error !== undefined) {
+        // Accepted and billed, but the step cannot go on: billed under its id, or missing without one.
+        const id = answer.predictionId;
+        const steps = id === undefined ? ticket.steps : ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: id } : s));
+        const costs: Cost[] = id === undefined ? [...ticket.costs, { state: "missing", reason: `${ticket.upstream} took the ${at.step.kind} step and named no id to bill it by` }] : ticket.costs;
+        const warnings = id === undefined ? [{ code: "cost_unavailable", detail: { model: ticket.model, upstream: ticket.upstream, step: at.step.kind } }] : [];
+        return failed({ ...ticket, accepted: true, steps, costs }, new UpstreamTaskFailed(ticket.upstream, answer.error), warnings);
+      }
       if (answer.outputs !== undefined) {
         // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
         const accepted: Ticket = answer.predictionId === undefined
           ? { ...ticket, accepted: true, costs: [...ticket.costs, { state: "missing", reason: `${ticket.upstream} finished the ${at.step.kind} step at once with no prediction id to bill` }] }
-          : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId! } : s)) };
+          : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId!, ...(answer.handle === undefined ? {} : { handle: answer.handle }) } : s)) };
         let output: StepOutput;
         try {
           output = outputOf(ticket, at.step, answer.outputs, answer.predictionId);
@@ -883,7 +882,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         }
         return completed(accepted, at.index, output, bounds, []);
       }
-      const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId! } : s));
+      const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId!, ...(answer.handle === undefined ? {} : { handle: answer.handle }) } : s));
       return waiting(next(ticket, { steps, accepted: true }));
     },
 
@@ -892,21 +891,24 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const bounds: RequestBounds = {
         ...(pollOptions.finalAsk === true ? {} : { deadlineAt: pollOptions.deadlineAt }),
         ...(pollOptions.signal ? { signal: pollOptions.signal } : {}),
+        maxMediaBytes: options.mediaLimits.maxMediaBytes,
       };
       if (pollOptions.finalAsk !== true && Date.now() >= pollOptions.deadlineAt) throw new DeadlinePassed(pollOptions.deadlineAt);
       const at = current(ticket);
       if (at === undefined) return finish(ticket, bounds, {});
       let asked;
       try {
-        asked = await capped(ticket.upstream, bounds, () => ask(reach(ticket.upstream), at.step.predictionId!, bounds));
+        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle, kind: at.step.kind }));
       } catch (error) {
-        const resendable = error instanceof NoAnswer || error instanceof NotSent
-          || (error instanceof HttpStatus && (error.status === 429 || isServerError(error.status)));
+        const resendable = error instanceof NoAnswer || error instanceof NotSent || (error instanceof HttpStatus && passingStatus(error.status, "media_submit"));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
         if (!resendable) throw error;
         return waiting(ticket, { warnings: [{ code: "poll_request_failed", detail: { upstream: ticket.upstream, predictionId: at.step.predictionId, error: String(error) } }] });
       }
-      if (asked.state === "running") return waiting(ticket);
+      if (asked.state === "running") {
+        if (asked.handle === undefined) return waiting(ticket);
+        return waiting(next(ticket, { steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, handle: asked.handle } : s)) }));
+      }
       if (asked.state === "failed") return failed(ticket, new UpstreamTaskFailed(ticket.upstream, asked.error));
       let output: StepOutput;
       try {
@@ -930,11 +932,16 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
 
     async ticketFromLegacy(model, input, chosen, planOptions, legacy) {
       if (!isPresent(legacy.providerTaskId) && (legacy.steps ?? []).length === 0) return this.plan(model, input, chosen, planOptions);
-      // Runs before the provider layer all ran on WaveSpeed.
-      const opened = await open(model, input, chosen, planOptions, (order) => order.find((c) => config.upstreams[c.upstream]?.kind === "wavespeed") ?? order[0]!);
-      if ("state" in opened) return opened;
-      const base = { ...opened, next: [], accepted: true };
-      const binding = bindingOf(base);
+      // Runs before the provider layer all ran on WaveSpeed, which took them: the run stays on the model's WaveSpeed
+      // binding of the lowest weight whatever routing or the input checks would choose now, and never moves on.
+      const binding = (config.models[model] ?? []).filter((b) => config.upstreams[b.upstream]?.kind === "wavespeed").sort((x, y) => x.weight - y.weight)[0];
+      // Without a WaveSpeed binding no upstream can resume the run WaveSpeed took, and none has a reason of its own to name.
+      if (binding === undefined) return { state: "failed", reason: new NoUpstreamAvailable(model, []), costs: [], ...common() };
+      const candidate = candidateOf(config, binding.upstream, binding.weight, keyOf);
+      if (!candidate.configured) {
+        return { state: "failed", reason: new NoUpstreamAvailable(model, [{ upstream: candidate.upstream, kind: "missing_key", envVar: candidate.envVar }]), costs: [], ...common() };
+      }
+      const base = ticketBase(model, input, chosen, planOptions, { upstream: binding.upstream, next: [], reasons: [], accepted: true });
       if (isPresent(legacy.providerTaskId)) {
         const steps: Step[] = [{ kind: "generate", endpoint: binding.model_id, itemIndex: null, status: "submitted", predictionId: legacy.providerTaskId! }];
         return waiting({ ...base, steps }, { warnings: [{ code: "async_resume_stored_provider_task", detail: { model, providerTaskId: legacy.providerTaskId } }] });
@@ -945,7 +952,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const param = binding.extra_steps?.find((s) => s.kind === row.kind && s.endpoint === row.endpoint)?.for_param;
         const output = row.output as StepOutput;
         if (row.status === "failed") {
-          return failed({ ...base, steps, costs }, new UpstreamTaskFailed(opened.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`));
+          return failed({ ...base, steps, costs }, new UpstreamTaskFailed(base.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`));
         }
         if (row.inlineCostUsd > 0) costs.push({ state: "known", usd: row.inlineCostUsd, source: "reported" });
         const step: Step = {

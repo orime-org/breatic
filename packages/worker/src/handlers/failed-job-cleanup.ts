@@ -32,10 +32,11 @@
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import { reportCollaboratorFirstAction } from "@breatic/core";
-import { NO_CONSENT } from "@breatic/shared";
+import { NO_CONSENT, type TaskFailureReason } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  sceneTaskService,
   taskService,
   settleTaskForNode,
 } from "@breatic/domain";
@@ -49,6 +50,7 @@ import {
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
+  settleSceneRow,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
@@ -103,7 +105,7 @@ export async function cleanupFailedJobNodes(
   // what the nodes are told. A release that fails leaves the hold to expire.
   await releaseRunHold(job.data.taskId, job.data.userId);
 
-  const { projectId, spaceId, targetNodeIds } = job.data;
+  const { projectId, spaceId, targetNodeIds, sceneRowId } = job.data;
   if (!projectId) return 0;
 
   // #1618 A / adversarial hole ①: a task that billed (Stage 3) then
@@ -129,15 +131,16 @@ export async function cleanupFailedJobNodes(
         outputs?: PersistedOutput[];
       } | null)
     : null;
+  // A 3D Space's generation (inner#1691) holds its result on the Space's own
+  // row rather than on a node, and recovers the same way.
+  const nodeIds = targetNodeIds ?? [];
   if (
     task?.billedAt &&
     spaceId &&
-    targetNodeIds &&
-    targetNodeIds.length > 0 &&
+    (nodeIds.length > 0 || sceneRowId !== undefined) &&
     billedResult?.outputs
   ) {
     const outputs = billedResult.outputs;
-    const docName = canvasSpaceDocName(projectId, spaceId);
     // #1622: this is the SECOND billed-then-crashed recovery path (the first is
     // the dispatch.ts redelivery). Thread the same preview + ACTUAL billed
     // credits so a crash-net recovered success row is not preview-less /
@@ -150,7 +153,7 @@ export async function cleanupFailedJobNodes(
         actorUserId: task.userId,
         type: "generation:succeeded",
         spaceId: spaceId ?? null,
-        nodeId: targetNodeIds.length === 1 ? targetNodeIds[0] : null,
+        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
         taskId: job.data.taskId,
         payload: {
           source: job.data.source ?? "task",
@@ -169,12 +172,17 @@ export async function cleanupFailedJobNodes(
         { projectId, userId: task.userId, action: "generation" },
         job.data.analyticsConsent ?? NO_CONSENT,
       );
-    } catch {
+    } catch (err) {
       // Best-effort activity; the node re-record + write-back below is critical.
+      logger.error({ err, taskId: job.data.taskId, projectId }, "crash_net_success_activity_failed");
+    }
+    if (sceneRowId !== undefined) {
+      await settleSceneRow(job.data.taskId, sceneRowId, sceneTaskService.generationOutcome(outputs));
+      return 0;
     }
     await recordGenerationForNodes(
       streamRedis,
-      docName,
+      canvasSpaceDocName(projectId, spaceId),
       {
         projectId,
         userId: task.userId,
@@ -192,9 +200,9 @@ export async function cleanupFailedJobNodes(
           toolId: job.data.source === "mini_tool" ? job.data.toolId : undefined,
         }),
       },
-      nodeResultsFrom(targetNodeIds, outputs),
+      nodeResultsFrom(nodeIds, outputs),
     );
-    return targetNodeIds.length;
+    return nodeIds.length;
   }
 
   // Crash-net activity row: the worker that died never reached its
@@ -237,6 +245,11 @@ export async function cleanupFailedJobNodes(
     );
   }
   if (!spaceId) return 0;
+  if (sceneRowId !== undefined) {
+    // The row is read in each member's own language, so it holds our code.
+    await settleSceneRow(job.data.taskId, sceneRowId, { outcome: "failed", errorMessage: "internal" satisfies TaskFailureReason });
+    return 0;
+  }
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
 
   const docName = canvasSpaceDocName(projectId, spaceId);

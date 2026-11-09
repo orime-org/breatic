@@ -77,7 +77,9 @@ const JOB_OBJECTS = "jobObjects";
 const JOB_REPORT = "jobReport";
 
 /** A run that could not be started; the route answers 503. */
-export class JobStartFailed extends Error {}
+export class JobStartFailed extends Error {
+  override name = "JobStartFailed";
+}
 
 /**
  * The report a job gives.

@@ -1,0 +1,133 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/kling-video/v3/pro/motion-control",
+  "fields": {
+    "character_orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "image",
+          "video"
+        ]
+      }
+    ],
+    "elements": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "frontal_image_url": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "reference_image_urls": [
+              {
+                "type": "array",
+                "items": {
+                  "fields": {
+                    "": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "required": []
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "keep_original_sound": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "character_orientation",
+    "image_url",
+    "video_url"
+  ],
+  "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ]
+  }
+}

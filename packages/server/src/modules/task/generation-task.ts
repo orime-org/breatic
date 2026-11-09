@@ -15,10 +15,12 @@
  * as alive.
  */
 
+import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
 import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
 import type { NodeTaskAction, TaskFailureReason } from "@breatic/shared";
@@ -174,13 +176,7 @@ export async function startRowedRun(opts: {
     });
     await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
     const job = await opts.enqueue();
-    // Queueing is the point of no return: the job runs whether or not its id
-    // is kept. The id is for whoever has to find the job in the queue by hand.
-    try {
-      await taskService.setJobId(taskId, job.id ?? "");
-    } catch (err) {
-      logger.error({ err, taskId, jobId: job.id, projectId }, `${opts.logTag}_job_id_not_recorded`);
-    }
+    await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
     const reason: TaskFailureReason =
@@ -189,23 +185,92 @@ export async function startRowedRun(opts: {
         : err instanceof AppError && err.statusCode === 402
           ? "no_credits"
           : "internal";
-    for (const settle of [
-      // Before queueing, so whatever was held for this run is released;
-      // a refused admission held nothing, and releasing it does nothing.
-      (): Promise<unknown> => creditHoldService.releaseHold(taskId),
-      (): Promise<unknown> => taskService.markFailed(taskId, reason),
-      (): Promise<unknown> => failOpenedTasks(projectId, spaceId, rows, reason),
-    ]) {
-      try {
-        await settle();
-      } catch (settleErr) {
-        logger.error({ err: settleErr, taskId, projectId }, `${opts.logTag}_run_settle_failed`);
-      }
-    }
+    await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
     logger.warn({ err, taskId, projectId, reason, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
     // With none, opening it is what failed, and the rejection carries the cause.
     if (rows.length > 0) return "failed";
     throw err;
+  }
+}
+
+/**
+ * Admit a generation up to its hold, the first steps a Canvas generation and a
+ * 3D Space generation share (inner#1691 design 4.2 steps 1 to 5): the caller
+ * may edit the project, the submission passes the caller's checks, and the
+ * estimate is held under the id its task row will carry, before that row
+ * exists, so a refusal leaves nothing behind. From here until the job is
+ * queued, every way out releases the hold; once queued, the worker charges or
+ * releases it.
+ * @param opts - The submission.
+ * @param opts.projectId - The project it runs in.
+ * @param opts.userId - Who submits it.
+ * @param opts.check - The submission's own checks; throws its refusal, returns what the estimate reads.
+ * @param opts.credits - The run's estimate, from what the checks returned.
+ * @returns The new task id, and what the checks returned.
+ * @throws {AppError} 403 or 404 without editor access, the checks' refusal, 402 when the studio cannot cover the estimate.
+ */
+export async function holdRun<T>(opts: {
+  projectId: string;
+  userId: string;
+  check: () => Promise<T>;
+  credits: (checked: T) => Promise<number>;
+}): Promise<{ taskId: string; checked: T }> {
+  await assertAccess(opts.projectId, opts.userId, "editor");
+  const checked = await opts.check();
+  const taskId = randomUUID();
+  await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+  return { taskId, checked };
+}
+
+/**
+ * End a run that failed before its job was queued: release its hold, fail its
+ * task, then settle its own row. Each step runs whatever the others did, so
+ * neither account of the run takes the other down: a task left `pending` is
+ * one no worker picks up and no sweep ends, and a row left `running` counts a
+ * run that is not happening.
+ * @param taskId - The run.
+ * @param projectId - Owning project, for the log.
+ * @param reason - Why the task failed.
+ * @param settleRow - Settles the run's own row or rows.
+ * @param logTag - Prefix of this lane's log events.
+ * @throws {never} Each failure only logs.
+ */
+export async function settleUnqueuedRun(
+  taskId: string,
+  projectId: string,
+  reason: TaskFailureReason,
+  settleRow: () => Promise<unknown>,
+  logTag: string,
+): Promise<void> {
+  for (const settle of [
+    // A refused admission held nothing, and releasing it does nothing.
+    (): Promise<unknown> => creditHoldService.releaseHold(taskId),
+    (): Promise<unknown> => taskService.markFailed(taskId, reason),
+    settleRow,
+  ]) {
+    try {
+      await settle();
+    } catch (settleErr) {
+      logger.error({ err: settleErr, taskId, projectId }, `${logTag}_run_settle_failed`);
+    }
+  }
+}
+
+/**
+ * Keep a queued job's id on its task. Queueing is the point of no return: the
+ * job runs whether or not its id is kept, which is for whoever has to find the
+ * job in the queue by hand, so a failure here only logs.
+ * @param taskId - The run.
+ * @param jobId - The queue's id for its job.
+ * @param projectId - Owning project, for the log.
+ * @param logTag - Prefix of this lane's log events.
+ * @throws {never} A failure only logs.
+ */
+export async function recordJobId(taskId: string, jobId: string | undefined, projectId: string, logTag: string): Promise<void> {
+  try {
+    await taskService.setJobId(taskId, jobId ?? "");
+  } catch (err) {
+    logger.error({ err, taskId, jobId, projectId }, `${logTag}_job_id_not_recorded`);
   }
 }

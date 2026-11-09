@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/dreamactor/2.0",
+  "price_formula": "(usage.duration ?? media_duration(params.video) ?? 5.0) * 0.05"
+}

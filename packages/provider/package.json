@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.coverage.config.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "fast-check": "catalog:",
     "tsup": "catalog:",
     "vitest": "catalog:",

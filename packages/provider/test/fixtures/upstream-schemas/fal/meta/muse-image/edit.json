@@ -1,0 +1,133 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=meta/muse-image/edit",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "pattern": "^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "image_urls": [
+      {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "num_images": [
+      {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 1
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "default": "webp"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  },
+  "required": [
+    "image_urls",
+    "prompt"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ]
+  }
+}

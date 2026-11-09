@@ -1,0 +1,25 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "target_resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "720p",
+          "1080p",
+          "2k",
+          "4k"
+        ],
+        "default": "1080p"
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "video"
+  ]
+}

@@ -263,11 +263,11 @@ describe('the selection bubble bar', () => {
     );
   });
 
-  // A4: the order the demo draws, read straight off the DOM. Asserted as the
-  // whole sequence rather than a few neighbours — a control landing in the
-  // wrong group is exactly what this has to catch, and pairwise checks let it
-  // through.
-  it('lays the controls out in the order the demo draws', async () => {
+  // A4: the order the bar is drawn in (user 2026-11-08: comment alone at the
+  // far right), read straight off the DOM. Asserted as the whole sequence
+  // rather than a few neighbours — a control landing in the wrong group is
+  // exactly what this has to catch, and pairwise checks let it through.
+  it('lays the controls out in their groups, comment last', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 0, 5);
@@ -293,9 +293,10 @@ describe('the selection bubble bar', () => {
       'doc-bubble-tool-link',
       'doc-bubble-tool-code',
       'doc-bubble-color',
-      'doc-bubble-tool-comment',
       'doc-bubble-sep-ai',
       'doc-bubble-ai',
+      'doc-bubble-sep-comment',
+      'doc-bubble-tool-comment',
     ]);
   });
 
@@ -311,9 +312,9 @@ describe('the selection bubble bar', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
 
-    // Five groups, four rules (the demo's note): block type | alignment | B I S U |
-    // link code colour comment | AI.
-    expect(seps).toHaveLength(4);
+    // Six groups, five rules: block type | alignment | B I S U | link code
+    // colour | AI | comment (add to Agent needs a project, absent here).
+    expect(seps).toHaveLength(5);
     for (const sep of seps) {
       expect(sep.getAttribute('aria-orientation')).toBe('vertical');
     }
@@ -1497,7 +1498,7 @@ describe('the selection bubble bar', () => {
     // "they agree" while saying nothing at all.
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
-    ).filter((b) => b.disabled).length;
+    ).filter((b) => b.getAttribute('aria-disabled') === 'true').length;
     expect(dark > 0).toBe(hasDark);
 
     // Only what is left on the bar. The three in `BLOCK_TOOLS` live in the
@@ -1508,7 +1509,7 @@ describe('the selection bubble bar', () => {
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );
       expect(button).not.toBeNull();
-      expect(`${tool.id}:${String(button?.disabled)}`).toBe(
+      expect(`${tool.id}:${String(button?.getAttribute('aria-disabled') === 'true')}`).toBe(
         `${tool.id}:${String(!tool.canRun(editor))}`,
       );
     }

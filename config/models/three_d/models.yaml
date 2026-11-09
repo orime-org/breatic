@@ -1,0 +1,279 @@
+# Tripo H3.1 on WaveSpeed: text to 3D, one picture to 3D, and two to four
+# views to 3D (inner#1691). The 3D Space's generation dialog shows one Tripo
+# H3.1 and sends the single-image entry when only the front view is filled,
+# the multi-view entry otherwise; the agent sees both variants.
+# What all three share (settings, forced values, the price formula) is written
+# once on the text entry, and the image settings once on the single-image
+# entry; the other entries refer to them through YAML anchors.
+# Guidelines are the image, video and audio catalogs' (see their headers);
+# what only this catalog uses:
+#   model.forces         — values the model forces while a condition holds,
+#                          applied in this order round after round until
+#                          nothing changes; `lock` draws the params it sets as
+#                          locked, and the panel's reason for the lock is
+#                          spaces.threeD.force.<id> in locales/*.json. The
+#                          loader refuses forced values that never settle.
+#   model.prompt_max_length — the most characters the prompt takes, counted
+#                          on the cleaned text.
+#   param.when.equals    — the params that have to hold these values, beside
+#                          flag_on; every part has to hold.
+#   param.bounds         — ranges that replace min/max while their condition
+#                          holds; the first that holds wins, and an end it
+#                          leaves out is the param's own.
+#   param.type: integer  — a whole number that may be left blank, which then
+#                          is not sent.
+#   param.max_length     — the most characters a text param takes, counted on
+#                          the cleaned text.
+# Field names and value spellings are WaveSpeed's own pages:
+# https://wavespeed.ai/models/tripo3d/h3.1/text-to-3d,
+# https://wavespeed.ai/models/tripo3d/h3.1/image-to-3d and
+# https://wavespeed.ai/models/tripo3d/h3.1/multiview-to-3d. The formula is
+# written from the price table on those pages: the base is geometry only,
+# texture adds by quality, and parts are priced on geometry only.
+# Two upstream options are not offered, because their results cannot be
+# placed in a 3D Space: quad, which outputs FBX, and the extreme texture
+# quality, whose 8K maps exceed the scene's texture budget
+# (config/scene.yaml max_texture_bytes). The formula still prices the extreme
+# quality as the upstream does; it has no term for quad.
+
+models:
+
+  - name: "tripo-h3.1-t23d"
+    display_name: "Tripo H3.1"
+    mode: "t23d"
+    takes_prompt: true
+    prompt_max_length: 1024
+    tier: "recommended"
+    description: "Textured, PBR-ready meshes from text"
+    guide: "Tripo H3.1 turns a text description into a GLB mesh, with optional texture and PBR materials, a face limit, smart low-poly topology or separate untextured parts."
+    generation_time: 240
+    params:
+      texture: &tripo_texture
+        description: "Paint texture maps onto the model"
+        label: "Texture"
+        default: true
+        values: [true, false]
+        fill: "panel"
+      pbr: &tripo_pbr
+        description: "Add PBR materials; needs texture"
+        label: "PBR"
+        default: true
+        values: [true, false]
+        fill: "panel"
+      texture_quality: &tripo_texture_quality
+        description: "Texture detail"
+        label: "Texture quality"
+        default: "standard"
+        values: ["standard", "fast", "detailed"]
+        value_labels: {"standard": "Standard", "fast": "Fast", "detailed": "Detailed"}
+        fill: "panel"
+        when: { flag_on: "texture" }
+      texture_version: &tripo_texture_version
+        description: "Texture model version"
+        label: "Texture version"
+        default: "v3.0"
+        values: ["v3.0", "v3.5"]
+        value_labels: {"v3.0": "v3.0", "v3.5": "v3.5"}
+        fill: "panel"
+        when: { flag_on: "texture" }
+        upstream_values: {"v3.0": "v3.0-20250812", "v3.5": "v3.5-20260815"}
+      delight: &tripo_delight
+        description: "Remove baked-in lighting from the texture"
+        label: "Remove lighting"
+        default: true
+        values: [true, false]
+        fill: "panel"
+        when: { flag_on: "texture", equals: { texture_version: "v3.5" } }
+      geometry_quality: &tripo_geometry_quality
+        description: "Mesh detail; Detailed takes up to 2M faces"
+        label: "Geometry quality"
+        default: "standard"
+        values: ["standard", "detailed"]
+        value_labels: {"standard": "Standard", "detailed": "Detailed"}
+        fill: "panel"
+      smart_low_poly: &tripo_smart_low_poly
+        description: "Simplified low-poly topology"
+        label: "Smart low-poly"
+        default: false
+        values: [true, false]
+        fill: "panel"
+      generate_parts: &tripo_generate_parts
+        description: "Split into editable parts, no texture"
+        label: "Separate parts"
+        default: false
+        values: [true, false]
+        fill: "panel"
+      face_limit: &tripo_face_limit
+        description: "Most faces in the mesh; blank is adaptive"
+        label: "Face limit"
+        default: null
+        type: "integer"
+        min: 1
+        max: 1500000
+        fill: "panel"
+        bounds:
+          - when: { flag_on: "smart_low_poly" }
+            min: 500
+            max: 20000
+          - when: { equals: { geometry_quality: "detailed" } }
+            max: 2000000
+      auto_size: &tripo_auto_size
+        description: "Scale to real-world size in meters"
+        label: "Auto size"
+        default: false
+        values: [true, false]
+        fill: "panel"
+        when: { flag_on: "texture" }
+      export_uv: &tripo_export_uv
+        description: "Unwrap UVs; off is faster and smaller"
+        label: "Export UV"
+        default: true
+        values: [true, false]
+        fill: "panel"
+      model_seed: &tripo_model_seed
+        description: "Seed for the geometry; blank is random"
+        label: "Model seed"
+        default: null
+        type: "integer"
+        min: 0
+        max: 2147483647
+        fill: "panel"
+      texture_seed: &tripo_texture_seed
+        description: "Seed for the texture; blank is random"
+        label: "Texture seed"
+        default: null
+        type: "integer"
+        min: 0
+        max: 2147483647
+        fill: "panel"
+      negative_prompt:
+        description: "What to keep out of the model"
+        label: "Negative prompt"
+        default: null
+        type: "text"
+        max_length: 255
+        fill: "panel"
+    forces: &tripo_forces
+      - id: "parts_geometry_only"
+        when: { flag_on: "generate_parts" }
+        set: { texture: false, pbr: false }
+        lock: true
+      - id: "pbr_needs_texture"
+        when: { flag_on: "pbr" }
+        set: { texture: true }
+        lock: true
+      - id: "fast_uses_v35"
+        when: { flag_on: "texture", equals: { texture_quality: "fast" } }
+        set: { texture_version: "v3.5" }
+        lock: true
+    providers:
+      - name: "wavespeed"
+        model_id: "tripo3d/h3.1/text-to-3d"
+        priority: 1
+        pricing:
+          base_price: 120000
+          formula: &tripo_formula "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
+          discount_rate: 100
+
+  - name: "tripo-h3.1-i23d"
+    display_name: "Tripo H3.1"
+    variant: "Single image"
+    mode: "i23d"
+    takes_prompt: false
+    tier: "recommended"
+    description: "One picture of an object to a mesh"
+    guide: "Tripo H3.1 turns one picture of an object into a GLB mesh, with optional texture and PBR materials, a face limit, smart low-poly topology or separate untextured parts."
+    generation_time: 240
+    params:
+      image:
+        description: "Picture of the object"
+        default: null
+        accepts: "image"
+        fill: "canvas"
+      texture: *tripo_texture
+      pbr: *tripo_pbr
+      texture_quality: *tripo_texture_quality
+      texture_version: *tripo_texture_version
+      delight: *tripo_delight
+      geometry_quality: *tripo_geometry_quality
+      smart_low_poly: *tripo_smart_low_poly
+      generate_parts: *tripo_generate_parts
+      face_limit: *tripo_face_limit
+      auto_size: *tripo_auto_size
+      export_uv: *tripo_export_uv
+      model_seed: *tripo_model_seed
+      texture_seed: *tripo_texture_seed
+      texture_alignment: &tripo_texture_alignment
+        description: "What the texture lines up with"
+        label: "Texture alignment"
+        default: "original_image"
+        values: ["original_image", "geometry"]
+        value_labels: {"original_image": "Original image", "geometry": "Geometry"}
+        fill: "panel"
+      orientation: &tripo_orientation
+        description: "Turn the model to face as the image does"
+        label: "Orientation"
+        default: "default"
+        values: ["default", "align_image"]
+        value_labels: {"default": "Default", "align_image": "Align image"}
+        fill: "panel"
+        when: { flag_on: "texture" }
+      enable_image_autofix: &tripo_image_autofix
+        description: "Correct the input image before generating"
+        label: "Image autofix"
+        default: false
+        values: [true, false]
+        fill: "panel"
+    forces: *tripo_forces
+    providers:
+      - name: "wavespeed"
+        model_id: "tripo3d/h3.1/image-to-3d"
+        priority: 1
+        pricing:
+          base_price: 240000
+          formula: *tripo_formula
+          discount_rate: 100
+
+  - name: "tripo-h3.1-multiview"
+    display_name: "Tripo H3.1"
+    variant: "Multi-view"
+    mode: "i23d"
+    takes_prompt: false
+    tier: "recommended"
+    description: "Two to four views of one object"
+    guide: "Tripo H3.1 turns two to four views of one object, in front, left, back, right order, into a GLB mesh, with the same texture, PBR and topology settings as a single picture."
+    generation_time: 260
+    params:
+      images:
+        description: "Views in front, left, back, right order"
+        default: null
+        type: "list"
+        min_items: 2
+        max_items: 4
+        accepts: "image"
+        fill: "canvas"
+      texture: *tripo_texture
+      pbr: *tripo_pbr
+      texture_quality: *tripo_texture_quality
+      texture_version: *tripo_texture_version
+      delight: *tripo_delight
+      geometry_quality: *tripo_geometry_quality
+      smart_low_poly: *tripo_smart_low_poly
+      generate_parts: *tripo_generate_parts
+      face_limit: *tripo_face_limit
+      auto_size: *tripo_auto_size
+      export_uv: *tripo_export_uv
+      model_seed: *tripo_model_seed
+      texture_seed: *tripo_texture_seed
+      texture_alignment: *tripo_texture_alignment
+      orientation: *tripo_orientation
+      enable_image_autofix: *tripo_image_autofix
+    forces: *tripo_forces
+    providers:
+      - name: "wavespeed"
+        model_id: "tripo3d/h3.1/multiview-to-3d"
+        priority: 1
+        pricing:
+          base_price: 240000
+          formula: *tripo_formula
+          discount_rate: 100

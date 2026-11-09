@@ -25,6 +25,7 @@ import {
   LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
@@ -47,10 +48,14 @@ import { getGenerationTemplate } from "@domain/agent/tools/get-generation-templa
 import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
+import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /** The document proposal tool; it holds nothing between calls. */
 const proposeDocumentEdit = makeProposeDocumentEdit();
+
+/** The 3D generation proposal tool; it holds nothing between calls. */
+const proposeSceneGeneration = makeProposeSceneGeneration();
 
 /**
  * What a turn knows that a tool needs when it is built.
@@ -111,6 +116,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_SCENE_GENERATION]: () => proposeSceneGeneration,
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
@@ -165,6 +172,7 @@ export const CANVAS_TOOLS: readonly string[] = [
   GET_GENERATION_TEMPLATE,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
 ];
 
@@ -181,6 +189,7 @@ export {
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   RECORD_TOOL_NAMES,
   MEMORY_TOOL_NAMES,
   SAVE_IMAGE,

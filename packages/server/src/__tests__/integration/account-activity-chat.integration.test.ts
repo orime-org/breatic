@@ -288,12 +288,12 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
     });
   }
 
-  it("P18 keeps text-tool activity account-scoped when a client supplies a Project", async () => {
+  it("P18 keeps text-tool activity account-scoped when the request names the Project it runs in", async () => {
     const project = await seedActivityProject(sql);
     const response = await app.request("/api/v1/mini-tools/text", {
       method: "POST",
       headers: { Cookie: project.cookie, "Content-Type": "application/json" },
-      body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: randomUUID() }),
+      body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: project.projectId }),
     });
     expect(response.status).toBe(200);
     await response.text();
@@ -353,7 +353,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
     try {
       const response = await app.request("/api/v1/mini-tools/text", {
         method: "POST", headers: { Cookie: project.cookie, "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: randomUUID() }),
+        body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: project.projectId }),
       });
       expect(response.status).toBe(200);
       const stream = await response.text();

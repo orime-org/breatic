@@ -24,7 +24,7 @@ suffix, and replace the values with your own.
 | Copy this | To this | Put in it |
 |---|---|---|
 | `wrangler.toml.template` | `wrangler.toml` | Bucket name, the port it listens on, the origins allowed to send it parts, and where errors are reported |
-| `.dev.vars.template` | `.dev.vars` | The shared secret |
+| `.dev.vars.template` | `.dev.vars` | The shared secret, and the optional OpenRouter key for web animation |
 
 Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
@@ -47,8 +47,9 @@ media numbers and no cover, and the Agent cannot read pages.
 `image_build_context = "../.."` in every `[[containers]]` and
 `[[env.production.containers]]` block. The configured classes are `MediaContainer`,
 `MiniToolContainerStd1`, `MiniToolContainerStd4`, `LongMediaContainer` and
-`WebReaderContainer`. Each block needs its own context because `containers` does
-not inherit into an environment.
+`WebReaderContainer`, plus `WebAnimationContainer`, whose blocks stay commented
+out until web animation is enabled. Each block needs its own context because
+`containers` does not inherit into an environment.
 
 **A `wrangler.toml` copied before the page reader was added needs seven additions
 from the template:** the `WebReaderContainer` container block, the `WEB_READER`
@@ -92,6 +93,7 @@ enough on its own.
 | `UPLOAD_BASE_URL` | Where a stored object is publicly readable: the bucket's r2.dev address or a custom domain. This is the URL written onto nodes |
 | `INGEST_BASE_URL` | Where the browser sends its parts: `http://localhost:<[dev] port>` locally, the Worker's public address on a deployment |
 | `INGEST_SHARED_SECRET` | The same string as in `.dev.vars` |
+| `WEB_ANIMATION_PREVIEW_BASE_URL` | Where the browser loads web-animation previews from this Worker's signed `/web-animation/<token>/index.html`: the same address as `INGEST_BASE_URL` locally, a host of its own on a deployment. Needed only with web animation enabled |
 
 ### wrangler.toml
 
@@ -130,7 +132,7 @@ we do not take. Those are only logged.
 
 ### .dev.vars
 
-One value: `INGEST_SHARED_SECRET`. It must be the same string as
+The required value is `INGEST_SHARED_SECRET`. It must be the same string as
 `INGEST_SHARED_SECRET` in the repo-root `.env` — the server signs upload tickets
 with it and sends it to open each upload, and this Worker checks both, so a
 mismatch rejects every upload with 401. Generate one with `openssl rand -hex 32`.
@@ -141,6 +143,10 @@ Cloudflare rather than in any file. The binding table a deploy prints lists
 only vars and bindings, so the secret never appears there; to tell "set" from
 "never set", run `wrangler secret list --env production`, which lists it by
 name. Without it every request except a CORS preflight answers 500.
+
+The optional second value, `HARNESS_OPENROUTER_API_KEY`, is the OpenRouter key
+web-animation runs call the model with. Only the Worker's `model.local` relay
+reads it; the container never sees it. See [Web animation](#web-animation).
 
 ### If a setting is missing
 
@@ -180,11 +186,30 @@ holds no address of ours at all.
 This Worker binds container Durable Object classes: the media container
 (`MEDIA`, one instance per storage key), the two mini-tool containers
 (`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job and instance size),
-`LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs, and the page
-reader (`WEB_READER`, one instance per `web_fetch` call). Keep these
+`LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs, the page
+reader (`WEB_READER`, one instance per `web_fetch` call), and, when enabled,
+`WebAnimationContainer` (`WEB_ANIMATION`, one instance per job). Keep these
 bindings and their `exports` aligned with the template in each environment.
 The upload path itself keeps nothing between requests: an upload's id and its
 part receipts travel with the browser and come back to finish it.
+
+### Web animation
+
+Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) is off
+unless you enable it: its container, binding, export and `[assets]` blocks are
+commented out in the template, and `HARNESS_OPENROUTER_API_KEY` is empty.
+While either is missing, the web-animation job routes answer 501
+`feature_disabled` and everything else works. To develop it, uncomment those
+blocks and set the key. Its image (`web-animation.Dockerfile`: Node, Chromium,
+the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so
+the first `wrangler dev` builds for a while.
+
+The font set is served as static assets from `assets/web-animation/fonts`,
+laid out from the pinned `@fontsource-variable/*` devDependencies by
+`scripts/web-animation-fonts.mjs`; `pnpm dev` runs it when `[assets]` is
+enabled and `deploy:worker` always does. The image runs the same script on the
+same versions, so the stylesheet a package embeds and the files the preview
+loads always match.
 
 ## Tests
 

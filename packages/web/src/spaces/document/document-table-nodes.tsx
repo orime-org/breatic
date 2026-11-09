@@ -202,9 +202,10 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
  * when the frame commits. A view can be created inside a React effect.
  * @param host - The element the frame is drawn in.
  * @param table - The `<table>`.
+ * @param scrollLeft - Where the frame starts scrolled to sideways.
  * @returns The React root, to unmount when the view goes.
  */
-function mountScroller(host: HTMLElement, table: HTMLElement): Root {
+function mountScroller(host: HTMLElement, table: HTMLElement, scrollLeft = 0): Root {
   const chrome = document.createElement('div');
   chrome.className = 'contents';
   host.append(table, chrome);
@@ -214,12 +215,41 @@ function mountScroller(host: HTMLElement, table: HTMLElement): Root {
       <div
         className='tableWrapper'
         ref={(slot) => {
-          if (slot !== null && table.parentElement !== slot) slot.appendChild(table);
+          if (slot === null || table.parentElement === slot) return;
+          slot.appendChild(table);
+          const viewport = slot.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+          if (viewport !== null && scrollLeft > 0) viewport.scrollLeft = scrollLeft;
         }}
       />
     </DocumentTableScroller>,
   );
   return root;
+}
+
+/**
+ * Puts a table drawn as static HTML (`blocksToFullHTML`) in the frame the
+ * body's node view draws around its own: the same `doc-table` and
+ * `doc-table-scroller` elements, scrolled sideways by
+ * `DocumentTableScroller`. The serialiser stamps the block's attributes on
+ * the `<table>`; the node view has them on the frame, where the body's table
+ * rules look for them, so they move there.
+ * @param table - The `<table>`, in its place.
+ * @param scrollLeft - Where the frame starts scrolled to sideways.
+ * @returns The React root, to unmount when the copy goes.
+ */
+export function frameStaticTable(table: HTMLTableElement, scrollLeft = 0): Root {
+  const dom = document.createElement('div');
+  dom.className = 'doc-table';
+  for (const { name, value } of [...table.attributes]) {
+    if (!name.startsWith('data-')) continue;
+    dom.setAttribute(name, value);
+    table.removeAttribute(name);
+  }
+  const host = document.createElement('div');
+  host.className = 'doc-table-scroller';
+  dom.appendChild(host);
+  table.replaceWith(dom);
+  return mountScroller(host, table, scrollLeft);
 }
 
 /**

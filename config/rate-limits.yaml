@@ -119,6 +119,11 @@ generate:       { max: 30,  window_seconds: 60 }
 # or a container run behind it.
 mini_tool:      { max: 30,  window_seconds: 60 }
 
+# Accepting a Timeline web-animation execution (inner#1711, post-auth,
+# user-keyed). Same shape as Generate: one press puts a container run with
+# model calls behind it; credits are charged when it ends.
+timeline_execution: { max: 30, window_seconds: 60 }
+
 # Reading the membership panel. Answered from our own database (#307), and
 # each read sums the storage of every studio the account administers. Sixty a
 # minute leaves the panel feeling instant while capping what one account can
@@ -126,7 +131,7 @@ mini_tool:      { max: 30,  window_seconds: 60 }
 membership-read: { max: 60, window_seconds: 60 }
 
 # Reading the credits overlay. It reconciles unsettled payments with Stripe on
-# every read (#13 §4.6), so an unthrottled reader is an unthrottled caller of
+# every read (#13 §4.6), so an unthrottled user is an unthrottled caller of
 # somebody else's API.
 credits-read: { max: 60, window_seconds: 60 }
 
@@ -152,12 +157,24 @@ credits-refund: { max: 20, window_seconds: 60 }
 # our Stripe rate limit, and Stripe's limit is shared by every account we have.
 subscription-write: { max: 10, window_seconds: 60 }
 
+# The referral program (inner#1868, post-auth, user-keyed). Reading the
+# membership panel's two sections is a page load; binding a code is typed by
+# hand and each attempt checks a code, so a short budget stops guessing codes
+# without getting in the way of a typo or two; applying to become a promoter
+# is a form somebody fills in once.
+referral-read: { max: 120, window_seconds: 60 }
+referral-bind: { max: 10, window_seconds: 600 }
+promoter-apply: { max: 5, window_seconds: 3600 }
+
 # Starting a conversation and creating a project (inner#1490, post-auth,
 # user-keyed). Each call writes a row, and its run-once record is kept in
 # Redis DB0 for a day, so a loop with a fresh key each time would grow that
 # database. A person starts a handful of conversations a minute and creates
 # far fewer projects.
 conversation-create: { max: 30, window_seconds: 60 }
+# Document AI text tools (inner#1860), per user: each run is one model call
+# charged to the project's studio; this bounds how fast a member can start them.
+text-tool: { max: 30, window_seconds: 60 }
 project-create: { max: 10, window_seconds: 60 }
 
 # Asking a project's owner to let you in (#96, post-auth, user-keyed). The

@@ -64,6 +64,7 @@ describe("buildAgentConfig", () => {
       "list_project_activity",
       "propose_canvas_action",
       "propose_document_edit",
+      "propose_scene_generation",
       "read_conversation",
       "read_memory",
       "read_node_history",

@@ -13,6 +13,7 @@ import type {
   CanvasProposal,
   ChatAttachedChip,
   DocumentProposal,
+  SceneGenerationProposal,
   SharedSpace,
   SpaceRequestInput,
   SpaceType,
@@ -329,6 +330,11 @@ export interface ChatMessage {
    * one already landed is read off the document.
    */
   documentProposals?: DocumentProposal[];
+  /**
+   * The 3D generations this turn proposed (inner#1691), each drawn as a card
+   * that opens the 3D Space in front's generation dialog filled.
+   */
+  sceneProposals?: SceneGenerationProposal[];
   /**
    * Whether this turn stored a proposal in a shape this build can no longer
    * place (inner#1499). The turn draws one line saying so, with nothing to

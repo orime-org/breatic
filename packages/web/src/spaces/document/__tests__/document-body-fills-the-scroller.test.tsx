@@ -18,7 +18,8 @@
  * jsdom computes none.
  */
 
-import { render, screen, waitFor, renderHook, act } from '@testing-library/react';
+import { screen, waitFor, renderHook, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as Y from 'yjs';

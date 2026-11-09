@@ -13,7 +13,7 @@
  * on the machine that ships the yaml.
  */
 
-import { PARAM_FILLS } from "@breatic/shared";
+import { PARAM_FILLS, gateParams } from "@breatic/shared";
 import { z } from "zod";
 
 import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
@@ -28,6 +28,19 @@ export interface ParamClaimant {
   readonly params?: Record<string, unknown>;
 }
 
+/** A value a choice or a switch can hold. */
+const scalarSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+/**
+ * A condition: a switch that has to be on, params that have to hold values,
+ * or both (inner#1691). Strict: the key set is closed, and a misspelled one
+ * used to be dropped in silence — the control then read as waiting on nothing.
+ */
+export const conditionSchema = z.strictObject({
+  flag_on: z.string().optional(),
+  equals: z.record(z.string(), scalarSchema).optional(),
+});
+
 /**
  * The declaration fields, read leniently.
  *
@@ -39,13 +52,14 @@ const declarationSchema = z.object({
   fill: z.enum(PARAM_FILLS).optional(),
   accepts: z.enum(SOURCE_TYPES).optional(),
   optional: z.boolean().optional(),
-  // Strict: the key set is closed, and a misspelled one used to be dropped in
-  // silence — the control then read as waiting on nothing.
-  when: z
-    .strictObject({
-      flag_on: z.string().optional(),
-    })
+  when: conditionSchema.optional(),
+  // Ranges that apply while their condition holds; the first that holds wins
+  // and an end it leaves out is the param's own (inner#1691).
+  bounds: z
+    .array(z.strictObject({ when: conditionSchema, min: z.number().optional(), max: z.number().optional() }))
     .optional(),
+  // The most characters a text param takes once cleaned (inner#1691).
+  max_length: z.number().int().positive().optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -74,8 +88,9 @@ const declarationSchema = z.object({
   // the source gate takes a `list` or `items` param as a list and anything
   // else as a single URL, while the cap check and the transport iterate lists;
   // `items` is a list editor whose entries carry `fields`; `text` is a free
-  // text control.
-  type: z.enum(["list", "items", "text"]).optional(),
+  // text control; `integer` is a whole number that may be left blank, and
+  // blank is not sent, so it needs no `absent_value` (inner#1691).
+  type: z.enum(["list", "items", "text", "integer"]).optional(),
   // Positive integers. A zero or a minus sign is read by every reader as no
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
@@ -120,6 +135,8 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "accepts",
   "optional",
   "when",
+  "bounds",
+  "max_length",
   "modes",
   "note",
   "type",
@@ -280,9 +297,19 @@ function faultsOn(
 
   // A gate reads another parameter of the same model, so a name from some
   // other vendor's spelling leaves the control permanently shut.
-  const gate = declared.when?.flag_on;
-  if (gate !== undefined && !names.has(gate)) {
-    faults.push(`when names "${gate}", which this model does not declare`);
+  const conditions = [
+    ...(declared.when !== undefined ? [["when", declared.when] as const] : []),
+    ...(declared.bounds ?? []).map((bound) => ["bounds", bound.when] as const),
+  ];
+  for (const [where, condition] of conditions) {
+    for (const gate of gateParams(condition)) {
+      if (!names.has(gate)) faults.push(`${where} names "${gate}", which this model does not declare`);
+    }
+  }
+
+  // A cap on text counts characters, and only free text has them.
+  if (declared.max_length !== undefined && declared.type !== "text") {
+    faults.push("max_length counts characters, so this has to declare type: text");
   }
 
   // A label for a value the control does not offer is a label for nothing, and

@@ -25,6 +25,7 @@ import {
   REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION as REAL_PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
   RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
   MEMORY_TOOL_NAMES as REAL_MEMORY_TOOL_NAMES,
@@ -680,6 +681,8 @@ export const domainMock = async () => ({
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the document proposal the open document (inner#1509).
   PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
+  // Read by the turn when it hands the 3D generation proposal the project (inner#1691).
+  PROPOSE_SCENE_GENERATION: REAL_PROPOSE_SCENE_GENERATION,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   // Read by the turn when it hands the media tool its project and owner context.

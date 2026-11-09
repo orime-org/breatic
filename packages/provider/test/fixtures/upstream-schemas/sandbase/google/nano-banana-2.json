@@ -1,0 +1,76 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/nano-banana-2",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16",
+          "4:1",
+          "1:4",
+          "8:1",
+          "1:8"
+        ],
+        "default": "1:1"
+      }
+    ],
+    "enable_image_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_web_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "A photo of a close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful. Vertical portrait orientation."
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "google"
+}

@@ -90,7 +90,9 @@
       "invite_mail_failed": "이메일을 보내지 못했습니다. 다시 시도해 주세요."
     },
     "text_tool": {
-      "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
+      "selection_too_long": "선택한 내용이 너무 길어 AI가 처리할 수 없습니다: {actual}자, 한도는 {limit}자입니다.",
+      "document_too_long": "선택 내용과 함께 보내는 문맥이 너무 깁니다: {actual}자, 한도는 {limit}자입니다.",
+      "failed": "AI가 이 요청을 완료하지 못했습니다. 다시 시도해 주세요."
     },
     "payment": {
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
@@ -304,6 +306,33 @@
       },
       "credits_amount": "{credits} 크레딧",
       "fact_line": "{label}: {value}"
+    },
+    "referral": {
+      "invalid_code": "유효하지 않은 추천 코드입니다.",
+      "already_bound": "이 계정에는 이미 추천 코드가 등록되어 있습니다.",
+      "already_paid": "추천 코드는 첫 멤버십 결제 전에만 등록할 수 있습니다.",
+      "not_eligible": "엔터프라이즈 계정은 추천 코드를 등록할 수 없습니다.",
+      "program_closed": "프로모터 신청은 아직 열리지 않았습니다.",
+      "terms_changed": "프로모터 약관이 업데이트되었습니다. 다시 읽은 후 신청해 주세요.",
+      "application_pending": "이미 심사 중인 신청이 있습니다.",
+      "already_promoter": "이미 프로모터입니다."
+    },
+    "three_d": {
+      "model_not_offered": "{model}은(는) {mode}용 3D 모델이 아닙니다.",
+      "prompt_required": "텍스트로 3D 생성에는 프롬프트가 필요합니다.",
+      "prompt_not_taken": "{model}은(는) 이미지로 생성하므로 프롬프트를 받지 않습니다.",
+      "image_count": "{model}에는 {max, plural, =0 {이미지가 필요 없지만} =1 {이미지 1장이 필요하지만} other {이미지 {min}~{max}장이 필요하지만}} 이 요청에는 {actual}장이 있습니다.",
+      "not_a_setting": "{model}에는 \"{param}\" 설정이 없습니다.",
+      "setting_forced": "현재 설정에서는 \"{param}\"을(를) {given}(으)로 할 수 없습니다. 규칙 {force}에 따라 {value}(으)로 설정됩니다.",
+      "setting_values": "\"{param}\"은(는) {values} 중 하나여야 하며 {value}은(는) 쓸 수 없습니다.",
+      "setting_integer": "\"{param}\"은(는) 정수여야 하며 {value}은(는) 쓸 수 없습니다.",
+      "setting_text": "\"{param}\"은(는) 텍스트여야 하며 {value}은(는) 쓸 수 없습니다.",
+      "setting_bounds": "현재 설정에서 \"{param}\"의 범위는 {min}~{max}이며 {value}은(는) 쓸 수 없습니다.",
+      "setting_too_long": "\"{param}\"은(는) 최대 {max}자인데 {length}자입니다.",
+      "view_not_found": "뷰 슬롯 {index}({slot, select, front {정면} left {왼쪽} back {뒷면} right {오른쪽} other {초과}}): {input}은(는) 이 Project의 이미지가 아닙니다.",
+      "view_not_image": "뷰 슬롯 {index}({slot, select, front {정면} left {왼쪽} back {뒷면} right {오른쪽} other {초과}}): 이 파일은 {kind, select, video {동영상} audio {오디오} other {모델 등 다른 파일}}이며 이미지가 아닙니다.",
+      "still_running": "이 생성은 아직 마무리 중이며 결과가 나올 수 있습니다. 잠시 후 다시 시도해 주세요.",
+      "has_result": "이 생성은 결과가 나왔으며 작업 목록으로 돌아왔습니다."
     }
   },
   "chat": {
@@ -449,8 +478,10 @@
         "readMemory": "메모리 확인",
         "other": "{tool} 실행",
         "readTemplate": "템플릿 확인",
-        "requestSpace": "Space 보기 요청"
-      }
+        "requestSpace": "Space 보기 요청",
+        "proposeScene": "3D 생성 제안 작성"
+      },
+      "proposingSceneGeneration": "3D 생성 제안을 작성하는 중"
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {
@@ -561,6 +592,13 @@
         "timedOut": "시간 초과",
         "failed": "읽기 실패"
       }
+    },
+    "sceneProposal": {
+      "title": "3D 생성",
+      "open": "3D Space에서 열기",
+      "needScene": "먼저 3D Space를 여세요.",
+      "credits": "약 {credits} 크레딧",
+      "setting": "{name}: {value}"
     }
   },
   "canvas": {
@@ -867,7 +905,23 @@
         "light_color_hex": "사용자 지정 조명 색",
         "light_intensity": "강도",
         "light_quality": "조명 질감",
-        "strength": "강도"
+        "strength": "강도",
+        "texture": "텍스처",
+        "pbr": "PBR",
+        "texture_quality": "텍스처 품질",
+        "texture_version": "텍스처 버전",
+        "delight": "조명 제거",
+        "geometry_quality": "지오메트리 품질",
+        "smart_low_poly": "스마트 로우폴리",
+        "generate_parts": "파트 분리",
+        "face_limit": "면 수 제한",
+        "auto_size": "자동 크기",
+        "export_uv": "UV 내보내기",
+        "model_seed": "모델 시드",
+        "texture_seed": "텍스처 시드",
+        "texture_alignment": "텍스처 정렬",
+        "orientation": "방향",
+        "enable_image_autofix": "이미지 자동 보정"
       },
       "paramField": {
         "speaker": "이름",
@@ -910,7 +964,8 @@
         "loadFailed": "3D 보기를 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다"
       },
       "editProposalMarks": "중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
-      "notePrefix": "안내: "
+      "notePrefix": "안내: ",
+      "integerBlank": "비우면 자동"
     },
     "nodeMenu": {
       "generate": "생성",
@@ -1785,6 +1840,19 @@
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
       "privacyLink": "개인정보 처리방침"
+    },
+    "referral": {
+      "label": "추천 코드",
+      "optional": "선택",
+      "placeholder": "없으면 비워 두세요",
+      "notApplied": "추천 코드가 더 이상 유효하지 않아 사용되지 않았습니다. 멤버십 패널에서 등록할 수 있습니다.",
+      "existingAccount": "이미 있는 계정이라 추천 코드가 사용되지 않았습니다. 아직 멤버십에 가입하지 않았다면 멤버십 패널에서 등록할 수 있습니다.",
+      "carried": "Google로 새로 가입하면 추천 코드 {code}가 사용됩니다",
+      "carriedInvalid": "추천 코드 {code}는 유효하지 않습니다",
+      "remove": "이 코드 사용 안 함",
+      "haveCode": "추천 코드가 있나요?",
+      "invalid": "추천 코드가 유효하지 않습니다. 수정하거나 비운 뒤 계속하세요.",
+      "googleOnly": "Google로 새로 가입할 때 사용됩니다"
     }
   },
   "roleTag": {
@@ -2012,7 +2080,6 @@
         "code": "인라인 코드",
         "comment": "댓글",
         "ai": "AI",
-        "comingLabel": "{name}(미제공)",
         "link": "링크",
         "blockType": "블록 종류",
         "paragraph": "본문",
@@ -2031,17 +2098,35 @@
         "textColor": "글자색",
         "fillColor": "배경색",
         "colorReset": "기본값으로 되돌리기",
-        "aiRewriteGroup": "선택한 글 다시 쓰기",
-        "aiProduceGroup": "선택한 글로 만들기",
-        "aiOtherGroup": "기타",
         "ai_refine": "다듬기",
         "ai_expand": "늘리기",
         "ai_shorten": "줄이기",
         "ai_translate": "번역",
         "ai_tone": "어조 바꾸기",
         "ai_storyboard": "콘티 만들기",
-        "ai_illustrate": "이 문단으로 그림 만들기",
         "ai_custom": "직접 지시…"
+      },
+      "ai": {
+        "customTitle": "직접 지시",
+        "tone": {
+          "professional": "더 전문적으로",
+          "casual": "더 편안하게",
+          "straightforward": "더 직설적으로",
+          "confident": "더 자신 있게",
+          "friendly": "더 친근하게"
+        },
+        "close": "닫기",
+        "stop": "중지",
+        "retry": "다시 시도",
+        "start": "시작",
+        "insert": "삽입",
+        "replace": "바꾸기",
+        "instructionsPlaceholder": "선택한 텍스트를 AI가 어떻게 할지 적어 주세요. Enter로 시작, Shift+Enter로 줄 바꿈",
+        "instruction": "지시: {text}",
+        "rangeGone": "선택한 텍스트가 삭제되었습니다",
+        "blockGone": "원래 단락이 삭제되었습니다",
+        "notWritable": "지금은 편집할 수 없습니다",
+        "selectionTooLong": "선택한 내용이 너무 많습니다. 범위를 줄여 다시 시도하세요"
       },
       "comment": {
         "placeholder": "댓글 작성",
@@ -2072,6 +2157,11 @@
         "risksLead": "새로고침하기 전에 확인하세요:",
         "riskUploads": "진행 중인 업로드가 중단됩니다. 해당 Space로 이동해 먼저 확인할 수 있습니다.",
         "action": "페이지 새로고침"
+      },
+      "outline": {
+        "show": "개요 표시",
+        "hide": "개요 숨기기",
+        "empty": "아직 제목이 없습니다"
       },
       "docMenu": {
         "label": "Document 전체 명령",
@@ -2116,7 +2206,16 @@
         "cellMenu": "셀 옵션",
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
-        "textHighlight": "배경(텍스트 강조)"
+        "textHighlight": "배경(텍스트 강조)",
+        "cut": "잘라내기",
+        "pasteAbove": "위에 붙여넣기",
+        "pasteBelow": "아래에 붙여넣기",
+        "pasteLeft": "왼쪽에 붙여넣기",
+        "pasteRight": "오른쪽에 붙여넣기",
+        "splitMergedFirst": "먼저 병합된 셀을 분할하세요",
+        "noTableToPaste": "먼저 표를 복사하세요",
+        "clipboardNotAllowed": "클립보드 접근이 허용되지 않았습니다",
+        "copyFailed": "클립보드에 복사하지 못했습니다"
       },
       "paste": {
         "unsupportedInCell": "이 형식은 붙여넣을 수 없습니다"
@@ -2198,10 +2297,6 @@
       "controls": "조작 안내",
       "tasks": "작업",
       "minimap": "장면 미니맵",
-      "generationDev": "3D 모델 생성 기능은 개발 중입니다",
-      "prompt": "생성할 3D 모델을 설명하세요",
-      "reference": "참고 이미지 (선택 사항)",
-      "chooseReference": "참조 이미지 선택",
       "submit": "생성",
       "helpBody": "개체를 클릭하여 선택하세요. 빈 공간을 드래그하여 시점을 회전하고 휠로 확대하거나 축소하세요. 선택 후 플로팅 메뉴에서 개체를 이동, 회전하거나 크기를 조절할 수 있습니다.",
       "closePanel": "닫기",
@@ -2267,10 +2362,77 @@
         "place": "장면에 배치",
         "retry": "다시 시도",
         "remove": "제거",
-        "empty": "가져온 모델이 여기에 표시됩니다.",
+        "empty": "가져오거나 생성한 모델이 여기에 표시됩니다.",
         "loadFailed": "작업을 불러오지 못했습니다.",
         "removeFailed": "작업을 제거하지 못했습니다. 다시 시도하세요.",
-        "placeFailed": "모델을 장면에 배치하지 못했습니다."
+        "placeFailed": "모델을 장면에 배치하지 못했습니다.",
+        "kindGeneration": "생성",
+        "originSpace": "Space 내",
+        "originAgent": "Agent",
+        "generating": "생성 중",
+        "generatingFor": "생성 중 · {minutes}분 경과",
+        "stillRunning": "이 생성은 아직 마무리 중입니다. 나중에 다시 시도하세요.",
+        "hasResult": "이 생성에 결과가 있습니다. 장면에 배치할 수 있습니다.",
+        "checkFailed": "이 생성을 확인하지 못했습니다. 다시 시도하세요.",
+        "locate": "장면에서 찾기",
+        "filter": "필터",
+        "filterRunning": "진행 중만",
+        "filterKind": "유형",
+        "filterAll": "전체",
+        "filterStarter": "시작한 사람",
+        "filterEveryone": "모든 멤버",
+        "filterMe": "나",
+        "filterOrigin": "출처",
+        "filterEmpty": "필터에 맞는 작업이 없습니다."
+      },
+      "proposalBusy": "다른 생성을 제출하는 중입니다.",
+      "readOnlyCreate": "Viewer는 모델을 추가, 가져오기, 생성할 수 없습니다.",
+      "force": {
+        "parts_geometry_only": "파트 분리는 지오메트리만 생성합니다.",
+        "pbr_needs_texture": "PBR에는 텍스처가 필요합니다.",
+        "fast_uses_v35": "Fast 텍스처는 v3.5만 지원합니다."
+      },
+      "generateDialog": {
+        "descriptionBlank": "생성된 모델은 작업 목록에 들어가며 완료되면 장면에 배치할 수 있습니다.",
+        "descriptionAgent": "Agent의 제안으로 채워졌습니다. 확인 후 생성하세요.",
+        "descriptionRetry": "이전 작업 내용으로 채워졌습니다. 확인 후 생성하세요.",
+        "common": "공통 설정",
+        "prompt": "프롬프트",
+        "promptPlaceholder": "원하는 3D 모델을 설명하세요",
+        "views": "참조 이미지",
+        "viewsHint": "정면, 왼쪽, 뒤, 오른쪽 순서로 채웁니다. 정면만 있으면 단일 이미지로, 다른 시점이 있으면 멀티뷰로 생성합니다.",
+        "view": {
+          "front": "정면",
+          "left": "왼쪽",
+          "back": "뒤",
+          "right": "오른쪽"
+        },
+        "required": "필수",
+        "upload": "업로드",
+        "pickProject": "Project에서 선택",
+        "removeView": "제거",
+        "changeView": "{view} 이미지 변경",
+        "addView": "{view} 이미지 추가",
+        "uploadFailed": "업로드 실패",
+        "fillEarlier": "이전 보기를 먼저 채우세요",
+        "rule": {
+          "bounds": "{min}~{max} 사이로 입력하세요.",
+          "integer": "정수를 입력하세요.",
+          "length": "최대 {max}자입니다.",
+          "values": "옵션 중 하나를 선택하세요."
+        }
+      },
+      "picker": {
+        "title": "이미지 선택",
+        "description": "이 Project의 이미지에서 선택하거나 업로드하세요.",
+        "project": "Project",
+        "local": "로컬",
+        "loadFailed": "이미지를 불러오지 못했습니다.",
+        "empty": "이 Project에는 아직 이미지가 없습니다.",
+        "unnamed": "제목 없는 이미지",
+        "more": "더 불러오기",
+        "formats": "PNG, JPEG 또는 WebP",
+        "chooseFile": "파일 선택"
       }
     }
   },
@@ -2949,7 +3111,64 @@
       "enterpriseScale": "용량은 협의로 결정",
       "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
     },
-    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다."
+    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다.",
+    "referral": {
+      "heading": "추천 코드",
+      "intro": "첫 멤버십 가입 전에 추천 코드를 등록하면 첫 기간이 {percent}% 할인됩니다. 등록 후에는 변경할 수 없습니다.",
+      "placeholder": "추천 코드 입력",
+      "add": "등록",
+      "required": "추천 코드를 입력하세요.",
+      "bound": "추천 코드 {code}",
+      "boundDiscount": "결제 시 자동으로 적용됩니다.",
+      "badge": "첫 기간 {percent}% 할인",
+      "added": "등록되었습니다. 멤버십을 선택하면 첫 기간이 {percent}% 할인됩니다.",
+      "loadFailed": "추천 정보를 불러오지 못했습니다.",
+      "retry": "다시 시도"
+    }
+  },
+  "promoter": {
+    "heading": "프로모터 프로그램",
+    "closed": "프로모터 신청은 아직 열리지 않았습니다.",
+    "pitch": "breatic을 추천하고, 추천한 사람의 멤버십 결제에 따라 수수료를 받으세요.",
+    "pitchDetail": "승인되면 나만의 추천 코드와 링크를 받으며, 추천받은 사람은 첫 멤버십 기간이 {percent}% 할인됩니다.",
+    "apply": "프로모터 신청",
+    "applyAgain": "다시 신청",
+    "pending": "심사 중",
+    "pendingDetail": "{date}에 신청했습니다. 결과는 여기에 표시됩니다.",
+    "pendingBadge": "심사 중",
+    "rejected": "지난 신청은 승인되지 않았습니다",
+    "rejectedNote": "안내: {note}",
+    "yourCode": "내 추천 코드",
+    "copyCode": "코드 복사",
+    "copyLink": "링크 복사",
+    "copied": "복사했습니다",
+    "copyFailed": "클립보드에 복사하지 못했습니다.",
+    "shareHint": "이 코드로 가입하거나 첫 멤버십 전에 등록한 사람은 첫 기간이 {percent}% 할인됩니다.",
+    "disabled": "사용 중지",
+    "removed": "제외됨",
+    "disabledDetail": "이 코드는 사용이 중지되어 지금은 누구도 등록할 수 없습니다. 이미 등록한 사람은 첫 기간 할인을 계속 받습니다.",
+    "removedDetail": "프로모터 프로그램에서 제외되었습니다. 이 코드는 영구적으로 사용이 중지되며, 이미 등록한 사람은 첫 기간 할인을 계속 받습니다.",
+    "dialogTitle": "프로모터 신청",
+    "dialogDescription": "모든 신청을 심사하고 결과를 여기에 표시합니다.",
+    "country": "국가 또는 지역",
+    "countryPlaceholder": "선택",
+    "channels": "홍보 채널",
+    "channelsHint": "링크 또는 짧은 설명, 최대 10개",
+    "channelPlaceholder": "https://youtube.com/@yourchannel 또는 '200명 디자이너 모임'",
+    "addChannel": "하나 더 추가",
+    "removeChannel": "이 항목 삭제",
+    "plan": "홍보 방법",
+    "planPlaceholder": "대상과 breatic을 소개할 방법",
+    "agreeLead": "다음을 읽고 동의합니다:",
+    "termsLink": "프로모터 약관",
+    "agreeRequired": "신청하려면 프로모터 약관에 동의해야 합니다.",
+    "countryRequired": "국가 또는 지역을 선택하세요.",
+    "channelsRequired": "채널을 하나 이상 입력하세요.",
+    "planRequired": "홍보 방법을 입력하세요.",
+    "termsChanged": "프로모터 약관이 업데이트되었습니다. 다시 읽은 후 동의해 주세요.",
+    "cancel": "취소",
+    "submit": "신청 제출",
+    "submitted": "신청했습니다"
   },
   "credits": {
     "panelTitle": "크레딧",
@@ -3158,7 +3377,8 @@
       "invalid_range": "동영상 범위를 벗어났습니다",
       "incompatible_track": "다른 종류의 트랙에 있습니다",
       "damaged": "이 클립을 더 이상 읽을 수 없습니다",
-      "missing_source": "동영상을 찾을 수 없습니다"
+      "missing_source": "동영상을 찾을 수 없습니다",
+      "source_unresolved": "웹 애니메이션을 사용할 수 없음"
     },
     "loadingMedia": "동영상 불러오는 중…",
     "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",
@@ -3211,7 +3431,8 @@
       "track_missing": "대상 트랙이 삭제되었습니다. 다른 트랙을 선택하세요.",
       "id_taken": "이미 있는 항목입니다. 다시 시도하세요.",
       "main_track": "메인 트랙은 삭제할 수 없습니다.",
-      "track_not_empty": "빈 트랙만 삭제할 수 있습니다."
+      "track_not_empty": "빈 트랙만 삭제할 수 있습니다.",
+      "source_unresolved": "웹 애니메이션이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요."
     },
     "mainTrack": "메인 트랙",
     "track": "영상 {index}",
@@ -3228,8 +3449,8 @@
       "linkage": "연동",
       "zoom": "확대/축소",
       "track": "트랙",
-      "inPoint": "인 포인트",
-      "duration": "길이",
+      "inPoint": "인 포인트(프레임)",
+      "duration": "길이(프레임)",
       "newTrack": "새 영상 트랙",
       "newTrackZone": "여기에 놓아 새 트랙 만들기",
       "trackRemoved": "트랙이 삭제됨",
@@ -3241,6 +3462,69 @@
       "splitOutside": "분할하려면 재생 헤드를 선택한 클립 안으로 옮기세요.",
       "lowestTrack": "이 클립은 이미 가장 아래 영상 트랙에 있습니다.",
       "bumped": "연동 클립 {count, plural, other {#개}}를 위 트랙으로 옮겼습니다."
+    },
+    "webAnimation": {
+      "create": "웹 애니메이션 만들기",
+      "executions": "실행 목록",
+      "copy": "웹 애니메이션 사본",
+      "durationShort": "{seconds}초",
+      "dialog": {
+        "title": "웹 애니메이션 만들기",
+        "retryTitle": "웹 애니메이션 다시 실행",
+        "description": "요청을 입력하고 \"실행\"을 누르세요.",
+        "prompt": "요청",
+        "promptPlaceholder": "예: 파란 배경에서 제목이 왼쪽에서 밀려 들어옴",
+        "engine": "엔진",
+        "aspect": "화면 비율",
+        "duration": "길이(초)",
+        "addAtPlayhead": "재생 헤드 위치에서 Timeline에 추가",
+        "execute": "실행"
+      },
+      "list": {
+        "close": "실행 목록 닫기",
+        "completed": "완료",
+        "inProgress": "진행 중",
+        "emptyCompleted": "아직 완료된 실행이 없습니다.",
+        "emptyInProgress": "진행 중인 실행이 없습니다."
+      },
+      "status": {
+        "awaiting_landing": "저장 중",
+        "queued": "대기 중",
+        "running": "제작 중",
+        "cancelling": "취소 중",
+        "succeeded": "성공",
+        "failed": "실패",
+        "cancelled": "취소됨",
+        "expired": "만료됨"
+      },
+      "step": {
+        "landing": "실행 요청 저장"
+      },
+      "phase": {
+        "writing": "페이지 작성",
+        "validating": "프레임과 매니페스트 검증",
+        "saving": "소스 저장"
+      },
+      "usageLabel": "사용량",
+      "usage": "{credits} 크레딧",
+      "usagePending": "종료 후 정산",
+      "unavailable": "웹 애니메이션을 사용할 수 없음",
+      "cancel": "취소",
+      "addToTimeline": "Timeline에 추가",
+      "addPlaceholder": "Timeline에 먼저 추가",
+      "retry": "다시 실행",
+      "failure": {
+        "feature_disabled": "지금은 웹 애니메이션을 사용할 수 없습니다.",
+        "check": "페이지가 검사를 통과하지 못했습니다.",
+        "stopped": "제작이 예기치 않게 중단되었습니다.",
+        "unknown": "실행에 실패했습니다."
+      },
+      "preview": {
+        "pending": "{track}: 웹 애니메이션 {status, select, awaiting_landing {저장 중} queued {대기 중} running {제작 중} cancelling {취소 중} other {대기 중}}…",
+        "failed": "{track}: 웹 애니메이션 {status, select, failed {실패} cancelled {취소됨} expired {만료됨} other {사용 불가}}, 표시되지 않음",
+        "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
+        "loading": "{track}: 웹 애니메이션 불러오는 중…"
+      }
     }
   }
 }

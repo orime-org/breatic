@@ -140,8 +140,12 @@ interface SseOptions<TEvent> {
   url: string;
   /** POST body sent with the open request. */
   body?: unknown;
-  /** Parse each `data:` payload into the typed event. */
-  parseEvent: (data: string) => TEvent | null;
+  /**
+   * Parse each `data:` payload into the typed event. The frame's `event:` name
+   * comes alongside it (`message` when the server named none), for a stream
+   * whose payloads say what they are only by that name.
+   */
+  parseEvent: (data: string, event: string) => TEvent | null;
   /** Called for every parsed event. */
   onEvent: (event: TEvent) => void;
   /** Called when the stream closes cleanly. */
@@ -174,7 +178,7 @@ interface SseOptions<TEvent> {
  * @param root0 - SSE connection options.
  * @param root0.url - Endpoint relative to `API_BASE_PATH`, or an absolute URL.
  * @param root0.body - POST body sent with the open request.
- * @param root0.parseEvent - Parses each `data:` payload into a typed event, or null to skip.
+ * @param root0.parseEvent - Parses each `data:` payload, with its frame's event name, into a typed event, or null to skip.
  * @param root0.onEvent - Invoked for every successfully parsed event.
  * @param root0.onClose - Invoked when the stream closes cleanly.
  * @param root0.onError - Invoked on transport / parse / abort error.
@@ -216,7 +220,7 @@ export async function sseStream<TEvent>({
       },
       onmessage(msg) {
         if (!msg.data) return;
-        const parsed = parseEvent(msg.data);
+        const parsed = parseEvent(msg.data, msg.event || 'message');
         if (parsed) onEvent(parsed);
       },
       onclose() {

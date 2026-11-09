@@ -7,9 +7,11 @@ export {
   orderByPrice,
   parsePricingRules,
   type Availability,
+  type CloneKind,
   type Estimate,
   type EstimateBound,
   type EstimateInput,
+  type HeldClone,
   type PricingRules,
   type Route,
 } from "@provider/pricing/estimate.js";

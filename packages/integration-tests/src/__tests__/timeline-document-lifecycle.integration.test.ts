@@ -8,6 +8,7 @@
  * Project authorization and business asset-reference writes have other tests.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
@@ -122,7 +123,7 @@ describe("Timeline initialization in the real Yjs database", () => {
     expect(readTimelineDocument(decode(loaded))).toEqual({
       schemaVersion: 1, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
-      clips: {}, sources: {},
+      clips: {}, sources: {}, operationReceipts: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
   });
@@ -241,9 +242,11 @@ describe("Project copy association boundary in the real Yjs database", () => {
     const winner = seed(OTHER_SETTINGS);
     await yjsRepo.seedInitialState(fixture.targetContent, winner);
     const observed: string[] = [];
+    // Reads from another connection run in the context from before the copy began.
+    const outside = AsyncLocalStorage.snapshot();
 
     await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      expect(await yjsRepo.fetchDocData(fixture.targetMeta)).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
       expect(rows.map((row) => row.name)).toEqual([fixture.targetContent]);
       for (const row of rows) {
         observed.push(row.name);
@@ -262,10 +265,11 @@ describe("Project copy association boundary in the real Yjs database", () => {
     const fixture = await copyFixture();
     const associationFailure = new Error("Project asset-reference write refused");
     const attempts: string[][] = [];
+    const outside = AsyncLocalStorage.snapshot();
     await expect(yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
       attempts.push(rows.map((row) => row.name));
-      expect(await yjsRepo.fetchDocData(fixture.targetMeta)).toBeNull();
-      expect(await yjsRepo.fetchDocData(fixture.targetContent)).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetContent))).toBeNull();
       throw associationFailure;
     })).rejects.toThrow(associationFailure.message);
     expect(await yjsRepo.fetchDocData(fixture.targetContent)).toBeNull();
@@ -286,9 +290,10 @@ describe("Project copy association boundary in the real Yjs database", () => {
     sourceLater.getMap("timeline").set("sourceChangedDuringCopy", true);
     const laterBytes = Y.encodeStateAsUpdate(sourceLater);
     const observed: Uint8Array[] = [];
+    const outside = AsyncLocalStorage.snapshot();
 
     await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      await yjsRepo.upsertDocData(fixture.sourceContent, laterBytes);
+      await outside(() => yjsRepo.upsertDocData(fixture.sourceContent, laterBytes));
       for (const row of rows) observed.push(row.data);
       expect(rows.map((row) => Array.from(row.data))).toEqual([Array.from(fixture.bytes)]);
     });

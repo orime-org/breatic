@@ -3,16 +3,28 @@
 
 import { z } from 'zod';
 import {
-  TIMELINE_MAIN_TRACK_ID, TimelineVideoClipSchema, TimelineVideoSourceSchema,
-  type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource,
+  TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
+  type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
 
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent } from '@web/data/yjs/timeline-arrangement';
 import { compareTimelineIds, orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
-import { timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
+import {
+  timelineClipIntervalValid, timelineSourceOffset, timelineSourceOverflow, timelineSourceRoom, type TimelineSourceExtent,
+} from '@web/data/yjs/timeline-time';
 
 // The command bounds are the persisted clip format's own field schemas.
 const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity, trackId: trackIdentity } = TimelineVideoClipSchema.shape;
 const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
+// The new reference's own extent, carried like add_video carries its source (inner#1711 design §3.3): a succeeded
+// result's length, or the length an execution accepted.
+const webExtent = z.union([
+  z.object({ durationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
+  z.object({ acceptedDurationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
+]);
+const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
+const webCopySchema = z.object(webCopy).strict();
 
 /** The editing user's local placement switches, carried with each command. */
 export type TimelineEditPlacement = z.infer<typeof placement>;
@@ -39,6 +51,19 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('duplicate'), parameters: z.object({ clipId: identity, newClipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete'), parameters: z.object({ clipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete_track'), parameters: z.object({ trackId: trackIdentity }).strict(), placement }).strict(),
+  z.object({
+    operation: z.literal('add_web_animation'),
+    parameters: z.object({
+      ...webCopy,
+      from: z.union([z.object({ sourceVersionId: z.uuid() }).strict(), z.object({ executionId: z.uuid() }).strict()]),
+    }).strict(),
+    placement,
+  }).strict(),
+  z.object({
+    operation: z.literal('land_execution'),
+    parameters: z.object({ actionId: z.uuid(), receipt: TimelineOperationReceiptSchema, addClip: webCopySchema.optional() }).strict(),
+    placement,
+  }).strict(),
 ]);
 
 /** An edit to the Timeline's collaborative layout. */
@@ -46,7 +71,7 @@ export type TimelineEditCommand = z.infer<typeof TimelineEditCommandSchema>;
 
 /** Why a local edit was not applied. */
 export type TimelineEditRefusal = 'target_missing' | 'track_missing' | 'invalid_range' | 'id_taken'
-  | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source' | 'covers_missing_source';
+  | 'main_track' | 'track_not_empty' | 'source_unavailable' | 'missing_source' | 'covers_missing_source' | 'source_unresolved';
 
 /** The planned next document, or why the edit was refused. */
 export type TimelineEditPlan =
@@ -72,7 +97,7 @@ const RANGE_FIELDS = ['trackId', 'startFrame', 'sourceInFrame', 'durationFrames'
  * @returns Its end frame.
  * @throws {never} Never.
  */
-function endOf(clip: TimelineVideoClip): number {
+function endOf(clip: TimelineClip): number {
   return clip.startFrame + clip.durationFrames;
 }
 
@@ -83,7 +108,7 @@ function endOf(clip: TimelineVideoClip): number {
  * @returns The insertion index.
  * @throws {never} Never.
  */
-export function timelineInsertionIndex(sequence: readonly TimelineVideoClip[], frame: number): number {
+export function timelineInsertionIndex(sequence: readonly TimelineClip[], frame: number): number {
   return sequence.filter((clip) => clip.startFrame * 2 + clip.durationFrames <= frame * 2).length;
 }
 
@@ -93,7 +118,7 @@ export function timelineInsertionIndex(sequence: readonly TimelineVideoClip[], f
  * @param sequence - The order to pack.
  * @throws {never} Never.
  */
-function pack(clips: Record<string, TimelineVideoClip>, sequence: readonly TimelineVideoClip[]): void {
+function pack(clips: Record<string, TimelineClip>, sequence: readonly TimelineClip[]): void {
   let at = 0;
   for (const item of sequence) {
     const current = clips[item.id];
@@ -120,8 +145,8 @@ function pack(clips: Record<string, TimelineVideoClip>, sequence: readonly Timel
  * @throws {Refused} When a cut does not land on a whole source frame.
  */
 function overwrite(
-  clips: Record<string, TimelineVideoClip>, trackId: string, range: { start: number; end: number }, keepId: string,
-  effects: { newId: () => string; offset: (clip: TimelineVideoClip, frames: number) => number; casualties: Set<string>; origins: Map<string, string>; created: string[] },
+  clips: Record<string, TimelineClip>, trackId: string, range: { start: number; end: number }, keepId: string,
+  effects: { newId: () => string; offset: (clip: TimelineClip, frames: number) => number; casualties: Set<string>; origins: Map<string, string>; created: string[] },
 ): void {
   const { start, end } = range;
   for (const clip of orderedTimelineClips(clips, trackId)) {
@@ -163,16 +188,38 @@ function attachments(document: TimelineDocumentV1): Map<string, string> {
 }
 
 /**
+ * The visual track a new web-animation copy goes on (design §3.3): the first track above the highest video over its
+ * span (above the main track when there is none) that holds no clip over the span. It never moves or trims a clip.
+ * @param tracks - The tracks.
+ * @param clips - The clips.
+ * @param span - The copy's frames.
+ * @param span.start - Its first frame.
+ * @param span.end - Its exclusive end frame.
+ * @returns The free track's id, or null when a new top track is needed.
+ * @throws {never} Never.
+ */
+function placeWebAnimationClip(tracks: Record<string, TimelineTrack>, clips: Record<string, TimelineClip>, span: { start: number; end: number }): string | null {
+  const visual = orderedTimelineTracks(tracks).filter((track) => track.kind === 'visual');
+  const rank = new Map(visual.map((track, index) => [track.id, index]));
+  const over = Object.values(clips).filter((clip) => clip.startFrame < span.end && span.start < endOf(clip));
+  const floor = Math.max(rank.get(TIMELINE_MAIN_TRACK_ID) ?? -1, ...over.filter((clip) => clip.kind === 'video').map((clip) => rank.get(clip.trackId) ?? -1));
+  return visual.find((track, index) => index > floor && track.id !== TIMELINE_MAIN_TRACK_ID && !over.some((clip) => clip.trackId === track.id))?.id ?? null;
+}
+
+/**
  * Plan one edit against the current document without changing it.
  * @param current - The complete current document.
  * @param command - The normalized edit, with the editing user's placement switches.
  * @param newId - Supplies ids for clips cut by an overwrite and tracks created by a linkage bump.
+ * @param web - The resolution of the document's web-animation references, for the extents of web copies.
  * @returns The next document and what changed, or why the edit was refused.
  * @throws {Error} When `newId` throws.
  */
-export function planTimelineEdit(current: TimelineDocumentV1, command: TimelineEditCommand, newId: () => string): TimelineEditPlan {
+export function planTimelineEdit(
+  current: TimelineDocumentV1, command: TimelineEditCommand, newId: () => string, web: TimelineWebResolution = EMPTY_TIMELINE_WEB_RESOLUTION,
+): TimelineEditPlan {
   try {
-    return planOrThrow(current, command, newId);
+    return planOrThrow(current, command, newId, web);
   } catch (err) {
     if (err instanceof Refused) return { ok: false, reason: err.reason };
     throw err;
@@ -184,14 +231,16 @@ export function planTimelineEdit(current: TimelineDocumentV1, command: TimelineE
  * @param current - The complete current document.
  * @param command - The normalized edit.
  * @param newId - Supplies ids for cut clips and bump tracks.
+ * @param web - The resolution of web references.
  * @returns The accepted plan.
  * @throws {Refused} When the edit is refused.
  */
-function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, newId: () => string): Extract<TimelineEditPlan, { ok: true }> {
+function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, newId: () => string, web: TimelineWebResolution): Extract<TimelineEditPlan, { ok: true }> {
   const { magnet, linkage } = command.placement;
   const tracks: Record<string, TimelineTrack> = { ...current.tracks };
-  const clips: Record<string, TimelineVideoClip> = { ...current.clips };
+  const clips: Record<string, TimelineClip> = { ...current.clips };
   const sources: Record<string, TimelineVideoSource> = { ...current.sources };
+  let operationReceipts: Record<string, TimelineOperationReceipt> = current.operationReceipts;
   const created: string[] = [];
   /**
    * The accepted plan for the records built so far.
@@ -200,7 +249,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @throws {never} Never.
    */
   function done(bumped: string[] = []): Extract<TimelineEditPlan, { ok: true }> {
-    return { ok: true, next: { ...current, tracks, clips, sources }, created, bumped };
+    return { ok: true, next: { ...current, tracks, clips, sources, operationReceipts }, created, bumped };
   }
   /**
    * The order for a new top track.
@@ -209,6 +258,59 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    */
   function nextOrder(): number {
     return Math.max(-1, ...Object.values(tracks).map((track) => track.order)) + 1;
+  }
+
+  /**
+   * The extent a clip is measured against, reading videos from the given sources.
+   * @param from - The video sources to read.
+   * @param clip - The clip.
+   * @returns Its extent, or undefined when its video is missing or its web reference unresolved.
+   * @throws {never} Never.
+   */
+  const extentIn = (from: Record<string, TimelineVideoSource>, clip: TimelineClip): TimelineSourceExtent | undefined =>
+    clip.kind === 'video' ? from[clip.sourceId] : resolveTimelineClipExtent(current, web, clip);
+
+  if (command.operation === 'add_web_animation' || command.operation === 'land_execution') {
+    let copy: z.infer<typeof webCopySchema> | null = null;
+    let binding: TimelineWebAnimationContentBinding | null = null;
+    if (command.operation === 'land_execution') {
+      const { actionId, receipt, addClip } = command.parameters;
+      operationReceipts = { ...operationReceipts, [actionId]: receipt };
+      if (addClip !== undefined) binding = { baseSourceResultId: null, operationId: receipt.executionId };
+      copy = addClip ?? null;
+    } else {
+      const { from } = command.parameters;
+      binding = 'sourceVersionId' in from ? { baseSourceResultId: from.sourceVersionId, operationId: null } : { baseSourceResultId: null, operationId: from.executionId };
+      copy = command.parameters;
+    }
+    if (copy === null || binding === null) return done();
+    const { clipId, startFrame, newTrackId, extent } = copy;
+    const taken = current.clips[clipId] !== undefined || current.tracks[clipId] !== undefined;
+    // Landing never loses its receipt: a copy that cannot be added leaves the receipt alone.
+    if (taken) {
+      if (command.operation === 'add_web_animation') throw new Refused('id_taken');
+      return done();
+    }
+    const source = { timebase: extent.fps, extentFrames: 'durationFrames' in extent ? extent.durationFrames : extent.acceptedDurationFrames };
+    const draft: TimelineWebAnimationClip = {
+      id: clipId, trackId: '', kind: 'web-animation', contentBinding: binding, startFrame, sourceInFrame: 0, durationFrames: 1,
+      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    };
+    const durationFrames = timelineSourceRoom(draft, source, current.settings.fps);
+    let trackId = placeWebAnimationClip(tracks, clips, { start: startFrame, end: startFrame + durationFrames });
+    if (trackId === null) {
+      if (current.tracks[newTrackId] !== undefined || current.clips[newTrackId] !== undefined) {
+        if (command.operation === 'add_web_animation') throw new Refused('id_taken');
+        return done();
+      }
+      tracks[newTrackId] = { id: newTrackId, kind: 'visual', order: nextOrder() };
+      trackId = newTrackId;
+    }
+    const placed = { ...draft, trackId, durationFrames };
+    if (!timelineClipIntervalValid(placed)) throw new Refused('invalid_range');
+    clips[clipId] = placed;
+    created.push(clipId);
+    return done();
   }
 
   if (command.operation === 'delete_track') {
@@ -243,8 +345,12 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     targetTrackId = command.parameters.trackId;
   }
   if (places && tracks[targetTrackId]?.kind !== 'visual') throw new Refused('track_missing');
-  const subjectSource = command.operation === 'add_video' ? command.parameters.clip.sourceId : original?.sourceId ?? '';
-  if (command.operation !== 'delete' && sources[subjectSource] === undefined) throw new Refused(original === undefined ? 'source_unavailable' : 'missing_source');
+  const subjectSource = command.operation === 'add_video'
+    ? sources[command.parameters.clip.sourceId]
+    : original === undefined ? undefined : extentIn(sources, original);
+  if (command.operation !== 'delete' && subjectSource === undefined) {
+    throw new Refused(original === undefined ? 'source_unavailable' : original.kind === 'video' ? 'missing_source' : 'source_unresolved');
+  }
 
   const attached = linkage ? attachments(current) : new Map<string, string>();
   const fps = current.settings.fps;
@@ -253,11 +359,11 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @param clip - The cut clip.
    * @param frames - Timeline frames kept before the cut.
    * @returns The source offset.
-   * @throws {Refused} When the source is missing or the cut does not land on a whole source frame.
+   * @throws {Refused} When the source is missing or unresolved, or the cut does not land on a whole source frame.
    */
-  const offset = (clip: TimelineVideoClip, frames: number): number => {
-    const source = sources[clip.sourceId];
-    if (source === undefined) throw new Refused('covers_missing_source');
+  const offset = (clip: TimelineClip, frames: number): number => {
+    const source = extentIn(sources, clip);
+    if (source === undefined) throw new Refused(clip.kind === 'video' ? 'covers_missing_source' : 'source_unresolved');
     const value = timelineSourceOffset(clip, source, fps, frames);
     if (value === null) throw new Refused('invalid_range');
     return value;
@@ -280,7 +386,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     deletedByUser.add(original.id);
     if (original.trackId === TIMELINE_MAIN_TRACK_ID && magnet) pack(clips, orderedTimelineClips(clips, TIMELINE_MAIN_TRACK_ID));
   } else {
-    let subject: TimelineVideoClip;
+    let subject: TimelineClip;
     if (command.operation === 'add_video') {
       subject = { ...command.parameters.clip, trackId: targetTrackId };
       created.push(subject.id);
@@ -341,7 +447,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
 
   // A shifted clip that lands on another clip keeps its time and moves to the first free visual track above.
   const bumped: string[] = [];
-  const shiftedInOrder = shifted.map((id) => clips[id]).filter((clip): clip is TimelineVideoClip => clip !== undefined)
+  const shiftedInOrder = shifted.map((id) => clips[id]).filter((clip): clip is TimelineClip => clip !== undefined)
     .sort((a, b) => a.startFrame - b.startFrame || compareTimelineIds(a.id, b.id));
   for (const moved of shiftedInOrder) {
     /**
@@ -373,15 +479,15 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   for (const clip of Object.values(clips)) {
     const was = current.clips[clip.id];
     if (was !== undefined && RANGE_FIELDS.every((field) => was[field] === clip[field])) continue;
-    if (was !== undefined && sources[was.sourceId] === undefined && was.sourceInFrame === clip.sourceInFrame
+    if (was !== undefined && extentIn(sources, was) === undefined && was.sourceInFrame === clip.sourceInFrame
       && clip.durationFrames <= was.durationFrames) {
       if (!timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
       continue;
     }
-    const source = sources[clip.sourceId];
+    const source = extentIn(sources, clip);
     if (source === undefined || !timelineClipIntervalValid(clip)) throw new Refused('invalid_range');
     const from = was ?? current.clips[effects.origins.get(clip.id) ?? ''];
-    const fromSource = from === undefined ? undefined : current.sources[from.sourceId];
+    const fromSource = from === undefined ? undefined : extentIn(current.sources, from);
     const allowed = clip.id === explicitId || from === undefined || fromSource === undefined ? 0 : timelineSourceOverflow(from, fromSource, fps);
     if (timelineSourceOverflow(clip, source, fps) > allowed) throw new Refused('invalid_range');
   }

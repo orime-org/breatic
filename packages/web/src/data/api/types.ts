@@ -46,6 +46,8 @@ export interface ApiError {
   idempotencyStatus?: 'done' | 'in_progress';
   /** The server's `error.reason`, when it marked the refusal. */
   reason?: string;
+  /** Every field of the server's `error` body, for refusals that carry more than a reason. */
+  details?: Readonly<Record<string, unknown>>;
   /** No answer arrived at all: the request never reached a server, or the reply was lost. */
   network?: boolean;
 }
@@ -65,6 +67,8 @@ export class ApiException extends Error {
   readonly idempotencyStatus?: 'done' | 'in_progress';
   /** The server's `error.reason`, when it marked the refusal. */
   readonly reason?: string;
+  /** Every field of the server's `error` body, for refusals that carry more than a reason. */
+  readonly details?: Readonly<Record<string, unknown>>;
   /** No answer arrived at all. */
   readonly network: boolean;
 
@@ -81,6 +85,7 @@ export class ApiException extends Error {
     this.retryAfterSeconds = error.retryAfterSeconds;
     this.idempotencyStatus = error.idempotencyStatus;
     this.reason = error.reason;
+    this.details = error.details;
     this.network = error.network === true;
   }
 }
