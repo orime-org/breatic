@@ -85,11 +85,6 @@ export interface StepContext {
    * @throws {Error} When the run has no cloned voice.
    */
   voice(): string;
-  /**
-   * The model the run's own call made, which a step after it reads by its address.
-   * @throws {Error} When no step before made one.
-   */
-  generated(): string;
   /** For an element step: what its describe step wrote. */
   description: string | undefined;
   itemIndex: number | null;

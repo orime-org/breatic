@@ -72,15 +72,13 @@ const describeSchema = z.strictObject({
 });
 
 const extraStepSchema = z.strictObject({
-  kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak", "rig"]),
+  kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak"]),
   endpoint: z.string().min(1),
   at: z.enum(["before", "after"]),
-  /** The param it serves; the step is skipped when the param asks for none (`stepRequested`: nothing, or a switch turned off). */
+  /** The param it serves; the step is skipped when the param carries nothing. */
   for_param: z.string().optional(),
   /** One step per item of the param. */
   per_item: z.boolean().optional(),
-  /** A failure of this step keeps the run: the previous step's output is delivered. */
-  optional: z.boolean().optional(),
   /** For an element step: how its reference image is described first. */
   describe: describeSchema.optional(),
   /** What one call of this step costs. */
