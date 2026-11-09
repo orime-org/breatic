@@ -105,27 +105,31 @@ function getPgClient(): Sql {
   return _pgClient;
 }
 
+/** A Drizzle database handle as the services see it. */
+type Database = PostgresJsDatabase<Record<string, never>>;
+
 /** Lazily-built Drizzle instance over `getPgClient`. */
-let _db: PostgresJsDatabase<Record<string, never>> | null = null;
+let _db: Database | null = null;
 
 /**
  * Build (once) and return the Drizzle ORM instance.
  * @returns the lazily-initialised Drizzle ORM instance over the pool
  */
-function getDb(): PostgresJsDatabase<Record<string, never>> {
+function getDb(): Database {
   if (_db === null) {
     _db = drizzle(getPgClient());
   }
   return _db;
 }
 
-/** A Drizzle database handle as the services see it. */
-type Database = PostgresJsDatabase<Record<string, never>>;
-
-/** The transaction open in one async flow, and whether it still is. */
+/**
+ * A transaction opened in one async flow, whether it still is, and the
+ * transaction it was opened inside, if any.
+ */
 interface OpenTransaction {
   tx: unknown;
   open: boolean;
+  parent: OpenTransaction | undefined;
 }
 
 /**
@@ -133,8 +137,10 @@ interface OpenTransaction {
  *
  * `target` is the pool, or the transaction already open in this flow, in
  * which case Drizzle opens a savepoint and `config` does not apply. The
- * binding closes when `fn` settles, so work `fn` started that outlives it goes
- * back to the pool instead of a finished transaction.
+ * binding closes when `fn` settles: a query issued through the handle after
+ * that runs on the transaction `fn` was opened inside while it is still open,
+ * and on the pool otherwise. A query built inside `fn` keeps the session it
+ * was built on, as one built on `tx` does, so it must be awaited inside `fn`.
  * @param target - The pool or the open transaction.
  * @param scope - The flow-to-transaction binding for this database.
  * @param fn - The transaction body.
@@ -150,7 +156,7 @@ function runBound(
 ): unknown {
   const begin = target.transaction as (body: (tx: unknown) => Promise<unknown>, config?: unknown) => unknown;
   return begin.call(target, async (tx) => {
-    const binding: OpenTransaction = { tx, open: true };
+    const binding: OpenTransaction = { tx, open: true, parent: scope.getStore() };
     try {
       return await scope.run(binding, () => fn(tx));
     } finally {
@@ -176,8 +182,9 @@ function bindToOpenTransaction(getReal: () => Database): Database {
   const scope = new AsyncLocalStorage<OpenTransaction>();
   return new Proxy({} as Database, {
     get(_target, prop) {
-      const current = scope.getStore();
-      const target = (current?.open === true ? current.tx : getReal()) as Record<string | symbol, unknown>;
+      let current = scope.getStore();
+      while (current !== undefined && !current.open) current = current.parent;
+      const target = (current?.tx ?? getReal()) as Record<string | symbol, unknown>;
       if (prop === "transaction") {
         return (fn: (tx: unknown) => unknown, config?: unknown) => runBound(target, scope, fn, config);
       }
@@ -305,13 +312,13 @@ function getYjsPgClient(): Sql {
 }
 
 /** Lazily-built Drizzle instance over `getYjsPgClient`. */
-let _yjsDb: PostgresJsDatabase<Record<string, never>> | null = null;
+let _yjsDb: Database | null = null;
 
 /**
  * Build (once) and return the Drizzle ORM instance for the yjs DB.
  * @returns the lazily-initialised Drizzle ORM instance over the yjs pool
  */
-function getYjsDb(): PostgresJsDatabase<Record<string, never>> {
+function getYjsDb(): Database {
   if (_yjsDb === null) {
     _yjsDb = drizzle(getYjsPgClient());
   }
