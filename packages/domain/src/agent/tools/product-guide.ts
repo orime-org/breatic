@@ -1808,8 +1808,6 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: snapshots, images or other media, " +
-      "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
