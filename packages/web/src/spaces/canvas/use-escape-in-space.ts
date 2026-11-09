@@ -13,6 +13,7 @@
 import * as React from 'react';
 
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import type { CompositionEnd } from '@web/lib/composition-end';
 
 /**
  * Whether a key press is an Escape nobody else has a claim on: not taken by an
@@ -37,8 +38,10 @@ export function isFreeEscape(e: KeyboardEvent): boolean {
  * answer from engines that report the composition without it.
  * @param active - Whether there is a mode to end. No listener while false.
  * @param onEscape - What to end. Stable, or the listener is rebound per render.
+ * @param ended - Composition ends to respect: the Escape Chrome sends right
+ *   after one ends belongs to the input method. Stable, like `onEscape`.
  */
-export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
+export function useEscapeInSpace(active: boolean, onEscape: () => void, ended?: CompositionEnd): void {
   React.useEffect(() => {
     if (!active) return;
     /**
@@ -46,7 +49,7 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (!isFreeEscape(e) || !regionOwnsKeyboard(e.target, 'space')) return;
+      if (!isFreeEscape(e) || ended?.justEnded() === true || !regionOwnsKeyboard(e.target, 'space')) return;
       // Claim it. `defaultPrevented` above is how Escape peels one layer at a
       // time, and a mode that acts without setting it leaves the next listener
       // reading the press as untouched — which is what let one key both disarm
@@ -56,5 +59,5 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [active, onEscape]);
+  }, [active, onEscape, ended]);
 }

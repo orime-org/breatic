@@ -170,8 +170,9 @@ export function buildDocumentEditor(
       fragment: options.fragment,
       user: UNUSED_USER,
     },
-    // The Enter binding goes in first so that a caller's extension can still
-    // sit after it; the built-in list bindings it overrides are registered
+    // Full screen leads: its handlers answer drops, keys and edges before
+    // anyone else while a table is open full screen. The Enter binding comes
+    // next so that a caller's extension can still sit after it; the built-in list bindings it overrides are registered
     // with the blocks themselves.
     extensions: [
       documentTableFullscreenExtension(),

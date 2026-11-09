@@ -39,6 +39,7 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
+import { dragSourceOf } from '@web/spaces/document/document-table-drag';
 import { fromYjs, undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** Where the body goes back to once full screen has ended. */
@@ -332,12 +333,10 @@ function keepSelectionIn(transactions: readonly Transaction[], before: EditorSta
     return after.tr.setSelection(CellSelection.create(after.doc, first, last));
   }
   if (selectionIn(selection, table)) return null;
-  const local = !transactions.some(fromYjs);
-  const wasIn = tableFullscreenIn(before).table === now.table && (() => {
-    const old = tableById(before.doc, now.table);
-    return old !== null && selectionIn(before.selection, old);
-  })();
-  if (local && wasIn) {
+  const old = tableFullscreenIn(before).table === now.table && !transactions.some(fromYjs)
+    ? tableById(before.doc, now.table)
+    : null;
+  if (old !== null && selectionIn(before.selection, old)) {
     let bookmark = before.selection.getBookmark();
     transactions.forEach((tr) => {
       bookmark = bookmark.map(tr.mapping);
@@ -380,7 +379,7 @@ function escapeOut(editor: ExtensionEditor, ended: CompositionEnd, view: EditorV
  * @returns True while full screen, having taken the event.
  */
 function takeDrag(view: EditorView, event: Event): boolean {
-  if (!inTableFullscreen(view.state)) return false;
+  if (!inTableFullscreen(view.state) || dragSourceOf(view.state) !== null) return false;
   const transfer = (event as DragEvent).dataTransfer;
   if (transfer) transfer.dropEffect = 'none';
   event.preventDefault();

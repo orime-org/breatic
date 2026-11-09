@@ -13,6 +13,7 @@
 
 import * as React from 'react';
 
+import { compositionEnd } from '@web/lib/composition-end';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import {
   clearFullscreenReturn,
@@ -65,7 +66,20 @@ export function useTableFullscreenShell(
   const exit = React.useCallback(() => {
     setTableFullscreen(editor, null);
   }, [editor]);
-  useEscapeInSpace(open, exit);
+  // A field outside the editor (an image caption, the link toolbar's address)
+  // leaves the Escape Chrome sends right after a composition ends unmarked;
+  // this hears every composition end on the page so that key stays its.
+  const ended = React.useMemo(() => compositionEnd(), []);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    /** Marks a composition that has just ended anywhere on the page. */
+    const mark = (): void => {
+      ended.mark();
+    };
+    window.addEventListener('compositionend', mark, true);
+    return () => window.removeEventListener('compositionend', mark, true);
+  }, [open, ended]);
+  useEscapeInSpace(open, exit, ended);
 
   // Only editors open a table full screen; one who stops being one leaves it.
   React.useEffect(() => {

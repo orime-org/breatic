@@ -447,13 +447,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             </div>
             {/* Beside the body rather than over it, so opening it narrows the
               text column and closing it widens the column again (A18). */}
-            {railOpen && !inFullscreen && (
+            {railOpen && (
               <DocumentCommentRail
                 editor={handle.editor}
                 rail={rail}
                 myRole={myRole}
                 onClose={closeRail}
                 scroller={viewport}
+                hidden={inFullscreen}
               />
             )}
           </div>

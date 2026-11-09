@@ -12,6 +12,7 @@
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
@@ -287,5 +288,82 @@ describe('round 1 of the implementation review (breatic#1427)', () => {
 
     expect(scrolled).not.toHaveBeenCalledWith({ top: 0 });
     scrolled.mockRestore();
+  });
+});
+
+describe('round 2 of the implementation review (breatic#1427)', () => {
+  it('leaves full screen alone for the Escape that comes right after an input method ends outside the editor', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const id = enter(editor);
+    const exit = await screen.findByTestId('doc-table-fullscreen-exit');
+
+    exit.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }));
+    fireEvent.keyDown(exit, { key: 'Escape' });
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+
+  it('keeps an open comment panel mounted and hidden, so it comes back as it was', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    await userEvent.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await userEvent.click(await screen.findByTestId('doc-doc-menu-comments'));
+    const rail = await screen.findByTestId('doc-comment-rail');
+
+    enter(editor);
+
+    await waitFor(() => expect(rail).not.toBeVisible());
+    expect(rail.isConnected).toBe(true);
+    fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+    await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBe(rail));
+    expect(rail).toBeVisible();
+  });
+
+  /**
+   * Gives an element a fixed box.
+   * @param element - The element.
+   * @param top - Its top.
+   * @param height - Its height.
+   */
+  function boxAt(element: Element, top: number, height: number): void {
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({ top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top, toJSON: () => ({}) } as DOMRect);
+  }
+
+  it('scrolls back to the table at the distance it stood at on entry', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const viewport = surface.closest('[data-radix-scroll-area-viewport]')!;
+    const table = surface.querySelector('[data-node-type=\'docTable\']')!;
+    boxAt(viewport, 100, 600);
+    boxAt(table, 400, 200);
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, value: 1000, writable: true });
+    const id = tableId(editor);
+    act(() => {
+      setTableFullscreen(editor, { table: id, scrollTop: 1000, offset: 60 });
+    });
+    const scrolled = vi.spyOn(viewport, 'scrollTo');
+
+    fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+
+    // The table's top stood 60 below the scroller's top: 1000 + (400 - 100) - 60.
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1240 }));
+  });
+
+  it('scrolls back to where the body was when the table went away', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const viewport = surface.closest('[data-radix-scroll-area-viewport]')!;
+    const id = tableId(editor);
+    act(() => {
+      setTableFullscreen(editor, { table: id, scrollTop: 777, offset: 60 });
+    });
+    const scrolled = vi.spyOn(viewport, 'scrollTo');
+
+    act(() => {
+      editor.removeBlocks([id]);
+    });
+
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 777 }));
   });
 });

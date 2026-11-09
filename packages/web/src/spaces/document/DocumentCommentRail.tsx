@@ -95,6 +95,11 @@ interface DocumentCommentRailProps {
   onClose: () => void;
   /** The body's scroller, which the panel shares; null before it mounts. */
   scroller: HTMLElement | null;
+  /**
+   * Hidden while a table is open full screen (breatic#1427), kept mounted so
+   * its filter and the card it last brought into view come back as they were.
+   */
+  hidden?: boolean;
 }
 
 /** Which threads the panel is showing. */
@@ -143,6 +148,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   myRole,
   onClose,
   scroller,
+  hidden = false,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -486,6 +492,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Runs again on `heights` so a card whose box arrives after it came to be
   // read is shown once it is there.
   React.useLayoutEffect(() => {
+    // Hidden, the panel measures nothing and scrolls nothing: the body under
+    // a full-screen table belongs to the table.
+    if (hidden) return;
     if (reveal === null || (typeof reveal !== 'string' && !isCurrentProposalLocation(reveal, editor))) {
       revealed.current = null;
       return;
@@ -527,7 +536,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
     revealed.current = { key: reveal, height: readHeight, top: scroller.scrollTop };
-  }, [reveal, reading, readTop, heights, lifted, scroller, editor]);
+  }, [reveal, reading, readTop, heights, lifted, scroller, editor, hidden]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
@@ -677,6 +686,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     <aside
       ref={aside}
       data-testid='doc-comment-rail'
+      hidden={hidden}
       className='flex flex-none flex-col border-l border-border'
       style={PANEL_WIDTH}
     >

@@ -296,7 +296,9 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   // while the outline floats and is shown: tiling, or the setting turned off
   // from another document, drops it.
   const [tucked, setTucked] = React.useState(false);
-  if (tucked && !(floating && visible)) setTucked(false);
+  // Hidden under a full-screen table the row is the window's width; the
+  // tuck the user left belongs to the body's width and waits for it.
+  if (tucked && !hidden && !(floating && visible)) setTucked(false);
   const open = visible && !tucked;
   const onToggle = React.useCallback(() => {
     if (tucked) setTucked(false);
@@ -465,7 +467,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       data-testid='doc-outline-column'
       data-layout={floating ? 'floating' : 'tiled'}
       hidden={hidden}
-      className={cn('relative flex min-h-0 flex-none flex-col', hidden && 'hidden')}
+      className='relative flex min-h-0 flex-none flex-col'
       style={open && !floating ? OPEN_WIDTH : SHUT_WIDTH}
     >
       {/* One element tree for both layouts, only its classes change, so the

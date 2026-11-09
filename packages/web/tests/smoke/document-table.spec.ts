@@ -424,11 +424,23 @@ test('breatic#1427: Full screen lays the table over the window for editing, and 
   await expect(area).toBeVisible();
 
   // The row handle is there; the table's own icon and the cell blocks' dots are not.
-  const cell = await page.locator(`${EDITOR} td`).first().boundingBox();
-  await page.mouse.move(cell!.x + 20, cell!.y + 10, { steps: 3 });
+  const first = await page.locator(`${EDITOR} td`).first().boundingBox();
+  await page.mouse.move(first!.x + 20, first!.y + 10, { steps: 3 });
   await expect(page.getByTestId('doc-table-row-handle')).toBeVisible();
   await expect(page.getByTestId('doc-block-table-handle')).toHaveCount(0);
   await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+
+  // A row dragged by its handle still lands, as in the body.
+  await hoverCell(page, 'a1');
+  const handle = await page.getByTestId('doc-table-row-handle').boundingBox();
+  const last = await cell(page, 'a2').boundingBox();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle!.x + 4, handle!.y + 10, { steps: 4 });
+  await page.mouse.move(last!.x + 30, last!.y + last!.height - 3, { steps: 8 });
+  await page.mouse.up();
+  expect(await grids(page)).toEqual([[['a2', 'b2'], ['a1', 'b1']]]);
+  await expect(area).toBeVisible();
 
   await page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }).click();
   await page.keyboard.press('Escape');
