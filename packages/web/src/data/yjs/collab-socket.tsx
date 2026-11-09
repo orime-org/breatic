@@ -489,13 +489,32 @@ export function acquireDocProvider(
     entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
   if (isSpaceContentDoc(name)) {
-    // Every Space document hears its size from collab and acknowledges it
-    // at once: collab judges what this tab sends next by the phase it has
-    // acknowledged (inner#1790).
+    // Every Space document hears its size from collab and acknowledges it:
+    // collab judges what this tab sends next by the phase it has
+    // acknowledged (inner#1790). Before the handshake the acknowledgement
+    // waits for `synced`, so it follows the handshake SyncStep2, which
+    // carries what was written offline before the push.
+    let heldSeq: number | null = null;
+    /**
+     * Tells collab this tab has seen the push numbered `seq`.
+     * @param seq - The push's sequence number.
+     * @throws {never} Never.
+     */
+    const acknowledge = (seq: number): void => {
+      provider.sendStateless(JSON.stringify({ type: 'doc:size-seen', seq } satisfies DocSizeSeen));
+    };
     provider.on('stateless', (data: { payload: string }) => {
       if (docEntries.get(name) !== entry) return;
       const seq = receiveDocSizePayload(name, data.payload);
-      if (seq !== null) provider.sendStateless(JSON.stringify({ type: 'doc:size-seen', seq } satisfies DocSizeSeen));
+      if (seq === null) return;
+      if (provider.synced) acknowledge(seq);
+      else heldSeq = seq;
+    });
+    provider.on('synced', () => {
+      if (docEntries.get(name) !== entry || heldSeq === null) return;
+      const seq = heldSeq;
+      heldSeq = null;
+      acknowledge(seq);
     });
   }
   docEntries.set(name, entry);
