@@ -184,7 +184,7 @@ function runBound(
  * A transaction holds one pool connection; a query it issues through the pool
  * handle would wait for a second one, and once every connection is held by a
  * transaction waiting that way, nothing in the process can reach the database
- * again. Binding the handle to the open transaction, as Spring, Rails, Django
+ * until the queue timeouts fail the waiting requests. Binding the handle to the open transaction, as Spring, Rails, Django
  * and Sequelize do, makes that wait impossible. A transaction opened inside
  * another becomes a savepoint.
  * @param getReal - Builds (once) and returns the pool-backed Drizzle instance.
