@@ -210,6 +210,14 @@ export * as projectAssetReferenceService from "@core/asset/project-asset-referen
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
+export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export {
+  TIMELINE_QUEUE,
+  TIMELINE_EXECUTION_JOB,
+  addTimelineExecutionJob,
+  type TimelineExecutionJobData,
+} from "@core/timeline/timeline-queue.js";
+export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@core/timeline/timeline-execution.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

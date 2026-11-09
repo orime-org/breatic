@@ -29,6 +29,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { db, ForbiddenError, initCore, projectMembersRepo } from "@breatic/core";
 import * as upgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import * as decisionService from "@server/modules/decision/decision.service.js";
@@ -286,9 +287,12 @@ describe("filing and withdrawing serialise behind an owner change", () => {
     await file(s, s.viewer);
     const req = await latest(s.project.id, s.viewer);
     let withdrawing: Promise<void> = Promise.resolve();
+    // The withdrawal is another request: it starts in the context from before
+    // the owner change began, so it waits on the lock instead of joining.
+    const outside = AsyncLocalStorage.snapshot();
     await db.transaction(async (tx) => {
       await projectRepo.lockLiveProject(s.project.id, tx);
-      withdrawing = upgradeService.cancel(req.id, s.viewer);
+      withdrawing = outside(() => upgradeService.cancel(req.id, s.viewer));
       await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
       await projectMembersRepo.updateRoleIfCurrent(s.project.id, s.owner, "owner", "editor", tx);
       await projectMembersRepo.materializeOwner(s.project.id, s.heir, tx);

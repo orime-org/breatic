@@ -100,6 +100,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
 
+Timeline 网页动画是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
+
 在 bucket 的 CORS 设置中保存：
 
 ```json
@@ -198,6 +200,8 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 ```
 
 替换全部 `YOUR_...`。共享密钥必须与刚设置到 Cloudflare 的完全相同，bucket 必须一致；公开读取地址和 S3 endpoint 不能互换，URL 不带末尾 `/`。不要把密钥提交到仓库。
+
+开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名。
 
 Cloudflare Worker 不需要回调你的本机主站，因此个人使用不需要端口映射、内网穿透或公网主站域名。
 

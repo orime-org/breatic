@@ -9,6 +9,7 @@
  */
 
 import { execFile, spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { pipeline } from "node:stream";
 
 import type { Command, RunStep } from "@ingest/jobs/op-args.js";
@@ -103,4 +104,15 @@ export async function runSteps(steps: readonly RunStep[]): Promise<void> {
         break;
     }
   }
+}
+
+/**
+ * The CPU time the container's cgroup has counted.
+ * @returns Microseconds, or null when the file is not there to read.
+ */
+export async function cpuUsec(): Promise<number | null> {
+  const stats = await readFile("/sys/fs/cgroup/cpu.stat", "utf8").catch(() => null);
+  const line = stats?.split("\n").find((entry) => entry.startsWith("usage_usec "));
+  const value = line === undefined ? NaN : Number(line.split(" ")[1]);
+  return Number.isFinite(value) ? value : null;
 }

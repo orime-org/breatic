@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineRate } from "@shared/timeline/schema.js";
+/** A positive rational rate owned by the Timeline format. */
+export interface TimelineRate { num: number; den: number }
 
 /** A fraction used only while computing exact sample boundaries. */
 export interface TimelineFraction { num: bigint; den: bigint }

@@ -91,6 +91,9 @@ api-reference/
 .dev.vars
 packages/ingest/wrangler.toml
 .wrangler/
+# The web-animation font set, laid out from pinned packages by
+# packages/ingest/scripts/web-animation-fonts.mjs before the Worker runs.
+packages/ingest/assets/web-animation/
 
 # Operator database backups
 backups/

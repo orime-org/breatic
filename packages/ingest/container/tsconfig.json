@@ -30,6 +30,7 @@
     "../src/upright-run.ts",
     "../src/object-url.ts",
     "../src/jobs/op-args.ts",
+    "../src/jobs/web-animation-run-body.ts",
     "../../shared/src/adjust-value.ts",
     "../../shared/src/audio-eq.ts",
     "../../shared/src/audio-denoise.ts",
@@ -38,6 +39,9 @@
     "../../shared/src/upload/agent-picture-types.ts",
     "../../shared/src/media/long-media-job-types.ts",
     "../../shared/src/mini-tools/types.ts",
+    "../../shared/src/timeline/time.ts",
+    "../../shared/src/timeline/web-animation-runtime.ts",
+    "../../shared/src/timeline/web-animation-bridge.ts",
     "__tests__/*.ts"
   ]
 }

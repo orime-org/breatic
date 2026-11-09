@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineTrack, TimelineVideoClip } from '@breatic/shared';
+import type { TimelineClip, TimelineTrack } from '@breatic/shared';
 
 /**
  * Compare identities in code-unit order, independent of a client's locale.
@@ -31,7 +31,7 @@ export function orderedTimelineTracks(tracks: Record<string, TimelineTrack>): Ti
  * @returns The ordered clips.
  * @throws {never} Never.
  */
-export function orderedTimelineClips(clips: Record<string, TimelineVideoClip>, trackId?: string): TimelineVideoClip[] {
+export function orderedTimelineClips<T extends TimelineClip>(clips: Record<string, T>, trackId?: string): T[] {
   return Object.values(clips).filter((clip) => trackId === undefined || clip.trackId === trackId)
     .sort((a, b) => a.startFrame - b.startFrame || compareTimelineIds(a.id, b.id));
 }

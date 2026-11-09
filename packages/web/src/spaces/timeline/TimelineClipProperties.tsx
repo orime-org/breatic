@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
-import type { TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineWebResolution } from '@breatic/shared';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
@@ -19,8 +19,11 @@ import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-la
 interface TimelineClipPropertiesProps {
   spaceId: string;
   document: TimelineDocumentV1;
-  clip: TimelineVideoClip;
+  web?: TimelineWebResolution;
+  clip: TimelineClip;
   name: string;
+  /** The request a web-animation copy came from. */
+  request?: string | null;
   conflict: boolean;
   reason?: TimelineArrangementReason['code'] | null;
   labels: TimelineTrackLabels;
@@ -34,7 +37,7 @@ type Field = 'start' | 'in' | 'duration';
 const LABEL = 'text-xs text-muted-foreground';
 
 /** The clip property each field edits. */
-const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'durationFrames' } as const satisfies Record<Field, keyof TimelineVideoClip>;
+const FRAME_OF = { start: 'startFrame', in: 'sourceInFrame', duration: 'durationFrames' } as const satisfies Record<Field, keyof TimelineClip>;
 
 /** One field's text, the stored value it was started from, and whether it was judged out of range. */
 interface FieldDraft { stored: string; value: string; error: boolean }
@@ -51,7 +54,7 @@ type Drafts = Record<Field, FieldDraft>;
  * @returns The same drafts when nothing restarts, else new ones.
  * @throws {never} Never.
  */
-function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Readonly<Record<Field, boolean>>): Drafts {
+function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonly<Record<Field, boolean>>): Drafts {
   let changed = false;
   const next = {} as Drafts;
   for (const field of Object.keys(FRAME_OF) as Field[]) {
@@ -67,12 +70,15 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Re
 }
 
 /**
- * Track, start, in-point and duration of the selected clip, and its video's length; edits commit on Enter or blur.
+ * Track, start, in-point and duration of the selected clip, and its video's length, or for a web-animation copy the
+ * request it came from; edits commit on Enter or blur.
  * @param props - The clip, its context and the commit callback.
  * @param props.spaceId - The Space, for field ids.
  * @param props.document - The current Timeline, for the clip's source extent.
+ * @param props.web - The resolution of web references, for a web copy's extent.
  * @param props.clip - The selected clip.
  * @param props.name - Its display name.
+ * @param props.request - The request a web copy came from, when known.
  * @param props.conflict - Whether the arrangement reports a conflict.
  * @param props.reason - The first reason it conflicts, if any (only a conflicting clip has one).
  * @param props.labels - Track names.
@@ -82,14 +88,14 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineVideoClip, editable: Re
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, clip, name, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, name, request = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
   const [drafts, setDrafts] = React.useState(() => syncDrafts(null, clip, editable));
   const current = syncDrafts(drafts, clip, editable);
   if (current !== drafts) setDrafts(current);
-  const source = document.sources[clip.sourceId];
+  const source = resolveTimelineClipExtent(document, web, clip);
   const fps = document.settings.fps;
   const trackName = labels.nameOf(clip.trackId);
 
@@ -147,6 +153,7 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
         <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
         <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
       </Tooltip>
+      {request !== null && <span data-testid='timeline-clip-request' className='break-words text-xs text-muted-foreground'>{request}</span>}
       {conflict && <span className='flex min-w-0 gap-1 text-status-error-foreground'>
         <span className='shrink-0'>{t('timeline.conflict')}</span>
         {reason !== null && <><span className='shrink-0'>·</span><span className='min-w-0 truncate'>{t(`timeline.conflictReason.${reason}`)}</span></>}
@@ -164,7 +171,7 @@ export function TimelineClipProperties({ spaceId, document, clip, name, conflict
     {field('start', 'timeline.startFrame')}
     {field('in', 'timeline.edit.inPoint')}
     {field('duration', 'timeline.edit.duration')}
-    {source !== undefined && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
+    {source !== undefined && clip.kind === 'video' && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
       {t('timeline.sourceExtent', { frames: source.extentFrames, fps: Math.round(fps.num / fps.den * 100) / 100 })}</span>}
   </div>;
 }

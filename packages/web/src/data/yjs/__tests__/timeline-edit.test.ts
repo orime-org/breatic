@@ -9,11 +9,11 @@ import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/tim
 import type { TimelineEditPlan, TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
 import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema } from '@breatic/shared';
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
-import type { TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import {
   FPS, LINK_ONLY, MAGNET_ONLY, MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, V3, V4,
-  cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, starts, timeline, totalOverflow, track,
+  cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, sourceIdOf, starts, timeline, totalOverflow, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
@@ -742,7 +742,7 @@ describe('planTimelineEdit invariants over random documents', () => {
     expect(totalOverflow(next)).toBeLessThanOrEqual(totalOverflow(before));
     for (const item of Object.values(next.clips)) {
       const was = before.clips[item.id];
-      const source = next.sources[item.sourceId];
+      const source = next.sources[sourceIdOf(item) ?? ''];
       if (was === undefined || source === undefined) continue;
       if (referenceOverflow(was, source) === 0) expect(referenceOverflow(item, source), `clip ${item.id} became invalid`).toBe(0);
     }
@@ -858,7 +858,7 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
    * @param startFrame - Its expected start.
    * @throws {Error} When X changed otherwise.
    */
-  function expectOnlyMoved(result: Accepted, before: TimelineVideoClip | undefined, startFrame: number): void {
+  function expectOnlyMoved(result: Accepted, before: TimelineClip | undefined, startFrame: number): void {
     expect(result.next.clips[X]).toEqual({ ...before, startFrame });
     expect(result.next.sources[MISSING]).toBe(undefined);
   }

@@ -60,6 +60,14 @@ describe('TimelineClipProperties field input', () => {
     expect(screen.getByTestId('timeline-clip-field-error')).toBeInTheDocument();
   });
 
+  it('names the in-point and duration fields in frames', () => {
+    showFields();
+    expect(t('timeline.edit.inPoint')).toBe('In point (frames)');
+    expect(t('timeline.edit.duration')).toBe('Duration (frames)');
+    expect(screen.getByText('In point (frames)').tagName).toBe('LABEL');
+    expect(screen.getByText('Duration (frames)').tagName).toBe('LABEL');
+  });
+
   it('commits a typed start frame as a move', () => {
     const onCommit = showFields();
     typeAndBlur('timeline-clip-start', '30');
