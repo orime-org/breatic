@@ -1387,14 +1387,14 @@ export function renderProductGuide(): string {
       "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
       "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
       `${quoted(t("timeline.webAnimation.executions"))}, next to it, opens the list in the right panel (an X at its top right closes it), with ${quoted(t("timeline.webAnimation.list.completed"))} and ` +
-      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, a preview of a finished result with its own slider ` +
+      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, the step a run stopped at and why a failed run failed, a preview of a finished result with its own slider ` +
       `(${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))} when it cannot be loaded) and what you can do with it: ` +
       `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
       `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
-      `${quoted(t("timeline.webAnimation.retry"))} after a failure or a cancel, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
+      `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
-      "In the preview a copy above a video shows on top of it, and one under a higher video is hidden. A copy with nothing to show yet is noted at the top right of the " +
+      "In the preview a copy above a video shows on top of it, and one under a higher video is hidden. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
       `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,

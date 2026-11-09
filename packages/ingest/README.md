@@ -44,7 +44,9 @@ media numbers and no cover.
 `THIRD-PARTY.md` inside the context. The template carries
 `image_build_context = "../.."` in every `[[containers]]` and
 `[[env.production.containers]]` block. The configured classes are `MediaContainer`,
-`MiniToolContainerStd1`, `MiniToolContainerStd4` and `LongMediaContainer`. Each
+`MiniToolContainerStd1`, `MiniToolContainerStd4` and `LongMediaContainer`, plus
+`WebAnimationContainer`, whose blocks stay commented out until web animation is
+enabled. Each
 block needs its own context because `containers` does not inherit into an environment.
 
 **A `wrangler.toml` copied before error reporting was added needs
@@ -82,6 +84,7 @@ enough on its own.
 | `UPLOAD_BASE_URL` | Where a stored object is publicly readable: the bucket's r2.dev address or a custom domain. This is the URL written onto nodes |
 | `INGEST_BASE_URL` | Where the browser sends its parts: `http://localhost:<[dev] port>` locally, the Worker's public address on a deployment |
 | `INGEST_SHARED_SECRET` | The same string as in `.dev.vars` |
+| `WEB_ANIMATION_PREVIEW_BASE_URL` | Where the browser loads web-animation previews from this Worker's signed `/web-animation/<token>/index.html`: the same address as `INGEST_BASE_URL` locally, a host of its own on a deployment. Needed only with web animation enabled |
 
 ### wrangler.toml
 
@@ -120,7 +123,7 @@ we do not take. Those are only logged.
 
 ### .dev.vars
 
-One value: `INGEST_SHARED_SECRET`. It must be the same string as
+The required value is `INGEST_SHARED_SECRET`. It must be the same string as
 `INGEST_SHARED_SECRET` in the repo-root `.env` — the server signs upload tickets
 with it and sends it to open each upload, and this Worker checks both, so a
 mismatch rejects every upload with 401. Generate one with `openssl rand -hex 32`.
