@@ -359,7 +359,7 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
       const errored = results.filter((one) => one.scenario === scenario.id && 'error' in one);
       const ok = row.filter((one) => one.verdict.pass).length;
       // A row judged on fewer than four in five of its runs was not measured.
-      if (row.length < RUNS * 0.8 || !rowPasses(ok, row.length)) failing.push(scenario.id);
+      if (!rowPasses(row.length, RUNS) || !rowPasses(ok, row.length)) failing.push(scenario.id);
       const misses = [
         ...row.filter((one) => !one.verdict.pass).map((one) => `#${String(one.index + 1)} ${one.verdict.reason}`),
         ...errored.map((one) => `#${String(one.index + 1)} errored, not judged: ${'error' in one ? one.error : ''}`),
@@ -376,22 +376,24 @@ async function evaluate(label: string, model: string | undefined, scenarios: rea
   }
 }
 
+test.beforeEach(() => {
+  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
+});
+
 test('the default model co-creates as the scenarios say @needs-model @needs-internet', async ({ baseURL }) => {
   test.setTimeout(4 * 60 * 60_000);
-  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   expect(await evaluate('default', DEFAULT_MODEL, SCENARIOS, baseURL)).toEqual([]);
 });
 
 test('the comparison model co-creates as the scenarios say @needs-model @needs-internet', async ({ baseURL }) => {
   test.setTimeout(4 * 60 * 60_000);
-  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   const compared = SCENARIOS.filter((one) => one.compare === true);
+  expect(compared.length, 'compare rows in the run').toBeGreaterThan(0);
   expect(await evaluate('compare', COMPARE_MODEL, compared, baseURL)).toEqual([]);
 });
 
 test('the judge agrees with hand labels @needs-model @needs-internet', async () => {
   test.setTimeout(60 * 60_000);
-  expect(UNKNOWN_IDS, 'EVAL_ONLY ids with no scenario').toEqual([]);
   const byId = new Map(SCENARIOS.map((one) => [one.id, one]));
   const labelled = readFileSync(LABELS, 'utf8')
     .split('\n')
