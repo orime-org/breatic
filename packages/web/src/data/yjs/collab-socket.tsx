@@ -175,6 +175,18 @@ class SpaceProvider extends HocuspocusProvider {
     this.flushPendingUpdates();
     super.sendStateless(payload);
   }
+
+  /**
+   * Counts a SyncStatus receipt without marking the provider synced: only
+   * this connection's server SyncStep2 does. Collab answers an Update with
+   * SyncStatus even after it closed that document connection, so a receipt
+   * from the previous connection can reach a reopened or rebuilt provider
+   * before its handshake (inner#1790).
+   */
+  override decrementUnsyncedChanges(): void {
+    if (this.unsyncedChanges > 0) this.unsyncedChanges -= 1;
+    this.emit('unsyncedChanges', { number: this.unsyncedChanges });
+  }
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
