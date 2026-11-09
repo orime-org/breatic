@@ -5,40 +5,25 @@
  * The model-input preparation of a planned removal (inner#1306; frames-split design §5.3 model-input row, §5.4 job identities,
  * §7.1.1): before `generate`, the frozen preparation runs as standard-4 `container_job` steps — one `prepare_model_input`
  * job over the whole presentation window, or `chunk_encode` jobs plus a `stitch` — each attempt under its §5.4 id, its
- * output key from the shared key function and its expense opened with the step. A failed attempt is retried under the
- * next attempt's id up to the configured chunk retries. A failed-output retry reuses the original run's prepared object.
+ * output key from the shared key function and its expense opened with the step, on the model runs' step runner
+ * (`model-run-steps.ts`). A failed attempt is retried under the next attempt's id up to the frozen chunk retries; the
+ * chunks advance as one chunk list, each done chunk pinned with the run. A failed-output retry reuses the original run's
+ * prepared object.
  */
 
-import { getMiniToolsConfig, logger } from "@breatic/core";
-import {
-  miniToolStepStateSchema, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo,
-  type AcceptedMiniToolExecution,
-} from "@breatic/domain";
-import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
+import { logger } from "@breatic/core";
+import { miniToolStepStateSchema, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
+import { videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
 import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared/mini-tools";
-import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceChunks, advanceContainer, storedRequest, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
 import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 /** What a model-input preparation reads of its run: a removal's, or a lip-sync run's used source range (§97 D21). */
-export type PreparingRun = Pick<Removal, "taskId" | "sourceKey" | "ledgerReceipts" | "presentationRef" | "preparation">;
+export type PreparingRun = Pick<Removal, "taskId" | "projectId" | "sourceKey" | "ledgerReceipts" | "presentationRef" | "preparation">;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
-/**
- * One preparation unit: its §5.4 id per attempt, its recipe, its consumption chunk index, and whether its output is the
- * prepared input the run keeps (with the chunk outputs that output consumed).
- */
-interface Unit {
-  spec: (attempt: number) => VideoContainerJobSpec;
-  /** The recipe and the inputs it binds besides the source (a stitch's chunks). */
-  recipe: () => { recipe: MiniToolPlanRecipe; inputs?: { inputId: string; storageKey: string }[] } | null;
-  chunkIndex: number;
-  final: boolean;
-  consumed?: string[];
-}
-
 /**
  * A step's work object key: the source's work key for the job, ending in the extension of the type it holds.
  * @param sourceKey - The source's storage key.
@@ -72,60 +57,8 @@ export async function appendStep(taskId: string, planned: { kind: UpstreamStep["
   return appended;
 }
 
-/**
- * The stored request of a container step, if any.
- * @param step - The step.
- * @returns The request.
- * @throws {never} Never.
- */
-function storedRequest(step: UpstreamStep): MiniToolPlanJobRequest | null {
-  const parsed = miniToolPlanJobRequestSchema.safeParse(step.output.miniToolPlanJob);
-  return step.kind === "container_job" && parsed.success ? parsed.data : null;
-}
-
-/**
- * Advance one unit: the latest attempt's job, or the next attempt after a failure.
- * @param execution - The frozen removal.
- * @param unit - The unit.
- * @param deadlineAt - The task deadline.
- * @returns The done attempt's output key.
- * @throws {StillRunning} While the attempt runs.
- * @throws {UpstreamTaskFailed} When the last allowed attempt failed.
- * @throws {Error} When persistence or the job boundary fails.
- */
-async function advanceUnit(execution: PreparingRun, unit: Unit, deadlineAt: number): Promise<string> {
-  // The retry cap frozen at admission (§3.2 item 1), never today's configuration.
-  const retries = execution.preparation.chunkRetries;
-  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
-    const jobId = videoContainerJobId(unit.spec(attempt));
-    const steps = await upstreamStepRepo.listSteps(execution.taskId);
-    const existing = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
-    const state = existing?.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(existing.output.miniToolStep);
-    if (state?.result?.outcome === "failed") continue;
-    if (existing !== undefined && state?.result?.outcome === "done") return storedRequest(existing)!.outputs[0]!.storageKey;
-    const built = unit.recipe();
-    if (built === null) throw new Error("The preparation recipe needs its chunk outputs");
-    const { preparation } = execution;
-    const candidate: MiniToolPlanJobRequest = {
-      schemaVersion: 2, jobId, containerClass: preparation.containerClass, deadlineAt, limits: preparation.limits,
-      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...built.inputs ?? []],
-      outputs: [{ outputIndex: 0, storageKey: stepWorkKey(execution.sourceKey, jobId, "video/mp4"), contentType: "video/mp4", recipe: built.recipe }],
-    };
-    const step = existing ?? await appendStep(execution.taskId, { kind: "container_job", endpoint: preparation.containerClass, itemIndex: unit.chunkIndex });
-    const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: unit.chunkIndex, chargeTo: "user", request: candidate });
-    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
-    if (report.state !== "done" && report.state !== "failed") throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-    const output = request.outputs[0]!.storageKey;
-    // The prepared input is pinned with its result; a failed attempt's output and consumed chunks are retired (§7.15).
-    const presentation = report.state === "failed" ? { retire: [output] }
-      : unit.final ? { prepared: { toolInputId: execution.presentationRef.source.toolInputId, preparedKey: output }, retire: unit.consumed ?? [] } : undefined;
-    await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason } } : {}), ...(presentation === undefined ? {} : { presentation }) },
-    { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
-    if (report.state === "done") return request.outputs[0]!.storageKey;
-  }
-  throw new UpstreamTaskFailed("container", "The model input could not be prepared");
-}
+/** Why a preparation that failed for good fails its run. */
+const PREPARATION_FAILED = "The model input could not be prepared";
 
 /**
  * The stored request of a run's done prepared model input: the single job's, or the stitch's over chunks.
@@ -173,30 +106,51 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   });
   const target = modelInputTarget(ledger, execution.preparation.encode);
   const timescale = ledger.plan.presentation.timescale;
+  // The retry cap frozen at admission (§3.2 item 1), never today's configuration.
+  const { preparation } = execution;
+  const run: ModelStepRun = { taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, log: "prepare",
+    container: { containerClass: preparation.containerClass, limits: preparation.limits, chunkRetries: preparation.chunkRetries } };
+  /**
+   * One preparation unit on the source: its §5.4 id per attempt, its consumption chunk index and its recipe.
+   * @param spec - Its §5.4 id per attempt.
+   * @param chunkIndex - Its consumption chunk index.
+   * @param recipe - Its recipe.
+   * @param bound - The inputs it binds besides the source (a stitch's chunks).
+   * @returns The step.
+   * @throws {never} Never.
+   */
+  const unit = (spec: (attempt: number) => VideoContainerJobSpec, chunkIndex: number, recipe: MiniToolPlanRecipe, bound: { inputId: string; storageKey: string }[] = []): ContainerStep => ({
+    stepKey: videoContainerJobId(spec(1)).replace(/:a1$/, ""), contentType: "video/mp4", jobId: (attempt) => videoContainerJobId(spec(attempt)), chunkIndex,
+    failed: () => ({ failed: PREPARATION_FAILED }), build: () => Promise.resolve({ recipe, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...bound] }) });
+  /**
+   * The pins of the done prepared input: the run keeps it, and the chunks it consumed are retired (§7.15).
+   * @param consumed - The chunk outputs it consumed.
+   * @returns The pins.
+   * @throws {never} Never.
+   */
+  const final = (consumed: string[]): ContainerStep["done"] => (output) => ({ prepared: { toolInputId: execution.presentationRef.source.toolInputId, preparedKey: output }, retire: consumed });
+  /**
+   * The prepared input's key once its unit is done.
+   * @param planned - The final unit.
+   * @returns The key.
+   * @throws {UpstreamTaskFailed} When the unit failed for good.
+   */
+  const prepared = async (planned: ContainerStep): Promise<string> => {
+    const ended = await advanceContainer(run, planned, deadlineAt);
+    if (!("key" in ended)) throw new UpstreamTaskFailed("container", PREPARATION_FAILED);
+    return ended.key;
+  };
   if (single) {
     const window = { start: chunks[0]!.start, end: chunks[0]!.end };
-    return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep", taskId, input: 0, attempt }), chunkIndex: 0, final: true,
-      recipe: () => ({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale, entries: windowEntries(ledger, window), target,
-        audio: audioOf(ledger, windowInterval(ledger, window)) } }) }, deadlineAt);
+    return prepared({ ...unit((attempt) => ({ kind: "prep", taskId, input: 0, attempt }), 0, { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale,
+      entries: windowEntries(ledger, window), target, audio: audioOf(ledger, windowInterval(ledger, window)) }), done: final([]) });
   }
-  const outputs: (string | null)[] = [];
-  let waiting = false;
-  for (const [chunk, window] of chunks.entries()) {
-    try {
-      outputs.push(await advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunkIndex: chunk, final: false,
-        recipe: () => ({ recipe: { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale,
-          entries: windowEntries(ledger, window), target } }) }, deadlineAt));
-    } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      waiting = true;
-      outputs.push(null);
-    }
-  }
-  if (waiting) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  return advanceUnit(execution, { spec: (attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunkIndex: chunks.length, final: true, consumed: outputs as string[],
-    recipe: () => ({
-      recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
-        audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },
-      inputs: (outputs as string[]).map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
-    }) }, deadlineAt);
+  // Every chunk advances in each pickup and the preparation settles once none still runs, each done chunk pinned with the run.
+  const outputs = await advanceChunks(run, chunks.map((window, chunk) => unit((attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunk,
+    { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale, entries: windowEntries(ledger, window), target })), deadlineAt);
+  if (!("keys" in outputs)) throw new UpstreamTaskFailed("container", PREPARATION_FAILED);
+  return prepared({ ...unit((attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunks.length, { kind: "stitch", inputId: SOURCE_INPUT_ID,
+    chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
+    audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },
+  outputs.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))), done: final(outputs.keys) });
 }

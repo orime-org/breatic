@@ -419,7 +419,7 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
   const run = execution as LipSync;
   try {
     if (step.kind === "prepare") {
-      const preparing: PreparingRun = { taskId: run.taskId, sourceKey: run.sourceKey, ledgerReceipts: run.ledgerReceipts, presentationRef: run.presentationRef,
+      const preparing: PreparingRun = { taskId: run.taskId, projectId: run.projectId, sourceKey: run.sourceKey, ledgerReceipts: run.ledgerReceipts, presentationRef: run.presentationRef,
         preparation: { ...run.container, chunks: run.layout.preparation } };
       // A retry reuses the preparation of its chain's original run (frames-split §7.11 retry row).
       for (const owner of (await runsOf(stepRun(run))).slice(1)) if (await preparedRequest(owner, run.layout.preparation.length === 1) !== null) return { state: "done" };

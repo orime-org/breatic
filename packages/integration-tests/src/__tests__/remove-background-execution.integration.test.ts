@@ -17,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
 import {
-  assetRepo, beginMiniToolStepAttempt, miniToolConsumptionRecordSchema, miniToolStepStateSchema,
+  assetRepo, beginMiniToolStepAttempt, miniToolConsumptionRecordSchema, miniToolStepStateSchema, presentationPinService,
   recordMiniToolStepIdentity, taskRepo, upstreamStepRepo,
   type AcceptedMiniToolExecution, type StoredAsset,
 } from "@breatic/domain";
@@ -188,6 +188,35 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
     expect([...rows]).toEqual([chunk(0), chunk(1)].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
   });
 
+  it("PP04 a chunk failed for good waits for a running chunk, which is pinned with the run, and no chunk opens a next attempt after it", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const plan = structuredClone(f.plan);
+    plan.preparation.chunks = [{ start: 0, end: 32 }, { start: 32, end: 64 }, { start: 64, end: 96 }];
+    plan.planFingerprint = await planHash(plan);
+    await pg`UPDATE tasks SET params=${pg.json({ miniToolExecution: { ...plan } })} WHERE id=${f.plan.taskId}`;
+    /**
+     * A preparation chunk attempt's job id.
+     * @param k - The chunk.
+     * @param attempt - The attempt.
+     * @returns The id.
+     */
+    const chunk = (k: number, attempt = 1): string => videoContainerJobId({ kind: "prep-chunk", taskId: f.plan.taskId, input: 0, chunk: k, attempt });
+    const failed = { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } };
+    for (const k of [0, 1, 2]) jobs.scripted.set(chunk(k), { schemaVersion: 2, state: "running" });
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBeInstanceOf(StillRunning);
+    // Chunk 1 fails on every attempt and chunk 2's first attempt fails while chunk 0 still runs: the preparation does not end.
+    for (let attempt = 1; attempt <= plan.preparation.chunkRetries + 1; attempt += 1) jobs.scripted.set(chunk(1, attempt), failed);
+    jobs.scripted.set(chunk(2), failed);
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBeInstanceOf(StillRunning);
+    jobs.scripted.delete(chunk(0));
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBeInstanceOf(UpstreamTaskFailed);
+    expect(jobs.submitted.map((request) => request.jobId)).not.toContain(chunk(2, 2));
+    expect(runPrediction).not.toHaveBeenCalled();
+    const rows = await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pins p JOIN presentation_pin_objects o ON o.pin_id=p.id
+      WHERE p.holder_kind='execution' AND p.holder_id=${f.plan.taskId} AND p.deleted_at IS NULL`;
+    expect(rows.map((row) => row.storage_key)).toContain(prepared(f, chunk(0)).key);
+  });
+
   it("PP03 a failed preparation attempt's output is registered for reclaim; the attempt that succeeded is pinned, not registered (§90 E4-14 b)", async () => {
     const f = await seed(); completeProvider(); backend(f);
     jobs.scripted.set(`${f.plan.taskId}:prep:0:a1`, { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
@@ -218,6 +247,9 @@ async function seed(golden = false): Promise<Fixture> {
     VALUES (${plan.binding.assetId},${source.studioId},${plan.binding.contentHash},${plan.sourceKey},${SOURCE_URL},4096,'video/mp4','video','upload',${source.userId},960,540,5.055)`;
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
     VALUES (${plan.taskId},${target.userId},${plan.projectId},${plan.spaceId},'video','append','mini_tool','running',${plan.model},${pg.json({ miniToolExecution: { ...plan } })},${pg.json({ kept: { original: true } })})`;
+  // Admission writes the run's execution pin with its task (§7.15 execution row); the preparation's chunks are appended to it.
+  await presentationPinService.acquire({ holderKind: "execution", holderId: plan.taskId, toolInputId: plan.presentationRef.source.toolInputId,
+    objectKeys: presentationPinService.ledgerObjectKeys(plan.sourceKey, plan.presentationRef.source.toolInputId) });
   const assetId = randomUUID(); const coverId = randomUUID(); const canonicalURL = publicUrl(`video/winner/${assetId}.webm`); const coverURL = publicUrl(`image/cover/${coverId}.png`);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height)
     VALUES (${coverId},${target.studioId},${"c".repeat(64)},${`image/cover/${coverId}.png`},${coverURL},128,'image/png','image','cover',${target.userId},96,54)`;
