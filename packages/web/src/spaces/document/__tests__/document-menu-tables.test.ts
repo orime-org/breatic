@@ -28,8 +28,9 @@ describe('the block handle menu', () => {
     ]);
   });
 
-  it('holds the table entry\'s rows with Add to Agent after Comment', () => {
+  it('holds the table entry\'s rows, full screen first and Add to Agent after Comment', () => {
     expect(TABLE_MENU_ROWS.map((row) => row.id)).toEqual([
+      'fullscreen',
       'insertBelow',
       'duplicate',
       'indent',
