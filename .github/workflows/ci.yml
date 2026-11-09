@@ -181,6 +181,9 @@ jobs:
       - name: Test maintenance command arguments
         run: node --import tsx --test scripts/__tests__/backfill-project-media-options.test.ts scripts/__tests__/activity-coverage-options.test.ts
 
+      - name: Test provider scripts
+        run: node --test scripts/provider-config-merge.test.mjs scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
+
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)
     # web holds most of the unit tests (804 files measured 2026-10-11) and ran
@@ -352,7 +355,7 @@ jobs:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs scripts/analytics-delete-users.test.mjs scripts/load-env.test.mjs scripts/repair-space-rows-plan.test.mjs scripts/provider-config-merge.test.mjs scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs scripts/analytics-delete-users.test.mjs scripts/load-env.test.mjs scripts/repair-space-rows-plan.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main
