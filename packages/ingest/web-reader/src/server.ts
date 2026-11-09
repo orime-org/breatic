@@ -275,21 +275,42 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       settle(head.request());
       if (declaresMoreThan(head, request.maxBytes)) tooLarge();
     });
+    /**
+     * Read a download that took the place of goto's document, as if its file
+     * had been opened directly. A failure answer the browser turned into a
+     * download ends as its status says, without waiting for the file.
+     * @param download - The download, or null when none starts in time.
+     * @returns The page, or undefined when there is no download to read.
+     */
+    const readInstead = async (download: Promise<Download | null>): Promise<ReadPageResult | undefined> => {
+      if (head !== undefined && !head.ok()) {
+        const ended = endedBy(head);
+        if (ended !== null) return { url, status: ended, httpStatus: head.status(), finalUrl: head.url() };
+      }
+      const file = await download;
+      return file === null ? undefined : readDownload(url, file, head, request.maxBytes);
+    };
     let response: Response | null = null;
     try {
-      response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: request.pageTimeoutMs });
+      const loading = page.goto(url, { waitUntil: "domcontentloaded", timeout: request.pageTimeoutMs });
+      loading.catch(() => undefined);
+      // A navigation that replaces goto's document before it loads (a script
+      // in its head) and turns into a download leaves goto waiting for a
+      // document that never loads: the download is what is read.
+      const instead = downloaded.then((download) => download ?? new Promise<never>(() => undefined));
+      const first = await Promise.race([loading.then((loaded) => ({ loaded })), instead.then((download) => ({ download }))]);
+      if ("download" in first) {
+        const read = await readInstead(Promise.resolve(first.download));
+        if (read !== undefined) return read;
+      } else {
+        response = first.loaded;
+      }
     } catch (err) {
       if (oversized) return { url, status: "too_large" };
       // A PDF navigates into a download, which the headless shell has no viewer for.
       if (err instanceof Error && /Download is starting/.test(err.message)) {
-        // A failure answer the browser turns into a download ends as its
-        // status says, without waiting for the file.
-        if (head !== undefined && !head.ok()) {
-          const ended = endedBy(head);
-          if (ended !== null) return { url, status: ended, httpStatus: head.status(), finalUrl: head.url() };
-        }
-        const download = await downloaded;
-        if (download !== null) return await readDownload(url, download, head, request.maxBytes);
+        const read = await readInstead(downloaded);
+        if (read !== undefined) return read;
       }
       if (err instanceof errors.TimeoutError) return { url, status: "too_slow" };
       if (!(err instanceof Error && INTERRUPTED.test(err.message))) throw err;
