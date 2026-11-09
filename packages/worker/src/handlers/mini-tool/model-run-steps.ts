@@ -11,7 +11,7 @@ import { z } from "zod";
 import { getMiniToolsConfig, getRawEnvVar, logger } from "@breatic/core";
 import {
   backendUploadService, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepIdentity,
-  recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson,
+  recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson, type RecordMiniToolStepResultInput,
 } from "@breatic/domain";
 import {
   DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
@@ -19,7 +19,7 @@ import {
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, type LipsyncPersonState, type LipsyncPersonStep } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceMiniToolPlanJob, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
@@ -396,19 +396,28 @@ export interface ContainerStep {
   jobId?: (attempt: number) => string;
   /** The class the job runs on, the run's when absent. */
   containerClass?: string;
+  /** The limits the job runs under, the run's when absent. */
+  limits?: MiniToolPlanJobRequest["limits"];
+  /** The output's storage key for an attempt's job id, `stepWorkKey(sourceKey, jobId, contentType)` when absent. */
+  outputKey?: (jobId: string) => string;
+  /** The step's item index and the consumption's chunk index, the step's position when absent. */
+  chunkIndex?: number;
+  /** The pins a done output is recorded with, pinned with the run when absent. */
+  done?: (output: string) => NonNullable<RecordMiniToolStepResultInput["presentation"]>;
 }
 
 /**
- * Advance a container step: reuse its done output, or run its attempts up to the frozen retries, the output pinned with the
- * run and a failed attempt's output retired.
+ * Advance a container step: reuse its done output, or run its attempts up to the frozen retries, a done output recorded with
+ * its pins and a failed attempt's output retired.
  * @param run - The run.
  * @param planned - The step.
  * @param deadlineAt - The task deadline.
- * @returns The output, or the failure.
+ * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
+ * @returns The output, the failure, or null when the next attempt is not opened.
  * @throws {StillRunning} While a job runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
-export async function advanceContainer(run: ModelStepRun, planned: ContainerStep, deadlineAt: number): Promise<StepEnded> {
+async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadlineAt: number, open: boolean): Promise<StepEnded | null> {
   let reason = "tool_failed";
   const containerClass = planned.containerClass ?? run.container.containerClass;
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
@@ -419,6 +428,7 @@ export async function advanceContainer(run: ModelStepRun, planned: ContainerStep
       const original = await reused(run, planned.stepKey);
       if (original !== null) return { key: original };
     }
+    if (existing === undefined && !open) return null;
     const state = existing === undefined ? null : stateOf(existing);
     if (existing !== undefined && state?.result?.outcome === "failed") {
       const failed = readMiniToolPlanJobReport(storedRequest(existing)!, state.result.result);
@@ -428,21 +438,35 @@ export async function advanceContainer(run: ModelStepRun, planned: ContainerStep
     if (existing !== undefined && state?.result?.outcome === "done") return { key: storedRequest(existing)!.outputs[0]!.storageKey };
     const built = existing === undefined ? await planned.build() : null;
     const candidate: MiniToolPlanJobRequest = existing === undefined
-      ? { schemaVersion: 2, jobId, containerClass, deadlineAt, limits: run.container.limits, inputs: built!.inputs,
-        outputs: [{ outputIndex: 0, storageKey: stepWorkKey(run.sourceKey, jobId, planned.contentType), contentType: planned.contentType, recipe: built!.recipe }] }
+      ? { schemaVersion: 2, jobId, containerClass, deadlineAt, limits: planned.limits ?? run.container.limits, inputs: built!.inputs,
+        outputs: [{ outputIndex: 0, storageKey: planned.outputKey?.(jobId) ?? stepWorkKey(run.sourceKey, jobId, planned.contentType), contentType: planned.contentType, recipe: built!.recipe }] }
       : storedRequest(existing)!;
-    const step = existing ?? await appendStep(run.taskId, { kind: "container_job", endpoint: containerClass, itemIndex: steps.length });
-    const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
-    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request));
-    if (report.state !== "done" && report.state !== "failed") throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+    const step = existing ?? await appendStep(run.taskId, { kind: "container_job", endpoint: containerClass, itemIndex: planned.chunkIndex ?? steps.length });
+    const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: planned.chunkIndex ?? step.position, chargeTo: "user", request: candidate });
+    // The job boundary answers only a terminal report; a running job throws StillRunning.
+    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request)) as EndedMiniToolPlanJob;
     const output = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: run.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [output] } } : { presentation: { pin: [output] } }) },
+      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [output] } } : { presentation: planned.done?.(output) ?? { pin: [output] } }) },
     { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
     if (report.state === "done") return { key: output };
     reason = report.reason;
   }
   return planned.failed(reason);
+}
+
+/**
+ * Advance a container step: reuse its done output, or run its attempts up to the frozen retries, the output pinned with the
+ * run (or recorded with the step's own pins) and a failed attempt's output retired.
+ * @param run - The run.
+ * @param planned - The step.
+ * @param deadlineAt - The task deadline.
+ * @returns The output, or the failure.
+ * @throws {StillRunning} While a job runs.
+ * @throws {Error} When persistence or the job boundary fails.
+ */
+export async function advanceContainer(run: ModelStepRun, planned: ContainerStep, deadlineAt: number): Promise<StepEnded> {
+  return (await advanceAttempts(run, planned, deadlineAt, true))!;
 }
 
 /**
@@ -483,29 +507,53 @@ export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLed
 }
 
 /**
- * Advance every chunk step, each submitted before the pickup waits on any (frames-split §5.4).
+ * Advance every chunk step in each pickup (frames-split §5.4 parallel stage): the list settles only once no chunk still runs,
+ * so each running chunk's object is recorded and pinned with the run; once a chunk has failed for good no chunk opens a new
+ * attempt, only the attempts already opened are advanced.
  * @param run - The run.
  * @param chunks - The chunk steps in order.
  * @param deadlineAt - The task deadline.
- * @returns Every chunk's output in order, or the first failure.
+ * @returns Every chunk's output in order, or the failure of the first chunk in order that failed for good.
  * @throws {StillRunning} While a chunk runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
 export async function advanceChunks(run: ModelStepRun, chunks: readonly ContainerStep[], deadlineAt: number): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }>> {
-  const keys: string[] = [];
+  const ended = new Map<number, StepEnded>();
+  const unopened: number[] = [];
   let running = false;
-  for (const chunk of chunks) {
-    let ended: StepEnded;
-    try { ended = await advanceContainer(run, chunk, deadlineAt); } catch (error) {
+  /**
+   * Advance one chunk, noting whether it ended, still runs or waits for its next attempt to be opened.
+   * @param k - The chunk.
+   * @param open - Whether its next attempt may be opened.
+   * @returns Nothing.
+   * @throws {Error} When persistence or the job boundary fails.
+   */
+  const advance = async (k: number, open: boolean): Promise<void> => {
+    try {
+      const at = await advanceAttempts(run, chunks[k]!, deadlineAt, open);
+      if (at === null) unopened.push(k); else ended.set(k, at);
+    } catch (error) {
       if (!(error instanceof StillRunning)) throw error;
       running = true;
-      continue;
     }
-    if (!("key" in ended)) return ended;
-    keys.push(ended.key);
-  }
+  };
+  /**
+   * The first chunk in order that failed for good.
+   * @returns Its failure, or null.
+   * @throws {never} Never.
+   */
+  const failure = (): Exclude<StepEnded, { key: string }> | null => {
+    for (const k of chunks.keys()) {
+      const at = ended.get(k);
+      if (at !== undefined && !("key" in at)) return at;
+    }
+    return null;
+  };
+  // The attempts already opened go first, so a chunk failed for good is known before any chunk opens a new attempt.
+  for (const k of chunks.keys()) await advance(k, false);
+  for (const k of unopened) if (failure() === null) await advance(k, true);
   if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  return { keys };
+  return failure() ?? { keys: chunks.map((_chunk, k) => (ended.get(k) as { key: string }).key) };
 }
 
 /** A run's one registered output job. */
