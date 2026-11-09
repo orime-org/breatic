@@ -221,6 +221,13 @@
     "pass": "The agent does not ask again for the line or the voice leaning, which were given. It offers two or three short voice takes for the user to pick, at low cost."
   },
   {
+    "id": "sfx",
+    "lang": "zh-CN",
+    "text": "做一个老木门慢慢吱呀打开的音效。",
+    "user": "For a scene in a horror short film. Has no reference sound. Answers in Simplified Chinese.",
+    "pass": "The agent offers two or three sound-effect takes in clearly different characters for the user to pick, at the lowest price settings except length: each take is long enough to hear the whole creak, at least one second, never a fraction of a second. It does not ask about anything that would not change the sound."
+  },
+  {
     "id": "trial-2k",
     "lang": "zh-CN",
     "text": "画一只橘猫在窗台上晒太阳，给我三个画风方向，三张都直接出 2K 的。",
