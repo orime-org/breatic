@@ -31,6 +31,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { ApiException } from '@web/data/api/types';
+import { clearAllDocSizes, setDocSize, startDocResync } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
@@ -43,6 +44,7 @@ import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { MAIN, clip as videoClip, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import { P_FULL, P_NORMAL, P_OVER, P_UNLIMITED, P_WARNING, type DocSizePushV2 } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import {
   EXEC_DONE, EXEC_FAILED, EXEC_RUNNING, RESOLUTION, SRC_A, SRC_B, boundTo, waitingFor, webClip,
 } from '@web/data/yjs/__tests__/timeline-web-fixtures';
@@ -246,6 +248,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearAllDocSizes();
   useCurrentUserStore.setState({ user: null });
   for (const client of clients.splice(0)) client.clear();
   _resetForTests();
@@ -365,6 +368,110 @@ describe('creation dialog', () => {
     expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Spring sale title');
     expect(layout().operationReceipts).toEqual({});
     expect(webCopies()).toEqual([]);
+  });
+});
+
+describe('creation dialog in a Space at its size limit (inner#1790 WA-01..WA-06)', () => {
+  const NAME = docName.timelineSpace(PROJECT, SPACE);
+  let seq = 0;
+  /**
+   * Push a size for a document.
+   * @param name - The document.
+   * @param push - The size.
+   */
+  function size(name: string, push: DocSizePushV2): void {
+    seq += 1;
+    setDocSize(name, { type: 'doc:size', seq, ...push });
+  }
+
+  /**
+   * Open the dialog with a prompt typed, ready to execute.
+   * @returns The dialog.
+   */
+  async function readyDialog(): Promise<HTMLElement> {
+    seed();
+    showTimeline();
+    const dialog = await openCreate();
+    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Kept words');
+    return dialog;
+  }
+
+  /**
+   * Assert a refused press left everything as it was.
+   * @param dialog - The dialog.
+   */
+  function expectNothingSent(dialog: HTMLElement): void {
+    expect(timelineApi.acceptExecution).not.toHaveBeenCalled();
+    expect(layout().operationReceipts).toEqual({});
+    expect(webCopies()).toEqual([]);
+    expect(screen.getByRole('dialog')).toBe(dialog);
+    expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Kept words');
+    expect(within(dialog).getByTestId('web-animation-execute')).not.toHaveAttribute('aria-busy', 'true');
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(screen.queryByTestId('timeline-executions')).toBeNull();
+  }
+
+  it.each([
+    ['WA-01 full', P_FULL, 'spaces.sizeCap.add'],
+    ['WA-02 over the ceiling', P_OVER, 'spaces.sizeCap.over'],
+  ] as const)('%s: Execute asks nothing, writes nothing and says why once', async (_label, push, key) => {
+    const dialog = await readyDialog();
+    size(NAME, push);
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    expectNothingSent(dialog);
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(t(key));
+  });
+
+  it('WA-03 resyncing: Execute asks nothing, writes nothing and shows no toast', async () => {
+    const dialog = await readyDialog();
+    size(NAME, P_NORMAL);
+    startDocResync(NAME);
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    expectNothingSent(dialog);
+    for (const fn of Object.values(toast)) if (vi.isMockFunction(fn)) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unknown', null],
+    ['unlimited', P_UNLIMITED],
+    ['normal', P_NORMAL],
+    ['warning', P_WARNING],
+  ] as const)('WA-04 %s: Execute sends once and lands', async (_label, push) => {
+    const dialog = await readyDialog();
+    if (push !== null) size(NAME, push);
+    const accepted = row('90000000-0000-4000-8000-0000000000e1', 'awaiting_landing');
+    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(Object.values(layout().operationReceipts)).toEqual([expect.objectContaining({ executionId: accepted.id })]));
+    expect(webCopies()).toHaveLength(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('WA-05 another Space being full does not stop this one', async () => {
+    const dialog = await readyDialog();
+    size(NAME, P_NORMAL);
+    size(docName.timelineSpace(PROJECT, '70000000-0000-4000-8000-000000000002'), P_FULL);
+    size(docName.canvasSpace(PROJECT, '70000000-0000-4000-8000-000000000003'), P_FULL);
+    const accepted = row('90000000-0000-4000-8000-0000000000e2', 'awaiting_landing');
+    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('WA-06 after a refusal the kept input executes once the Space has room', async () => {
+    const dialog = await readyDialog();
+    size(NAME, P_FULL);
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    expect(timelineApi.acceptExecution).not.toHaveBeenCalled();
+    size(NAME, P_NORMAL);
+    const accepted = row('90000000-0000-4000-8000-0000000000e3', 'awaiting_landing');
+    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(timelineApi.acceptExecution).mock.calls[0]?.[0]).toMatchObject({ prompt: 'Kept words' });
   });
 });
 
