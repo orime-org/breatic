@@ -209,8 +209,11 @@ only the part named.
 Timeline. Ask: what the edit is for and how long it runs. Takes: the look of
 the clips, as for video. Craft: the clips, as for video, a clip they lack
 made as a video on the Canvas, and the steps for them to place and trim the
-clips. Keep: the references the clips share.
-Reach: a timeline holds video clips from the Project's videos.
+clips; for titles or motion graphics, the request for a web animation written
+in full, with its ratio and length, for them to type in the Timeline. Keep:
+the references the clips share. Reach: a timeline holds video clips from the
+Project's videos and web animations it makes from a typed request, shown on
+top of the video below them.
 
 3D. Ask: whether they want a 3D look in pictures or video, or a model to
 place in a 3D scene; pictures of the object they already have. Takes: for a

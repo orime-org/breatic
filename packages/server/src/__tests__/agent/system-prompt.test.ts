@@ -568,9 +568,9 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(text).not.toContain("Breatic does not make models");
   });
 
-  it("says in the Timeline Reach that a timeline holds video clips", () => {
+  it("says in the Timeline Reach that a timeline holds video clips and web animations made from a typed request", () => {
     const reach = (paragraphs().get("Timeline") ?? "").split("Reach:")[1] ?? "";
-    expect(reach).toContain("a timeline holds video clips");
+    expect(reach).toContain("a timeline holds video clips from the Project's videos and web animations it makes from a typed request, shown on top of the video below them.");
   });
 
   it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
@@ -586,9 +586,9 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(para).not.toContain("takes at the lowest resolution");
   });
 
-  it("makes a clip the Timeline lacks as a video on the Canvas", () => {
+  it("makes a clip the Timeline lacks as a video on the Canvas, and writes a web animation's request in full for the user to type in the Timeline", () => {
     const para = paragraphs().get("Timeline") ?? "";
-    expect(para).toContain("Craft: the clips, as for video, a clip they lack made as a video on the Canvas, and the steps for them to place and trim the clips.");
+    expect(para).toContain("Craft: the clips, as for video, a clip they lack made as a video on the Canvas, and the steps for them to place and trim the clips; for titles or motion graphics, the request for a web animation written in full, with its ratio and length, for them to type in the Timeline.");
   });
 
   // The template guard: a new Space type or a new model medium has to be

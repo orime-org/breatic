@@ -243,6 +243,10 @@ describe("the index in the tool's description", () => {
       }
     }
   });
+
+  it("indexes the Timeline spaces section as adding videos and web animations", () => {
+    expect(described()).toContain('Timeline: "Timeline spaces" (adding videos and web animations to a timeline and arranging them).');
+  });
 });
 
 describe("every section the index names reads back", () => {

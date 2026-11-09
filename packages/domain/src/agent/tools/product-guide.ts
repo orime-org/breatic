@@ -75,7 +75,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
     ],
   },
-  { group: "Timeline", sections: [["Timeline spaces", "adding videos to a timeline and arranging them"]] },
+  { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
   { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks and the view in a 3D space"]] },
 ];
 
