@@ -431,7 +431,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 
   it("answers taste with two or three clearly different takes, lists later steps in words with their cost, proposes them only after the pick, never alongside the takes, never as a list of options", () => {
     const taste = bullet("- Taste with no right answer", "- When what only the user knows and a taste");
-    expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result");
+    expect(taste).toContain("make two or three clearly different takes at the first step where it decides the result, differing in every taste still open, say how they differ");
     expect(taste).toContain("list the later steps in words with their rough cost, and propose them only once they have picked one, never alongside the takes.");
     expect(taste).toContain("A taste is never asked as a list of options to pick from; ask it in words only when no take can be made without it.");
     expect(taste).not.toContain("never on the same card as the takes");
@@ -460,14 +460,21 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(text()).toContain("Work of several steps: show the steps, what each makes and what it costs, before anything is spent.");
   });
 
-  it("tries things cheaply, every setting that sets the price at its cheapest on a fast and cheap model", () => {
+  it("tries things cheaply on a fast and cheap model with every price setting at its cheapest, except a length, which is the shortest that still lets them judge", () => {
     expect(text()).toContain("Try things cheaply.");
     expect(tryCheaply()).not.toContain("that still shows the difference");
-    expect(tryCheaply()).toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
+    expect(tryCheaply()).toContain("made at the lowest cost: on a fast and cheap model, with every setting that sets the price at its cheapest value, except a length, which is the shortest that still lets them judge what is being tried.");
+    expect(tryCheaply()).not.toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
   });
 
-  it("makes full quality from the picked take or when asked, sets a setting the user names as named and keeps every other at its cheapest", () => {
-    expect(tryCheaply()).toContain("Full quality is made from the take they picked, keeping it as it is, or straight away when they ask for it. A setting they name is set as they name it; every other setting stays at its cheapest.");
+  it("sets a setting the user names on a take as named, keeps every other as above, and does not make the take a final", () => {
+    expect(tryCheaply()).toContain("On a take, a setting they name is set as they name it and every other setting stays as above; naming one does not make the take a final.");
+    expect(tryCheaply()).not.toContain("A setting they name is set as they name it; every other setting stays at its cheapest.");
+  });
+
+  it("makes a final at full quality from the picked take or when the user asks for a final", () => {
+    expect(tryCheaply()).toContain("A final is made at full quality from the take they picked, keeping it as it is, or straight away when they ask for a final.");
+    expect(tryCheaply()).not.toContain("Full quality is made from the take they picked");
   });
 
   it("names no product tool mechanics: neither the model list nor a card", () => {
@@ -551,10 +558,22 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips");
   });
 
-  it("keeps Video trial shots short unless the user named the length, and on a fast model", () => {
+  it("makes Video trial shots as takes, leaving their cost to Try things cheaply", () => {
     const para = paragraphs().get("Video") ?? "";
-    expect(para).toContain("trial shots short unless they named the length, and on a fast model;");
+    expect(para).toContain("trial shots made as takes;");
+    expect(para).not.toContain("trial shots short unless they named the length");
     expect(para).not.toContain("trial shots short and on a fast model");
+  });
+
+  it("brings the picked Pictures take to full quality from itself, leaving the takes' cost to Try things cheaply", () => {
+    const para = paragraphs().get("Pictures") ?? "";
+    expect(para).toContain("the picked take brought to full quality from itself");
+    expect(para).not.toContain("takes at the lowest resolution");
+  });
+
+  it("makes a clip the Timeline lacks as a video on the Canvas", () => {
+    const para = paragraphs().get("Timeline") ?? "";
+    expect(para).toContain("Craft: the clips, as for video, a clip they lack made as a video on the Canvas, and the steps for them to place and trim the clips.");
   });
 
   // The template guard: a new Space type or a new model medium has to be
