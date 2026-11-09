@@ -24,7 +24,7 @@ export type SceneCommand =
   | { type: 'delete'; ids: readonly string[] }
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
-  | { type: 'pose'; id: string; set: Readonly<Record<string, readonly number[]>>; clear: readonly string[] | 'all' };
+  | { type: 'pose'; id: string; set: Readonly<Record<string, readonly number[]>>; replace: boolean };
 
 export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate';
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
@@ -191,12 +191,9 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
     if (!object) return { ok: false, reason: invalidIds.has(command.id) ? 'invalid' : 'missing' };
     if (object.locked) return { ok: false, reason: 'locked' };
     const set = ScenePoseSchema.safeParse(command.set);
-    if (!set.success || (command.clear !== 'all' && !command.clear.every((key) => typeof key === 'string'))) {
-      return { ok: false, reason: 'invalid' };
-    }
+    if (!set.success) return { ok: false, reason: 'invalid' };
     const current: ScenePose = object.pose ?? {};
-    const cleared = (command.clear === 'all' ? Object.keys(current) : command.clear)
-      .filter((key) => key in current && !(key in set.data));
+    const cleared = command.replace ? Object.keys(current).filter((key) => !(key in set.data)) : [];
     const next: Record<string, readonly number[]> = { ...current, ...set.data };
     cleared.forEach((key) => { delete next[key]; });
     if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };

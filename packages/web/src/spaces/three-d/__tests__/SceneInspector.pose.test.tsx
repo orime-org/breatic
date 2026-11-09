@@ -145,7 +145,7 @@ describe('pose commands (inner#1692)', () => {
     const execute = vi.spyOn(session, 'execute');
     fireEvent.click(screen.getByTestId(`scene-pose-preset-${name}`));
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: POSE_PRESETS[name], clear: 'all' });
+    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: POSE_PRESETS[name], replace: true });
     expect(committedPose(doc)).toEqual(POSE_PRESETS[name]);
     // Position and rotation stay where they were.
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)).toMatchObject({ position: [0, 0, 0], rotation: [0, 0, 0, 1] });
@@ -158,7 +158,7 @@ describe('pose commands (inner#1692)', () => {
     const execute = vi.spyOn(session, 'execute');
     fireEvent.click(screen.getByTestId('scene-pose-reset'));
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: {}, clear: 'all' });
+    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: {}, replace: true });
     expect(committedPose(doc)).toEqual({});
   });
 
@@ -166,7 +166,7 @@ describe('pose commands (inner#1692)', () => {
     const { doc, session } = setup({ states: new Map<string, SkeletonState>([[ID, 'other']]) });
     const execute = vi.spyOn(session, 'execute');
     fireEvent.click(screen.getByTestId('scene-pose-reset'));
-    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: {}, clear: 'all' });
+    expect(execute).toHaveBeenCalledWith({ type: 'pose', id: ID, set: {}, replace: true });
     expect(committedPose(doc)).toEqual({});
   });
 

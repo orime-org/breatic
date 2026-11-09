@@ -47,7 +47,7 @@ const PoseSection = React.memo(function PoseSection({ objectId, state, mutable, 
     {state === 'none' ? <p className='text-xs text-muted-foreground' data-testid='scene-pose-no-skeleton'>{t('spaces.threeD.pose.noSkeleton')}</p> : <>
       {state === 'humanoid'
         ? <div className='flex flex-wrap gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={!mutable}
-          data-testid={`scene-pose-preset-${name}`} onClick={() => session.execute({ type: 'pose', id: objectId, set: POSE_PRESETS[name], clear: 'all' })}>
+          data-testid={`scene-pose-preset-${name}`} onClick={() => session.execute({ type: 'pose', id: objectId, set: POSE_PRESETS[name], replace: true })}>
           {t(`spaces.threeD.pose.${name}`)}</Button>)}</div>
         : <p className='text-xs text-muted-foreground' data-testid='scene-pose-humanoid-only'>{t('spaces.threeD.pose.humanoidOnly')}</p>}
       <div className='flex items-center justify-between gap-3'>
@@ -55,7 +55,7 @@ const PoseSection = React.memo(function PoseSection({ objectId, state, mutable, 
         <Switch aria-labelledby={labelId} checked={jointMode} disabled={!mutable} data-testid='scene-pose-joint-mode' onCheckedChange={onJointModeChange} />
       </div>
       <Button variant='outline' size='compact' disabled={!mutable} data-testid='scene-pose-reset'
-        onClick={() => session.execute({ type: 'pose', id: objectId, set: {}, clear: 'all' })}>{t('spaces.threeD.pose.reset')}</Button>
+        onClick={() => session.execute({ type: 'pose', id: objectId, set: {}, replace: true })}>{t('spaces.threeD.pose.reset')}</Button>
     </>}
   </section>;
 });

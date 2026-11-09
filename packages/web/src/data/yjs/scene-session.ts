@@ -408,7 +408,7 @@ export class SceneSession {
  */
 function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
   const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
-  return { type: 'pose', id, set, clear: [] };
+  return { type: 'pose', id, set, replace: false };
 }
 
 const sessions = createDocScopedCache<SceneSession>(

@@ -177,7 +177,7 @@ describe('joint drag release (inner#1692 section 5.2, acceptance 7)', () => {
     deliver(state.doc, peer);
     begin(state);
     state.session.previewGesture([{ id: ID, pose: { ...START_POSE, 'h:leftUpperArm': Q_HALF } }]);
-    applySceneCommand(peer, { type: 'pose', id: ID, set: { 'h:rightUpperArm': Q_Z180, 'h:spine': Q_NEG_HALF }, clear: [] }, Symbol(), true);
+    applySceneCommand(peer, { type: 'pose', id: ID, set: { 'h:rightUpperArm': Q_Z180, 'h:spine': Q_NEG_HALF }, replace: false }, Symbol(), true);
     deliver(peer, state.doc);
     expect(state.session.getSnapshot().gestureActive).toBe(true);
     // The draft still carries the drag-start value of the bone the peer changed.
