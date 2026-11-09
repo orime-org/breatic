@@ -740,6 +740,44 @@ describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-
   });
 });
 
+// Frames-split §5.4 parallel stage: the composite chunks advance together, and the composite settles only once none still runs,
+// so a running chunk's object is recorded and pinned with the run; after a chunk failed for good no chunk opens a next attempt.
+describe("the lip-sync composite chunks settle together (frames-split §5.4; DD §7.2 step 6)", () => {
+  it("LC12 a composite chunk failed for good waits for a running chunk, whose object is pinned, and no chunk opens a next attempt after it", async () => {
+    const layout = { ...LAYOUT, composite: [{ start: 0, end: 17 }, { start: 17, end: 34 }, { start: 34, end: 50 }] };
+    const f = await seed({ layout, stageJobs: plannedStageJobs(layout), sharedStepKeys: lipsyncSharedStepKeys(PLAN, layout.composite.length, CLIPS) });
+    const shared = f.execution.sharedStepKeys as Record<string, string>;
+    /**
+     * A composite chunk attempt's job id.
+     * @param k - The chunk.
+     * @param attempt - The attempt.
+     * @returns The id.
+     */
+    const job = (k: number, attempt: number): string => `${f.execution.taskId}:${shared[`composite:${k}`]}:a${attempt}`;
+    for (const k of [0, 1, 2]) scripted.set(job(k, 1), { schemaVersion: 2, state: "running" });
+    const lipSync = await runner();
+    /**
+     * One pickup of the real runner.
+     * @returns The output's result once it ended.
+     */
+    const pickup = async (): Promise<Record<string, unknown> | undefined> => {
+      try { return (await lipSync(f.execution, f.userId, f.deadlineAt)).results.get(0); } catch (error) {
+        if (!(error instanceof StillRunning)) throw error;
+        return undefined;
+      }
+    };
+    for (let at = 0; at < 30 && ![0, 1, 2].every((k) => submitted.some((sent) => sent.jobId === job(k, 1))); at += 1) expect(await pickup()).toBeUndefined();
+    // Chunk 0 fails on every attempt and chunk 2's first attempt fails while chunk 1 still runs: the run does not end.
+    scripted.delete(job(0, 1)); scripted.set(job(2, 1), failedReport());
+    failJob = (request) => request.jobId.startsWith(`${f.execution.taskId}:${shared["composite:0"]}:`);
+    expect(await pickup()).toBeUndefined();
+    scripted.delete(job(1, 1));
+    expect(await pickup()).toMatchObject({ status: "failed", error: { shared: { step: "composite" } } });
+    expect(submitted.map((sent) => sent.jobId)).not.toContain(job(2, 2));
+    expect(await pinned(f.execution.taskId)).toContain(submitted.find((sent) => sent.jobId === job(1, 1))!.outputs[0]!.storageKey);
+  });
+});
+
 // Worker AGENTS.md "Upstream field names are mapped in one place": the track and gen bodies are built by
 // `providers/upstream-body.ts` from each param's `upstream` in the model yaml, so renaming a declared field in the catalog
 // renames the submitted key (§97 D25-8). `sync_mode` is declared on `sync-lipsync-3`.

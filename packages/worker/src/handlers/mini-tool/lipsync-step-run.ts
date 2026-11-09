@@ -28,7 +28,7 @@ import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlan
 import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
-  advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
+  advanceChunks, advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -341,40 +341,27 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
  * @throws {Error} When persistence or IO fails.
  */
 async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category }> {
-  const keys: string[] = [];
-  let running = false;
   // A transparent original's chunks are VP9 WebM with alpha, as its stitch is (§7.17 lipsync_composite row, §4.3).
   const ledger = await ledgerOf(execution, deadlineAt);
   const target = segmentTarget(ledger, execution.container.encode);
   // The prepared video the tracks and face tables are in, as the preparation encoded it (§5.3 model-input row).
   const { width, height, displayRect } = modelInputTarget(ledger, execution.container.encode);
-  for (const [chunk, window] of execution.layout.composite.entries()) {
-    let ended: StepEnded;
-    const stepKey = sharedKeyOf(execution, `composite:${chunk}`);
-    try {
-      ended = await advanceContainer(stepRun(execution), { stepKey, contentType: target.format === "webm-vp9" ? "video/webm" : "video/mp4",
-        failed: () => ({ failed: "failed" }), build: async () => {
-          const persons = await Promise.all(execution.persons.map(async (person, at) => ({
-            ids: { result: inputOf(RESULT, at), faces: inputOf(FACES, at), track: inputOf(TRACK, at) },
-            keys: { result: await objectOf(execution, person.personId, "gen", userId, deadlineAt), faces: await objectOf(execution, person.personId, "faces", userId, deadlineAt),
-              track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
-          return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
-            entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target,
-            timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
-            rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather, prepared: { width, height, displayRect } },
-          inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
-            .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
-        } }, deadlineAt);
-    } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      running = true;
-      continue;
-    }
-    if (!("key" in ended)) return { failed: ended.failed as Category };
-    keys.push(ended.key);
-  }
-  if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  return { keys };
+  // Every chunk advances in each pickup and the composite settles once none still runs (frames-split §5.4 parallel stage).
+  const ended = await advanceChunks(stepRun(execution), execution.layout.composite.map((window, chunk): ContainerStep => ({
+    stepKey: sharedKeyOf(execution, `composite:${chunk}`), contentType: target.format === "webm-vp9" ? "video/webm" : "video/mp4",
+    failed: () => ({ failed: "failed" }), build: async () => {
+      const persons = await Promise.all(execution.persons.map(async (person, at) => ({
+        ids: { result: inputOf(RESULT, at), faces: inputOf(FACES, at), track: inputOf(TRACK, at) },
+        keys: { result: await objectOf(execution, person.personId, "gen", userId, deadlineAt), faces: await objectOf(execution, person.personId, "faces", userId, deadlineAt),
+          track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
+      return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
+        entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target,
+        timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
+        rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather, prepared: { width, height, displayRect } },
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
+        .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
+    } })), deadlineAt);
+  return "keys" in ended ? ended : { failed: ended.failed as Category };
 }
 
 /**
