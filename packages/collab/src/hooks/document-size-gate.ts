@@ -9,10 +9,14 @@
  *
  * The judgement reads only the record's current size and the update's shape,
  * synchronously, so connections judged one after another see what the ones
- * before them added. A refused message is not applied and Hocuspocus closes
- * that document's connection with the error's reason; the inbound filter then
- * drops, and step 0 refuses, what the client had already queued behind it
- * until it authenticates the document again. A connection already out of the
+ * before them added. A message `beforeSync` refuses is not applied: the gate
+ * marks the socket and document refused, closes that document's connection
+ * with the size-limit reason and throws, and Hocuspocus drops what the
+ * connection had queued. A refusal by the transaction listeners comes after
+ * the update applied and does not throw, so what is already queued behind it
+ * reaches step 0 and is refused there. Either way the inbound filter drops
+ * later frames until the client authenticates the document again. A
+ * connection already out of the
  * document (closed meanwhile, its queue still draining) is refused unmarked:
  * the mark is per socket and document, so it would land on the socket's next
  * connection to the document, or outlive a closed socket.
