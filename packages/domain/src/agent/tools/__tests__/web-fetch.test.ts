@@ -603,6 +603,35 @@ describe("where a slice is cut, by the links' own positions (plan §16 rows 1 an
     expect(first!.links).toEqual(["https://a.test/x_y/more"]);
   });
 
+  // Plan §17 row 1: a link that runs on into non-ASCII text has two
+  // spellings that start at one place, the whole run and the run cut at its
+  // first non-ASCII character; the cut moves to the farthest end of the links
+  // that cross it, so the slice lists both, as reading the whole page does.
+  it("moves a cut inside the ASCII part of a Markdown link with a Chinese path to the end of the whole path", async () => {
+    const text = `${"w".repeat(100)} [\u5317\u4eac](https://baike.baidu.com/item/\u5317\u4eac) after text more`;
+    const at = text.indexOf("https");
+    const full = "https://baike.baidu.com/item/\u5317\u4eac";
+    expect(at + "https://baike.baidu.com/item/".length).toBeGreaterThan(130);
+
+    const [first] = await slicesOf(text, 130);
+
+    expect(first).toMatchObject({ start: 0, end: at + full.length, next_start: at + full.length });
+    expect(first!.text?.endsWith(full)).toBe(true);
+    expect(first!.links).toContain(full);
+    expect(first!.links).toContain("https://baike.baidu.com/item/");
+  });
+
+  it("moves a cut inside a link that runs on into Chinese prose to the end of the run, listing both spellings", async () => {
+    const run = "https://a.test/path\u7ee7\u7eed\u8bf4\u660e\u8fd9\u4e00\u6bb5\u6587\u5b57";
+    const text = `${"w".repeat(100)} \u89c1${run}\u3002\u540e\u9762`;
+    const at = text.indexOf("https");
+
+    const [first] = await slicesOf(text, 110);
+
+    expect(first).toMatchObject({ start: 0, end: at + run.length, next_start: at + run.length });
+    expect(first!.links).toEqual([run, "https://a.test/path"]);
+  });
+
   it("cuts every page so that the slices cover it, none empty, no link split, and every cut not inside a link at the share", async () => {
     const piece = fc.oneof(
       fc.constantFrom("word", "harbour", "supercalifragilistic", "abc"),
@@ -613,6 +642,9 @@ describe("where a slice is cut, by the links' own positions (plan §16 rows 1 an
         "https://a.test/a\\_b",
         "https://a.test/x\\_y/more",
         "example.com/x",
+        // A link that runs on into Chinese with no space: two spellings, one place.
+        "https://a.test/path\u7ee7\u7eed\u8bf4\u660e",
+        "https://a.test/item/\u5317\u4eac",
       ),
       fc.constantFrom("中文段落", "网页", "资料读取用户"),
     );
@@ -639,7 +671,7 @@ describe("where a slice is cut, by the links' own positions (plan §16 rows 1 an
           const target = from + share;
           const crossing = spans.filter((span) => span.start < target && span.end > target);
           if (crossing.length === 0) expect(to, JSON.stringify({ text, share })).toBe(target);
-          else expect(crossing.map((span) => span.end), JSON.stringify({ text, share })).toContain(to);
+          else expect(to, JSON.stringify({ text, share })).toBe(Math.max(...crossing.map((span) => span.end)));
         }
       }),
       { numRuns: 100 },
@@ -711,14 +743,19 @@ describe("where a slice is cut (plan §13.2 row 9)", () => {
     expect(answer.pages.reduce((sum, page) => sum + (page.text?.length ?? 0), 0)).toBeLessThanOrEqual(100_000);
   });
 
-  it("moves a cut inside an ASCII link only to the first character that is not ASCII", async () => {
+  // Plan §17 row 1 replaces the nearest end this test pinned (§14 row 5): the
+  // link runs on into the Chinese text, so its whole spelling crosses the cut
+  // too, and the cut moves to that spelling's end.
+  it("moves a cut inside the ASCII part of a link that runs on into Chinese to the end of the whole run", async () => {
     const before = "\u4e2d".repeat(90);
-    const full = `${before}https://example.com/guide/install${"\u6587".repeat(200)}`;
+    const run = `https://example.com/guide/install${"\u6587".repeat(200)}`;
+    const full = `${before}${run}\u3002 tail`;
 
     const answer = await fetchWith(turn(), { pages: [{ url: A }] }, reader({ [A]: okPage(full) }));
 
-    const end = before.length + "https://example.com/guide/install".length;
+    const end = before.length + run.length;
     expect(answer.pages[0]).toMatchObject({ start: 0, end, next_start: end });
+    expect(answer.pages[0]!.links).toEqual([run, "https://example.com/guide/install"]);
   });
 
   const LINK = "https://example.com/guide/install";

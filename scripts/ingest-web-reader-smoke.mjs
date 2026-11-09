@@ -14,8 +14,10 @@
 // on after they load to an HTML page past the size limit (by script and by
 // meta refresh), to a slow HTML page (and that slow page read directly), to a
 // text file, to another article, to a missing page, and to a text file and an
-// HTML page past the size limit at addresses with a fragment; and a malformed
-// request to the service itself.
+// HTML page past the size limit at addresses with a fragment; pages that a
+// script in their head replaces with a missing page and with a text file; an
+// article that goes on to a page answering after the settle wait; and a
+// malformed request to the service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -101,7 +103,9 @@ const LEAVES_BY_REFRESH = '<!doctype html><html><head><title>Leaves by refresh</
 // Plan section 16 rows 3 and 4: an article that, once it has loaded, goes on
 // to another document; that document is checked and read as if asked for.
 const goesOnTo = (title, target, how) => {
-  const head = how === 'refresh' ? `<meta http-equiv="refresh" content="0;url=${target}">` : '';
+  const head =
+    how === 'refresh' ? `<meta http-equiv="refresh" content="0;url=${target}">`
+      : how === 'head-replace' ? `<script>location.replace('${target}')</script>` : '';
   const tail = how === 'script' ? `<script>setTimeout(() => { location.href = '${target}'; }, 50);</script>` : '';
   return `<!doctype html><html><head><title>${title}</title>${head}</head><body>${LEAVING_BODY}${tail}</body></html>`;
 };
@@ -223,6 +227,15 @@ const origin = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To text', '/readme.txt#part', 'script'));
   } else if (req.url === '/goes-to-big-at-fragment') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To big', '/big.html#top', 'script'));
+  } else if (req.url === '/head-replace-to-missing') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/missing', 'head-replace'));
+  } else if (req.url === '/head-replace-to-text') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/readme.txt', 'head-replace'));
+  } else if (req.url === '/goes-to-late') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To late', '/late-article', 'script'));
+  } else if (req.url === '/late-article') {
+    // Answers after the reader's settle wait is over.
+    void setTimeout(2500).then(() => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(ARTICLE));
   }
   else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
@@ -381,6 +394,21 @@ try {
   assert.equal(toTextAtFragment.text, PLAIN, `page that goes on to a text file at a fragment: the file's text, got ${JSON.stringify(toTextAtFragment.text)}`);
   assert.ok(toTextAtFragment.finalUrl.endsWith('/readme.txt#part'), `page that goes on to a text file at a fragment: its address, got ${toTextAtFragment.finalUrl}`);
   assert.equal(toBigAtFragment.status, 'too_large', `page that goes on to a big page at a fragment: too_large, got ${toBigAtFragment.status}`);
+  // Plan section 17 rows 2 and 3: what is read is the last document the page
+  // committed, whenever it committed it: a script in the head that replaces
+  // the page before it has loaded, and a page gone on to whose answer comes
+  // only after the settle wait.
+  const { body: replaced } = await read(['/head-replace-to-missing', '/head-replace-to-text']);
+  const [replacedByMissing, replacedByText] = replaced.pages;
+  assert.equal(replacedByMissing.status, 'unreachable', `page replaced in its head by a missing page: unreachable, got ${replacedByMissing.status}`);
+  assert.equal(replacedByText.status, 'ok', `page replaced in its head by a text file: read, got ${replacedByText.status}`);
+  assert.equal(replacedByText.text, PLAIN, `page replaced in its head by a text file: the file's text, got ${JSON.stringify(replacedByText.text)}`);
+  assert.ok(replacedByText.finalUrl.endsWith('/readme.txt'), `page replaced in its head by a text file: its address, got ${replacedByText.finalUrl}`);
+  const { body: late } = await read(['/goes-to-late'], { settleMs: 1000, pageTimeoutMs: 10000 });
+  const [toLate] = late.pages;
+  assert.equal(toLate.status, 'ok', `page that goes on to a page answering late: read, got ${toLate.status}`);
+  assert.ok(toLate.text.replace(/\s+/g, ' ').includes(PARAGRAPH), 'page that goes on to a page answering late: that page');
+  assert.ok(toLate.finalUrl.endsWith('/late-article'), `page that goes on to a page answering late: its address, got ${toLate.finalUrl}`);
   const { body: slowOnes } = await read(['/slow.html', '/goes-to-slow'], { pageTimeoutMs: 5000 });
   assert.equal(slowOnes.pages[0].status, 'too_slow', `slow page read directly: too_slow, got ${slowOnes.pages[0].status}`);
   assert.equal(slowOnes.pages[1].status, 'too_slow', `page that goes on to a slow page: too_slow, got ${slowOnes.pages[1].status}`);
@@ -440,7 +468,8 @@ try {
     'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
     'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
     'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
-    'another article, a missing page, and a text file and a big page at a fragment.');
+    'another article, a missing page, a text file and a big page at a fragment, pages their head replaces with a ' +
+    'missing page and a text file, and a page gone on to that answers late.');
   process.exit(0);
 } catch (error) {
   console.error(error);
