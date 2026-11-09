@@ -45,14 +45,14 @@ const UPRIGHT: ScenePose = { 'h:hips': IDENTITY, 'h:spine': IDENTITY, 'h:head': 
 
 export const POSE_PRESETS: Readonly<Record<'stand' | 'sit' | 'lie' | 'walk' | 'wave', ScenePose>> = {
   stand: { ...UPRIGHT, ...ARMS_DOWN, ...LEGS_STRAIGHT },
-  // Sitting on the ground: thighs forward, hands resting out to the sides.
+  // Sitting on the ground, knees raised and feet flat in front, hands resting out to the sides.
   sit: {
     ...UPRIGHT,
     'h:leftUpperArm': turn('z', -45), 'h:leftLowerArm': IDENTITY, 'h:leftHand': IDENTITY,
     'h:rightUpperArm': turn('z', 45), 'h:rightLowerArm': IDENTITY, 'h:rightHand': IDENTITY,
-    'h:leftUpperLeg': turn('x', -90), 'h:leftLowerLeg': IDENTITY, 'h:leftFoot': IDENTITY,
-    'h:rightUpperLeg': turn('x', -90), 'h:rightLowerLeg': IDENTITY, 'h:rightFoot': IDENTITY,
-    [SCENE_POSE_HIPS_KEY]: [0, -0.885, 0],
+    'h:leftUpperLeg': turn('x', -150), 'h:leftLowerLeg': turn('x', 100), 'h:leftFoot': turn('x', 50),
+    'h:rightUpperLeg': turn('x', -150), 'h:rightLowerLeg': turn('x', 100), 'h:rightFoot': turn('x', 50),
+    [SCENE_POSE_HIPS_KEY]: [0, -0.913, 0],
   },
   // Lying on the back, arms along the body.
   lie: {
@@ -69,10 +69,10 @@ export const POSE_PRESETS: Readonly<Record<'stand' | 'sit' | 'lie' | 'walk' | 'w
     // The bent knees shorten the legs; the hips come down so the feet keep the ground.
     [SCENE_POSE_HIPS_KEY]: [0, -0.032, 0],
   },
-  // The right hand raised above the head.
+  // The right hand raised above the head, the forearm clear of it.
   wave: {
     ...UPRIGHT, ...LEGS_STRAIGHT,
     'h:leftUpperArm': turn('z', -75), 'h:leftLowerArm': turn('y', -10), 'h:leftHand': IDENTITY,
-    'h:rightUpperArm': turn('z', -100), 'h:rightLowerArm': turn('z', -20), 'h:rightHand': IDENTITY,
+    'h:rightUpperArm': turn('z', -95), 'h:rightLowerArm': turn('z', -20), 'h:rightHand': IDENTITY,
   },
 };
