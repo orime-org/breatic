@@ -12,8 +12,11 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPgClient, initCore, loadLocales } from "@breatic/core";
-import { miniToolExecutionService, type MiniToolExecutionCompletion } from "@domain/index.js";
+import { createPgClient, getNodeTaskConfig, initCore, loadLocales } from "@breatic/core";
+import {
+  miniToolExecutionService, upstreamStepRepo, taskRepo, beginMiniToolStepAttempt, recordMiniToolStepIdentity, recordMiniToolStepResult,
+  type MiniToolExecutionCompletion,
+} from "@domain/index.js";
 import { seedExecution, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
 
 let pg: ReturnType<typeof createPgClient>;
@@ -53,6 +56,23 @@ async function pinned(f: ExecutionFixture, withAnalysis = false): Promise<{ sour
   await insert("prepared", f.taskId, keys.prepared, [keys.prepared]);
   if (withAnalysis) await insert("analysis", randomUUID(), null, [keys.full, keys.table]);
   return keys;
+}
+
+/**
+ * Persist the original provider-returned step and its canonical receipt, so a late registration is accepted.
+ * @param f - The fixture.
+ * @throws {Error} When a real step, result or receipt write fails.
+ */
+async function returned(f: ExecutionFixture): Promise<void> {
+  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]);
+  if (!step) throw new Error("Fixture step disappeared");
+  const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing fixture task");
+  const attemptId = randomUUID(); const predictionId = "pin-release-prediction";
+  await beginMiniToolStepAttempt({ taskId: f.taskId, stepId: step.id, attemptId, deadlineAt: task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, requestBody: { ...f.plan.body }, chargeTo: "user" });
+  await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: step.id, attemptId, predictionId });
+  await recordMiniToolStepResult({ taskId: f.taskId, stepId: step.id, identity: { kind: "provider", provider: "wavespeed", predictionId }, outcome: "done", result: ["https://provider.example.test/late.webm"] },
+    { kind: "generate", parse: () => ({ providerURL: "https://provider.example.test/late.webm" }) });
+  await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);
 }
 
 /**
@@ -120,6 +140,18 @@ describe("terminal release (design §7.15 可重试结束)", () => {
     await miniToolExecutionService.finishMiniToolExecution(f.taskId, failed);
     expect(await livePins(f)).toEqual(["execution", "prepared"]);
     expect(await queued(keys.source)).toEqual([]);
+  });
+
+  // frames-split §7.15: a failed run whose only failed output is later registered late stays failed but has no failed
+  // output left, so nothing can retry it and the late commit releases its pins.
+  it("TR07 a late registration of a failed run's only failed output releases the pins and registers their keys", async () => {
+    const f = await seedExecution(pg, "running"); const keys = await pinned(f); await returned(f);
+    await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, true));
+    expect(await livePins(f)).toEqual(["execution", "prepared"]);
+    const late = (await miniToolExecutionService.finishMiniToolExecution(f.taskId, { ...completion(f, false), expectedVersion: 1 })).record;
+    expect(late).toMatchObject({ status: "failed", outputs: [{ result: f.registered, late: true }] });
+    expect(await livePins(f)).toEqual([]);
+    expect(await queued(keys.source)).toEqual([keys.full, keys.prepared, keys.table].sort());
   });
 
   it("TR04 replaying the completed terminal commit releases and registers nothing more", async () => {
