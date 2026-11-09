@@ -25,6 +25,7 @@ import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { serverMessage } from '@web/data/api/server-message';
 import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { TIMELINE_MAX_PIXELS_PER_FRAME, TIMELINE_TRACK_HEADER_PX, timelineMinZoom } from '@web/spaces/timeline/timeline-zoom';
@@ -447,6 +448,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const closeDraft = React.useCallback((): void => dispatchDraft({ type: 'close' }), []);
   const execute = React.useCallback((): void => {
     if (draft.status !== 'drafting' || readOnly) return;
+    // The run lands a receipt and a placeholder in this Space: a Space that
+    // cannot take them starts no run (inner#1790).
+    if (!checkAdd(name).ok) return;
     const { input } = draft;
     const actionId = newId();
     const fps = document.settings.fps;
@@ -470,7 +474,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       setOpenRow(execution.id);
       refreshTasks();
     });
-  }, [draft, readOnly, document.settings.fps, frame, spaceId, projectId, land, refreshTasks, t]);
+  }, [draft, readOnly, name, document.settings.fps, frame, spaceId, projectId, land, refreshTasks, t]);
   const toggleList = React.useCallback((): void => setListOpen((open) => !open), []);
   const closeList = React.useCallback((): void => setListOpen(false), []);
   const toggleRow = React.useCallback((id: string): void => setOpenRow((current) => current === id ? null : id), []);
