@@ -721,13 +721,14 @@ describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)',
     expect(settle.mock.invocationCallOrder[0]).toBeLessThan((vi.mocked(fetch).mock.invocationCallOrder[rec])!);
   });
 
-  it('AT02 an attempt whose usage is not measured yet keeps the job waiting and records nothing', async () => {
+  it('AT02 an ended attempt whose container reported no CPU time is recorded at its provisioned vCPU over its wall time', async () => {
     answer = inFlight();
-    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'done', { wallMs: 90_000, cpuUsec: null }));
+    const usage = { wallMs: 90_000, cpuUsec: null };
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'done', usage));
     reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
-    expect(createUsageRecorder).not.toHaveBeenCalled();
-    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(false);
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ costUsd: containerCostUsd(usage, PRICING.standard4.size, PRICING.standard4.prices) }));
+    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
   });
 
   it('AT03 a failed attempt is reported Fail with its reason and measured usage', async () => {
@@ -761,11 +762,20 @@ describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)',
     expect(actions('advance_stage')).toEqual([]);
   });
 
-  it('AT06 the job is not over while an attempt with usage is unrecorded', async () => {
+  it('AT06 a failed candidate records its ended attempt\'s usage before the job ends', async () => {
     answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
       units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
     reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: null }));
-    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
+  });
+
+  it('AT06b an ended attempt whose usage is unknown (its container never started or vanished unmeasured) holds nothing back and records nothing', async () => {
+    answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
+      units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', null));
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(createUsageRecorder).not.toHaveBeenCalled();
   });
 
   it('AT07 the basic execution\'s own usage is recorded once under `video-presentation:<jobId>` at multiplier 0 and acknowledged after it settles', async () => {

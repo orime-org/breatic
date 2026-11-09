@@ -22,6 +22,7 @@ vi.mock("@breatic/core", async (original) => ({
   getMiniToolsConfig: () => { throw new Error("Lookup must use frozen prices"); },
 }));
 
+import { containerCostUsd } from "@breatic/domain";
 import { lookupMiniToolConsumption } from "../lookup-consumption.js";
 
 const bound = { signal: new AbortController().signal, timeoutMs: 1234 };
@@ -109,13 +110,27 @@ describe("original mini-tool expense lookup", () => {
   });
 
   it.each([null, { schemaVersion: 2, state: "starting" }, { schemaVersion: 2, state: "running" },
-    { schemaVersion: 2, state: "failed", outputs: [], reason: "internal", usage: null },
-    { schemaVersion: 2, state: "failed", outputs: [], reason: "internal", usage: { wallMs: 1000, cpuUsec: null } },
-  ])("keeps an unmeasured original container report pending: %j", async (report) => {
+  ])("keeps an unfinished original container report pending: %j", async (report) => {
     read.mockResolvedValue(report);
     expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({ state: "pending", reason: expect.any(String) });
     expect(read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan, bound);
     expect(send).not.toHaveBeenCalled(); expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("settles an ended attempt whose usage is unknown at zero: its container never started or vanished unmeasured", async () => {
+    const report = { schemaVersion: 2, state: "failed", outputs: [], reason: "internal", usage: null };
+    read.mockResolvedValue(report);
+    expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toEqual({ state: "known", costUsd: 0, costSource: "computed", raw: report });
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it.each(["done", "failed"])("charges an ended %s attempt without CPU time at its provisioned vCPU over its wall time", async (state) => {
+    const usage = { wallMs: 1000, cpuUsec: null };
+    read.mockResolvedValue({ schemaVersion: 2, state, outputs: [], ...(state === "failed" ? { reason: "internal" } : {}), usage });
+    const policy = container.containerPricing!;
+    expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({
+      state: "known", costUsd: containerCostUsd(usage, policy.size, policy.prices), costSource: "computed",
+    });
   });
 
   it.each(["done", "failed"])("uses frozen pricing for measured %s usage after the old task deadline", async (state) => {

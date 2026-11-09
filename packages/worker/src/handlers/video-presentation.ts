@@ -200,16 +200,6 @@ function advanceStage(pickup: Pickup, stage: 'dispatch_copy' | 'encode' | 'stitc
 }
 
 /**
- * Whether a report carries usage that is fully measured.
- * @param usage - The report's usage.
- * @returns True when both wall and CPU time are known.
- * @throws {never} Never.
- */
-function measured(usage: { wallMs: number; cpuUsec: number | null } | null): usage is { wallMs: number; cpuUsec: number } {
-  return usage !== null && usage.cpuUsec !== null;
-}
-
-/**
  * Settle one unit: report the latest attempt's result and record every measured attempt usage not yet recorded.
  * @param pickup - The pickup.
  * @param unit - The unit.
@@ -245,9 +235,11 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
     } else {
       report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, untilDeadlineIfAhead(pickup.capability.deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms));
     }
-    const usage = report !== null && (report.state === 'done' || report.state === 'failed') ? report.usage : null;
-    // An attempt's usage counts once it is measured; until then the job is not over (§7.1.1 `Rec`).
-    if (!measured(usage)) { again = true; continue; }
+    const usage = report !== null && (report.state === 'done' || report.state === 'failed') ? report.usage : undefined;
+    // An unfinished attempt holds the job (§7.1.1 `Rec`). An ended one with no usage had a container that never
+    // started or vanished unmeasured; there is nothing to record and nothing to wait for.
+    if (usage === undefined) { again = true; continue; }
+    if (usage === null) continue;
     await recordUsage(pickup, attempt.jobId, usage, pickup.frozen.pricing.standard4);
     await reportUnit(pickup, unit, { kind: 'Rec', attempt: attempt.attempt });
   }

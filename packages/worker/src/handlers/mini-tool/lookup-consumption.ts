@@ -101,7 +101,9 @@ export async function lookupMiniToolConsumption(input: MiniToolConsumptionLookup
   }
   const report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, plan, bound);
   if (report === null || report.state === "starting" || report.state === "running") return { state: "pending", reason: "container-report-pending" };
-  if (report.usage === null || report.usage.cpuUsec === null) return { state: "pending", reason: "container-usage-unmeasured" };
+  // An ended attempt with no usage had a container that never started or vanished without measuring itself: the
+  // failure is ours, so it costs the user nothing. Missing CPU time alone is priced from the provisioned vCPU.
+  if (report.usage === null) return { state: "known", costUsd: 0, costSource: "computed", raw: report };
   const policy = consumption.containerPricing!;
   const costUsd = containerCostUsd(report.usage, policy.size, policy.prices);
   if (!Number.isFinite(costUsd) || costUsd < 0) return { state: "pending", reason: "container-amount-invalid" };
