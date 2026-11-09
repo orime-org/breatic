@@ -17,9 +17,7 @@
  * (it holds no text, so there is nothing to turn into one), and the submenu
  * draws it after these, in a group of its own (`DocumentBlockMenu.tsx`).
  *
- * Everything the product has not built yet — tables (#15), uploaded media
- * (#16 / #17), generated media (#20) — is absent by not being here (A15). A
- * row is added when the thing behind it exists, so the menu never offers
+ * A row is added when the thing behind it exists, so the menu never offers
  * something that cannot happen.
  */
 

@@ -57,6 +57,35 @@ vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
   };
 });
 
+/** A shot list as the storyboard tool answers: eight columns, a header and two shots. */
+const SHOT_LIST = [
+  '| Shot | Size | Angle | Movement | On screen | Sound | Seconds | Notes |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| 1 | Wide | Eye level | Static | A girl rides through fog | Bell | 4 | Dawn |',
+  '| 2 | Close-up | Low | Push in | Bread handed over | Thanks | 3 | Warm |',
+].join('\n');
+
+/** Every frame the preview put around a table, and whether it was taken down. */
+const framed = vi.hoisted(() => ({ roots: [] as { unmounted: boolean }[] }));
+
+vi.mock('@web/spaces/document/document-table-nodes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/document/document-table-nodes')>();
+  return {
+    ...actual,
+    frameStaticTable: (...args: Parameters<typeof actual.frameStaticTable>) => {
+      const root = actual.frameStaticTable(...args);
+      const seen = { unmounted: false };
+      const unmount = root.unmount.bind(root);
+      root.unmount = () => {
+        seen.unmounted = true;
+        unmount();
+      };
+      framed.roots.push(seen);
+      return root;
+    },
+  };
+});
+
 let toastError: MockInstance<typeof toast.error>;
 
 beforeEach(() => {
@@ -65,6 +94,7 @@ beforeEach(() => {
   // Shown at once unless a case is about the reading pace.
   config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 1_000_000 });
   calls = fakeStreams(stream);
+  framed.roots = [];
   toastError = vi.spyOn(toast, 'error').mockImplementation(() => '');
 });
 
@@ -559,6 +589,35 @@ describe('how long a session lives', () => {
     expect(shownButtons()).toContain('doc-ai-replace');
   });
 
+  it('shows its answer and buttons as they were, not written out again, after its tab was hidden and shown again', async () => {
+    // At a reading pace a panel drawn anew would write the answer out again
+    // and offer insert only once it had.
+    config.mockResolvedValue({ selectionMaxChars: 4000, contextMaxChars: 20000, revealCharsPerSecond: 40 });
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['Hi there.'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    act(() => {
+      setHidden(true);
+    });
+    act(() => {
+      setHidden(false);
+    });
+
+    expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(previewText()).toContain('Hi there.');
+    }, { timeout: 100 });
+  });
+
   it('keeps drawing the words that come after its tab was hidden and shown again', async () => {
     const editor = openSharedBody('<p>hello world</p>');
     const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
@@ -871,6 +930,193 @@ describe('the preview', () => {
     expect(preview.textContent).toContain('item one');
   });
 
+  it('puts a table in the body\'s own frame, which scrolls it sideways, the block attributes on the frame', async () => {
+    const { call } = await polishing();
+
+    await streams(call, ['A line.\n\n| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('table')).not.toBeNull();
+    });
+    const table = preview.querySelector('table')!;
+    const frame = table.closest('.doc-table');
+    expect(frame).not.toBeNull();
+    expect(frame!.getAttribute('data-node-type')).toBe('docTable');
+    expect(table.hasAttribute('data-node-type')).toBe(false);
+    expect(table.closest('.doc-table-scroller [data-radix-scroll-area-viewport]')).not.toBeNull();
+    expect(preview.textContent).toContain('A line.');
+  });
+
+  it('leaves a table and where it was scrolled sideways alone when the body changes elsewhere', async () => {
+    const { editor, call } = await polishing('<p>hello world</p><p>second line</p>');
+    await streams(call, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const first = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    first.scrollLeft = 120;
+
+    // A collaborator's edit anywhere in the body reads the answer again.
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 2));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    const now = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]');
+    expect(now).toBe(first);
+    expect(now!.scrollLeft).toBe(120);
+  });
+
+  it('keeps where the preview and its table were scrolled while its Space tab is hidden and shown again', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    const setHidden = mountDocumentEditor(editor, false, 'project-1', true);
+    await selectAgain(editor, 0, 5);
+    await press('refine');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| Shot | Size |\n| --- | --- |\n| 1 | Wide |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelector('.doc-table [data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
+    const frame = preview.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')!;
+    const outer = preview.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    frame.scrollLeft = 120;
+    fireEvent.scroll(frame);
+    outer.scrollTop = 40;
+    fireEvent.scroll(outer);
+
+    act(() => {
+      setHidden(true);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      setHidden(false);
+    });
+
+    await waitFor(() => {
+      const shown = screen.getByTestId('doc-ai-preview');
+      expect(shown.querySelector<HTMLElement>('.doc-table [data-radix-scroll-area-viewport]')?.scrollLeft).toBe(120);
+      expect(shown.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollTop).toBe(40);
+    });
+  });
+
+  it('takes down the frames it drew once they are drawn again and once the dialog closes', async () => {
+    const { call } = await polishing();
+    await streams(call, ['| Shot |\n| --- |\n| 1 |']);
+    await waitFor(() => {
+      expect(framed.roots).toHaveLength(1);
+    });
+    await streams(call, ['\n| 2 |'], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-preview').textContent).toContain('2');
+    });
+    expect(framed.roots.length).toBeGreaterThan(1);
+    // Each draw holds one table: every frame but the latest is already gone.
+    await waitFor(() => {
+      expect(framed.roots.slice(0, -1).every((root) => root.unmounted)).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-close'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(framed.roots.every((root) => root.unmounted)).toBe(true);
+    });
+  });
+
+  it('draws a shot list of eight columns at widths that fit what each column holds', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+
+    await streams(calls[0]!, [SHOT_LIST], true);
+
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(
+      ['64px', '88px', '88px', '88px', '220px', '180px', '64px', '140px'],
+    );
+  });
+
+  it('leaves a shot list of another width at the default column width', async () => {
+    await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, ['| a | b |\n| --- | --- |\n| 1 | 2 |'], true);
+    const preview = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(preview.querySelectorAll('table col')).toHaveLength(2);
+    });
+    expect([...preview.querySelectorAll<HTMLElement>('table col')].map((col) => col.style.width)).toEqual(['', '']);
+  });
+
+  it('leaves an eight-column table from another command at the default column width', async () => {
+    const { call } = await polishing();
+    await streams(call, [SHOT_LIST], true);
+    const again = screen.getByTestId('doc-ai-preview');
+    await waitFor(() => {
+      expect(again.querySelectorAll('table col')).toHaveLength(8);
+    });
+    expect([...again.querySelectorAll<HTMLElement>('table col')].every((col) => col.style.width === '')).toBe(true);
+  });
+
+  it('shows a shot list from its header once it is written', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      await selected('<p>hello world</p>', 0, 5);
+      await press('storyboard');
+      await waitFor(() => {
+        expect(calls).toHaveLength(1);
+      });
+      await streams(calls[0]!, [SHOT_LIST], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual({ top: 0 });
+      });
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
+  it('leaves the answer of another command where it ended', async () => {
+    const saved = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    try {
+      const { call } = await polishing();
+      await streams(call, ['Hello.'], true);
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+      });
+      expect(scrollTo.mock.calls.some(([arg]) => (arg as { top?: number } | undefined)?.top === 0)).toBe(false);
+    } finally {
+      if (saved === undefined) delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+      else Object.defineProperty(Element.prototype, 'scrollTo', saved);
+    }
+  });
+
   it('reads the answer again for body changes once it is in, never for a caret that only moves', async () => {
     const editor = await selected('<p>hello</p><p>world</p>', 0, 10);
     await press('refine');
@@ -951,6 +1197,31 @@ describe('pressing replace and insert (A6)', () => {
   });
   afterEach(() => {
     connection.granted = false;
+  });
+
+  it('insert writes a shot list with its column widths', async () => {
+    const editor = await selected('<p>hello world</p>', 0, 5);
+    await press('storyboard');
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await streams(calls[0]!, [SHOT_LIST], true);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-ai-insert')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('doc-ai-insert'));
+    });
+
+    await waitFor(() => {
+      expect((editor.document as unknown as { type: string }[]).some((block) => block.type === 'docTable')).toBe(true);
+    });
+    const table = (editor.document as unknown as { type: string; children: { children: { props: { colwidth?: unknown } }[] }[] }[])
+      .find((block) => block.type === 'docTable')!;
+    expect(table.children.map((row) => row.children.map((cell) => cell.props.colwidth))).toEqual(
+      Array.from({ length: 3 }, () => [[64], [88], [88], [88], [220], [180], [64], [140]]),
+    );
   });
 
   it('replace writes the answer over the selected words', async () => {

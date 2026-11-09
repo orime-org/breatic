@@ -484,6 +484,7 @@ const commands: fc.Arbitrary<AiCommand> = fc.constantFrom<AiCommand>(
   { id: 'translate', language: 'ja' },
   { id: 'tone', style: 'friendly' },
   { id: 'custom' },
+  { id: 'storyboard' },
 );
 
 const offsets = fc.constantFrom(-1, 0, 0, 0, 1);
