@@ -20,9 +20,7 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
-export { poolStates, type PoolState } from "@core/db/client.js";
 export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
-export { getDatabaseTimeouts } from "@core/config/database.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";

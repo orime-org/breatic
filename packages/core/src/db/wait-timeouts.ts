@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reports each wait that ran out of time (#1435, #1047): a query, transaction
- * or reserve that waited `queue_timeout` for a pooled connection, or a
- * connection attempt that took `connect_timeout`. postgres.js publishes them on
+ * Reports each wait that ran out of time (#1435, #1047): a query or
+ * transaction that waited `queue_timeout` for a pooled connection, or a
+ * connection attempt that took `connect_timeout`. A reserve that times out is
+ * not reported, as postgres.js publishes nothing for it; production code does
+ * not reserve. postgres.js publishes them on
  * Node diagnostics channels; this module turns them into one report per wait,
  * with the state of the main and Yjs pools, for the service entry to log.
  *
@@ -52,6 +54,11 @@ interface ChannelContext {
  * @returns A function that stops the subscription.
  */
 export function onDatabaseWaitTimeout(listener: (event: DatabaseWaitTimeout) => void): () => void {
+  /**
+   * Hand one wait that ran out of time to the listener, with the pools' state.
+   * @param code - Which wait ran out.
+   * @param ctx - The channel context it was published with.
+   */
   const report = (code: DatabaseWaitTimeout["code"], ctx: ChannelContext): void => {
     listener({ code, database: ctx.database, pools: poolStates() });
   };
