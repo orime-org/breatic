@@ -50,7 +50,7 @@ media numbers and no cover, and the Agent cannot read pages.
 `WebReaderContainer`. Each block needs its own context because `containers` does
 not inherit into an environment.
 
-**A `wrangler.toml` copied before the page reader was added needs six additions
+**A `wrangler.toml` copied before the page reader was added needs seven additions
 from the template:** the `WebReaderContainer` container block, the `WEB_READER`
 Durable Object binding and `[exports.WebReaderContainer]`, once at the top level
 and once under `[env.production]`, plus `"enable_request_signal"` in the top-level

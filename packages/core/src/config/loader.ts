@@ -296,7 +296,7 @@ const agentConfigSchema = z.object({
   web_fetch_concurrency: z.number().int().min(1).max(20).default(6),
   /** How many characters of page text one call hands the model, shared by its pages. */
   web_fetch_max_chars: z.number().int().min(1000).max(400000).default(80000),
-  /** The largest PDF a page may be, in bytes. */
+  /** The largest page or downloaded file one page read may be, in bytes. */
   web_fetch_max_bytes: z.number().int().min(1).default(20971520),
   /** Native picture support override and public model catalog cache timing. */
   main_model_sees_pictures: z.enum(["auto", "yes", "no"]).default("auto"),

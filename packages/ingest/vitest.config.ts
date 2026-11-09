@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Two projects, split by which runtime a test needs.
+ * Three projects: two split by which runtime a test needs, and the page
+ * reader's service, which runs on Node in its own image
+ * (`web-reader/vitest.config.ts`).
  *
  * Almost everything here runs inside workerd, the runtime this Worker is
  * deployed to, because the things worth testing have no Node equivalent to

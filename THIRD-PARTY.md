@@ -114,7 +114,7 @@ while the image is built, as the FFmpeg one above is.
 |---|---|---|---|
 | Chrome Headless Shell (Chrome for Testing) | `151.0.7922.34`, Playwright browser revision `1234` | **BSD-3-Clause** for Chromium, with each bundled third-party component under its own licence | `https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34` |
 | Playwright's FFmpeg | `n7.0.1-playwright-build-1011` | **LGPL-2.1-or-later** (`ffmpeg -L`); built without `--enable-gpl`, statically linked with libvpx (BSD-3-Clause) and zlib | `https://ffmpeg.org/releases/ffmpeg-7.0.1.tar.xz`; the full `configure` line is printed by `ffmpeg-linux -version` in the image |
-| Debian 12 packages installed by `playwright-core install --with-deps` | the versions Debian 12 serves when the image is built | each package's own, mostly MIT, BSD, LGPL and MPL; several fonts (`fonts-freefont-ttf`, `fonts-unifont`, `fonts-wqy-zenhei`, `fonts-tlwg-loma-otf`, `fonts-ipafont-gothic`) are **GPL with a font exception** | `https://sources.debian.org/` |
+| Debian 12 packages installed by `playwright-core install --with-deps` | the versions Debian 12 serves when the image is built | each package's own, mostly MIT, BSD, LGPL and MPL; three fonts (`fonts-freefont-ttf`, `fonts-wqy-zenhei`, `fonts-tlwg-loma-otf`) are **GPL with a font exception**, `fonts-unifont` is **GPL-2.0-or-later**, and `fonts-ipafont-gothic` is under the **IPA Font License** | `https://sources.debian.org/` |
 
 `npx playwright-core install --with-deps --only-shell chromium`
 ([packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile))

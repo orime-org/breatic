@@ -195,7 +195,7 @@ class_name = "LongMediaContainer"
 image = "./Dockerfile"
 image_build_context = "../.."
 instance_type = "standard-4"
-max_instances = 1
+max_instances = 2
 
 [[env.production.durable_objects.bindings]]
 name = "LONG_MEDIA"
@@ -221,7 +221,7 @@ type = "durable-object"
 storage = "sqlite"
 ```
 
-`compatibility_flags` 必须有：缺了 `nodejs_compat`，Worker 加载失败（`No such module "node:async_hooks"`）；`enable_request_signal` 让 Agent 的请求结束时网页读取跟着停下。上面每个容器类也都必须有：缺了 `MEDIA`、`MINI_TOOL_STD1`、`MINI_TOOL_STD4`、`LONG_MEDIA`、`WEB_READER` 任何一个绑定，Worker 对每个请求都回 500 并写出缺的名字。在加这些行之前建的配置，下次部署前要补上。`max_instances` 是每个类同时运行的实例上限，同时使用的人多就调大。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
+`compatibility_flags` 必须有：缺了 `nodejs_compat`，Worker 加载失败（`No such module "node:async_hooks"`）；`enable_request_signal` 让 Agent 的请求结束时网页读取跟着停下。上面每个容器类也都必须有：缺了 `MEDIA`、`MINI_TOOL_STD1`、`MINI_TOOL_STD4`、`LONG_MEDIA`、`WEB_READER` 任何一个绑定，Worker 对每个请求都回 500 并写出缺的名字。在加这些行之前建的配置，下次部署前要补上。`max_instances` 是每个类同时运行的实例上限，同时使用的人多就调大；`LongMediaContainer` 除外，它保持 `config/understand.yaml` 里 `container_max_instances` 的值。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
 
 同一 Cloudflare 账户安装多套实例时，为每套使用不同的 production `name`、bucket 和密钥；不要覆盖已有 Worker。正式配置没有 `[dev].port`、`remote=true` 或 `.dev.vars`。
 

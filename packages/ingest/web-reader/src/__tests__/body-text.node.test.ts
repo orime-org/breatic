@@ -11,7 +11,8 @@
  *
  * `textOfDownload` reads a file Chromium turned into a download (a CSV, a
  * text/plain body whose first bytes look binary) as text when its response
- * names a text type, in the charset it names, UTF-8 when it names none.
+ * names a text type, in the charset it names; when it names none, by its byte
+ * order mark, then as strict UTF-8, then as windows-1252.
  */
 
 import { describe, expect, it } from "vitest";

@@ -168,11 +168,6 @@ async function sendBigPage(res) {
 }
 
 /**
- * Send a 30 MiB download slowly, a mebibyte every half second, so that
- * reading it whole would take 15 s: only a reader that stops at the declared
- * length answers quickly.
- */
-/**
  * Send an HTML page with no declared length that never finishes arriving
  * within a page timeout: a little text every half second for a minute.
  */
@@ -186,6 +181,11 @@ async function sendSlowPage(res) {
   res.end('</p></body></html>');
 }
 
+/**
+ * Send a 30 MiB download slowly, a mebibyte every half second, so that
+ * reading it whole would take 15 s: only a reader that stops at the declared
+ * length answers quickly.
+ */
 async function sendBigDownload(res) {
   res.writeHead(200, {
     'content-type': 'application/octet-stream',

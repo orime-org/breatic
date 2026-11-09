@@ -9,7 +9,7 @@ import { z } from "zod";
 
 /** What the container measured about its own run. */
 export interface ContainerUsage {
-  /** From just before the container started to its destroy, cold start included. */
+  /** From just before the container started until its run ended, cold start included. */
   wallMs: number;
   /** cgroup `cpu.stat` `usage_usec`; null when the container could not read it. */
   cpuUsec: number | null;

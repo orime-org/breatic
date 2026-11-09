@@ -188,7 +188,8 @@ web_fetch_settle_ms: 8000
 web_fetch_concurrency: 6
 # How many characters of page text one call hands the model, shared by its pages.
 web_fetch_max_chars: 80000
-# The largest PDF a page may be, in bytes (20 MiB).
+# The largest page or downloaded file one page read may be, in bytes (20 MiB);
+# a page past it ends as too_large.
 web_fetch_max_bytes: 20971520
 
 # How long ONE LEG of a search_images may take, in milliseconds.

@@ -378,7 +378,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
-**`web_fetch` 的旋钮也走 `config/agent.yaml`**:`web_fetch_max_urls`(一次调用最多几个页面)· `web_fetch_timeout_ms`(整次调用含冷启动的上限)· `web_fetch_page_timeout_ms`(一个页面打开的上限)· `web_fetch_settle_ms`(文档到达后页面还能继续加载多久)· `web_fetch_concurrency`(一个容器同时开几个页面)· `web_fetch_max_chars`(一次调用交给模型的正文总量,各页平分)· `web_fetch_max_bytes`(PDF 的大小上限)。容器规格在 `config/mini-tools.yaml` 的 `classes.WebReaderContainer`;按用户、按调用限流是 `config/rate-limits.yaml` 的 `web-fetch`,超了这次调用的页面记为 `too_frequent`。
+**`web_fetch` 的旋钮也走 `config/agent.yaml`**:`web_fetch_max_urls`(一次调用最多几个页面)· `web_fetch_timeout_ms`(整次调用含冷启动的上限)· `web_fetch_page_timeout_ms`(一个页面打开的上限)· `web_fetch_settle_ms`(文档到达后页面还能继续加载多久)· `web_fetch_concurrency`(一个容器同时开几个页面)· `web_fetch_max_chars`(一次调用交给模型的正文总量,各页平分)· `web_fetch_max_bytes`(一个页面或下载文件的大小上限,PDF 也在内,超了记为 `too_large`)。容器规格在 `config/mini-tools.yaml` 的 `classes.WebReaderContainer`;按用户、按调用限流是 `config/rate-limits.yaml` 的 `web-fetch`:超了时这次调用报错;调用里有本轮已读过的页面时,那些照常返回,没读的页面记为 `too_frequent`。
 
 **打 Brave 的请求一律钉 `redirect: "manual"`,任何 3xx 当拒绝处理**(MANDATORY)。两个工具(`web_search` / `search_images`)共用 `tools/brave.ts` 的 `braveJson`,这条钉在那一个文件里、不逐端点抄。Fetch 规范跨源只剥 `Authorization` / `Cookie` / `Proxy-Authorization` 三个标准头,自定义头会跟着跳 —— 跟随一次 301 就等于把订阅密钥送到重定向指向的那台主机上。判定题:**这个请求带着我们的凭据吗?带着 → 它不许自己跟随重定向。**
 

@@ -506,8 +506,8 @@ type RecordsOptions = { abortSignal?: AbortSignal; context: RecordsContext };
 
 /**
  * What the two conversation reads answer with: the text the model reads, and
- * the links the user wrote in the messages read, which `web_fetch` may read
- * in a later turn (inner#1664). A link the Agent wrote is left out: it is the
+ * the links the user wrote in the messages read, which `web_fetch` may then
+ * read, later in this turn or in a later one (inner#1664). A link the Agent wrote is left out: it is the
  * model's own text.
  */
 export interface ConversationRead {
