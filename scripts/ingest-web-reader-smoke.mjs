@@ -15,9 +15,10 @@
 // meta refresh), to a slow HTML page (and that slow page read directly), to a
 // text file, to another article, to a missing page, and to a text file and an
 // HTML page past the size limit at addresses with a fragment; pages that a
-// script in their head replaces with a missing page and with a text file; an
-// article that goes on to a page answering after the settle wait; and a
-// malformed request to the service itself.
+// script in their head replaces with a missing page, a text file and a CSV
+// attachment (and that attachment read directly); an article that goes on to
+// a page answering after the settle wait; and a malformed request to the
+// service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -130,6 +131,8 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><
   `<item><title>${FEED_ITEM}</title><link>https://example.com/lights</link></item></channel></rss>`;
 // Chromium downloads a text/csv response rather than showing it.
 const CSV = 'pier,tide_m\nnorth,2.4\nsouth,1.9\n';
+// Sent as an attachment: a download whether opened directly or reached from a page.
+const NOTES_CSV = 'name,count\napples,3\n';
 // Plan section 14: a latin1 CSV that names no charset ("Z\xfcrich,caf\xe9").
 const LATIN1_CSV = Buffer.from([0x5a, 0xfc, 0x72, 0x69, 0x63, 0x68, 0x2c, 0x63, 0x61, 0x66, 0xe9, 0x0a]);
 const LATIN1_TEXT = 'Z\u00fcrich,caf\u00e9\n';
@@ -237,7 +240,12 @@ const origin = createServer((req, res) => {
     // Answers after the reader's settle wait is over.
     void setTimeout(2500).then(() => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(ARTICLE));
   }
-  else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
+  else if (req.url === '/notes.csv') {
+    res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="notes.csv"' })
+      .end(NOTES_CSV);
+  } else if (req.url === '/head-replace-to-download') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/notes.csv', 'head-replace'));
+  } else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
   else if (req.url === '/binary.pdf') {
     res.writeHead(200, { 'content-type': 'text/plain', 'content-length': BINARY_PDF.length }).end(BINARY_PDF);
@@ -404,6 +412,14 @@ try {
   assert.equal(replacedByText.status, 'ok', `page replaced in its head by a text file: read, got ${replacedByText.status}`);
   assert.equal(replacedByText.text, PLAIN, `page replaced in its head by a text file: the file's text, got ${JSON.stringify(replacedByText.text)}`);
   assert.ok(replacedByText.finalUrl.endsWith('/readme.txt'), `page replaced in its head by a text file: its address, got ${replacedByText.finalUrl}`);
+  // Plan section 17 rows 2 and 3: a page its head replaces with a download
+  // reads as that file opened directly.
+  const { body: replacedByDownload } = await read(['/notes.csv', '/head-replace-to-download']);
+  const [notesDirect, notesReplaced] = replacedByDownload.pages;
+  assert.equal(notesDirect.status, 'ok', `attachment csv read directly: read, got ${notesDirect.status}`);
+  assert.equal(notesDirect.text, NOTES_CSV, `attachment csv read directly: its text, got ${JSON.stringify(notesDirect.text)}`);
+  assert.equal(notesReplaced.status, 'ok', `page replaced in its head by a download: read, got ${notesReplaced.status}`);
+  assert.equal(notesReplaced.text, NOTES_CSV, `page replaced in its head by a download: the file's text, got ${JSON.stringify(notesReplaced.text)}`);
   const { body: late } = await read(['/goes-to-late'], { settleMs: 1000, pageTimeoutMs: 10000 });
   const [toLate] = late.pages;
   assert.equal(toLate.status, 'ok', `page that goes on to a page answering late: read, got ${toLate.status}`);
@@ -469,7 +485,7 @@ try {
     'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
     'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
     'another article, a missing page, a text file and a big page at a fragment, pages their head replaces with a ' +
-    'missing page and a text file, and a page gone on to that answers late.');
+    'missing page, a text file and a download, and a page gone on to that answers late.');
   process.exit(0);
 } catch (error) {
   console.error(error);
