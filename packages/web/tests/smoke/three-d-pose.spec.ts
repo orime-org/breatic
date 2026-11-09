@@ -21,13 +21,40 @@ async function joints(page: Page): Promise<Joint[]> {
   return JSON.parse(await visibleSpace(page).getByTestId('three-d-viewport').getAttribute('data-joints') ?? '[]') as Joint[];
 }
 
+interface Rendered { id: string; position: number[]; rotation: number[]; scale: number[] }
+
 /**
  * Rendered object transforms.
  * @param page - A page showing the scene.
- * @returns Each object's id and position.
+ * @returns Each object's id, position, rotation and scale.
  */
-async function rendered(page: Page): Promise<Array<{ id: string; position: number[] }>> {
-  return JSON.parse(await visibleSpace(page).getByTestId('three-d-viewport').getAttribute('data-objects') ?? '[]') as Array<{ id: string; position: number[] }>;
+async function rendered(page: Page): Promise<Rendered[]> {
+  return JSON.parse(await visibleSpace(page).getByTestId('three-d-viewport').getAttribute('data-objects') ?? '[]') as Rendered[];
+}
+
+/**
+ * Press the object gizmo's handle above its centre and drag it upward, reading the peer while the drag lasts.
+ * @param page - The dragging page.
+ * @param during - Called after each step while the pointer is still down.
+ * @throws {Error} When no handle answers above the centre.
+ */
+async function dragUp(page: Page, during: () => Promise<void>): Promise<void> {
+  const canvas = visibleSpace(page).getByTestId('three-d-viewport');
+  const native = JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { center: number[] };
+  const centre = await toPage(page, native.center);
+  for (let offset = 30; offset <= 120; offset += 5) {
+    await page.mouse.move(centre.x, centre.y - offset);
+    const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
+    if (axis === null) continue;
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step += 1) {
+      await page.mouse.move(centre.x, centre.y - offset - step * 6, { steps: 2 });
+      await during();
+    }
+    await page.mouse.up();
+    return;
+  }
+  throw new Error('No gizmo handle above the centre.');
 }
 
 /**
@@ -188,7 +215,7 @@ test('the built-in figure takes presets, bends a joint that stays after reload, 
   }
 });
 
-test('a second connection sees the real figure move and bend while the drag lasts', async ({ page, browser, baseURL }) => {
+test('a second connection sees the real figure move, bend, turn and grow while the drag lasts', async ({ page, browser, baseURL }) => {
   const id = await sceneWithFigure(page, 'scene-pose-live');
   const peerContext = await browser.newContext({ baseURL, storageState: stateFile('A') });
   const peer = await peerContext.newPage();
@@ -241,6 +268,29 @@ test('a second connection sees the real figure move and bend while the drag last
     // The peer keeps showing the bend once the drag's preview is withdrawn.
     const settled = await jointAt(peer, 'h:leftHand');
     expect(Math.hypot(settled[0] - before[0], settled[1] - before[1])).toBeGreaterThan(0.005);
+
+    // Rotating: drag a rotation ring and read the peer's rotation before releasing.
+    await visibleSpace(page).getByRole('button', { name: 'Rotate', exact: true }).click();
+    await expect(page.getByTestId('scene-pose-joint-mode')).toHaveAttribute('aria-checked', 'false');
+    const turnedFrom = (await rendered(peer))[0].rotation;
+    let turnedDuring = 0;
+    if (!await dragRing(page, 0, async () => {
+      const now = (await rendered(peer))[0].rotation;
+      turnedDuring = Math.max(turnedDuring, Math.hypot(...now.map((value, index) => value - turnedFrom[index])));
+    })) throw new Error('No rotation ring around the figure.');
+    expect(turnedDuring).toBeGreaterThan(0.01);
+    await expect.poll(async () => (await rendered(peer))[0].rotation).toEqual((await rendered(page))[0].rotation);
+
+    // Scaling: drag a scale handle and read the peer's scale before releasing.
+    await visibleSpace(page).getByRole('button', { name: 'Scale', exact: true }).click();
+    const grownFrom = (await rendered(peer))[0].scale;
+    let grownDuring = 0;
+    await dragUp(page, async () => {
+      const now = (await rendered(peer))[0].scale;
+      grownDuring = Math.max(grownDuring, Math.hypot(...now.map((value, index) => value - grownFrom[index])));
+    });
+    expect(grownDuring).toBeGreaterThan(0.01);
+    await expect.poll(async () => (await rendered(peer))[0].scale).toEqual((await rendered(page))[0].scale);
   } finally {
     await peerContext.close();
     await deleteSpace(page, id);
