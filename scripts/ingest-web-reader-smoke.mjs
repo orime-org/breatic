@@ -13,8 +13,9 @@
 // download after they load (by script and by meta refresh); articles that go
 // on after they load to an HTML page past the size limit (by script and by
 // meta refresh), to a slow HTML page (and that slow page read directly), to a
-// text file and to another article; and a malformed request to the service
-// itself.
+// text file, to another article, to a missing page, and to a text file and an
+// HTML page past the size limit at addresses with a fragment; and a malformed
+// request to the service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -216,6 +217,12 @@ const origin = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To text', '/readme.txt', 'script'));
   } else if (req.url === '/goes-to-article') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To article', '/article', 'script'));
+  } else if (req.url === '/goes-to-missing') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To missing', '/missing', 'script'));
+  } else if (req.url === '/goes-to-text-at-fragment') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To text', '/readme.txt#part', 'script'));
+  } else if (req.url === '/goes-to-big-at-fragment') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To big', '/big.html#top', 'script'));
   }
   else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
   else if (req.url === '/gbk.txt') res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' }).end(GBK_BYTES);
@@ -360,6 +367,20 @@ try {
   assert.equal(toArticle.status, 'ok', `page that goes on to an article: read, got ${toArticle.status}`);
   assert.ok(toArticle.text.replace(/\s+/g, ' ').includes(PARAGRAPH), 'page that goes on to an article: that article');
   assert.ok(toArticle.finalUrl.endsWith('/article'), `page that goes on to an article: its address, got ${toArticle.finalUrl}`);
+  // A document the page goes on to is the one checked whatever its address
+  // holds: a missing page ends the read, and an address with a fragment (which
+  // the browser shows and the response's own address never carries) is still
+  // that document.
+  const { body: goneOnFurther } = await read(
+    ['/goes-to-missing', '/goes-to-text-at-fragment', '/goes-to-big-at-fragment'],
+    { maxBytes: MAX_BYTES },
+  );
+  const [toMissing, toTextAtFragment, toBigAtFragment] = goneOnFurther.pages;
+  assert.equal(toMissing.status, 'unreachable', `page that goes on to a missing page: unreachable, got ${toMissing.status}`);
+  assert.equal(toTextAtFragment.status, 'ok', `page that goes on to a text file at a fragment: read, got ${toTextAtFragment.status}`);
+  assert.equal(toTextAtFragment.text, PLAIN, `page that goes on to a text file at a fragment: the file's text, got ${JSON.stringify(toTextAtFragment.text)}`);
+  assert.ok(toTextAtFragment.finalUrl.endsWith('/readme.txt#part'), `page that goes on to a text file at a fragment: its address, got ${toTextAtFragment.finalUrl}`);
+  assert.equal(toBigAtFragment.status, 'too_large', `page that goes on to a big page at a fragment: too_large, got ${toBigAtFragment.status}`);
   const { body: slowOnes } = await read(['/slow.html', '/goes-to-slow'], { pageTimeoutMs: 5000 });
   assert.equal(slowOnes.pages[0].status, 'too_slow', `slow page read directly: too_slow, got ${slowOnes.pages[0].status}`);
   assert.equal(slowOnes.pages[1].status, 'too_slow', `page that goes on to a slow page: too_slow, got ${slowOnes.pages[1].status}`);
@@ -419,7 +440,7 @@ try {
     'PDF sent as text, PNG with no type, UTF-8 text with no charset, RSS feed, CSV download, oversized download, ' +
     'busy page, the service\'s own 500, latin1 CSV, JavaScript, failure downloads, an oversized HTML page and ' +
     'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
-    'another article.');
+    'another article, a missing page, and a text file and a big page at a fragment.');
   process.exit(0);
 } catch (error) {
   console.error(error);
