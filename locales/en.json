@@ -2267,10 +2267,10 @@
     "sizeCap": {
       "noticeWarning": "This Space is using {used}. Once it passes {limit}, no more content can be added.",
       "noticeFull": "This Space is full ({used} of {limit}). You can only delete content until it is back under the limit.",
-      "noticeOver": "This Space is over its limit ({used} of {limit}). You can only delete whole nodes or whole passages.",
+      "noticeOver": "This Space is over its limit ({used} of {limit}). You can only delete whole items: a node, a clip, a model or a whole passage.",
       "add": "This Space is full. Delete some content before editing further.",
       "compound": "This Space is full. This deletion would also change other content, so it cannot run right now.",
-      "over": "This Space is over its limit. Delete a whole node or a whole passage.",
+      "over": "This Space is over its limit. Delete whole items: a node, a clip, a model or a whole passage.",
       "resync": "Your last change went over this Space's size limit and was not saved.",
       "proposal": "This Space is full, so the proposal was not placed.",
       "reason": "This Space is full.",
@@ -3217,7 +3217,7 @@
       "main_track": "The main track cannot be deleted.",
       "track_not_empty": "Only an empty track can be deleted.",
       "full": "This Space is full. Delete some content before editing further.",
-      "over_ceiling": "This Space is over its limit. Delete a whole node or a whole passage."
+      "over_ceiling": "This Space is over its limit. Delete a whole clip."
     },
     "mainTrack": "Main track",
     "track": "Visual {index}",

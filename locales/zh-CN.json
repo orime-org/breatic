@@ -2267,10 +2267,10 @@
     "sizeCap": {
       "noticeWarning": "这个 Space 已用 {used}，超过 {limit} 后将不能再添加内容。",
       "noticeFull": "这个 Space 已满（{used} / {limit}），只能删除内容，降到上限以下后才能继续编辑。",
-      "noticeOver": "这个 Space 已超出上限（{used} / {limit}），只能删除整个节点或整段内容。",
+      "noticeOver": "这个 Space 已超出上限（{used} / {limit}），只能整个删除节点、片段、模型或整段内容。",
       "add": "这个 Space 已满，删除一些内容后才能继续编辑。",
       "compound": "这个 Space 已满，这项删除还要改动其他内容，暂时不能执行。",
-      "over": "这个 Space 已超出上限，请删除整个节点或整段内容。",
+      "over": "这个 Space 已超出上限，请整个删除节点、片段、模型或整段内容。",
       "resync": "你刚才的改动超出了这个 Space 的大小上限，没有保存。",
       "proposal": "这个 Space 已满，提案没有放进去。",
       "reason": "这个 Space 已满。",
@@ -3217,7 +3217,7 @@
       "main_track": "主轨不能删除。",
       "track_not_empty": "只能删除空轨道。",
       "full": "这个 Space 已满，删除一些内容后才能继续编辑。",
-      "over_ceiling": "这个 Space 已超出上限，请删除整个节点或整段内容。"
+      "over_ceiling": "这个 Space 已超出上限，请删除整个片段。"
     },
     "mainTrack": "主轨",
     "track": "画面 {index}",
