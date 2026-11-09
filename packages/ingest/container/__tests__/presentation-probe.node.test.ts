@@ -129,7 +129,7 @@ beforeAll(async () => {
   await make('long-audio.mov', [...video2s.slice(0, 4), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=44100,atrim=end_sample=110251', ...video2s.slice(4), '-c:a', 'pcm_s16le']);
   await make('two-audio.mov', ['-i', join(dir, 'long-audio.mov'), '-f', 'lavfi', '-i', 'sine=f=220:sample_rate=48000:d=3', '-map', '0:v', '-map', '0:a', '-map', '1:a', '-c:v', 'copy', '-c:a', 'pcm_s16le']);
   // Matroska writes no stream duration (only a DURATION tag), so an Opus track's window comes from its packets.
-  const vp9 = ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2'];
+  const vp9 = ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2'];
   await make('opus-long.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus']);
   await make('opus.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-shortest']);
   // Frames at 0, 100, 400 and 500 ms; FFmpeg writes a DefaultDuration, which is replaced by an EBML Void of the same
@@ -138,7 +138,7 @@ beforeAll(async () => {
   const webm = new Uint8Array(await readFile(join(dir, 'vfr-default.webm')));
   await writeFile(join(dir, 'vfr.webm'), withoutDefaultDuration(webm));
   files.set('vfr.webm', join(dir, 'vfr.webm'));
-});
+}, 120_000);
 
 /**
  * Replace the one Matroska DefaultDuration element (ID 0x23E383) with an EBML Void element of the same length.

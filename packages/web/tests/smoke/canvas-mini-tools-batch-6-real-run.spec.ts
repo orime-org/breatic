@@ -212,7 +212,8 @@ function nodeOf(c: Canvas, file: string): Locator {
 async function presented(c: Canvas, file: string): Promise<void> {
   const media = nodeOf(c, file).getByTestId('media-element');
   await expect(media).toBeAttached({ timeout: 5 * 60_000 });
-  await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.readyState)).toBeGreaterThanOrEqual(2);
+  // An alpha-packed presentation draws on a canvas, which the player marks only after its first frame is drawn.
+  await expect.poll(() => media.evaluate((el) => el instanceof HTMLVideoElement ? el.readyState >= 2 : el instanceof HTMLCanvasElement)).toBe(true);
 }
 
 /**
