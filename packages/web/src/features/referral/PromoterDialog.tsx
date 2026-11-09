@@ -9,43 +9,48 @@ import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Skeleton } from '@web/components/ui/skeleton';
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { SectionHeading } from '@web/features/membership/SectionHeading';
 import { PromoterApplyDialog } from '@web/features/referral/PromoterApplyDialog';
 import { useAccountReferral, zheOf } from '@web/features/referral/referral-query';
 
 /**
- * The membership panel's "Promoter program" section (inner#1868 §10, table 12.11).
+ * The "Promoter program" dialog the account menu opens (inner#1868 §10, table 12.11).
  *
- * Like the referral code section it draws cached data even when a background
- * read fails, and draws nothing while payments are off.
- * @returns The section, or null when there is nothing to show.
+ * It draws cached data even when a background read fails, and closes itself
+ * if the read says payments are off.
+ * @param props - Open state.
+ * @param props.open - Whether the dialog is open.
+ * @param props.onOpenChange - Called when it opens or closes.
+ * @returns The dialog.
  */
-export function PromoterSection(): React.JSX.Element | null {
+export function PromoterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): React.JSX.Element {
   const t = useTranslation();
-  const { data, isPending, isLoadingError, refetch } = useAccountReferral();
+  const { data, isLoadingError, refetch } = useAccountReferral(open);
   const retry = React.useCallback((): void => {
     void refetch();
   }, [refetch]);
 
   let body: React.ReactNode;
-  if (data === null) return null;
-  if (data !== undefined) body = <PromoterBody view={data} />;
-  else if (isPending || !isLoadingError) body = <Skeleton data-testid='promoter-loading' className='h-16 w-full rounded-content-sm' />;
-  else {
+  if (data) body = <PromoterBody view={data} />;
+  else if (isLoadingError) {
     body = (
       <div className='flex items-center justify-between rounded-content-sm border border-border px-4 py-3 text-sm'>
         <span className='text-status-error'>{t('membership.referral.loadFailed')}</span>
         <Button type='button' variant='outline' size='sm' onClick={retry}>{t('membership.referral.retry')}</Button>
       </div>
     );
-  }
+  } else body = <Skeleton data-testid='promoter-loading' className='h-16 w-full rounded-content-sm' />;
   return (
-    <section className='flex flex-col gap-4'>
-      <SectionHeading>{t('membership.promoter.heading')}</SectionHeading>
-      {body}
-    </section>
+    <Dialog open={open && data !== null} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[560px]' aria-describedby={undefined} data-testid='promoter-dialog'>
+        <DialogHeader>
+          <DialogTitle>{t('promoter.heading')}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>{body}</DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -69,7 +74,7 @@ async function copy(text: string, done: string, failed: string): Promise<void> {
  * What a promoter or applicant sees, by state.
  * @param props - The view.
  * @param props.view - The account's referral view.
- * @returns The section's body.
+ * @returns The dialog's body.
  */
 function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
   const t = useTranslation();
@@ -88,10 +93,10 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
     return (
       <div className='flex flex-col gap-3 rounded-content-sm border border-border px-4 py-3'>
         <div className='flex items-center justify-between'>
-          <span className='text-sm'>{t('membership.promoter.yourCode')}</span>
+          <span className='text-sm'>{t('promoter.yourCode')}</span>
           {off ? (
             <Badge variant='secondary' className='text-muted-foreground'>
-              {promoter.codeStatus === 'removed' ? t('membership.promoter.removed') : t('membership.promoter.disabled')}
+              {promoter.codeStatus === 'removed' ? t('promoter.removed') : t('promoter.disabled')}
             </Badge>
           ) : null}
         </div>
@@ -100,24 +105,24 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
             {promoter.code}
           </span>
           {off ? null : (
-            <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.code, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
-              {t('membership.promoter.copyCode')}
+            <Button type='button' variant='outline' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.code, t('promoter.copied'), t('promoter.copyFailed'))}>
+              {t('promoter.copyCode')}
             </Button>
           )}
         </div>
         {off ? (
           <p className='text-xs text-foreground-secondary'>
-            {promoter.codeStatus === 'removed' ? t('membership.promoter.removedDetail') : t('membership.promoter.disabledDetail')}
+            {promoter.codeStatus === 'removed' ? t('promoter.removedDetail') : t('promoter.disabledDetail')}
           </p>
         ) : (
           <>
             <div className='flex items-center gap-2'>
-              <Input readOnly value={promoter.link} aria-label={t('membership.promoter.copyLink')} className='text-muted-foreground' />
-              <Button type='button' variant='outline' size='form' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.link, t('membership.promoter.copied'), t('membership.promoter.copyFailed'))}>
-                {t('membership.promoter.copyLink')}
+              <Input readOnly value={promoter.link} aria-label={t('promoter.copyLink')} className='text-muted-foreground' />
+              <Button type='button' variant='outline' size='form' className='gap-1.5' icon={<Copy className='h-3.5 w-3.5' />} onClick={() => void copy(promoter.link, t('promoter.copied'), t('promoter.copyFailed'))}>
+                {t('promoter.copyLink')}
               </Button>
             </div>
-            <p className='text-xs text-foreground-secondary'>{t('membership.promoter.shareHint', figure)}</p>
+            <p className='text-xs text-foreground-secondary'>{t('promoter.shareHint', figure)}</p>
           </>
         )}
       </div>
@@ -128,10 +133,10 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
     return (
       <div className={card}>
         <div className='flex flex-col gap-0.5'>
-          <span className='text-sm'>{t('membership.promoter.pending')}</span>
-          <span className='text-xs text-foreground-secondary'>{t('membership.promoter.pendingDetail', { date })}</span>
+          <span className='text-sm'>{t('promoter.pending')}</span>
+          <span className='text-xs text-foreground-secondary'>{t('promoter.pendingDetail', { date })}</span>
         </div>
-        <Badge variant='secondary'>{t('membership.promoter.pendingBadge')}</Badge>
+        <Badge variant='secondary'>{t('promoter.pendingBadge')}</Badge>
       </div>
     );
   }
@@ -139,24 +144,24 @@ function PromoterBody({ view }: { view: AccountReferral }): React.JSX.Element {
     return (
       <div className={card}>
         <div className='flex flex-col gap-0.5'>
-          <span className='text-sm'>{t('membership.promoter.rejected')}</span>
-          {promoter.note ? <span className='text-xs text-foreground-secondary'>{t('membership.promoter.rejectedNote', { note: promoter.note })}</span> : null}
+          <span className='text-sm'>{t('promoter.rejected')}</span>
+          {promoter.note ? <span className='text-xs text-foreground-secondary'>{t('promoter.rejectedNote', { note: promoter.note })}</span> : null}
         </div>
-        {program.open ? <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('membership.promoter.applyAgain')}</Button> : null}
+        {program.open ? <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('promoter.applyAgain')}</Button> : null}
         {dialog}
       </div>
     );
   }
   if (!program.open) {
-    return <div className={card}><span className='text-sm'>{t('membership.promoter.closed')}</span></div>;
+    return <div className={card}><span className='text-sm'>{t('promoter.closed')}</span></div>;
   }
   return (
     <div className={card}>
       <div className='flex flex-col gap-0.5'>
-        <span className='text-sm'>{t('membership.promoter.pitch')}</span>
-        <span className='text-xs text-foreground-secondary'>{t('membership.promoter.pitchDetail', figure)}</span>
+        <span className='text-sm'>{t('promoter.pitch')}</span>
+        <span className='text-xs text-foreground-secondary'>{t('promoter.pitchDetail', figure)}</span>
       </div>
-      <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('membership.promoter.apply')}</Button>
+      <Button type='button' variant='outline' onClick={() => setOpen(true)}>{t('promoter.apply')}</Button>
       {dialog}
     </div>
   );

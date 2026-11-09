@@ -20,23 +20,50 @@ export function referralQueryKey(userId: string | null): readonly [...typeof MEM
 }
 
 /**
- * The membership panel's referral view; `null` while payments are off (404).
+ * Reads the account's referral view.
+ * @returns The view, or `null` while payments are off (404).
+ * @throws {ApiException} Any other refusal or a failed request.
+ */
+async function readAccountReferral(): Promise<AccountReferral | null> {
+  try {
+    return await referralApi.get();
+  } catch (err) {
+    if (err instanceof ApiException && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * The query an account's referral view is read through, for hooks and for `fetchQuery`.
+ * @param userId - The signed-in account.
+ * @returns The query key and function.
+ */
+export function referralQueryOptions(userId: string | null): {
+  queryKey: ReturnType<typeof referralQueryKey>;
+  queryFn: () => Promise<AccountReferral | null>;
+} {
+  return { queryKey: referralQueryKey(userId), queryFn: readAccountReferral };
+}
+
+/**
+ * The account's referral view; `null` while payments are off (404).
+ * @param enabled - Whether to read now; the account menu reads only while it is open.
  * @returns The query; its data is `undefined` until the first answer.
  */
-export function useAccountReferral(): UseQueryResult<AccountReferral | null> {
+export function useAccountReferral(enabled = true): UseQueryResult<AccountReferral | null> {
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
-  return useQuery({
-    queryKey: referralQueryKey(userId),
-    queryFn: async (): Promise<AccountReferral | null> => {
-      try {
-        return await referralApi.get();
-      } catch (err) {
-        if (err instanceof ApiException && err.status === 404) return null;
-        throw err;
-      }
-    },
-    enabled: userId !== null,
-  });
+  return useQuery({ ...referralQueryOptions(userId), enabled: enabled && userId !== null });
+}
+
+/**
+ * What the account menu's promoter entry does for this view: only says the
+ * program is closed to someone with nothing to look at, and opens the dialog
+ * for everyone else, so a promoter keeps their code while applications are shut.
+ * @param view - The account's referral view.
+ * @returns `closed` to say so, `dialog` to open the promoter dialog.
+ */
+export function promoterEntryAction(view: AccountReferral): 'closed' | 'dialog' {
+  return !view.program.open && view.promoter.state === 'none' ? 'closed' : 'dialog';
 }
 
 /**

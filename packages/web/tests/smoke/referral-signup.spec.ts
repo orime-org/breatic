@@ -7,8 +7,8 @@
  *
  * The promoter is made by scripts: an account through
  * `scripts/seed-smoke-account.ts`, then an approved application and code
- * through `scripts/seed-smoke-promoter.ts`, because applications open only
- * once the promoter terms are published, which no local stack does. The
+ * through `scripts/seed-smoke-promoter.ts`, because applications are approved
+ * in the back office, which the suite does not run. The
  * referred account is made through the real sign-up page, since the code is
  * bound at sign-up and an existing account cannot exercise it.
  */

@@ -21,12 +21,15 @@ vi.mock('@web/lib/toast', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, ...toasts } };
 });
 
-import { PromoterSection } from '@web/features/referral/PromoterSection';
+import { PromoterDialog } from '@web/features/referral/PromoterDialog';
 import type { AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { EMPTY_APPLICATION, getReferralForms, resetReferralFormsForTests } from '@web/stores/referral-forms';
 import { useCurrentUserStore } from '@web/stores';
+
+/** The application form's title; the promoter dialog stays open beneath it. */
+const APPLY_TITLE = 'Apply to become a promoter';
 
 const OPEN: AccountReferral = {
   firstPeriodDiscountPercent: 20,
@@ -37,7 +40,7 @@ const OPEN: AccountReferral = {
 };
 
 /**
- * Renders the section over one view.
+ * Renders the open dialog over one view.
  * @param view - What the server answers.
  */
 function setup(view: AccountReferral): void {
@@ -45,12 +48,12 @@ function setup(view: AccountReferral): void {
   mount();
 }
 
-/** Renders the section over whatever the read is set to answer. */
+/** Renders the open dialog over whatever the read is set to answer. */
 function mount(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <PromoterSection />
+      <PromoterDialog open onOpenChange={() => undefined} />
     </QueryClientProvider>,
   );
 }
@@ -85,7 +88,7 @@ afterEach(() => {
   resetReferralFormsForTests();
 });
 
-describe('the promoter program section (inner#1868 table 12.11)', () => {
+describe('the promoter program dialog (inner#1868 table 12.11)', () => {
   it('shows a skeleton on the first read', () => {
     api.get.mockReturnValue(new Promise(() => {}));
     mount();
@@ -229,7 +232,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(OPEN);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const first = render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    const first = render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     await fillForm(user);
     await user.click(screen.getByRole('checkbox'));
@@ -237,7 +240,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await waitFor(() => expect(api.apply).toHaveBeenCalled());
     first.unmount();
 
-    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     expect(screen.getByRole('combobox', { name: 'Country or region' })).toHaveTextContent('Singapore');
     expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
@@ -272,7 +275,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     await waitFor(() => expect(api.apply).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: APPLY_TITLE })).toBeNull());
 
     await act(async () => { refuse(refusal409('terms_changed', { termsVersion: '2026-12-01' })); });
     await waitFor(() => expect(toasts.warning).toHaveBeenCalledWith('The promoter terms have been updated. Read them again, then agree.'));
@@ -287,7 +290,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(OPEN);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     await fillForm(user);
     await user.click(screen.getByRole('checkbox'));
@@ -315,12 +318,12 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(OPEN);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const first = render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    const first = render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     await fillForm(user);
     first.unmount();
 
-    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     expect(screen.getByRole('combobox', { name: 'Country or region' })).toHaveTextContent('Singapore');
     expect(screen.getByLabelText('How you will promote')).toHaveValue('Tutorials for designers');
@@ -342,7 +345,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(OPEN);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply to become a promoter' }));
     await fillForm(user);
     await user.click(screen.getByRole('checkbox'));
@@ -367,13 +370,13 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValue(rejected);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><PromoterSection /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PromoterDialog open onOpenChange={() => undefined} /></QueryClientProvider>);
     await user.click(await screen.findByRole('button', { name: 'Apply again' }));
     await fillForm(user);
 
     api.get.mockResolvedValue({ ...rejected, program: { open: false, termsVersion: '' } });
     await act(async () => { await client.invalidateQueries(); });
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: APPLY_TITLE })).toBeNull());
     expect(screen.queryByRole('button', { name: 'Apply again' })).toBeNull();
     expect(api.apply).not.toHaveBeenCalled();
   });
@@ -401,7 +404,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
       expect.any(String),
     ));
     expect(await screen.findByText('Application under review')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: APPLY_TITLE })).toBeNull();
     expect(toasts.success).toHaveBeenCalled();
   });
 
@@ -432,7 +435,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     expect(await screen.findByText('The promoter terms have been updated. Read them again, then agree.')).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).not.toBeChecked();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: APPLY_TITLE })).toBeInTheDocument();
 
     // The answer named the current version, so agreeing again agrees to it although the re-read failed.
     api.apply.mockResolvedValueOnce({ ...OPEN, promoter: { state: 'pending', submittedAt: '2026-11-07T10:00:00.000Z' } });
@@ -442,7 +445,7 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     expect(api.apply.mock.calls[1]![0]).toMatchObject({ termsVersion: '2026-12-01' });
   });
 
-  it.each(['program_closed', 'already_promoter'])('closes, toasts and reads the section again on %s', async (reason) => {
+  it.each(['program_closed', 'already_promoter'])('closes, toasts and reads the dialog again on %s', async (reason) => {
     api.apply.mockRejectedValue(refusal409(reason));
     const user = userEvent.setup();
     setup(OPEN);
@@ -451,11 +454,11 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(screen.getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(`refused ${reason}`));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: APPLY_TITLE })).toBeNull());
     expect(api.get.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it('closes, toasts and reads the section again when an application is already under review', async () => {
+  it('closes, toasts and reads the dialog again when an application is already under review', async () => {
     api.apply.mockRejectedValue(refusal409('application_pending'));
     const user = userEvent.setup();
     setup(OPEN);
@@ -466,6 +469,6 @@ describe('the application dialog (inner#1868 table 12.12)', () => {
     await user.click(screen.getByRole('button', { name: 'Submit application' }));
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('refused application_pending'));
     expect(await screen.findByText('Application under review')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: APPLY_TITLE })).toBeNull();
   });
 });
