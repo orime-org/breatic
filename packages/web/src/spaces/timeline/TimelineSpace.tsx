@@ -253,7 +253,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
   const webLimits = useTimelineLimits(projectId)?.webAnimation;
   const refreshMs = webLimits?.sourceRefreshIntervalMs;
-  const executions = useTimelineExecutions(projectId, spaceId, refreshMs);
+  // The tab bar polls this list while it has unfinished rows (useSpaceTaskStatus); this view shares its cache.
+  const executions = useTimelineExecutions(projectId, spaceId);
   const rows = executions.data;
   const web = useTimelineWebResolution(projectId, spaceId, document, refreshMs);
   // Edits of web copies plan against the extents this resolution gives.
