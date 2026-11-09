@@ -51,6 +51,7 @@ interface JointMarker {
   key: string;
   bone: Bone;
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
+  radius: number;
 }
 interface PointerOrigin {
   x: number;
@@ -473,19 +474,18 @@ export class SceneViewportRuntime {
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;
           mesh.scale.setScalar(radius);
-          mesh.userData.radius = radius;
-          this.markerItems.push({ key, bone, mesh });
+          this.markerItems.push({ key, bone, mesh, radius });
           this.markers.add(mesh);
         }
       }
     }
     const normal = this.token('--color-status-selected');
     const selected = this.token('--color-foreground');
-    for (const { key, mesh } of this.markerItems) {
+    for (const { key, mesh, radius } of this.markerItems) {
       const chosen = key === this.props.selectedJoint;
       mesh.material.color.setStyle(chosen ? selected : normal);
       mesh.material.opacity = chosen ? 1 : 0.85;
-      mesh.scale.setScalar((mesh.userData.radius as number) * (chosen ? 1.5 : 1));
+      mesh.scale.setScalar(radius * (chosen ? 1.5 : 1));
     }
     this.placeMarkers();
   }

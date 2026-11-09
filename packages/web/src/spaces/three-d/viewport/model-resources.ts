@@ -6,7 +6,7 @@ import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneObject } from '@breatic/shared';
-import { createBuiltinModel } from '@web/spaces/three-d/viewport/builtin-models';
+import { createBuiltinBox } from '@web/spaces/three-d/viewport/builtin-models';
 import figureUrl from '@web/spaces/three-d/viewport/assets/figure.glb?url';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { ModelBounds } from '@web/spaces/three-d/model-import-controller';
@@ -250,7 +250,7 @@ export async function loadSceneModel(
   renderer?: WebGLRenderer,
 ): Promise<Group> {
   if (source.kind === 'builtin') {
-    return source.id === 'box' ? createBuiltinModel('box', builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
+    return source.id === 'box' ? createBuiltinBox(builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
   }
   const asset = await resolveAsset(source.assetId, signal);
   if (!isSceneModelMediaType(asset.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: asset.mimeType });

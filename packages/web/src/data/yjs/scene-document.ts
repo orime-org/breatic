@@ -194,8 +194,7 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
     if (!set.success) return { ok: false, reason: 'invalid' };
     const current: ScenePose = object.pose ?? {};
     const cleared = command.replace ? Object.keys(current).filter((key) => !(key in set.data)) : [];
-    const next: Record<string, readonly number[]> = { ...current, ...set.data };
-    cleared.forEach((key) => { delete next[key]; });
+    const next = command.replace ? set.data : { ...current, ...set.data };
     if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };
     for (const [key, value] of Object.entries(set.data)) {
       if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.poseWrites.push({ id: command.id, key, value });
