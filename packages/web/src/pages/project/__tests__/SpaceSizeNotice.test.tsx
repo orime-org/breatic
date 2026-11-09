@@ -133,7 +133,13 @@ function expectNotice(phase: string, text: string, tone: readonly string[], over
   expect(el).toHaveAttribute('data-phase', phase);
   expect(el).toHaveAttribute('role', 'status');
   expect(el.textContent).toBe(text);
-  for (const cls of tone) expect(el).toHaveClass(cls);
+  // Spec 27.2 (V1-07 to V1-09): an opaque base outside, the tone on the surface inside it, and a sentence that wraps.
+  expect(el).toHaveClass('bg-background');
+  const surface = el.firstElementChild as HTMLElement;
+  for (const cls of tone) expect(surface).toHaveClass(cls);
+  const sentence = screen.getByText(text);
+  expect(sentence).toHaveClass('text-balance');
+  expect(sentence).not.toHaveClass('truncate');
   expect(el.hasAttribute('data-over-ceiling')).toBe(overCeiling);
 }
 
