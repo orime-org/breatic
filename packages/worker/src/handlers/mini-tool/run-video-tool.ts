@@ -13,16 +13,10 @@
  */
 
 import { logger } from "@breatic/core";
-import {
-  assetRepo, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo,
-  type AcceptedMiniToolExecution,
-} from "@breatic/domain";
-import {
-  miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe,
-  type StudioAssetEntity, type VideoPresentationLedger,
-} from "@breatic/shared";
+import { assetRepo, openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
+import { miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
-import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceChunks, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, FullLedgerInvalid, rangeWindow, readJobLedger, segmentRecipesOf, SOURCE_INPUT_ID } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -36,40 +30,9 @@ export type VideoToolResult = MiniToolExecutionOutput["result"];
 export interface VideoToolPickup { results: Map<number, NonNullable<VideoToolResult>>; waiting: boolean }
 /** The tool's PNG or video output and its recipe. */
 interface PlannedOutput { outputIndex: number; recipe: MiniToolPlanRecipe }
-type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 
 /** An output result's schema. */
 const miniToolExecutionResultSchema = miniToolExecutionOutputSchema.shape.result.unwrap();
-
-/**
- * The stored request of a container step, if any.
- * @param step - The step.
- * @returns The request.
- * @throws {never} Never.
- */
-function storedRequest(step: Step): MiniToolPlanJobRequest | null {
-  const parsed = miniToolPlanJobRequestSchema.safeParse(step.output.miniToolPlanJob);
-  return step.kind === "container_job" && parsed.success ? parsed.data : null;
-}
-
-/**
- * The step of a job id: the one whose stored request names it, else a new one appended after the task's steps.
- * @param execution - The run.
- * @param jobId - The job id.
- * @returns The step and its stored request, if it has one.
- * @throws {Error} When persistence fails.
- */
-async function stepOf(execution: VideoTool, jobId: string): Promise<{ step: Step; request: MiniToolPlanJobRequest | null }> {
-  const steps = await upstreamStepRepo.listSteps(execution.taskId);
-  const found = steps.find((step) => storedRequest(step)?.jobId === jobId);
-  if (found !== undefined) return { step: found, request: storedRequest(found) };
-  const position = steps.length;
-  const prefix = steps.map(({ kind, endpoint, itemIndex }) => ({ kind, endpoint, itemIndex }));
-  const rows = await upstreamStepRepo.ensureSteps(execution.taskId, [...prefix, { kind: "container_job", endpoint: execution.container.containerClass, itemIndex: position }]);
-  const appended = rows.find((step) => step.position === position);
-  if (appended === undefined) throw new Error("Appended tool step disappeared");
-  return { step: appended, request: null };
-}
 
 /**
  * A registered output's public result: the canonical row and its cover.
@@ -152,7 +115,7 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
     const pending = outputs.filter((index) => !pickup.results.has(index));
     if (pending.length === 0) return;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
-    const { step, request: stored } = await stepOf(execution, jobId);
+    const { step, request: stored } = await jobStep(execution.taskId, jobId, execution.container.containerClass);
     let request = stored;
     if (request === null) {
       const planned = pending.map((index) => plannedOutput(execution, ledger, index));
@@ -180,53 +143,6 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
 }
 
 /**
- * Advance one chunk of an oversized segment on the model-input preparation path (§93 D5-10): a work object, never
- * registered; a done output is pinned with the run, a failed attempt's output is retired with its result, the next
- * attempt runs under its own id.
- * @param execution - The run.
- * @param output - The segment's output index.
- * @param chunk - The chunk index.
- * @param recipe - Its chunk_encode recipe.
- * @param deadlineAt - The task deadline.
- * @returns The done attempt's work key, null while it runs, or the failure reason once the retries are spent.
- * @throws {Error} When persistence or the job boundary fails.
- */
-async function advanceChunk(execution: VideoTool, output: number, chunk: number, recipe: MiniToolPlanRecipe, deadlineAt: number): Promise<string | null | { failed: string }> {
-  let reason = "tool_failed";
-  for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
-    const jobId = videoContainerJobId({ kind: "run-chunk", taskId: execution.taskId, output, chunk, attempt });
-    const { step, request: stored } = await stepOf(execution, jobId);
-    const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
-    if (stored !== null && state?.result?.outcome === "failed") {
-      const failed = readMiniToolPlanJobReport(stored, state.result.result);
-      if (failed.state === "failed") reason = failed.reason;
-      continue;
-    }
-    if (stored !== null && state?.result?.outcome === "done") return stored.outputs[0]!.storageKey;
-    const candidate: MiniToolPlanJobRequest = stored ?? { schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt,
-      limits: execution.container.limits, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }],
-      outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(execution.sourceKey, jobId), contentType: webm(recipe) ? "video/webm" : "video/mp4", recipe }] };
-    const { request, consumption } = await openMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
-    let answer: Awaited<ReturnType<typeof advanceMiniToolPlanJob>>;
-    try {
-      answer = await advanceMiniToolPlanJob(request);
-    } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      return null;
-    }
-    const report = readMiniToolPlanJobReport(request, answer);
-    if (report.state !== "done" && report.state !== "failed") return null;
-    const key = request.outputs[0]!.storageKey;
-    await recordMiniToolStepResult({ taskId: execution.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [key] } } : { presentation: { pin: [key] } }) },
-    { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
-    if (report.state === "done") return key;
-    reason = report.reason;
-  }
-  return { failed: reason };
-}
-
-/**
  * Advance an oversized segment (§93 D5-10; design §5.4): its frozen chunk windows, then one registered stitch over them
  * that retires the consumed chunk keys; a chunk whose retries are spent fails only this segment.
  * @param execution - The run.
@@ -247,23 +163,26 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
   const recipe = execution.outputs[outputIndex]!.recipe;
   if (recipe.kind !== "segment") throw new Error("Only a segment is encoded in chunks");
   const recipes = segmentRecipesOf(ledger, { range: recipe.range }, SOURCE_INPUT_ID, execution.container.encode, encode.chunks);
-  const keys: string[] = [];
-  let running = false;
-  let failed: string | null = null;
-  // Every chunk advances in each pickup (design §5.4 parallel stage); a segment with a chunk failed for good settles only
-  // once none of its chunks still runs, so each running chunk's object is recorded and pinned with the run.
-  for (const [chunk] of encode.chunks.entries()) {
-    const done = await advanceChunk(execution, outputIndex, chunk, recipes[chunk]!, deadlineAt);
-    if (done === null) { running = true; continue; }
-    if (typeof done !== "string") { failed ??= done.failed; continue; }
-    keys.push(done);
+  // Each chunk is a work object on the model-input preparation path (§93 D5-10), never registered: a done output is pinned
+  // with the run, a failed attempt's output retired with its result, the next attempt run under its own id.
+  let chunks: Awaited<ReturnType<typeof advanceChunks>>;
+  try {
+    chunks = await advanceChunks({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
+      encode.chunks.map((_window, chunk) => ({ stepKey: `out:${outputIndex}:enc:${chunk}`, contentType: webm(recipes[chunk]!) ? "video/webm" : "video/mp4",
+        jobId: (attempt) => videoContainerJobId({ kind: "run-chunk", taskId: execution.taskId, output: outputIndex, chunk, attempt }),
+        outputKey: (jobId) => videoPresentationWorkKeyFor(execution.sourceKey, jobId), failed: (reason) => ({ failed: reason }),
+        build: () => Promise.resolve({ recipe: recipes[chunk]!, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }] }) })), deadlineAt);
+  } catch (error) {
+    if (!(error instanceof StillRunning)) throw error;
+    pickup.waiting = true;
+    return;
   }
-  if (running) { pickup.waiting = true; return; }
-  if (failed !== null) { pickup.results.set(outputIndex, failedResult(failed)); return; }
+  if (!("keys" in chunks)) { pickup.results.set(outputIndex, failedResult(chunks.failed)); return; }
+  const { keys } = chunks;
   const stitch = recipes.at(-1)!;
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const jobId = videoContainerJobId({ kind: "run-stitch", taskId: execution.taskId, output: outputIndex, attempt });
-    const { step, request: stored } = await stepOf(execution, jobId);
+    const { step, request: stored } = await jobStep(execution.taskId, jobId, execution.container.containerClass);
     let request = stored;
     if (request === null) {
       const grants = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,

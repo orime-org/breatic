@@ -498,6 +498,36 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(opened).toEqual(expect.arrayContaining([...value.layout.encode.map((_window, k) => encId(k)), ...value.layout.window.map((_window, k) => winId(k))]));
   });
 
+  it("TW03d a chunk failed for good waits for a running chunk, whose object is pinned, and no chunk opens a next attempt after it", async () => {
+    const value = fade();
+    serve(plan(value));
+    const at = (id: string, attempt: number): string => id.replace(/:a1$/, `:a${attempt}`);
+    const states = new Map<string, "running" | "failed">([[encId(0), "running"], [encId(1), "running"], [winId(0), "running"]]);
+    h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+      const state = states.get(request.jobId);
+      if (state === "running") throw new StillRunning(Date.now() + 5000);
+      if (state === "failed") return { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+      return advancePlan(request);
+    });
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    // Encode chunk 0 fails on every attempt and window chunk 0's first attempt fails, while encode chunk 1 still runs.
+    for (const attempt of [1, 2, 3]) states.set(at(encId(0), attempt), "failed");
+    states.set(winId(0), "failed");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    expect(h.finish).not.toHaveBeenCalled();
+    states.delete(encId(1));
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed"]);
+    const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId);
+    expect(opened).not.toContain(at(winId(0), 2));
+    const done = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: unknown; stepId: string })
+      .filter((entry) => entry.outcome === "done" && steps.find((step) => step.id === entry.stepId)?.output.miniToolPlanJob !== undefined
+        && (steps.find((step) => step.id === entry.stepId)!.output.miniToolPlanJob as MiniToolPlanJobRequest).jobId === encId(1));
+    expect(done.map((entry) => entry.presentation)).toEqual([{ pin: [requestOf(encId(1)).outputs[0]!.storageKey] }]);
+    expect(h.advance).not.toHaveBeenCalled();
+  });
+
   it("TW04 sends in each stage exactly the frozen stageJobs distinct jobs and no other job", async () => {
     const value = fade();
     serve(plan(value));

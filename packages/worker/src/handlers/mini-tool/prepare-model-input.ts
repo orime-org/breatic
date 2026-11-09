@@ -65,8 +65,9 @@ export function stepWorkKey(sourceKey: string, jobId: string, contentType: strin
  */
 export async function appendStep(taskId: string, planned: { kind: UpstreamStep["kind"]; endpoint: string; itemIndex: number | null }): Promise<UpstreamStep> {
   const existing = await upstreamStepRepo.listSteps(taskId);
+  const position = existing.length;
   const rows = await upstreamStepRepo.ensureSteps(taskId, [...existing.map(({ kind, endpoint, itemIndex }) => ({ kind, endpoint, itemIndex })), planned]);
-  const appended = rows[existing.length];
+  const appended = rows.find((row) => row.position === position);
   if (appended === undefined) throw new Error("Appended step disappeared");
   return appended;
 }

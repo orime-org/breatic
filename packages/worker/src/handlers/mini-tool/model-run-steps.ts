@@ -246,6 +246,22 @@ export function storedRequest(step: Step): MiniToolPlanJobRequest | null {
 }
 
 /**
+ * The step of a registered job's attempt: the one whose stored request names its job id, else a new one appended after the
+ * task's steps.
+ * @param taskId - The task.
+ * @param jobId - The job id.
+ * @param endpoint - The class the job runs on.
+ * @returns The step and its stored request, if it has one.
+ * @throws {Error} When persistence fails.
+ */
+export async function jobStep(taskId: string, jobId: string, endpoint: string): Promise<{ step: Step; request: MiniToolPlanJobRequest | null }> {
+  const steps = await upstreamStepRepo.listSteps(taskId);
+  const found = steps.find((step) => storedRequest(step)?.jobId === jobId);
+  if (found !== undefined) return { step: found, request: storedRequest(found) };
+  return { step: await appendStep(taskId, { kind: "container_job", endpoint, itemIndex: steps.length }), request: null };
+}
+
+/**
  * A step's persisted state, if any.
  * @param step - The step.
  * @returns The state.

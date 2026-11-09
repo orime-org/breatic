@@ -576,9 +576,12 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
 
   it("VC06 a segment with a chunk failed for good waits for its running chunk, then fails with that chunk's object pinned", async () => {
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE]));
-    scripted.set(chunkId(0), { written: [], state: "failed" });
+    // Both chunks are opened while they run; then chunk 0 fails for good while chunk 1 still runs.
+    scripted.set(chunkId(0), "running");
     scripted.set(chunkId(1), "running");
     const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.set(chunkId(0), { written: [], state: "failed" });
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     expect(h.finish).not.toHaveBeenCalled();
     scripted.delete(chunkId(1));
@@ -587,6 +590,20 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     const recorded = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { pin?: string[] } });
     expect(recorded.find((value) => value.outcome === "done")?.presentation).toEqual({ pin: [videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))] });
     expect(submitted()).toEqual([]);
+  });
+
+  // Once a chunk of the segment failed for good its stitch never runs, so a sibling's next attempt would be charged and never used.
+  it("VC07 once a chunk failed for good, an earlier chunk whose attempt then fails opens no next attempt", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 1, [WHOLE]));
+    scripted.set(chunkId(0), "running");
+    scripted.set(chunkId(1), { written: [], state: "failed" }); scripted.set(chunkId(1, 2), { written: [], state: "failed" });
+    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    expect(h.finish).not.toHaveBeenCalled();
+    scripted.set(chunkId(0), { written: [], state: "failed" });
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed"]);
+    expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId)).not.toContain(chunkId(0, 2));
   });
 
   // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so the stitch's retire
