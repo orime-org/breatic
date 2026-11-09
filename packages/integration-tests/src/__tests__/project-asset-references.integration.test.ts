@@ -379,7 +379,7 @@ describe("Project registered asset references", () => {
     await expect(projectAssetReferenceService.resolveProjectAsset({
       projectId: fixture.projectId, assetId: foreignAsset.id, userId: fixture.ownerId,
     })).rejects.toBeInstanceOf(NotFoundError);
-    expect(await projectAssetReferenceService.listProjectVideos({
+    expect(await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     })).toEqual({ items: [], nextCursor: null });
   });
@@ -402,7 +402,7 @@ describe("Project registered asset references", () => {
       kind: "video", fileUrl: asset.fileUrl, coverUrl: null,
       width: 1920, height: 1080, durationSeconds: 5.125, mimeType: "video/mp4", sizeBytes: 8192,
     });
-    const page = await projectAssetReferenceService.listProjectVideos({
+    const page = await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: viewerId,
     });
     expect(page.items).toEqual([resolved]);
@@ -419,7 +419,7 @@ describe("Project registered asset references", () => {
     await expect(projectAssetReferenceService.resolveProjectAsset({
       projectId: fixture.projectId, assetId: asset.id, userId: outsiderId,
     })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(projectAssetReferenceService.listProjectVideos({
+    await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: outsiderId,
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
@@ -442,7 +442,7 @@ describe("Project registered asset references", () => {
     await expect(projectAssetReferenceService.resolveProjectAsset({
       projectId: fixture.projectId, assetId: asset.id, userId: viewerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(projectAssetReferenceService.listProjectVideos({
+    await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: viewerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
@@ -458,7 +458,7 @@ describe("Project registered asset references", () => {
     await expect(projectAssetReferenceService.resolveProjectAsset({
       projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(projectAssetReferenceService.listProjectVideos({
+    await expect(projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     })).rejects.toBeInstanceOf(ForbiddenError);
   });
@@ -474,7 +474,7 @@ describe("Project registered asset references", () => {
     await expect(projectAssetReferenceService.resolveProjectAsset({
       projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
     })).rejects.toBeInstanceOf(NotFoundError);
-    const page = await projectAssetReferenceService.listProjectVideos({
+    const page = await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     });
     expect(page).toEqual({ items: [], nextCursor: null });
@@ -511,7 +511,7 @@ describe("Project registered asset references", () => {
       projectId: fixture.projectId, assetId: asset.id, userId: fixture.ownerId,
     });
     expect(resolved).toMatchObject({ assetId: asset.id, width: null, height: null, durationSeconds: null });
-    const page = await projectAssetReferenceService.listProjectVideos({
+    const page = await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     });
     expect(page.items).toEqual([resolved]);
@@ -529,7 +529,7 @@ describe("Project registered asset references", () => {
     await projectAssetReferenceService.recordProjectAssetReferences({
       projectId: otherProjectId, assetIds: [unassociated.id],
     });
-    const page = await projectAssetReferenceService.listProjectVideos({
+    const page = await projectAssetReferenceService.listProjectMedia({
       projectId: fixture.projectId, userId: fixture.ownerId,
     });
     expect(page.items.map((item) => item.assetId)).toEqual([video.id]);
@@ -572,7 +572,7 @@ describe("Project registered asset references", () => {
     let cursor: string | undefined;
     const seen: string[] = [];
     for (let index = 0; index < ordered.length; index += 1) {
-      const page = await projectAssetReferenceService.listProjectVideos({
+      const page = await projectAssetReferenceService.listProjectMedia({
         projectId: fixture.projectId, userId: fixture.ownerId, limit: 1, cursor,
       });
       expect(page.items.map((item) => item.assetId)).toEqual([ordered[index]!.asset.id]);
@@ -602,7 +602,7 @@ describe("Registered Project media identity and Project copies", () => {
       const inspection = await projectAssetReferenceService.inspectRegisteredProjectMedia(input);
       const acceptance = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed(input);
       const references = await liveReferences(scope.projectId);
-      const videos = await projectAssetReferenceService.listProjectVideos({ projectId: scope.projectId, userId: scope.ownerId });
+      const videos = await projectAssetReferenceService.listProjectMedia({ projectId: scope.projectId, userId: scope.ownerId });
       return { scope, own, foreign, inspection, acceptance, references, videos };
     }));
     expect(firstAsset.id).not.toBe(secondAsset.id);
@@ -642,7 +642,7 @@ describe("Registered Project media identity and Project copies", () => {
     expect(inspection).toEqual({ resolution: expected, references: [] });
     expect(acceptance).toEqual({ resolution: expected, references: [], insertedAssetIds: [] });
     expect(await liveReferences(local.projectId)).toEqual([]);
-    expect(await projectAssetReferenceService.listProjectVideos({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
+    expect(await projectAssetReferenceService.listProjectMedia({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
   });
 
   it.each(["foreign-live", "all-deleted"] as const)("does not resolve a deleted local copy when the other registered copy is %s", async (state) => {
@@ -665,7 +665,7 @@ describe("Registered Project media identity and Project copies", () => {
     expect(inspection).toEqual({ resolution: expected, references: [] });
     expect(acceptance).toEqual({ resolution: expected, references: [], insertedAssetIds: [] });
     expect(await liveReferences(local.projectId)).toEqual([]);
-    expect(await projectAssetReferenceService.listProjectVideos({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
+    expect(await projectAssetReferenceService.listProjectMedia({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
   });
 
   it("resolves a view-only URL to the canonical ledger URL and metadata before returning it", async () => {

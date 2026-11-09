@@ -135,6 +135,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
  * @param data.attribution - Campaign source to keep, already cleared when the browser gave no consent
+ * @param tx - The transaction that also binds a referral code, when there is one
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
  *   read on first use and on a fresh server this is often that first use, so
@@ -147,8 +148,8 @@ export async function createUser(data: {
   locale: string;
   emailVerified?: boolean;
   attribution?: Attribution | null;
-}): Promise<UserEntity> {
-  const rows = await db
+}, tx?: DbTx): Promise<UserEntity> {
+  const rows = await (tx ?? db)
     .insert(users)
     .values({
       email: normalizeEmail(data.email),

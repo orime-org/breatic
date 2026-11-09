@@ -315,6 +315,27 @@ describe("Project registered media HTTP reads", () => {
     expect(new Set(seen).size).toBe(4);
   });
 
+  it("lists only the Project's images when asked for kind=image (inner#1691 design 4.1)", async () => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture, "video");
+    const image = await seedAsset(fixture, "image");
+    await seedAsset(fixture, "image"); // Same Studio, but not accepted by this Project.
+    const refs = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: fixture.projectId, assetIds: [video.id, image.id],
+      displayNames: { [image.id]: "front.png" },
+    });
+    const expected: ProjectRegisteredAsset = {
+      assetId: image.id,
+      projectReferenceId: refs.find((ref) => ref.assetId === image.id)!.id,
+      displayName: "front.png", kind: "image", fileUrl: image.fileUrl,
+      coverUrl: null, width: 1280, height: 720, durationSeconds: null,
+      mimeType: "image/png", sizeBytes: 8192,
+    };
+    const [listPath] = readPaths(fixture.projectId, image.id);
+    expect(await readData<ProjectAssetPage>(`${listPath}?kind=image`, fixture.cookie)).toEqual({ items: [expected], nextCursor: null });
+    expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);
+  });
+
   it("rejects query schema violations and the API limit above 1000 with 422", async () => {
     const fixture = await seedFixture();
     const queries = [

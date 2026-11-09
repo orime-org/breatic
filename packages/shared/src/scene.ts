@@ -25,9 +25,12 @@ export const SceneModelSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('asset'), assetId: z.string().uuid() }).strict(),
 ]);
 
+/** The longest name a scene object holds. */
+export const SCENE_OBJECT_NAME_MAX = 256;
+
 /** Plain scene values shared by the collaboration projection and renderer. */
 export const SceneObjectValuesSchema = z.object({
-  name: z.string().trim().min(1).max(256),
+  name: z.string().trim().min(1).max(SCENE_OBJECT_NAME_MAX),
   model: SceneModelSchema,
   position: SceneVectorSchema,
   rotation: SceneRotationSchema,

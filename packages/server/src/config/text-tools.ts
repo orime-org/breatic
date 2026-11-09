@@ -49,9 +49,10 @@ export function getTextToolsConfig(): TextToolsConfig {
 }
 
 /**
- * How the document AI menu's fixed commands read the selection and write the
- * answer (inner#1860, design §5.1): the selection comes as one piece of
- * Markdown and the whole answer goes back as Markdown of the same shape.
+ * How the document AI menu's rewrite commands (polish, expand, shorten, translate, change tone) read
+ * the selection and write the answer (inner#1860, design §5.1): the selection
+ * comes as one piece of Markdown and the whole answer goes back as Markdown of
+ * the same shape.
  */
 const MARKDOWN_SHAPE =
   "The selected text is Markdown. Return Markdown with the same structure " +
@@ -120,10 +121,16 @@ const PROMPTS: Record<string, string> = {
     "and notable traits. Make the character vivid and memorable.",
 
   storyboard:
-    "You are a professional storyboard writer. Create a scene-by-scene breakdown " +
-    "in markdown table format with columns: Scene #, Visual Description, Camera/Angle, " +
-    "Dialogue/Narration, Duration, Notes. " +
-    "Each scene should be vivid and actionable for artists/animators.",
+    "You are a professional storyboard artist. Break the selected text into the shots a film crew " +
+    "would shoot, in story order, using the surrounding document only for context such as who the " +
+    "characters are and where the story takes place. Make shots for the selected text only, never " +
+    "for any other part of the document. The selected text is Markdown. " +
+    "Return ONLY one Markdown table, with nothing before or after it: a header row, then the " +
+    "delimiter row (| --- | once per column), then one row per shot. The table has exactly these " +
+    "eight columns, in this order: shot number, shot size, camera angle, camera movement, what is on " +
+    "screen, dialogue and sound, duration in seconds, notes. Write the column names, like every cell, " +
+    "in the language of the selected text. Every cell has content, and no cell contains a line break " +
+    "or a pipe character.",
 
   script:
     "You are a professional screenwriter. Write dialogue and stage directions in " +

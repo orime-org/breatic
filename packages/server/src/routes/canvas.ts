@@ -9,8 +9,8 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { randomUUID } from "node:crypto";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
@@ -45,6 +45,7 @@ import {
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService } from "@breatic/domain";
 import {
+  holdRun,
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
@@ -55,9 +56,8 @@ import {
   assertStorageAllowance,
   pasteAssetsService,
   projectService,
-  reserveForRun,
 } from "@server/modules";
-import { createQueue, defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
+import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
 import {
   ValidationError,
   NotFoundError,
@@ -72,7 +72,6 @@ const canvas = new Hono<{ Variables: AuthVariables }>();
 
 canvas.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
@@ -223,72 +222,72 @@ canvas.post(
   // Cross-tenant guard: never trust body.project_id. Without this,
   // any logged-in user who knows a victim project UUID can enqueue
   // a task that writes into that project's canvas node and is billed
-  // to the attacker's own account.
-  await projectService.assertAccess(projectId, user.id, "editor");
-
-  // #1675 execute gate (cross-modality): a model whose modes all need a source
-  // input (image / video / audio) must not be submitted without it (e.g. Nano
-  // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
-  // enqueue so a doomed submission never creates a task row, burns a worker
-  // slot, or leaves the user waiting for a node that can only fail — the client
-  // gets an immediate 422 instead. This is NOT a billing guard: billing is
-  // post-success (markCompletedAndBill), so a source-less run that reached the
-  // worker would fail and never bill anyway — the gate saves the doomed attempt,
-  // not the credits. Defence in depth behind the Generate panel's frontend gate;
-  // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
-  // here to params.
-  if (violatesSourceRequirementForModel(body.model, body.params)) {
-    // Structured record for security monitoring: a rejection here means the
-    // frontend gate was bypassed (crafted request) or drifted — worth a trace.
-    logger.warn(
-      { userId: user.id, projectId, model: body.model, reason: "missing_source" },
-      "execute_gate_rejected",
-    );
-    throw new ValidationError(
-      t("server.canvas.model_requires_source"),
-    );
-  }
-
-  // #1735 reference-count gate: a submission that over-fills a capped list
-  // param (e.g. more reference images than the model's `max_items`) is rejected
-  // BEFORE enqueue so the user is told, rather than the worker silently
-  // truncating (providers/shared.ts). Same gate location as the source check.
-  const countViolation = violatesReferenceCountForModel(body.model, body.params);
-  if (countViolation) {
-    logger.warn(
-      {
-        userId: user.id,
-        projectId,
-        model: body.model,
-        reason: "too_many_references",
-        field: countViolation.field,
-        limit: countViolation.limit,
-        actual: countViolation.actual,
-      },
-      "execute_gate_rejected",
-    );
-    throw new ValidationError(
-      t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
-    );
-  }
-
+  // to the attacker's own account. `holdRun` asks it first.
+  //
   // #1580 #7 / inner#1611: the run is admitted by holding its estimate under
   // the id its task row will carry, BEFORE that row exists, so a refusal
   // leaves nothing behind. From here until the job is queued, every way out
   // releases the hold; once queued, the worker charges or releases it.
-  const taskId = randomUUID();
-  await reserveForRun(
+  const { taskId } = await holdRun({
     projectId,
-    user.id,
-    taskId,
-    await estimateTaskCredits(body.model, {
-      params: body.params,
-      prompt: extractPromptText(body.params.prompt ?? body.params.text),
-    }),
-  );
+    userId: user.id,
+    check: () => {
+      // #1675 execute gate (cross-modality): a model whose modes all need a source
+      // input (image / video / audio) must not be submitted without it (e.g. Nano
+      // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
+      // enqueue so a doomed submission never creates a task row, burns a worker
+      // slot, or leaves the user waiting for a node that can only fail — the client
+      // gets an immediate 422 instead. This is NOT a billing guard: billing is
+      // post-success (markCompletedAndBill), so a source-less run that reached the
+      // worker would fail and never bill anyway — the gate saves the doomed attempt,
+      // not the credits. Defence in depth behind the Generate panel's frontend gate;
+      // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
+      // here to params.
+      if (violatesSourceRequirementForModel(body.model, body.params)) {
+        // Structured record for security monitoring: a rejection here means the
+        // frontend gate was bypassed (crafted request) or drifted — worth a trace.
+        logger.warn(
+          { userId: user.id, projectId, model: body.model, reason: "missing_source" },
+          "execute_gate_rejected",
+        );
+        throw new ValidationError(
+          t("server.canvas.model_requires_source"),
+        );
+      }
+
+      // #1735 reference-count gate: a submission that over-fills a capped list
+      // param (e.g. more reference images than the model's `max_items`) is rejected
+      // BEFORE enqueue so the user is told, rather than the worker silently
+      // truncating (providers/shared.ts). Same gate location as the source check.
+      const countViolation = violatesReferenceCountForModel(body.model, body.params);
+      if (countViolation) {
+        logger.warn(
+          {
+            userId: user.id,
+            projectId,
+            model: body.model,
+            reason: "too_many_references",
+            field: countViolation.field,
+            limit: countViolation.limit,
+            actual: countViolation.actual,
+          },
+          "execute_gate_rejected",
+        );
+        throw new ValidationError(
+          t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
+        );
+      }
+      return Promise.resolve();
+    },
+    credits: () =>
+      estimateTaskCredits(body.model, {
+        params: body.params,
+        prompt: extractPromptText(body.params.prompt ?? body.params.text),
+      }),
+  });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
-  let job: Awaited<ReturnType<typeof tasksQueue.add>>;
+  let job: Awaited<ReturnType<ReturnType<typeof tasksQueue>["add"]>>;
   try {
     // #89: storage gate, the other soft pre-check. AFTER credits, because
     // refusing for storage tells the studio's admin about it — and a request
@@ -343,7 +342,7 @@ canvas.post(
     // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
     // (v10 multi-doc). The job payload carries spaceId so the worker can
     // compute the canvas-{spaceId} doc name without reloading the task row.
-    job = await tasksQueue.add(
+    job = await tasksQueue().add(
       "execute-task",
       {
         taskId: task.id,
@@ -510,7 +509,7 @@ async function startReading(
     label: model,
     credits: () => estimateTaskCredits(model, { params }),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-task",
         {
           taskId: task.id,

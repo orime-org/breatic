@@ -1,0 +1,7 @@
+# Referral program (inner#1868).
+#
+# A referred account gets this percent off the first billing period of its
+# first paid membership; later periods and credit packs are full price. The
+# promoter terms state the number, so changing it means publishing a new
+# version of the terms and updating promoter_terms_version in legal.yaml.
+first_period_discount_percent: 20

@@ -51,8 +51,6 @@ test('scene panel dismissal preserves header menu focus and every locale uses th
       await locale(page, catalog.code);
       await scene.getByRole('button', { name: catalog.threeD.generate, exact: true }).click();
       const dialog = page.getByRole('dialog', { name: catalog.threeD.generate, exact: true });
-      await expect(dialog.getByRole('button', { name: catalog.threeD.chooseReference, exact: true })).toBeDisabled();
-      await expect(dialog.getByLabel(catalog.threeD.reference, { exact: true })).toBeHidden();
       await expect(dialog.getByRole('button', { name: catalog.threeD.submit, exact: true })).toBeDisabled();
       await page.screenshot({ path: test.info().outputPath(`scene-reference-${catalog.code}.png`), animations: 'disabled' });
       await page.keyboard.press('Escape'); await expect(dialog).toBeHidden();

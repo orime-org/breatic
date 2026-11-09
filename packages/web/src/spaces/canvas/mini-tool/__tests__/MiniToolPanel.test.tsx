@@ -575,7 +575,7 @@ describe('the batch-five panels', () => {
     const props = mount({ spec: tool('audio.speed'), params: { rate: 1, keepPitch: true }, source: AUDIO });
     const toggle = screen.getByTestId('mini-tool-param-keepPitch-switch');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(toggle.closest('label')).toHaveTextContent('On');
+    expect(toggle.parentElement).toHaveTextContent('On');
     fireEvent.click(toggle);
     expect(props.onParams).toHaveBeenLastCalledWith({ keepPitch: false });
   });

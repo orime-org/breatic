@@ -132,12 +132,12 @@ const BODIES: Record<string, Record<string, unknown>> = {
   custom: { tool: "custom", document: DOC, selection: SEL, instructions: "Turn it into a haiku" },
   generate: { tool: "generate", instructions: "write a line" },
   character: { tool: "character", name: "Ada" },
-  storyboard: { tool: "storyboard", instructions: "a chase" },
+  storyboard: { tool: "storyboard", document: DOC, selection: SEL },
   script: { tool: "script", scene_description: "a chase" },
 };
 
-/** The six commands of the document AI menu. */
-const DOCUMENT_TOOLS = ["polish", "expand", "shorten", "translate", "rewrite", "custom"] as const;
+/** The seven commands of the document AI menu. */
+const DOCUMENT_TOOLS = ["polish", "expand", "shorten", "translate", "rewrite", "custom", "storyboard"] as const;
 
 /** One parsed server-sent event. */
 interface SseEvent {
@@ -339,6 +339,22 @@ describe("the contract", () => {
     expect(empty.status).toBe(422);
   });
 
+  it("runs storyboard on a selection and refuses it without one, or in the shape it had before", async () => {
+    const accepted = await post(bodyFor("storyboard"));
+    await accepted.text();
+    const { selection: _selection, ...withoutSelection } = bodyFor("storyboard");
+    const { document: _document, ...withoutDocument } = bodyFor("storyboard");
+    const before = await post({ tool: "storyboard", instructions: "a chase", project_id: PID });
+    const noSelection = await post(withoutSelection);
+    const noDocument = await post(withoutDocument);
+
+    expect(accepted.status).toBe(200);
+    expect(before.status).toBe(422);
+    expect(noSelection.status).toBe(422);
+    expect(noDocument.status).toBe(422);
+    expect(model.calls).toHaveLength(1);
+  });
+
   it("runs shorten", async () => {
     const { status, events } = await run(bodyFor("shorten"));
 
@@ -516,7 +532,7 @@ describe("the model call", () => {
     expect(prompt).not.toMatch(SAME_LANGUAGE);
   });
 
-  it.each(["polish", "expand", "shorten", "rewrite"] as const)(
+  it.each(["polish", "expand", "shorten", "rewrite", "storyboard"] as const)(
     "tells the model to answer %s in the language of the selected text, whatever the document's",
     async (tool) => {
       await run(bodyFor(tool));
@@ -549,6 +565,16 @@ describe("the model call", () => {
     await run(bodyFor(tool));
 
     expect(String(model.calls[0]?.system)).toMatch(/markdown/i);
+  });
+
+  it("sends storyboard the document and the selection", async () => {
+    await run(bodyFor("storyboard"));
+
+    const prompt = promptOf(model.calls[0]);
+    expect(prompt).toContain("Here is the full document");
+    expect(prompt).toContain("Notes");
+    // The prompt is serialised as JSON, so the block is matched as JSON spells it.
+    expect(prompt).toContain(JSON.stringify(`The user selected this text:\n---\n${SEL}\n---`).slice(1, -1));
   });
 
   it("gives shorten its own prompt rather than summarize's", async () => {

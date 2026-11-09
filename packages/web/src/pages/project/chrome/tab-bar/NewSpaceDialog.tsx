@@ -43,8 +43,8 @@ interface NewSpaceDialogProps {
  *
  * The type picker is the shared `SpaceKindPicker` widget so this dialog and
  * the studio-page new-project dialog stay visually identical without
- * duplicating the card markup. Only canvas is selectable today (decision D,
- * 2026-05-21); the picker owns that rule.
+ * duplicating the card markup. Which types can be picked is the picker's
+ * rule.
  * @param root0 - Component props.
  * @param root0.trigger - Element that opens the dialog (wired through Radix `asChild`).
  * @param root0.onCreate - Called with the chosen type and trimmed name to perform the (possibly async) create.

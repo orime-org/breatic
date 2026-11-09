@@ -30,6 +30,15 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
+// A generation's admission asks the project service itself (`holdRun`).
+vi.mock("@server/modules/project/project.service.js", async (importOriginal) => {
+  const { mocks: shared } = await import("../helpers/mock-core.js");
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    assertAccess: (...args: unknown[]) => shared.projectService.assertAccess(...args),
+  };
+});
+
 import { createApp } from "../../app.js";
 import { ForbiddenError } from "@breatic/core";
 import { mocks } from "../helpers/mock-core.js";

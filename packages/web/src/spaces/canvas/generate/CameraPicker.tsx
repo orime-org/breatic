@@ -253,20 +253,23 @@ export const CameraPicker = React.memo(function CameraPicker({
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
   const enabled = value[CAMERA_SWITCH_PARAM] === true;
+  const nameId = React.useId();
   return (
     <div>
       <div className='mb-2 flex items-center justify-between'>
-        <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
-        <label className='flex cursor-pointer items-center gap-2'>
-          <span className='text-xs text-muted-foreground'>
+        <span id={nameId} className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
+        {/* Only the switch throws it, as in every switch row (ParamToggleRow). */}
+        <span className='flex items-center gap-2'>
+          <span aria-hidden='true' className='text-xs text-muted-foreground'>
             {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
           </span>
           <Switch
+            aria-labelledby={nameId}
             data-testid='generate-camera-toggle'
             checked={enabled}
             onCheckedChange={(checked) => onChange({ [CAMERA_SWITCH_PARAM]: checked })}
           />
-        </label>
+        </span>
       </div>
       <div className='grid grid-cols-4 gap-2.5'>
         {COLUMNS.map((col) => {

@@ -147,6 +147,15 @@ credits-refund: { max: 20, window_seconds: 60 }
 # our Stripe rate limit, and Stripe's limit is shared by every account we have.
 subscription-write: { max: 10, window_seconds: 60 }
 
+# The referral program (inner#1868, post-auth, user-keyed). Reading the
+# membership panel's two sections is a page load; binding a code is typed by
+# hand and each attempt checks a code, so a short budget stops guessing codes
+# without getting in the way of a typo or two; applying to become a promoter
+# is a form somebody fills in once.
+referral-read: { max: 120, window_seconds: 60 }
+referral-bind: { max: 10, window_seconds: 600 }
+promoter-apply: { max: 5, window_seconds: 3600 }
+
 # Starting a conversation and creating a project (inner#1490, post-auth,
 # user-keyed). Each call writes a row, and its run-once record is kept in
 # Redis DB0 for a day, so a loop with a fresh key each time would grow that

@@ -744,7 +744,8 @@ test('every member sees one task list: another editor\'s upload is placed by any
     await reopenScene(peer, id);
     await openTasks(peer);
     await expect(taskRow(peer, ticket.taskId)).toContainText('Shared character');
-    await expect(taskRow(peer, ticket.taskId).getByRole('button')).toHaveCount(0);
+    // A viewer only reads the row: placing it was the editor's; locating what is in the scene is everyone's (design 7.3).
+    await expect(taskRow(peer, ticket.taskId).getByRole('button')).toHaveText(['Locate in scene']);
   } finally {
     try {
       await peerContext.close();

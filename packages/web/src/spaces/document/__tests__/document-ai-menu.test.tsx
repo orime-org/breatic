@@ -3,10 +3,10 @@
 
 /**
  * The bubble bar's AI menu once its text commands work (inner#1860, design
- * §5.2): six working rows, translate and change tone each opening a second
- * level without closing the menu, the storyboard and illustration rows as
- * they were, an opener named plainly "AI", and no AI group at all — separator
- * included — over a selection of table cells. Each working row sends the
+ * §5.2) and the shot list (inner#1130): seven working rows, translate and
+ * change tone each opening a second level without closing the menu, an
+ * opener named plainly "AI", and no AI group at all — separator included —
+ * over a selection of table cells. Each working row sends the
  * request the server's contract reads.
  */
 
@@ -107,7 +107,7 @@ describe('the AI opener', () => {
 });
 
 describe('the AI menu over a text selection', () => {
-  it('still lists the eight rows, the storyboard and illustration rows among them', async () => {
+  it('lists the seven rows, the shot list among them', async () => {
     await selected('<p>hello world</p>', 0, 5);
     const menu = await hoverOpenSlot('doc-bubble-ai');
 
@@ -119,7 +119,6 @@ describe('the AI menu over a text selection', () => {
       'doc-bubble-ai-item-translate',
       'doc-bubble-ai-item-tone',
       'doc-bubble-ai-item-storyboard',
-      'doc-bubble-ai-item-illustrate',
       'doc-bubble-ai-item-custom',
     ]);
   });
@@ -128,6 +127,7 @@ describe('the AI menu over a text selection', () => {
     ['refine', 'polish'],
     ['expand', 'expand'],
     ['shorten', 'shorten'],
+    ['storyboard', 'storyboard'],
   ])('%s opens the dialog and asks the server for %s with the selection and its document', async (row, tool) => {
     await selected('<p>hello world</p>', 0, 5);
     const before = sharedBodyMarkup();
@@ -225,18 +225,15 @@ describe('the AI menu over a text selection', () => {
     expect(stream).not.toHaveBeenCalled();
   });
 
-  it.each(['storyboard', 'illustrate'])('%s is unchanged: it opens no dialog and sends nothing', async (row) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    try {
-      await selected('<p>hello world</p>', 0, 5);
+  it('the shot list row titles the dialog with its own name', async () => {
+    await selected('<p>hello world</p>', 0, 5);
 
-      await press(`doc-bubble-ai-item-${row}`);
+    await press('doc-bubble-ai-item-storyboard');
 
-      expect(stream).not.toHaveBeenCalled();
-      expect(screen.queryByTestId('doc-ai-dialog')).toBeNull();
-    } finally {
-      warn.mockRestore();
-    }
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(screen.getByTestId('doc-ai-title').textContent).toBe(t('spaces.document.commands.ai_storyboard'));
   });
 });
 
