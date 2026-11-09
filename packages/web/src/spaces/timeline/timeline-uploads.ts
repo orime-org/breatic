@@ -42,8 +42,13 @@ export interface TimelineUploads {
   dispose: () => void;
 }
 
-/** Where a document's uploads land. */
-interface TimelineUploadsInputs { projectId: string; spaceId: string }
+/** Where a document's uploads land, and who hears that one registered. */
+interface TimelineUploadsInputs {
+  projectId: string;
+  spaceId: string;
+  /** Called once an upload has registered as a Project video, so lists of Project videos read again. */
+  onRegistered?: () => void;
+}
 
 /** One upload's record; the file is let go once the upload has finished. */
 interface UploadRecord { file: File | null; state: TimelineUploadEntry }
@@ -79,7 +84,7 @@ export function timelineUploadWriteAccess(name: string): WriteAccess {
  * @throws {never} Never.
  */
 function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { name: string }): TimelineUploads {
-  const { projectId, spaceId, name } = inputs;
+  const { projectId, spaceId, name, onRegistered } = inputs;
   const records = new Map<string, UploadRecord>();
   const listeners = new Set<() => void>();
   const registered = new Set<string>();
@@ -205,6 +210,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
       }
       try {
         const asset = await timelineApi.resolveAsset(projectId, assetId, signal);
+        if (!disposed && asset.kind === 'video') onRegistered?.();
         settle(record, asset.kind === 'video' ? { phase: 'done', asset } : { phase: 'failed', reason: 'unsupportedType', retryable: false });
       } catch {
         // The bytes are stored and registered; reading the registration again can succeed.
@@ -282,7 +288,7 @@ const cache = createDocScopedCache<TimelineUploads, TimelineUploadsInputs & { na
  * The background uploads of an open Timeline document, kept across body remounts and hidden tabs.
  * @param doc - The live collaborative document.
  * @param name - Its canonical document name.
- * @param inputs - The Project and Space its uploads land in.
+ * @param inputs - The Project and Space its uploads land in, and who hears that one registered.
  * @returns The cached or new controller.
  * @throws {never} Never.
  */

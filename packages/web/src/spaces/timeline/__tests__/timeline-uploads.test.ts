@@ -135,16 +135,17 @@ async function settle(): Promise<void> {
 /**
  * Open the Timeline document with its provider, its session and its upload controller.
  * @param clips - The clips it starts with.
+ * @param onRegistered - Told once an upload registered as a video.
  * @returns The document, its provider, the session and the controller.
  * @throws {Error} When the fixture is invalid.
  */
-function open(clips: Parameters<typeof timeline>[0]): { doc: Y.Doc; provider: FakeProvider; session: TimelineEditSession; uploads: TimelineUploads } {
+function open(clips: Parameters<typeof timeline>[0], onRegistered?: () => void): { doc: Y.Doc; provider: FakeProvider; session: TimelineEditSession; uploads: TimelineUploads } {
   const doc = getDoc(NAME);
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(seededDoc(timeline(clips, TRACKS, [SOURCE]))));
   const provider = acquireDocProvider(NAME, doc) as unknown as FakeProvider;
   const session = getTimelineEditSession(doc, NAME);
   session.setCanWrite(true);
-  const uploads = getTimelineUploads(doc, NAME, { projectId: PROJECT, spaceId: SPACE });
+  const uploads = getTimelineUploads(doc, NAME, { projectId: PROJECT, spaceId: SPACE, ...(onRegistered === undefined ? {} : { onRegistered }) });
   return { doc, provider, session, uploads };
 }
 
@@ -223,6 +224,16 @@ describe('a background upload', () => {
     if (first?.kind === 'video' && second?.kind === 'video') expect(first.sourceId).toBe(second.sourceId);
     expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'done', asset: { assetId: ASSET_ID } });
     expect(session.getSnapshot().canUndo).toBe(false);
+  });
+
+  it('tells its owner once the upload registered as a video, so Project video lists read again', async () => {
+    const registered = vi.fn();
+    const { doc, uploads } = open([uploadClip(cid(1), V2, 0)], registered);
+    uploads.start(UPLOAD_ID, FILE);
+    expect(registered).not.toHaveBeenCalled();
+    pending[0]?.resolve(STORED);
+    await vi.waitFor(() => expect(kindOf(doc, cid(1))).toBe('video'));
+    expect(registered).toHaveBeenCalledTimes(1);
   });
 
   it('keeps running when the Space body is not mounted: the controller lives with the document', () => {
@@ -389,11 +400,13 @@ describe('failures and retry', () => {
   it('fails without retry when the upload registered as something other than a video', async () => {
     const image: ProjectRegisteredAsset = registeredVideo(null, { kind: 'image', mimeType: 'image/png' });
     vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(image);
-    const { doc, uploads } = open([uploadClip(cid(1), V2, 0)]);
+    const registered = vi.fn();
+    const { doc, uploads } = open([uploadClip(cid(1), V2, 0)], registered);
     uploads.start(UPLOAD_ID, FILE);
     pending[0]?.resolve({ ...STORED, kind: 'image' });
     await vi.waitFor(() => expect(uploads.entry(UPLOAD_ID)).toEqual({ phase: 'failed', reason: 'unsupportedType', retryable: false }));
     expect(kindOf(doc, cid(1))).toBe('upload');
+    expect(registered).not.toHaveBeenCalled();
   });
 });
 

@@ -242,7 +242,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return plan;
   }, [session, t]);
   // Background uploads live with the document, so a hidden tab keeps uploading and writing results.
-  const uploads = React.useMemo(() => getTimelineUploads(doc, name, { projectId, spaceId }), [doc, name, projectId, spaceId]);
+  const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
+    projectId, spaceId, onRegistered: () => { void queryClient.invalidateQueries({ queryKey: ['timeline-videos', projectId] }); },
+  }), [doc, name, projectId, spaceId, queryClient]);
   const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
