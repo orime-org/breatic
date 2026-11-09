@@ -727,6 +727,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   };
 
   /**
+   * End a step that failed for good: an optional one is passed over, any other fails the run.
+   * @param ticket - The ticket.
+   * @param index - The step's place.
+   * @param bounds - The bounds a finish bills under.
+   * @param reason - Why it failed.
+   * @returns The next answer.
+   */
+  const endStep = (ticket: Ticket, index: number, bounds: RequestBounds, reason: Error): Promise<MediaAnswer> | MediaAnswer =>
+    isOptional(ticket, ticket.steps[index]!) ? passOver(ticket, index, bounds, reason) : failed(ticket, reason);
+
+  /**
    * Mark a step done and move on: hand the next step back, or finish.
    * @param ticket - The ticket.
    * @param index - The step's place.
@@ -929,17 +940,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
           const refusal = error instanceof HttpStatus ? { status: error.status, cause: error } : { cause: error };
           const said = (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "");
           const rejected = new UpstreamRequestRejected(ticket.model, ticket.upstream, said, [], refusal);
-          if (isOptional(ticket, at.step)) return passOver(ticket, at.index, bounds, rejected);
-          return failed(ticket, rejected);
+          return endStep(ticket, at.index, bounds, rejected);
         }
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
         if (ticket.accepted || to === undefined) {
           // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
-          if (failure.kind === "model_not_found") {
-            const lacking = new NoUpstreamAvailable(ticket.model, reasons);
-            return isOptional(ticket, at.step) ? passOver(ticket, at.index, bounds, lacking) : failed(ticket, lacking);
-          }
+          if (failure.kind === "model_not_found") return endStep(ticket, at.index, bounds, new NoUpstreamAvailable(ticket.model, reasons));
           if (givenUp) return passOver(ticket, at.index, bounds, error as Error);
           throw new SendNotAccepted(ticket.upstream, error);
         }
@@ -955,8 +962,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         try {
           output = outputOf(ticket, at.step, answer.outputs, answer.predictionId);
         } catch (error) {
-          if (isOptional(accepted, at.step)) return passOver(accepted, at.index, bounds, error as Error);
-          return failed(accepted, error as Error);
+          return endStep(accepted, at.index, bounds, error as Error);
         }
         return completed(accepted, at.index, output, bounds, []);
       }
@@ -980,8 +986,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const resendable = error instanceof NoAnswer || error instanceof NotSent
           || (error instanceof HttpStatus && (error.status === 429 || isServerError(error.status)));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
-        // A refusal to say how the prediction went says the same next time, as run-steps reads a 4xx.
-        if (error instanceof HttpStatus && error.status >= 400 && error.status < 500 && error.status !== 408 && isOptional(ticket, at.step)) {
+        // A refusal to say how the prediction went says the same next time, as run-steps reads a 4xx
+        // other than 408 and 429, which ask again.
+        if (!resendable && error instanceof HttpStatus && error.status >= 400 && error.status < 500 && error.status !== 408 && isOptional(ticket, at.step)) {
           return passOver(ticket, at.index, bounds, error);
         }
         if (!resendable) throw error;
@@ -989,15 +996,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       }
       if (asked.state === "running") return waiting(ticket);
       if (asked.state === "failed") {
-        const reason = new UpstreamTaskFailed(ticket.upstream, asked.error);
-        return isOptional(ticket, at.step) ? passOver(ticket, at.index, bounds, reason) : failed(ticket, reason);
+        return endStep(ticket, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, asked.error));
       }
       let output: StepOutput;
       try {
         output = outputOf(ticket, at.step, asked.outputs, at.step.predictionId);
       } catch (error) {
-        if (isOptional(ticket, at.step)) return passOver(ticket, at.index, bounds, error as Error);
-        return failed(ticket, error as Error);
+        return endStep(ticket, at.index, bounds, error as Error);
       }
       return completed(ticket, at.index, output, bounds, []);
     },

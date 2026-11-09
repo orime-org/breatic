@@ -576,6 +576,15 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
   });
 
+  it("keeps waiting on a rig the upstream answers 429 about while it runs, as run-steps does", async () => {
+    a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 429, body: {} } : tripoUpstream("rigged")(req)));
+    const r = runner();
+    const generating = expectState(await r.send(stored(expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send").ticket), live()), "running");
+    const toRig = expectState(await r.poll(stored(generating.ticket), live()), "send");
+    const rigging = expectState(await r.send(stored(toRig.ticket), live()), "running");
+    expectState(await r.poll(stored(rigging.ticket), live()), "running");
+  });
+
   it("still throws for a busy generation on the final try: only an optional step is passed over", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     a.answer(() => ({ status: 503, body: {} }));
@@ -644,7 +653,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
 
   describe("property (critical path): whatever the generation and the rig answer", () => {
     const SUBMITS = ["accept", "finishNow", "finishEmpty", "busy", "refused", "unreadable", "noModel"] as const;
-    const POLLS = ["processing", "completed", "empty", "failed", "gone"] as const;
+    const POLLS = ["processing", "completed", "empty", "failed", "gone", "busy"] as const;
 
     it("every accepted prediction reaches the caller once, an optional rig never fails the run, and the outputs and notice follow the rig", async () => {
       await fc.assert(
@@ -672,6 +681,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
                 const isRig = id.startsWith("rig-");
                 const next = pollScript[p++] ?? "completed";
                 if (next === "processing") return result(id, "processing");
+                if (next === "busy") return { status: 429, body: {} };
                 // The generation is never refused while it runs here: only the rig is passed over.
                 if (next === "gone") {
                   if (!isRig) return result(id, "processing");
