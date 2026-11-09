@@ -10,7 +10,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Queries bind to the open transaction
 
-**While a transaction is open, a query issued through `db` or `yjsDb` in the same async flow runs on that transaction, and a transaction opened inside it is a savepoint (`bindToOpenTransaction` in `src/db/client.ts`).** A transaction that waits for a second pool connection deadlocks the service once every connection is held by such a transaction. Passing `tx` explicitly stays correct; a test that needs a separate session while holding a transaction starts it from an `AsyncLocalStorage.snapshot()` taken before the transaction began.
+**While a transaction is open, a query issued through `db` or `yjsDb` in the same async flow runs on that transaction, and a transaction opened inside it is a savepoint (`bindToOpenTransaction` in `src/db/client.ts`).** A transaction that waits for a second pool connection deadlocks the service once every connection is held by such a transaction. A query built inside the transaction keeps the session it was built on, as one built on `tx` does, so await it before the callback returns. Passing `tx` explicitly stays correct; a test that needs a separate session while holding a transaction starts it from an `AsyncLocalStorage.snapshot()` taken before the transaction began.
 
 ### Two Postgres databases
 
