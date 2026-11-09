@@ -18,6 +18,8 @@ import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
 
 /** The normal quantile of a two-sided 95% interval. */
 const Z = 1.96;
+/** The longest RETURNED line the judge reads, in characters of JSON. */
+const RETURNED_MAX = 6000;
 /** The share of a row's runs that must pass: four in five. */
 const ROW_SHARE = 0.8;
 
@@ -64,7 +66,7 @@ export interface Scenario {
 
 /** One thing that happened in a run, in the order it happened. */
 export type RunStep =
-  | { readonly kind: 'call'; readonly tool: string; readonly state: string; readonly input: unknown }
+  | { readonly kind: 'call'; readonly tool: string; readonly state: string; readonly input: unknown; readonly output?: unknown }
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'answer'; readonly text: string };
 
@@ -81,15 +83,21 @@ export interface Verdict {
 
 /**
  * The run as the judge reads it: the user's first message, then each step in
- * order, a tool call with its name, state and input as JSON, the agent's
- * words, or an answer the user gave.
+ * order, a tool call with its name, state and input as JSON (and what it
+ * returned, where that was recorded), the agent's words, or an answer the
+ * user gave.
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The transcript.
  */
 export function transcriptOf(scenario: Scenario, run: Run): string {
   const lines = run.steps.map((step) => {
-    if (step.kind === 'call') return `TOOL ${step.tool} (${step.state}): ${JSON.stringify(step.input) ?? ''}`;
+    if (step.kind === 'call') {
+      const sent = `TOOL ${step.tool} (${step.state}): ${JSON.stringify(step.input) ?? ''}`;
+      if (step.output === undefined) return sent;
+      const back = JSON.stringify(step.output) ?? '';
+      return `${sent}\nRETURNED: ${back.length > RETURNED_MAX ? `${back.slice(0, RETURNED_MAX)} …` : back}`;
+    }
     return step.kind === 'text' ? `AGENT: ${step.text}` : `USER ANSWERED: ${step.text}`;
   });
   return [`USER: ${scenario.text}`, ...lines].join('\n\n');
@@ -111,7 +119,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
     'The agent writes in the language of the user\'s latest message.',
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
-    'A TOOL line shows what the agent sent, not what came back; null means the input was not recorded.',
+    'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,
     'Answer with one JSON object {"pass": boolean, "reason": string} and nothing else; the reason is one sentence naming what decided it.',
   ].join('\n\n');

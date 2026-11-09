@@ -89,6 +89,7 @@ interface StoredPart {
   readonly toolCallId?: string;
   readonly state?: string;
   readonly status?: string;
+  readonly output?: unknown;
   readonly input?: {
     questions?: { question?: string; options?: (string | { label?: string })[] }[];
     spaces?: { id?: string; blocks?: { from: number; to?: number }; node_ids?: string[] }[];
@@ -244,7 +245,9 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
     const steps: RunStep[] = (await partsOf(api, conversation.id)).flatMap((part): RunStep[] => {
       const tool = toolOf(part);
       if (tool === undefined) return part.type === 'text' ? [{ kind: 'text', text: part.text ?? '' }] : [];
-      const call: RunStep = { kind: 'call', tool, state: part.status ?? part.state ?? '', input: part.input };
+      // The model list is the one answer the judge needs: which model is fast or cheap, and each setting's cheapest value.
+      const returned = tool === 'list_generation_models' && part.output !== undefined ? { output: part.output } : {};
+      const call: RunStep = { kind: 'call', tool, state: part.status ?? part.state ?? '', input: part.input, ...returned };
       const answer = answered.get(part.toolCallId ?? '');
       return answer === undefined ? [call] : [call, { kind: 'answer', text: answer }];
     });
