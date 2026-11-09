@@ -12,7 +12,7 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
 import {
   openFreshDocument,
@@ -803,7 +803,9 @@ test.describe('the card a comment is written in', () => {
       const line = peer.locator(`${EDITOR} p`).nth(1);
       await expect(line).toContainText('alpha bravo charlie', { timeout: 20_000 });
       await line.click({ position: { x: 1, y: 8 } });
-      await peer.keyboard.type('## ');
+      // At a person's pace: the provider merges the writes made within its
+      // flush delay into one Update, and keys typed apart arrive one by one.
+      await peer.keyboard.type('## ', { delay: 50 });
       await expect(page.locator(`${EDITOR} h2`)).toContainText('alpha bravo charlie');
 
       const first = peer.locator(`${EDITOR} p`).first();
@@ -1616,9 +1618,7 @@ test.describe('what the pointer says over the body', () => {
 
     const settled = page.locator(`${EDITOR} .bn-thread-mark[data-orphan='true']`);
     await expect(settled).toHaveCount(1);
-    expect(await settled.evaluate((el) => getComputedStyle(el).cursor)).toBe(
-      'auto',
-    );
+    expect(await cursorOver(settled)).toBe('auto');
     // Resolving is only reachable on the thread being read, so the deeper
     // paint is on those words at the moment of the press. It goes with the
     // paint underneath it — measured, because reading the code the other way
@@ -1639,11 +1639,24 @@ test.describe('what the pointer says over the body', () => {
       `${EDITOR} .bn-thread-mark:not([data-orphan='true'])`,
     );
     await expect(live.first()).toBeVisible();
-    expect(
-      await live.first().evaluate((el) => getComputedStyle(el).cursor),
-    ).toBe('pointer');
+    expect(await cursorOver(live.first())).toBe('pointer');
   });
 });
+
+/**
+ * The cursor shown with the pointer on an element's words: the one of
+ * whatever is topmost at the middle of its first line box, as the browser
+ * picks it. Words that wrap leave gaps inside the element's bounding box.
+ * @param target - The element.
+ * @returns The computed cursor.
+ */
+async function cursorOver(target: Locator): Promise<string> {
+  return target.evaluate((el) => {
+    const line = el.getClientRects()[0]!;
+    const top = document.elementFromPoint(line.x + line.width / 2, line.y + line.height / 2)!;
+    return getComputedStyle(top).cursor;
+  });
+}
 
 test.describe('a comment split around words that are not its own', () => {
   test('leaves the words between its runs the colour of plain prose', async ({
