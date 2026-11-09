@@ -39,6 +39,9 @@ export interface TimelineEditSession {
 /** Clip and track records by id, as JSON, for the records one undo step touched. */
 interface RecordSnapshot { clips: Record<string, Record<string, unknown>>; tracks: Record<string, Record<string, unknown>> }
 
+// The fields every clip kind shares; the only ones a repair writes into a clip whose kind is not the snapshot's.
+const PLACEMENT_FIELDS: ReadonlySet<string> = new Set(['id', 'trackId', 'startFrame', 'sourceInFrame', 'durationFrames', 'rate', 'gain', 'mute', 'transform']);
+
 // Writes that complete revived records and their sources; untracked, so they never become an undo step of their own.
 const REPAIR_ORIGIN = Symbol('timeline-record-repair');
 
@@ -85,7 +88,7 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
 
 /**
  * Repair the document after an undo or redo: give every present record of the step's snapshot the fields it
- * lacks, write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
+ * lacks (only the placement fields when a clip's kind is no longer the snapshot's), write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
  * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
  * fields or without its source, or a source without a clip.
  * @param doc - The document.
@@ -102,7 +105,9 @@ function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBe
       for (const [id, record] of Object.entries(records?.[kind] ?? {})) {
         const target = collection.get(id);
         if (!(target instanceof Y.Map)) continue;
-        for (const [key, value] of Object.entries(record)) if (!target.has(key)) target.set(key, value);
+        // A clip whose kind changed outside this session (an upload's conversion) takes back only its placement.
+        const sameKind = kind === 'tracks' || !target.has('kind') || target.get('kind') === record.kind;
+        for (const [key, value] of Object.entries(record)) if (!target.has(key) && (sameKind || PLACEMENT_FIELDS.has(key))) target.set(key, value);
         const sourceId = kind === 'clips' && !clipsBefore.has(id) ? timelineClipSourceId(record) : undefined;
         if (sourceId !== undefined) revived.push(sourceId);
       }
