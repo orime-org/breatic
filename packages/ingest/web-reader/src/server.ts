@@ -116,6 +116,15 @@ function endedBy(answer: Response): ReadPageResult["status"] | null {
 }
 
 /**
+ * An address without its fragment, which a response's address never carries.
+ * @param address - The address.
+ * @returns It, cut at its `#`.
+ */
+function withoutFragment(address: string): string {
+  return address.split("#")[0] ?? address;
+}
+
+/**
  * Whether a response declares more bytes than the call reads.
  * @param answer - The response.
  * @param maxBytes - The largest page read.
@@ -177,8 +186,16 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
       if (arriving && declaresMoreThan(answer, request.maxBytes)) tooLarge();
     });
     page.on("framenavigated", (frame) => {
-      // A same-document navigation (pushState, a fragment) has no response of its own.
-      if (arriving || frame !== page.mainFrame() || head === undefined || head.url() !== frame.url()) return;
+      // A same-document navigation has no response of its own: pushState to another
+      // address is skipped here, and a new fragment finds its document's own response.
+      if (
+        arriving ||
+        frame !== page.mainFrame() ||
+        head === undefined ||
+        withoutFragment(head.url()) !== withoutFragment(frame.url())
+      ) {
+        return;
+      }
       wentOnTo = head;
       if (declaresMoreThan(head, request.maxBytes)) tooLarge();
     });
