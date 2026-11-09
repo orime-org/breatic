@@ -34,12 +34,9 @@ afterAll(async () => {
 /**
  * Write one probe row through the pool handle, never through a transaction.
  * @param note - What the row says.
- * @returns The row id.
  */
-async function insertThroughDb(note: string): Promise<string> {
-  const id = randomUUID();
-  await db.execute(sql`INSERT INTO ${sql.raw(TABLE)} (id, note) VALUES (${id}, ${note})`);
-  return id;
+async function insertThroughDb(note: string): Promise<void> {
+  await db.execute(sql`INSERT INTO ${sql.raw(TABLE)} (id, note) VALUES (${randomUUID()}, ${note})`);
 }
 
 /**
@@ -60,26 +57,6 @@ async function committedNotes(): Promise<string[]> {
   return rows.map((row) => row.note);
 }
 
-/**
- * Reject when a promise takes longer than the limit, so a deadlock fails the
- * test instead of hanging the run.
- * @param work - The work to wait for.
- * @param ms - The limit.
- * @returns What the work resolved to.
- * @throws {Error} When the limit passes first.
- */
-async function within<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const limit = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`still waiting after ${ms} ms`)), ms);
-  });
-  try {
-    return await Promise.race([work, limit]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 describe("transaction-bound queries (inner#1917)", () => {
   it("runs a db query inside a transaction on that transaction", async () => {
     await expect(db.transaction(async (tx) => {
@@ -96,6 +73,7 @@ describe("transaction-bound queries (inner#1917)", () => {
     await db.transaction(async () => {
       await insertThroughDb("savepoint-outer");
       await expect(db.transaction(async () => {
+        expect(await notesThroughDb()).toContain("savepoint-outer");
         await insertThroughDb("savepoint-inner");
         await db.execute(sql`SELECT 1 / 0`);
       })).rejects.toThrow();
@@ -121,7 +99,7 @@ describe("transaction-bound queries (inner#1917)", () => {
   });
 
   it("sends work that outlives its transaction to the pool", async () => {
-    let later: Promise<string> | undefined;
+    let later: Promise<void> | undefined;
     await db.transaction(async () => {
       later = new Promise((resolve) => setTimeout(resolve, 50))
         .then(() => db.transaction(() => insertThroughDb("after-commit")));
@@ -130,17 +108,17 @@ describe("transaction-bound queries (inner#1917)", () => {
     expect(await committedNotes()).toContain("after-commit");
   });
 
-  it("keeps work that outlives a nested transaction on the parent that is still open", async () => {
+  it("keeps work that outlives nested transactions on the nearest parent that is still open", async () => {
     let seen: string[] = [];
     await expect(db.transaction(async () => {
       await insertThroughDb("escape-outer");
       let later: Promise<void> | undefined;
-      await db.transaction(async () => {
+      await db.transaction(() => db.transaction(async () => {
         later = new Promise((resolve) => setTimeout(resolve, 50)).then(async () => {
           seen = await notesThroughDb();
           await insertThroughDb("escape-late");
         });
-      });
+      }));
       await later;
       throw new Error("parent fails");
     })).rejects.toThrow("parent fails");
@@ -152,7 +130,7 @@ describe("transaction-bound queries (inner#1917)", () => {
   it("opens twice as many uploads at once as the pool has connections", async () => {
     const project = await seedActivityProject(probe);
     const count = env.DB_POOL_SIZE * 2;
-    const opened = await within(Promise.all(Array.from({ length: count }, (_, i) => openUpload({
+    const opened = await Promise.all(Array.from({ length: count }, (_, i) => openUpload({
       projectId: project.projectId,
       actingUserId: project.userId,
       declaredSize: 100,
@@ -160,7 +138,7 @@ describe("transaction-bound queries (inner#1917)", () => {
       ext: ".jpg",
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       context: { filename: `pool-${i}.jpg` },
-    }, { budgetMs: 60_000, action: "upload", label: `pool-${i}.jpg` }))), 15_000);
+    }, { budgetMs: 60_000, action: "upload", label: `pool-${i}.jpg` })));
     expect(new Set(opened.map((upload) => upload.key)).size).toBe(count);
-  });
+  }, 15_000);
 });
