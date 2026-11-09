@@ -31,6 +31,7 @@ import { createPortal } from 'react-dom';
 import { useStore as useStoreOf } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
+import { clipboardTextOf, readClipboardItems } from '@web/lib/read-clipboard';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
@@ -77,6 +78,7 @@ import {
 } from '@web/spaces/canvas/focus/FocusCropControls';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { writeGroup } from '@web/spaces/canvas/group-write';
 import {
@@ -2973,12 +2975,13 @@ function CanvasSpaceInner({
   }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
-  // as nodes, any other words make a text node. `at` is the right-click point;
-  // a keyboard paste of nodes lands where `pasteOffsetFor` puts it and plain
-  // text lands at the view centre; then every paste steps past nodes already
-  // on its spot (inner#1235 A20).
+  // as nodes, media copied in the document body as media nodes (inner#1537),
+  // any other words make a text node. `at` is the right-click point; a
+  // keyboard paste of nodes lands where `pasteOffsetFor` puts it, the rest at
+  // the view centre; then every paste steps past nodes already on its spot
+  // (inner#1235 A20).
   const pasteFromText = React.useCallback(
-    (text: string, at: { x: number; y: number } | null): boolean => {
+    (text: string, at: { x: number; y: number } | null, html = ''): boolean => {
       const payload = parseClipboard(text);
       if (payload && payload.nodes.length > 0) {
         let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
@@ -3003,14 +3006,25 @@ function CanvasSpaceInner({
         });
         return true;
       }
-      if (text.trim().length === 0) return false;
+      const fromBody = documentMediaPaste(html);
+      if (fromBody === null && text.trim().length === 0) return false;
       const rect = containerRef.current?.getBoundingClientRect();
       const point = at ?? (rect ? viewCentre(rect) : null);
       if (!point) return false;
-      selectPasted([pasteTextAt(text, point)]);
+      if (fromBody === null) {
+        selectPasted([pasteTextAt(text, point)]);
+        return true;
+      }
+      if (fromBody.notPasted > 0) toast.warning(t('spaces.document.media.notPasted', { count: fromBody.notPasted }));
+      if (fromBody.media.length === 0) return true;
+      const media = documentMediaPayload(fromBody.media, point, groupBackgroundFor(Math.random()));
+      // Several media arrive as one Group, which is what is selected, as for files.
+      void pastePayload(media, { dx: 0, dy: 0 }).then((ids) => {
+        if (ids) selectPasted(ids.slice(0, 1));
+      });
       return true;
     },
-    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted],
+    [pastePayload, pasteTextAt, keepUpstreamFor, screenToFlowPosition, viewCentre, spaceId, selectPasted, t],
   );
 
   // ---- Clipboard (slice 2b) ----
@@ -3049,7 +3063,7 @@ function CanvasSpaceInner({
         return;
       }
 
-      if (pasteFromText(text, null)) event.preventDefault();
+      if (pasteFromText(text, null, event.clipboardData?.getData('text/html') ?? '')) event.preventDefault();
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
@@ -3614,24 +3628,22 @@ function CanvasSpaceInner({
   const pasteAtCursor = React.useCallback((): void => {
     if (readOnly) return;
     const point = screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y });
-    void navigator.clipboard
-      .read()
+    void readClipboardItems()
       .then(async (items) => {
+        if (items === null) throw new Error('clipboard read refused');
         // Picture data (a screenshot, an image copied in a browser) uploads at
         // the cursor like a Cmd+V picture; anything else goes through the same
-        // dispatch as Cmd+V. A file copied in Finder reaches a page only as its
-        // name (design §4), so it pastes as text, as it does elsewhere.
+        // dispatch as Cmd+V, with the HTML as a paste event hands it. A file
+        // copied in Finder reaches a page only as its name (design §4), so it
+        // pastes as text, as it does elsewhere.
         for (const item of items) {
           if (!item.types.includes('image/png')) continue;
           const blob = await item.getType('image/png');
           processFiles([new File([blob], 'image.png', { type: 'image/png' })], point, true);
           return;
         }
-        for (const item of items) {
-          if (!item.types.includes('text/plain')) continue;
-          pasteFromText(await (await item.getType('text/plain')).text(), point);
-          return;
-        }
+        const { html, plain } = await clipboardTextOf(items);
+        pasteFromText(plain, point, html);
       })
       .catch(() => toast.error(t('canvas.contextMenu.clipboardError')));
   }, [readOnly, screenToFlowPosition, contextMenu.x, contextMenu.y, processFiles, pasteFromText, t]);

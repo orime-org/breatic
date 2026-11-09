@@ -282,7 +282,7 @@ function clip(
 
 // A paste registers what it names with the server before it writes.
 beforeEach(() => {
-  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
 });
 
 /**
