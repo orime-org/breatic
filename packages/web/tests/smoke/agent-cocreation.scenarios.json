@@ -230,6 +230,7 @@
   {
     "id": "trial-2k",
     "lang": "zh-CN",
+    "compare": true,
     "text": "画一只橘猫在窗台上晒太阳，给我三个画风方向，三张都直接出 2K 的。",
     "user": "Wants the three directions at 2K. Answers in Simplified Chinese.",
     "pass": "The agent proposes three clearly different style directions at 2K as the user asked; it does not lower the resolution, and every setting the user did not name (such as quality) stays at its cheapest value."
