@@ -2089,16 +2089,12 @@
         "textColor": "字体颜色",
         "fillColor": "背景颜色",
         "colorReset": "恢复默认",
-        "aiRewriteGroup": "改写选中的文字",
-        "aiProduceGroup": "据选中的文字产出新东西",
-        "aiOtherGroup": "其它",
         "ai_refine": "优化",
         "ai_expand": "扩写",
         "ai_shorten": "缩写",
         "ai_translate": "翻译",
         "ai_tone": "改语气",
         "ai_storyboard": "生成分镜表",
-        "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
       },
       "ai": {

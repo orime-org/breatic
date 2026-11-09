@@ -4,7 +4,7 @@
 /**
  * The text tool prompts of the document AI menu (inner#1860, design §5.1):
  * the selection is sent as Markdown and the whole answer comes back as
- * Markdown, so the commands under "Rewrite the selection" keep its structure,
+ * Markdown, so the rewrite commands keep its structure,
  * custom may change it, and the shot list (inner#1130) turns it into a table.
  */
 
@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { getPromptForTool } from "@server/config/text-tools.js";
 
-/** The commands under "Rewrite the selection" in the document AI menu. */
+/** The document AI menu's rewrite commands. */
 const FIXED_TOOLS = ["polish", "expand", "shorten", "translate", "rewrite"] as const;
 
 /** The sentence asking for the same Markdown structure. */

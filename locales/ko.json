@@ -2089,16 +2089,12 @@
         "textColor": "글자색",
         "fillColor": "배경색",
         "colorReset": "기본값으로 되돌리기",
-        "aiRewriteGroup": "선택한 글 다시 쓰기",
-        "aiProduceGroup": "선택한 글로 만들기",
-        "aiOtherGroup": "기타",
         "ai_refine": "다듬기",
         "ai_expand": "늘리기",
         "ai_shorten": "줄이기",
         "ai_translate": "번역",
         "ai_tone": "어조 바꾸기",
         "ai_storyboard": "콘티 만들기",
-        "ai_illustrate": "이 문단으로 그림 만들기",
         "ai_custom": "직접 지시…"
       },
       "ai": {

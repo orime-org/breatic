@@ -365,7 +365,7 @@ test('every dropdown opens on hover with the demo\'s contents, and an AI row ope
   );
 
   const ai = await hoverOpenSlot(page, 'doc-bubble-ai');
-  expect(await rowsOf(ai)).toHaveLength(8);
+  expect(await rowsOf(ai)).toHaveLength(7);
 
   // Pressing a command row (inner#1860): the menu goes away like any other,
   // the AI dialog opens, and the words stay as they were (the dialog paints
