@@ -18,6 +18,7 @@ import type { z } from "zod";
 import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, toolFailureOf } from "@breatic/shared";
 import type { ReadPageResult, ReadPagesAnswer, ReadPagesRequest, ToolFailure } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
+import type * as PageLinksModule from "@domain/agent/page-links.js";
 
 /** What the deployment has each `web_fetch_*` key set to, per test. */
 const fetchConfig = {
@@ -45,6 +46,25 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getMiniToolsConfig: () => {
       const real = actual.getMiniToolsConfig();
       return { ...real, prices: PRICES, classes: { ...real.classes, WebReaderContainer: READER_SIZE } };
+    },
+  };
+});
+
+/** The length of every text the page-link readers are handed, so a case can count whole-page scans. */
+const linkScans = vi.hoisted(() => ({ lengths: [] as number[] }));
+
+// The real readers, counted: a whole-page scan is one call on a text as long as the page.
+vi.mock("@domain/agent/page-links.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof PageLinksModule>();
+  return {
+    ...actual,
+    pageLinkSpansIn: (text: string): ReturnType<typeof actual.pageLinkSpansIn> => {
+      linkScans.lengths.push(text.length);
+      return actual.pageLinkSpansIn(text);
+    },
+    pageLinksIn: (text: string): string[] => {
+      linkScans.lengths.push(text.length);
+      return actual.pageLinksIn(text);
     },
   };
 });
@@ -624,6 +644,58 @@ describe("the links a slice lists, taken from where the whole page writes them (
       }),
       { numRuns: 100 },
     );
+  });
+});
+
+// Plan §20 rows 1 and 2: the links of a page are found once, when the turn
+// first reads it, and every slice's links and cut come from that one reading.
+describe("the whole page's links, found once per page (plan §20 rows 1 and 2)", () => {
+  it(
+    "scans a page of about 8 Mi characters for links once, however many slices of it a turn hands over",
+    async () => {
+      const parts: string[] = [];
+      for (let i = 0, length = 0; length < 8 * 1024 * 1024; i += 1) {
+        const part =
+          `第${String(i)}段中文内容，参见https://baike.baidu.com/item/词条${String(i)}` +
+          `以及www.example.cn/p/${String(i)}。更多中文文字在这里继续写下去。\n`;
+        parts.push(part);
+        length += part.length;
+      }
+      const text = parts.join("");
+      fetchConfig.web_fetch_max_chars = 80_000;
+      const tools = turn();
+      const readPages = reader({ [A]: okPage(text) });
+      const starts = Array.from({ length: 20 }, (_, j) => Math.floor((text.length / 20) * j));
+      linkScans.lengths = [];
+
+      const answer = await fetchWith(tools, { pages: starts.map((start) => ({ url: A, start })) }, readPages);
+      const next = answer.pages[0]!.next_start!;
+      await fetchWith(tools, { pages: [{ url: A, start: next }] }, readPages);
+
+      expect(readPages).toHaveBeenCalledTimes(1);
+      expect(answer.pages.every((page) => page.status === "ok")).toBe(true);
+      // Every scan of a text longer than any share is a scan of the whole page.
+      const wholePageScans = linkScans.lengths.filter((length) => length > 80_000);
+      expect(wholePageScans).toEqual([text.length]);
+    },
+    60_000,
+  );
+
+  it("moves a cut to the end of a link that crosses it, though a host-shaped word more than 2048 characters back starts no link", async () => {
+    // "abc.com/" sits right after "_", so the whole page starts no link there;
+    // a reading that began at "abc.com/" would take everything up to the next
+    // space for one over-long link and never reach the https link.
+    const before = `intro x_abc.com/${"中".repeat(1940)}`;
+    const link = `https://a.com/${"z".repeat(300)}`;
+    const text = `${before}${link} tail`;
+    const at = text.indexOf("https://");
+    const share = at + 100;
+    expect(share - READ_PAGE_MAX_URL_CHARS).toBe(text.indexOf("abc.com"));
+
+    const [first] = await slicesOf(text, share);
+
+    expect(first).toMatchObject({ start: 0, end: at + link.length, next_start: at + link.length });
+    expect(first!.links).toContain(link);
   });
 });
 
