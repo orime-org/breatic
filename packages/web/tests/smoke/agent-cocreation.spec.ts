@@ -388,7 +388,7 @@ test('the default model co-creates as the scenarios say @needs-model @needs-inte
 test('the comparison model co-creates as the scenarios say @needs-model @needs-internet', async ({ baseURL }) => {
   test.setTimeout(4 * 60 * 60_000);
   const compared = SCENARIOS.filter((one) => one.compare === true);
-  expect(compared.length, 'compare rows in the run').toBeGreaterThan(0);
+  expect(compared.length, 'no compare row in this run: EVAL_ONLY names none, or no scenario is marked compare; to run only the default model, add -g "default model co-creates"').toBeGreaterThan(0);
   expect(await evaluate('compare', COMPARE_MODEL, compared, baseURL)).toEqual([]);
 });
 
