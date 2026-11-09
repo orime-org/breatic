@@ -509,7 +509,8 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes, copied text or a copied picture or screenshot at the spot you clicked, a step down and to " +
+      "copied nodes, copied text, pictures, videos and sounds copied in a document's body, or a copied picture " +
+      "or screenshot at the spot you clicked, a step down and to " +
       "the right while another node already starts at that spot; a file copied from the computer's file browser " +
       "pastes there as its name in a text node, so paste files with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
@@ -530,6 +531,10 @@ export function renderProductGuide(): string {
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
+      "Pictures, videos and sounds copied in a document's body, with nothing else selected, paste as nodes of " +
+      "their kind named after their caption or file name, several at once four to a row inside a new group " +
+      "named like 2 files; one still uploading when it was copied is left out and a message counts it. A copy " +
+      "from the body that also holds words pastes as one text node. " +
       "Nodes copied on this canvas land just beside the originals while those are in view; anything else, nodes " +
       "copied on another canvas included, lands in the middle of the view. While another node already starts " +
       "at that spot the paste moves a step down and to the right, so pasting again shows every copy. " +
