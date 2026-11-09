@@ -2142,7 +2142,7 @@
         "pasteLeft": "貼上到左側",
         "pasteRight": "貼上到右側",
         "splitMergedFirst": "請先分割合併的儲存格",
-        "noTableToPaste": "剪貼簿裡沒有可以插入的表格",
+        "noTableToPaste": "請先複製一個表格",
         "clipboardNotAllowed": "沒有讀取剪貼簿的權限",
         "copyFailed": "無法複製到剪貼簿"
       },

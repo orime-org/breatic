@@ -2142,7 +2142,7 @@
         "pasteLeft": "左に貼り付け",
         "pasteRight": "右に貼り付け",
         "splitMergedFirst": "先に結合されたセルを分割してください",
-        "noTableToPaste": "クリップボードに挿入できる表がありません",
+        "noTableToPaste": "先に表をコピーしてください",
         "clipboardNotAllowed": "クリップボードへのアクセスが許可されていません",
         "copyFailed": "クリップボードにコピーできませんでした"
       },

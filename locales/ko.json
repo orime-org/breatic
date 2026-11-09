@@ -2142,7 +2142,7 @@
         "pasteLeft": "왼쪽에 붙여넣기",
         "pasteRight": "오른쪽에 붙여넣기",
         "splitMergedFirst": "먼저 병합된 셀을 분할하세요",
-        "noTableToPaste": "클립보드에 삽입할 표가 없습니다",
+        "noTableToPaste": "먼저 표를 복사하세요",
         "clipboardNotAllowed": "클립보드 접근이 허용되지 않았습니다",
         "copyFailed": "클립보드에 복사하지 못했습니다"
       },

@@ -2142,7 +2142,7 @@
         "pasteLeft": "粘贴到左侧",
         "pasteRight": "粘贴到右侧",
         "splitMergedFirst": "请先拆分合并的单元格",
-        "noTableToPaste": "剪贴板里没有可以插入的表格",
+        "noTableToPaste": "请先复制一个表格",
         "clipboardNotAllowed": "没有读取剪贴板的权限",
         "copyFailed": "无法复制到剪贴板"
       },

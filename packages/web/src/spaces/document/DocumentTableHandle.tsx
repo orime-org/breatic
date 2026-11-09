@@ -27,7 +27,7 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   ArrowUpToLine,
-  ClipboardPaste,
+  Clipboard,
   GripHorizontal,
   GripVertical,
   PanelLeft,
@@ -252,7 +252,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
       });
     }],
     ...((row ? [['pasteAbove', 'above'], ['pasteBelow', 'below']] : [['pasteLeft', 'left'], ['pasteRight', 'right']]) as readonly [string, PasteSide][]).map(
-      ([id, side]) => [id, `spaces.document.table.${id}`, ClipboardPaste, (pos: number) => {
+      ([id, side]) => [id, `spaces.document.table.${id}`, Clipboard, (pos: number) => {
         void pasteTableLines(editor as never, pos, side).then((outcome) => {
           if (outcome === 'no-table') toast.warning(t('spaces.document.table.noTableToPaste'));
           if (outcome === 'unreadable') toast.warning(t('spaces.document.table.clipboardNotAllowed'));

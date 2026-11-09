@@ -1675,7 +1675,7 @@ export function renderProductGuide(): string {
       "this or another table, a spreadsheet or a web page all work; a narrower copy leaves the remaining new cells " +
       "empty and a wider one adds columns (or rows) to the table. The browser may ask to allow reading the " +
       `clipboard first; refused, a notice says ${quoted(t("spaces.document.table.clipboardNotAllowed"))}, and ` +
-      `with no table on it ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
+      `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
       "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +

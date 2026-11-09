@@ -2142,7 +2142,7 @@
         "pasteLeft": "Paste left",
         "pasteRight": "Paste right",
         "splitMergedFirst": "Split merged cells first",
-        "noTableToPaste": "The clipboard holds no table to insert",
+        "noTableToPaste": "Copy a table first",
         "clipboardNotAllowed": "Clipboard access is not allowed",
         "copyFailed": "Could not copy to the clipboard"
       },
