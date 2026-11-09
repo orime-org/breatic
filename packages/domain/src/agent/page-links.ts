@@ -49,15 +49,27 @@ const URL_PUNCTUATION = new Set("-._~:/?#[]@!$&'()*+,;=%");
 /** Marks a sentence puts after a link, which GFM leaves out of an autolink. */
 const TRAILING = new Set(".,;:!?*_~");
 
+/** A link as read, with where each of its characters ends in the text it was read from. */
+interface ReadLink {
+  /** The link, with Markdown escapes removed. */
+  link: string;
+  /** For each character of `link`, the position in the text right after it, escape included. */
+  ends: number[];
+  /** Where reading stopped. */
+  end: number;
+}
+
 /**
  * Read one link from where it starts until a character ends it.
  * @param text - The text.
  * @param from - Where the link starts.
- * @returns The link as read, with Markdown escapes removed, and where reading
- *   stopped: the whole run, however long, so no part of it is read again.
+ * @returns The link as read, where each character ends in the text, and
+ *   where reading stopped: the whole run, however long, so no part of it is
+ *   read again.
  */
-function readLink(text: string, from: number): { link: string; end: number } {
+function readLink(text: string, from: number): ReadLink {
   let link = "";
+  const ends: number[] = [];
   let at = from;
   while (at < text.length) {
     const char = text[at] as string;
@@ -67,18 +79,21 @@ function readLink(text: string, from: number): { link: string; end: number } {
       if (next === "\\" && after !== undefined && URL_PUNCTUATION.has(after)) {
         link += after;
         at += 3;
+        ends.push(at);
         continue;
       }
       if (next === undefined || !URL_PUNCTUATION.has(next)) break;
       link += next;
       at += 2;
+      ends.push(at);
       continue;
     }
     if (/\s/u.test(char) || CHINESE_ENDS.has(char) || QUOTE_ENDS.has(char) || NEVER_IN_URL.has(char)) break;
     link += char;
     at += 1;
+    ends.push(at);
   }
-  return { link, end: at };
+  return { link, ends, end: at };
 }
 
 /**
@@ -144,41 +159,78 @@ function hostGoesOn(text: string, at: number): boolean {
   return char === ":" && /[0-9]/.test(text[at + 1] ?? "");
 }
 
+/** A link read from a text, and where the text writes it. */
+export interface PageLinkSpan {
+  /** The link, as `pageLinksIn` gives it. */
+  link: string;
+  /** Where it starts in the text. */
+  start: number;
+  /**
+   * Where it ends in the text: right after the last character kept, a
+   * Markdown escape's backslash counted, the punctuation `trimEnd` drops not.
+   */
+  end: number;
+}
+
 /**
- * Every link written in a piece of text, in the order they appear.
+ * Every link written in a piece of text, in the order they appear, with
+ * where the text writes each.
  *
  * A link holding a non-ASCII character is followed by the same link cut at
  * that character: a user who runs a link on into Chinese without a space
  * still has the plain link, and a real non-ASCII path keeps its full spelling.
  * A link longer than `READ_PAGE_MAX_URL_CHARS` once its end is trimmed and,
  * when written without a scheme, `https://` is put in front, is left out; the
- * cut spelling is judged the same way on its own length.
+ * cut spelling is judged the same way on its own length, and ends before the
+ * non-ASCII character it was cut at.
+ * @param text - The text.
+ * @returns The links, each cleaned of the punctuation around it, with their places.
+ * @throws {never} Never.
+ */
+export function pageLinkSpansIn(text: string): PageLinkSpan[] {
+  const spans: PageLinkSpan[] = [];
+  const start = new RegExp(LINK_START.source, LINK_START.flags);
+  for (let found = start.exec(text); found !== null; found = start.exec(text)) {
+    const opening = found[0];
+    const hasScheme = /^https?:\/\//i.test(opening);
+    const read: ReadLink =
+      hasScheme || hostGoesOn(text, found.index + opening.length)
+        ? readLink(text, found.index)
+        : {
+            link: opening,
+            ends: Array.from({ length: opening.length }, (_, i) => found.index + i + 1),
+            end: found.index + opening.length,
+          };
+    start.lastIndex = Math.max(read.end, found.index + 1);
+    /**
+     * The span of the read link's first `length` characters, its end trimmed.
+     * @param length - How many characters of the link to take.
+     * @returns The span, or undefined when nothing is left.
+     */
+    const spanOf = (length: number): PageLinkSpan | undefined => {
+      const link = trimEnd(read.link.slice(0, length));
+      const end = read.ends[link.length - 1];
+      return end === undefined ? undefined : { link, start: found.index, end };
+    };
+    const whole = spanOf(read.link.length);
+    if (whole === undefined || (hasScheme && whole.link.length <= opening.length)) continue;
+    if (fits(whole.link, hasScheme)) spans.push(whole);
+    const nonAscii = whole.link.search(/[\u0080-\u{10FFFF}]/u);
+    const cut = nonAscii < 0 ? undefined : spanOf(nonAscii);
+    if (cut !== undefined && (!hasScheme || cut.link.length > opening.length) && fits(cut.link, hasScheme)) {
+      spans.push(cut);
+    }
+  }
+  return spans;
+}
+
+/**
+ * Every link written in a piece of text, in the order they appear: the links
+ * of `pageLinkSpansIn`.
  * @param text - The text.
  * @returns The links, each cleaned of the punctuation around it.
  * @throws {never} Never.
  */
 export function pageLinksIn(text: string): string[] {
-  const links: string[] = [];
-  const start = new RegExp(LINK_START.source, LINK_START.flags);
-  for (let found = start.exec(text); found !== null; found = start.exec(text)) {
-    const opening = found[0];
-    const hasScheme = /^https?:\/\//i.test(opening);
-    let link: string;
-    let end: number;
-    if (hasScheme || hostGoesOn(text, found.index + opening.length)) {
-      ({ link, end } = readLink(text, found.index));
-    } else {
-      link = opening;
-      end = found.index + opening.length;
-    }
-    start.lastIndex = Math.max(end, found.index + 1);
-    link = trimEnd(link);
-    if (!hasScheme || link.length > opening.length) {
-      if (fits(link, hasScheme)) links.push(link);
-      const nonAscii = link.search(/[\u0080-\u{10FFFF}]/u);
-      const cut = nonAscii < 0 ? "" : trimEnd(link.slice(0, nonAscii));
-      if (cut !== "" && (!hasScheme || cut.length > opening.length) && fits(cut, hasScheme)) links.push(cut);
-    }
-  }
-  return links;
+  return pageLinkSpansIn(text).map((span) => span.link);
 }
