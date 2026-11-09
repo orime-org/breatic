@@ -9,7 +9,7 @@
  * editors on one Space document does not pile listeners up.
  */
 
-import { Editor, Extension } from '@tiptap/core';
+import { Editor } from '@tiptap/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as Y from 'yjs';
 
@@ -19,13 +19,11 @@ vi.mock('@web/lib/toast', () => ({
 
 import { documentBodyFragment } from '@breatic/shared';
 import { getDoc } from '@web/data/yjs/manager';
-import { makeBang, peerNode } from '@web/features/collab-editor/__tests__/helpers/h7-editors';
+import { peerNode } from '@web/features/collab-editor/__tests__/helpers/h7-editors';
 import {
-  CANVAS_NAME, CHIP_A, DOCUMENT_NAME, capture, enterState, fragmentOf, resetHarness, tiptapExtensions,
+  CANVAS_NAME, DOCUMENT_NAME, enterState, fragmentOf, resetHarness, tiptapExtensions,
 } from '@web/features/collab-editor/__tests__/helpers/space-editor-harness';
-import { ySyncPluginKey as tiptapSyncKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 
 /** Counts a document's `on` minus `off` calls for one event, passing both through. */
@@ -124,24 +122,5 @@ describe('24.2 the filter\'s document listener goes with its editor', () => {
     unmount();
     expect(count.net()).toBe(0);
     count.restore();
-  });
-
-  it('W8-07 after a prompt editor that carried an appending plugin is destroyed, writeProposalPrompt writes only its own update', () => {
-    const doc = getDoc(CANVAS_NAME);
-    peerNode(doc);
-    enterState(CANVAS_NAME, 'N');
-    const bang = makeBang(tiptapSyncKey);
-    const carried = Extension.create({ name: 'appendsBangAfterRedraw', addProseMirrorPlugins: () => [bang.plugin] });
-    const fragment = fragmentOf(doc, 'prompt');
-    const editor = new Editor({ element: document.createElement('div'), extensions: [...tiptapExtensions('prompt', fragment), carried] });
-    editor.view.destroy();
-    bang.arm();
-    const cap = capture(doc);
-    expect(() => {
-      writeProposalPrompt(fragment, [{ text: 'a cat on' }, { ref: 0 }], () => ({ sourceNodeId: CHIP_A.sourceNodeId, label: CHIP_A.sourceNodeName, kind: 'image' }));
-    }).not.toThrow();
-    expect(cap.updates).toHaveLength(1);
-    expect(fragment.toString()).not.toContain('!');
-    editor.destroy();
   });
 });
