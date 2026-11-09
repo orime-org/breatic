@@ -116,7 +116,16 @@ describe("waiting for a pooled connection", () => {
 
   it("times out a transaction while every connection runs a query, and reports it", async () => {
     const pool = smallPool(2);
-    const busy = [pool`select pg_sleep(2.5)`, pool`select pg_sleep(2.5)`];
+    const warm = gate();
+    const opened = [0, 1].map(() => pool.begin(async (tx) => {
+      await tx`select 1`;
+      await warm.wait;
+    }));
+    await sleep(200);
+    warm.open();
+    await Promise.all(opened);
+    expect(pool.stats).toMatchObject({ connections: 2, leased: 0 });
+    const busy = [pool`select pg_sleep(2.5)`.execute(), pool`select pg_sleep(2.5)`.execute()];
     await sleep(200);
     await expect(pool.begin((tx) => tx`select 1`)).rejects.toMatchObject({ code: "QUEUE_TIMEOUT" });
     await Promise.all(busy);
