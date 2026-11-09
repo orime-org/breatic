@@ -785,6 +785,18 @@ describe('the answer as blocks (§5.3)', () => {
     }
   });
 
+  it('reads a shot list answered for whole blocks as one table holding its header and every row and column', async () => {
+    const h = await open('A girl rides to the sea.');
+    capture(h, contentOf(h, blocks(h)[0]!.id));
+    const answer = read(h, '| Shot | Size | Angle | Movement | On screen | Sound | Seconds | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 1 | Wide | Eye level | Static | A girl rides through fog | Bell | 4 | Dawn |\n| 2 | Close-up | Low | Push in | Bread handed over | "Thanks" | 3 | Warm light |');
+    const tables = (answer.preview as Seen[]).filter((b) => b.type === 'docTable');
+    expect(tables).toHaveLength(1);
+    const cells = docCells(tables[0]!);
+    expect(cells.map((row) => row.length)).toEqual([8, 8, 8]);
+    expect(cells[0]).toEqual(['Shot', 'Size', 'Angle', 'Movement', 'On screen', 'Sound', 'Seconds', 'Notes']);
+    expect(cells[2]![5]).toBe('"Thanks"');
+  });
+
   it('unfolds a table answered inside a docTable cell, the outer table unchanged', async () => {
     const h = await open('| a | b |\n| --- | --- |\n| c | d |');
     replaceWith(h, rangeOf(h, 'c'), () => '| p | q |\n| --- | --- |\n| r | s |');
@@ -1427,6 +1439,14 @@ describe('words inside a code block (§5.1, §5.3)', () => {
     const h = await openBlocks([{ type: 'codeBlock', props: { language: 'python' }, content: code }]);
     replaceWith(h, { from: rangeOf(h, '# note').from, to: rangeOf(h, 'return 1').to }, (sent) => sent);
     expect(blocks(h).map((b) => [b.type, textOf(b)])).toEqual([['codeBlock', code]]);
+  });
+
+  it('reads a shot list answered for words in a code block back as code, the table\'s Markdown as it came', async () => {
+    const h = await openBlocks([{ type: 'codeBlock', props: { language: 'text' }, content: 'a girl rides to the sea' }]);
+    capture(h, contentOf(h, blocks(h)[0]!.id));
+    const answer = read(h, '| Shot | Size | Angle | Movement | On screen | Sound | Seconds | Notes |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| 1 | Wide | Eye level | Static | A girl rides through fog | Bell | 4 | Dawn |\n| 2 | Close-up | Low | Push in | Bread handed over | "Thanks" | 3 | Warm light |');
+    expect((answer.preview as Seen[]).map((b) => b.type)).toEqual(['codeBlock']);
+    expect(textOf(answer.preview[0] as Seen)).toContain('| Shot | Size |');
   });
 
   it('takes the code out of a fence the model wrapped it in', async () => {

@@ -1577,8 +1577,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
       `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
       `with two rows; and ${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
-      `${quoted(t("spaces.document.commands.ai_custom"))}. Two of the AI menu's commands look available but do ` +
-      `nothing yet: the two under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for a shot list and an ` +
+      `${quoted(t("spaces.document.commands.ai_custom"))}. One of the AI menu's commands looks available but does ` +
+      `nothing yet: the second under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for an ` +
       "illustration. Hovering " +
       `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
       "languages, each written in its own language; hovering " +
@@ -1596,8 +1596,13 @@ export function renderProductGuide(): string {
       "table from outside or across cells) and keeps the selection as it was; " +
       `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
       "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
-      "block stay. The fixed commands keep the structure (headings, lists, code blocks); expand may turn a " +
-      "paragraph into several. A custom instruction can change the structure, such as turning the words into a " +
+      "block stay. The commands under " +
+      `${quoted(t("spaces.document.commands.aiRewriteGroup"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
+      `paragraph into several. ${quoted(t("spaces.document.commands.ai_storyboard"))} turns the selection into a ` +
+      "shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera " +
+      "angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes, written in " +
+      "the selection's language; to draft it from the whole text, press Cmd+A twice first to select the whole " +
+      "body. A custom instruction can change the structure, such as turning the words into a " +
       "list or merging paragraphs into one. Either is one step Cmd+Z takes " +
       "back. If the selected words are deleted while the panel is open, " +
       `${quoted(t("spaces.document.ai.replace"))} is greyed and hovering it shows ` +
@@ -1805,8 +1810,7 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: the AI commands that draft a shot list or illustrate a " +
-      "passage, snapshots, images or other media, " +
+    "- There is no slash menu. Not available yet: the AI command that illustrates a passage, snapshots, images or other media, " +
       "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",

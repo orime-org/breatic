@@ -308,7 +308,19 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Hovering a button with no arrow shows its name, greyed or not: "Bold"/);
     expect(doc).not.toMatch(/show no name on hover/);
     expect(doc).toMatch(/The speech bubble starts a comment/);
-    expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
+    expect(doc).toMatch(/One of the AI menu's commands looks available but does nothing yet: .*, for an illustration\./);
+  });
+
+  it("says what the shot list command writes and that it is no longer missing", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(
+      /"Draft a shot list" turns the selection into a shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes/,
+    );
+    expect(doc).toMatch(/to draft it from the whole text, press Cmd\+A twice first to select the whole body/);
+    expect(doc).toMatch(/The commands under "Rewrite the selection" keep the structure/);
+    expect(doc).not.toMatch(/The fixed commands keep the structure/);
+    expect(doc).toMatch(/Not available yet: the AI command that illustrates a passage/);
+    expect(doc).not.toMatch(/draft a shot list or illustrate/);
   });
 
   it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {
@@ -318,7 +330,7 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
     expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
     expect(doc).toMatch(/Viewers can open the panel and read/);
-    expect(doc).toMatch(/Not available yet: the AI commands/);
+    expect(doc).toMatch(/Not available yet: the AI command that illustrates a passage/);
     expect(doc).not.toMatch(/Not available yet: comments/);
     expect(doc).not.toMatch(/marked not open yet\)/);
   });

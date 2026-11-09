@@ -556,11 +556,10 @@ const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = 
     ],
   },
   {
-    // Not in inner#1860: the shot list is inner#1130, the illustration
-    // inner#1866.
+    // The illustration is inner#1866.
     labelKey: 'spaces.document.commands.aiProduceGroup',
     items: [
-      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { notOpen: true } },
+      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } },
       { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate', kind: { notOpen: true } },
     ],
   },
@@ -596,10 +595,10 @@ function aiSubItems(which: 'translate' | 'tone', t: (key: string) => string): Ai
  * The AI slot.
  *
  * Its shape is the ruling's (§3.2.1): icon, the word AI, chevron, and hovering
- * it opens a list of commands below. Six of the eight open the AI output
- * dialog (inner#1860); translate and change tone first open a second level
- * beside their row, for the language or the tone. The shot list and the
- * illustration arrive with their own tasks.
+ * it opens a list of commands below. Seven of the eight open the AI output
+ * dialog (inner#1860, the shot list inner#1130); translate and change tone
+ * first open a second level beside their row, for the language or the tone.
+ * The illustration arrives with its own task (inner#1866).
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */

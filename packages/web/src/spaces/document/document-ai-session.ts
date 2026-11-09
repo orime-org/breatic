@@ -18,7 +18,7 @@ import type { TextToolLanguage, TextToolTone } from '@breatic/shared';
 
 /** A command the AI menu runs. */
 export type AiCommand =
-  | { readonly id: 'refine' | 'expand' | 'shorten' | 'custom' }
+  | { readonly id: 'refine' | 'expand' | 'shorten' | 'storyboard' | 'custom' }
   | { readonly id: 'translate'; readonly language: TextToolLanguage }
   | { readonly id: 'tone'; readonly style: TextToolTone };
 
