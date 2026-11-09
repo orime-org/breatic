@@ -25,6 +25,7 @@
  * Use {@link closeDb} for graceful shutdown.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Options, type Sql } from "postgres";
 import { env } from "@core/config/env.js";
@@ -118,26 +119,82 @@ function getDb(): PostgresJsDatabase<Record<string, never>> {
   return _db;
 }
 
+/** A Drizzle database handle as the services see it. */
+type Database = PostgresJsDatabase<Record<string, never>>;
+
+/** The transaction open in one async flow, and whether it still is. */
+interface OpenTransaction {
+  tx: unknown;
+  open: boolean;
+}
+
+/**
+ * Run `fn` as a transaction on `target`, with `fn`'s async flow bound to it.
+ *
+ * `target` is the pool, or the transaction already open in this flow, in
+ * which case Drizzle opens a savepoint and `config` does not apply. The
+ * binding closes when `fn` settles, so work `fn` started that outlives it goes
+ * back to the pool instead of a finished transaction.
+ * @param target - The pool or the open transaction.
+ * @param scope - The flow-to-transaction binding for this database.
+ * @param fn - The transaction body.
+ * @param config - Transaction settings, used only when `target` is the pool.
+ * @returns What `fn` returned.
+ * @throws {Error} Whatever `fn` or the transaction throws.
+ */
+function runBound(
+  target: Record<string | symbol, unknown>,
+  scope: AsyncLocalStorage<OpenTransaction>,
+  fn: (tx: unknown) => unknown,
+  config: unknown,
+): unknown {
+  const begin = target.transaction as (body: (tx: unknown) => Promise<unknown>, config?: unknown) => unknown;
+  return begin.call(target, async (tx) => {
+    const binding: OpenTransaction = { tx, open: true };
+    try {
+      return await scope.run(binding, () => fn(tx));
+    } finally {
+      binding.open = false;
+    }
+  }, config);
+}
+
+/**
+ * A database handle that queries through the transaction open in the current
+ * async flow, and through the pool otherwise (inner#1917).
+ *
+ * A transaction holds one pool connection; a query it issues through the pool
+ * handle would wait for a second one, and once every connection is held by a
+ * transaction waiting that way, nothing in the process can reach the database
+ * again. Binding the handle to the open transaction, as Spring, Rails, Django
+ * and Sequelize do, makes that wait impossible. A transaction opened inside
+ * another becomes a savepoint.
+ * @param getReal - Builds (once) and returns the pool-backed Drizzle instance.
+ * @returns The bound handle.
+ */
+function bindToOpenTransaction(getReal: () => Database): Database {
+  const scope = new AsyncLocalStorage<OpenTransaction>();
+  return new Proxy({} as Database, {
+    get(_target, prop) {
+      const current = scope.getStore();
+      const target = (current?.open === true ? current.tx : getReal()) as Record<string | symbol, unknown>;
+      if (prop === "transaction") {
+        return (fn: (tx: unknown) => unknown, config?: unknown) => runBound(target, scope, fn, config);
+      }
+      const value = target[prop];
+      return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+}
+
 /**
  * Drizzle ORM instance connected to PostgreSQL.
  *
- * A Proxy over the lazily-built `getDb` instance: property
- * access resolves against the real Drizzle object at call time
- * (built on first use, after `initCore`). Methods are bound to the
- * real instance so Drizzle's internal `this` is preserved.
+ * Resolves against the lazily-built `getDb` instance at call time (built on
+ * first use, after `initCore`), and against the transaction open in the
+ * current async flow while there is one.
  */
-export const db: PostgresJsDatabase<Record<string, never>> = new Proxy(
-  {} as PostgresJsDatabase<Record<string, never>>,
-  {
-    get(_target, prop) {
-      const real = getDb() as unknown as Record<string | symbol, unknown>;
-      const value = real[prop];
-      return typeof value === "function"
-        ? (value as (...args: unknown[]) => unknown).bind(real)
-        : value;
-    },
-  },
-);
+export const db: Database = bindToOpenTransaction(getDb);
 
 /**
  * Transaction handle type, inferred from `db.transaction`'s
@@ -264,23 +321,12 @@ function getYjsDb(): PostgresJsDatabase<Record<string, never>> {
 /**
  * Drizzle ORM instance connected to the yjs PostgreSQL database.
  *
- * A Proxy over the lazily-built `getYjsDb` instance, identical in
- * mechanics to {@link db} but resolving against the yjs pool. The yjs
- * document repo (in `@collab`) queries through this so its SQL runs
- * against the yjs DB, not the business DB.
+ * Identical in mechanics to {@link db}, with its own transaction binding,
+ * but resolving against the yjs pool. The yjs document repo (in `@collab`)
+ * queries through this so its SQL runs against the yjs DB, not the business
+ * DB.
  */
-export const yjsDb: PostgresJsDatabase<Record<string, never>> = new Proxy(
-  {} as PostgresJsDatabase<Record<string, never>>,
-  {
-    get(_target, prop) {
-      const real = getYjsDb() as unknown as Record<string | symbol, unknown>;
-      const value = real[prop];
-      return typeof value === "function"
-        ? (value as (...args: unknown[]) => unknown).bind(real)
-        : value;
-    },
-  },
-);
+export const yjsDb: Database = bindToOpenTransaction(getYjsDb);
 
 /**
  * Transaction handle type for the yjs DB, inferred from
