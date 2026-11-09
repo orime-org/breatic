@@ -78,7 +78,8 @@
       "@tiptap/extension-code": "3.31.4",
       "@tiptap/extension-italic": "3.31.4",
       "@tiptap/extension-strike": "3.31.4",
-      "@tiptap/extension-underline": "3.31.4"
+      "@tiptap/extension-underline": "3.31.4",
+      "@hyperframes/player@0.8.186>@hyperframes/core": "-"
     },
     "patchedDependencies": {
       "@tiptap/y-tiptap@3.0.8": "patches/@tiptap__y-tiptap@3.0.8.patch",

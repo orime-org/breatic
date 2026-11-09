@@ -14,6 +14,9 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { TimelineRate } from "@shared/timeline/time.js";
+import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
 export interface UserEntity {
@@ -917,4 +920,73 @@ export interface AccountActivityCoverageEntity {
   startedAt: Date;
   endedAt: Date | null;
   createdAt: Date;
+}
+
+/** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
+export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
+
+/** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
+export interface TimelineExecution {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  actorUserId: string;
+  kind: "web_animation_create";
+  /** The client's idempotency key, unique per Project and Space. */
+  actionId: string;
+  /** The accepted input, frozen at acceptance. */
+  input: Record<string, unknown>;
+  inputHash: string;
+  engine: "deepseek";
+  status: TimelineExecutionStatus;
+  /** The stage a running attempt reports to the user. */
+  phase: "writing" | "validating" | "saving" | null;
+  steps: unknown[];
+  /** How many attempts have claimed it. */
+  attempt: number;
+  /** The id of the attempt allowed to finish it; null when no attempt holds it. */
+  fence: string | null;
+  /** The two-hour budget's end, set once at acceptance. */
+  deadlineAt: string;
+  resultSourceVersionId: string | null;
+  failureReason: string | null;
+  /** Credits charged, as Postgres renders the numeric. */
+  billedCredits: string | null;
+  billedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
+export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
+
+/**
+ * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
+ * design §3.2): the succeeded source versions and the executions placeholders wait for, as far as the Project holds a
+ * grant for them. A reference it leaves out is unresolved.
+ */
+export interface TimelineWebResolution {
+  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
+}
+
+/** The immutable source version a web-animation execution produced (inner#1711). `createdAt` is UTC ISO at microsecond precision. */
+export interface WebAnimationSourceVersion {
+  id: string;
+  executionId: string;
+  /** Private `web-animation/` keys, read only through the signed preview route. */
+  packageKey: string;
+  manifestKey: string;
+  packageSha256: string;
+  packageBytes: number;
+  manifestSha256: string;
+  /** The animation runtime the package was built with, as `@hyperframes/core@<version>`. */
+  runtimeVersion: string;
+  fontSetVersion: number;
+  width: number;
+  height: number;
+  fpsNum: number;
+  fpsDen: number;
+  durationFrames: number;
+  createdAt: string;
 }

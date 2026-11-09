@@ -182,7 +182,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(readTimelineDocument(doc)).toEqual({
       schemaVersion: 1, settings: SETTINGS,
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
-      clips: {}, sources: {},
+      clips: {}, sources: {}, operationReceipts: {},
     });
     if (!result.ok) throw new Error('Expected a prepared native command');
     expect(TimelineEditCommandSchema.parse(result.command)).toEqual(command);
@@ -192,6 +192,7 @@ describe('prepareTimelineMediaPlacement', () => {
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
       clips: { [CLIP_ID]: command.parameters.clip },
       sources: { [SOURCE_ID]: command.parameters.source },
+      operationReceipts: {},
     });
   });
 
@@ -353,7 +354,7 @@ describe('prepareTimelineMediaPlacement', () => {
     const after = readTimelineDocument(doc);
     expect(after.clips[CLIP_ID]).toMatchObject({ trackId: 'visual-2', startFrame, durationFrames: 48 });
     // The covered clip's source stays only while a clip still references it (inner#1708 L2).
-    const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+    const stillReferenced = Object.values(after.clips).some((item) => item.kind === 'video' && item.sourceId === OTHER_SOURCE_ID);
     expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? base.parameters.source : null);
     const covered = Object.values(after.clips).filter((item) => item.trackId === 'visual-2' && item.id !== CLIP_ID)
       .filter((item) => item.startFrame < startFrame + 48 && startFrame < item.startFrame + item.durationFrames);
@@ -410,7 +411,7 @@ describe('prepareTimelineMediaPlacement', () => {
         expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
         expect(readTimelineDocument(doc).clips[CLIP_ID]).toEqual(expectedCommand({ trackId: 'visual-2', startFrame }).parameters.clip);
         const after = readTimelineDocument(doc);
-        const stillReferenced = Object.values(after.clips).some((item) => item.sourceId === OTHER_SOURCE_ID);
+        const stillReferenced = Object.values(after.clips).some((item) => item.kind === 'video' && item.sourceId === OTHER_SOURCE_ID);
         expect(after.sources[OTHER_SOURCE_ID] ?? null).toEqual(stillReferenced ? existing.parameters.source : null);
       },
     ));

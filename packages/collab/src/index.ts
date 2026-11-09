@@ -29,6 +29,7 @@ import {
   checkInfraReady,
   startHealthServer,
   runGracefulShutdown,
+  closeQueues,
   InfraNotReadyError,
   flushServerAnalytics,
   adsConversionState,
@@ -487,6 +488,8 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
+        // The `timeline` queue a Timeline store enqueues landed executions on (inner#1711).
+        () => closeQueues(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

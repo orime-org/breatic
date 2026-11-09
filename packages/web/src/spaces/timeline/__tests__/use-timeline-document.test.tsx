@@ -35,7 +35,7 @@ const EMPTY: TimelineDocumentV1 = {
   schemaVersion: 1,
   settings: SETTINGS,
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
-  clips: {}, sources: {},
+  clips: {}, sources: {}, operationReceipts: {},
 };
 /** Magnet off: a lone clip moved on the main track keeps the requested frame. */
 const FREE = { magnet: false, linkage: false } as const;

@@ -3,8 +3,9 @@
 
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
-import { Film, Trash2 } from 'lucide-react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { Code, Film, Trash2 } from 'lucide-react';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
 
@@ -26,8 +27,21 @@ const BESIDE_HEADERS = { left: TIMELINE_TRACK_HEADER_PX };
 // The palette sits outside @theme, so its colours are written as arbitrary values; the `color:` hint tells Tailwind a var() is a colour.
 const CLIP_FILL = {
   ready: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
+  web: 'border-[color:var(--color-palette-violet-border)] bg-[color:var(--color-palette-violet-bg)] hover-enabled:bg-[color:var(--color-palette-violet-highlight)]',
   conflict: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
 };
+const SELECTED_FILL = { video: 'bg-[color:var(--color-palette-blue-highlight)]', web: 'bg-[color:var(--color-palette-violet-highlight)]' };
+
+/**
+ * What a web-animation copy on a track shows: its picture is ready, its execution is still running, its execution
+ * ended without a result, or its reference is not resolved yet; with the request it came from and its status.
+ */
+export interface TimelineWebClipView {
+  state: 'ready' | 'pending' | 'failed' | 'unresolved';
+  prompt: string | null;
+  status: TimelineExecutionStatus | null;
+  phase: 'writing' | 'validating' | 'saving' | null;
+}
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
@@ -42,6 +56,8 @@ interface TimelineTrackAreaProps {
   readOnly: boolean;
   snap: boolean;
   placement: TimelineEditPlacement;
+  web: TimelineWebResolution;
+  webClips: ReadonlyMap<string, TimelineWebClipView>;
   onSelect: (clipId: string | null) => void;
   onSeek: (frame: number) => void;
   onCommit: (command: TimelineEditCommand) => void;
@@ -56,8 +72,9 @@ interface Gesture { mode: TimelineGestureMode; clipId: string; preview: Timeline
 /** One clip on its track row. */
 interface ClipProps {
   projectId: string;
-  clip: TimelineVideoClip;
+  clip: TimelineClipRecord;
   assetId: string;
+  webView: TimelineWebClipView | undefined;
   selected: boolean;
   conflict: boolean;
   dragging: boolean;
@@ -88,6 +105,7 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @param props.projectId - The authorizing Project.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
+ * @param props.webView - What a web-animation copy shows.
  * @param props.selected - Whether it is selected.
  * @param props.conflict - Whether the arrangement reports a conflict.
  * @param props.dragging - Whether a gesture is moving it.
@@ -98,9 +116,16 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @returns The clip.
  * @throws {never} Never.
  */
-const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, selected, conflict, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
+const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, selected, conflict, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
-  const name = useTimelineAsset(projectId, assetId).data?.displayName || null;
+  const assetName = useTimelineAsset(projectId, assetId).data?.displayName || null;
+  const isWeb = clip.kind === 'web-animation';
+  const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : assetName ?? t('timeline.video');
+  const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
+  const phase = status === 'running' ? webView?.phase ?? null : null;
+  const detail = status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+    : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
+  const failedCopy = isWeb && webView?.state === 'failed';
   // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
   // attributes would mark a read-only clip aria-disabled although it stays selectable.
   const { listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
@@ -108,17 +133,18 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const style = React.useMemo(() => ({ left: clip.startFrame * pixelsPerFrame, width: Math.max(2, clip.durationFrames * pixelsPerFrame) }), [clip.startFrame, clip.durationFrames, pixelsPerFrame]);
   return <div className={cn('absolute inset-y-1', dragging && 'opacity-40')} style={style}>
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
-      aria-pressed={selected} onClick={select} onFocus={select}
+      data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : undefined} aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-clip rounded-chrome border px-2 text-left text-xs',
-        !readOnly && 'cursor-grab', conflict ? CLIP_FILL.conflict : CLIP_FILL.ready, selected && 'border-active-border', selected && !conflict && 'bg-[color:var(--color-palette-blue-highlight)]')}>
+        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, isWeb && webView?.state === 'pending' && 'border-dashed',
+        selected && 'border-active-border', selected && !conflict && !failedCopy && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>
         <span className='flex min-w-0 items-center gap-2'>
-          <Film className='size-4 shrink-0' />
-          <span className='min-w-0 truncate leading-normal'>{name ?? t('timeline.video')}</span>
+          {isWeb ? <Code className='size-4 shrink-0' /> : <Film className='size-4 shrink-0' />}
+          <span className='min-w-0 truncate leading-normal'>{name}</span>
           {conflict && <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>}
         </span>
-        <span className='truncate text-2xs tabular-nums text-foreground-secondary'>{formatTimelineTimecode(clip.durationFrames, fps)}</span>
+        <span className={cn('truncate text-2xs tabular-nums', failedCopy ? 'text-status-error-foreground' : 'text-foreground-secondary')}>{detail}</span>
       </span>
     </Button>
     {selected && !readOnly && <><TrimHandle clipId={clip.id} mode='trim-start' /><TrimHandle clipId={clip.id} mode='trim-end' /></>}
@@ -156,7 +182,7 @@ function DropRow({ id, className, testId, children }: { id: string; className: s
 }
 
 /** The editor facts a drag preview reads at the moment it is computed. */
-interface DragView { document: TimelineDocumentV1; frame: number; pixelsPerFrame: number; snap: boolean; placement: TimelineEditPlacement }
+interface DragView { document: TimelineDocumentV1; web: TimelineWebResolution; frame: number; pixelsPerFrame: number; snap: boolean; placement: TimelineEditPlacement }
 
 /**
  * The preview of a drag at its current pointer travel and hovered row.
@@ -171,7 +197,7 @@ interface DragView { document: TimelineDocumentV1; frame: number; pixelsPerFrame
 function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: string }, event: DragMoveEvent | DragEndEvent): TimelineGesturePreview | null {
   const hover = (event.over?.data.current as { hover?: string } | undefined)?.hover ?? null;
   return previewTimelineGesture(view.document, data.clipId, data.mode, Math.round(event.delta.x / view.pixelsPerFrame), hover,
-    { snap: view.snap, pixelsPerFrame: view.pixelsPerFrame, playhead: view.frame, magnet: view.placement.magnet });
+    { snap: view.snap, pixelsPerFrame: view.pixelsPerFrame, playhead: view.frame, magnet: view.placement.magnet, web: view.web });
 }
 
 /**
@@ -181,12 +207,12 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
+  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
-  const latest = React.useRef({ document, frame, pixelsPerFrame, snap, placement, readOnly });
-  latest.current = { document, frame, pixelsPerFrame, snap, placement, readOnly };
+  const latest = React.useRef({ document, web, frame, pixelsPerFrame, snap, placement, readOnly });
+  latest.current = { document, web, frame, pixelsPerFrame, snap, placement, readOnly };
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_ACTIVATION_PX } }));
   const rows = React.useMemo(() => orderedTimelineTracks(document.tracks).reverse(), [document.tracks]);
   const width = extent * pixelsPerFrame;
@@ -297,8 +323,8 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
               {!isMain && !readOnly && clips.length === 0 && <DeleteTrackButton trackId={track.id} placement={placement} onCommit={onCommit} />}
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
-              {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={document.sources[clip.sourceId]?.assetId ?? ''}
-                selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
+              {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
+                webView={webClips.get(clip.id)} selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} fps={document.settings.fps} onSelect={onSelect} />)}
               {showGhost && preview !== null && <>
                 <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle} />

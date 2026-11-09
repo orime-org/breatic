@@ -122,7 +122,7 @@ describe("Timeline initialization in the real Yjs database", () => {
     expect(readTimelineDocument(decode(loaded))).toEqual({
       schemaVersion: 1, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
-      clips: {}, sources: {},
+      clips: {}, sources: {}, operationReceipts: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
   });
