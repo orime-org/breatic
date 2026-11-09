@@ -43,7 +43,7 @@ models:
         reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: face_limit > 2000000
-        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 2,000,000" in Ultra mode, the Ultra mode ceiling'
+        reason: 'Tripo face_limit: upper limits "Triangle — v3.1 | 1,500,000 | 2,000,000" (Standard | Ultra); 2,000,000 is the Ultra mode ceiling'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: texture_quality = "fast" and $not(texture_version = "v3.5")
         reason: 'Tripo texture_quality: "`fast` is only available on texture `v3.5-20260815`. On the generation endpoints that means `texture_version` must be set to it ... Any other texture version returns `1004` rather than silently falling back to `standard`."'
@@ -206,7 +206,7 @@ models:
         reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
         source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
       - when: face_limit > 2000000
-        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 2,000,000" in Ultra mode, the Ultra mode ceiling'
+        reason: 'Tripo face_limit: upper limits "Triangle — v3.1 | 1,500,000 | 2,000,000" (Standard | Ultra); 2,000,000 is the Ultra mode ceiling'
         source: https://developers.tripo3d.com/en/docs/generation-image-to-model/standard.md
       - when: texture_quality = "fast" and $not(texture_version = "v3.5")
         reason: 'Tripo texture_quality: "`fast` is only available on texture `v3.5-20260815`. On the generation endpoints that means `texture_version` must be set to it ... Any other texture version returns `1004` rather than silently falling back to `standard`."'
@@ -388,7 +388,7 @@ models:
         reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 1,500,000" in Standard mode; 2,000,000 only in Ultra mode (geometry_quality "detailed — Ultra mode")'
         source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
       - when: face_limit > 2000000
-        reason: 'Tripo face_limit: upper limit "Triangle — v3.1 | 2,000,000" in Ultra mode, the Ultra mode ceiling'
+        reason: 'Tripo face_limit: upper limits "Triangle — v3.1 | 1,500,000 | 2,000,000" (Standard | Ultra); 2,000,000 is the Ultra mode ceiling'
         source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
       - when: texture_quality = "fast" and $not(texture_version = "v3.5")
         reason: 'Tripo texture_quality: "`fast` is only available on texture `v3.5-20260815`. On the generation endpoints that means `texture_version` must be set to it ... Any other texture version returns `1004` rather than silently falling back to `standard`."'
@@ -397,7 +397,7 @@ models:
         reason: 'Tripo generate_parts: "`texture=true` or `pbr=true` — including omitting `texture`, which defaults to `true` — the request is rejected with error code `1004`." (pbr also defaults to true)'
         source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
       - when: $count(images) > 4
-        reason: 'Tripo inputs: one image per view, each object keyed "among `front`, `left`, `back`, `right`"; legacy positional: "Exactly 4 strings in order **[front, left, back, right]**"'
+        reason: 'Tripo inputs: one image per view, each object keyed "among `front`, `left`, `back`, `right`"; legacy positional: "Exactly 4 strings in order [front, left, back, right]"'
         source: https://developers.tripo3d.com/en/docs/generation-multiview-to-model/standard.md
     upstreams:
       - upstream: wavespeed

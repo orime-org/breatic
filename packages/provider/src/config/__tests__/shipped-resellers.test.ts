@@ -407,8 +407,8 @@ describe("the limits a reseller states beyond its schema", () => {
   };
 
   /**
-   * A row's run as the application sends it: the row's params resolved over the catalog's defaults (`resolvedParams`);
-   * a run marked `unforced` skips the catalog's forces.
+   * A row's run: the row's params resolved over the catalog's defaults and forces (`resolvedParams`), or over the
+   * defaults alone for a run marked `unforced`.
    * @param model - The model.
    * @param input - The row's run.
    * @returns The run.
@@ -630,14 +630,21 @@ describe("the limits a reseller states beyond its schema", () => {
     ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, texture: false, pbr: null } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, texture: false } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, texture: null, pbr: false } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-t23d", { prompt: "a fox", params: { geometry_quality: "detailed", face_limit: 2000001 } }, { prompt: "a fox", params: { geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
     ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, texture_quality: "fast", texture_version: "v3.0" } }), { params: { image: URL_A, texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
     ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true, texture: false } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, texture_quality: "fast", texture_version: null } }), { params: { image: URL_A, texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true, texture: false, pbr: null } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true, texture: null, pbr: false } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-i23d", { params: { image: URL_A, geometry_quality: "detailed", face_limit: 2000001 } }, { params: { image: URL_A, geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
     ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: "v3.0" } }), { params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
     ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true, texture: false } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: null } }), { params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: null } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true, texture: null, pbr: false } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], geometry_quality: "detailed", face_limit: 2000001 } }, { params: { images: [URL_A, URL_A], geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A, URL_A, URL_A, URL_A] } }, { params: { images: [URL_A, URL_A, URL_A, URL_A] } }, "Exactly 4 strings"],
   ];
@@ -825,7 +832,8 @@ describe("the limits a reseller states beyond its schema", () => {
     const masked = when.replace(/"[^"]*"|\/(?:[^/\\]|\\.)*\//g, (m) => " ".repeat(m.length));
     return [...masked.matchAll(/(?<![\w.$])\d+(?:\.\d+)?(?![\w.])/g)].flatMap((m) => {
       const n = Number(m[0]);
-      if (n >= 1_000_000 || (n === 0 && /min=\s*$/.test(when.slice(0, m.index)))) return [];
+      const before = when.slice(0, m.index);
+      if ((n === 1_000_000 && /(?:max|total)=\s*$/.test(before)) || (n === 0 && /min=\s*$/.test(before))) return [];
       const at = (v: number): string => `${when.slice(0, m.index)}${String(Math.round(v * 1000) / 1000)}${when.slice(m.index + m[0].length)}`;
       return [at(n + 1), at(n - 1)];
     });
