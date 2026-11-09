@@ -25,6 +25,7 @@ import {
   t, type ProjectRegisteredAsset, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineTrack,
   type TimelineVideoSource,
 } from '@breatic/shared';
+import { timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
@@ -277,6 +278,21 @@ describe('creation dialog', () => {
     expect(within(dialog).getByTestId('web-animation-aspect')).toHaveTextContent('16:9');
   });
 
+  it('labels its fields at the standard label size and colour and keeps its controls at the standard control height', async () => {
+    seed();
+    showTimeline();
+    const dialog = await openCreate();
+    for (const key of ['prompt', 'engine', 'aspect', 'duration']) {
+      const label = within(dialog).getByText(t(`timeline.webAnimation.dialog.${key}`));
+      expect(label.tagName, key).toBe('LABEL');
+      expect(label, key).not.toHaveClass('text-xs');
+      expect(label, key).not.toHaveClass('text-muted-foreground');
+    }
+    for (const testId of ['web-animation-engine', 'web-animation-aspect', 'web-animation-duration']) {
+      expect(within(dialog).getByTestId(testId), testId).not.toHaveClass('h-8');
+    }
+  });
+
   it('accepts the frozen input once with the document fps, lands the receipt with a placeholder at the playhead and shows the run', async () => {
     seed();
     showTimeline();
@@ -444,13 +460,24 @@ describe('execution list', () => {
     expect(body?.actionId).not.toBe(FAILED_ROW.actionId);
   });
 
-  it('shows a general reason for a failure it has no sentence for', async () => {
-    rows = [row(EXEC_FAILED, 'failed', { failureReason: 'validation_failed' })];
+  const FAILURE_LINES: Array<[string | null, string]> = [
+    ...['validation_failed', 'font_not_in_set', 'manifest_invalid', 'package_too_large', 'output_missing', 'viewport_mismatch', 'fps_mismatch', 'duration_mismatch', 'font_set_mismatch']
+      .map((reason): [string, string] => [reason, 'check']),
+    ...['harness_failed', 'container_failed', 'internal'].map((reason): [string, string] => [reason, 'stopped']),
+    ['feature_disabled', 'feature_disabled'],
+    ['a_reason_with_no_sentence', 'unknown'],
+    [null, 'unknown'],
+  ];
+
+  it.each(FAILURE_LINES)('tells a failure for reason %s with failure.%s', async (reason, line) => {
+    rows = [row(EXEC_FAILED, 'failed', { failureReason: reason })];
     seed();
     showTimeline();
     await openList();
     await view('completed');
-    expect(await expand(EXEC_FAILED)).toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
+    const detail = await expand(EXEC_FAILED);
+    expect(detail).toHaveTextContent(t(`timeline.webAnimation.failure.${line}`));
+    if (line !== 'unknown') expect(detail).not.toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
   });
 
   it('lets a Viewer open rows and read their details but offers no action', async () => {
@@ -467,6 +494,142 @@ describe('execution list', () => {
     expect(running).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
     expect(within(running).queryByTestId(`timeline-execution-cancel-${EXEC_RUNNING}`)).toBeNull();
     expect(within(running).queryByTestId(`timeline-execution-add-placeholder-${EXEC_RUNNING}`)).toBeNull();
+  });
+});
+
+describe('execution row header, steps, usage and actions', () => {
+  /**
+   * Show only this row, in the view it belongs to.
+   * @param target - The row.
+   * @returns Its header toggle.
+   * @throws {Error} When the row is missing.
+   */
+  async function showRow(target: ListedExecution): Promise<HTMLElement> {
+    rows = [target];
+    seed();
+    showTimeline();
+    await openList();
+    await view(timelineExecutionEnded(target.status) ? 'completed' : 'inProgress');
+    return screen.findByTestId(`timeline-execution-toggle-${target.id}`);
+  }
+
+  /**
+   * The step items of an open row, in order.
+   * @param detail - The row's details.
+   * @returns Its steps.
+   * @throws {never} Never.
+   */
+  function stepItems(detail: HTMLElement): HTMLElement[] {
+    return [...detail.querySelectorAll<HTMLElement>('ol > li')];
+  }
+
+  it('puts the summary on its own row across the header, apart from the title, with the short duration', async () => {
+    const toggle = await showRow(DONE_ROW);
+    const meta = within(toggle).getByTestId(`timeline-execution-meta-${EXEC_DONE}`);
+    const title = within(toggle).getByText('Brand name fades in');
+    expect(meta.parentElement).not.toBe(title.parentElement);
+    expect(meta).not.toContainElement(title);
+    // A row across the whole header sits at the level that also holds the kind icon and the status.
+    const status = within(toggle).getByText(t('timeline.webAnimation.status.succeeded'));
+    expect(meta.parentElement).toContainElement(status);
+    expect(meta.parentElement).toContainElement(toggle.querySelector('svg'));
+    expect(meta).toHaveTextContent('DeepSeek');
+    expect(meta).toHaveTextContent('9:16');
+    expect(meta).toHaveTextContent(t('timeline.webAnimation.durationShort', { seconds: 4 }));
+    expect(meta).not.toHaveTextContent(t('timeline.material.duration', { seconds: 4 }));
+  });
+
+  it.each(['awaiting_landing', 'queued', 'running', 'cancelling'] as const)('spins an icon before the status of a %s row', async (status) => {
+    const target = row('90000000-0000-4000-8000-0000000000f1', status, { input: { prompt: 'Spinning row', engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps } });
+    const toggle = await showRow(target);
+    const spinners = toggle.querySelectorAll('svg.animate-spin');
+    expect(spinners).toHaveLength(1);
+    const holder = spinners[0]?.parentElement as HTMLElement;
+    expect(holder).toHaveTextContent(t(`timeline.webAnimation.status.${status}`));
+    expect(holder).not.toHaveTextContent('Spinning row');
+    expect(holder.firstChild).toBe(spinners[0]);
+  });
+
+  it.each([DONE_ROW, FAILED_ROW, row('90000000-0000-4000-8000-0000000000c1', 'cancelled'), row('90000000-0000-4000-8000-0000000000c3', 'expired')])(
+    'spins nothing in the header of a finished row ($status)', async (target) => {
+      const toggle = await showRow(target);
+      expect(toggle.querySelector('.animate-spin')).toBeNull();
+    });
+
+  it('marks the page-writing step current for a running row that has reported no phase yet', async () => {
+    await showRow(row(EXEC_RUNNING, 'running', { phase: null }));
+    const steps = stepItems(await expand(EXEC_RUNNING));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'current', 'pending', 'pending']);
+    expect(steps[1]).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
+  });
+
+  it('marks the step a failed run stopped at in the error tone and leaves the later ones pending', async () => {
+    await showRow(row(EXEC_FAILED, 'failed', { phase: 'validating', failureReason: 'validation_failed' }));
+    const steps = stepItems(await expand(EXEC_FAILED));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'done', 'stopped', 'pending']);
+    expect(steps[2]).toHaveClass('text-status-error-foreground');
+  });
+
+  it('marks the page-writing step stopped for a failed run that reported no phase', async () => {
+    await showRow(row(EXEC_FAILED, 'failed', { phase: null }));
+    const steps = stepItems(await expand(EXEC_FAILED));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'stopped', 'pending', 'pending']);
+    expect(steps[1]).toHaveClass('text-status-error-foreground');
+  });
+
+  it('marks the saving step stopped in the error tone for a run that expired while saving', async () => {
+    const id = '90000000-0000-4000-8000-0000000000c3';
+    await showRow(row(id, 'expired', { phase: 'saving' }));
+    const steps = stepItems(await expand(id));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'done', 'done', 'stopped']);
+    expect(steps[3]).toHaveClass('text-status-error-foreground');
+  });
+
+  it('marks the step a cancelled run stopped at muted, not in the error tone', async () => {
+    const id = '90000000-0000-4000-8000-0000000000c1';
+    await showRow(row(id, 'cancelled', { phase: null }));
+    const steps = stepItems(await expand(id));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'stopped', 'pending', 'pending']);
+    expect(steps[1]).not.toHaveClass('text-status-error-foreground');
+  });
+
+  it('lists the usage of a finished row as a labelled term beside the prompt', async () => {
+    await showRow(DONE_ROW);
+    const detail = await expand(EXEC_DONE);
+    const label = within(detail).getByText(t('timeline.webAnimation.usageLabel'));
+    expect(label.tagName).toBe('DT');
+    const value = label.nextElementSibling as HTMLElement;
+    expect(value.tagName).toBe('DD');
+    expect(value.previousElementSibling).toBe(label);
+    expect(value).toHaveTextContent(t('timeline.webAnimation.usage', { credits: '0.38' }));
+    expect(label.parentElement).toBe(within(detail).getByText(t('timeline.webAnimation.dialog.prompt')).parentElement);
+  });
+
+  it('lists the usage of an unfinished row as pending', async () => {
+    await showRow(RUNNING_ROW);
+    const detail = await expand(EXEC_RUNNING);
+    const label = within(detail).getByText(t('timeline.webAnimation.usageLabel'));
+    expect(label.tagName).toBe('DT');
+    const value = label.nextElementSibling as HTMLElement;
+    expect(value.tagName).toBe('DD');
+    expect(value).toHaveTextContent(t('timeline.webAnimation.usagePending'));
+    expect(label.parentElement).toBe(within(detail).getByText(t('timeline.webAnimation.dialog.prompt')).parentElement);
+  });
+
+  it('spaces the icon and label of every row action alike', async () => {
+    rows = [RUNNING_ROW, DONE_ROW, FAILED_ROW];
+    seed();
+    showTimeline();
+    await openList();
+    await view('inProgress');
+    const running = await expand(EXEC_RUNNING);
+    expect(within(running).getByTestId(`timeline-execution-cancel-${EXEC_RUNNING}`)).toHaveClass('gap-1.5');
+    expect(within(running).getByTestId(`timeline-execution-add-placeholder-${EXEC_RUNNING}`)).toHaveClass('gap-1.5');
+    await view('completed');
+    const done = await expand(EXEC_DONE);
+    expect(within(done).getByTestId(`timeline-execution-add-${EXEC_DONE}`)).toHaveClass('gap-1.5');
+    const failed = await expand(EXEC_FAILED);
+    expect(within(failed).getByTestId(`timeline-execution-retry-${EXEC_FAILED}`)).toHaveClass('gap-1.5');
   });
 });
 
@@ -552,8 +715,20 @@ describe('preview of web copies', () => {
     seed([webClip(placeholder, 'v2', 0, 48, waitingFor(EXEC_RUNNING))]);
     showTimeline();
     const note = await screen.findByTestId(`timeline-web-note-${placeholder}`);
-    expect(note).toHaveTextContent(t('timeline.webAnimation.preview.pending', { track: t('timeline.track', { index: 2 }), status: t('timeline.webAnimation.status.running') }));
+    // The sentence is chosen by the raw status, so each language words the whole note itself.
+    expect(note).toHaveTextContent(t('timeline.webAnimation.preview.pending', { track: t('timeline.track', { index: 2 }), status: 'running' }));
+    expect(note).toHaveTextContent('creating web animation');
     expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).toBeNull();
+  });
+
+  it('notes a copy whose execution failed with the whole sentence for that status', async () => {
+    rows = [FAILED_ROW];
+    const failed = '30000000-0000-4000-8000-000000000108';
+    seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
+    showTimeline();
+    const note = await screen.findByTestId(`timeline-web-note-${failed}`);
+    await waitFor(() => expect(note).toHaveTextContent(t('timeline.webAnimation.preview.failed', { track: t('timeline.track', { index: 2 }), status: 'failed' })));
+    expect(note).toHaveTextContent('web animation failed');
   });
 
   it('notes a copy whose preview address cannot be had and fetches a new one on retry', async () => {
@@ -766,9 +941,10 @@ describe('web animation copy in every locale', () => {
     'timeline.webAnimation.list.emptyCompleted', 'timeline.webAnimation.list.emptyInProgress',
     ...['awaiting_landing', 'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'expired'].map((status) => `timeline.webAnimation.status.${status}`),
     'timeline.webAnimation.step.landing', 'timeline.webAnimation.phase.writing', 'timeline.webAnimation.phase.validating', 'timeline.webAnimation.phase.saving',
-    'timeline.webAnimation.usage', 'timeline.webAnimation.usagePending',
+    'timeline.webAnimation.usageLabel', 'timeline.webAnimation.usage', 'timeline.webAnimation.usagePending', 'timeline.webAnimation.durationShort',
     'timeline.webAnimation.cancel', 'timeline.webAnimation.addToTimeline', 'timeline.webAnimation.addPlaceholder', 'timeline.webAnimation.retry',
     'timeline.webAnimation.failure.feature_disabled', 'timeline.webAnimation.failure.unknown',
+    'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped',
     'timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed', 'timeline.webAnimation.preview.unavailable',
     'timeline.errors.source_unresolved',
   ];
@@ -784,6 +960,30 @@ describe('web animation copy in every locale', () => {
   it('names the track in the preview notes', () => {
     for (const key of ['timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed', 'timeline.webAnimation.preview.unavailable']) {
       for (const [tag, catalog] of LOCALE_CATALOGS) expect(String(readPath(catalog, key)), `${tag} ${key}`).toContain('{track}');
+    }
+  });
+
+  it('writes the short duration as seconds with the unit of each language', () => {
+    const expected: Record<string, string> = { en: '{seconds} s', 'zh-CN': '{seconds} 秒', 'zh-TW': '{seconds} 秒', ja: '{seconds} 秒', ko: '{seconds}초' };
+    for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.webAnimation.durationShort'), tag).toBe(expected[tag]);
+  });
+
+  it('has the agreed English sentences for usage, failures and preview notes', () => {
+    const english = LOCALE_CATALOGS[0]?.[1] ?? {};
+    expect(readPath(english, 'timeline.webAnimation.usageLabel')).toBe('Usage');
+    expect(readPath(english, 'timeline.webAnimation.usage')).toBe('{credits} credits');
+    expect(readPath(english, 'timeline.webAnimation.usagePending')).toBe('Settled when it ends');
+    expect(readPath(english, 'timeline.webAnimation.failure.check')).toBe('The page did not pass the check.');
+    expect(readPath(english, 'timeline.webAnimation.failure.stopped')).toBe('Creation stopped unexpectedly.');
+    expect(readPath(english, 'timeline.webAnimation.preview.pending')).toBe(
+      '{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…');
+    expect(readPath(english, 'timeline.webAnimation.preview.failed')).toBe(
+      '{track}: {status, select, failed {web animation failed} cancelled {web animation cancelled} expired {web animation expired} other {web animation not shown}}, not shown');
+  });
+
+  it('chooses the preview note sentence by status in every locale', () => {
+    for (const key of ['timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed']) {
+      for (const [tag, catalog] of LOCALE_CATALOGS) expect(String(readPath(catalog, key)), `${tag} ${key}`).toContain('{status, select,');
     }
   });
 

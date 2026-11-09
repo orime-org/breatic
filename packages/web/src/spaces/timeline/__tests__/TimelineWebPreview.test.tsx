@@ -122,6 +122,11 @@ describe('Timeline preview of a web copy', () => {
     expect(await screen.findByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
   });
 
+  it('gives the player a transparent background, so the layers beneath show through its page', async () => {
+    showPreview('ready');
+    expect(await player()).toHaveClass('bg-transparent');
+  });
+
   it('draws a copy once its page has answered and keeps that picture, without a note, while a seek waits', async () => {
     const next = showPreview('loading');
     const element = await player();
@@ -364,6 +369,12 @@ describe('execution list result preview', () => {
     expect(result.element).toHaveAttribute('data-web-state', 'ready');
     expect(result.element.style.opacity).not.toBe('0');
     expect(frame.querySelector('[data-ui-skeleton]')).toBeNull();
+  });
+
+  it('gives the result player a transparent background', async () => {
+    showResult();
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).not.toBeNull());
+    expect(document.querySelector('hyperframes-player')).toHaveClass('bg-transparent');
   });
 
   it('shows unavailable with a retry instead of the skeleton when its preview address is refused, and fetches a new one on retry', async () => {
