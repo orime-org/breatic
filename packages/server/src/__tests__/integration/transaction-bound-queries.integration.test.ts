@@ -32,7 +32,7 @@ afterAll(async () => {
 });
 
 /**
- * Write one probe row through the pool handle, never through a transaction.
+ * Write one probe row through `db` itself, never through a `tx` argument.
  * @param note - What the row says.
  */
 async function insertThroughDb(note: string): Promise<void> {
@@ -40,8 +40,8 @@ async function insertThroughDb(note: string): Promise<void> {
 }
 
 /**
- * Read probe notes through the pool handle.
- * @returns Every note currently visible to that handle.
+ * Read probe notes through `db` itself.
+ * @returns Every note `db` currently sees.
  */
 async function notesThroughDb(): Promise<string[]> {
   const rows = await db.execute<{ note: string }>(sql`SELECT note FROM ${sql.raw(TABLE)} ORDER BY note`);

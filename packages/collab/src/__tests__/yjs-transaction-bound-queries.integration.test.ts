@@ -40,7 +40,7 @@ function docName(): string {
 }
 
 /**
- * Write a document row through the pool handle, never through a transaction.
+ * Write a document row through `yjsDb` itself, never through a `tx` argument.
  * @param name - The document name.
  */
 async function insertThroughYjsDb(name: string): Promise<void> {
