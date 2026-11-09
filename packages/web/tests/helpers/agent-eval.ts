@@ -136,19 +136,33 @@ export function forJudge(tool: string, output: unknown): unknown {
 function modelListForJudge(output: unknown): unknown {
   const answer = output as { available?: unknown; models?: unknown } | null;
   if (typeof answer !== 'object' || answer === null || answer.available !== true || !Array.isArray(answer.models)) return output;
-  type Model = { name: unknown; what: unknown; seconds: unknown; price?: unknown; lowestAt?: unknown; params?: Record<string, { options?: unknown; min?: unknown; max?: unknown }> };
+  type Param = { options?: unknown; min?: unknown; max?: unknown; default?: unknown };
+  type Model = { name: unknown; what: unknown; seconds: unknown; price?: unknown; atParams?: unknown; rejected?: unknown; lowestAt?: unknown; params?: Record<string, Param> };
+  /**
+   * A setting's values and default as the judge reads them.
+   * @param spec - The setting.
+   * @returns Its values and default, or undefined for one with no values to pick from.
+   */
+  const setting = (spec: Param): { values: unknown; default?: unknown } | undefined => {
+    const values = spec.options ?? (spec.min !== undefined && spec.max !== undefined ? `${String(spec.min)} to ${String(spec.max)}` : undefined);
+    if (values === undefined) return undefined;
+    return spec.default === undefined ? { values } : { values, default: spec.default };
+  };
   return {
     available: true,
-    models: (answer.models as Model[]).map(({ name, what, seconds, price, lowestAt, params }) => ({
+    models: (answer.models as Model[]).map(({ name, what, seconds, price, atParams, rejected, lowestAt, params }) => ({
       name,
       what,
       seconds,
-      ...(price === undefined ? {} : { price }),
+      // The price is at the settings the call sent only when the tool says so; otherwise it is at the defaults.
+      ...(price === undefined ? {} : atParams === true ? { priceAtSettingsSent: price } : { priceAtDefaults: price }),
+      ...(rejected === undefined ? {} : { rejected }),
       ...(lowestAt === undefined ? {} : { lowestAt }),
       params: Object.fromEntries(
-        Object.entries(params ?? {}).flatMap(([key, spec]) =>
-          spec.options !== undefined ? [[key, spec.options]] : spec.min !== undefined && spec.max !== undefined ? [[key, `${String(spec.min)} to ${String(spec.max)}`]] : [],
-        ),
+        Object.entries(params ?? {}).flatMap(([key, spec]) => {
+          const read = setting(spec);
+          return read === undefined ? [] : [[key, read]];
+        }),
       ),
     })),
   };
@@ -171,6 +185,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     'The agent writes in the language of the user\'s latest message.',
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
     'When the user says they will send material, waiting for it before making what depends on it is right.',
+    'Judge a stated price only against a RETURNED price for the same model and settings; a price for settings the run never priced is not a breach.',
     'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,

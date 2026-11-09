@@ -201,7 +201,9 @@ describe('forJudge', () => {
         displayName: 'DISPLAY-FAST',
         what: 'WHAT-FAST a quick video model',
         seconds: [5, 10],
-        price: 'PRICE-FAST',
+        price: { credits: 40, bound: 'upper' },
+        atParams: true,
+        rejected: ['resolution'],
         lowestAt: { resolution: '480p' },
         vendor: 'VENDOR-DROPPED',
         params: {
@@ -212,6 +214,13 @@ describe('forJudge', () => {
         },
       },
       {
+        name: 'MODEL-DEFAULTS',
+        what: 'WHAT-DEFAULTS',
+        seconds: 6,
+        price: { credits: 12, bound: 'exact' },
+        params: { quality: { what: 'PARAM-WHAT-DROPPED', options: ['low', 'high'], default: 'low' } },
+      },
+      {
         name: 'MODEL-PLAIN',
         what: 'WHAT-PLAIN',
         seconds: 8,
@@ -220,7 +229,7 @@ describe('forJudge', () => {
     ],
   };
 
-  it('keeps each model\'s name, what, seconds, price, lowestAt and params as options or a min-to-max range', () => {
+  it('keeps each model\'s name, what, seconds, price under what it was priced at, rejected, lowestAt and each param\'s values and default', () => {
     expect(forJudge('list_generation_models', full)).toEqual({
       available: true,
       models: [
@@ -228,23 +237,53 @@ describe('forJudge', () => {
           name: 'MODEL-FAST',
           what: 'WHAT-FAST a quick video model',
           seconds: [5, 10],
-          price: 'PRICE-FAST',
+          priceAtSettingsSent: { credits: 40, bound: 'upper' },
+          rejected: ['resolution'],
           lowestAt: { resolution: '480p' },
-          params: { resolution: ['480p', '720p'], duration: '2 to 12' },
+          params: {
+            resolution: { values: ['480p', '720p'], default: '720p' },
+            duration: { values: '2 to 12', default: 5 },
+          },
         },
-        { name: 'MODEL-PLAIN', what: 'WHAT-PLAIN', seconds: 8, params: { ratio: ['16:9', '9:16'] } },
+        {
+          name: 'MODEL-DEFAULTS',
+          what: 'WHAT-DEFAULTS',
+          seconds: 6,
+          priceAtDefaults: { credits: 12, bound: 'exact' },
+          params: { quality: { values: ['low', 'high'], default: 'low' } },
+        },
+        { name: 'MODEL-PLAIN', what: 'WHAT-PLAIN', seconds: 8, params: { ratio: { values: ['16:9', '9:16'] } } },
       ],
     });
+  });
+
+  it('puts a price under priceAtSettingsSent only when atParams is true, and under priceAtDefaults otherwise', () => {
+    const one = (extra: Record<string, unknown>): Record<string, unknown> => {
+      const slim = forJudge('list_generation_models', { available: true, models: [{ name: 'M', what: 'W', seconds: 1, price: 'PRICE', ...extra }] }) as { models: Record<string, unknown>[] };
+      return slim.models[0];
+    };
+    expect(one({ atParams: true })).toHaveProperty('priceAtSettingsSent', 'PRICE');
+    expect(one({ atParams: true })).not.toHaveProperty('priceAtDefaults');
+    for (const extra of [{}, { atParams: false }, { atParams: 'true' }]) {
+      expect(one(extra), JSON.stringify(extra)).toHaveProperty('priceAtDefaults', 'PRICE');
+      expect(one(extra), JSON.stringify(extra)).not.toHaveProperty('priceAtSettingsSent');
+    }
   });
 
   it('drops every other field of a model and of its params, and leaves absent keys absent', () => {
     const slim = forJudge('list_generation_models', full) as { models: Record<string, unknown>[] };
     const text = JSON.stringify(slim);
-    for (const dropped of ['DISPLAY-FAST', 'VENDOR-DROPPED', 'PARAM-WHAT-DROPPED', 'NEEDS-DROPPED', '"default"', 'seed', 'prompt_extend']) {
+    for (const dropped of ['DISPLAY-FAST', 'VENDOR-DROPPED', 'PARAM-WHAT-DROPPED', 'NEEDS-DROPPED', 'seed', 'prompt_extend', 'atParams', '"price"', '"what":"PARAM']) {
       expect(text, dropped).not.toContain(dropped);
     }
-    expect(slim.models[1]).not.toHaveProperty('price');
-    expect(slim.models[1]).not.toHaveProperty('lowestAt');
+    for (const model of slim.models.slice(1)) {
+      expect(model).not.toHaveProperty('rejected');
+      expect(model).not.toHaveProperty('lowestAt');
+    }
+    const plain = slim.models[2];
+    expect(plain).not.toHaveProperty('priceAtSettingsSent');
+    expect(plain).not.toHaveProperty('priceAtDefaults');
+    expect((plain.params as Record<string, object>).ratio).not.toHaveProperty('default');
   });
 
   it('returns anything that is not an available model list unchanged', () => {
@@ -325,6 +364,12 @@ describe('judgePrompt', () => {
     expect(prompt).not.toContain('a proposal call in state output-available is a card the user sees');
     expect(prompt).toContain(
       'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
+    );
+  });
+
+  it('says a stated price is judged only against a returned price for the same model and settings', () => {
+    expect(judgePrompt(scenario, run)).toContain(
+      'Judge a stated price only against a RETURNED price for the same model and settings; a price for settings the run never priced is not a breach.',
     );
   });
 
