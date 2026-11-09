@@ -60,25 +60,25 @@ function at(key: string): Vector3 {
 }
 
 /**
- * The box around the head's skin as posed now: every vertex whose strongest weight is the head bone.
- * @returns The box, in the figure's space.
- * @throws {Error} When the figure does not map a head.
+ * The skin of some mapped bones as posed now: every vertex whose strongest weight is one of them.
+ * @param keys - The bones' pose keys.
+ * @returns The vertices, in the figure's space.
+ * @throws {Error} When the figure does not map one of them.
  */
-function headBox(): Box3 {
-  const head = boneOf('h:head');
-  const box = new Box3();
+function skinOf(keys: readonly string[]): Vector3[] {
+  const bones = new Set(keys.map(boneOf));
+  const points: Vector3[] = [];
   root.traverse((node) => {
     if (!(node instanceof SkinnedMesh)) return;
-    const index = node.skeleton.bones.indexOf(head);
     const indices = node.geometry.getAttribute('skinIndex');
     const weights = node.geometry.getAttribute('skinWeight');
     for (let vertex = 0; vertex < indices.count; vertex += 1) {
       let strongest = 0;
       for (let slot = 1; slot < 4; slot += 1) if (weights.getComponent(vertex, slot) > weights.getComponent(vertex, strongest)) strongest = slot;
-      if (indices.getComponent(vertex, strongest) === index) box.expandByPoint(node.getVertexPosition(vertex, new Vector3()).applyMatrix4(node.matrixWorld));
+      if (bones.has(node.skeleton.bones[indices.getComponent(vertex, strongest)])) points.push(node.getVertexPosition(vertex, new Vector3()).applyMatrix4(node.matrixWorld));
     }
   });
-  return box;
+  return points;
 }
 
 beforeAll(async () => {
@@ -119,14 +119,13 @@ describe('presets on the built-in figure (inner#1692)', () => {
     }
   });
 
-  it.each(PRESETS)('%s keeps both forearms out of the head', (_name, pose) => {
+  it.each(PRESETS)('%s keeps the skin of both forearms and hands out of the head', (_name, pose) => {
     rig.apply(pose);
     root.updateMatrixWorld(true);
-    const box = headBox();
+    const head = new Box3().setFromPoints(skinOf(['h:head']));
     for (const side of SIDES) {
-      const elbow = at(`h:${side}LowerArm`);
-      const wrist = at(`h:${side}Hand`);
-      for (let step = 0; step <= 20; step += 1) expect(box.containsPoint(elbow.clone().lerp(wrist, step / 20)), `${side} ${step}`).toBe(false);
+      const inside = skinOf([`h:${side}LowerArm`, `h:${side}Hand`]).filter((point) => head.containsPoint(point));
+      expect(inside, side).toHaveLength(0);
     }
   });
 

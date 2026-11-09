@@ -69,10 +69,11 @@ export const POSE_PRESETS: Readonly<Record<'stand' | 'sit' | 'lie' | 'walk' | 'w
     // The bent knees shorten the legs; the hips come down so the feet keep the ground.
     [SCENE_POSE_HIPS_KEY]: [0, -0.032, 0],
   },
-  // The right hand raised above the head, the forearm clear of it.
+  // The right hand raised above the head with the elbow out to the side, so the forearm
+  // stays clear of a wide head as well as a narrow one.
   wave: {
     ...UPRIGHT, ...LEGS_STRAIGHT,
     'h:leftUpperArm': turn('z', -75), 'h:leftLowerArm': turn('y', -10), 'h:leftHand': IDENTITY,
-    'h:rightUpperArm': turn('z', -95), 'h:rightLowerArm': turn('z', -20), 'h:rightHand': IDENTITY,
+    'h:rightUpperArm': turn('z', -45), 'h:rightLowerArm': turn('z', -45), 'h:rightHand': IDENTITY,
   },
 };
