@@ -1704,22 +1704,46 @@ export function renderProductGuide(): string {
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
-      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
-      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("canvas.contextMenu.copy"))} puts the ` +
+      `whole table on the clipboard and ${quoted(t("spaces.document.table.cut"))} does the same, then deletes the ` +
+      "table; pasted with Cmd/Ctrl+V outside a table it makes a new table, and pasted in a table's cell it fills " +
+      `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
       "when no cell has words.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
-      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.table.pasteAbove"))}, ` +
+      `${quoted(t("spaces.document.table.pasteBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
       `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("canvas.contextMenu.copy"))}, ${quoted(t("spaces.document.table.cut"))}, ` +
+      `${quoted(t("spaces.document.table.pasteLeft"))}, ${quoted(t("spaces.document.table.pasteRight"))}, ` +
       `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
-      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.cellFill"))}, ${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
+      `${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("canvas.contextMenu.copy"))} puts the row or column on the clipboard, as selecting its cells and ` +
+      `pressing Cmd/Ctrl+C does, and ${quoted(t("spaces.document.table.cut"))} copies it, then deletes it. ` +
+      `${quoted(t("spaces.document.table.pasteAbove"))} and the other paste items insert the table on the ` +
+      "clipboard as new rows (or columns) beside this one and change no cell already there: rows copied from " +
+      "this or another table, a spreadsheet or a web page all work; a narrower copy leaves the remaining new cells " +
+      "empty and a wider one adds columns (or rows) to the table. The browser may ask to allow reading the " +
+      `clipboard first; refused, a notice says ${quoted(t("spaces.document.table.clipboardNotAllowed"))}, and ` +
+      `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
+      `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
+      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "row or column, the copy, cut, paste and " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
+      `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
       `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
       `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
       `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +

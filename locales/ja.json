@@ -2197,7 +2197,16 @@
         "cellMenu": "セルのオプション",
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
-        "textHighlight": "背景（文字のハイライト）"
+        "textHighlight": "背景（文字のハイライト）",
+        "cut": "切り取り",
+        "pasteAbove": "上に貼り付け",
+        "pasteBelow": "下に貼り付け",
+        "pasteLeft": "左に貼り付け",
+        "pasteRight": "右に貼り付け",
+        "splitMergedFirst": "先に結合されたセルを分割してください",
+        "noTableToPaste": "先に表をコピーしてください",
+        "clipboardNotAllowed": "クリップボードへのアクセスが許可されていません",
+        "copyFailed": "クリップボードにコピーできませんでした"
       },
       "paste": {
         "unsupportedInCell": "この形式は貼り付けできません"

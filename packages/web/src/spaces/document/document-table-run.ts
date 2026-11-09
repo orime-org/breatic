@@ -163,6 +163,101 @@ export function insertColumn(editor: TableEditor, cellPos: number, side: 'left' 
 }
 
 /**
+ * A table's cells laid out on its grid: each slot holds the cell that starts
+ * there, and the slots a merged cell covers past its first are null.
+ * @param table - The table.
+ * @returns A row of slots per table row.
+ */
+function startingCells(table: PMNode): (PMNode | null)[][] {
+  const map = TableMap.get(table);
+  const grid: (PMNode | null)[][] = [];
+  for (let row = 0; row < map.height; row += 1) {
+    const slots: (PMNode | null)[] = [];
+    for (let col = 0; col < map.width; col += 1) {
+      const offset = map.map[row * map.width + col];
+      // 0 is a missing cell of a short row (a <caption> reads as a row of one cell).
+      if (offset === 0) {
+        slots.push(null);
+        continue;
+      }
+      const rect = map.findCell(offset);
+      slots.push(rect.top === row && rect.left === col ? table.nodeAt(offset) : null);
+    }
+    grid.push(slots);
+  }
+  return grid;
+}
+
+/**
+ * Inserts another table's rows as new rows above or below the cell, or its
+ * columns as new columns to the left or right of it (inner#1239 design 4.4).
+ * The new cells are made as "insert above / below / left / right" makes them;
+ * each takes the blocks and the colour of the cell in the same place in the
+ * other table, a merged cell's in the slot it starts in, and slots the other
+ * table does not reach stay empty. The table grows when the other table is
+ * wider (for rows) or taller (for columns).
+ * @param editor - The editor to write to.
+ * @param cellPos - The cell.
+ * @param side - Where the new rows or columns go.
+ * @param from - The table whose rows or columns are inserted.
+ */
+export function insertLinesOf(editor: TableEditor, cellPos: number, side: 'above' | 'below' | 'left' | 'right', from: PMNode): void {
+  const source = startingCells(from);
+  const height = source.length;
+  const width = source[0]?.length ?? 0;
+  const rows = side === 'above' || side === 'below';
+  runOnTable(editor, cellPos, (tr, at, cell) => {
+    const written = tr.mapping.maps.length;
+    /**
+     * The table as it stands in the transaction now.
+     * @returns The table.
+     */
+    const now = (): CellAt => tableNow(tr, at.tableStart, written);
+    /**
+     * The position before the cell covering a slot of the table.
+     * @param table - The table.
+     * @param row - The slot's row.
+     * @param col - The slot's column.
+     * @returns The position.
+     */
+    const cellIn = (table: CellAt, row: number, col: number): number => table.tableStart + table.map.map[row * table.map.width + col];
+    const first = rows ? (side === 'above' ? at.top : at.bottom) : side === 'left' ? at.left : at.right;
+    if (rows) {
+      for (let added = now().map.width; added < width; added += 1) {
+        const table = now();
+        runInCell(tr, cellIn(table, 0, table.map.width - 1), addColumnAfter);
+      }
+      for (let row = 0; row < height; row += 1) addRow(tr, now(), first + row);
+    } else {
+      for (let added = now().map.height; added < height; added += 1) addRow(tr, now(), now().map.height);
+      for (let col = 0; col < width; col += 1) {
+        // Each column goes beside the one before it: no cell spans the edges
+        // of the menu's column (`canDragFrom`), nor of a column just added.
+        const table = now();
+        if (col === 0) runInCell(tr, tr.mapping.slice(written).map(cell), side === 'left' ? addColumnBefore : addColumnAfter);
+        else runInCell(tr, cellIn(table, at.top, first + col - 1), addColumnAfter);
+      }
+    }
+    const table = now();
+    const writes: { pos: number; from: PMNode }[] = [];
+    for (let row = 0; row < height; row += 1) {
+      for (let col = 0; col < width; col += 1) {
+        const copied = source[row][col];
+        if (copied === null || copied === undefined) continue;
+        writes.push({ pos: rows ? cellIn(table, first + row, col) : cellIn(table, row, first + col), from: copied });
+      }
+    }
+    // From the end back, so each write leaves the cells before it in place.
+    writes.sort((a, b) => b.pos - a.pos);
+    for (const { pos, from: copied } of writes) {
+      const target = tr.doc.nodeAt(pos)!;
+      tr.setNodeAttribute(pos, 'backgroundColor', copied.attrs['backgroundColor']);
+      tr.replaceWith(pos + 1, pos + target.nodeSize - 1, copied.content);
+    }
+  });
+}
+
+/**
  * Deletes the rows the cell covers; the whole table when they are all of them.
  *
  * `prosemirror-tables` refuses to delete every row (`deleteRow` returns false
