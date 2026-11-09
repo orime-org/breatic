@@ -15,7 +15,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
-import { FAILURE_LINES, READ_PAGE_MAX_URL_CHARS, UploadHttpError, pageLinkKey, webPageUrlSchema } from "@breatic/shared";
+import { FAILURE_LINES, UploadHttpError, pageLinkKey, webPageUrlSchema } from "@breatic/shared";
 import type {
   ContainerUsage,
   FailureLine,
@@ -27,7 +27,7 @@ import type {
 
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
-import { pageLinkSpansIn, pageLinksIn } from "@domain/agent/page-links.js";
+import { pageLinkSpansIn, pageLinksIn, type PageLinkSpan } from "@domain/agent/page-links.js";
 import { publisherOf, type CitationNumbers } from "@domain/agent/tools/citation.js";
 import { usageRecorderSchema } from "@domain/agent/tools/usage-context.js";
 import {
@@ -142,6 +142,8 @@ interface PageInFull {
   kind?: "html" | "pdf";
   pages?: number;
   text: string;
+  /** The links the whole text holds and where it writes each, found once when the page is kept. */
+  spans: PageLinkSpan[];
   truncated?: boolean;
 }
 
@@ -313,55 +315,33 @@ function isHighSurrogate(unit: number): boolean {
 }
 
 /**
- * Whether a character is whitespace, which no link holds.
- * @param char - The character, or undefined past either end.
- * @returns True for whitespace.
- */
-function isSpace(char: string | undefined): boolean {
-  return char !== undefined && /\s/u.test(char);
-}
-
-/**
- * Where a cut goes so that no link crosses it: the farthest end of the links
- * that start before `to` and end after it, or `to` itself. A link running on
- * into non-ASCII text is read both whole and cut there, from one start, so
- * the slice then lists both, as reading the whole page does.
- *
- * The links and where the text writes them (`pageLinkSpansIn`, so a link's
- * end is where its last kept character is written, escapes included) are
- * read from the run of non-space characters that holds `to`, looked back on
- * and ahead of at most `READ_PAGE_MAX_URL_CHARS` each way.
- * @param text - The page's text.
- * @param to - Where the share would cut it.
+ * Where a cut goes so that no link crosses it: the farthest end of the
+ * page's links that start before `to` and end after it, or `to` itself. A
+ * link running on into non-ASCII text is read both whole and cut there, from
+ * one start, so the slice then lists both, as reading the whole page does.
+ * @param spans - The page's links and where its text writes each.
+ * @param to - Where the share would cut the text.
  * @returns The cut.
  */
-function cutPastLink(text: string, to: number): number {
-  const lookBack = Math.max(0, to - READ_PAGE_MAX_URL_CHARS);
-  let runStart = to;
-  while (runStart > lookBack && !isSpace(text[runStart - 1])) runStart -= 1;
-  const window = text.slice(runStart, Math.min(to + READ_PAGE_MAX_URL_CHARS, text.length));
+function cutPastLink(spans: readonly PageLinkSpan[], to: number): number {
   let cut = to;
-  for (const span of pageLinkSpansIn(window)) {
-    const start = runStart + span.start;
-    const end = runStart + span.end;
-    if (start < to && end > to) cut = Math.max(cut, end);
-  }
+  for (const span of spans) if (span.start < to && span.end > to) cut = Math.max(cut, span.end);
   return cut;
 }
 
 /**
- * The links a slice lists: the title's, then the whole page's links whose
- * place in the page lies within the slice, one per page key, each in the
- * spelling first written. Read from the whole page, a slice lists only links
+ * The links a slice lists: the title's, then the page's links whose place in
+ * its text lies within the slice, one per page key, each in the spelling
+ * first written. Taken from the whole page's links, a slice lists only links
  * reading the whole page lists, never a piece of text its cut made look like one.
  * @param title - The page's title.
- * @param text - The page's whole text.
- * @param from - Where the slice starts in it.
+ * @param spans - The page's links and where its text writes each.
+ * @param from - Where the slice starts in the text.
  * @param to - Where the slice ends in it.
  * @returns The links.
  */
-function linksOf(title: string, text: string, from: number, to: number): string[] {
-  const inSlice = pageLinkSpansIn(text).flatMap((span) => (span.start >= from && span.end <= to ? [span.link] : []));
+function linksOf(title: string, spans: readonly PageLinkSpan[], from: number, to: number): string[] {
+  const inSlice = spans.flatMap((span) => (span.start >= from && span.end <= to ? [span.link] : []));
   const byKey = new Map<string, string>();
   for (const link of [...pageLinksIn(title), ...inSlice]) {
     const key = pageLinkKey(link);
@@ -372,10 +352,11 @@ function linksOf(title: string, text: string, from: number, to: number): string[
 
 /**
  * The part of a page one call hands over, with the links its title and the
- * part of the page it covers hold (`linksOf`).
+ * part of the page it covers hold (`linksOf`), both taken from the page's
+ * links found when it was kept.
  *
- * A cut that falls inside a link, where the text writes it, moves to that
- * link's end there (`cutPastLink`), so a link is never handed over in two
+ * A cut that falls inside one of those links moves to the farthest end of the
+ * links crossing it (`cutPastLink`), so a link is never handed over in two
  * halves; any other cut stays at the share.
  * @param url - The address asked for.
  * @param page - The page in full.
@@ -388,7 +369,7 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
   const total = page.text.length;
   const from = Math.min(start, total);
   let to = Math.min(from + share, total);
-  if (to > from && to < total) to = cutPastLink(page.text, to);
+  if (to > from && to < total) to = cutPastLink(page.spans, to);
   // A cut between the two halves of a surrogate pair would hand over half a character.
   if (to < total && to > from && isHighSurrogate(page.text.charCodeAt(to - 1))) to += 1;
   const text = page.text.slice(from, to);
@@ -404,24 +385,27 @@ function sliceOf(url: string, page: PageInFull, start: number, share: number, in
     end: to,
     next_start: to < total ? to : null,
     text,
-    links: linksOf(page.title ?? "", page.text, from, to),
+    links: linksOf(page.title ?? "", page.spans, from, to),
     index,
     ...(page.truncated === true && { truncated: true }),
   };
 }
 
 /**
- * Keep a page read in full for the rest of the turn.
+ * Keep a page read in full for the rest of the turn, with its links found
+ * once for every slice the turn cuts from it.
  * @param result - What the reader answered for it.
  * @returns The page.
  */
 function inFull(result: ReadPageResult): PageInFull {
+  const text = result.text ?? "";
   return {
     ...(result.finalUrl !== undefined && { final_url: result.finalUrl }),
     ...(result.title !== undefined && { title: result.title }),
     ...(result.kind !== undefined && { kind: result.kind }),
     ...(result.pages !== undefined && { pages: result.pages }),
-    text: result.text ?? "",
+    text,
+    spans: pageLinkSpansIn(text),
     ...(result.truncated === true && { truncated: true }),
   };
 }
