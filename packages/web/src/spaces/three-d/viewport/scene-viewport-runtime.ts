@@ -842,6 +842,7 @@ export class SceneViewportRuntime {
         }
       });
     }
+    this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
   };

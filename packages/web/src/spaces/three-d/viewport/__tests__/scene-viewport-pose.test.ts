@@ -84,4 +84,28 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     runtime.update(props([{ ...dragging, gesture: null }]));
     expect(lastPose()).toEqual({ id: 'one', pose: LYING, settled: true });
   });
+
+  it('repaints the joint dots in the new theme\'s colours when the theme changes', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+    host.style.setProperty('--color-status-selected', '#111111');
+    host.style.setProperty('--color-foreground', '#222222');
+    const onSkeletonState = vi.fn();
+    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: 'h:leftLowerArm', onSkeletonState };
+    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
+    runtime.update(joints);
+    const markers = (): Array<{ key: string; mesh: { material: { color: { getHexString(): string } } } }> =>
+      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { material: { color: { getHexString(): string } } } }> }).markerItems;
+    await vi.waitFor(() => expect(markers().length).toBeGreaterThan(0));
+    const colourOf = (key: string): string | undefined => markers().find((marker) => marker.key === key)?.mesh.material.color.getHexString();
+    expect(colourOf('h:leftLowerArm')).toBe('222222');
+    expect(colourOf('h:head')).toBe('111111');
+    host.style.setProperty('--color-status-selected', '#333333');
+    host.style.setProperty('--color-foreground', '#444444');
+    document.documentElement.classList.toggle('dark');
+    await vi.waitFor(() => expect(colourOf('h:leftLowerArm')).toBe('444444'));
+    expect(colourOf('h:head')).toBe('333333');
+    document.documentElement.classList.remove('dark');
+  });
 });
