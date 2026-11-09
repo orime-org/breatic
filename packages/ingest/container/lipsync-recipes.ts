@@ -28,7 +28,7 @@ import type {
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
 import { runPlanCommand, startPlanCommand, type PlanPipe } from "@ingest/container/plan-command.js";
-import { presentationTimes, readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
+import { readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
   BT709_TAGS, RecipeFailure, detect, local, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
@@ -524,8 +524,14 @@ async function writeStem(recipe: MiniToolPlanLipsyncStem, request: LipsyncRecipe
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph.join(";"), "-map", "[a]", "-vn", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", "-f", "ipod", request.output], run);
 }
 
-/** One person of a composite chunk: its tables and its result streaming over the chunk's window, null once it has ended. */
-interface CompositePerson { faces: FaceRect[]; track: (string | null)[]; decode: PlanPipe | null; results: FrameStream | null; cropSize: number }
+/**
+ * One person of a composite chunk: its tables, the result frame each chunk frame shows (null past the result's end), and
+ * the result streaming from the first of them with the frame last read and its index.
+ */
+interface CompositePerson {
+  faces: FaceRect[]; track: (string | null)[]; shows: (number | null)[]; decode: PlanPipe | null; results: FrameStream | null;
+  position: number; current: Picture | null; cropSize: number;
+}
 
 /** Where the prepared video's pixels land in the output picture: its size, its picture rectangle and the output's. */
 interface Mapping { prepared: { width: number; height: number }; area: MiniToolPlanPixelRect; placed: MiniToolPlanPixelRect }
@@ -599,19 +605,54 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
 }
 
 /**
- * Where a video's frame starts, for opening it there: midway between that frame's presentation time and the one before, so
- * an accurate seek keeps the frame and drops the earlier ones; null when the video has no such frame. The time is on the
- * file's own packet clock, so the input is opened with `-seek_timestamp 1`: otherwise FFmpeg adds the stream's start time.
+ * A video's frames in presentation order on its own stream clock: each frame's presentation time and, for the last, its
+ * end (its packet duration, or the step before it when none is recorded); the clock's tick as a fraction of a second.
  * @param file - The video.
- * @param frame - The frame, in presentation order.
  * @param run - The lifetime and IO bounds.
- * @returns The seek time in seconds, 0 for the first frame.
- * @throws {Error} When ffprobe fails.
+ * @returns The tick and the frames' times in ticks.
+ * @throws {Error} When ffprobe fails or the stream has no time base.
  */
-async function seekTo(file: string, frame: number, run: Run): Promise<number | null> {
-  const times = await presentationTimes(file, run);
-  if (frame >= times.length) return null;
-  return frame === 0 ? 0 : (times[frame - 1]! + times[frame]!) / 2;
+async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigint]; starts: bigint[]; end: bigint }> {
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries",
+    "stream=time_base:packet=pts,duration", "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[]; packets?: { pts?: number; duration?: number }[] };
+  const [numerator, denominator] = (answer.streams?.[0]?.time_base ?? "").split("/").map(Number);
+  if (!Number.isSafeInteger(numerator) || !Number.isSafeInteger(denominator) || numerator! <= 0 || denominator! <= 0) throw new Error("The lip-sync result has no time base");
+  const packets = (answer.packets ?? []).filter((packet) => Number.isSafeInteger(packet.pts)).sort((a, b) => a.pts! - b.pts!);
+  const starts = packets.map((packet) => BigInt(packet.pts!));
+  const last = packets.at(-1);
+  const duration = last?.duration !== undefined && last.duration > 0 ? BigInt(last.duration) : starts.length > 1 ? starts.at(-1)! - starts.at(-2)! : 0n;
+  return { tick: [BigInt(numerator!), BigInt(denominator!)], starts, end: (starts.at(-1) ?? 0n) + duration };
+}
+
+/**
+ * The result frame each result-grid frame of a chunk shows (DD §7.2 step 6, row R4: by presentation time, never by frame
+ * number): grid frame k at k·step/clock s shows the frame whose span, from the result's first frame, holds that time; null
+ * once the time is past the result's end. The indices never decrease, so the result is read forward once.
+ * @param times - The result's frame times.
+ * @param times.tick - Its clock's tick in seconds.
+ * @param times.starts - Each frame's presentation time in ticks, in order.
+ * @param times.end - The last frame's end in ticks.
+ * @param grid - The result grid.
+ * @param grid.clock - Its timescale.
+ * @param grid.step - Its frame step in that timescale.
+ * @param window - The chunk's result-grid frames.
+ * @returns One result frame index or null per chunk frame.
+ * @throws {never} Never.
+ */
+function resultFramesShown(times: { tick: [bigint, bigint]; starts: bigint[]; end: bigint }, grid: { clock: number; step: number }, window: { start: number; end: number }): (number | null)[] {
+  const { tick: [numerator, denominator], starts, end } = times;
+  const first = starts[0] ?? 0n;
+  // A frame time p ticks after the first frame is p·numerator/denominator s; grid time k·step/clock s; compared exactly.
+  const scale = numerator * BigInt(grid.clock);
+  const shows: (number | null)[] = [];
+  let at = 0;
+  for (let k = window.start; k < window.end; k += 1) {
+    const time = BigInt(k) * BigInt(grid.step) * denominator;
+    if (starts.length === 0 || (end - first) * scale <= time) { shows.push(null); continue; }
+    while (at + 1 < starts.length && (starts[at + 1]! - first) * scale <= time) at += 1;
+    shows.push(at);
+  }
+  return shows;
 }
 
 /**
@@ -628,8 +669,9 @@ function copyPicture(frame: Picture): Picture {
 /**
  * Write one composite chunk (§7.17 lipsync_composite row, §5.4): result frames [window.start, window.end) on the result clock
  * from 0, opening with a keyframe; result frame k shows the original's presentation frame
- * `lipsyncSourceFrameAt(timeline, table, k)` with every person's result frame k laid onto that frame's face; a frame
- * without a face leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
+ * `lipsyncSourceFrameAt(timeline, table, k)` with every person's result frame laid onto that frame's face, the result frame
+ * being the one whose presentation time covers k's on the result grid (`resultFramesShown`); a frame without a face, or past
+ * the person's result, leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
  * only the source frames the chunk shows (`lipsyncChunkSourceWindow`). Frames move through pipes (execution design
  * paragraph before §9.4): each person's result is opened at the window and streamed, and so is the output; the source is
  * streamed when the chunk's source frames never go back, and only when they do is its window decoded to a raw file and
@@ -639,7 +681,7 @@ function copyPicture(frame: Picture): Picture {
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
  * @throws {RangeError} When the result frame step is not a whole number of the chunk's ticks, the raw source window is over the
- * plan's disk budget, or the source ends early.
+ * plan's disk budget, or the source or a person's result ends early.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: LipsyncRecipeRequest, run: Run): Promise<void> {
@@ -666,10 +708,21 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   try {
     for (const person of recipe.persons) {
       const result = local(request.inputs, person.result);
-      const [faces, track, at] = await Promise.all([readFaces(local(request.inputs, person.faces)), readRleTrack(local(request.inputs, person.track)), seekTo(result, window.start, run)]);
-      const decode = at === null ? null : startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
-        "-map", "0:v:0", "-frames:v", String(length), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
-      persons.push({ faces, track, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false), cropSize: person.cropSize });
+      const [faces, track, times] = await Promise.all([readFaces(local(request.inputs, person.faces)), readRleTrack(local(request.inputs, person.track)), frameTimes(result, run)]);
+      const shows = resultFramesShown(times, { clock: table.timescale, step: table.runs[0]!.step }, window);
+      const used = shows.filter((index): index is number => index !== null);
+      let decode: PlanPipe | null = null;
+      if (used.length > 0) {
+        const [from, to] = [used[0]!, used.at(-1)!];
+        // Opened midway between the first frame shown and the one before, on the file's own packet clock (`-seek_timestamp
+        // 1`), so an accurate seek keeps that frame and drops the earlier ones.
+        const seconds = (ticks: bigint): number => Number(ticks * times.tick[0]) / Number(times.tick[1]);
+        const at = from === 0 ? 0 : (seconds(times.starts[from - 1]!) + seconds(times.starts[from]!)) / 2;
+        decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
+          "-map", "0:v:0", "-frames:v", String(to - from + 1), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
+      }
+      persons.push({ faces, track, shows, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false),
+        position: (used[0] ?? 0) - 1, current: null, cropSize: person.cropSize });
     }
     if (shown.goesBack) {
       if ((shown.end - shown.start) * lipsyncPictureBytes(target.width, target.height, alpha) > recipe.rawDiskBytes) {
@@ -684,7 +737,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
     const stream = streamed === null ? null : frameStream(streamed, target.width, target.height, alpha);
     encode = startEncode({ width: target.width, height: target.height, alpha }, { clock: recipe.timescale, tick, end: length * tick }, target, request.output, run);
     let [position, current]: [number, Picture | null] = [shown.start - 1, null];
-    for (const s of sources) {
+    for (const [j, s] of sources.entries()) {
       let frame: Picture;
       if (held !== null) frame = await held.read(s - shown.start);
       else {
@@ -696,8 +749,15 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
         frame = copyPicture(current!);
       }
       for (const person of persons) {
-        const result = person.results === null ? null : await person.results.next();
-        if (result === null) { person.results = null; continue; }
+        const shows = person.shows[j];
+        // Past the result's end the source face stays.
+        if (shows === null || shows === undefined) continue;
+        while (person.position < shows) {
+          person.current = await person.results!.next();
+          if (person.current === null) throw new RangeError("A lip-sync person's result ends before a frame it shows");
+          person.position += 1;
+        }
+        const result = person.current!;
         const rect = person.faces[s] ?? null;
         const mask = maskAt(person.track, s, prepared);
         if (rect !== null && mask !== null) layFace(frame, rect, mask, map, result, person.cropSize, recipe.feather);

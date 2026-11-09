@@ -933,6 +933,29 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     });
   });
 
+  // DD §7.2 step 6 and row R4: a person's result is mapped onto the result grid by its presentation time, never by its frame
+  // number. A 50 fps result whose frame n has luma 30 + 5n: result-grid frame k at k / 25 s shows its frame 2k, and once the
+  // grid passes the result's end (0.32 s for the 16-frame one) the source shows through.
+  it.each([
+    ['as long as the timeline', 36, 18], ['ending inside the chunk', 16, 8],
+  ] as const)('LM10 a 50 fps person result %s is laid by the frame each result-grid time falls in', async (_name, frames, ends) => {
+    const name = `person-1-50fps-${frames}.mp4`;
+    await make(name, ['-f', 'lavfi', '-i', `color=c=black:s=64x64:r=50:d=${frames / 50},format=yuv420p,geq=lum='30+5*N':cb=150:cr=128`,
+      '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-video_track_timescale', '50']);
+    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, name) }, recipe(OPAQUE));
+    const [y, source] = await Promise.all([planeFrames(file, 'y'), planeFrames(join(dir, 'comp-source.mp4'), 'y')]);
+    expect(y.frames).toHaveLength(8);
+    y.frames.forEach((frame, j) => {
+      const k = WINDOW.start + j;
+      const s = lipsyncSourceFrameAt(TIMELINE, TABLE, k);
+      const rect = face1(s);
+      if (rect === null) return;
+      const centre = { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 };
+      if (k < ends) expect(Math.abs(mean(frame, W, centre) - (30 + 10 * k)), `frame ${j} shows person 1's result frame ${2 * k}`).toBeLessThan(3.5);
+      else expect(mad(frame, source.frames[s]!, W, centre), `frame ${j} is past person 1's result and shows source ${s}`).toBeLessThan(2.5);
+    });
+  });
+
   // §5.3 model-input row, §4.3 odd-size row: the prepared video pads an odd 161x97 picture to 162x98 and keeps the picture
   // rectangle, so the track and the faces are in its pixels; the output rounds an opaque odd side down to 160x96 and keeps a
   // transparent one at 161x97. Person 1's 48x48 face at (104, 40) of the prepared picture, foreground x >= 100, y >= 32.
