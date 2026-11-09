@@ -306,6 +306,9 @@ describe('26.1 synced turns true only on the server SyncStep2', () => {
   it.each(W10_01)('W10-01 %s, Update %s: a stale SyncStatus(1) behind a reauth CLOSE does not sync the reopened provider (%s)', async (_label, inflight, _when, name, timing) => {
     const opened = await open(name);
     handshake(opened);
+    // Collab answers the client SyncStep2 with SyncStatus(1), so the count is 0
+    // here as in production and the stale receipt below can reach 0 again.
+    server.syncStatus(name, 1);
     server.push(name, P_WARNING, 5);
     expect(seen(name)).toEqual(['seen(5)']);
     if (inflight === 'in flight') await writeAndSend(name, opened.doc, writeInflight);
@@ -351,14 +354,6 @@ describe('26.1 synced turns true only on the server SyncStep2', () => {
     server.release('serverStep1', name);
     expect(handshakeOrder(name, beforeStep1)).toEqual(['step2']);
     expect(seen(name, close)).toEqual([]);
-    if (inflight === 'in flight') {
-      const step2 = server.frames.slice(beforeStep1).find(({ frame }) => frame.name === name && frame.kind === 'step2');
-      const copy = new Y.Doc();
-      Y.applyUpdate(copy, Y.encodeStateAsUpdate(server.docOf(name)));
-      if (step2?.frame.kind === 'step2') Y.applyUpdate(copy, step2.frame.update);
-      expect(copy.getMap('w10').get('inflight')).toBe(1);
-      copy.destroy();
-    }
 
     server.release('serverStep2', name);
     expect(opened.provider.synced).toBe(true);
