@@ -51,8 +51,11 @@ session_recheck_interval_ms: 1800000
 
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited). It does two things:
-# - once a Space document reaches it, collab accepts only deletes, and past
-#   the hard ceiling only deletes of whole nodes or passages (see the
+# - once a Space document reaches it, collab accepts only deletes from a page
+#   that has acknowledged the document is full; a page that has not
+#   acknowledged it yet, or never does (one opened without size_ack), still
+#   has its writes admitted up to the hard ceiling, and past the hard ceiling
+#   only deletes of whole nodes or passages are accepted (see the
 #   document_size_* keys below); 0 sets no limit (no record, editors are never
 #   stopped).
 # - it sets the largest single message collab accepts: this value + 64 KiB, and
@@ -62,11 +65,13 @@ session_recheck_interval_ms: 1800000
 max_document_bytes: 10485760     # 10 MB
 # At this share of the limit editors see a notice.
 document_size_warn_ratio: 0.9
-# Hard ceiling = limit + this. Past the limit a delete may still land up to here.
+# Hard ceiling = limit + this. Past the limit, deletes and the writes no
+# acknowledgement holds back yet may still land up to here.
 document_size_delete_headroom_bytes: 262144  # 256 KiB
 # Most delete range ends one update may place inside an existing item (each
 # splits it and grows the document). Checked only once the document has
-# reached max_document_bytes; below it every update is accepted.
+# reached max_document_bytes; below it the split count is not checked (an
+# update that leaves new pending content is still refused at any size).
 document_size_max_delete_splits: 1024
 # Fewest milliseconds between two exact measures of one document.
 document_size_measure_interval_ms: 2000
