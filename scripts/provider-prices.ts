@@ -78,6 +78,8 @@ const ROOT = resolve(import.meta.dirname, "..");
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
 const PRICES = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices");
 const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
+/** Our catalog's models by name, read once. */
+const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
 const MICRO = 1_000_000;
 
 const WAVESPEED = "https://api.wavespeed.ai/api/v3";
@@ -216,12 +218,11 @@ async function syncWaveSpeed(upstream: string, list: typeof bindings): Promise<v
   // The binding's price for the catalog's default run against what WaveSpeed charges for it; listed, never rewritten.
   const media = Object.assign({}, ...[...docs.values()].map((doc) => (doc.toJS() as { models: Record<string, unknown> }).models)) as ProviderConfigInput["media"]["models"];
   const provider = createProvider({ config: { upstreams: upstreams as ProviderConfigInput["upstreams"], media: { models: media } }, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
-  const entries = new Map(catalog().models.map((m) => [m.name, m]));
   const charged: string[] = [];
   for (const { model } of list) {
     const binding = provider.config.models[model]?.find((b) => b.upstream === upstream);
     if (binding === undefined) continue;
-    const params = resolvedParams(entries.get(model) ?? { params: {} }, {});
+    const params = resolvedParams(catalogModels.get(model)!, {});
     const prompt = binding.prompt_field === undefined ? "" : SAMPLE_PROMPT;
     const inputs = buildBody(binding, { params, prompt });
     const read = await assess(provider.pricingRules(model), upstream, { params, prompt, durations: {}, placeholders: [], durationsMissing: [] });
@@ -377,7 +378,7 @@ for (const [modality, doc] of docs) {
 
 await syncOpenRouterPrices();
 
-const ours = new Set(catalog().models
+const ours = new Set([...catalogModels.values()]
   .flatMap((m) => Object.entries(m.params).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));
 const fieldNames = new Set(bindings.flatMap(({ binding }) => Object.values(binding.params ?? {})
   .flatMap((p) => [p.field, ...Object.values(p.item_fields ?? {}).map((f) => f.field)])

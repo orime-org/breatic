@@ -59,6 +59,15 @@ const shotsOffTotal = (run: Run): boolean => {
 const seedance4k = (run: Run): boolean => run.params.resolution === "4k";
 
 /**
+ * Whether a Tripo run holds an input pair Tripo refuses with error 1004: texture quality fast on a texture version
+ * other than v3.5, or parts with texture or PBR on (each on by default).
+ * @param run - The run.
+ * @returns True when it does.
+ */
+const tripo1004 = (run: Run): boolean => (run.params.texture_quality === "fast" && run.params.texture_version !== "v3.5")
+  || (run.params.generate_parts === true && !(run.params.texture === false && run.params.pbr === false));
+
+/**
  * Runs outside a limit the model's vendor states, by model, in the vendor's words: the model's own `rejects` refuse
  * them on every upstream. Today's code estimated them on WaveSpeed.
  */
@@ -77,6 +86,10 @@ export const OUTSIDE_VENDOR: Readonly<Record<string, (run: Run) => boolean>> = {
   "seedance-2.5-video-extend": seedance4k,
   // MiniMax: "Audio duration: at least 10 seconds, no longer than 5 minutes".
   "minimax-voice-clone": (r) => (r.durations?.audio ?? []).some((s) => s < 10 || s > 300),
+  // Tripo: "Any other texture version returns `1004`"; generate_parts with "`texture=true` or `pbr=true` ... is rejected with error code `1004`".
+  "tripo-h3.1-t23d": tripo1004,
+  "tripo-h3.1-i23d": tripo1004,
+  "tripo-h3.1-multiview": tripo1004,
 };
 
 /**

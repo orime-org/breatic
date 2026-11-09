@@ -23,9 +23,10 @@ interface BodySample {
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
 const config = shipped();
-const offered = new Map(catalog().models.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number; accepts?: string; fill?: string }>]));
+const catalogModels = catalog().models;
+const offered = new Map(catalogModels.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number; accepts?: string; fill?: string }>]));
 /** Per model, the params of which a run must carry at least one, per mode, as the catalog lists them. */
-const sourceGroups = new Map(catalog().models.map((m) => [m.name, m.source_groups ?? []] as const));
+const sourceGroups = new Map(catalogModels.map((m) => [m.name, m.source_groups ?? []] as const));
 const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
 /**
  * The committed sample of a binding.

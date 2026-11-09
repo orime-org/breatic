@@ -128,7 +128,7 @@ const bindingOf = (model: string, upstream: string): MediaBinding | undefined =>
  * @returns Our voice name and ElevenLabs' id of each.
  */
 function premadeVoices(model = "elevenlabs-v3"): { name: string; id: string }[] {
-  const voices = (catalog().models.find((m) => m.name === model)?.voices as { id: string; sample_url?: string }[] | undefined) ?? [];
+  const voices = (catalogModels.get(model)?.voices as { id: string; sample_url?: string }[] | undefined) ?? [];
   return voices.flatMap((v) => {
     const id = /\/premade\/voices\/([^/]+)\//.exec(v.sample_url ?? "")?.[1];
     return id === undefined ? [] : [{ name: v.id, id }];
@@ -393,13 +393,30 @@ describe("the limits a reseller states beyond its schema", () => {
     expect(wrong).toEqual([]);
   });
 
+  /** Rows' runs resolved without the catalog's forces: runs the application never sends, which provider, standing alone, can still be given. */
+  const UNFORCED = new WeakSet<Partial<EstimateInput>>();
+
   /**
-   * A row's run as the application sends it: the row's params resolved over the catalog's defaults (`resolvedParams`).
+   * Mark a row's run to be resolved without the catalog's forces, so a vendor limit the forces keep away is still reached.
+   * @param input - The row's run.
+   * @returns The same run, marked.
+   */
+  const unforced = (input: Partial<EstimateInput>): Partial<EstimateInput> => {
+    UNFORCED.add(input);
+    return input;
+  };
+
+  /**
+   * A row's run as the application sends it: the row's params resolved over the catalog's defaults (`resolvedParams`);
+   * a run marked `unforced` skips the catalog's forces.
    * @param model - The model.
    * @param input - The row's run.
    * @returns The run.
    */
-  const withDefaults = (model: string, input: Partial<EstimateInput>): Partial<EstimateInput> => ({ ...input, params: resolvedParams(catalogModels.get(model)!, input.params ?? {}) });
+  const withDefaults = (model: string, input: Partial<EstimateInput>): Partial<EstimateInput> => {
+    const entry = catalogModels.get(model)!;
+    return { ...input, params: resolvedParams(UNFORCED.has(input) ? { params: entry.params } : entry, input.params ?? {}) };
+  };
 
   // Each row: model, upstream, a run the upstream's own words refuse beyond the model vendor's, the nearest run it takes
   // (each sent with the catalog's defaults), and words of the reason; every binding reject has one.
@@ -607,6 +624,22 @@ describe("the limits a reseller states beyond its schema", () => {
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 499 } }, { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 500 } }, "500 – 20,000"],
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 20001 } }, { params: { images: [URL_A, URL_A], smart_low_poly: true, face_limit: 20000 } }, "500 – 20,000"],
     ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], face_limit: 1500001 } }, { params: { images: [URL_A, URL_A], face_limit: 1500000 } }, "1,500,000"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { texture_quality: "fast", texture_version: "v3.0" } }), { prompt: "a fox", params: { texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    // Tripo derives texture v3.0 when texture_version is left out, and its pbr defaults to true when left out.
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { texture_quality: "fast", texture_version: null } }), { prompt: "a fox", params: { texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, texture: false, pbr: null } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, texture: false } }), { prompt: "a fox", params: { generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-t23d", { prompt: "a fox", params: { geometry_quality: "detailed", face_limit: 2000001 } }, { prompt: "a fox", params: { geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, texture_quality: "fast", texture_version: "v3.0" } }), { params: { image: URL_A, texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true, texture: false } }), { params: { image: URL_A, generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-i23d", { params: { image: URL_A, geometry_quality: "detailed", face_limit: 2000001 } }, { params: { image: URL_A, geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: "v3.0" } }), { params: { images: [URL_A, URL_A], texture_quality: "fast", texture_version: "v3.5" } }, "only available on texture"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true, texture: false } }), { params: { images: [URL_A, URL_A], generate_parts: true, texture: false, pbr: false } }, "error code `1004`"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], geometry_quality: "detailed", face_limit: 2000001 } }, { params: { images: [URL_A, URL_A], geometry_quality: "detailed", face_limit: 2000000 } }, "Ultra mode ceiling"],
+    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A, URL_A, URL_A, URL_A] } }, { params: { images: [URL_A, URL_A, URL_A, URL_A] } }, "Exactly 4 strings"],
   ];
 
   // Each entry: a model on an upstream that cannot take a row's param, or the row's value of it, so it refuses the row's
@@ -624,6 +657,18 @@ describe("the limits a reseller states beyond its schema", () => {
     "tripo-h3.1-i23d on sandbase: smart_low_poly": "SandBase has no smart_low_poly field and serves only runs without it",
     "tripo-h3.1-multiview on fal: smart_low_poly": "fal has no smart_low_poly field and serves only runs without it",
     "tripo-h3.1-multiview on sandbase: smart_low_poly": "SandBase has no smart_low_poly field and serves only runs without it",
+    "tripo-h3.1-t23d on fal: texture_quality": "fal takes only the standard and detailed texture qualities",
+    "tripo-h3.1-t23d on sandbase: texture_quality": "SandBase takes only the standard and detailed texture qualities",
+    "tripo-h3.1-t23d on fal: generate_parts": "fal has no generate_parts field and serves only runs without parts",
+    "tripo-h3.1-t23d on sandbase: generate_parts": "SandBase has no generate_parts field and serves only runs without parts",
+    "tripo-h3.1-i23d on fal: texture_quality": "fal takes only the standard and detailed texture qualities",
+    "tripo-h3.1-i23d on sandbase: texture_quality": "SandBase takes only the standard and detailed texture qualities",
+    "tripo-h3.1-i23d on fal: generate_parts": "fal has no generate_parts field and serves only runs without parts",
+    "tripo-h3.1-i23d on sandbase: generate_parts": "SandBase has no generate_parts field and serves only runs without parts",
+    "tripo-h3.1-multiview on fal: texture_quality": "fal takes only the standard and detailed texture qualities",
+    "tripo-h3.1-multiview on sandbase: texture_quality": "SandBase takes only the standard and detailed texture qualities",
+    "tripo-h3.1-multiview on fal: generate_parts": "fal has no generate_parts field and serves only runs without parts",
+    "tripo-h3.1-multiview on sandbase: generate_parts": "SandBase has no generate_parts field and serves only runs without parts",
   };
 
   // Each entry: a model on an upstream whose own reject, stricter than the vendor's limit on the same field, refuses the
@@ -854,7 +899,7 @@ describe("the limits a reseller states beyond its schema", () => {
 
   // Mirelo's /v3/models states max_prompt_chars 5000, and WaveSpeed refused 5001 characters (probed 2026-11-06).
   it("caps a sfx-1.6-text-to-audio prompt at Mirelo's 5000 characters on every upstream", () => {
-    expect(catalog().models.find((m) => m.name === "sfx-1.6-text-to-audio")?.max_input_chars).toBe(5000);
+    expect(catalogModels.get("sfx-1.6-text-to-audio")?.max_input_chars).toBe(5000);
   });
 
   // fal: "rounded to whole seconds, then up to full minutes".
