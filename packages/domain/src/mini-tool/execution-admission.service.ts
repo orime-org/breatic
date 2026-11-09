@@ -9,7 +9,7 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, miniToolById, planModelWindows, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, miniToolById, planModelWindows, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, plannedFailureRetryable, fitTransitions, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
@@ -783,6 +783,10 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
   let timeline: ReturnType<typeof planVideoTimeline>;
   try {
     timeline = planVideoTimeline(clips, profile.fps);
+    // §5.4: the panel's own length bound, checked again; a junction it would turn into a Cut does not fit.
+    if (fitTransitions(clips, profile.fps).slice(0, -1).some((clip, index) => clip.transition.kind !== clips[index]!.transition.kind)) {
+      throw new RangeError("A transition exceeds its duration bounds");
+    }
   } catch (error) {
     if (!(error instanceof RangeError || error instanceof z.ZodError)) throw error;
     throw new ValidationError(t("server.mini_tool.foreignSource"));

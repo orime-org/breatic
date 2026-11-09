@@ -250,6 +250,17 @@ describe("transitions admission freezes its layout, stage counts and output prof
     expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.runTooLong", { max: 2 }));
     expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
+
+  // frames-split §5.4: admission re-checks the transition length with the panel's own `fitTransitions`; a fade longer
+  // than half the shorter clip fits planVideoTimeline's window but not the panel's bound.
+  it("TA06 refuses a 1.9 s fade over two 2 s clips with no durable effect, and admits the 1 s fade at the bound", async () => {
+    const f = await seed({ kind: "fade", duration: 1.9 }, { currentOut: 2, pickedOut: 2, picked: LARGE });
+    const response = await post(f);
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toBe(shared.t("server.mini_tool.foreignSource"));
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    await accept(await seed({ kind: "fade", duration: 1 }, { currentOut: 2, pickedOut: 2, picked: LARGE }));
+  });
 });
 
 // frames-split §5.4 待实测 row (转场导出的块): each chunk's decode is summed per clip, that clip's decoded source frames in the
