@@ -44,7 +44,7 @@ export type PasteSide = 'above' | 'below' | 'left' | 'right';
 export type CopyOutcome = 'copied' | 'merged' | 'failed';
 
 /** How a cut ended. */
-export type CutOutcome = 'cut' | 'merged' | 'failed';
+export type CutOutcome = 'cut' | 'merged' | 'failed' | 'gone';
 
 /** How a paste ended. */
 export type PasteOutcome = 'pasted' | 'merged' | 'no-table' | 'unreadable' | 'gone';
@@ -197,7 +197,7 @@ export async function cutTableLine(editor: LineEditor, cellPos: number, scope: L
   try {
     if (!(await copyByClipboard(clipped))) return 'failed';
     const now = held.now();
-    if (now === null) return 'cut';
+    if (now === null) return 'gone';
     // The table may have changed while the clipboard was written.
     if (scope !== 'table' && !canDragFrom(view.state.doc, now, scope)) return 'merged';
     deleteLine(editor, now, scope);

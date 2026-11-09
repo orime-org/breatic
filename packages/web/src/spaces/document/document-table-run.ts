@@ -175,6 +175,11 @@ function startingCells(table: PMNode): (PMNode | null)[][] {
     const slots: (PMNode | null)[] = [];
     for (let col = 0; col < map.width; col += 1) {
       const offset = map.map[row * map.width + col];
+      // 0 is a missing cell of a short row (a <caption> reads as a row of one cell).
+      if (offset === 0) {
+        slots.push(null);
+        continue;
+      }
       const rect = map.findCell(offset);
       slots.push(rect.top === row && rect.left === col ? table.nodeAt(offset) : null);
     }

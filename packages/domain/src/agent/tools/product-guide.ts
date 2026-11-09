@@ -1648,7 +1648,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("canvas.contextMenu.copy"))} puts the ` +
       `whole table on the clipboard and ${quoted(t("spaces.document.table.cut"))} does the same, then deletes the ` +
-      `table; pasting it with Cmd/Ctrl+V makes a new table. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      "table; pasted with Cmd/Ctrl+V outside a table it makes a new table, and pasted in a table's cell it fills " +
+      `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
       "when no cell has words.",
