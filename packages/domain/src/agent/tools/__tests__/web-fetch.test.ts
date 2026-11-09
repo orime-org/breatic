@@ -63,7 +63,7 @@ import {
   type ReadPages,
 } from "@domain/agent/tools/web-fetch.js";
 import { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
-import { pageLinkSpansIn } from "@domain/agent/page-links.js";
+import { pageLinkSpansIn, pageLinksIn } from "@domain/agent/page-links.js";
 import { usageSpy, type UsageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 const A = "https://example.com/article";
@@ -529,6 +529,103 @@ async function slicesOf(text: string, share: number): Promise<FetchedPage[]> {
   }
   return slices;
 }
+
+/**
+ * The keys of the links a whole page holds, title included, as reading the
+ * whole page lists them.
+ * @param text - The page's text.
+ * @returns The keys.
+ */
+function wholePageKeys(text: string): Set<string> {
+  return new Set(pageLinksIn(`A page\n${text}`).map((link) => pageLinkKey(link)));
+}
+
+// Plan §19 row 1: a slice lists the links the whole page holds whose place in
+// the page lies inside the slice, and the title's links; never a piece of
+// text the cut made look like a link. This replaces reading the slice's own
+// text (§11 row 1).
+describe("the links a slice lists, taken from where the whole page writes them (plan §19 row 1)", () => {
+  it("lists no file name a cut made look like a host", async () => {
+    const before = '{"files":["src/components/';
+    const text = `${before}Button.tsx","src/app.ts"]}`;
+
+    const slices = await slicesOf(text, before.length + 3);
+
+    for (const slice of slices) expect(slice.links, JSON.stringify(slice)).not.toContain("ton.tsx");
+  });
+
+  it("lists no part of an email address's domain", async () => {
+    const slices = await slicesOf("Contact: press@breatic-mail.com", 15);
+
+    for (const slice of slices) expect(slice.links, JSON.stringify(slice)).toEqual([]);
+  });
+
+  it("lists the link after a JSON newline escape in the slice holding it, never with the escape's n in front", async () => {
+    const text = '{"body":"line one\\nexample.com/docs is here"}';
+    const at = text.indexOf("example.com/docs");
+
+    const slices = await slicesOf(text, 18);
+
+    const holding = slices.find((slice) => (slice.start ?? 0) <= at && (slice.end ?? 0) >= at + "example.com/docs".length);
+    expect(holding?.links).toContain("example.com/docs");
+    for (const slice of slices) expect(slice.links).not.toContain("nexample.com/docs");
+  });
+
+  it("lists no prefix of an address longer than READ_PAGE_MAX_URL_CHARS", async () => {
+    const big = `https://www.google.com/maps/embed?pb=${"!1m18!1m12!3d".repeat(170)}&hl=en`;
+    expect(big.length).toBeGreaterThan(READ_PAGE_MAX_URL_CHARS);
+
+    const slices = await slicesOf(`Map ${big} end`, 1200);
+
+    for (const slice of slices) {
+      expect(slice.links.filter((link) => link.startsWith("https://www.google.com"))).toEqual([]);
+    }
+  });
+
+  it("lists only links the whole page holds, and every link that lies wholly inside the slice, for any text", async () => {
+    const big = `https://www.google.com/maps/embed?pb=${"!1m18!1m12!3d".repeat(170)}&hl=en`;
+    const piece = fc.oneof(
+      fc.constantFrom("word", "harbour", "supercalifragilistic", "abc", "Contact:"),
+      fc.constantFrom(
+        "https://a.test/docs",
+        "https://a.test/docs/intro",
+        "https://a.test/a\\_b",
+        "example.com/x",
+        "https://a.test/path继续说明",
+      ),
+      fc.constantFrom("press@breatic-mail.com", '{"files":["src/components/Button.tsx","src/app.ts"]}', "line\\nexample.com/docs"),
+      fc.constant(big),
+      fc.constantFrom("中文段落", "网页"),
+    );
+    const separator = fc.constantFrom(" ", "，", '"', "\n", "。");
+    const textArb = fc
+      .array(fc.tuple(piece, separator), { minLength: 1, maxLength: 12 })
+      .map((parts) => parts.map(([word, sep]) => word + sep).join(""));
+
+    await fc.assert(
+      fc.asyncProperty(textArb, fc.integer({ min: 1, max: 60 }), async (text, share) => {
+        const slices = await slicesOf(text, Math.max(share, Math.ceil(text.length / 80)));
+        const whole = wholePageKeys(text);
+        const spans = pageLinkSpansIn(text);
+
+        for (const slice of slices) {
+          const listed = new Set(slice.links.map((link) => pageLinkKey(link)));
+          for (const link of slice.links) {
+            expect(whole.has(pageLinkKey(link)), JSON.stringify({ text, share, link })).toBe(true);
+          }
+          const from = slice.start ?? 0;
+          const to = slice.end ?? 0;
+          for (const span of spans) {
+            if (span.start >= from && span.end <= to) {
+              expect(listed.has(pageLinkKey(span.link)), JSON.stringify({ text, share, span })).toBe(true);
+            }
+          }
+        }
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
 
 // Plan §16 rows 1 and 2: a cut moves only when a link, at the place the text
 // writes it, starts before the cut and ends after it; it moves to that

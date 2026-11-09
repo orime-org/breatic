@@ -21,7 +21,9 @@
 // hidden iframe downloads a zip; an article that goes on to a redirect loop
 // (and the loop read directly); a page its head replaces with a 404 attachment
 // and an article that goes on to a 503 attachment (and both attachments read
-// directly); and a malformed request to the service itself.
+// directly); a PDF and a CSV attachment read at an address with a fragment, and
+// a page its head replaces with that attachment at a fragment; and a malformed
+// request to the service itself.
 //   docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" \
 //     --entrypoint node <image> /tmp/web-reader-smoke.mjs
 import assert from 'node:assert/strict';
@@ -272,6 +274,8 @@ const origin = createServer((req, res) => {
       .end('busy');
   } else if (req.url === '/goes-to-busy-attachment') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('To busy', '/busy.bin', 'script'));
+  } else if (req.url === '/head-replace-to-download-at-fragment') {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/notes.csv#x', 'head-replace'));
   } else if (req.url === '/head-replace-to-download') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(goesOnTo('Replaced', '/notes.csv', 'head-replace'));
   } else if (req.url === '/tides.csv') res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' }).end(CSV);
@@ -453,6 +457,23 @@ try {
   // download another frame starts is not the page's ending; an error page the
   // browser commits ends the read with the status of the last response (or
   // unreachable when there is none to judge).
+  // Plan section 19 row 2: a fragment in the address does not change which
+  // response is the page's: a PDF and an attachment read at a fragment, and a
+  // page replaced by that attachment at a fragment, read as without it.
+  const { body: atFragment } = await read(
+    ['/report.pdf', '/report.pdf#page=2', '/notes.csv#x', '/head-replace-to-download-at-fragment'],
+    { pageTimeoutMs: 8000 },
+  );
+  const [pdfPlain, pdfAtFragment, notesAtFragment, replacedByNotesAtFragment] = atFragment.pages;
+  assert.equal(pdfPlain.status, 'ok', `pdf without a fragment: read, got ${pdfPlain.status}`);
+  assert.equal(pdfAtFragment.status, 'ok', `pdf at a fragment: read, got ${pdfAtFragment.status}`);
+  assert.equal(pdfAtFragment.kind, 'pdf', `pdf at a fragment: a pdf, got ${pdfAtFragment.kind}`);
+  assert.equal(pdfAtFragment.text, pdfPlain.text, `pdf at a fragment: the same text as without it, got ${JSON.stringify(pdfAtFragment.text)}`);
+  assert.equal(notesAtFragment.status, 'ok', `attachment at a fragment: read, got ${notesAtFragment.status}`);
+  assert.equal(notesAtFragment.text, NOTES_CSV, `attachment at a fragment: the file's text, got ${JSON.stringify(notesAtFragment.text)}`);
+  assert.equal(replacedByNotesAtFragment.status, 'ok', `page replaced in its head by an attachment at a fragment: read, got ${replacedByNotesAtFragment.status}`);
+  assert.equal(replacedByNotesAtFragment.text, NOTES_CSV, `page replaced in its head by an attachment at a fragment: the file's text, got ${JSON.stringify(replacedByNotesAtFragment.text)}`);
+
   const { body: endings } = await read(
     ['/download-landing', '/goes-to-loop', '/loop', '/head-replace-to-missing-attachment', '/missing.txt',
       '/goes-to-busy-attachment', '/busy.bin'],
@@ -540,7 +561,7 @@ try {
     'two articles that leave for a download, and articles that go on to a big page, a slow page, a text file and ' +
     'another article, a missing page, a text file and a big page at a fragment, pages their head replaces with a ' +
     'missing page, a text file and a download, a page gone on to that answers late, a download landing page, a ' +
-    'redirect loop, and 404 and 503 attachments reached from a page.');
+    'redirect loop, 404 and 503 attachments reached from a page, and a PDF and an attachment at a fragment.');
   process.exit(0);
 } catch (error) {
   console.error(error);
