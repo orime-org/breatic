@@ -33,7 +33,7 @@ import {
 import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -346,6 +346,8 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
   // A transparent original's chunks are VP9 WebM with alpha, as its stitch is (§7.17 lipsync_composite row, §4.3).
   const ledger = await ledgerOf(execution, deadlineAt);
   const target = segmentTarget(ledger, execution.container.encode);
+  // The prepared video the tracks and face tables are in, as the preparation encoded it (§5.3 model-input row).
+  const { width, height, displayRect } = modelInputTarget(ledger, execution.container.encode);
   for (const [chunk, window] of execution.layout.composite.entries()) {
     let ended: StepEnded;
     const stepKey = sharedKeyOf(execution, `composite:${chunk}`);
@@ -359,7 +361,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
           return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
             entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target,
             timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
-            rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather },
+            rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather, prepared: { width, height, displayRect } },
           inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
             .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
         } }, deadlineAt);

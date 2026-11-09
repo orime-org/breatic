@@ -208,6 +208,10 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("lipsync_composite"), ...windowRecipe, timeline: lipsyncTimeline, table: presentationTableSchema,
     persons: z.array(z.strictObject({ result: inputId, faces: inputId, track: inputId, cropSize })).min(1),
+    // The prepared video's geometry (§5.3 model-input row): every track and face table is in its pixels, and its picture
+    // rectangle is what the output's picture shows.
+    prepared: z.strictObject({ width: side, height: side, displayRect: pixelRect.nullable() })
+      .refine((value) => value.displayRect === null || (value.displayRect.x + value.displayRect.width <= value.width && value.displayRect.y + value.displayRect.height <= value.height)),
     // The plan's frozen raw disk budget: a chunk whose source goes back decodes its source window to a raw file within it
     // (execution design paragraph before §9.4).
     rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),

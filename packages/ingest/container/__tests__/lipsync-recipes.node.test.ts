@@ -382,6 +382,9 @@ beforeAll(async () => {
   await lossless('person-1.mp4', '50+7*N', { width: 64, height: 64, frames: 18 }, { cb: 150, cr: 128 });
   await lossless('person-2.mp4', '160-5*N', { width: 64, height: 64, frames: 18 }, { cb: 128, cr: 150 });
   // The transparent original: grey with straight alpha 64 over the whole picture, lossless PNG in QuickTime.
+  // The odd-size originals of LM09: a 161x97 opaque one (FFV1, lossless at odd sides) and a transparent one.
+  await make('comp-odd.mkv', ['-f', 'lavfi', '-i', `color=c=black:s=161x97:r=${FPS}:d=${V},format=yuv444p,geq=lum='40+18*N':cb=128:cr=128`, '-c:v', 'ffv1']);
+  await make('comp-odd-alpha.mov', ['-f', 'lavfi', '-i', `color=c=0x606060:s=161x97:r=${FPS}:d=${V},format=rgba,colorchannelmixer=aa=0.25`, '-c:v', 'png']);
   await make('comp-alpha.mov', ['-f', 'lavfi', '-i', `color=c=0x606060:s=${W}x${H}:r=${FPS}:d=${V},format=rgba,colorchannelmixer=aa=0.25`, '-c:v', 'png']);
   // lipsync_stem: row A, 0.3 s of 440 Hz at amplitude 0.5 in 48 kHz PCM; row B, 0.3 s of 660 Hz at amplitude 0.5 in 44.1 kHz AAC.
   await make('row-a.wav', ['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=0.3,volume=4', '-c:a', 'pcm_s16le']);
@@ -688,7 +691,7 @@ describe('a streamed lip-sync decode that fails mid-stream', () => {
     const timeline: LipsyncTimeline = { duration: V, videoDuration: V, syncMode: 'cut_off' };
     const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(2, 25), displayStart: r(2, 25), displayEnd: r(9, 25), rate: r(1) }];
     const recipe = { kind: 'lipsync_composite', inputId: ID.video, window: { start: 2, end: 9 }, timescale: FPS, entries, target: OPAQUE, timeline, table: TABLE,
-      rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] };
+      rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER, prepared: { width: W, height: H, displayRect: null }, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] };
     const { report } = await runJob({ [ID.video]: join(dir, 'comp-source.mp4'), [ID.result1]: join(dir, 'person-1.mp4'),
       [ID.faces1]: await facesTable('fail-comp-faces.json', () => ({ x: 16, y: 8, width: 48, height: 48 })),
       [ID.track1]: await track('fail-comp-track.json', () => true) }, [recipe]);
@@ -764,6 +767,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
    */
   function recipe(target: Recipe): Recipe {
     return { kind: 'lipsync_composite', inputId: ID.video, window: WINDOW, timescale: FPS, entries: [wholeSource()], target, timeline: TIMELINE, table: TABLE, rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER,
+      prepared: { width: W, height: H, displayRect: null },
       persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }, { result: ID.result2, faces: ID.faces2, track: ID.track2, cropSize: 64 }] };
   }
 
@@ -926,6 +930,34 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
       const k = window.start + j;
       const rect = face1(lipsyncSourceFrameAt(timeline, TABLE, k));
       if (rect !== null) expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 shows result frame ${k}`).toBeLessThan(3.5);
+    });
+  });
+
+  // §5.3 model-input row, §4.3 odd-size row: the prepared video pads an odd 161x97 picture to 162x98 and keeps the picture
+  // rectangle, so the track and the faces are in its pixels; the output rounds an opaque odd side down to 160x96 and keeps a
+  // transparent one at 161x97. Person 1's 48x48 face at (104, 40) of the prepared picture, foreground x >= 100, y >= 32.
+  it.each([
+    // The opaque original's frame n is grey 40 + 18n; the transparent one is 0x606060, BT.709 limited-range luma 16 + 219 × 96 / 255.
+    ['opaque', 'comp-odd.mkv', { ...OPAQUE, width: 160, height: 96 }, 'video/mp4', [], (s: number): number => 40 + 18 * s],
+    ['transparent', 'comp-odd-alpha.mov', { ...STRAIGHT, width: 161, height: 97 }, 'video/webm', ['-c:v', 'libvpx-vp9'], (): number => 16 + 219 * 96 / 255],
+  ] as const)('LM09 an odd %s original: each mask and face read at the prepared size is laid onto the output picture', async (_alpha, source, target, contentType, decoder, sourceLuma) => {
+    const prepared = { width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } };
+    const files = {
+      [ID.video]: join(dir, source), [ID.result1]: join(dir, 'person-1.mp4'),
+      [ID.faces1]: await facesTable('odd-faces.json', () => ({ x: 104, y: 40, width: 48, height: 48 })),
+      [ID.track1]: await track('odd-track.json', (_n, x, y) => x >= 100 && y >= 32, 10, prepared),
+    };
+    const file = await produce(files, { ...recipe(target), prepared, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] }, contentType);
+    expect((await streams(file)).map(stream => [stream.width, stream.height])).toEqual([[target.width, target.height]]);
+    const y = await planeFrames(file, 'y', [...decoder]);
+    expect(y.frames).toHaveLength(8);
+    // The face's centre (128, 64) of the prepared picture lies there scaled by the output over the picture rectangle.
+    const centre = { x: Math.round(128 * target.width / 161) - 8, y: Math.round(64 * target.height / 97) - 8, width: 16, height: 16 };
+    const outside = { x: 0, y: 0, width: 64, height: 24 };
+    y.frames.forEach((frame, j) => {
+      const k = WINDOW.start + j;
+      expect(Math.abs(mean(frame, y.width, centre) - (50 + 7 * k)), `frame ${j} shows person 1's result frame ${k}`).toBeLessThan(4);
+      expect(Math.abs(mean(frame, y.width, outside) - sourceLuma(lipsyncSourceFrameAt(TIMELINE, TABLE, k))), `frame ${j} outside the foreground is the source`).toBeLessThan(3);
     });
   });
 

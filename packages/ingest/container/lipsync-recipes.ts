@@ -527,51 +527,68 @@ async function writeStem(recipe: MiniToolPlanLipsyncStem, request: LipsyncRecipe
 /** One person of a composite chunk: its tables and its result streaming over the chunk's window, null once it has ended. */
 interface CompositePerson { faces: FaceRect[]; track: (string | null)[]; decode: PlanPipe | null; results: FrameStream | null; cropSize: number }
 
+/** Where the prepared video's pixels land in the output picture: its size, its picture rectangle and the output's. */
+interface Mapping { prepared: { width: number; height: number }; area: MiniToolPlanPixelRect; placed: MiniToolPlanPixelRect }
+
 /**
- * Lay one person's generated face back onto a frame (§7.17 lipsync_composite row, DD §7.2 step 6): each picture pixel in the
- * face rectangle takes the result inverse-transformed through the crop fit, weighted by the face's feathered edge times
- * the person's tracked foreground; the alpha plane is left as the source has it. The edge is feathered over `fraction` of
- * the face's shorter side, at least one pixel.
- * @param frame - The picture, changed in place.
- * @param rect - The face rectangle in picture pixels.
- * @param mask - The foreground mask in prepared pixels.
- * @param area - Where the prepared video sits in the frame.
+ * Lay one person's generated face back onto a frame (§7.17 lipsync_composite row, DD §7.2 step 6): each output pixel whose
+ * centre maps into the face rectangle of the prepared picture takes the result inverse-transformed through the crop fit,
+ * weighted by the face's feathered edge times the person's tracked foreground; the alpha plane is left as the source has
+ * it. The prepared picture rectangle is scaled onto the output's (an opaque odd side is rounded down there, §4.3). The edge
+ * is feathered over `fraction` of the face's shorter side, at least one prepared pixel.
+ * @param frame - The output picture, changed in place.
+ * @param rect - The face rectangle in prepared pixels.
+ * @param mask - The foreground mask at the prepared size.
+ * @param map - Where the prepared pixels land in the output picture.
  * @param result - The person's result frame.
  * @param size - The crop side.
  * @param fraction - The plan's frozen face feather, a fraction of the face's shorter side.
  * @returns Nothing.
  * @throws {never} Never.
  */
-function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, area: MiniToolPlanPixelRect, result: Picture, size: number, fraction: number): void {
+function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, map: Mapping, result: Picture, size: number, fraction: number): void {
+  const { prepared, area, placed } = map;
   const f = fit(rect, size);
   const feather = Math.max(1, Math.min(rect.width, rect.height) * fraction);
+  const [sx, sy] = [area.width / placed.width, area.height / placed.height];
+  /**
+   * An output coordinate's position in the prepared picture, pixel i covering [i, i + 1) on both.
+   * @param x - The output column.
+   * @param y - The output row.
+   * @returns The prepared position.
+   * @throws {never} Never.
+   */
+  const toPrepared = (x: number, y: number): [number, number] => [area.x + (x - placed.x) * sx, area.y + (y - placed.y) * sy];
   const weights = new Float32Array(frame.width * frame.height);
-  const x0 = Math.max(0, rect.x);
-  const y0 = Math.max(0, rect.y);
-  const x1 = Math.min(area.width, rect.x + rect.width);
-  const y1 = Math.min(area.height, rect.y + rect.height);
+  // The output pixels whose centres can fall in the face rectangle, inside the output picture.
+  const x0 = Math.max(placed.x, Math.floor(placed.x + (rect.x - area.x) / sx));
+  const y0 = Math.max(placed.y, Math.floor(placed.y + (rect.y - area.y) / sy));
+  const x1 = Math.min(placed.x + placed.width, Math.ceil(placed.x + (rect.x + rect.width - area.x) / sx));
+  const y1 = Math.min(placed.y + placed.height, Math.ceil(placed.y + (rect.y + rect.height - area.y) / sy));
   for (let y = y0; y < y1; y += 1) {
     for (let x = x0; x < x1; x += 1) {
-      if (mask[y * area.width + x] !== 1) continue;
-      const edge = Math.min(x + 0.5 - rect.x, rect.x + rect.width - x - 0.5, y + 0.5 - rect.y, rect.y + rect.height - y - 0.5);
-      const weight = Math.min(1, Math.max(0, edge / feather));
-      if (weight === 0) continue;
-      const at = (area.y + y) * frame.width + area.x + x;
+      const [px, py] = toPrepared(x + 0.5, y + 0.5);
+      const edge = Math.min(px - rect.x, rect.x + rect.width - px, py - rect.y, rect.y + rect.height - py);
+      if (edge <= 0) continue;
+      const mx = Math.min(prepared.width - 1, Math.floor(px));
+      const my = Math.min(prepared.height - 1, Math.floor(py));
+      if (mask[my * prepared.width + mx] !== 1) continue;
+      const weight = Math.min(1, edge / feather);
+      const at = y * frame.width + x;
       weights[at] = weight;
-      const value = sample(result.y, size, size, (x + 0.5 - rect.x) * (f.scaledWidth / rect.width) + f.padX - 0.5, (y + 0.5 - rect.y) * (f.scaledHeight / rect.height) + f.padY - 0.5);
+      const value = sample(result.y, size, size, (px - rect.x) * (f.scaledWidth / rect.width) + f.padX - 0.5, (py - rect.y) * (f.scaledHeight / rect.height) + f.padY - 0.5);
       frame.y[at] = Math.round(frame.y[at]! * (1 - weight) + value * weight);
     }
   }
   const cw = Math.ceil(frame.width / 2);
   const rc = Math.ceil(size / 2);
-  for (let cy = Math.floor((area.y + y0) / 2); cy < Math.ceil((area.y + y1) / 2); cy += 1) {
-    for (let cx = Math.floor((area.x + x0) / 2); cx < Math.ceil((area.x + x1) / 2); cx += 1) {
+  for (let cy = Math.floor(y0 / 2); cy < Math.ceil(y1 / 2); cy += 1) {
+    for (let cx = Math.floor(x0 / 2); cx < Math.ceil(x1 / 2); cx += 1) {
       const quad = [[2 * cx, 2 * cy], [2 * cx + 1, 2 * cy], [2 * cx, 2 * cy + 1], [2 * cx + 1, 2 * cy + 1]];
       const weight = quad.reduce((sum, [x, y]) => sum + (x! < frame.width && y! < frame.height ? weights[y! * frame.width + x!]! : 0), 0) / 4;
       if (weight === 0) continue;
       // The chroma sample's centre in prepared-picture luma pixels, then in the result's chroma plane.
-      const lx = 2 * cx + 1 - area.x;
-      const ly = 2 * cy + 1 - area.y;
+      const [lx, ly] = toPrepared(2 * cx + 1, 2 * cy + 1);
       const rx = ((lx - rect.x) * (f.scaledWidth / rect.width) + f.padX) / 2 - 0.5;
       const ry = ((ly - rect.y) * (f.scaledHeight / rect.height) + f.padY) / 2 - 0.5;
       const at = cy * cw + cx;
@@ -630,6 +647,9 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   if (target.alpha === "packed") throw new RangeError("A lip-sync composite is an opaque H.264 or a transparent VP9 chunk");
   const alpha = target.alpha === "straight";
   const { rect: placed } = placement(target);
+  // Tracks and face tables are in the prepared video's pixels; its picture rectangle is shown on the output's (§5.3, §4.3).
+  const { prepared } = recipe;
+  const map: Mapping = { prepared, area: prepared.displayRect ?? { x: 0, y: 0, width: prepared.width, height: prepared.height }, placed };
   // Result frame j of the chunk lasts the prepared video's frame step, in this chunk's ticks.
   const step = table.runs[0]!.step * recipe.timescale;
   if (step % table.timescale !== 0) throw new RangeError("The result frame step is not a whole number of the chunk's ticks");
@@ -679,8 +699,8 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
         const result = person.results === null ? null : await person.results.next();
         if (result === null) { person.results = null; continue; }
         const rect = person.faces[s] ?? null;
-        const mask = maskAt(person.track, s, placed);
-        if (rect !== null && mask !== null) layFace(frame, rect, mask, placed, result, person.cropSize, recipe.feather);
+        const mask = maskAt(person.track, s, prepared);
+        if (rect !== null && mask !== null) layFace(frame, rect, mask, map, result, person.cropSize, recipe.feather);
       }
       await writePicture(encode.stdin, frame, encode.done);
     }

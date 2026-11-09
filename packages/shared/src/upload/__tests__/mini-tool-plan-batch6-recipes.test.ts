@@ -262,7 +262,8 @@ describe("the lip-sync clip encode and composite feather", () => {
   const TIMELINE = { duration: 2, videoDuration: 2, syncMode: "cut_off" };
   const clip = (): Recipe => ({ kind: "lipsync_clip", inputId: SOURCE_A, faces: SOURCE_B, track: RLE, cropSize: 512, timeline: TIMELINE, table: TABLE, encode: { crf: 18, preset: "medium" } });
   const composite = (): Recipe => ({ kind: "lipsync_composite", ...windowShape, timeline: TIMELINE, table: TABLE,
-    persons: [{ result: RESULT, faces: SOURCE_B, track: RLE, cropSize: 512 }], rawDiskBytes: 1_000_000, feather: 0.1 });
+    persons: [{ result: RESULT, faces: SOURCE_B, track: RLE, cropSize: 512 }], rawDiskBytes: 1_000_000, feather: 0.1,
+    prepared: { width: 854, height: 480, displayRect: { x: 0, y: 0, width: 853, height: 480 } } });
 
   it.each([
     ["without an encode", { encode: undefined }], ["with a crf above 51", { "encode.crf": 52 }], ["with an unknown preset", { "encode.preset": "fastest" }],
@@ -273,6 +274,13 @@ describe("the lip-sync clip encode and composite feather", () => {
   it.each([
     ["without a feather", { feather: undefined }], ["with a negative feather", { feather: -0.1 }], ["with a feather above 1", { feather: 1.5 }],
   ])("LR02 refuses a composite %s", (_name, edits) => {
+    refuses(composite(), changed(composite(), edits));
+  });
+
+  // §5.3 model-input row: the composite reads every track and face table in the prepared video's pixels.
+  it.each([
+    ["without the prepared geometry", { prepared: undefined }], ["with a picture rectangle outside the prepared video", { "prepared.displayRect.width": 855 }],
+  ])("LR03 refuses a composite %s", (_name, edits) => {
     refuses(composite(), changed(composite(), edits));
   });
 });

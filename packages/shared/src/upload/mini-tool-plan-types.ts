@@ -190,6 +190,8 @@ export interface MiniToolPlanLipsyncStem { kind: "lipsync_stem"; rows: { inputId
 export type MiniToolPlanLipsyncComposite = {
   kind: "lipsync_composite"; timeline: LipsyncTimeline; table: VideoPresentationTable;
   persons: { result: string; faces: string; track: string; cropSize: number }[];
+  /** The prepared video's coded size and picture rectangle: every track and face table is in its pixels. */
+  prepared: { width: number; height: number; displayRect: MiniToolPlanPixelRect | null };
   /** The plan's frozen raw disk budget, which a chunk's raw source window stays within when its source goes back. */
   rawDiskBytes: number;
   /** The plan's frozen face feather, as a fraction of each face's shorter side. */

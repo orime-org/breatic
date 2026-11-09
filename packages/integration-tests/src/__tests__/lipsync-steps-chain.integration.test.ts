@@ -647,6 +647,26 @@ describe("a transparent original's lip-sync composite (§7.17 lipsync_composite 
   });
 });
 
+// §5.3 model-input row, §4.3 odd-size row: an odd display is prepared padded to even with its picture rectangle kept, and
+// the tracks and face tables are in those pixels, so every composite chunk names that geometry; the output picture rounds
+// the opaque odd side down.
+describe("an odd-size original's lip-sync composite names the prepared geometry (§5.3; §4.3)", () => {
+  it("LC11 gives every composite chunk the prepared video's size and picture rectangle beside the output target", async () => {
+    const receipt = serveLedger((ledger) => { ledger.plan.display = { ...ledger.plan.display, width: 319, height: 179 }; });
+    const f = await seed({ ledgerReceipts: { source: receipt } });
+    await drive(f);
+    const prepared = jobsOf("prepare_model_input").find((job) => job.outputs[0]!.recipe.order === undefined)!.outputs[0]!.recipe.target as { width: number; height: number; displayRect: unknown };
+    expect(prepared).toMatchObject({ width: 320, height: 180, displayRect: { x: 0, y: 0, width: 319, height: 179 } });
+    const composites = jobsOf("lipsync_composite");
+    expect(composites).toHaveLength(LAYOUT.composite.length);
+    for (const job of composites) {
+      const recipe = job.outputs[0]!.recipe as { prepared: unknown; target: { width: number; height: number } };
+      expect(recipe.prepared).toEqual({ width: prepared.width, height: prepared.height, displayRect: prepared.displayRect });
+      expect([recipe.target.width, recipe.target.height]).toEqual([318, 178]);
+    }
+  });
+});
+
 describe("a lip-sync retry reuses the done steps by their frozen keys (§97 D21-6; DD §7.1; frames-split §7.11 retry row)", () => {
   it("LR10 after person 3's generation timed out, the retry submits only that generation; person 1 adds no consumption", async () => {
     const original = await seed();
