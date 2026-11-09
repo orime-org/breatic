@@ -80,6 +80,54 @@ describe('transcriptOf', () => {
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
+
+  /**
+   * The first line that is not empty after the given line of the transcript.
+   * @param text - The transcript.
+   * @param line - A line the transcript holds.
+   * @returns The line after it, or undefined when there is none.
+   */
+  function lineAfter(text: string, line: string): string | undefined {
+    const textLines = text.split('\n');
+    const at = textLines.indexOf(line);
+    expect(at).toBeGreaterThanOrEqual(0);
+    return textLines.slice(at + 1).find((one) => one !== '');
+  }
+
+  it('writes what a call returned on a RETURNED line right under its TOOL line, and nothing under a call without output', () => {
+    const text = transcriptOf(
+      scenario,
+      runOf(
+        {
+          kind: 'call',
+          tool: 'list_models',
+          state: 'output-available',
+          input: { kind: 'video' },
+          output: { models: [{ id: 'MODEL-FAST', price: 'PRICE-LOW' }] },
+        },
+        { kind: 'call', tool: 'ask_user', state: 'output-available', input: { question: 'Q-ONE' } },
+        { kind: 'text', text: 'REPLY-TEXT' },
+      ),
+    );
+    expect(lineAfter(text, 'TOOL list_models (output-available): {"kind":"video"}')).toBe(
+      'RETURNED: {"models":[{"id":"MODEL-FAST","price":"PRICE-LOW"}]}',
+    );
+    expect(lineAfter(text, lines.ask)).toBe('AGENT: REPLY-TEXT');
+    expect(text.split('\n').filter((one) => one.startsWith('RETURNED: '))).toHaveLength(1);
+  });
+
+  it('keeps a RETURNED line of 6000 characters whole and cuts a longer one to 6000 followed by an ellipsis', () => {
+    const returned = (output: unknown): string | undefined =>
+      lineAfter(
+        transcriptOf(scenario, runOf({ kind: 'call', tool: 'list_models', state: 'output-available', input: null, output })),
+        'TOOL list_models (output-available): null',
+      );
+    const exact = 'x'.repeat(5998);
+    expect(JSON.stringify(exact)).toHaveLength(6000);
+    expect(returned(exact)).toBe(`RETURNED: ${JSON.stringify(exact)}`);
+    const long = 'y'.repeat(5999);
+    expect(returned(long)).toBe(`RETURNED: ${JSON.stringify(long).slice(0, 6000)} \u2026`);
+  });
 });
 
 describe('judgePrompt', () => {
@@ -111,6 +159,16 @@ describe('judgePrompt', () => {
       '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
     );
     expect(prompt).toContain('The agent writes in the language of the user\'s latest message.');
+  });
+
+  it('says a TOOL line shows what was sent and a RETURNED line under it shows what came back', () => {
+    const prompt = judgePrompt(scenario, run);
+    expect(prompt).not.toContain(
+      'A TOOL line shows what the agent sent, not what came back; null means the input was not recorded.',
+    );
+    expect(prompt).toContain(
+      'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
+    );
   });
 });
 
