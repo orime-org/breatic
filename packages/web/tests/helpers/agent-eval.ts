@@ -18,8 +18,6 @@ import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
 
 /** The normal quantile of a two-sided 95% interval. */
 const Z = 1.96;
-/** The longest RETURNED line the judge reads, in characters of JSON. */
-const RETURNED_MAX = 6000;
 /** The share of a row's runs that must pass: four in five. */
 const ROW_SHARE = 0.8;
 
@@ -70,9 +68,13 @@ export type RunStep =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'answer'; readonly text: string };
 
-/** What one run of a scenario left behind: the agent's calls and words and the user's answers, in order. */
+/** What one run of a scenario left behind: the agent's calls and words and the user's answers, in order, and what it was given. */
 export interface Run {
   readonly steps: readonly RunStep[];
+  /** Pictures attached to the first message of this run. */
+  readonly chips?: Scenario['chips'];
+  /** The document this run's Space held. */
+  readonly doc?: Scenario['doc'];
 }
 
 /** A judge's decision on one run. */
@@ -82,10 +84,11 @@ export interface Verdict {
 }
 
 /**
- * The run as the judge reads it: the user's first message, then each step in
- * order, a tool call with its name, state and input as JSON (and what it
- * returned, where that was recorded), the agent's words, or an answer the
- * user gave.
+ * The run as the judge reads it: the user's first message with an ATTACHED
+ * line for each picture the run was given, the document the run's Space held
+ * when it held one, then each step in order, a tool call with its name, state
+ * and input as JSON (and what it returned, where that was recorded), the
+ * agent's words, or an answer the user gave.
  * @param scenario - The scenario.
  * @param run - The run.
  * @returns The transcript.
@@ -95,14 +98,13 @@ export function transcriptOf(scenario: Scenario, run: Run): string {
     if (step.kind === 'call') {
       const sent = `TOOL ${step.tool} (${step.state}): ${JSON.stringify(step.input) ?? ''}`;
       if (step.output === undefined) return sent;
-      const back = JSON.stringify(step.output) ?? '';
-      return `${sent}\nRETURNED: ${back.length > RETURNED_MAX ? `${back.slice(0, RETURNED_MAX)} …` : back}`;
+      return `${sent}\nRETURNED: ${JSON.stringify(step.output) ?? ''}`;
     }
     return step.kind === 'text' ? `AGENT: ${step.text}` : `USER ANSWERED: ${step.text}`;
   });
-  const attached = (scenario.chips ?? []).map((chip) => `ATTACHED: ${chip.name} ${chip.url}`);
+  const attached = (run.chips ?? []).map((chip) => `ATTACHED: ${chip.name} ${chip.url}`);
   // Numbered the way the agent receives the open document.
-  const doc = scenario.doc === undefined ? [] : [`OPEN DOCUMENT:\n${scenario.doc.map(([, text], i) => `<!-- b:${String(i + 1)} -->\n${text}`).join('\n\n')}`];
+  const doc = run.doc === undefined ? [] : [`OPEN DOCUMENT:\n${run.doc.map(([, text], i) => `<!-- b:${String(i + 1)} -->\n${text}`).join('\n\n')}`];
   return [[`USER: ${scenario.text}`, ...attached].join('\n'), ...doc, ...lines].join('\n\n');
 }
 
@@ -111,29 +113,31 @@ const PROPOSAL_TOOLS = new Set(['propose_canvas_action', 'propose_document_edit'
 
 /**
  * What of a call's answer the judge reads: for `list_generation_models`, each
- * model's name, what it is good at, its speed, its price, its cheapest
- * settings and the values each setting takes; for a proposal, whether it was
- * placed and, when refused, why.
+ * model's name, what it is good at, its speed, its price with the settings it
+ * is at, its cheapest settings and the values each setting takes; for a
+ * proposal, whether it was placed and, when refused, why.
  * @param tool - The tool called.
+ * @param input - What the call sent.
  * @param output - What the tool returned.
  * @returns The slim answer, or undefined when the judge reads none of it.
  */
-export function forJudge(tool: string, output: unknown): unknown {
+export function forJudge(tool: string, input: unknown, output: unknown): unknown {
   if (PROPOSAL_TOOLS.has(tool)) {
     const answer = output as { placed?: unknown; reason?: unknown } | null;
     if (typeof answer !== 'object' || answer === null || typeof answer.placed !== 'boolean') return undefined;
     return answer.placed ? { placed: true } : { placed: false, reason: answer.reason };
   }
-  return tool === 'list_generation_models' ? modelListForJudge(output) : undefined;
+  return tool === 'list_generation_models' ? modelListForJudge(input, output) : undefined;
 }
 
 /**
  * A model list cut to what the judge decides price criteria by. Anything that
  * is not an available model list comes back as it is.
+ * @param input - What the call sent.
  * @param output - What `list_generation_models` returned.
  * @returns The slim answer.
  */
-function modelListForJudge(output: unknown): unknown {
+function modelListForJudge(input: unknown, output: unknown): unknown {
   const answer = output as { available?: unknown; models?: unknown } | null;
   if (typeof answer !== 'object' || answer === null || answer.available !== true || !Array.isArray(answer.models)) return output;
   type Param = { options?: unknown; min?: unknown; max?: unknown; default?: unknown };
@@ -148,18 +152,31 @@ function modelListForJudge(output: unknown): unknown {
     if (values === undefined) return undefined;
     return spec.default === undefined ? { values } : { values, default: spec.default };
   };
+  const sent = (input as { params?: unknown } | null | undefined)?.params;
+  const sentParams = typeof sent === 'object' && sent !== null ? (sent as Record<string, unknown>) : {};
+  /**
+   * The settings a model was priced at: its defaults, under the settings the
+   * call sent and the model took when the tool says it priced those.
+   * @param model - The model.
+   * @returns Each setting with its value.
+   */
+  const pricedAt = ({ atParams, rejected, params }: Model): Record<string, unknown> => {
+    const defaults = Object.entries(params ?? {}).flatMap(([key, spec]) => (spec.default === undefined ? [] : [[key, spec.default]]));
+    const refused = Array.isArray(rejected) ? rejected : [];
+    const taken = atParams === true ? Object.entries(sentParams).filter(([key]) => !refused.includes(key)) : [];
+    return Object.fromEntries([...defaults, ...taken]);
+  };
   return {
     available: true,
-    models: (answer.models as Model[]).map(({ name, what, seconds, price, atParams, rejected, lowestAt, params }) => ({
-      name,
-      what,
-      seconds,
-      // The price is at the settings the call sent only when the tool says so; otherwise it is at the defaults.
-      ...(price === undefined ? {} : atParams === true ? { priceAtSettingsSent: price } : { priceAtDefaults: price }),
-      ...(rejected === undefined ? {} : { rejected }),
-      ...(lowestAt === undefined ? {} : { lowestAt }),
+    models: (answer.models as Model[]).map((model) => ({
+      name: model.name,
+      what: model.what,
+      seconds: model.seconds,
+      ...(model.price === undefined ? {} : { priceAt: { settings: pricedAt(model), ...(model.price as object) } }),
+      ...(model.rejected === undefined ? {} : { rejected: model.rejected }),
+      ...(model.lowestAt === undefined ? {} : { lowestAt: model.lowestAt }),
       params: Object.fromEntries(
-        Object.entries(params ?? {}).flatMap(([key, spec]) => {
+        Object.entries(model.params ?? {}).flatMap(([key, spec]) => {
           const read = setting(spec);
           return read === undefined ? [] : [[key, read]];
         }),
@@ -184,7 +201,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     '"The lowest price settings" means the cheapest value of each setting of the model the agent chose; picking the model the job needs is not a breach.',
     'The agent writes in the language of the user\'s latest message.',
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
-    'When the user says they will send material, waiting for it before making what depends on it is right.',
+    'When the user says they will send something, waiting for it before making anything it could change, the look included, is right.',
     'Judge a stated price only against a RETURNED price for the same model and settings; a price for settings the run never priced is not a breach.',
     'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
@@ -272,6 +289,7 @@ export function parseUserAnswers(text: string, questions: readonly CardQuestion[
     const choice = typeof entry.choice === 'string' ? entry.choice : undefined;
     if (choice !== undefined && question.options.includes(choice)) answers.set(entry.index, { index: entry.index, selected: [choice] });
     else {
+      // The chat route rejects an empty other and one past its cap.
       const words = [entry.other, choice].find((one): one is string => typeof one === 'string' && one.trim() !== '')?.slice(0, ASK_USER_OTHER_MAX_CHARS);
       answers.set(entry.index, words === undefined ? { index: entry.index, selected: [] } : { index: entry.index, selected: [], other: words });
     }

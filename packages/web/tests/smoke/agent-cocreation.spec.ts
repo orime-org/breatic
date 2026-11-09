@@ -251,13 +251,13 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
     const steps: RunStep[] = (await partsOf(api, conversation.id)).flatMap((part): RunStep[] => {
       const tool = toolOf(part);
       if (tool === undefined) return part.type === 'text' ? [{ kind: 'text', text: part.text ?? '' }] : [];
-      const output = forJudge(tool, part.output);
+      const output = forJudge(tool, part.input, part.output);
       const returned = output === undefined ? {} : { output };
       const call: RunStep = { kind: 'call', tool, state: part.status ?? part.state ?? '', input: part.input, ...returned };
       const answer = answered.get(part.toolCallId ?? '');
       return answer === undefined ? [call] : [call, { kind: 'answer', text: answer }];
     });
-    return { steps };
+    return { steps, chips: scenario.chips, doc: scenario.doc };
   } finally {
     await api.post(`/api/v1/projects/${project.id}/archive`);
   }
