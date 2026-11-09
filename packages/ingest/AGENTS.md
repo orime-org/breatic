@@ -4,11 +4,11 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 ## Two runtimes
 
-**`src/` runs on workerd: no `node:*`, no database, no Redis, and configuration comes only from the fetch handler's `env` (wrangler bindings and vars), never `process.env`.** This is the only package in the repo on workerd. `container/` is the media container (alpine and Node, see `Dockerfile`) that runs ffmpeg and vips, so `node:*` is valid only there.
+**`src/` runs on workerd: no `node:*`, no database, no Redis, and configuration comes only from the fetch handler's `env` (wrangler bindings and vars), never `process.env`.** This is the only package in the repo on workerd. `container/` is the media container (alpine and Node, see `Dockerfile`) that runs ffmpeg and vips, and `web-reader/` is the page reader (Debian and Node, see `web-reader/Dockerfile`) that runs a Chromium headless shell, so `node:*` is valid only in those two.
 
-**Import only `@breatic/shared`.** Core and domain use Node APIs that workerd cannot load, and no lint rule catches that import. The upload ticket and per-part session token are signed and verified in `shared/src/upload/` because both this Worker and the server verify them; moved into this package, the server could not reach them and the two sides would drift apart and reject each other.
+**Import only `@breatic/shared`; `web-reader/` alone also loads the four libraries `package.json` pins for it (`playwright-core`, `@mozilla/readability`, `turndown`, `unpdf`), and its Dockerfile installs exactly those versions.** Core and domain use Node APIs that workerd cannot load, and no lint rule catches that import. The upload ticket and per-part session token are signed and verified in `shared/src/upload/` because both this Worker and the server verify them; moved into this package, the server could not reach them and the two sides would drift apart and reject each other.
 
-**The container's own process loads only Node built-ins and this repo's code, and every module it loads must be listed in `container/tsconfig.json`.** ffmpeg and vips run as separate processes so their GPL-licensed libraries stay out of our process (`THIRD-PARTY.md`); `breatic/media-container-own-code-only` reports a missing entry.
+**The media container's own process loads only Node built-ins and this repo's code, and every module it loads must be listed in `container/tsconfig.json`.** ffmpeg and vips run as separate processes so their GPL-licensed libraries stay out of our process (`THIRD-PARTY.md`); `breatic/media-container-own-code-only` reports a missing entry.
 
 ## Endpoints
 
@@ -20,24 +20,25 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 | `POST /media` | Our services: read stored media numbers, audio peaks, display previews or the Agent's static JPEG |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
 | `/long-media/*` | Our worker: submit, inspect, plan, run and cancel durable long-media jobs, and acknowledge segment registration |
+| `POST /read-pages` | Our server: read the pages of one Agent `web_fetch` call (`src/web-reader-route.ts`) |
 
 **`POST /media` writes only derivatives of its authorized source: `wantPreview` requests the display WebP, `wantPeaks` requests audio peaks, and `agentPicture` requests a separately versioned static JPEG.** Agent JPEG creation is conditional: an existing object is never overwritten, and both a cache hit and a lost creation race return the stored winner's actual size and MIME. Reads of standing peaks alone or a standing Agent JPEG alone omit the container. The contracts and key ownership are described in [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 
-**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** `POST /uploads`, finish, `/fetch`, `/media`, both `/jobs` endpoints and the long-media job endpoints in `src/index.ts` require the shared secret (401 otherwise); the browser never holds it, so only our services can call them, and CORS allows a page nothing but `PUT` parts. A ticket that verifies on `POST /uploads` without the secret is reported as `ingest_open_without_secret`, one event per request. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
+**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** `POST /uploads`, finish, `/fetch`, `/media`, both `/jobs` endpoints, the long-media job endpoints and `/read-pages` in `src/index.ts` require the shared secret (401 otherwise); the browser never holds it, so only our services can call them, and CORS allows a page nothing but `PUT` parts. A ticket that verifies on `POST /uploads` without the secret is reported as `ingest_open_without_secret`, one event per request. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
 
 ## The only outbound request
 
-**The Worker never calls our endpoints and holds none of their addresses; its only outbound request is `POST /fetch` pulling the named source, sent with the User-Agent from `src/source-request.ts`.** Some sites refuse requests without it, and a Worker's `fetch` sends none of its own.
+**The Worker never calls our endpoints and holds none of their addresses; it sends only two kinds of outbound request: `POST /fetch` pulling the named source, with the User-Agent from `src/source-request.ts`, and the page reader's browser requests, resent by `webReaderOutbound` (`src/web-reader-outbound.ts`).** Some sites refuse requests without a User-Agent, and a Worker's `fetch` sends none of its own. `webReaderOutbound` refuses IP literals and `localhost` and sends with `redirect: "manual"`, so every redirect hop comes back through it.
 
 ## State
 
 **The upload path keeps no state between requests: the R2 `uploadId` and each part's etag travel with the caller and come back on every request.** This package also does not judge whether an upload is dead (the server computes task deadlines when a node's task list is read) or whether a key is already being finished (the server takes that grant from the ledger before calling).
 
-**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), and `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
+**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs) and `WebReaderContainer` (`src/web-reader-container.ts`, one instance per `web_fetch` call, destroyed when the read ends or past the call's deadline).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding and page reads the `WEB_READER` binding.
 
-**A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).**
+**A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).** `WebReaderContainer` is the one container whose requests reach the public internet, and only through `webReaderOutbound`.
 
 ## Bytes and R2
 

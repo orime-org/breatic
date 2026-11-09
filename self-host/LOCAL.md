@@ -132,7 +132,7 @@ Confirm that you logged into the account owning the bucket. Create `packages/ing
 name = "creator-ingest-config"
 main = "src/index.ts"
 compatibility_date = "2026-03-10"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [env.production]
@@ -159,9 +159,69 @@ class_name = "MediaContainer"
 [env.production.exports.MediaContainer]
 type = "durable-object"
 storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = 3
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 1
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[env.production.exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "LongMediaContainer"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 1
+
+[[env.production.durable_objects.bindings]]
+name = "LONG_MEDIA"
+class_name = "LongMediaContainer"
+
+[env.production.exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "WebReaderContainer"
+image = "./web-reader/Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-2"
+max_instances = 3
+
+[[env.production.durable_objects.bindings]]
+name = "WEB_READER"
+class_name = "WebReaderContainer"
+
+[env.production.exports.WebReaderContainer]
+type = "durable-object"
+storage = "sqlite"
 ```
 
-`compatibility_flags` is required: without it the Worker fails to load (`No such module "node:async_hooks"`). A configuration created before this line was added needs it before the next deploy. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
+`compatibility_flags` is required: without `nodejs_compat` the Worker fails to load (`No such module "node:async_hooks"`), and `enable_request_signal` lets the page reader stop when the Agent's request ends. Every container class above is required as well: a Worker missing one of the bindings `MEDIA`, `MINI_TOOL_STD1`, `MINI_TOOL_STD4`, `LONG_MEDIA` or `WEB_READER` answers every request with 500 naming it. A configuration created before these lines were added needs them before the next deploy. `max_instances` caps how many instances of each class run at once; raise it for more simultaneous users. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
 
 For multiple instances in one Cloudflare account, give each a distinct production `name`, bucket and shared secret. Do not overwrite an existing Worker. This deployment configuration has no `[dev].port`, `remote=true` or `.dev.vars`.
 
@@ -178,7 +238,7 @@ pnpm --filter @breatic/ingest exec wrangler secret put INGEST_SHARED_SECRET --en
 pnpm --filter @breatic/ingest deploy:worker
 ```
 
-If the first secret command asks to create a missing Worker, confirm that its name is the new instance you intend to create. Initial deployment builds and uploads the media container and prints the actual Worker HTTPS URL. Use that output, for example `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`; do not guess your account subdomain. See [Deploy Containers](https://developers.cloudflare.com/containers/guides/deploy/).
+If the first secret command asks to create a missing Worker, confirm that its name is the new instance you intend to create. Initial deployment builds and uploads the media container and the page reader and prints the actual Worker HTTPS URL. Use that output, for example `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`; do not guess your account subdomain. See [Deploy Containers](https://developers.cloudflare.com/containers/guides/deploy/).
 
 If Containers access, image building or deployment fails, resolve the error. Disabling the media container does not produce a complete upload setup.
 

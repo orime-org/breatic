@@ -30,22 +30,32 @@ Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
 
 **Docker has to be running on this machine.** The Worker starts a container to
-read an object's media numbers and cut a cover frame, and its image is built
-from the Dockerfile here for `wrangler dev` or direct source deployment.
-Official release CI builds and publishes `breatic-ingest-media:<product-tag>`
-to GHCR. The production deployment tools download its immutable digest from
-the product Release manifest, bundle the image, and later push that same image
+read an object's media numbers and cut a cover frame, and another to read the
+web pages the Agent's `web_fetch` names. Their images are built from the
+Dockerfile here and from `web-reader/Dockerfile` for `wrangler dev` or direct
+source deployment. Official release CI builds and publishes
+`breatic-ingest-media:<product-tag>` and `breatic-ingest-web-reader:<product-tag>`
+to GHCR. The production deployment tools download their immutable digests from
+the product Release manifest, bundle the images, and later push those same images
 to Cloudflare’s registry without rebuilding. See [versioned releases](../../self-host/RELEASE.md). Without Docker, `wrangler dev`
 says which of the two is missing (the CLI, or the daemon) and exits;
 `--enable-containers=false` starts it anyway, and uploads through it carry no
-media numbers and no cover.
+media numbers and no cover, and the Agent cannot read pages.
 
-**The image builds from the repository root**, which is what puts
+**The images build from the repository root**, which is what puts
 `THIRD-PARTY.md` inside the context. The template carries
 `image_build_context = "../.."` in every `[[containers]]` and
 `[[env.production.containers]]` block. The configured classes are `MediaContainer`,
-`MiniToolContainerStd1`, `MiniToolContainerStd4` and `LongMediaContainer`. Each
-block needs its own context because `containers` does not inherit into an environment.
+`MiniToolContainerStd1`, `MiniToolContainerStd4`, `LongMediaContainer` and
+`WebReaderContainer`. Each block needs its own context because `containers` does
+not inherit into an environment.
+
+**A `wrangler.toml` copied before the page reader was added needs six additions
+from the template:** the `WebReaderContainer` container block, the `WEB_READER`
+Durable Object binding and `[exports.WebReaderContainer]`, once at the top level
+and once under `[env.production]`, plus `"enable_request_signal"` in the top-level
+`compatibility_flags`. Without the binding every request answers 500 naming
+`WEB_READER`.
 
 **A `wrangler.toml` copied before error reporting was added needs
 `compatibility_flags = ["nodejs_compat"]`** at the top level, next to
@@ -95,7 +105,7 @@ environments differ only in what the values are.
 | `bucket_name` | The bucket your local server writes to — the same as `R2_BUCKET` in the repo-root `.env` | The live bucket |
 | `ALLOWED_ORIGINS` | `http://localhost:<VITE_DEV_PORT>`, from the same `.env` | The live site host |
 | `remote` on the R2 binding | `true` | Absent — a deployed Worker is already next to the bucket |
-| `compatibility_flags` | `["nodejs_compat"]`, at the top level only | Inherited |
+| `compatibility_flags` | `["nodejs_compat", "enable_request_signal"]`, at the top level only | Inherited |
 | `SENTRY_DSN` | Empty — nothing is reported | The ingest project's DSN, or empty to report nothing |
 | `SENTRY_ENVIRONMENT` | `development` | `production` (or `staging`) |
 
@@ -163,14 +173,15 @@ asset back — a node's image or video, and the focus crop that reads one.
 
 The Worker itself still runs on this machine, because that is the address it
 has to answer on: our own server opens and finishes the upload there, and the
-browser sends its parts there. It reaches nobody in return — what it measured over
+browser sends its parts there. It never calls our services in return — what it measured over
 the stored object is the answer to the finish, not a call it places — so it
 holds no address of ours at all.
 
 This Worker binds container Durable Object classes: the media container
 (`MEDIA`, one instance per storage key), the two mini-tool containers
 (`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job and instance size),
-and `LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs. Keep these
+`LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs, and the page
+reader (`WEB_READER`, one instance per `web_fetch` call). Keep these
 bindings and their `exports` aligned with the template in each environment.
 The upload path itself keeps nothing between requests: an upload's id and its
 part receipts travel with the browser and come back to finish it.

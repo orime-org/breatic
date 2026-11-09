@@ -15,13 +15,15 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images. One of them, the media container, carries FFmpeg and
-vips:
+We publish four images. The media container carries FFmpeg and vips; the page
+reader carries a Chromium headless shell and the FFmpeg build Playwright
+installs beside it:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
+| the page reader | [packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile) | `node:24-bookworm-slim` | yes — Playwright's LGPL build, which the reader never runs |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
@@ -106,6 +108,28 @@ loads none of its libraries. The image carries the licence texts and a
 `SOURCE` file at `/usr/share/sox-source/`, written from the installed package
 while the image is built, as the FFmpeg one above is.
 
+### Chromium and its libraries in the page reader
+
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| Chrome Headless Shell (Chrome for Testing) | `151.0.7922.34`, Playwright browser revision `1234` | **BSD-3-Clause** for Chromium, with each bundled third-party component under its own licence | `https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34` |
+| Playwright's FFmpeg | `n7.0.1-playwright-build-1011` | **LGPL-2.1-or-later** (`ffmpeg -L`); built without `--enable-gpl`, statically linked with libvpx (BSD-3-Clause) and zlib | `https://ffmpeg.org/releases/ffmpeg-7.0.1.tar.xz`; the full `configure` line is printed by `ffmpeg-linux -version` in the image |
+| Debian 12 packages installed by `playwright-core install --with-deps` | the versions Debian 12 serves when the image is built | each package's own, mostly MIT, BSD, LGPL and MPL; several fonts (`fonts-freefont-ttf`, `fonts-unifont`, `fonts-wqy-zenhei`, `fonts-tlwg-loma-otf`, `fonts-ipafont-gothic`) are **GPL with a font exception** | `https://sources.debian.org/` |
+
+`npx playwright-core install --with-deps --only-shell chromium`
+([packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile))
+installs all three: the browser and FFmpeg under `/ms-playwright/`, and about 110
+Debian packages of shared libraries, fonts and X11 parts the browser loads.
+The browser carries its full notices in
+`/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/LICENSE.headless_shell`,
+FFmpeg carries `COPYING.LGPLv2.1` beside its binary, and each Debian package
+carries its copyright file at `/usr/share/doc/<package>/copyright`.
+
+The reader's service drives the browser as a separate process over the
+DevTools protocol and loads none of these libraries; Playwright runs its FFmpeg
+only to record video, which the reader never does. The service's own process
+loads the five npm packages listed in the next section.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
@@ -113,7 +137,11 @@ and `collab` beside our own code, so every production dependency of those three
 is distributed with it. These are the ones whose licence is not one of the four
 permissive ones. The media container carries no `node_modules` at all — its
 service is bundled into a single file — and the `breatic-web` image carries the
-front-end bundle covered by the next section.
+front-end bundle covered by the next section. The page reader's service is
+bundled the same way and runs beside five installed packages, all under
+permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
+(Apache-2.0), `turndown` 7.2.0 and `unpdf` 1.1.0 (MIT), and `@mixmark-io/domino`
+2.2.0 (BSD-2-Clause), which `turndown` depends on.
 
 ### Server-side packages under other licences
 
