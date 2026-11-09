@@ -115,15 +115,18 @@ export function whenOutOfReach(
  *
  * The item's version of {@link whenOutOfReach}. A row out of reach is dimmed,
  * keeps the keyboard able to land on it (`aria-disabled`, not Radix's
- * `disabled`), does not light up under the pointer, and does nothing when
- * chosen.
+ * `disabled`), does not light up under the pointer, and when chosen does
+ * nothing, or says why (`refused`) where a condition the user can change is
+ * unmet.
  * @param reachable - Whether the command reaches this row.
  * @param run - What choosing the row does when it does.
+ * @param refused - What choosing the row does when it does not.
  * @returns Attributes to spread onto the item.
  */
 export function itemWithin(
   reachable: boolean,
   run: () => void,
+  refused?: () => void,
 ): React.ComponentProps<typeof DropdownMenuItem> {
   if (reachable) {
     return { onSelect: run };
@@ -132,6 +135,7 @@ export function itemWithin(
     ...GREYED,
     onSelect: (event) => {
       event.preventDefault();
+      refused?.();
     },
   };
 }
