@@ -20,7 +20,7 @@ The protocol layer used by both web and the backend: zod schemas, types, constan
 
 ### Main entry and subpaths
 
-**The main entry `src/index.ts` (bundled by `tsup`) is the default; the subpath entries are `@breatic/shared/canvas/text-body`, `@breatic/shared/mini-tools`, `@breatic/shared/pricing` and `@breatic/shared/space-content`.** The `exports` map in `package.json` and the `build` script list the same five. Timeline document initialization and readers and Space media-reference extraction use `space-content`.
+**The main entry `src/index.ts` (bundled by `tsup`) is the default; the subpath entries are `@breatic/shared/canvas/text-body`, `@breatic/shared/mini-tools`, `@breatic/shared/pricing`, `@breatic/shared/space-content` and `@breatic/shared/update-shape`.** The `exports` map in `package.json` and the `build` and `dev` scripts list the same six. Timeline document initialization and readers and Space media-reference extraction use `space-content`; `updateShape`, which imports yjs, uses `update-shape` so that yjs stays out of web's entry chunk.
 
 **A new export exists for other packages only once `src/index.ts` (or a subpath entry) exports it; adding it to a sub-barrel such as `types/index.ts` is not enough.** Consumers resolve `@breatic/shared` to `src/index.ts`, so a symbol missing there can pass locally and fail the CI build.
 

@@ -25,7 +25,7 @@
 
 import { vi, type MockInstance } from 'vitest';
 import * as Y from 'yjs';
-import { updateShape } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 
 import { setDocSize, startDocResync } from '@web/data/yjs/doc-size';
 import { nextHistoryStep, runHistoryStep } from '@web/data/yjs/history-step';

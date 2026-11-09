@@ -23,7 +23,7 @@ import type * as CoreModule from "@breatic/core";
 import type * as ConfigModule from "@collab/config.js";
 import type * as SizeModuleNs from "@collab/services/document-size.js";
 import { Document } from "@hocuspocus/server";
-import { updateShape } from "@breatic/shared";
+import { updateShape } from "@breatic/shared/update-shape";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 

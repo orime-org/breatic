@@ -30,7 +30,8 @@ import type * as CoreModuleShape from "@breatic/core";
 import type * as ConfigModuleShape from "@collab/config.js";
 import type * as SizeModuleShape from "@collab/services/document-size.js";
 import type * as FilterModuleShape from "@collab/infra/inbound-filter.js";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, updateShape } from "@breatic/shared";
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON } from "@breatic/shared";
+import { updateShape } from "@breatic/shared/update-shape";
 
 import {
   C,

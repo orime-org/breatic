@@ -13,7 +13,8 @@
  * names as the exact measure.
  */
 
-import { DOC_SIZE_EVENT_BYTES, updateShape } from "@breatic/shared";
+import { DOC_SIZE_EVENT_BYTES } from "@breatic/shared";
+import { updateShape } from "@breatic/shared/update-shape";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import * as syncProtocol from "y-protocols/sync";

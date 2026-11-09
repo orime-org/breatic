@@ -19,7 +19,7 @@ import * as encoding from 'lib0/encoding';
 import { writeSyncStep1, writeSyncStep2 } from 'y-protocols/sync';
 import * as Y from 'yjs';
 
-import { updateShape } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 
 /** What the real provider exposes that these tests read or drive. */
 export interface RealProvider {

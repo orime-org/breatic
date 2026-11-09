@@ -21,7 +21,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { updateShape, type UpdateShape } from "@shared/doc-size.js";
+import { updateShape, type UpdateShape } from "@shared/update-shape.js";
 
 /** Design 8: the time bound for one call. */
 const BOUND_MS = 100;

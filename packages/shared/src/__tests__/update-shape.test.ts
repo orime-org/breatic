@@ -10,7 +10,8 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@shared/doc-size.js";
+import { DOC_SIZE_EVENT_BYTES } from "@shared/doc-size.js";
+import { updateShape, type UpdateShape } from "@shared/update-shape.js";
 
 /**
  * Design 4.1 cost: the message length plus 32 per split endpoint

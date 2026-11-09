@@ -26,7 +26,8 @@ import type { beforeSyncPayload, Connection, Document } from "@hocuspocus/server
 import { messageYjsSyncStep1 } from "y-protocols/sync";
 import * as Y from "yjs";
 import { createLogger } from "@breatic/core";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, updateShape, type UpdateShape } from "@breatic/shared";
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES } from "@breatic/shared";
+import { updateShape, type UpdateShape } from "@breatic/shared/update-shape";
 import { getCollabConfig } from "@collab/config.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
 import { userIdOf } from "@collab/hooks/presence-wiring.js";

@@ -18,7 +18,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as TimelineEditModule from '@web/data/yjs/timeline-edit';
 import * as Y from 'yjs';
-import { updateShape, type TimelineVideoSource } from '@breatic/shared';
+import { type TimelineVideoSource } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 
 const { toast } = vi.hoisted(() => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },

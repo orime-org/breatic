@@ -47,7 +47,8 @@ import { expect } from 'vitest';
 import { readSyncMessage, writeSyncStep1, writeUpdate } from 'y-protocols/sync';
 import * as Y from 'yjs';
 
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, updateShape } from '@breatic/shared';
+import { COLLAB_DOCUMENT_TOO_LARGE_REASON } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 
 /** One frame a client sent, decoded (the `SentFrame` vocabulary of `message-socket.ts`, plus the handshake kinds). */
 export type ClientFrame =

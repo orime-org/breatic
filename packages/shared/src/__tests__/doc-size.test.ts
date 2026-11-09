@@ -75,7 +75,7 @@ describe("shared size constants and close reason", () => {
   it("S-06 the package entry exports the v2 contract and no longer the v1 delete minimum", () => {
     expect(barrel.DocSizeStatusSchema).toBeDefined();
     expect(barrel.DOC_SIZE_EVENT_BYTES).toBe(32);
-    expect(typeof barrel.updateShape).toBe("function");
+    expect("updateShape" in barrel).toBe(false);
     expect(barrel.COLLAB_DOCUMENT_TOO_LARGE_REASON).toBe("Document size limit reached");
     expect("SPACE_DELETE_MIN_BYTES" in barrel).toBe(false);
     const entry = barrel as Record<string, unknown>;
@@ -83,9 +83,11 @@ describe("shared size constants and close reason", () => {
     expect(entry.DOC_SIZE_ACK_PARAM).toBe("size_ack");
   });
 
-  it("S-07 the built entry other packages load exports updateShape", async () => {
-    // The built file has no declarations; a computed specifier keeps tsc from looking for them.
-    const dist = (await import(new URL("../../dist/index.js", import.meta.url).href)) as Record<string, unknown>;
-    expect(typeof dist.updateShape).toBe("function");
+  it("S-07 updateShape is built as its own entry, and the built main entry stays without it", async () => {
+    // The built files have no declarations; a computed specifier keeps tsc from looking for them.
+    const sub = (await import(new URL("../../dist/update-shape.js", import.meta.url).href)) as Record<string, unknown>;
+    const main = (await import(new URL("../../dist/index.js", import.meta.url).href)) as Record<string, unknown>;
+    expect(typeof sub.updateShape).toBe("function");
+    expect("updateShape" in main).toBe(false);
   });
 });

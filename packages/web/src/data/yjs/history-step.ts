@@ -15,7 +15,7 @@
  */
 
 import * as Y from 'yjs';
-import { updateShape } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';

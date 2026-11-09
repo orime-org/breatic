@@ -187,7 +187,7 @@ The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define t
 
 Every loaded Space content document (canvas, document, timeline, 3d) has a size record in `packages/collab/src/services/document-size.ts`, opened in `afterLoadDocument` after the document table conversion; a meta document has none, and `max_document_bytes` 0 creates none, so every update is admitted. The record holds `exact`, the last exact measure (`encodeStateAsUpdate(document).byteLength`, stored pending content included), and `current`, which is `exact` plus the cost of every update admitted or applied since. An admitted update's cost is also held for its connection until the update's transaction runs, or until `afterHandleMessage` finds it was never applied, so a measure taken in between still counts it. Every transaction schedules a measure, at most one per `document_size_measure_interval_ms` per document, which sets `current` back to the exact size plus the held costs. Updates that do not pass `beforeSync` (another instance's, collab's own writes, yjs's formatting cleanup) are added from `onChange` by their length.
 
-An update's cost comes from shared `updateShape(update, store)` (`packages/shared/src/doc-size.ts`), which reads the update against the server's struct store before it is applied:
+An update's cost comes from shared `updateShape(update, store)` (`packages/shared/src/update-shape.ts`, the `@breatic/shared/update-shape` entry), which reads the update against the server's struct store before it is applied:
 
 | Field | Meaning |
 |---|---|

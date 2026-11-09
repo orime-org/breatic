@@ -19,7 +19,8 @@ const { toast } = vi.hoisted(() => ({
 
 vi.mock('@web/lib/toast', () => ({ toast }));
 
-import { updateShape, type CanvasNodeFields, type DocSizeStatus, type NodeMediaFields } from '@breatic/shared';
+import { type CanvasNodeFields, type DocSizeStatus, type NodeMediaFields } from '@breatic/shared';
+import { updateShape } from '@breatic/shared/update-shape';
 import { P_FULL, P_OVER } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import {
   addEdge, addNode, addNodeFocusImage, addReply, appendNodeSlotItem, createGroup, editAnnotationBody, editReply,
