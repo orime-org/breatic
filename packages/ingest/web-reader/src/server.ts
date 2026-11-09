@@ -125,6 +125,17 @@ function withoutFragment(address: string): string {
 }
 
 /**
+ * Whether two addresses name the same document or file: a fragment, which
+ * only one of them may carry, does not count.
+ * @param one - An address.
+ * @param other - Another.
+ * @returns True when they differ at most in their fragments.
+ */
+function sameDocument(one: string, other: string): boolean {
+  return withoutFragment(one) === withoutFragment(other);
+}
+
+/**
  * Whether a response declares more bytes than the call reads.
  * @param answer - The response.
  * @param maxBytes - The largest page read.
@@ -268,7 +279,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
      * @param download - The download.
      * @returns True when it is the file of the last main-frame navigation response.
      */
-    const ofMainFrame = (download: Download): boolean => download.url() === head?.url();
+    const ofMainFrame = (download: Download): boolean => head !== undefined && sameDocument(download.url(), head.url());
     const downloaded = page
       .waitForEvent("download", { predicate: ofMainFrame, timeout: request.pageTimeoutMs })
       .catch(() => null);
@@ -302,7 +313,7 @@ async function readOne(url: string, signal: AbortSignal, request: ReadPagesReque
     page.on("framenavigated", (frame) => {
       // A same-document navigation has no response of its own: pushState to another
       // address is skipped here, and a new fragment finds its document's own response.
-      if (frame !== page.mainFrame() || head === undefined || withoutFragment(head.url()) !== withoutFragment(frame.url())) {
+      if (frame !== page.mainFrame() || head === undefined || !sameDocument(head.url(), frame.url())) {
         return;
       }
       committed = head;
