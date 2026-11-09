@@ -155,33 +155,38 @@ function modelListForJudge(input: unknown, output: unknown): unknown {
   const sent = (input as { params?: unknown } | null | undefined)?.params;
   const sentParams = typeof sent === 'object' && sent !== null ? (sent as Record<string, unknown>) : {};
   /**
-   * The settings a model was priced at: its defaults, under the settings the
-   * call sent and the model took when the tool says it priced those.
+   * The settings a model was priced at, as far as the judge can read them: the
+   * defaults of its readable settings, under the settings the call sent and the
+   * model took when the tool says it priced those.
    * @param model - The model.
+   * @param params - Its readable settings.
    * @returns Each setting with its value.
    */
-  const pricedAt = ({ atParams, rejected, params }: Model): Record<string, unknown> => {
-    const defaults = Object.entries(params ?? {}).flatMap(([key, spec]) => (spec.default === undefined ? [] : [[key, spec.default]]));
+  const pricedAt = ({ atParams, rejected }: Model, params: Record<string, { default?: unknown }>): Record<string, unknown> => {
+    const defaults = Object.entries(params).flatMap(([key, read]) => ('default' in read ? [[key, read.default]] : []));
     const refused = Array.isArray(rejected) ? rejected : [];
     const taken = atParams === true ? Object.entries(sentParams).filter(([key]) => !refused.includes(key)) : [];
     return Object.fromEntries([...defaults, ...taken]);
   };
   return {
     available: true,
-    models: (answer.models as Model[]).map((model) => ({
-      name: model.name,
-      what: model.what,
-      seconds: model.seconds,
-      ...(model.price === undefined ? {} : { priceAt: { settings: pricedAt(model), ...(model.price as object) } }),
-      ...(model.rejected === undefined ? {} : { rejected: model.rejected }),
-      ...(model.lowestAt === undefined ? {} : { lowestAt: model.lowestAt }),
-      params: Object.fromEntries(
+    models: (answer.models as Model[]).map((model) => {
+      const params = Object.fromEntries(
         Object.entries(model.params ?? {}).flatMap(([key, spec]) => {
           const read = setting(spec);
           return read === undefined ? [] : [[key, read]];
         }),
-      ),
-    })),
+      );
+      return {
+        name: model.name,
+        what: model.what,
+        seconds: model.seconds,
+        ...(model.price === undefined ? {} : { priceAt: { settings: pricedAt(model, params), ...(model.price as object) } }),
+        ...(model.rejected === undefined ? {} : { rejected: model.rejected }),
+        ...(model.lowestAt === undefined ? {} : { lowestAt: model.lowestAt }),
+        params,
+      };
+    }),
   };
 }
 

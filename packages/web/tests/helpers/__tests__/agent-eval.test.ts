@@ -252,7 +252,7 @@ describe('forJudge', () => {
           name: 'MODEL-FAST',
           what: 'WHAT-FAST a quick video model',
           seconds: [5, 10],
-          priceAt: { settings: { resolution: '720p', duration: 10, prompt_extend: true }, credits: 40, bound: 'upper' },
+          priceAt: { settings: { resolution: '720p', duration: 10 }, credits: 40, bound: 'upper' },
           rejected: ['resolution', 'quality'],
           lowestAt: { resolution: '480p' },
           params: {
@@ -294,7 +294,7 @@ describe('forJudge', () => {
 
     it('is every default overlaid with the params sent when atParams is true', () => {
       expect(one({ params: { size: 'L', steps: 9, style: 'ink' } }, { price, atParams: true })).toHaveProperty('priceAt', {
-        settings: { size: 'L', steps: 9, style: 'ink', boost: false },
+        settings: { size: 'L', steps: 9, style: 'ink' },
         credits: 7,
         bound: 'exact',
       });
@@ -302,14 +302,14 @@ describe('forJudge', () => {
 
     it('leaves out a sent key the model rejected, showing its default instead when it has one', () => {
       const model = one({ params: { size: 'L', steps: 9, style: 'ink' } }, { price, atParams: true, rejected: ['size', 'style'] });
-      expect(model).toHaveProperty('priceAt', { settings: { size: 'S', steps: 9, boost: false }, credits: 7, bound: 'exact' });
+      expect(model).toHaveProperty('priceAt', { settings: { size: 'S', steps: 9 }, credits: 7, bound: 'exact' });
       expect((model.priceAt as { settings: object }).settings).not.toHaveProperty('style');
     });
 
     it('is the defaults alone when atParams is not true, even when the call sent params', () => {
       for (const extra of [{}, { atParams: false }, { atParams: 'true' }]) {
         expect(one({ params: { size: 'L', style: 'ink' } }, { price, ...extra }), JSON.stringify(extra)).toHaveProperty('priceAt', {
-          settings: { size: 'S', steps: 4, boost: false },
+          settings: { size: 'S', steps: 4 },
           credits: 7,
           bound: 'exact',
         });
@@ -320,7 +320,7 @@ describe('forJudge', () => {
       for (const input of [null, undefined, {}, { kind: 'image' }, { params: undefined }]) {
         for (const extra of [{}, { atParams: true }]) {
           expect(one(input, { price, ...extra }), JSON.stringify({ input, extra })).toHaveProperty('priceAt', {
-            settings: { size: 'S', steps: 4, boost: false },
+            settings: { size: 'S', steps: 4 },
             credits: 7,
             bound: 'exact',
           });
@@ -336,6 +336,38 @@ describe('forJudge', () => {
       const priced = one({ params: { size: 'L' } }, { price, atParams: true });
       expect(priced).not.toHaveProperty('priceAtSettingsSent');
       expect(priced).not.toHaveProperty('priceAtDefaults');
+    });
+
+    it('takes no default from a canvas slot or a param with no values to pick from', () => {
+      const model = { name: 'M', what: 'W', seconds: 1, price, params: {
+        images: { default: null },
+        voice_id: { default: 'Kore' },
+        quality: { options: ['low', 'high'], default: 'low' },
+      } };
+      const slim = forJudge('list_generation_models', { params: {} }, { available: true, models: [model] }) as { models: { priceAt: { settings: object } }[] };
+      expect(slim.models[0].priceAt.settings).toStrictEqual({ quality: 'low' });
+    });
+
+    it('gives settings only keys the call sent or keys the judge can read in params', () => {
+      const mixed = {
+        size: { options: ['S', 'L'], default: 'S' },
+        steps: { min: 1, max: 9, default: 4 },
+        style: { options: ['flat', 'ink'] },
+        images: { default: null },
+        audio: { default: [] },
+        voice_id: { default: 'Kore' },
+        prompt_extend: { default: true },
+        seed: { min: 0, default: 7 },
+        cfg: { max: 20, default: 5 },
+      };
+      const input = { params: { style: 'ink', voice_id: 'Puck', extra: 1 } };
+      const slim = forJudge('list_generation_models', input, { available: true, models: [{ name: 'M', what: 'W', seconds: 1, price, atParams: true, params: mixed }] }) as {
+        models: { priceAt: { settings: Record<string, unknown> }; params: Record<string, unknown> }[];
+      };
+      const { priceAt, params: readable } = slim.models[0];
+      const unsent = Object.keys(priceAt.settings).filter((key) => !(key in input.params));
+      expect(unsent.filter((key) => !(key in readable))).toEqual([]);
+      expect(priceAt.settings).toStrictEqual({ size: 'S', steps: 4, style: 'ink', voice_id: 'Puck', extra: 1 });
     });
   });
 
