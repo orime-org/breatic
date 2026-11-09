@@ -120,15 +120,6 @@ function endedAt(url: string, answer: Response, finalUrl = answer.url()): ReadPa
 }
 
 /**
- * An address without its fragment, which a response's address never carries.
- * @param address - The address.
- * @returns It, cut at its `#`.
- */
-function withoutFragment(address: string): string {
-  return address.split("#")[0] ?? address;
-}
-
-/**
  * Whether two addresses name the same document or file: a fragment, which
  * only one of them may carry, does not count.
  * @param one - An address.
@@ -136,7 +127,7 @@ function withoutFragment(address: string): string {
  * @returns True when they differ at most in their fragments.
  */
 function sameDocument(one: string, other: string): boolean {
-  return withoutFragment(one) === withoutFragment(other);
+  return one.split("#")[0] === other.split("#")[0];
 }
 
 /**
