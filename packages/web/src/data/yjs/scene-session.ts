@@ -347,7 +347,7 @@ export class SceneSession {
     const transforms = gesture.map(({ pose: _pose, ...transform }) => transform)
       .filter((transform) => Object.keys(transform).length > 1);
     const poses = gesture.flatMap((patch) => (patch.pose ? [poseChange(patch.id, startPoses.get(patch.id) ?? {}, patch.pose)] : []))
-      .filter((command) => Object.keys(command.set).length + command.clear.length > 0);
+      .filter((command) => Object.keys(command.set).length > 0);
     // The gesture stays published while the document is written: the undo stack
     // refreshes this session inside the transaction, before the document update
     // goes out, and a withdrawal there would reach collaborators first.
@@ -403,13 +403,12 @@ export class SceneSession {
  * the drag started from; bones another member committed meanwhile are left alone.
  * @param id - The posed object.
  * @param start - Its committed pose when the drag began.
- * @param draft - The pose the drag ended with.
- * @returns The bones to set and the bones the drag removed.
+ * @param draft - The pose the drag ended with: the start pose with the dragged bone's new value.
+ * @returns The bones to set.
  */
 function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
   const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
-  const clear = Object.keys(start).filter((key) => !(key in draft));
-  return { type: 'pose', id, set, clear };
+  return { type: 'pose', id, set, clear: [] };
 }
 
 const sessions = createDocScopedCache<SceneSession>(

@@ -92,8 +92,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [skeletonStates, setSkeletonStates] = React.useState<ReadonlyMap<string, SceneSkeletonState>>(new Map());
   const [jointMode, setJointMode] = React.useState(false);
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
-  const jointModeRef = React.useRef(jointMode);
-  jointModeRef.current = jointMode;
   /**
    * Turn joint mode on or off; either way no joint is selected yet.
    * @param next - The requested joint mode.
@@ -185,9 +183,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       if (event.key === 'Escape') {
         if (event.repeat) return;
         event.preventDefault();
-        // One step per press: cancel the drag, leave joint mode, then clear the selection.
+        // One step per press: cancel the drag, then clear the selection. Joint mode lives only
+        // while the properties panel is open, and the panel's own Escape leaves it first.
         if (session.getSnapshot().gestureActive) session.endGesture(false);
-        else if (jointModeRef.current) changeJointMode(false);
         else session.select(null, false);
         return;
       }
@@ -202,7 +200,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     };
     window.addEventListener('keydown', onKeyDown);
     return (): void => window.removeEventListener('keydown', onKeyDown);
-  }, [session, duplicate, ownsKeyboard, changeJointMode]);
+  }, [session, duplicate, ownsKeyboard]);
 
   /** Resolve one registered model through the same Project's access boundary. */
   const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
