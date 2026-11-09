@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/omnihuman/1.5",
+  "price_formula": "(usage.duration ?? media_duration(params.audio) ?? 5.0) * 0.16"
+}

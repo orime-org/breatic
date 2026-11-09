@@ -1,0 +1,4 @@
+{
+  "source": "https://api.fal.ai/v1/models/pricing?endpoint_id=meta/muse-image/edit",
+  "unit": "images"
+}

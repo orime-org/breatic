@@ -36,7 +36,8 @@ import {
   type BlockNoteEditor,
 } from '@blocknote/core';
 import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state';
+import type { Selection} from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -49,7 +50,7 @@ import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/d
 type CopyEditor = BlockNoteEditor<never, never, never>;
 
 /** What goes on the clipboard. */
-interface Clipped {
+export interface Clipped {
   readonly internal: string;
   readonly external: string;
   readonly plain: string;
@@ -100,19 +101,22 @@ export interface ClippedBlocks {
   readonly slice: Slice | null;
 }
 
+/** Blocks whose copy writes its own slice. */
+type SlicedBlocks = ClippedBlocks & { readonly slice: Slice };
+
 /**
  * Selected cells, as a table of those cells.
  * @param view - The editor view.
  * @param selection - The cell selection.
  * @returns The blocks and the slice.
  */
-function cellsBlocks(view: EditorView, selection: CellSelection): ClippedBlocks {
+export function cellsBlocks(view: EditorView, selection: CellSelection): SlicedBlocks {
   const slice = selection.content();
   const first = slice.content.firstChild;
   // prosemirror-tables hands the whole table when every cell is selected, and
   // its rows otherwise.
   const table =
-    first?.type.name === DOC_TABLE ? first : view.state.schema.nodes[DOC_TABLE]!.create(null, slice.content);
+    first?.type.name === DOC_TABLE ? first : view.state.schema.nodes[DOC_TABLE].create(null, slice.content);
   return { blocks: [nodeToBlock(table, view.state.doc) as never], slice };
 }
 
@@ -135,7 +139,7 @@ function inCellBlocks(view: EditorView, depth: number): ClippedBlocks {
   }
   // The cell's blocks go back into a block group, as the body's own copy
   // starts, so each end opens as deep as the same lines copied in the body.
-  const group = view.state.schema.nodes['blockGroup']!.create(null, content);
+  const group = view.state.schema.nodes['blockGroup'].create(null, content);
   const slice = new Slice(Fragment.from(group), Math.max(0, whole.openStart - depth) + 1, Math.max(0, whole.openEnd - depth) + 1);
   return { blocks: fragmentToBlocks(content as never) as never[], slice };
 }
@@ -208,8 +212,8 @@ function inStoredTable(view: EditorView): ClippedBlocks | null {
   const { $from, $to } = selection;
   if ($from.sameParent($to) && storedAround($from) !== null) {
     const words = $from.parent.content.cut($from.parentOffset, $to.parentOffset);
-    const line = schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create(null, words));
-    const group = schema.nodes['blockGroup']!.create(null, line);
+    const line = schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create(null, words));
+    const group = schema.nodes['blockGroup'].create(null, line);
     return { blocks: fragmentToBlocks(group.content as never) as never[], slice: new Slice(Fragment.from(group), 3, 3) };
   }
   const range = storedTableRange(selection);
@@ -258,12 +262,38 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
 export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | null {
   const picked = tableClippedBlocks(view);
   if (picked === null) return null;
-  const plain = blocksMarkdown(editor, picked.blocks);
   if (picked.slice === null) {
     const { clipboardHTML, externalHTML } = selectedFragmentToHTML(view, editor);
-    return { internal: clipboardHTML, external: externalHTML, plain };
+    return { internal: clipboardHTML, external: externalHTML, plain: blocksMarkdown(editor, picked.blocks) };
   }
-  return { internal: internalHTML(view, picked.slice), external: editor.blocksToHTMLLossy(picked.blocks), plain };
+  return clippedOf(editor, view, { blocks: picked.blocks, slice: picked.slice });
+}
+
+/**
+ * What a copy of some blocks and their slice puts on the clipboard.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param picked - The blocks and the slice.
+ * @returns The clipboard.
+ */
+function clippedOf(editor: CopyEditor, view: EditorView, picked: SlicedBlocks): Clipped {
+  return {
+    internal: internalHTML(view, picked.slice),
+    external: editor.blocksToHTMLLossy(picked.blocks),
+    plain: blocksMarkdown(editor, picked.blocks),
+  };
+}
+
+/**
+ * What a copy of some cells puts on the clipboard, the same as Cmd+C with
+ * those cells selected.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param cells - The cells.
+ * @returns The clipboard.
+ */
+export function cellsClipped(editor: CopyEditor, view: EditorView, cells: CellSelection): Clipped {
+  return clippedOf(editor, view, cellsBlocks(view, cells));
 }
 
 /**
@@ -271,7 +301,7 @@ export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | nu
  * @param event - The copy or cut.
  * @param clipped - What it carries.
  */
-function write(event: ClipboardEvent, clipped: Clipped): void {
+export function writeClipped(event: ClipboardEvent, clipped: Clipped): void {
   const data = event.clipboardData;
   if (data === null) return;
   event.preventDefault();
@@ -301,13 +331,13 @@ export const documentTableCopyExtension = createExtension(({ editor }) => ({
           copy: (view, event) => {
             const clipped = tableClipped(editor as unknown as CopyEditor, view);
             if (clipped === null) return false;
-            write(event, clipped);
+            writeClipped(event, clipped);
             return true;
           },
           cut: (view, event) => {
             const clipped = tableClipped(editor as unknown as CopyEditor, view);
             if (clipped === null) return false;
-            write(event, clipped);
+            writeClipped(event, clipped);
             if (!view.editable) return true;
             const tr = view.state.tr;
             if (view.state.selection instanceof CellSelection) {

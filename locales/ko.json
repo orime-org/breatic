@@ -2089,16 +2089,12 @@
         "textColor": "글자색",
         "fillColor": "배경색",
         "colorReset": "기본값으로 되돌리기",
-        "aiRewriteGroup": "선택한 글 다시 쓰기",
-        "aiProduceGroup": "선택한 글로 만들기",
-        "aiOtherGroup": "기타",
         "ai_refine": "다듬기",
         "ai_expand": "늘리기",
         "ai_shorten": "줄이기",
         "ai_translate": "번역",
         "ai_tone": "어조 바꾸기",
         "ai_storyboard": "콘티 만들기",
-        "ai_illustrate": "이 문단으로 그림 만들기",
         "ai_custom": "직접 지시…"
       },
       "ai": {
@@ -2201,7 +2197,16 @@
         "cellMenu": "셀 옵션",
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
-        "textHighlight": "배경(텍스트 강조)"
+        "textHighlight": "배경(텍스트 강조)",
+        "cut": "잘라내기",
+        "pasteAbove": "위에 붙여넣기",
+        "pasteBelow": "아래에 붙여넣기",
+        "pasteLeft": "왼쪽에 붙여넣기",
+        "pasteRight": "오른쪽에 붙여넣기",
+        "splitMergedFirst": "먼저 병합된 셀을 분할하세요",
+        "noTableToPaste": "먼저 표를 복사하세요",
+        "clipboardNotAllowed": "클립보드 접근이 허용되지 않았습니다",
+        "copyFailed": "클립보드에 복사하지 못했습니다"
       },
       "paste": {
         "unsupportedInCell": "이 형식은 붙여넣을 수 없습니다"

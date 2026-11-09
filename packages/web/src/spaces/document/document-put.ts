@@ -121,7 +121,7 @@ function judged(nodes: readonly PMNode[], judge: JudgeMedium, schema: Schema): P
     const children = judged(node.children, judge, schema);
     // A nested group left with nothing goes with what it held.
     if (node.type.name === 'blockGroup' && children.length === 0) return [];
-    if (isTableCell(node) && children.length === 0) children.push(schema.nodes['blockContainer']!.create(null, schema.nodes['paragraph']!.create()));
+    if (isTableCell(node) && children.length === 0) children.push(schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create()));
     return [node.copy(Fragment.from(children))];
   });
 }
@@ -223,7 +223,22 @@ export function holdsNode(content: Fragment, name: string): boolean {
  */
 function onlyTable(rows: readonly PMNode[]): PMNode | null {
   const kept = rows.filter((node) => !(node.type.name === 'blockContainer' && typeOf(node) === 'paragraph' && node.childCount === 1 && node.textContent.trim() === ''));
-  return kept.length === 1 && kept[0]!.type.name === DOC_TABLE ? kept[0]! : null;
+  return kept.length === 1 && kept[0].type.name === DOC_TABLE ? kept[0] : null;
+}
+
+/**
+ * The one table some content is, its media judged as a paste judges them
+ * (inner#1239 design 4.4): what a table menu's paste inserts as new rows or
+ * columns.
+ * @param content - The content, its media not judged yet.
+ * @param judge - Judges every medium in it.
+ * @param schema - The body's schema.
+ * @returns The table, or null when the content is not one table alone.
+ */
+export function judgedTable(content: Read, judge: JudgeMedium, schema: Schema): PMNode | null {
+  const source = content.source.kind === 'slice' ? content.source.slice : blocksSlice(content.source.blocks, schema);
+  const table = onlyTable(rowsOf(source).rows);
+  return table === null ? null : (judged([table], judge, schema)[0] ?? null);
 }
 
 /**
@@ -256,7 +271,7 @@ function isOneLine(rows: Rows): boolean {
  * @returns The slice.
  */
 function openLines(schema: Schema, rows: readonly PMNode[]): Slice {
-  const group = schema.nodes['blockGroup']!.create(null, rows);
+  const group = schema.nodes['blockGroup'].create(null, rows);
   return new Slice(Fragment.from(group), isWordsLine(rows[0]) ? 3 : 1, isWordsLine(rows[rows.length - 1]) ? 3 : 1);
 }
 
@@ -427,7 +442,7 @@ function caretFrom(tr: Transaction, slot: number, isQuoted: boolean): void {
  */
 function finishCaret(tr: Transaction, nodes: readonly PMNode[], start: number): void {
   let pos = start + nodes.slice(0, -1).reduce((sum, node) => sum + node.nodeSize, 0);
-  let last = nodes[nodes.length - 1]!;
+  let last = nodes[nodes.length - 1];
   while (last.type.name === 'blockContainer' && last.childCount > 1) {
     const group = last.lastChild!;
     pos += 2 + last.firstChild!.nodeSize + group.content.size - group.lastChild!.nodeSize;
@@ -474,7 +489,7 @@ function retyped(container: PMNode, line: PMNode): PMNode {
  */
 function nestLast(nodes: PMNode[], line: PMNode): PMNode[] {
   if (line.childCount < 2 || nodes.length === 0) return nodes;
-  const last = nodes[nodes.length - 1]!;
+  const last = nodes[nodes.length - 1];
   if (last.type.name !== 'blockContainer') return [...nodes, ...line.lastChild!.children];
   const group = last.childCount > 1 ? last.lastChild!.content.append(line.lastChild!.content) : line.lastChild!.content;
   const content = Fragment.from([last.firstChild!, line.lastChild!.type.create(null, group)]);
@@ -524,7 +539,7 @@ function putInTextOnly(editor: Editor, rows: readonly PMNode[], pasted: readonly
   else finishCaret(tr, nodes, at);
   view.dispatch(tr.scrollIntoView());
   if (words !== null) return words;
-  return { kind: 'range', from: at + size - nodes[nodes.length - 1]!.nodeSize, to: at + size };
+  return { kind: 'range', from: at + size - nodes[nodes.length - 1].nodeSize, to: at + size };
 }
 
 /**
@@ -711,10 +726,10 @@ function putAtSelection(editor: Editor, kept: Slice, lines: Rows, options: PutOp
   // the user made it; more lines go by the placement, which keeps the
   // user's line its own type (§5.4.3).
   const words = isOneLine(lines);
-  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0]!, options.byPaste) : replaceBlock(view, transformedRows().rows, selection);
+  if (selection instanceof NodeSelection && !selection.node.isInline) return words ? putWords(view, pasted[0], options.byPaste) : replaceBlock(view, transformedRows().rows, selection);
   // A gap cursor stands between blocks: its words are a block of their own,
   // placed by the gap like any other content.
-  if (words && selection.$from.parent.isTextblock && textOnlyAt(selection.$from) === null) return putWords(view, pasted[0]!, options.byPaste);
+  if (words && selection.$from.parent.isTextblock && textOnlyAt(selection.$from) === null) return putWords(view, pasted[0], options.byPaste);
   const replaced = !selection.empty || opened;
   if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
   const $caret = view.state.selection.$from;
@@ -816,8 +831,8 @@ function putInLine(view: EditorView, content: Rows, $caret: ResolvedPos, replace
 
   if (size === 0) {
     const nonParagraph = own.type.name !== 'paragraph';
-    if (firstWords && nonParagraph) nodes[0] = retyped(nodes[0]!, line.node);
-    const last = nodes[nodes.length - 1]!;
+    if (firstWords && nonParagraph) nodes[0] = retyped(nodes[0], line.node);
+    const last = nodes[nodes.length - 1];
     if (replaced) {
       laid = nestLast(nodes, line.node);
       tr.replaceWith(start, end, laid);
@@ -853,8 +868,8 @@ function putInLine(view: EditorView, content: Rows, $caret: ResolvedPos, replace
     const lineId = line.node.attrs['id'] as string;
     const frontOwn = own.content.cut(0, offset);
     const backOwn = own.content.cut(offset);
-    const firstJoined = firstWords && frontOwn.size > 0 ? nodes[0]!.firstChild!.content : null;
-    const lastJoined = lastWords && backOwn.size > 0 ? nodes[nodes.length - 1]!.firstChild!.content : null;
+    const firstJoined = firstWords && frontOwn.size > 0 ? nodes[0].firstChild!.content : null;
+    const lastJoined = lastWords && backOwn.size > 0 ? nodes[nodes.length - 1].firstChild!.content : null;
     const frontLine = frontOwn.size > 0 ? lineWith(line.node, frontOwn.append(firstJoined ?? Fragment.empty), lineId, backOwn.size === 0) : null;
     const backLine = backOwn.size > 0 ? lineWith(line.node, (lastJoined ?? Fragment.empty).append(backOwn), frontLine === null ? lineId : newId(), true) : null;
     const middle = nodes.slice(firstJoined === null ? 0 : 1, lastJoined === null ? undefined : -1);
@@ -908,7 +923,7 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
     return true;
   });
   if (atoms.length === 1 && doc.textBetween(from, to) === '') {
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0]!)));
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0])));
     return;
   }
   const range = TextSelection.between(doc.resolve(from), doc.resolve(to));

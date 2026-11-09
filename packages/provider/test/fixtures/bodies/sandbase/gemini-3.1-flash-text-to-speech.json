@@ -1,0 +1,784 @@
+{
+  "model": "gemini-3.1-flash-text-to-speech",
+  "upstream": "sandbase",
+  "model_id": "google/gemini-3.1-flash-tts",
+  "runs": [
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Arabic (Egypt)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Arabic (Egypt)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Bangla (Bangladesh)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Bangla (Bangladesh)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Dutch (Netherlands)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Dutch (Netherlands)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (India)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (India)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "French (France)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "French (France)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "German (Germany)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "German (Germany)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Hindi (India)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Hindi (India)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Indonesian (Indonesia)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Indonesian (Indonesia)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Italian (Italy)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Italian (Italy)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Japanese (Japan)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Japanese (Japan)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Korean (South Korea)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Korean (South Korea)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Marathi (India)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Marathi (India)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Polish (Poland)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Polish (Poland)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Portuguese (Brazil)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Portuguese (Brazil)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Romanian (Romania)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Romanian (Romania)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Russian (Russia)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Russian (Russia)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Spanish (Spain)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Spanish (Spain)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Tamil (India)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Tamil (India)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Telugu (India)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Telugu (India)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Thai (Thailand)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Thai (Thailand)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Turkish (Turkey)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Turkish (Turkey)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Ukrainian (Ukraine)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Ukrainian (Ukraine)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "Vietnamese (Vietnam)",
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "Vietnamese (Vietnam)",
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "speakers": [
+          {
+            "speaker": "sample",
+            "voice": "Achernar"
+          },
+          {
+            "speaker": "sample",
+            "voice": "Achernar"
+          }
+        ],
+        "voice_id": "Kore"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "speakers": [
+          {
+            "speaker_id": "sample",
+            "voice": "Achernar"
+          },
+          {
+            "speaker_id": "sample",
+            "voice": "Achernar"
+          }
+        ],
+        "voice": "Kore",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Achernar"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Achernar",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Achird"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Achird",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Algenib"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Algenib",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Algieba"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Algieba",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Alnilam"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Alnilam",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Aoede"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Aoede",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Autonoe"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Autonoe",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Callirrhoe"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Callirrhoe",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Charon"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Charon",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Despina"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Despina",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Enceladus"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Enceladus",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Erinome"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Erinome",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Fenrir"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Fenrir",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Gacrux"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Gacrux",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Iapetus"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Iapetus",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Laomedeia"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Laomedeia",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Leda"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Leda",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Orus"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Orus",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Puck"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Puck",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Pulcherrima"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Pulcherrima",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Rasalgethi"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Rasalgethi",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Sadachbia"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Sadachbia",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Sadaltager"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Sadaltager",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Schedar"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Schedar",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Sulafat"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Sulafat",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Umbriel"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Umbriel",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Vindemiatrix"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Vindemiatrix",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Zephyr"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Zephyr",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    },
+    {
+      "params": {
+        "language": "English (United States)",
+        "voice_id": "Zubenelgenubi"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "language_code": "English (US)",
+        "voice": "Zubenelgenubi",
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "google/gemini-3.1-flash-tts"
+      }
+    }
+  ],
+  "steps": []
+}

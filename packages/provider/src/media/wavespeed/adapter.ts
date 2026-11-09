@@ -6,58 +6,35 @@
  * answer the outputs at once; a prediction is asked about at
  * `GET /predictions/{id}/result`; what it cost is a billing search. The
  * upstream has no client key, so a send whose answer was lost cannot be
- * looked up (recovery `none`).
+ * looked up: the runner's `recover` hands it back to be sent again and warns
+ * `potential_duplicate_cost`.
  */
 
 import { z } from "zod";
-import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
-import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
+import { NoAnswer, type HttpStatus } from "@provider/http/errors.js";
+import { fetchJson, parsed } from "@provider/http/request.js";
+import {
+  bearerHeaders as headers,
+  billingFailure,
+  readOptions,
+  minimaxVoiceGone,
+  outputField,
+  outputUrls,
+  submitText,
+  unbilled,
+  type Asked,
+  type MediaAdapter,
+  type Reach,
+  type Refusal,
+  type RequestBounds,
+  type StepCodec,
+  type Submitted,
+} from "@provider/media/adapter.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
-
-/** The upstream kinds a media run speaks to: the runner submits, polls and bills through this adapter alone. */
-const MEDIA_KINDS: Readonly<Record<string, true>> = { wavespeed: true };
-
-/**
- * Whether a media run can speak to upstreams of a kind.
- * @param kind - The upstream kind, as the configuration names it.
- * @returns True when one can.
- */
-export function hasMediaAdapter(kind: string): boolean {
-  return Object.hasOwn(MEDIA_KINDS, kind);
-}
-
-/** One upstream as a call reaches it. */
-export interface Reach {
-  name: string;
-  decl: UpstreamDecl;
-  key: string;
-}
-
-/** The bounds of one request. */
-export interface RequestBounds {
-  /** Epoch ms after which nothing is sent; absent for a final ask. */
-  deadlineAt?: number;
-  signal?: AbortSignal;
-}
-
-/** What a submit answered. */
-export interface Submitted {
-  predictionId: string | undefined;
-  /** The outputs, when the submit already finished. */
-  outputs: unknown[] | undefined;
-}
-
-/** What one question about a prediction answered. */
-export type Asked = { state: "running" } | { state: "done"; outputs: unknown[] } | { state: "failed"; error: string };
-
-/** The largest JSON answer read from the upstream. */
-const MAX_JSON_BYTES = 10 * 1024 * 1024;
-/** How long a JSON answer may stall when no deadline bounds it (a final ask). */
-const FINAL_ASK_IDLE_MS = 60_000;
+import { buildBody } from "@provider/media/body.js";
 
 /**
  * How the upstream says a cloned id it once gave is gone, by clone kind (the
@@ -66,28 +43,9 @@ const FINAL_ASK_IDLE_MS = 60_000;
  * vocal has no rule.
  */
 const GONE: Readonly<Partial<Record<string, (message: string, id: string) => boolean>>> = {
-  voice: (message) => /Voice ID does not exist/.test(message),
+  voice: minimaxVoiceGone,
   element: (message, id) => /Element id not found: (\S+)/.exec(message)?.[1] === id,
 };
-
-/**
- * The read limits of one JSON request.
- * @param bounds - The request's bounds.
- * @returns Byte and idle limits.
- */
-function limits(bounds: RequestBounds): { maxBodyBytes: number; idleMs: number } {
-  const idleMs = bounds.deadlineAt === undefined ? FINAL_ASK_IDLE_MS : Math.max(1, bounds.deadlineAt - Date.now());
-  return { maxBodyBytes: MAX_JSON_BYTES, idleMs };
-}
-
-/**
- * The headers of every request.
- * @param reach - The upstream.
- * @returns Bearer auth and a JSON body type.
- */
-function headers(reach: Reach): Record<string, string> {
-  return { authorization: `Bearer ${reach.key}`, "content-type": "application/json" };
-}
 
 /** A submit answer, as far as it is read. */
 const submittedSchema = z.looseObject({
@@ -95,8 +53,8 @@ const submittedSchema = z.looseObject({
 });
 
 /**
- * A prediction's result answer, as far as it is read. Like today's poll, a part it cannot
- * read reads as absent: no readable status is still running, outputs that are not a list none.
+ * A prediction's result answer, as far as it is read: a part it cannot read reads as absent,
+ * so no readable status is still running and outputs that are not a list are none.
  */
 const resultSchema = z.looseObject({
   data: z.looseObject({
@@ -118,19 +76,9 @@ const resultSchema = z.looseObject({
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {NoAnswer} With a BilledAnswerLost cause carrying one missing cost, when a 2xx answer cannot be read.
  */
-export async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
+async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
   const url = `${reach.decl.base_url}/${endpoint}`;
-  const options = { replaySafe: false, ...bounds };
-  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify(body) }, options);
-  const ok = isSuccess(response.status);
-  const { maxBodyBytes, idleMs } = limits(bounds);
-  let text: string;
-  try {
-    text = await answerText(url, response, maxBodyBytes, idleMs, options);
-  } catch (error) {
-    throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
-  }
-  if (!ok) throw new HttpStatus(url, response.status, text);
+  const text = await submitText(reach, url, body, headers(reach), bounds);
   const read = submittedSchema.safeParse(parsed(text));
   const id = read.success && read.data.data.id !== "" ? read.data.data.id : undefined;
   const outputs = read.success && (read.data.data.outputs ?? []).length > 0 ? read.data.data.outputs! : undefined;
@@ -147,16 +95,16 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
  */
-export async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
+async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
   const answer = await fetchJson(
     { url: `${reach.decl.base_url}/predictions/${encodeURIComponent(predictionId)}/result`, method: "GET", headers: headers(reach) },
-    { replaySafe: true, ...bounds, ...limits(bounds) },
+    readOptions(bounds),
   );
   const parsed = resultSchema.safeParse(answer);
   const data = parsed.success ? parsed.data.data : undefined;
   if (data === undefined) return { state: "running" };
   if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
-  // As today's poll: the upstream's error as text whatever its type, "unknown" when it gave none.
+  // The upstream's error as text whatever its type, "unknown" when it gave none.
   if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
   return { state: "running" };
 }
@@ -169,27 +117,20 @@ export async function ask(reach: Reach, predictionId: string, bounds: RequestBou
  * @param lastAttempt - Whether no later lookup follows: an answer without a total is then missing, not pending.
  * @returns The cost and anything to log.
  */
-export async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
-  /**
-   * The answer when billing did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unknown = (reason: string): Cost =>
-    lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
+async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
   let body: unknown;
   try {
     body = await fetchJson(
       { url: `${reach.decl.base_url}/billings/search`, method: "POST", headers: headers(reach), body: JSON.stringify({ prediction_uuids: [predictionId] }) },
-      { replaySafe: true, ...bounds, ...limits(bounds) },
+      readOptions(bounds),
     );
   } catch (error) {
-    const code = error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
-    return { cost: unknown(code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };
+    const code = billingFailure(error);
+    return { cost: unbilled(reach, predictionId, lastAttempt, code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };
   }
   const read = readBilling(body);
   if (read.kind === "none") {
-    return { cost: unknown("billing_query_empty"), warnings: [...read.warnings, { code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
+    return { cost: unbilled(reach, predictionId, lastAttempt, "billing_query_empty"), warnings: [...read.warnings, { code: "billing_query_empty", detail: { upstream: reach.name, predictionId } }] };
   }
   return { cost: { state: "known", usd: read.usd, source: "billing" }, warnings: read.warnings };
 }
@@ -198,14 +139,14 @@ export async function billed(reach: Reach, predictionId: string, bounds: Request
 const MODEL_NOT_FOUND = "Model not found.";
 
 /**
- * Whether a refused submit says the upstream has no such model, rather than
- * refusing the request's params: both are 400s, told apart by the message.
+ * What a refused submit says: WaveSpeed's no-such-model answer is a 400 told
+ * apart from a refusal of the request's params by its message.
  * @param error - The refusal.
- * @returns True for WaveSpeed's model-not-found answer.
+ * @returns `model_not_found` for that answer, otherwise nothing.
  */
-export function modelNotFound(error: HttpStatus): boolean {
-  if (error.status !== 400) return false;
-  return (parsed(error.body) as { message?: unknown } | null | undefined)?.message === MODEL_NOT_FOUND;
+function refusal(error: HttpStatus): Refusal {
+  if (error.status !== 400) return undefined;
+  return (parsed(error.body) as { message?: unknown } | null | undefined)?.message === MODEL_NOT_FOUND ? "model_not_found" : undefined;
 }
 
 /**
@@ -215,6 +156,53 @@ export function modelNotFound(error: HttpStatus): boolean {
  * @param id - The clone's upstream id.
  * @returns True when the clone should be retired.
  */
-export function gone(kind: string, message: string, id: string): boolean {
+function gone(kind: string, message: string, id: string): boolean {
   return GONE[kind]?.(message, id) === true;
 }
+
+/**
+ * An upload step: the source sent for a purpose, its id read back.
+ * @param purpose - `reference` or `melody`.
+ * @returns The step's codec.
+ */
+function upload(purpose: string): StepCodec {
+  return {
+    body: (context) => ({ audio: context.source(), purpose }),
+    output: (outputs, context) => ({ param: context.param, id: outputField(outputs, `${purpose}_id`) }),
+  };
+}
+
+/** WaveSpeed's extra steps: Mureka uploads and vocal clones, MiniMax voice clones and speech, Kling elements. */
+const STEPS: MediaAdapter["steps"] = {
+  upload_reference: upload("reference"),
+  upload_melody: upload("melody"),
+  vocal: {
+    body: (context) => ({ audio: context.source() }),
+    output: (outputs, context) => ({ param: context.param, id: outputField(outputs, "vocal_id") }),
+  },
+  voice: {
+    body: (context) => ({ ...buildBody(context.binding, { params: context.params, prompt: "" }), custom_voice_id: context.customVoiceId }),
+    output: (_outputs, context) => ({ voiceId: context.customVoiceId }),
+  },
+  speak: {
+    body: (context) => ({ text: context.prompt, voice_id: context.voice() }),
+    output: (outputs) => ({ urls: [outputUrls(outputs)[0]!] }),
+  },
+  element: {
+    body: (context) => {
+      const image = context.source();
+      return { name: `Element ${(context.itemIndex ?? 0) + 1}`, description: context.description ?? "", image, element_refer_list: [image] };
+    },
+    output: (outputs, context) => ({ index: context.itemIndex ?? 0, elementId: outputField(outputs, "element_id") }),
+  },
+};
+
+/** WaveSpeed, as the runner and cost lookups reach it. */
+export const wavespeedAdapter: MediaAdapter = {
+  submit,
+  ask,
+  billed,
+  refusal,
+  gone,
+  steps: STEPS,
+};

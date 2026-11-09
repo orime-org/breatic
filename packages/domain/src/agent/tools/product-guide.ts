@@ -1572,14 +1572,11 @@ export function renderProductGuide(): string {
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
       "pressing it turns the inline code back into plain text. On an empty line the colour menu is greyed.",
-    `- The AI menu has three groups: ${quoted(t("spaces.document.commands.aiRewriteGroup"))} with ` +
+    `- The AI menu has three groups divided by lines: ` +
       `${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
       `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
-      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
-      `with two rows; and ${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
-      `${quoted(t("spaces.document.commands.ai_custom"))}. One of the AI menu's commands looks available but does ` +
-      `nothing yet: the second under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for an ` +
-      "illustration. Hovering " +
+      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.ai_storyboard"))}; ` +
+      `and ${quoted(t("spaces.document.commands.ai_custom"))}. Hovering ` +
       `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
       "languages, each written in its own language; hovering " +
       `${quoted(t("spaces.document.commands.ai_tone"))} opens ${quoted(t("spaces.document.ai.tone.professional"))}, ` +
@@ -1596,8 +1593,9 @@ export function renderProductGuide(): string {
       "table from outside or across cells) and keeps the selection as it was; " +
       `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
       "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
-      "block stay. The commands under " +
-      `${quoted(t("spaces.document.commands.aiRewriteGroup"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
+      `block stay. ${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
+      `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} and ` +
+      `${quoted(t("spaces.document.commands.ai_tone"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
       `paragraph into several. ${quoted(t("spaces.document.commands.ai_storyboard"))} turns the selection into a ` +
       "shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera " +
       "angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes, written in " +
@@ -1706,22 +1704,46 @@ export function renderProductGuide(): string {
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
-      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
-      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
+      `${quoted(t("spaces.document.blockHandle.deleteTable"))}. ${quoted(t("canvas.contextMenu.copy"))} puts the ` +
+      `whole table on the clipboard and ${quoted(t("spaces.document.table.cut"))} does the same, then deletes the ` +
+      "table; pasted with Cmd/Ctrl+V outside a table it makes a new table, and pasted in a table's cell it fills " +
+      `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
       "when no cell has words.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +
-      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
+      `${quoted(t("spaces.document.table.insertRowBelow"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
+      `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.table.pasteAbove"))}, ` +
+      `${quoted(t("spaces.document.table.pasteBelow"))}, ${quoted(t("spaces.document.table.headerRow"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))}, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.table.deleteRow"))}; the column's has ` +
       `${quoted(t("spaces.document.table.insertColumnLeft"))}, ${quoted(t("spaces.document.table.insertColumnRight"))}, ` +
+      `${quoted(t("canvas.contextMenu.copy"))}, ${quoted(t("spaces.document.table.cut"))}, ` +
+      `${quoted(t("spaces.document.table.pasteLeft"))}, ${quoted(t("spaces.document.table.pasteRight"))}, ` +
       `${quoted(t("spaces.document.table.headerColumn"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
-      `${quoted(t("spaces.document.table.cellFill"))} and ${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("spaces.document.table.cellFill"))}, ${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
+      `${quoted(t("spaces.document.table.deleteColumn"))}. ` +
+      `${quoted(t("canvas.contextMenu.copy"))} puts the row or column on the clipboard, as selecting its cells and ` +
+      `pressing Cmd/Ctrl+C does, and ${quoted(t("spaces.document.table.cut"))} copies it, then deletes it. ` +
+      `${quoted(t("spaces.document.table.pasteAbove"))} and the other paste items insert the table on the ` +
+      "clipboard as new rows (or columns) beside this one and change no cell already there: rows copied from " +
+      "this or another table, a spreadsheet or a web page all work; a narrower copy leaves the remaining new cells " +
+      "empty and a wider one adds columns (or rows) to the table. The browser may ask to allow reading the " +
+      `clipboard first; refused, a notice says ${quoted(t("spaces.document.table.clipboardNotAllowed"))}, and ` +
+      `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
+      `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
+      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "row or column, the copy, cut, paste and " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
+      `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
       `${quoted(t("spaces.document.table.headerRow"))} can be picked only on the first row and ` +
       `${quoted(t("spaces.document.table.headerColumn"))} only on the first column, and shows a tick when on. ` +
       `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.table.cellFill"))} open a ` +
@@ -1810,8 +1832,6 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: the AI command that illustrates a passage, snapshots, images or other media, " +
-      "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +

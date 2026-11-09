@@ -2089,16 +2089,12 @@
         "textColor": "字体颜色",
         "fillColor": "背景颜色",
         "colorReset": "恢复默认",
-        "aiRewriteGroup": "改写选中的文字",
-        "aiProduceGroup": "据选中的文字产出新东西",
-        "aiOtherGroup": "其它",
         "ai_refine": "优化",
         "ai_expand": "扩写",
         "ai_shorten": "缩写",
         "ai_translate": "翻译",
         "ai_tone": "改语气",
         "ai_storyboard": "生成分镜表",
-        "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
       },
       "ai": {
@@ -2201,7 +2197,16 @@
         "cellMenu": "格子选项",
         "splitCell": "拆分单元格",
         "mergeCells": "合并单元格",
-        "textHighlight": "背景（高亮文字）"
+        "textHighlight": "背景（高亮文字）",
+        "cut": "剪切",
+        "pasteAbove": "粘贴到上方",
+        "pasteBelow": "粘贴到下方",
+        "pasteLeft": "粘贴到左侧",
+        "pasteRight": "粘贴到右侧",
+        "splitMergedFirst": "请先拆分合并的单元格",
+        "noTableToPaste": "请先复制一个表格",
+        "clipboardNotAllowed": "没有读取剪贴板的权限",
+        "copyFailed": "无法复制到剪贴板"
       },
       "paste": {
         "unsupportedInCell": "当前格式不支持粘贴"

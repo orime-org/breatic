@@ -2089,16 +2089,12 @@
         "textColor": "Text colour",
         "fillColor": "Background colour",
         "colorReset": "Reset to default",
-        "aiRewriteGroup": "Rewrite the selection",
-        "aiProduceGroup": "Make something from the selection",
-        "aiOtherGroup": "Other",
         "ai_refine": "Polish",
         "ai_expand": "Expand",
         "ai_shorten": "Shorten",
         "ai_translate": "Translate",
         "ai_tone": "Change tone",
         "ai_storyboard": "Draft a shot list",
-        "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
       },
       "ai": {
@@ -2201,7 +2197,16 @@
         "cellMenu": "Cell options",
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
-        "textHighlight": "Highlight"
+        "textHighlight": "Highlight",
+        "cut": "Cut",
+        "pasteAbove": "Paste above",
+        "pasteBelow": "Paste below",
+        "pasteLeft": "Paste left",
+        "pasteRight": "Paste right",
+        "splitMergedFirst": "Split merged cells first",
+        "noTableToPaste": "Copy a table first",
+        "clipboardNotAllowed": "Clipboard access is not allowed",
+        "copyFailed": "Could not copy to the clipboard"
       },
       "paste": {
         "unsupportedInCell": "This format cannot be pasted here"

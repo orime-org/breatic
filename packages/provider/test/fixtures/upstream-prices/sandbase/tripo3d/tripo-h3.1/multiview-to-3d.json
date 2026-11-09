@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/tripo3d/tripo-h3.1/multiview-to-3d",
+  "price_formula": "(((params.texture ?? true) || (params.pbr ?? true)) ? ((params.texture_quality ?? \"standard\") == \"detailed\" ? 0.48 : 0.36) : 0.24) + ((params.geometry_quality ?? \"standard\") == \"detailed\" ? 0.24 : 0.0) + ((params.quad ?? false) ? 0.06 : 0.0)"
+}

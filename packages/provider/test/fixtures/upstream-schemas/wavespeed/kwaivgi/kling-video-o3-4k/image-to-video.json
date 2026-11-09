@@ -1,0 +1,133 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "default": 5
+      }
+    ],
+    "element_list": [
+      {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "fields": {
+            "element_id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "last_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "multi_prompt": [
+      {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "fields": {
+            "duration": [
+              {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ],
+                "default": 5
+              }
+            ],
+            "prompt": [
+              {
+                "type": "string",
+                "maxLength": 512
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "prompt",
+                  "duration"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "prompt",
+            "duration"
+          ]
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligence"
+        ],
+        "default": "customize"
+      }
+    ],
+    "sound": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ]
+}

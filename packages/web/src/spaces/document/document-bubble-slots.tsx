@@ -9,9 +9,7 @@
  * what each slot looks like and what its menu holds.
  *
  * Block type, alignment and colour all reach their commands. The AI slot's
- * text commands open the AI output dialog (inner#1860); its two rows that make
- * something new write a line to the console when pressed, the menu closing
- * after it either way (user 2026-08-27).
+ * commands open the AI output dialog (inner#1860), the menu closing after it.
  *
  * Three things carry the greyed treatment `document-unavailable-control.ts` defines:
  * the block type menu over a selection no row can act on, judged only while
@@ -26,7 +24,6 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import { Button } from '@web/components/ui/button';
 import { DropdownMenuShortcut } from '@web/components/ui/dropdown-menu';
 import {
-  BubbleMenuHeading,
   BubbleMenuRow,
   BubbleMenuRule,
   BubbleMenuSubmenuRow,
@@ -85,19 +82,6 @@ import {
 } from '@web/spaces/document/document-align-items';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
-
-/**
- * Says a control was pressed before anyone wrote the command behind it.
- *
- * The console rather than the screen: these controls look and behave the way
- * the demo draws them, and telling the user that one is not built yet is the
- * unavailable-item marking of inner#1008. Whoever is holding the browser open
- * sees which command they reached.
- * @param what - The control that was pressed.
- */
-function pressedWithNothingBehindIt(what: string): void {
-  console.warn(`not implemented yet: ${what}`);
-}
 
 /** The shape every slot shares: `.bubble-drop` — 28 tall, 6px either side. */
 // `group` is what lets the chevron inside read the trigger's `data-state`.
@@ -527,11 +511,8 @@ export const ColorSlot = React.memo(function ColorSlot({
   );
 });
 
-/** What an AI menu row does: a command, a second level, or nothing yet. */
-type AiRowKind =
-  | { readonly runs: AiCommand }
-  | { readonly opens: 'translate' | 'tone' }
-  | { readonly notOpen: true };
+/** What an AI menu row does: a command or a second level. */
+type AiRowKind = { readonly runs: AiCommand } | { readonly opens: 'translate' | 'tone' };
 
 /** One row of the AI menu. */
 interface AiRow {
@@ -540,33 +521,25 @@ interface AiRow {
   readonly kind: AiRowKind;
 }
 
-/** The AI menu's eight commands in three groups, from the ruling §3.2.1. */
-const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = [
-  {
-    labelKey: 'spaces.document.commands.aiRewriteGroup',
-    // Each row spells its key out. A template built from the id would read the
-    // same at runtime and vanish from the scan that finds dead catalog entries,
-    // so every one of these eight would look unused.
-    items: [
-      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
-      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
-      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten', kind: { runs: { id: 'shorten' } } },
-      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate', kind: { opens: 'translate' } },
-      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone', kind: { opens: 'tone' } },
-    ],
-  },
-  {
-    // The illustration is inner#1866.
-    labelKey: 'spaces.document.commands.aiProduceGroup',
-    items: [
-      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } },
-      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate', kind: { notOpen: true } },
-    ],
-  },
-  {
-    labelKey: 'spaces.document.commands.aiOtherGroup',
-    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom', kind: { runs: { id: 'custom' } } }],
-  },
+/**
+ * The AI menu's seven commands in three groups — rewrites, the shot list, the
+ * custom instruction — drawn with a rule between groups, as the block type
+ * menu draws its own.
+ *
+ * Each row spells its key out. A template built from the id would read the
+ * same at runtime and vanish from the scan that finds dead catalog entries,
+ * so every one of these seven would look unused.
+ */
+const AI_GROUPS: ReadonlyArray<readonly AiRow[]> = [
+  [
+    { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
+    { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
+    { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten', kind: { runs: { id: 'shorten' } } },
+    { id: 'translate', labelKey: 'spaces.document.commands.ai_translate', kind: { opens: 'translate' } },
+    { id: 'tone', labelKey: 'spaces.document.commands.ai_tone', kind: { opens: 'tone' } },
+  ],
+  [{ id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } }],
+  [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom', kind: { runs: { id: 'custom' } } }],
 ];
 
 /** One item of a second level: its test id stem, what it shows, the command it runs. */
@@ -595,10 +568,9 @@ function aiSubItems(which: 'translate' | 'tone', t: (key: string) => string): Ai
  * The AI slot.
  *
  * Its shape is the ruling's (§3.2.1): icon, the word AI, chevron, and hovering
- * it opens a list of commands below. Seven of the eight open the AI output
- * dialog (inner#1860, the shot list inner#1130); translate and change tone
- * first open a second level beside their row, for the language or the tone.
- * The illustration arrives with its own task (inner#1866).
+ * it opens a list of commands below. Each opens the AI output dialog
+ * (inner#1860, the shot list inner#1130); translate and change tone first
+ * open a second level beside their row, for the language or the tone.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -645,10 +617,10 @@ export const AiSlot = React.memo(function AiSlot({
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      {AI_GROUPS.map((group) => (
-        <React.Fragment key={group.labelKey}>
-          <BubbleMenuHeading>{t(group.labelKey)}</BubbleMenuHeading>
-          {group.items.map((item) => {
+      {AI_GROUPS.map((group, index) => (
+        <React.Fragment key={group[0]!.id}>
+          {index > 0 ? <BubbleMenuRule /> : null}
+          {group.map((item) => {
             const { kind } = item;
             if ('opens' in kind) {
               const which = kind.opens;
@@ -669,10 +641,7 @@ export const AiSlot = React.memo(function AiSlot({
               <BubbleMenuRow
                 key={item.id}
                 data-testid={`doc-bubble-ai-item-${item.id}`}
-                onSelect={() => {
-                  if ('runs' in kind) run(kind.runs);
-                  else pressedWithNothingBehindIt(`ai ${item.id}`);
-                }}
+                onSelect={() => run(kind.runs)}
               >
                 {t(item.labelKey)}
               </BubbleMenuRow>

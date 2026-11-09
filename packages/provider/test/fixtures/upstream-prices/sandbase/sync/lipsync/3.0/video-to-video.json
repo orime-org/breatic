@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/sync/lipsync/3.0/video-to-video",
+  "price_formula": "(usage.duration ?? media_duration(params.video) ?? 5.0) * 0.135"
+}

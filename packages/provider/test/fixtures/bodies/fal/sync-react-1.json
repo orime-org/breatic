@@ -1,0 +1,136 @@
+{
+  "model": "sync-react-1",
+  "upstream": "fal",
+  "model_id": "fal-ai/sync-lipsync/react-1",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "happy",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "happy",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "sad",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "sad",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "angry",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "angry",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "disgusted",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "disgusted",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "surprised",
+        "model_mode": "face",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "surprised",
+        "model_mode": "face",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "lips",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "lips",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    },
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "head",
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "emotion": "neutral",
+        "model_mode": "head",
+        "video_url": "https://example.com/video.mp4",
+        "lipsync_mode": "loop"
+      }
+    }
+  ],
+  "steps": []
+}
