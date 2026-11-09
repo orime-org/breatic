@@ -21,7 +21,7 @@ import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/doc
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { selectionItem } from '@web/spaces/document/document-to-agent';
 import { setTableTarget } from '@web/spaces/document/document-table-target';
-import { insertRow } from '@web/spaces/document/document-table-run';
+import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import {
   copyTableLine,
   cutTableLine,
@@ -466,6 +466,18 @@ describe('pasting copied rows and columns as new ones', () => {
     expect(images[0].attrs['uploadId']).not.toBe('');
   });
 
+  it('keeps the table even when the copied table has a caption, read as a short row', async () => {
+    const { editor } = open(SMALL);
+    readable = {
+      'text/html': '<table><caption>Population</caption><tbody><tr><th>City</th><th>Count</th></tr><tr><td>A</td><td>1</td></tr></tbody></table>',
+      'text/plain': '',
+    };
+
+    expect(await pasteTableLines(editor as never, cellOf(editor, 'a3'), 'below')).toBe('pasted');
+
+    expect(grid(editor)).toEqual([['a1', 'b1'], ['a2', 'b2'], ['a3', 'b3'], ['Population', ''], ['City', 'Count'], ['A', '1']]);
+  });
+
   it('says there is no table to insert, and changes nothing, for other content', async () => {
     const { editor } = open(SMALL);
     readable = { 'text/html': '<p>words</p>', 'text/plain': 'words' };
@@ -612,6 +624,25 @@ describe('a menu command whose clipboard wait outlasts a change to its table', (
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onLeftOut).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it('says the row is gone, deleting nothing, when it went while the async clipboard was written', async () => {
+    const { editor } = open(SMALL);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    vi.stubGlobal('ClipboardItem', class {
+      constructor(readonly items: Record<string, Blob>) {}
+    });
+    let release = (): void => undefined;
+    vi.mocked(navigator.clipboard.write).mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve();
+    }));
+
+    const cutting = cutTableLine(editor as never, cellOf(editor, 'a2'), 'row');
+    deleteRowAt(editor as never, cellOf(editor, 'a2'));
+    release();
+
+    expect(await cutting).toBe('gone');
+    expect(grid(editor)).toEqual([['a1', 'b1'], ['a3', 'b3']]);
   });
 
   it('deletes nothing when the row it copied through the async clipboard has merged across its edge meanwhile', async () => {
