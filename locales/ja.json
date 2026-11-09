@@ -2197,7 +2197,9 @@
         "cellMenu": "セルのオプション",
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
-        "textHighlight": "背景（文字のハイライト）"
+        "textHighlight": "背景（文字のハイライト）",
+        "fullscreen": "全画面",
+        "exitFullscreen": "全画面を終了"
       },
       "paste": {
         "unsupportedInCell": "この形式は貼り付けできません"

@@ -33,6 +33,7 @@ import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 import { HANDLE_THICKNESS } from '@web/spaces/document/document-table-control-place';
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 import { BlockStrip, type StripHold } from '@web/spaces/document/DocumentBlockHandle';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 
 /** The references the table's strip and its row and column handles are placed by. */
 interface References {
@@ -114,10 +115,13 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
     [handles],
   );
 
+  // A table open full screen is edited from inside: its own strip, which acts
+  // on it as a block of the body, stays away (breatic#1427 §5.1).
+  const fullscreen = useTableFullscreen(editor).table !== null;
   const open = {
     row: state?.show === true && state.rowIndex !== undefined && (only === undefined || only === 'row'),
     column: state?.show === true && state.colIndex !== undefined && (only === undefined || only === 'column'),
-    table: state?.show === true && (only === undefined || only === 'table'),
+    table: state?.show === true && !fullscreen && (only === undefined || only === 'table'),
   };
   const options = React.useMemo<Record<'row' | 'column', FloatingUIOptions>>(() => {
     /**

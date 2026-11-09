@@ -11,7 +11,7 @@
 
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
@@ -38,6 +38,7 @@ type Editor = ReturnType<typeof buildDocumentEditor>;
 const mounted: Editor[] = [];
 
 afterEach(() => {
+  cleanup();
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
@@ -78,7 +79,9 @@ function area(editor: Editor, surface: HTMLElement, readOnly: boolean): React.JS
   return (
     <TooltipProvider>
       <DocumentProjectProvider projectId='project-1'>
-        <DocumentEditor handle={{ editor, surface }} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
+        <div data-region='space'>
+          <DocumentEditor handle={{ editor, surface }} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
+        </div>
       </DocumentProjectProvider>
     </TooltipProvider>
   );

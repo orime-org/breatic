@@ -2197,7 +2197,9 @@
         "cellMenu": "Cell options",
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
-        "textHighlight": "Highlight"
+        "textHighlight": "Highlight",
+        "fullscreen": "Full screen",
+        "exitFullscreen": "Exit full screen"
       },
       "paste": {
         "unsupportedInCell": "This format cannot be pasted here"

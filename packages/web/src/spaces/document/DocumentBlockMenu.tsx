@@ -90,6 +90,7 @@ import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -310,6 +311,9 @@ export function DocumentBlockMenu({
       }
       if (row.id === 'delete') {
         deleteRow(editor, live.id);
+      }
+      if (row.id === 'fullscreen') {
+        openTableFullscreen(editor, live.id);
       }
     }
     close();

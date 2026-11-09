@@ -82,6 +82,7 @@ import {
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
 import {
   BUBBLE_BAR_CLASS,
@@ -185,6 +186,12 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'ai', tools: [addToAgentTool], panels: [], slot: AiSlot, slotOverCells: false },
   { key: 'comment', tools: [commentTool], panels: [] },
 ];
+
+/**
+ * The entries a table open full screen leaves out (breatic#1427 §5.1): both
+ * need a panel the full-screen table covers, the comment panel and the Agent.
+ */
+const OUT_OF_FULLSCREEN: ReadonlySet<string> = new Set([addToAgentTool.id, commentTool.id]);
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
 const GAP_FROM_SELECTION_PX = 8;
@@ -544,6 +551,7 @@ function BubbleBar({
     (current) => current.prosemirrorState.selection instanceof CellSelection,
   );
   const projectId = useDocumentProjectId();
+  const fullscreen = useTableFullscreen(editor).table !== null;
   const groups = React.useMemo(
     () => BUBBLE_GROUPS.flatMap((group): BubbleGroup[] => {
       /**
@@ -552,14 +560,15 @@ function BubbleBar({
        * @returns Those that need no project, and the rest when there is one.
        */
       const placed = (tools: ToolDef[]): ToolDef[] =>
-        tools.filter((tool) => tool.needsProject !== true || projectId !== null);
+        tools.filter((tool) =>
+          (tool.needsProject !== true || projectId !== null) && !(fullscreen && OUT_OF_FULLSCREEN.has(tool.id)));
       const slot = overCells && group.slotOverCells === false ? undefined : group.slot;
       const tools = placed(group.tools);
       const after = placed(group.after ?? []);
       if (slot === undefined && tools.length === 0 && after.length === 0 && group.panels.length === 0) return [];
       return [{ ...group, slot, tools, after }];
     }),
-    [overCells, projectId],
+    [overCells, projectId, fullscreen],
   );
 
   /**

@@ -26,6 +26,7 @@ import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import {
   clearFullscreenReturn,
+  leaveFullscreenForWrite,
   setTableFullscreen,
   tableFullscreenIn,
 } from '@web/spaces/document/document-table-fullscreen';
@@ -303,16 +304,15 @@ describe('local writes in full screen', () => {
     expect(tableIn(editor.prosemirrorState.doc).node.textContent).toContain('Xa1');
   });
 
-  it('leaves the document as it was on Shift-Mod-ArrowDown over cells, which moves the whole table in the body', () => {
+  it('leaves the document as it was on Shift-Mod-ArrowDown over words in two cells, which moves the whole table in the body', () => {
     /**
-     * Selects the first two cells and presses Shift-Mod-ArrowDown.
+     * Selects from a1 into b2 and presses Shift-Mod-ArrowDown.
      * @param editor - The editor.
      */
     const moveDown = (editor: Editor): void => {
       const view = editor.prosemirrorView!;
-      const cells = cellsIn(view.state.doc);
-      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
-      press(editor, { key: 'ArrowDown', shiftKey: true, metaKey: true });
+      const { doc } = view.state;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, wordsAt(doc, 'a1') + 1, wordsAt(doc, 'b2') + 1)));
       press(editor, { key: 'ArrowDown', shiftKey: true, ctrlKey: true });
     };
     const body = open(BETWEEN).editor;
@@ -604,5 +604,46 @@ describe('a press on a comment highlight in full screen', () => {
     view.someProp('handleClick', (handler) => handler(view, a1 + 1, new MouseEvent('mousedown', { button: 0 })));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
+  });
+});
+
+describe('a write aimed from outside the editor, such as the AI dialog\'s', () => {
+  it('keeps full screen when it lands inside one cell', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    const a1 = wordsAt(editor.prosemirrorState.doc, 'a1');
+
+    leaveFullscreenForWrite(editor, { from: a1, to: a1 + 2 });
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+
+  it('ends full screen first when it is aimed at the whole table', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const { pos, node } = tableIn(editor.prosemirrorState.doc);
+
+    leaveFullscreenForWrite(editor, { from: pos, to: pos + node.nodeSize });
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+  });
+
+  it('ends full screen first when it is aimed outside the table', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const after = wordsAt(editor.prosemirrorState.doc, 'After');
+
+    leaveFullscreenForWrite(editor, { from: after, to: after + 5 });
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+  });
+
+  it('does nothing in the body', () => {
+    const { editor } = open(BETWEEN);
+    const after = wordsAt(editor.prosemirrorState.doc, 'After');
+
+    leaveFullscreenForWrite(editor, { from: after, to: after + 5 });
+
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: null });
   });
 });

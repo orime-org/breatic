@@ -83,6 +83,7 @@ import {
   documentPastedMediaExtension,
   type PastedMediaOptions,
 } from '@web/spaces/document/document-external-media';
+import { documentTableFullscreenExtension } from '@web/spaces/document/document-table-fullscreen';
 import {
   documentFileDropExtension,
   fileDropPosition,
@@ -173,6 +174,7 @@ export function buildDocumentEditor(
     // sit after it; the built-in list bindings it overrides are registered
     // with the blocks themselves.
     extensions: [
+      documentTableFullscreenExtension(),
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),

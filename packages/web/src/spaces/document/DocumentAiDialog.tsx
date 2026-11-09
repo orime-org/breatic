@@ -87,6 +87,7 @@ import {
 import { viewOf, type ViewedEditor } from '@web/spaces/document/document-editor-view';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockById, type ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { leaveFullscreenForWrite } from '@web/spaces/document/document-table-fullscreen';
 import { ourMediaPrefix, ourMediaPrefixReady } from '@web/spaces/document/document-external-media';
 import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 import { withShotListWidths } from '@web/spaces/document/document-ai-shot-list';
@@ -308,6 +309,13 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         try {
           const read = aiAnswer(editor, editor.prosemirrorState, effect.result, ourMediaPrefix(), at.insertBlockId);
           const answer = command === 'storyboard' ? withShotListWidths(read) : read;
+          // A table open full screen shows only its cells; a write aimed past
+          // one of them ends full screen first (breatic#1427 §5.3).
+          const below = effect.how === 'insert' ? blockById(editor.prosemirrorState.doc, at.insertBlockId) : null;
+          const target = effect.how === 'insert'
+            ? below && { from: below.pos, to: below.pos + below.node.nodeSize }
+            : aiCoverIn(editor.prosemirrorState);
+          if (target !== null) leaveFullscreenForWrite(editor, target);
           told(effect.how === 'insert'
             ? insertAiAnswer({ editor }, at.insertBlockId, answer, admission)
             : replaceAiAnswer({ editor }, answer, admission));

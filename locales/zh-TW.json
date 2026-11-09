@@ -2197,7 +2197,9 @@
         "cellMenu": "儲存格選項",
         "splitCell": "分割儲存格",
         "mergeCells": "合併儲存格",
-        "textHighlight": "背景（醒目提示文字）"
+        "textHighlight": "背景（醒目提示文字）",
+        "fullscreen": "全螢幕",
+        "exitFullscreen": "結束全螢幕"
       },
       "paste": {
         "unsupportedInCell": "目前格式不支援貼上"

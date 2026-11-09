@@ -23,6 +23,7 @@ import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTab
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 
 interface DocumentBlockControlsProps {
   /** The editor the strip acts on. */
@@ -50,12 +51,18 @@ export function DocumentBlockControls({
     [editor],
   );
 
+  // A table open full screen has no block handles in its cells: their menu
+  // and drag act on blocks of the body (breatic#1427 §5.1).
+  const fullscreen = useTableFullscreen(editor).table !== null;
+
   return (
     <BlockNoteContext.Provider value={context}>
-      <SideMenuController
-        sideMenu={DocumentBlockHandle}
-        floatingUIOptions={placement}
-      />
+      {fullscreen ? null : (
+        <SideMenuController
+          sideMenu={DocumentBlockHandle}
+          floatingUIOptions={placement}
+        />
+      )}
       {/* A table's row and column handles (inner#1126 §5.0). */}
       <DocumentTableHandlesController editor={editor} />
     </BlockNoteContext.Provider>

@@ -2197,7 +2197,9 @@
         "cellMenu": "格子选项",
         "splitCell": "拆分单元格",
         "mergeCells": "合并单元格",
-        "textHighlight": "背景（高亮文字）"
+        "textHighlight": "背景（高亮文字）",
+        "fullscreen": "全屏",
+        "exitFullscreen": "退出全屏"
       },
       "paste": {
         "unsupportedInCell": "当前格式不支持粘贴"

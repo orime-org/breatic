@@ -124,13 +124,13 @@ describe('the strip on a table (A5)', () => {
     expect(onParagraph).toMatch(/^translateY\(/);
   });
 
-  it('opens the six table rows', () => {
+  it('opens the seven table rows, full screen first', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
     render(<Strip />);
 
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
-    expect(rows()).toEqual(['insertBelow', 'duplicate', 'indent', 'unindent', 'comment', 'delete']);
+    expect(rows()).toEqual(['fullscreen', 'insertBelow', 'duplicate', 'indent', 'unindent', 'comment', 'delete']);
     expect(screen.getByTestId('doc-block-row-delete').textContent).toBe('Delete table');
   });
 
