@@ -62,7 +62,11 @@ export type MediaAnswer = AnswerCommon &
   (
     | { state: "send"; ticket: MediaTicket; step: { kind: StepKind } }
     | { state: "running"; ticket: MediaTicket; askAgainAt: number }
-    | { state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string; notice?: MediaNotice }
+    | {
+      state: "done"; outputs: MediaOutput[]; costs: Cost[]; servedBy: string; notice?: MediaNotice;
+      /** What a passed-over optional step cost; the delivered outputs never used it. */
+      passedOverCosts: Cost[];
+    }
     | { state: "failed"; reason: Error; costs: Cost[] }
   );
 
@@ -95,6 +99,12 @@ export interface CallBounds {
   signal?: AbortSignal;
 }
 
+/** The bounds of one send. */
+export interface SendOptions extends CallBounds {
+  /** The caller's last try: an optional step its upstream would not take now is passed over. */
+  final?: boolean;
+}
+
 /** The bounds of one poll. */
 export interface PollOptions extends CallBounds {
   /** The last question after the deadline: the status and billing reads are not cut by it. */
@@ -122,7 +132,7 @@ export interface LegacyRows {
 /** Media runs as tickets. */
 export interface MediaRunner {
   plan(model: string, input: MediaInput, route: Route, options: PlanOptions): Promise<MediaAnswer>;
-  send(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
+  send(ticket: MediaTicket, bounds: SendOptions): Promise<MediaAnswer>;
   poll(ticket: MediaTicket, options: PollOptions): Promise<MediaAnswer>;
   recover(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
   ticketFromLegacy(model: string, input: MediaInput, route: Route, options: PlanOptions, legacy: LegacyRows): Promise<MediaAnswer>;
@@ -662,20 +672,28 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const done = carried(ticket);
     if (done.urls === undefined || done.urls.length === 0) return failed(ticket, new Error("The run produced no output"), extra.warnings);
     const costs = [...ticket.costs];
+    const passedOverCosts: Cost[] = [];
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
-    // A passed-over step's prediction, when an upstream accepted one, is billed like any other.
     const passedOver = ticket.steps.filter((s) => s.status === "failed");
     const notice = passedOver.map((s) => NOTICES[s.kind]).find((n) => n !== undefined);
-    const lookups = [...done.predictions, ...passedOver.flatMap((s) => (s.predictionId === undefined ? [] : [s.predictionId]))];
-    for (const prediction of lookups) {
+    /**
+     * Look a prediction's cost up and add it to a list.
+     * @param prediction - The prediction id.
+     * @param into - Where its cost goes.
+     */
+    const lookUp = async (prediction: string, into: Cost[]): Promise<void> => {
       // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
       const read = await billed(up, prediction, bounds, false);
-      costs.push(read.cost);
+      into.push(read.cost);
       warnings.push(...read.warnings);
-    }
+    };
+    for (const prediction of done.predictions) await lookUp(prediction, costs);
+    // A passed-over step's prediction, when an upstream accepted one, is still reported, apart:
+    // the worker charges a run by its delivered steps.
+    for (const step of passedOver) if (step.predictionId !== undefined) await lookUp(step.predictionId, passedOverCosts);
     return {
-      state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, servedBy: ticket.upstream,
+      state: "done", outputs: done.urls.map((url) => ({ kind: "url", url })), costs, passedOverCosts, servedBy: ticket.upstream,
       ...(notice === undefined ? {} : { notice }), ...common({ ...extra, warnings }),
     };
   };
@@ -913,6 +931,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (ticket.accepted || to === undefined) {
           // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
           if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
+          // On the caller's last try an optional step is given up, as run-steps does on its last attempt.
+          if (bounds.final === true && isOptional(ticket, at.step)) return passOver(ticket, at.index, bounds, error as Error);
           throw new SendNotAccepted(ticket.upstream, error);
         }
         const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
