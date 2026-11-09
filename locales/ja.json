@@ -2098,7 +2098,6 @@
         "ai_translate": "翻訳",
         "ai_tone": "語調を変える",
         "ai_storyboard": "絵コンテを作る",
-        "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
       },
       "ai": {

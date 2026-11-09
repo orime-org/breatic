@@ -1576,10 +1576,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
       `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
       `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
-      `with two rows; and ${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
-      `${quoted(t("spaces.document.commands.ai_custom"))}. One of the AI menu's commands looks available but does ` +
-      `nothing yet: the second under ${quoted(t("spaces.document.commands.aiProduceGroup"))}, for an ` +
-      "illustration. Hovering " +
+      `with ${quoted(t("spaces.document.commands.ai_storyboard"))}; and ` +
+      `${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
+      `${quoted(t("spaces.document.commands.ai_custom"))}. Hovering ` +
       `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
       "languages, each written in its own language; hovering " +
       `${quoted(t("spaces.document.commands.ai_tone"))} opens ${quoted(t("spaces.document.ai.tone.professional"))}, ` +
@@ -1810,7 +1809,7 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
-    "- There is no slash menu. Not available yet: the AI command that illustrates a passage, snapshots, images or other media, " +
+    "- There is no slash menu. Not available yet: snapshots, images or other media, " +
       "toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",

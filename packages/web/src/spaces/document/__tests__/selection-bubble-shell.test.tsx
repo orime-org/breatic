@@ -380,14 +380,7 @@ describe('the bubble bar shell', () => {
 
   describe('the slots the bar draws as ordinary controls', () => {
     /**
-     * All four look and behave the way the demo draws them, whether or not a
-     * command stands behind them. Where none does — the AI slot — a press
-     * reaches the console rather than the user (user 2026-08-26): the
-     * product is not launched, and whoever has the browser open is the one who
-     * needs to know which command they reached.
-     *
-     * The alignment and colour slots take the first group only. They left the
-     * second when #905 gave them their commands.
+     * All three look and behave the way the demo draws them.
      */
     it.each([
       ['doc-bubble-align'],
@@ -405,39 +398,6 @@ describe('the bubble bar shell', () => {
       const classes = slot.className.split(/\s+/);
       expect(classes).not.toContain('opacity-50');
       expect(classes).not.toContain('cursor-not-allowed');
-    });
-
-    it.each([
-      // The illustration row still reaches nothing (inner#1866).
-      ['doc-bubble-ai', 'doc-bubble-ai-item-illustrate'],
-    ])('says on the console that %s / %s reached no command', async (slot, item) => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-      const editor = openSharedBody('<p>hello world</p>');
-      mountDocumentEditor(editor);
-      await selectWithFocus(editor, 0, 5);
-      const before = sharedBodyMarkup();
-
-      const menu = await hoverOpenSlot(slot);
-      act(() => {
-        (menu.querySelector(`[data-testid="${item}"]`) as HTMLElement).click();
-      });
-
-      // Counted among our own lines. `console.warn` carries other traffic:
-      // ProseMirror writes "TextSelection endpoint not pointing into a node
-      // with inline content" from the setup above whenever the Y.Doc's content
-      // has not landed by the time the selection is set, and a count of every
-      // call made that warning decide whether this case passed.
-      const ours = warn.mock.calls.filter((call) =>
-        String(call[0]).startsWith('not implemented yet'));
-      expect(ours).toHaveLength(1);
-      // The document is what it was: the console is the only thing that
-      // happened.
-      expect(sharedBodyMarkup()).toBe(before);
-      // C2 ends with the menu closing, and it says so for every row alike —
-      // the ones that reach a command and the ones that reach the console.
-      await waitFor(() => {
-        expect(screen.queryByTestId(`${slot}-menu`)).toBeNull();
-      });
     });
 
     // The task list is the one row the demo greys, because it has
@@ -845,7 +805,7 @@ describe('the bubble bar shell', () => {
       }
     });
 
-    it('lists the eight AI commands the ruling draws', async () => {
+    it('lists the seven AI commands in their three groups', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
       await selectWithFocus(editor, 0, 9);
@@ -853,14 +813,14 @@ describe('the bubble bar shell', () => {
 
       expect(
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
-      ).toHaveLength(8);
+      ).toHaveLength(7);
 
-      // A6 asks for eight rows in three groups, the three coming from the table
-      // (§3.2.1). Counting the rows alone leaves the grouping untested: strip
-      // every label out and eight ungrouped rows still pass.
+      // Seven rows in three groups, the groups coming from the table (§3.2.1).
+      // Counting the rows alone leaves the grouping untested: strip every
+      // label out and seven ungrouped rows still pass.
       //
       // Read as the order the user meets them in, with the count each one
-      // introduces — five rewrites, two that produce something new, one other.
+      // introduces — five rewrites, the shot list, one other.
       const groups: { label: string; rows: number }[] = [];
       for (const node of menu.children) {
         const row = node.getAttribute('data-testid');
@@ -872,7 +832,7 @@ describe('the bubble bar shell', () => {
           groups.push({ label: node.textContent.trim(), rows: 0 });
         }
       }
-      expect(groups.map((g) => g.rows)).toEqual([5, 2, 1]);
+      expect(groups.map((g) => g.rows)).toEqual([5, 1, 1]);
       // Each heading resolved to a catalog entry: `t()` hands the key back
       // when it finds nothing (`shared/src/i18n/index.ts:131`).
       for (const g of groups) {

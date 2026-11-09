@@ -2098,7 +2098,6 @@
         "ai_translate": "翻译",
         "ai_tone": "改语气",
         "ai_storyboard": "生成分镜表",
-        "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
       },
       "ai": {

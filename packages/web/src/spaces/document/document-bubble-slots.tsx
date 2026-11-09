@@ -9,9 +9,7 @@
  * what each slot looks like and what its menu holds.
  *
  * Block type, alignment and colour all reach their commands. The AI slot's
- * text commands open the AI output dialog (inner#1860); its two rows that make
- * something new write a line to the console when pressed, the menu closing
- * after it either way (user 2026-08-27).
+ * commands open the AI output dialog (inner#1860), the menu closing after it.
  *
  * Three things carry the greyed treatment `document-unavailable-control.ts` defines:
  * the block type menu over a selection no row can act on, judged only while
@@ -85,19 +83,6 @@ import {
 } from '@web/spaces/document/document-align-items';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
-
-/**
- * Says a control was pressed before anyone wrote the command behind it.
- *
- * The console rather than the screen: these controls look and behave the way
- * the demo draws them, and telling the user that one is not built yet is the
- * unavailable-item marking of inner#1008. Whoever is holding the browser open
- * sees which command they reached.
- * @param what - The control that was pressed.
- */
-function pressedWithNothingBehindIt(what: string): void {
-  console.warn(`not implemented yet: ${what}`);
-}
 
 /** The shape every slot shares: `.bubble-drop` — 28 tall, 6px either side. */
 // `group` is what lets the chevron inside read the trigger's `data-state`.
@@ -527,11 +512,8 @@ export const ColorSlot = React.memo(function ColorSlot({
   );
 });
 
-/** What an AI menu row does: a command, a second level, or nothing yet. */
-type AiRowKind =
-  | { readonly runs: AiCommand }
-  | { readonly opens: 'translate' | 'tone' }
-  | { readonly notOpen: true };
+/** What an AI menu row does: a command or a second level. */
+type AiRowKind = { readonly runs: AiCommand } | { readonly opens: 'translate' | 'tone' };
 
 /** One row of the AI menu. */
 interface AiRow {
@@ -540,13 +522,13 @@ interface AiRow {
   readonly kind: AiRowKind;
 }
 
-/** The AI menu's eight commands in three groups, from the ruling §3.2.1. */
+/** The AI menu's seven commands in three groups, from the ruling §3.2.1. */
 const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = [
   {
     labelKey: 'spaces.document.commands.aiRewriteGroup',
     // Each row spells its key out. A template built from the id would read the
     // same at runtime and vanish from the scan that finds dead catalog entries,
-    // so every one of these eight would look unused.
+    // so every one of these seven would look unused.
     items: [
       { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
       { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
@@ -556,11 +538,9 @@ const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = 
     ],
   },
   {
-    // The illustration is inner#1866.
     labelKey: 'spaces.document.commands.aiProduceGroup',
     items: [
       { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } },
-      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate', kind: { notOpen: true } },
     ],
   },
   {
@@ -595,10 +575,9 @@ function aiSubItems(which: 'translate' | 'tone', t: (key: string) => string): Ai
  * The AI slot.
  *
  * Its shape is the ruling's (§3.2.1): icon, the word AI, chevron, and hovering
- * it opens a list of commands below. Seven of the eight open the AI output
- * dialog (inner#1860, the shot list inner#1130); translate and change tone
- * first open a second level beside their row, for the language or the tone.
- * The illustration arrives with its own task (inner#1866).
+ * it opens a list of commands below. Each opens the AI output dialog
+ * (inner#1860, the shot list inner#1130); translate and change tone first
+ * open a second level beside their row, for the language or the tone.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -669,10 +648,7 @@ export const AiSlot = React.memo(function AiSlot({
               <BubbleMenuRow
                 key={item.id}
                 data-testid={`doc-bubble-ai-item-${item.id}`}
-                onSelect={() => {
-                  if ('runs' in kind) run(kind.runs);
-                  else pressedWithNothingBehindIt(`ai ${item.id}`);
-                }}
+                onSelect={() => run(kind.runs)}
               >
                 {t(item.labelKey)}
               </BubbleMenuRow>

@@ -2098,7 +2098,6 @@
         "ai_translate": "Translate",
         "ai_tone": "Change tone",
         "ai_storyboard": "Draft a shot list",
-        "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
       },
       "ai": {
