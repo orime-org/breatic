@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
-import { createTestDb, initCore, yjsDb, yjsDocuments } from "@breatic/core";
+import { createTestDb, env, initCore, yjsDb, yjsDocuments } from "@breatic/core";
 
 const names = new Set<string>();
 let inspection: ReturnType<typeof createTestDb>;
@@ -81,5 +81,66 @@ describe("Yjs transaction-bound queries (inner#1917)", () => {
     });
     expect(await committed(outer)).toBe(true);
     expect(await committed(inner)).toBe(false);
+  });
+
+  it("rolls back what a nested Yjs transaction and its parent wrote when the parent fails", async () => {
+    const outer = docName();
+    const inner = docName();
+    await expect(yjsDb.transaction(async () => {
+      await insertThroughYjsDb(outer);
+      await yjsDb.transaction(() => insertThroughYjsDb(inner));
+      throw new Error("parent fails");
+    })).rejects.toThrow("parent fails");
+    expect(await committed(outer)).toBe(false);
+    expect(await committed(inner)).toBe(false);
+  });
+
+  it("sends work that outlives its Yjs transaction to the pool", async () => {
+    const late = docName();
+    let later: Promise<void> | undefined;
+    await yjsDb.transaction(async () => {
+      later = new Promise((resolve) => setTimeout(resolve, 50))
+        .then(() => yjsDb.transaction(() => insertThroughYjsDb(late)));
+    });
+    await later;
+    expect(await committed(late)).toBe(true);
+  });
+
+  it("keeps work that outlives a nested Yjs transaction on the parent that is still open", async () => {
+    const outer = docName();
+    const late = docName();
+    let seen = 0;
+    await expect(yjsDb.transaction(async () => {
+      await insertThroughYjsDb(outer);
+      let later: Promise<void> | undefined;
+      await yjsDb.transaction(async () => {
+        later = new Promise((resolve) => setTimeout(resolve, 50)).then(async () => {
+          seen = (await yjsDb.select({ name: yjsDocuments.name }).from(yjsDocuments).where(eq(yjsDocuments.name, outer))).length;
+          await insertThroughYjsDb(late);
+        });
+      });
+      await later;
+      throw new Error("parent fails");
+    })).rejects.toThrow("parent fails");
+    expect(seen).toBe(1);
+    expect(await committed(late)).toBe(false);
+  });
+
+  it("finishes twice as many Yjs transactions at once as the pool has connections", async () => {
+    const count = env.YJS_DB_POOL_SIZE * 2;
+    const written = Array.from({ length: count }, () => docName());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("still waiting after 15000 ms")), 15_000);
+    });
+    try {
+      await Promise.race([Promise.all(written.map((name) => yjsDb.transaction(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await insertThroughYjsDb(name);
+      }))), limit]);
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(await Promise.all(written.map(committed))).toEqual(written.map(() => true));
   });
 });

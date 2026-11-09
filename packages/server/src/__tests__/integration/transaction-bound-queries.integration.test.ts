@@ -123,10 +123,29 @@ describe("transaction-bound queries (inner#1917)", () => {
   it("sends work that outlives its transaction to the pool", async () => {
     let later: Promise<string> | undefined;
     await db.transaction(async () => {
-      later = new Promise((resolve) => setTimeout(resolve, 50)).then(() => insertThroughDb("after-commit"));
+      later = new Promise((resolve) => setTimeout(resolve, 50))
+        .then(() => db.transaction(() => insertThroughDb("after-commit")));
     });
     await later;
     expect(await committedNotes()).toContain("after-commit");
+  });
+
+  it("keeps work that outlives a nested transaction on the parent that is still open", async () => {
+    let seen: string[] = [];
+    await expect(db.transaction(async () => {
+      await insertThroughDb("escape-outer");
+      let later: Promise<void> | undefined;
+      await db.transaction(async () => {
+        later = new Promise((resolve) => setTimeout(resolve, 50)).then(async () => {
+          seen = await notesThroughDb();
+          await insertThroughDb("escape-late");
+        });
+      });
+      await later;
+      throw new Error("parent fails");
+    })).rejects.toThrow("parent fails");
+    expect(seen).toContain("escape-outer");
+    expect(await committedNotes()).not.toContain("escape-late");
   });
 
   // Last: before the fix this leaves the pool deadlocked for the rest of the file.
