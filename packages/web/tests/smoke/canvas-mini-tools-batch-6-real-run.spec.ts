@@ -63,6 +63,11 @@ function prepareMedia(): string {
   clip('clip3b.mp4', '640x360', 3, 550);
   clip('square3.mp4', '480x480', 3, 660);
   ffmpeg('-i', join(FIXTURES, 'driving.mp4'), '-t', '3', ...mp4, join(dir, 'driving3.mp4'));
+  // The same person at an odd size, and with an alpha channel: VP9 WebM carries both, H.264 neither.
+  const webm = ['-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-shortest', ...mark];
+  ffmpeg('-i', join(FIXTURES, 'driving.mp4'), '-t', '3', '-vf', 'scale=853:481', '-pix_fmt', 'yuv420p', ...webm, join(dir, 'driving3odd.webm'));
+  ffmpeg('-i', join(FIXTURES, 'driving.mp4'), '-t', '3', '-vf', 'format=yuva420p,geq=lum=\'lum(X,Y)\':cb=\'cb(X,Y)\':cr=\'cr(X,Y)\':a=\'if(lt(X,16),0,255)\'',
+    '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', ...webm, join(dir, 'driving3alpha.webm'));
   ffmpeg('-i', join(FIXTURES, 'speech.mp3'), '-t', '2', ...mark, join(dir, 'speech2.mp3'));
   return dir;
 }
@@ -460,32 +465,68 @@ test('remove background: the result carries an alpha channel @needs-model @needs
   }
 });
 
+/**
+ * Lip-sync one person of a video to one line of dialogue and check the result lasts until the shorter of the two ends.
+ * @param c - The canvas.
+ * @param video - The source video's file name.
+ * @returns The stored result node.
+ */
+async function lipSync(c: Canvas, video: string): Promise<DocNode> {
+  await upload(c, video, 'speech2.mp3');
+  await presented(c, video);
+  await openTool(c, video, 'video.lip-sync');
+  // The panel identifies the people itself once the source is presented.
+  const row = c.page.locator('[data-testid^="video-dialogue-"]');
+  await expect(row).toHaveCount(1);
+  const dialogue = (await row.getAttribute('data-testid'))!.slice('video-dialogue-'.length);
+  const person = c.page.getByTestId(`video-person-${dialogue}`);
+  await expect(person).toBeEnabled({ timeout: 10 * 60_000 });
+  await person.click();
+  await c.page.getByRole('option', { name: 'Person 1' }).click();
+  const audio = c.page.getByTestId(`video-audio-${dialogue}`);
+  await audio.click();
+  await nodeOf(c, 'speech2.mp3').click();
+  await expect(c.page.getByTestId(`video-audio-clear-${dialogue}`)).toBeAttached();
+  await audio.click();
+  const made = await run(c, 1);
+  await c.page.keyboard.press('Escape');
+  const [synced] = await stored(c, made);
+  // Cut off, the panel's default: the result lasts until the shorter of the video and the dialogue ends.
+  const expected = Math.min(duration(await contentOf(c, video)), duration(await contentOf(c, 'speech2.mp3')));
+  expect(synced!.type).toBe('video');
+  expect(Math.abs(duration(synced!.content) - expected)).toBeLessThanOrEqual(2 * FRAME);
+  return synced!;
+}
+
+// Execution design §9: an odd-sized source's masks and faces are read at the prepared video's size and laid onto the output.
+test('lip-sync: an odd-sized video gives one video as long as the result @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'lip-sync-odd');
+  try {
+    const stream = videoStream((await lipSync(c, 'driving3odd.webm')).content);
+    // An opaque odd side is taken down to even for the H.264 result.
+    expect([stream.width, stream.height]).toEqual([852, 480]);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+// Execution design §9: a transparent source gives a VP9 WebM result that keeps its alpha.
+test('lip-sync: a transparent video gives a result that keeps its alpha @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'lip-sync-alpha');
+  try {
+    const synced = await lipSync(c, 'driving3alpha.webm');
+    const stream = videoStream(synced.content);
+    const tags = Object.fromEntries(Object.entries(stream.tags ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
+    expect(/a/.test((stream.pix_fmt ?? '').replace(/^yuv/, '')) || tags.alpha_mode === '1', JSON.stringify(stream)).toBe(true);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
 test('lip-sync: one person and one line of dialogue give one video as long as the result @needs-model @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
   const c = await openCanvas(page, 'lip-sync');
   try {
-    await upload(c, 'driving3.mp4', 'speech2.mp3');
-    await presented(c, 'driving3.mp4');
-    await openTool(c, 'driving3.mp4', 'video.lip-sync');
-    // The panel identifies the people itself once the source is presented.
-    const row = c.page.locator('[data-testid^="video-dialogue-"]');
-    await expect(row).toHaveCount(1);
-    const dialogue = (await row.getAttribute('data-testid'))!.slice('video-dialogue-'.length);
-    const person = c.page.getByTestId(`video-person-${dialogue}`);
-    await expect(person).toBeEnabled({ timeout: 10 * 60_000 });
-    await person.click();
-    await c.page.getByRole('option', { name: 'Person 1' }).click();
-    const audio = c.page.getByTestId(`video-audio-${dialogue}`);
-    await audio.click();
-    await nodeOf(c, 'speech2.mp3').click();
-    await expect(c.page.getByTestId(`video-audio-clear-${dialogue}`)).toBeAttached();
-    await audio.click();
-    const made = await run(c, 1);
-    await c.page.keyboard.press('Escape');
-    const [synced] = await stored(c, made);
-    // Cut off, the panel's default: the result lasts until the shorter of the video and the dialogue ends.
-    const expected = Math.min(duration(await contentOf(c, 'driving3.mp4')), duration(await contentOf(c, 'speech2.mp3')));
-    expect(synced!.type).toBe('video');
-    expect(Math.abs(duration(synced!.content) - expected)).toBeLessThanOrEqual(2 * FRAME);
+    expect((await lipSync(c, 'driving3.mp4')).type).toBe('video');
   } finally {
     await deleteSpace(page, c.spaceId);
   }
