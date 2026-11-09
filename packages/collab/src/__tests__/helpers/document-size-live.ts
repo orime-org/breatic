@@ -58,6 +58,8 @@ export interface SizeFrame {
   authDetail?: string;
   /** CLOSE reason. */
   closeReason?: string;
+  /** Whether a SyncStatus frame reports the message applied. */
+  applied?: boolean;
 }
 
 /**
@@ -80,6 +82,8 @@ export function decodeFrame(bytes: Uint8Array): SizeFrame {
     if (frame.authSubType !== 0) frame.authDetail = decoding.readVarString(decoder);
   } else if (frame.type === WIRE.close) {
     frame.closeReason = decoding.readVarString(decoder);
+  } else if (frame.type === WIRE.syncStatus) {
+    frame.applied = decoding.readVarInt(decoder) === 1;
   }
   return frame;
 }
@@ -102,13 +106,24 @@ export interface SizeSocket {
   sent: Uint8Array[];
   /** Per message key: send the document's buffered updates now (design 5.6; set by `openDoc`). */
   flushers: Map<string, () => void>;
+  /**
+   * Per message key opened with `openDoc`: whether the server's SyncStep2 has
+   * arrived since the Auth (the provider's `synced`), and the latest push
+   * `seq` held until then (design 5.1, spec 14d.2).
+   */
+  handshakes: Map<string, { synced: boolean; held?: unknown }>;
 }
 
 /** How a socket speaks the size cap's acknowledgement (design 3, 5.1). */
 export interface SizeAckOptions {
   /** Whether the socket URL carries `size_ack=1` (default true: the current web client). */
   sizeAck?: boolean;
-  /** Whether each `doc:size` is answered with `doc:size-seen` in the same callback (default: as `sizeAck`). */
+  /**
+   * Whether each `doc:size` is answered with `doc:size-seen` as the web
+   * client does (default: as `sizeAck`): in the same callback once the
+   * document has synced; before that only the latest `seq` is kept and
+   * answered when the server's SyncStep2 arrives.
+   */
   autoAck?: boolean;
   /** Runs in that callback when a `doc:size` arrives, before the buffered updates are flushed and the acknowledgement sent. */
   beforeAck?: (key: string, push: Record<string, unknown>) => void;
@@ -179,6 +194,7 @@ export async function openSocket(port: number, cookie: string, opts: SizeAckOpti
     acks: [],
     sent: [],
     flushers: new Map(),
+    handshakes: new Map(),
     send: (bytes: Uint8Array): void => {
       socket.sent.push(bytes);
       ws.send(bytes);
@@ -198,9 +214,23 @@ export async function openSocket(port: number, cookie: string, opts: SizeAckOpti
     if (typeof bytes === "string") return;
     const frame = decodeFrame(new Uint8Array(bytes));
     socket.frames.push(frame);
-    if (!autoAck || frame.stateless === undefined) return;
+    if (!autoAck) return;
+    const handshake = socket.handshakes.get(frame.key);
+    if (frame.type === WIRE.sync && frame.syncSubType === SYNC.step2 && handshake && !handshake.synced) {
+      handshake.synced = true;
+      if (!("held" in handshake)) return;
+      const seq = handshake.held;
+      delete handshake.held;
+      sendAck(socket, frame.key, seq);
+      return;
+    }
+    if (frame.stateless === undefined) return;
     const message = JSON.parse(frame.stateless) as Record<string, unknown>;
     if (message.type !== "doc:size") return;
+    if (handshake && !handshake.synced) {
+      handshake.held = message.seq;
+      return;
+    }
     opts.beforeAck?.(frame.key, message);
     sendAck(socket, frame.key, message.seq);
   });
@@ -271,6 +301,8 @@ export async function openDoc(
     }
   };
   socket.ws.on("message", () => pump());
+  // A new Auth is a new provider's handshake: unsynced, holding no push.
+  socket.handshakes.set(key, { synced: false });
   socket.send(authFrame(key, "__cookie_auth__"));
   const mode = opts.mode ?? "read-write";
   await waitFor(() => frames().some((f) => f.type === WIRE.auth && f.authSubType === 2 && f.authDetail === mode), `auth for ${key}`, 10_000);

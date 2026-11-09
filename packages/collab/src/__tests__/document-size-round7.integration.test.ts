@@ -4,14 +4,17 @@
 /**
  * The round 7 integration cases of the document size cap (inner#1790, v2
  * collab test spec section 14b: R7-11, R7-31 to R7-33, the integration half
- * of R7-39, R7-40 to R7-42, configuration S) on a real collab instance:
+ * of R7-39, R7-40 to R7-42, configuration S), with round 8's R8-02 (14c)
+ * and round 9's R9-01 and R9-02 (14d), on a real collab instance:
  * production `createCollabServer` on loopback, real yjs Postgres and Redis,
  * the production auth with real session cookies, and raw WebSocket clients
  * speaking the provider's frames (`helpers/document-size-live.ts`).
  *
  * A socket opened with the helper's defaults is the current web client: its
  * URL carries `size_ack=1` and it answers every `doc:size` with
- * `doc:size-seen` in the same callback. `{ sizeAck: false }` is a page of the
+ * `doc:size-seen`, in the same callback once the document has synced and,
+ * for a push before that, when the server's SyncStep2 arrives (spec 14d.2).
+ * `{ sizeAck: false }` is a page of the
  * version before (no parameter, no acknowledgement); `{ autoAck: false }`
  * carries the parameter and acknowledges only when the case says so.
  *
@@ -54,7 +57,7 @@ import {
   untilKnowsFull,
 } from "./helpers/document-size-live.js";
 import type { Instance, SizeAckOptions, SizeDocClient, SizeSocket } from "./helpers/document-size-live.js";
-import { SYNC, WIRE, authFrame, waitFor } from "./helpers/live-hocuspocus.js";
+import { SYNC, WIRE, authFrame, statelessFrame, syncFrame, waitFor } from "./helpers/live-hocuspocus.js";
 
 const { state } = vi.hoisted(() => ({
   state: {
@@ -571,3 +574,163 @@ describe("round 8: an update written before the full push goes ahead of its ackn
   });
 });
 
+
+/** How the reconnecting client of spec 14d.1 acknowledges the connection's full push. */
+type AckOrder = "after-synced" | "at-once";
+
+/** How the reconnecting client of spec 14d.1 sends its SyncStep1. */
+type Step1Timing = "with-auth" | "after-authenticated";
+
+/**
+ * Spec 14d.1's common precondition: CV in warning; B synced once, dropped and
+ * wrote `b1` offline; A then filled CV past the limit (under the ceiling even
+ * with `b1`) and acknowledged full.
+ * @returns The fixture, B's member fixture, A's client and B's offline copy.
+ */
+async function reconnectAfterFull(): Promise<{ fixture: ActivityCollabFixture; bFixture: ActivityCollabFixture; a: SizeDocClient; bDoc: Y.Doc; name: string }> {
+  const fixture = await seedCollabActivity();
+  const name = canvasOf(fixture);
+  const bytes = await seedFilled(name, 250_000);
+  expect(bytes).toBeGreaterThanOrEqual(S.W);
+  expect(bytes).toBeLessThan(S.L);
+  const a = await syncedOn(fixture, name);
+  const bFixture = await member(fixture, "editor");
+  const b = await syncedOn(bFixture, name);
+  await waitFor(() => b.socket.acks.some((ack) => ack.key === name), "B acknowledged the warning push", 10_000);
+  expect(b.sizePushes().at(-1)?.phase).toBe("warning");
+  b.socket.close();
+  await waitFor(() => active.hocuspocus.documents.get(name)?.getConnectionsCount() === 1, "B's connection is gone", 10_000);
+  const bDoc = b.doc;
+  addNode(bDoc, "b1", "offline-b1");
+
+  const fromA = a.sizePushes().length;
+  a.edit((d) => addNode(d, "big", "y".repeat(20_000)));
+  expect(await settle(a)).toEqual([]);
+  expect(cur(name)).toBeGreaterThanOrEqual(S.L);
+  const offline = Y.encodeStateAsUpdate(bDoc, Y.encodeStateVector(serverDoc(name)));
+  expect(cur(name) + offline.byteLength).toBeLessThan(S.CEIL);
+  await pushWhere(a, (p) => p.phase === "full", "A's full push", fromA);
+  await untilKnowsFull(active, size, name, fixture.userId);
+  return { fixture, bFixture, a, bDoc, name };
+}
+
+/**
+ * B's new socket, driven frame by frame: Auth and SyncStep1 (together or after
+ * `authenticated`), the server's SyncStep1 answered with a SyncStep2 carrying
+ * `b1`, the server's SyncStep2 applied, and the connection's push acknowledged
+ * at once or only after that SyncStep2.
+ * @param bFixture - B's session.
+ * @param name - Document name.
+ * @param bDoc - B's offline copy.
+ * @param ackOrder - When the push is acknowledged.
+ * @param timing - When SyncStep1 is sent.
+ * @returns The socket; its frames are kept in arrival order.
+ */
+async function reconnectB(bFixture: ActivityCollabFixture, name: string, bDoc: Y.Doc, ackOrder: AckOrder, timing: Step1Timing): Promise<SizeSocket> {
+  const socket = await socketOf(bFixture, { autoAck: false });
+  let latest: unknown;
+  let answered = false;
+  socket.ws.on("message", () => {
+    const f = socket.frames.at(-1);
+    if (!f || f.documentName !== name) return;
+    if (f.stateless !== undefined) {
+      const m = JSON.parse(f.stateless) as Record<string, unknown>;
+      if (m.type !== "doc:size") return;
+      if (ackOrder === "at-once") socket.send(statelessFrame(name, JSON.stringify({ type: "doc:size-seen", seq: m.seq })));
+      else latest = m.seq;
+      return;
+    }
+    if (f.type !== WIRE.sync || !f.payload) return;
+    if (f.syncSubType === SYNC.step1) {
+      if (answered) return;
+      answered = true;
+      socket.send(syncFrame(name, WIRE.sync, SYNC.step2, Y.encodeStateAsUpdate(bDoc, f.payload)));
+      return;
+    }
+    Y.applyUpdate(bDoc, f.payload, "server");
+    if (f.syncSubType === SYNC.step2 && ackOrder === "after-synced" && latest !== undefined) {
+      socket.send(statelessFrame(name, JSON.stringify({ type: "doc:size-seen", seq: latest })));
+      latest = undefined;
+    }
+  });
+  socket.send(authFrame(name, "__cookie_auth__"));
+  if (timing === "after-authenticated") {
+    await waitFor(() => socket.frames.some((f) => f.documentName === name && f.type === WIRE.auth && f.authSubType === 2), "B authenticated", 10_000);
+  }
+  socket.send(syncFrame(name, WIRE.sync, SYNC.step1, Y.encodeStateVector(bDoc)));
+  return socket;
+}
+
+/**
+ * Asserts the order spec 14d.1 relies on: the connection's full push, then
+ * the server's SyncStep1, then the server's SyncStep2.
+ * @param socket - B's new socket.
+ * @param name - Document name.
+ */
+function expectPushBeforeServerSteps(socket: SizeSocket, name: string): void {
+  const frames = socket.frames.filter((f) => f.documentName === name);
+  const pushAt = frames.findIndex((f) => f.stateless !== undefined && (JSON.parse(f.stateless) as { type?: unknown }).type === "doc:size");
+  const step1At = frames.findIndex((f) => f.type === WIRE.sync && f.syncSubType === SYNC.step1);
+  const step2At = frames.findIndex((f) => f.type === WIRE.sync && f.syncSubType === SYNC.step2);
+  expect(pushAt).toBeGreaterThanOrEqual(0);
+  const push = JSON.parse(frames[pushAt]!.stateless!) as { phase?: unknown; bytes?: number };
+  expect(push.phase).toBe("full");
+  expect(push.bytes).toBeGreaterThanOrEqual(S.L);
+  expect(push.bytes).toBeLessThan(S.CEIL);
+  expect(step1At).toBeGreaterThan(pushAt);
+  expect(step2At).toBeGreaterThan(step1At);
+}
+
+describe("round 9: a reconnect handshake's SyncStep2 is judged by the phase acknowledged before it (spec 14d.1)", () => {
+  const timings: Step1Timing[] = ["with-auth", "after-authenticated"];
+
+  it.each(timings)("R9-01 (%s) acknowledging after the server SyncStep2: B's offline SyncStep2 is admitted, its next add refused as full", async (timing) => {
+    const { fixture, bFixture, a, bDoc, name } = await reconnectAfterFull();
+    const before = refusals(name).length;
+    const socket = await reconnectB(bFixture, name, bDoc, "after-synced", timing);
+    await waitFor(() => socket.frames.some((f) => f.documentName === name && f.type === WIRE.syncStatus && f.applied === true)
+      || socket.frames.some((f) => f.documentName === name && f.type === WIRE.close), "B's SyncStep2 is answered", 10_000);
+    expectPushBeforeServerSteps(socket, name);
+    expect(socket.frames.filter((f) => f.documentName === name && f.type === WIRE.close)).toEqual([]);
+    expect(socket.frames.some((f) => f.documentName === name && f.type === WIRE.syncStatus && f.applied === true)).toBe(true);
+    expect(refusals(name).length).toBe(before);
+    expect(nodesOf(serverDoc(name)).has("b1")).toBe(true);
+    await a.confirm();
+    expect(nodesOf(a.doc).has("b1")).toBe(true);
+    const stored = await persisted(active, name);
+    expect(nodesOf(stored).has("b1")).toBe(true);
+    expect(nodesOf(stored).has("big")).toBe(true);
+
+    await untilKnowsFull(active, size, name, bFixture.userId);
+    socket.send(syncFrame(name, WIRE.sync, SYNC.update, localUpdate(bDoc, (d) => addNode(d, "b2", "b"))));
+    await waitFor(() => socket.frames.some((f) => f.documentName === name && f.type === WIRE.close), "B's b2 is refused", 10_000);
+    expect(socket.frames.filter((f) => f.documentName === name && f.type === WIRE.close).map((f) => f.closeReason)).toEqual([COLLAB_DOCUMENT_TOO_LARGE_REASON]);
+    await barrier(socket, documentOf(fixture));
+    expect(socket.closedByServer()).toBe(false);
+    const lines = refusals(name).slice(before);
+    expect(lines.map((r) => r.step)).toEqual(["full"]);
+    expect(lines[0]!.current as number).toBeLessThan(S.CEIL);
+    expect(nodesOf(serverDoc(name)).has("b2")).toBe(false);
+    await a.confirm();
+    expect(nodesOf(a.doc).has("b2")).toBe(false);
+    expect(nodesOf(await persisted(active, name)).has("b2")).toBe(false);
+  });
+
+  it.each(timings)("R9-02 (%s) control, acknowledging at once: the acknowledgement reaches collab first and B's offline SyncStep2 is refused as full", async (timing) => {
+    const { bFixture, a, bDoc, name } = await reconnectAfterFull();
+    const before = refusals(name).length;
+    const socket = await reconnectB(bFixture, name, bDoc, "at-once", timing);
+    await waitFor(() => socket.frames.some((f) => f.documentName === name && f.type === WIRE.close), "B's SyncStep2 is refused", 10_000);
+    expectPushBeforeServerSteps(socket, name);
+    expect(socket.frames.filter((f) => f.documentName === name && f.type === WIRE.close).map((f) => f.closeReason)).toEqual([COLLAB_DOCUMENT_TOO_LARGE_REASON]);
+    expect(socket.frames.some((f) => f.documentName === name && f.type === WIRE.syncStatus && f.applied === true)).toBe(false);
+    const lines = refusals(name).slice(before);
+    expect(lines.map((r) => r.step)).toEqual(["full"]);
+    expect(lines[0]!.current as number).toBeGreaterThanOrEqual(S.L);
+    expect(lines[0]!.current as number).toBeLessThan(S.CEIL);
+    expect(nodesOf(serverDoc(name)).has("b1")).toBe(false);
+    await a.confirm();
+    expect(nodesOf(a.doc).has("b1")).toBe(false);
+    expect(nodesOf(await persisted(active, name)).has("b1")).toBe(false);
+  });
+});

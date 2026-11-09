@@ -21,11 +21,17 @@
  * ```
  *
  * The server answers the Auth frame with `authenticated` (scope
- * `read-write` unless set otherwise), the client's SyncStep1 with SyncStep2
- * and its own SyncStep1, and every `sync:confirm` with
+ * `read-write` unless set otherwise), the client's SyncStep1 with its own
+ * SyncStep1 and then SyncStep2 (the order of Hocuspocus 4.6.0's
+ * `readSyncMessage`, spec 25.2), and every `sync:confirm` with
  * `sync:confirmed { ok: true }`; it never answers `doc:size-seen`. It sends
  * `doc:size` pushes and peers' updates when a case asks. Every frame a client
  * sends is recorded in arrival order (spec 23.0 "帧记录").
+ *
+ * `H9` (spec 25.0) is the same server with {@link ScriptedServer.stepping}
+ * on: `authenticated` and the two server sync steps wait until a case
+ * releases them, and {@link ScriptedWebSocket.drop} drops a connection the
+ * way a network failure does (code 1006).
  *
  * This module imports no production module of the package.
  */
@@ -50,6 +56,12 @@ export type ClientFrame =
 
 /** A frame as spec 23.0 names it: `update`, `confirm`, `seen(seq)` or something else. */
 export type FrameKind = 'update' | 'confirm' | `seen(${number})` | 'other';
+
+/** A frame as spec 25.0 orders them: 23.0's kinds plus the handshake's `auth`, `step1` and `step2`. */
+export type HandshakeKind = 'auth' | 'step1' | 'step2' | Exclude<FrameKind, 'other'>;
+
+/** The server frames `H9` holds until a case releases them. */
+export type HeldFrame = 'authenticated' | 'serverStep1' | 'serverStep2';
 
 /** What the server pushes about a document's size, without `type` and `seq`. */
 export interface SizeFixture {
@@ -124,6 +136,10 @@ export class ScriptedServer {
   refusals = 0;
   /** Called synchronously for every frame a client sends, before the server handles it. */
   onFrame: ((frame: ClientFrame, socket: ScriptedWebSocket) => void) | null = null;
+  /** `H9`'s single-step mode: hold `authenticated` and the server's sync steps until {@link release}. */
+  stepping = false;
+  /** The frames held in single-step mode, oldest first. */
+  private held: Array<{ socket: ScriptedWebSocket; name: string; label: HeldFrame; bytes: Uint8Array }> = [];
   private docs = new Map<string, ServerDoc>();
   /** Which documents each connection has authenticated. */
   private attached = new Map<ScriptedWebSocket, Set<string>>();
@@ -189,14 +205,16 @@ export class ScriptedServer {
    * @param build - Writes the frame after its routing name.
    * @param name - Canonical document name.
    * @param now - Deliver synchronously instead of on a later task.
+   * @param label - What a held frame is called in single-step mode.
    * @throws {never} Never.
    */
-  private send(socket: ScriptedWebSocket, name: string, build: (encoder: encoding.Encoder) => void, now = false): void {
+  private send(socket: ScriptedWebSocket, name: string, build: (encoder: encoding.Encoder) => void, now = false, label?: HeldFrame): void {
     const encoder = encoding.createEncoder();
     encoding.writeVarString(encoder, name);
     build(encoder);
     const bytes = encoding.toUint8Array(encoder);
-    if (now) socket.deliver(bytes);
+    if (this.stepping && label !== undefined) this.held.push({ socket, name, label, bytes });
+    else if (now) socket.deliver(bytes);
     else setTimeout(() => { socket.deliver(bytes); }, 0);
   }
 
@@ -251,7 +269,7 @@ export class ScriptedServer {
         encoding.writeVarUint(encoder, 2);
         encoding.writeVarUint(encoder, 2);
         encoding.writeVarString(encoder, scope);
-      });
+      }, false, 'authenticated');
       return;
     }
     if (frame.kind === 'close') {
@@ -259,19 +277,21 @@ export class ScriptedServer {
       return;
     }
     if (frame.kind === 'step1') {
-      // SyncStep2 answering the client's state vector, then the server's SyncStep1.
+      // The server's SyncStep1, then the SyncStep2 answering the client's
+      // state vector: Hocuspocus 4.6.0 `readSyncMessage` sends the first and
+      // `apply` the second (spec 25.2).
       const { decoder } = head(bytes);
       const reply = encoding.createEncoder();
       readSyncMessage(decoder, reply, server.doc, this);
       const step2 = encoding.toUint8Array(reply);
       this.send(socket, name, (encoder) => {
         encoding.writeVarUint(encoder, 0);
-        encoding.writeUint8Array(encoder, step2);
-      });
+        writeSyncStep1(encoder, server.doc);
+      }, false, 'serverStep1');
       this.send(socket, name, (encoder) => {
         encoding.writeVarUint(encoder, 0);
-        writeSyncStep1(encoder, server.doc);
-      });
+        encoding.writeUint8Array(encoder, step2);
+      }, false, 'serverStep2');
       return;
     }
     if (frame.kind === 'step2') {
@@ -377,6 +397,51 @@ export class ScriptedServer {
         encoding.writeVarString(encoder, reason);
       });
     }
+  }
+
+  /**
+   * Delivers the oldest held frame of a kind for a document on an open
+   * connection, synchronously (single-step mode, spec 25.0).
+   * @param label - Which frame.
+   * @param name - Canonical document name.
+   * @throws {Error} When no such frame is held.
+   */
+  release(label: HeldFrame, name: string): void {
+    const at = this.held.findIndex((held) => held.label === label && held.name === name && held.socket.readyState === ScriptedWebSocket.OPEN);
+    if (at === -1) throw new Error(`no ${label} is held for ${name}`);
+    const [held] = this.held.splice(at, 1);
+    held!.socket.deliver(held!.bytes);
+  }
+
+  /**
+   * Whether a frame of a kind is held for a document on an open connection.
+   * @param label - Which frame.
+   * @param name - Canonical document name.
+   * @returns Whether {@link release} would deliver one.
+   * @throws {never} Never.
+   */
+  holds(label: HeldFrame, name: string): boolean {
+    return this.held.some((held) => held.label === label && held.name === name && held.socket.readyState === ScriptedWebSocket.OPEN);
+  }
+
+  /**
+   * One document's frames since an index, as spec 25.0 orders them: the
+   * handshake's and spec 23.0's kinds, without awareness and other frames.
+   * @param name - Canonical document name.
+   * @param from - The first index into {@link frames}.
+   * @param socket - Only the frames of this connection.
+   * @returns The kinds, in arrival order.
+   * @throws {never} Never.
+   */
+  order(name: string, from = 0, socket?: ScriptedWebSocket): HandshakeKind[] {
+    const out: HandshakeKind[] = [];
+    for (const recorded of this.frames.slice(from)) {
+      if (recorded.frame.name !== name || (socket !== undefined && recorded.socket !== socket)) continue;
+      const { frame } = recorded;
+      const kind = frame.kind === 'auth' || frame.kind === 'step1' || frame.kind === 'step2' ? frame.kind : kindOf(frame);
+      if (kind !== 'other') out.push(kind);
+    }
+    return out;
   }
 
   /**
@@ -510,6 +575,16 @@ export class ScriptedWebSocket extends EventTarget {
     if (this.readyState === 3) return;
     this.readyState = 3;
     this.dispatchEvent(Object.assign(new Event('close'), { code, reason, wasClean: true }));
+  }
+
+  /**
+   * The server drops the connection the way a network failure does (code 1006, not clean).
+   * @param code - Close code.
+   */
+  drop(code = 1006): void {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    this.dispatchEvent(Object.assign(new Event('close'), { code, reason: '', wasClean: false }));
   }
 
   /**
