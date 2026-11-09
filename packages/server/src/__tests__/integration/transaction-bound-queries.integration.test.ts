@@ -138,7 +138,7 @@ describe("transaction-bound queries (inner#1917)", () => {
       actingUserId: project.userId,
       declaredSize: 100,
       taskType: "upload",
-      ext: "jpg",
+      ext: ".jpg",
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       context: { filename: `pool-${i}.jpg` },
     }, { budgetMs: 60_000, action: "upload", label: `pool-${i}.jpg` }))), 15_000);
