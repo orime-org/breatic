@@ -15,7 +15,7 @@ import { TriangleAlert } from 'lucide-react';
 
 import { SpaceNoticePill } from '@web/pages/project/SpaceNoticePill';
 
-const OVER_EN = 'This Space is over its limit (83.4 KiB of 64 KiB). You can only delete whole nodes or whole passages.';
+const OVER_EN = 'This Space is over its limit (83.4 KiB of 64 KiB). You can only delete whole items: a node, a clip, a model or a whole passage.';
 const TONES = {
   info: ['bg-status-info-bg', 'border-status-info-border', 'text-status-info-foreground'],
   warning: ['bg-status-warning-bg', 'border-status-warning-border', 'text-status-warning-foreground'],

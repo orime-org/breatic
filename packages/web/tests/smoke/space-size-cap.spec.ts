@@ -44,7 +44,7 @@ const SIZE_TOASTS = [
   COPY.fullToast,
   COPY.resyncToast,
   'This Space is full. This deletion would also change other content, so it cannot run right now.',
-  'This Space is over its limit. Delete a whole node or a whole passage.',
+  'This Space is over its limit. Delete whole items: a node, a clip, a model or a whole passage.',
 ];
 
 /** A 1x1 PNG, inline so the image nodes decode with no network. */
