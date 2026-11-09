@@ -88,6 +88,19 @@ models:
             field: texture_seed
           negative_prompt:
             field: negative_prompt
+        drops:
+          rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -124,6 +137,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0
@@ -170,6 +185,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0
@@ -256,6 +273,19 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        drops:
+          rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -295,6 +325,8 @@ models:
           orientation:
             field: orientation
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0
@@ -342,6 +374,8 @@ models:
           model_seed:
             field: seed
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0
@@ -441,6 +475,19 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        drops:
+          rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -480,6 +527,8 @@ models:
           orientation:
             field: orientation
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0
@@ -527,6 +576,8 @@ models:
           model_seed:
             field: seed
         drops:
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [false]
           texture_version:
             values:
               - v3.0

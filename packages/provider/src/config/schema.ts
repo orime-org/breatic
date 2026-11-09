@@ -75,7 +75,7 @@ const extraStepSchema = z.strictObject({
   kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak", "rig"]),
   endpoint: z.string().min(1),
   at: z.enum(["before", "after"]),
-  /** The param it serves; the step is skipped when the param carries nothing. */
+  /** The param it serves; the step is skipped when the param asks for none (`stepRequested`: nothing, or a switch turned off). */
   for_param: z.string().optional(),
   /** One step per item of the param. */
   per_item: z.boolean().optional(),

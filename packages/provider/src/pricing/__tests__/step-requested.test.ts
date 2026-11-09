@@ -50,7 +50,9 @@ async function priced(params: Record<string, unknown>): Promise<number> {
   const rules = parsePricingRules(JSON.parse(JSON.stringify(provider.pricingRules("m"))) as unknown);
   const browser = await estimateCost(rules, provider.availability("m"), run(params), { mode: "default" });
   expect(browser).toEqual(server);
-  expect(server?.bound).toBe("exact");
+  // An element is a clone, priced as an upper bound while the caller's clones are not known.
+  const clones = Array.isArray(params.refs) && params.refs.length > 0;
+  expect(server?.bound).toBe(clones ? "at_most" : "exact");
   return server!.usd;
 }
 

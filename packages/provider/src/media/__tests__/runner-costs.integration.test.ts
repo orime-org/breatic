@@ -934,6 +934,16 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
   });
 
+  it("passes over a rig whose poll answer cannot be read, as run-steps does with a non-JSON answer", async () => {
+    a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 200, raw: "<html>", contentType: "text/html" } : tripoUpstream("rigged")(req)));
+    const r = runner();
+    const done = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: MODEL }]);
+    expect(done.notice).toBe("rig_failed");
+    expect(knownUsd(done.costs)).toBeCloseTo(0.4, 9);
+    expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
+  });
+
   it("keeps waiting on a rig the upstream answers 429 about while it runs, as run-steps does", async () => {
     a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 429, body: {} } : tripoUpstream("rigged")(req)));
     const r = runner();
@@ -1011,7 +1021,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
 
   describe("property (critical path): whatever the generation and the rig answer", () => {
     const SUBMITS = ["accept", "finishNow", "finishEmpty", "busy", "refused", "unreadable", "noModel"] as const;
-    const POLLS = ["processing", "completed", "empty", "failed", "gone", "busy"] as const;
+    const POLLS = ["processing", "completed", "empty", "failed", "gone", "busy", "unreadable"] as const;
 
     it("every accepted prediction reaches the caller once, an optional rig never fails the run, and the outputs and notice follow the rig", async () => {
       await fc.assert(
@@ -1040,6 +1050,12 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
                 const next = pollScript[p++] ?? "completed";
                 if (next === "processing") return result(id, "processing");
                 if (next === "busy") return { status: 429, body: {} };
+                if (next === "unreadable") {
+                  // The generation is never unreadable while it runs here: only the rig is passed over.
+                  if (!isRig) return result(id, "processing");
+                  rigFate = "lost";
+                  return { status: 200, raw: "<html>", contentType: "text/html" };
+                }
                 // The generation is never refused while it runs here: only the rig is passed over.
                 if (next === "gone") {
                   if (!isRig) return result(id, "processing");

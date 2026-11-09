@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { OFF_WAVESPEED } from "../../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../../provider.js";
+import { assess } from "../../pricing/estimate.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
 
@@ -132,6 +133,17 @@ describe("the shipped provider configuration", () => {
           .filter((s) => s.at === "after" && s.for_param !== undefined && b.params?.[s.for_param] !== undefined)
           .map((s) => `${model}.${s.for_param!}`)));
       expect(leaked).toEqual([]);
+    });
+
+    it.each(TRIPO)("%s takes a run asking for a skeleton only on WaveSpeed, the one upstream that rigs", async (model) => {
+      const provider = createProvider({ config: shipped(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+      const rules = provider.pricingRules(model);
+      const run = (rig: boolean) => ({ params: { rig_skeleton: rig }, prompt: "a knight", durations: {}, placeholders: [], durationsMissing: [] });
+      for (const upstream of ["fal", "sandbase"]) {
+        expect(await assess(rules, upstream, run(true)), upstream).toHaveProperty("rejected");
+        expect(await assess(rules, upstream, run(false)), upstream).toHaveProperty("estimate");
+      }
+      expect(await assess(rules, "wavespeed", run(true))).toHaveProperty("estimate");
     });
 
     it.each(TRIPO)("%s estimates the rig only when rig_skeleton is on", async (model) => {
