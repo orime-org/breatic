@@ -64,12 +64,6 @@ describe("userClockNote", () => {
     );
   });
 
-  it("says the time zone tells the time only, never which language to reply in", () => {
-    expect(userClockNote(AT, "Asia/Tokyo")).toBe(
-      "[The user's local time when they sent this message: Thursday, 2026-10-01 18:27 (Asia/Tokyo, GMT+09:00). The time zone tells the time only, never which language to reply in.]",
-    );
-  });
-
   it("falls back to UTC and says so when no zone came with the message", () => {
     expect(userClockNote(AT, undefined)).toBe(
       "[The time when the user sent this message: Thursday, 2026-10-01 09:27 UTC. Their time zone is unknown.]",

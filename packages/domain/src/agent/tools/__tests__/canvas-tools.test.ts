@@ -372,9 +372,8 @@ describe("list_generation_models says which settings set the price (breatic#1361
     // Guards the case itself: duration changes this model's price.
     expect(credits.every((one) => one !== undefined)).toBe(true);
     expect(new Set(credits).size).toBe(2);
-    const cheaper = ends[credits.indexOf(Math.min(...credits.filter((one): one is number => one !== undefined)))];
     expect(paramLine(renderGenerationModelsForModel(answer), MODEL, "duration")).toContain(
-      `sets the price, lowest at ${JSON.stringify(cheaper)}; defaults to ${JSON.stringify(spec?.default)}.`,
+      `sets the price, lowest at 0.1; defaults to ${JSON.stringify(spec?.default)}.`,
     );
   });
 

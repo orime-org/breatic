@@ -321,7 +321,8 @@ async function lowestValues(model: ModelInfo): Promise<Record<string, unknown>> 
   const settable = Object.entries(model.params).filter(([, spec]) => spec.filledBySource !== true && spec.noControl !== true);
   const found = await Promise.all(
     settable.map(async ([name, spec]) => {
-      // ponytail: a range is probed at its ends only, which holds while range prices only rise or fall.
+      // ponytail: a range is probed at its ends only, which holds while range prices only rise or fall;
+      // probe every step across it if a model's price ever dips inside one.
       const options = spec.options ?? (spec.min !== undefined && spec.max !== undefined ? [spec.min, spec.max] : []);
       const credits = await Promise.all(options.map(async (value) => (await estimateModelCredits(model.name, { params: { [name]: value } }))?.credits));
       const known = credits.filter((one): one is number => one !== undefined);
