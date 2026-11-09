@@ -1572,13 +1572,11 @@ export function renderProductGuide(): string {
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
       "pressing it turns the inline code back into plain text. On an empty line the colour menu is greyed.",
-    `- The AI menu has three groups: ${quoted(t("spaces.document.commands.aiRewriteGroup"))} with ` +
+    `- The AI menu has three groups divided by lines: ` +
       `${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
       `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} ` +
-      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.aiProduceGroup"))} ` +
-      `with ${quoted(t("spaces.document.commands.ai_storyboard"))}; and ` +
-      `${quoted(t("spaces.document.commands.aiOtherGroup"))} with ` +
-      `${quoted(t("spaces.document.commands.ai_custom"))}. Hovering ` +
+      `and ${quoted(t("spaces.document.commands.ai_tone"))}; ${quoted(t("spaces.document.commands.ai_storyboard"))}; ` +
+      `and ${quoted(t("spaces.document.commands.ai_custom"))}. Hovering ` +
       `${quoted(t("spaces.document.commands.ai_translate"))} opens a list on its right of the five interface ` +
       "languages, each written in its own language; hovering " +
       `${quoted(t("spaces.document.commands.ai_tone"))} opens ${quoted(t("spaces.document.ai.tone.professional"))}, ` +
@@ -1595,8 +1593,9 @@ export function renderProductGuide(): string {
       "table from outside or across cells) and keeps the selection as it was; " +
       `${quoted(t("spaces.document.ai.replace"))} puts the result in place of the selection, the way pasting does: ` +
       "images and empty lines in it are replaced too, and words of a block left out of a selection inside that " +
-      "block stay. The commands under " +
-      `${quoted(t("spaces.document.commands.aiRewriteGroup"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
+      `block stay. ${quoted(t("spaces.document.commands.ai_refine"))}, ${quoted(t("spaces.document.commands.ai_expand"))}, ` +
+      `${quoted(t("spaces.document.commands.ai_shorten"))}, ${quoted(t("spaces.document.commands.ai_translate"))} and ` +
+      `${quoted(t("spaces.document.commands.ai_tone"))} keep the structure (headings, lists, code blocks); expand may turn a ` +
       `paragraph into several. ${quoted(t("spaces.document.commands.ai_storyboard"))} turns the selection into a ` +
       "shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera " +
       "angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes, written in " +

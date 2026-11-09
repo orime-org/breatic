@@ -24,7 +24,6 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import { Button } from '@web/components/ui/button';
 import { DropdownMenuShortcut } from '@web/components/ui/dropdown-menu';
 import {
-  BubbleMenuHeading,
   BubbleMenuRow,
   BubbleMenuRule,
   BubbleMenuSubmenuRow,
@@ -522,31 +521,25 @@ interface AiRow {
   readonly kind: AiRowKind;
 }
 
-/** The AI menu's seven commands in three groups, from the ruling §3.2.1. */
-const AI_GROUPS: ReadonlyArray<{ labelKey: string; items: readonly AiRow[] }> = [
-  {
-    labelKey: 'spaces.document.commands.aiRewriteGroup',
-    // Each row spells its key out. A template built from the id would read the
-    // same at runtime and vanish from the scan that finds dead catalog entries,
-    // so every one of these seven would look unused.
-    items: [
-      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
-      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
-      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten', kind: { runs: { id: 'shorten' } } },
-      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate', kind: { opens: 'translate' } },
-      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone', kind: { opens: 'tone' } },
-    ],
-  },
-  {
-    labelKey: 'spaces.document.commands.aiProduceGroup',
-    items: [
-      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } },
-    ],
-  },
-  {
-    labelKey: 'spaces.document.commands.aiOtherGroup',
-    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom', kind: { runs: { id: 'custom' } } }],
-  },
+/**
+ * The AI menu's seven commands in three groups — rewrites, the shot list, the
+ * custom instruction — drawn with a rule between groups, as the block type
+ * menu draws its own.
+ *
+ * Each row spells its key out. A template built from the id would read the
+ * same at runtime and vanish from the scan that finds dead catalog entries,
+ * so every one of these seven would look unused.
+ */
+const AI_GROUPS: ReadonlyArray<readonly AiRow[]> = [
+  [
+    { id: 'refine', labelKey: 'spaces.document.commands.ai_refine', kind: { runs: { id: 'refine' } } },
+    { id: 'expand', labelKey: 'spaces.document.commands.ai_expand', kind: { runs: { id: 'expand' } } },
+    { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten', kind: { runs: { id: 'shorten' } } },
+    { id: 'translate', labelKey: 'spaces.document.commands.ai_translate', kind: { opens: 'translate' } },
+    { id: 'tone', labelKey: 'spaces.document.commands.ai_tone', kind: { opens: 'tone' } },
+  ],
+  [{ id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard', kind: { runs: { id: 'storyboard' } } }],
+  [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom', kind: { runs: { id: 'custom' } } }],
 ];
 
 /** One item of a second level: its test id stem, what it shows, the command it runs. */
@@ -624,10 +617,10 @@ export const AiSlot = React.memo(function AiSlot({
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      {AI_GROUPS.map((group) => (
-        <React.Fragment key={group.labelKey}>
-          <BubbleMenuHeading>{t(group.labelKey)}</BubbleMenuHeading>
-          {group.items.map((item) => {
+      {AI_GROUPS.map((group, index) => (
+        <React.Fragment key={group[0]!.id}>
+          {index > 0 ? <BubbleMenuRule /> : null}
+          {group.map((item) => {
             const { kind } = item;
             if ('opens' in kind) {
               const which = kind.opens;

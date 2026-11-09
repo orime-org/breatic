@@ -317,9 +317,10 @@ describe("what the guide says", () => {
       /"Draft a shot list" turns the selection into a shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes/,
     );
     expect(doc).toMatch(/to draft it from the whole text, press Cmd\+A twice first to select the whole body/);
-    expect(doc).toMatch(/The commands under "Rewrite the selection" keep the structure/);
+    expect(doc).toMatch(/"Polish", "Expand", "Shorten", "Translate" and "Change tone" keep the structure/);
+    expect(doc).not.toMatch(/Rewrite the selection|Make something from the selection/);
     expect(doc).not.toMatch(/The fixed commands keep the structure/);
-    expect(doc).toMatch(/"Make something from the selection" with "Draft a shot list";/);
+    expect(doc).toMatch(/The AI menu has three groups divided by lines: "Polish", "Expand", "Shorten", "Translate" and "Change tone"; "Draft a shot list"; and "Custom instruction…"\./);
     expect(doc).not.toMatch(/illustrat/i);
   });
 

@@ -805,7 +805,7 @@ describe('the bubble bar shell', () => {
       }
     });
 
-    it('lists the seven AI commands in their three groups', async () => {
+    it('lists the seven AI commands in three groups divided by rules, with no headings', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
       await selectWithFocus(editor, 0, 9);
@@ -815,30 +815,17 @@ describe('the bubble bar shell', () => {
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
       ).toHaveLength(7);
 
-      // Seven rows in three groups, the groups coming from the table (§3.2.1).
-      // Counting the rows alone leaves the grouping untested: strip every
-      // label out and seven ungrouped rows still pass.
-      //
-      // Read as the order the user meets them in, with the count each one
-      // introduces — five rewrites, the shot list, one other.
-      const groups: { label: string; rows: number }[] = [];
+      // Read as the order the user meets them in: rows, a rule, rows. Any
+      // other child (a heading) fails the walk.
+      const groups: number[] = [0];
       for (const node of menu.children) {
-        const row = node.getAttribute('data-testid');
-        if (row?.startsWith('doc-bubble-ai-item-')) {
-          if (groups.length > 0) groups[groups.length - 1]!.rows += 1;
-          continue;
-        }
-        if (node.textContent) {
-          groups.push({ label: node.textContent.trim(), rows: 0 });
-        }
+        const id = node.getAttribute('data-testid');
+        if (id?.startsWith('doc-bubble-ai-item-')) groups[groups.length - 1]! += 1;
+        else if (id === 'doc-bubble-rule') groups.push(0);
+        else throw new Error(`unexpected child in the AI menu: ${node.outerHTML.slice(0, 80)}`);
       }
-      expect(groups.map((g) => g.rows)).toEqual([5, 1, 1]);
-      // Each heading resolved to a catalog entry: `t()` hands the key back
-      // when it finds nothing (`shared/src/i18n/index.ts:131`).
-      for (const g of groups) {
-        expect(g.label).not.toContain('spaces.document.commands');
-        expect(g.label.length).toBeGreaterThan(0);
-      }
+      // Five rewrites, the shot list, the custom instruction.
+      expect(groups).toEqual([5, 1, 1]);
     });
   });
 
