@@ -7,7 +7,14 @@
  * from, so the panel's host is one clip like the others.
  */
 
-import { MINI_TOOLS, type ContainerOp, type MiniToolSlot, type MiniToolSlotValue, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import {
+  MINI_TOOLS,
+  type ContainerOp,
+  type MiniToolSlot,
+  type MiniToolSlotValue,
+  type MiniToolSpec,
+  type NumberParam,
+} from '@breatic/shared/mini-tools';
 
 import type { MiniToolDraft } from '@web/stores/canvas-session';
 
@@ -50,6 +57,37 @@ export function joinToolFor(type: string): MiniToolSpec | undefined {
  * @returns The node id, or undefined when the draft holds no list.
  */
 export function joinFirstClipOf(draft: MiniToolDraft | null): string | undefined {
-  const list = Object.values(draft?.slots ?? {}).find((held) => Array.isArray(held)) as readonly MiniToolSlotValue[] | undefined;
-  return list?.[0]?.nodeId;
+  return joinClipsOf(draft?.slots ?? {})[0]?.nodeId;
+}
+
+/**
+ * A join draft's ordered clip list.
+ * @param slots - The draft's slots.
+ * @returns The list, empty when the draft holds none.
+ */
+export function joinClipsOf(slots: Readonly<Record<string, unknown>>): readonly MiniToolSlotValue[] {
+  const list = Object.values(slots).find((held) => Array.isArray(held)) as readonly MiniToolSlotValue[] | undefined;
+  return list ?? [];
+}
+
+/**
+ * The longest crossfade a join's list takes: the tool's own maximum, held to
+ * half the shortest clip on the param's step, the most the container blends
+ * any neighbour pair over (inner#1825 §6.5).
+ * @param spec - The tool.
+ * @param param - The number param.
+ * @param slots - The draft's slots.
+ * @returns The cap, or undefined when the param is not a join's crossfade.
+ */
+export function joinCrossfadeCap(
+  spec: MiniToolSpec,
+  param: NumberParam,
+  slots: Readonly<Record<string, unknown>>,
+): number | undefined {
+  if (!isJoinTool(spec)) return undefined;
+  const lengths = joinClipsOf(slots).flatMap((clip) => (clip.duration === undefined ? [] : [clip.duration]));
+  if (lengths.length === 0) return param.max;
+  // The tolerance keeps an exact half (4 s → 2 s) from flooring a step short.
+  const steps = Math.floor(Math.min(...lengths) / 2 / param.step + 1e-9);
+  return Math.min(param.max, Number((steps * param.step).toFixed(6)));
 }

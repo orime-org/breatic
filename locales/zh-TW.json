@@ -1388,7 +1388,9 @@
         "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。",
         "ratioTooLarge": "超出外擴能做的最大尺寸",
         "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
-        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
+        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
+        "joinClips": "片段",
+        "joinNeedsClip": "再加一段才能執行。"
       },
       "adjust": {
         "exposure": "曝光",

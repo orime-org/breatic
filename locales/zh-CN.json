@@ -1388,7 +1388,9 @@
         "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。",
         "ratioTooLarge": "超出外扩能做的最大尺寸",
         "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
-        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
+        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。",
+        "joinClips": "片段",
+        "joinNeedsClip": "再加一段才能执行。"
       },
       "adjust": {
         "exposure": "曝光",

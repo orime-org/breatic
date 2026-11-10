@@ -180,6 +180,8 @@ function OpenMiniToolPanel({
   const setMiniToolParam = useCanvasSession((s) => s.setMiniToolParam);
   const setMiniToolPrompt = useCanvasSession((s) => s.setMiniToolPrompt);
   const clearMiniToolSlot = useCanvasSession((s) => s.clearMiniToolSlot);
+  const moveMiniToolSlotItem = useCanvasSession((s) => s.moveMiniToolSlotItem);
+  const removeMiniToolSlotItem = useCanvasSession((s) => s.removeMiniToolSlotItem);
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
@@ -449,6 +451,8 @@ function OpenMiniToolPanel({
         pickingSlot={pickingSlot}
         onPickSlot={onPickSlot}
         onClearSlot={clearMiniToolSlot}
+        onMoveSlotItem={moveMiniToolSlotItem}
+        onRemoveSlotItem={removeMiniToolSlotItem}
         prompt={prompt}
         onPrompt={setMiniToolPrompt}
         creditText={creditText}

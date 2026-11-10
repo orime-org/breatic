@@ -12,6 +12,7 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
 import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
@@ -149,6 +150,10 @@ export function resolvedParams(
       if (param.kind === 'range' && out[param.key] == null && source.duration !== undefined) {
         out[param.key] = { start: 0, end: source.duration };
       }
+      // A join's crossfade is held to what its clips take, so the run is sent
+      // what the slider shows.
+      const cap = param.kind === 'number' ? joinCrossfadeCap(spec, param, slots) : undefined;
+      if (cap !== undefined && typeof out[param.key] === 'number' && (out[param.key] as number) > cap) out[param.key] = cap;
     }
     return out;
   }

@@ -53,6 +53,8 @@ import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { isJoinTool, joinClipsOf, joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
+import { JoinClipRow } from '@web/spaces/canvas/mini-tool/JoinClipRow';
 import {
   BLOCKING_REFUSALS,
   aspectRatioOf,
@@ -89,6 +91,10 @@ export interface MiniToolPanelProps {
   pickingSlot: string | null;
   onPickSlot: (slotKey: string) => void;
   onClearSlot: (slotKey: string, url?: string) => void;
+  /** Move a list item, by the node it was picked from, to a new place: a join's reorder. */
+  onMoveSlotItem?: (slotKey: string, nodeId: string, toIndex: number) => void;
+  /** Take a list item out by the node it was picked from: a join's remove. */
+  onRemoveSlotItem?: (slotKey: string, nodeId: string) => void;
   prompt: string;
   onPrompt: (prompt: string) => void;
   /** The cost line beside Run. */
@@ -159,6 +165,12 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
     </div>
   );
 });
+
+/**
+ * Stands in for a list callback the caller does not pass.
+ * @returns Nothing.
+ */
+const IGNORE = (): void => undefined;
 
 /** The icon an empty slot shows: what it wants. */
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
@@ -429,8 +441,21 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     </div>
   ) : null;
   const titleKey = spec.slots.find((slot) => slot.titleKey !== undefined)?.titleKey;
+  // A join draws its list as a numbered row it reorders (inner#1825 §6.5).
+  const joinSlot = isJoinTool(spec) ? spec.slots.find((slot) => slot.many) : undefined;
+  const joinClips = joinSlot === undefined ? [] : joinClipsOf(slots);
   const slotTiles =
-    tiles === null ? null : filledRule === undefined ? (
+    joinSlot !== undefined ? (
+      <JoinClipRow
+        slot={joinSlot}
+        clips={joinClips}
+        cap={slotCaps[joinSlot.key]}
+        picking={pickingSlot === joinSlot.key}
+        onPick={onPickSlot}
+        onMove={props.onMoveSlotItem ?? IGNORE}
+        onRemove={props.onRemoveSlotItem ?? IGNORE}
+      />
+    ) : tiles === null ? null : filledRule === undefined ? (
       titleKey === undefined ? (
         tiles
       ) : (
@@ -476,7 +501,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       wide={columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
       testId='mini-tool-panel'
     >
-      <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
+      <div data-testid={joinSlot === undefined ? undefined : 'join-panel'} className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
         {spec.markup === true ? <MarkControls /> : null}
         {props.expand !== undefined ? (
@@ -515,8 +540,14 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
                 params={params}
                 onParams={onParams}
                 source={props.source}
+                slots={slots}
               />
             ))}
+            {joinSlot !== undefined && joinClips.length < 2 ? (
+              <p data-testid='join-needs-clip' className='text-xs text-muted-foreground'>
+                {t('canvas.miniTool.panel.joinNeedsClip')}
+              </p>
+            ) : null}
           </>
         )}
         {spec.noteKey === undefined ? null : (
@@ -561,6 +592,8 @@ interface LocalParamControlProps {
   params: Readonly<Record<string, unknown>>;
   onParams: (partial: Record<string, unknown>) => void;
   source: MiniToolSourceInfo;
+  /** The draft's slots, which a join's crossfade is held to. */
+  slots: Readonly<Record<string, HeldSlot>>;
 }
 
 interface RectSideInputProps {
@@ -630,9 +663,10 @@ function numberReading(value: number, param: NumberParam): string {
  * @param root0.params - The draft params.
  * @param root0.onParams - Called with the changed params.
  * @param root0.source - What the source is showing.
+ * @param root0.slots - The draft's slots.
  * @returns The control, or null when it waits on the source's size or length.
  */
-function LocalParamControl({ param, spec, params, onParams, source }: LocalParamControlProps): React.JSX.Element | null {
+function LocalParamControl({ param, spec, params, onParams, source, slots }: LocalParamControlProps): React.JSX.Element | null {
   const t = useTranslation();
   const label = t(localParamLabelKey(param.key));
   const size =
@@ -644,7 +678,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           name={param.key}
           label={label}
           min={param.min}
-          max={param.max}
+          max={joinCrossfadeCap(spec, param, slots) ?? param.max}
           step={param.step}
           value={typeof params[param.key] === 'number' ? (params[param.key] as number) : param.default}
           format={(value) => numberReading(value, param)}
