@@ -1,23 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { createInterface } from 'node:readline';
+import { protocolsFor, type ReadFrom } from '@ingest/probe-command.js';
+import { startPlanCommand } from '@ingest/container/plan-command.js';
+
 /** An exact time as a numerator over a positive denominator, in seconds. */
 export type ExactSeconds = readonly [bigint, bigint];
 
 /** The window a stream covers: start inclusive, end exclusive. */
 export interface StreamWindow { start: ExactSeconds; end: ExactSeconds }
-
-/**
- * The ffprobe arguments that decode one audio stream and list each decoded frame's start and sample count. Decoding
- * applies the codec's priming and end trimming (Opus pre-skip, Matroska CodecDelay), which packet timestamps include.
- * @param input - The local source path.
- * @param streamIndex - The audio stream's index.
- * @returns The arguments.
- */
-export function decodedAudioProbeArgs(input: string, streamIndex: number): string[] {
-  return ['-v', 'error', '-protocol_whitelist', 'file', '-select_streams', String(streamIndex), '-show_frames',
-    '-show_entries', 'frame=pts,nb_samples', '-of', 'json', input];
-}
 
 /**
  * Whether ffprobe reported the stream's own start and length. Matroska writes neither length nor stream duration (only
@@ -91,21 +83,6 @@ export function decodedAudioAccumulator(stream: Record<string, unknown>): Window
 }
 
 /**
- * The window an audio stream plays, from its decoded frames.
- * @param stream - The ffprobe audio stream (its `time_base` and `sample_rate`).
- * @param frames - The `frames` read with {@link decodedAudioProbeArgs}.
- * @returns The window, or null when a clock fact is missing or nothing is decoded.
- */
-export function decodedAudioWindow(stream: Record<string, unknown>, frames: readonly unknown[]): StreamWindow | null {
-  const accumulator = decodedAudioAccumulator(stream);
-  if (accumulator === null) return null;
-  for (const frame of frames) {
-    if (typeof frame !== 'object' || frame === null || !accumulator.add(frame as Record<string, unknown>)) return null;
-  }
-  return accumulator.window();
-}
-
-/**
  * Collect the window a video stream covers from its packets: the earliest presentation time to the latest packet end.
  * A packet without a duration (a Matroska last block without BlockDuration or DefaultDuration) ends after the
  * stream's largest known packet duration.
@@ -145,4 +122,58 @@ export function videoPacketAccumulator(stream: Record<string, unknown>): WindowA
       return { start: [start * numerator, denominator], end: [end * numerator, denominator] };
     },
   };
+}
+
+/**
+ * FFprobe's error lines that leave a read whole (measured with FFmpeg 7.1): the HTTP layer reporting a dropped
+ * connection, which `-reconnect` then resumes with a Range request, and the Matroska demuxer reaching the end of a
+ * truncated object, whose window is what it holds. A drop that cannot be resumed adds the demuxer's `Read error`.
+ */
+const WHOLE_READ_STDERR = [
+  /^\[http @ 0x[0-9a-f]+\] Stream ends prematurely at \d+, should be \d+$/u,
+  /^\[matroska,webm @ 0x[0-9a-f]+\] File ended prematurely$/u,
+];
+
+/**
+ * Measure the window one stream covers by streaming FFprobe's entries line by line, so a long source never holds its
+ * list: an audio stream from its decoded frames, which apply the codec's priming and end trimming (Opus pre-skip,
+ * Matroska CodecDelay) that packet timestamps include; a video stream from its packets.
+ * @param input - Where the source is read.
+ * @param stream - The ffprobe stream (its `index`, `codec_type`, `time_base` and, for audio, `sample_rate`).
+ * @param from - Whether the source is the served object or a local file.
+ * @param run - The read's lifetime and the stderr tail kept for its error.
+ * @param run.signal - The lifetime; aborting kills FFprobe.
+ * @param run.stderrTailBytes - The stderr tail kept.
+ * @returns The window, or null when a clock fact is missing or nothing is read.
+ * @throws {PlanCommandExit} When FFprobe exits non-zero.
+ * @throws {Error} When a served object's read fails (FFprobe exits 0 after one, with the entries seen so far), or the
+ * read is cancelled.
+ */
+export async function readStreamWindow(input: string, stream: Record<string, unknown>, from: ReadFrom,
+  run: { signal: AbortSignal; stderrTailBytes: number }): Promise<StreamWindow | null> {
+  const audio = stream.codec_type === 'audio';
+  const accumulator = audio ? decodedAudioAccumulator(stream) : videoPacketAccumulator(stream);
+  if (accumulator === null) return null;
+  // A served object's read resumes with a Range request after a dropped connection instead of ending early; `repeat`
+  // keeps every error line, so a repeated one is checked rather than folded into "Last message repeated".
+  const reconnect = from === 'object' ? ['-reconnect', '1', '-reconnect_on_network_error', '1'] : [];
+  const pipe = startPlanCommand('ffprobe', ['-v', 'repeat+error', '-protocol_whitelist', protocolsFor(from), ...reconnect,
+    '-select_streams', String(stream.index), '-show_entries', audio ? 'frame=pts,nb_samples' : 'packet=pts,duration', '-of', 'compact=p=0', input],
+  run, { stdout: true });
+  let clockless = false;
+  try {
+    for await (const line of createInterface({ input: pipe.stdout!, crlfDelay: Infinity })) {
+      if (line.length === 0) continue;
+      const fields = Object.fromEntries(line.split('|').map((pair) => pair.split('=', 2) as [string, string]));
+      if (!accumulator.add(fields)) { clockless = true; pipe.stop(); break; }
+    }
+  } finally {
+    await pipe.done.catch((error: unknown) => { if (!clockless) throw error; });
+  }
+  if (clockless) return null;
+  const stderr = pipe.stderrTail();
+  if (from === 'object' && stderr.split('\n').some((line) => line.length > 0 && !WHOLE_READ_STDERR.some((whole) => whole.test(line)))) {
+    throw new Error(`The stream read failed: ${stderr}`);
+  }
+  return accumulator.window();
 }

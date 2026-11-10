@@ -131,6 +131,8 @@ beforeAll(async () => {
   // Matroska writes no stream duration (only a DURATION tag), so an Opus track's window comes from its packets.
   const vp9 = ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2'];
   await make('opus-long.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus']);
+  // A 0.4 s video under 10 s of Opus: the decoded-frame list is far longer than the video's packet list.
+  await make('opus-tail.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=10', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus']);
   await make('opus.webm', [...vp9, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-shortest']);
   // Frames at 0, 100, 400 and 500 ms; FFmpeg writes a DefaultDuration, which is replaced by an EBML Void of the same
   // length, so no frame declares a duration (as MediaRecorder recordings in the 2026-10-31 evidence).
@@ -524,6 +526,12 @@ describe('audio window, Matroska last frame and leading start (design §4.2, §4
     expect(longer.plan.originMapping.lastSource.hold?.kind).toBe('derived-hold');
     const even = planned(await probed('opus.webm'));
     expect(Number(even.plan.display.duration.numerator) / Number(even.plan.display.duration.denominator)).toBeLessThan(2.1);
+  });
+
+  it('AU05 the decoded Opus frames are streamed, so a frame list past the ledger\'s probe stdout bound still plans', async () => {
+    // 10 packets of video list in about 2 KB of JSON; 500 decoded Opus frames would take about 37 KB.
+    const answer = planned(await probed('opus-tail.webm', { limits: { ...LIMITS, sourceLedger: { ...LIMITS.sourceLedger, probeStdoutBytes: 16384 } } }));
+    expect(Number(answer.plan.display.duration.numerator) / Number(answer.plan.display.duration.denominator)).toBeGreaterThan(9.9);
   });
 
   it('MK01 a Matroska last frame without BlockDuration or DefaultDuration takes the largest earlier frame duration (previous-max)', async () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from 'vitest';
-import { declaresAudioWindow, decodedAudioWindow, videoPacketAccumulator } from '@ingest/container/stream-window.js';
+import { declaresAudioWindow, decodedAudioAccumulator, videoPacketAccumulator, type StreamWindow } from '@ingest/container/stream-window.js';
 
 // Measured on a VP9 + Opus WebM from FFmpeg 7.1: packets run from -7 ms to 3014 ms, while decoding drops the 312-sample
 // pre-skip at the start and trims the last frame to 312 samples, so the stream plays from 0 to 2994 ms + 312 samples.
@@ -18,6 +18,19 @@ const FRAMES = [{ pts: 0, nb_samples: 648 }, { pts: 14, nb_samples: 960 }, { pts
  */
 function equals(value: readonly [bigint, bigint], numerator: bigint, denominator: bigint): boolean {
   return value[0] * denominator === numerator * value[1];
+}
+
+/**
+ * Feed decoded frames to the audio accumulator, as the streamed reader does line by line.
+ * @param stream - The ffprobe audio stream.
+ * @param frames - The frames' fields.
+ * @returns The window, or null when a clock fact is missing or nothing was decoded.
+ */
+function decodedAudioWindow(stream: Record<string, unknown>, frames: readonly Record<string, unknown>[]): StreamWindow | null {
+  const accumulator = decodedAudioAccumulator(stream);
+  if (accumulator === null) return null;
+  for (const frame of frames) if (!accumulator.add(frame)) return null;
+  return accumulator.window();
 }
 
 describe('the decoded audio window', () => {

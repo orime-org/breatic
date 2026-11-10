@@ -133,12 +133,14 @@ async function serveDroppingOnce(path: string, fraction: number, resumable: bool
 }
 
 /**
- * Measure the audio-only WebM through a server that drops its first response.
- * @param resumable - Whether the server answers the reconnect.
+ * Measure the audio-only WebM's streams on a file served by {@link serveDroppingOnce}.
+ * @param path - The file served.
+ * @param fraction - The share of the body the first response sends.
+ * @param resumable - Whether the server offers byte ranges.
  * @returns The measured windows.
  */
-async function measureDropped(resumable: boolean): Promise<Awaited<ReturnType<ReturnType<typeof measure>>>> {
-  const { server, url } = await serveDroppingOnce(opusWebm, 0.6, resumable);
+async function measureServed(path: string, fraction: number, resumable: boolean): Promise<Awaited<ReturnType<ReturnType<typeof measure>>>> {
+  const { server, url } = await serveDroppingOnce(path, fraction, resumable);
   try {
     return await measure()(url, probed(opusWebm), AbortSignal.timeout(60_000), "object");
   } finally {
@@ -149,21 +151,21 @@ async function measureDropped(resumable: boolean): Promise<Awaited<ReturnType<Re
 
 describe("measuring a served source whose connection drops mid-body", () => {
   it("resumes the read and measures the whole source", async () => {
-    const measured = await measureDropped(true);
+    const measured = await measureServed(opusWebm, 0.6, true);
     expect(seconds(measured[0]!.end)).toBeGreaterThan(2.99);
   });
 
   it("fails rather than take the part read before the drop as the source's length", async () => {
-    await expect(measureDropped(false)).rejects.toThrow(/read failed/);
+    await expect(measureServed(opusWebm, 0.6, false)).rejects.toThrow(/read failed/);
   });
 });
 
-describe("measuring a truncated local source", () => {
-  it("measures what a WebM cut short holds, as before", async () => {
+describe("measuring a truncated source", () => {
+  it("measures what a served WebM cut short holds, as before", async () => {
     const cut = join(dir, "cut.webm");
     const bytes = readFileSync(opusWebm);
     writeFileSync(cut, bytes.subarray(0, Math.floor(bytes.length * 0.6)));
-    const measured = await measure()(cut, probed(opusWebm), AbortSignal.timeout(60_000), "own-file");
+    const measured = await measureServed(cut, 1, true);
     expect(seconds(measured[0]!.end)).toBeGreaterThan(1);
     expect(seconds(measured[0]!.end)).toBeLessThan(2.5);
   });
