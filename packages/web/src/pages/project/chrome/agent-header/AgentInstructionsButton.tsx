@@ -27,12 +27,8 @@ interface AgentInstructionsButtonProps {
 export function AgentInstructionsButton({ projectId }: AgentInstructionsButtonProps): React.JSX.Element {
   const t = useTranslation();
   const { data } = useAgentInstructions(projectId);
-  const [opening, setOpening] = React.useState(0);
   const [open, setOpen] = React.useState(false);
-  const onOpen = React.useCallback((): void => {
-    setOpening((n) => n + 1);
-    setOpen(true);
-  }, []);
+  const onOpen = React.useCallback((): void => setOpen(true), []);
   const onClose = React.useCallback((): void => setOpen(false), []);
   return (
     <>
@@ -57,7 +53,7 @@ export function AgentInstructionsButton({ projectId }: AgentInstructionsButtonPr
         </TooltipTrigger>
         <TooltipContent>{t('chat.instructions.open')}</TooltipContent>
       </Tooltip>
-      {open ? <AgentInstructionsEditor key={opening} projectId={projectId} onClose={onClose} /> : null}
+      {open ? <AgentInstructionsEditor projectId={projectId} onClose={onClose} /> : null}
     </>
   );
 }
