@@ -126,9 +126,8 @@ export async function recordMiniToolStepIdentity(input: RecordMiniToolStepIdenti
       }, tx);
     }
     const stored = consumption ?? await openMiniToolConsumptionForStepAttempt(request, tx);
-    if (task.result.miniToolExecution !== undefined && (task.status === "completed" || task.status === "failed")) {
-      await completeResolvedMiniToolConsumptionSet(task.id, tx);
-    }
+    // A late receipt may resolve an ended execution's or analysis's last attempt; the closer itself skips a running task.
+    await completeResolvedMiniToolConsumptionSet(task.id, tx);
     return { step: await reread(task.id, step.id, tx), consumption: stored, conflict: false };
   });
   if (answer instanceof Error) throw answer;
@@ -202,6 +201,8 @@ export async function failMiniToolStep(input: FailMiniToolStepInput): Promise<Up
     if (!terminal) { state.error = request.error; changed = true; }
     if (!changed) return step;
     await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, terminal ? {} : { status: "failed" }, tx);
+    // A proof that arrives after the task ended may resolve its last attempt, so its call set closes here.
+    await completeResolvedMiniToolConsumptionSet(task.id, tx);
     return reread(task.id, step.id, tx);
   });
 }

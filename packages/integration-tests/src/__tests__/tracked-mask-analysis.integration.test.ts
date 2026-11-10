@@ -266,4 +266,58 @@ describe("a tracked mask analysis the queue cleanup ends (execution design §6.1
     await drive(f).catch(() => null);
     expect(await queueCleanup(f)).toEqual({ status: "failed", complete: false });
   });
+
+  /**
+   * An analysis whose every SAM3 submit got no answer, ended by the queue cleanup with its credits held, as admission holds them.
+   * @returns The fixture and the generate steps' unresolved attempts.
+   */
+  async function endedOpen(): Promise<{ f: Fixture; open: { stepId: string; attemptId: string }[] }> {
+    outside.runPrediction.mockImplementation(async () => { throw new Error("connection reset after the request was sent"); });
+    const f = await seed();
+    await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${f.studioId},${f.userId},${f.taskId},1,'held','2099-01-01T00:00:00Z')`;
+    await drive(f).catch(() => null);
+    expect(await queueCleanup(f)).toEqual({ status: "failed", complete: false });
+    const { miniToolStepStateSchema, upstreamStepRepo } = await import("@breatic/domain");
+    const open = (await upstreamStepRepo.listSteps(f.taskId)).flatMap((step) => step.kind !== "generate" || step.output.miniToolStep === undefined ? []
+      : miniToolStepStateSchema.parse(step.output.miniToolStep).attempts.filter((attempt) => attempt.resolution.kind === "unresolved").map((attempt) => ({ stepId: step.id, attemptId: attempt.attemptId })));
+    expect(open.length).toBeGreaterThan(0);
+    return { f, open };
+  }
+
+  /**
+   * Run the settlement owner until it bills or has nothing due, every consumption's cost known, then read the closure flag
+   * and the hold.
+   * @param f - The fixture.
+   * @returns The closure flag and the hold's status.
+   */
+  async function settled(f: Fixture): Promise<{ complete: unknown; hold: string | undefined }> {
+    const { runMiniToolSettlement, taskRepo } = await import("@breatic/domain");
+    for (let round = 0; round < 40; round += 1) {
+      const wake = await taskRepo.waitingMiniToolSettlement(f.taskId);
+      if (wake === null) break;
+      const result = await runMiniToolSettlement({ taskId: f.taskId, settlementVersion: wake.settlementVersion }, async (input) => input.consumption.identity.kind === "provider"
+        ? { state: "known", costUsd: 0.2, costSource: "generation_lookup", raw: { fixtureCost: 0.2 } }
+        : { state: "known", costUsd: 0.01, costSource: "computed", raw: { fixtureCost: 0.01 } });
+      if (result.failure !== undefined) throw result.failure;
+    }
+    const [task] = await pg<{ complete: unknown }[]>`SELECT result#>'{settlement,consumptionSetComplete}' AS complete FROM tasks WHERE id=${f.taskId}`;
+    const [hold] = await pg<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`;
+    return { complete: task!.complete, hold: hold?.status };
+  }
+
+  it("C15b an analysis whose last SAM3 receipt arrives after the cleanup closes then, and settles its hold", async () => {
+    const { f, open } = await endedOpen();
+    const { recordMiniToolStepIdentity } = await import("@breatic/domain");
+    for (const attempt of open) await recordMiniToolStepIdentity({ ...attempt, taskId: f.taskId, predictionId: randomUUID() });
+    expect(await settled(f)).toEqual({ complete: true, hold: "released" });
+  });
+
+  it("C15c an analysis whose last SAM3 attempt is proven rejected after the cleanup closes then, and settles its hold", async () => {
+    const { f, open } = await endedOpen();
+    const { failMiniToolStep } = await import("@breatic/domain");
+    for (const attempt of open) {
+      await failMiniToolStep({ taskId: f.taskId, stepId: attempt.stepId, error: { code: "model_rejected" }, attempt: { attemptId: attempt.attemptId, proof: "rejected" } });
+    }
+    expect(await settled(f)).toEqual({ complete: true, hold: "released" });
+  });
 });

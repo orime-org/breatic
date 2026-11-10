@@ -232,7 +232,9 @@ describe("planned upstream intent and canonical identity persistence", () => {
     await pg`UPDATE tasks SET status='failed' WHERE id=${f.taskId}`;
     const before = await snapshot(f); await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: f.stepId, attemptId: f.input.attemptId, predictionId: "prediction-original" }); const after = await snapshot(f);
     expect(after.step.status).toBe("failed"); expect(after.step.output.miniToolStep!.error).toEqual(ERROR); expect(after.step.prediction_id).toBe("prediction-original");
-    expect(after.step.output.miniToolConsumption).toMatchObject({ state: "pending", costUsd: null }); expect(after.task.result.settlement).toMatchObject({ consumptionSetComplete: false }); preserved(before, after);
+    expect(after.step.output.miniToolConsumption).toMatchObject({ state: "pending", costUsd: null });
+    // The receipt resolves the ended analysis's last attempt, so its call set closes with it (execution design §6.12).
+    expect(after.task.result.settlement).toMatchObject({ consumptionSetComplete: true }); preserved(before, after);
     expect((await beginMiniToolStepAttempt({ ...f.input, attemptId: crypto.randomUUID() })).shouldSubmit).toBe(false);
   });
   it("keeps ambiguous intent incomplete when calculation ends without any provider ID", async () => {
