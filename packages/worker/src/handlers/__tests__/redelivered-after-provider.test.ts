@@ -78,13 +78,14 @@ vi.mock("@breatic/domain", () => ({
   extractPromptText: vi.fn(),
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/shared")>()),
+  ...(await importOriginal<typeof SharedModule>()),
   NO_CONSENT: { analytics: false, ads: false },
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),
 }));
 
 import type { Job } from "bullmq";
+import type * as SharedModule from "@breatic/shared";
 
 import { runTask } from "@worker/handlers/dispatch.js";
 
