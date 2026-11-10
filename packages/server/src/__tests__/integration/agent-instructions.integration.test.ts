@@ -523,10 +523,10 @@ describe("agentInstructionsService", () => {
     const viewer = await addMember(s, "viewer");
     const stranger = await insertPerson();
 
-    await expect(agentInstructionsService.save(s.projectId, viewer.id, "x")).rejects.toMatchObject({ status: 403 });
-    await expect(agentInstructionsService.read(s.projectId, viewer.id)).rejects.toMatchObject({ status: 403 });
-    await expect(agentInstructionsService.save(s.projectId, stranger.id, "x")).rejects.toMatchObject({ status: 404 });
-    await expect(agentInstructionsService.read(s.projectId, stranger.id)).rejects.toMatchObject({ status: 404 });
+    await expect(agentInstructionsService.save(s.projectId, viewer.id, "x")).rejects.toMatchObject({ statusCode: 403 });
+    await expect(agentInstructionsService.read(s.projectId, viewer.id)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(agentInstructionsService.save(s.projectId, stranger.id, "x")).rejects.toMatchObject({ statusCode: 404 });
+    await expect(agentInstructionsService.read(s.projectId, stranger.id)).rejects.toMatchObject({ statusCode: 404 });
 
     const saved = await agentInstructionsService.save(s.projectId, s.owner.id, " direct ");
     expect(saved.text).toBe(" direct ");
