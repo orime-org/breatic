@@ -19,7 +19,9 @@ vi.mock("@breatic/domain", async (original) => ({
 vi.mock("@breatic/core", async (original) => ({
   ...await original<typeof coreModule>(), getRawEnvVar: (name: string) => name === "WAVESPEED_API_KEY" ? "test-key" : undefined,
   env: { INGEST_BASE_URL: "https://ingest.test.invalid", INGEST_SHARED_SECRET: "test-secret" },
-  getMiniToolsConfig: () => { throw new Error("Lookup must use frozen prices"); },
+  // Only the poll interval is read live: it bounds the container's reporting window; prices are frozen with the consumption.
+  getMiniToolsConfig: () => ({ poll_interval_ms: 5000,
+    get prices(): never { throw new Error("Lookup must use frozen prices"); }, get classes(): never { throw new Error("Lookup must use frozen prices"); } }),
 }));
 
 import { containerCostUsd } from "@breatic/domain";
@@ -111,10 +113,31 @@ describe("original mini-tool expense lookup", () => {
 
   it.each([null, { schemaVersion: 2, state: "starting" }, { schemaVersion: 2, state: "running" },
   ])("keeps an unfinished original container report pending: %j", async (report) => {
-    read.mockResolvedValue(report);
-    expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({ state: "pending", reason: expect.any(String) });
-    expect(read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan, bound);
-    expect(send).not.toHaveBeenCalled(); expect(submit).not.toHaveBeenCalled();
+    // The last instant of the job's reporting window (its deadline plus two poll intervals).
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(plan.deadlineAt + 2 * 5000 - 1);
+    try {
+      read.mockResolvedValue(report);
+      expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({ state: "pending", reason: expect.any(String) });
+      expect(read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan, bound);
+      expect(send).not.toHaveBeenCalled(); expect(submit).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("settles a job ingest never received at zero once its reporting window has closed: the attempt never ran", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(plan.deadlineAt + 2 * 5000);
+    try {
+      read.mockResolvedValue(null);
+      expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toEqual({ state: "known", costUsd: 0, costSource: "computed", raw: null });
+      expect(submit).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each([{ schemaVersion: 2, state: "starting" }, { schemaVersion: 2, state: "running" }])("keeps a report still %j after the reporting window pending", async (report) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(plan.deadlineAt + 2 * 5000);
+    try {
+      read.mockResolvedValue(report);
+      expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({ state: "pending" });
+    } finally { vi.useRealTimers(); }
   });
 
   it("settles an ended attempt whose usage is unknown at zero: its container never started or vanished unmeasured", async () => {

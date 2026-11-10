@@ -21,6 +21,7 @@ import type { OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
 import { advanceChunks, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { DeadlinePassed } from "@breatic/shared";
 
 const h = vi.hoisted(() => ({ list: vi.fn(), ensure: vi.fn(), open: vi.fn(), record: vi.fn(), advance: vi.fn() }));
 vi.mock("@breatic/core", async (original) => {
@@ -45,6 +46,8 @@ type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
 let steps: Steps;
 // What each job answers this pickup by its id; a job not named is done.
 let jobs: Map<string, "running" | "failed">;
+// The jobs ingest holds; as the real boundary, a job not yet submitted is never submitted after its deadline.
+let submitted: Set<string>;
 
 /**
  * A chunk step of the list.
@@ -86,7 +89,7 @@ function opened(): string[] {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; jobs = new Map();
+  steps = []; jobs = new Map(); submitted = new Set();
   // A fresh array per read, as the repository answers.
   h.list.mockImplementation(async () => [...steps]);
   h.ensure.mockImplementation(async (_taskId: string, planned: StepPlan) => {
@@ -103,6 +106,8 @@ beforeEach(() => {
     return { request, consumption: { identity: { kind: "container", containerClass: request.containerClass, jobId: request.jobId, chunkIndex: input.chunkIndex } } };
   });
   h.advance.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+    if (!submitted.has(request.jobId) && Date.now() >= request.deadlineAt) throw new DeadlinePassed();
+    submitted.add(request.jobId);
     const state = jobs.get(request.jobId);
     if (state === "running") throw new StillRunning(Date.now() + 5000);
     const output = request.outputs[0]!;
@@ -156,5 +161,14 @@ describe("the shared chunk list (frames-split §5.4 parallel stage; execution de
     const ended = await pickup();
     const keys = [0, 1, 2].map((k) => (steps.find((step) => (step.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined)?.jobId === jobOf(k, 1))!.output.miniToolPlanJob as MiniToolPlanJobRequest).outputs[0]!.storageKey);
     expect(ended).toEqual({ keys });
+  });
+
+  it("CL04 once the run's deadline has passed no chunk opens a new attempt: a retry due after it is never opened", async () => {
+    for (const k of [0, 1, 2]) jobs.set(jobOf(k, 1), "running");
+    expect(await pickup()).toBeInstanceOf(StillRunning);
+    jobs.set(jobOf(0, 1), "failed"); jobs.delete(jobOf(1, 1)); jobs.delete(jobOf(2, 1));
+    const passed = Date.now() - 1;
+    await expect(advanceChunks(RUN, [0, 1, 2].map(chunk), passed)).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(new Set(opened())).toEqual(new Set([jobOf(0, 1), jobOf(1, 1), jobOf(2, 1)]));
   });
 });

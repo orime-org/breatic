@@ -14,7 +14,7 @@ import {
   recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson, type RecordMiniToolStepResultInput,
 } from "@breatic/domain";
 import {
-  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
+  assertBeforeDeadline, DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
   type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
@@ -431,6 +431,7 @@ export interface ContainerStep {
  * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
  * @returns The output, the failure, or null when the next attempt is not opened.
  * @throws {StillRunning} While a job runs.
+ * @throws {DeadlinePassed} When a next attempt is due after the deadline.
  * @throws {Error} When persistence or the job boundary fails.
  */
 async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadlineAt: number, open: boolean): Promise<StepEnded | null> {
@@ -445,6 +446,8 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
       if (original !== null) return { key: original };
     }
     if (existing === undefined && !open) return null;
+    // An attempt opened after the deadline is never submitted, so it is never opened.
+    if (existing === undefined) assertBeforeDeadline(deadlineAt);
     const state = existing === undefined ? null : stateOf(existing);
     if (existing !== undefined && state?.result?.outcome === "failed") {
       const failed = readMiniToolPlanJobReport(storedRequest(existing)!, state.result.result);
