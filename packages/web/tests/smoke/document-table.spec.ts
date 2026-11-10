@@ -442,7 +442,19 @@ test('breatic#1427: Full screen lays the table over the window for editing, and 
   expect(await grids(page)).toEqual([[['a2', 'b2'], ['a1', 'b1']]]);
   await expect(area).toBeVisible();
 
+  // A row added from its handle, and the cell's own button by the caret.
+  await hoverCell(page, 'b1');
+  await page.getByTestId('doc-table-row-handle').click();
+  await page.getByTestId('doc-table-row-insertBelow').click();
+  expect(await grids(page)).toEqual([[['a2', 'b2'], ['a1', 'b1'], ['', '']]]);
+  await expect(area).toBeVisible();
+  await cell(page, 'a2').click();
+  await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
+
   await page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }).click();
+  // A tooltip a handle left open takes the first Escape, as anywhere.
+  await page.mouse.move(5, 5);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(area).toHaveCount(0);
   await expect(page.locator(`${EDITOR} .bn-block-content`).filter({ hasText: 'lead' })).toBeVisible();
