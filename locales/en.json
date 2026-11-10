@@ -263,7 +263,8 @@
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-      "sourceTooLarge": "This tool takes files up to {size}."
+      "sourceTooLarge": "This tool takes files up to {size}.",
+      "clipsTooLarge": "These clips are too large to join together."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -879,6 +880,7 @@
       "audioOptionEmpty": "No matches",
       "param": {
         "language": "Language",
+        "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
         "pronunciation_dict": "Pronunciations",
@@ -1722,7 +1724,113 @@
         }
       },
       "applyFailed": "Couldn't apply the template.",
-      "groupLocked": "The group is locked. Unlock it to add nodes."
+      "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "ambience-sfx-bed": {
+        "name": "Ambience bed with foley",
+        "description": "A looping place sound with a few foley hits",
+        "prompt": "A seamless ambience bed of {✏️ the place, e.g. a rainy night street in an old town}. The steady layer: {✏️ the continuous sound, e.g. rain on cobblestones and traffic far away}. Two or three foley hits inside it: {✏️ the hits, e.g. a door closing far off, footsteps passing close}. Every sound has its distance, near or far, and the hits come now and then, not on a beat. No music, no voices."
+      },
+      "voice-line": {
+        "name": "Voice-over line",
+        "description": "One line read exactly as written",
+        "prompt": "{✏️ the exact words to read, with a comma or a full stop wherever a pause belongs}"
+      },
+      "two-voice-dialogue": {
+        "name": "Two-voice dialogue",
+        "description": "Two named people talking, in one pass",
+        "prompt": "Ava: {✏️ Ava's first line}\nLeo: {✏️ Leo's answer}\nAva: {✏️ Ava's next line}"
+      },
+      "underscore-bgm": {
+        "name": "Background music",
+        "description": "Instrumental music under a voice-over or picture",
+        "prompt": "Instrumental background music for {✏️ what the video is, e.g. a calm product walkthrough}, {✏️ length, e.g. 40 seconds} long. Genre: {✏️ genre}. Tempo around {✏️ tempo, e.g. 90 BPM}, in {✏️ key, e.g. D major}. Two or three instruments: {✏️ instruments, e.g. soft piano, warm pads and light percussion}. Energy: {✏️ how it moves, e.g. sparse at the start, building gently in the middle, settling at the end}. It sits under a voice-over: no vocals, no lead melody competing with speech, no sudden hits.",
+        "step": {
+          "trim": "Once it has generated, use Tools → Cut on it to trim it to the video's length."
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "Voice from a description",
+        "description": "A voice described in words saying your line",
+        "prompt": "{✏️ the exact words to say}"
+      },
+      "song-cover": {
+        "name": "Song cover",
+        "description": "Your song redone in another style",
+        "prompt": "Redo the song as {✏️ the new style, e.g. a slow acoustic ballad with fingerpicked guitar and soft vocals}. Keep the melody and the lyrics; change the arrangement, the instruments and the feel.",
+        "input": {
+          "song": {
+            "name": "Song",
+            "note": "Add your song first, then pick it into the Song slot"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "Line in your voice",
+        "description": "A new line read in the voice of your recording",
+        "prompt": "{✏️ the exact words to say in this voice}",
+        "input": {
+          "sample": {
+            "name": "Voice sample",
+            "note": "Add a clean recording of the voice first (one speaker, no music, 10 seconds or more), then pick it into the Voice sample slot"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "Music for your video",
+        "description": "Music that follows your video's mood and cuts",
+        "prompt": "Music that follows this video's mood, pace and scene changes. Style: {✏️ the style, e.g. warm acoustic folk with light percussion}.",
+        "input": {
+          "video": {
+            "name": "Your video",
+            "note": "Add your video first, then pick it into the Video slot"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "Music from a picture",
+        "description": "Music in the mood of your picture",
+        "prompt": "Instrumental music in the mood of the reference image: its feeling, colours and setting decide the genre, the key and the instruments. Length: {✏️ e.g. 30 seconds}. {✏️ anything else, e.g. slow and dreamy}.",
+        "input": {
+          "image": {
+            "name": "Picture",
+            "note": "Add the picture first, then pick it into the Reference image slot"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "Silent shot with foley",
+        "description": "A silent shot, then foley timed to it",
+        "prompt": "One continuous shot of {✏️ the scene, e.g. a chef chopping vegetables on a wooden board}. 0–2 s: {✏️ the first action}. 2–5 s: {✏️ the next action}. Every contact is visible and clear, what touches what and when, so its sound can be added afterwards. One main camera move: {✏️ e.g. a slow push in}. Light from one source: {✏️ e.g. a window on the left}. No text on screen.",
+        "node": {
+          "foley": {
+            "name": "Foley",
+            "prompt": "(💡 Generate the video first, then pick it into the Video slot)Foley for this shot: {✏️ the sounds, e.g. the knife on the board, vegetables sliding, a pan sizzling behind}. Each sound lands exactly when it happens on screen; close sounds dry and clear, background ones quieter. No music, no voices."
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "Score in four sections",
+        "description": "Four sections in one style, trimmed and joined",
+        "prompt": "Intro of a four-part instrumental score for {✏️ the film, e.g. a 2-minute brand film}. Shared by all four parts: {✏️ genre}, around {✏️ tempo, e.g. 96 BPM}, in {✏️ key, e.g. A minor}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, quiet and open, setting out the theme.",
+        "node": {
+          "body": {
+            "name": "Body",
+            "prompt": "Body of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 60 seconds}, steady and moving forward under the main story."
+          },
+          "reveal": {
+            "name": "Reveal",
+            "prompt": "Reveal of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 25 seconds}, the peak: fuller and louder, the theme at its strongest."
+          },
+          "outro": {
+            "name": "Outro",
+            "prompt": "Outro of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, winding down and ending cleanly, the theme once more, softly."
+          }
+        },
+        "step": {
+          "trim": "Once each section has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
+          "join": "Select the four sections, right-click and choose Join; check that the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+        }
+      }
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
