@@ -24,6 +24,11 @@ export interface ShownVersion {
   readonly content: Json;
 }
 
+/** Holds what the preview shows now, or null before the first show. */
+export interface ShownRef {
+  current: ShownVersion | null;
+}
+
 /** What a snapshot row carries for the panel beyond the controller's fields. */
 export interface SnapshotMetadata {
   /** The saver's display name, when they have one. */
@@ -73,15 +78,14 @@ function toSnapshot(row: DocumentVersion): VersionSnapshot {
  * The storage for one document.
  * @param options - The document and the restore's two hooks.
  * @param options.scope - The document.
- * @param options.shown - Holds what the preview shows now.
- * @param options.shown.current - It, or null before the first show.
+ * @param options.shown - What the preview shows now.
  * @param options.apply - Writes a snapshot into the live body; it throws when it cannot.
  * @param options.report - Reports a write that threw.
  * @returns The storage.
  */
 export function createDocumentVersionStorage(options: {
   scope: DocumentScope;
-  shown: { readonly current: ShownVersion | null };
+  shown: ShownRef;
   apply: (content: Json) => unknown;
   report: (err: unknown) => void;
 }): VersionStorage<Json> {
