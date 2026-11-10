@@ -272,6 +272,7 @@
       "lipSyncPeopleRunning": "人物辨識仍在進行，完成後再試。",
       "lipSyncPeopleStale": "辨識出的人物已和這個影片對不上，請重新辨識人物。",
       "lipSyncStepTooLong": "這次對口型太長，單一處理步驟無法完成。請縮短對白或影片。",
+      "lipSyncAnchorTooLate": "辨識人物的畫面離影片開頭太遠，一次追蹤不回去。請在更前面的畫面上辨識人物，或換一段更短、解析度更低的影片。",
       "eraseRange": "擦除的區間需在 {min}–{max} 秒之間。",
       "anchorOutsideRange": "框選所在的影格不在擦除區間內。請在區間內的影格上框選。",
       "trackingRunning": "追蹤仍在進行中，完成後再試。",

@@ -516,6 +516,10 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   for (const seconds of trackingClipSeconds(table, clips)) tracking += await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [seconds] }, sources: ["video"] });
   const seconds = layoutWork + persons.length * encoderRates(config).startSeconds;
   const stageJobs = plannedStageJobs(layout);
+  // The reversed tracking chunks cover [0, anchor] whatever the outputs are, so their refusal names the anchor (§10.2).
+  if (stageJobs.some((stage) => stage.stage === "track_prepare" && stage.jobs > config.encoding.max_parallel_chunks)) {
+    throw new AppError(400, t("server.mini_tool.lipSyncAnchorTooLate"));
+  }
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries, rawDiskBytes };

@@ -272,6 +272,7 @@
       "lipSyncPeopleRunning": "Person detection is still running. Try again when it finishes.",
       "lipSyncPeopleStale": "The detected people no longer match this video. Detect people again.",
       "lipSyncStepTooLong": "This lip-sync run is too long for one processing step. Shorten the dialogue or the video.",
+      "lipSyncAnchorTooLate": "The frame you detected people on is too far from the start of the video to track back in one run. Detect people on an earlier frame, or use a shorter or lower-resolution video.",
       "eraseRange": "Erase takes a range of {min}–{max} s.",
       "anchorOutsideRange": "The frame you selected on is outside the erase range. Select on a frame inside the range.",
       "trackingRunning": "Tracking is still running. Try again when it finishes.",

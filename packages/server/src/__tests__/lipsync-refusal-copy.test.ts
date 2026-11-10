@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 test plan §97 D19-2 (frames-split §7.11 fresh row 「否则拒绝并告诉用户原因」; D17-1, D18-1, D23-5): the eight lip-sync
+ * inner#1306 test plan §97 D19-2 (frames-split §7.11 fresh row 「否则拒绝并告诉用户原因」; D17-1, D18-1, D23-5): the nine lip-sync
  * admission refusals the panel shows as a toast ship in all five locales under `server.mini_tool.*`, each translation keeping
  * the placeholders its English message names, and the English text is the coordinator's.
  */
@@ -22,6 +22,8 @@ const ENGLISH: Readonly<Record<string, string>> = {
   lipSyncPeopleStale: "The detected people no longer match this video. Detect people again.",
   // frames-split §5.4 派发 row: one faces, clip, stem or stitch job estimated over one chunk share.
   lipSyncStepTooLong: "This lip-sync run is too long for one processing step. Shorten the dialogue or the video.",
+  // Execution design §10.2: the reversed tracking chunks over [0, anchor] exceed `encoding.max_parallel_chunks`.
+  lipSyncAnchorTooLate: "The frame you detected people on is too far from the start of the video to track back in one run. Detect people on an earlier frame, or use a shorter or lower-resolution video.",
 };
 
 /**

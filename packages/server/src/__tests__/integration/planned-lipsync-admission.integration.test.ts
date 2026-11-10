@@ -506,8 +506,10 @@ describe("lip-sync stage job counts at admission (§97 D12-1; frames-split §5.4
   });
 
   // Execution design §10.2: the anchor at frame 500 reverses the frames [0, 500] through the reverse buffer, which at the
-  // 960x540 prepared size holds 100 of them: six reversed chunks sent with prepare:fwd at once, then their stitch.
-  it("LS03 freezes the reversed clip's chunks from the reverse buffer and refuses them over the parallel cap", async () => {
+  // 960x540 prepared size holds 100 of them: six reversed chunks sent with prepare:fwd at once, then their stitch. Their
+  // count depends only on how far the anchor lies from the start, so the refusal names the anchor, not the outputs; any
+  // other stage over the cap keeps runTooLong (LS02).
+  it("LS03 freezes the reversed clip's chunks from the reverse buffer and refuses them over the parallel cap with lipSyncAnchorTooLate", async () => {
     settings.encoding.reverse_buffer_bytes = 100 * 960 * 540 * 1.5;
     settings.encoding.max_parallel_chunks = 7;
     const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }], { anchorFrame: 500 });
@@ -520,7 +522,7 @@ describe("lip-sync stage job counts at admission (§97 D12-1; frames-split §5.4
     expect(frozen.stageJobs).toContainEqual({ stage: "track_prepare", jobs: 7 });
     expect(frozen.stageJobs).toContainEqual({ stage: "track_prepare_stitch", jobs: 1 });
     settings.encoding.max_parallel_chunks = 6;
-    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: 6 } });
+    await refused(f, { key: "server.mini_tool.lipSyncAnchorTooLate" });
   });
 });
 

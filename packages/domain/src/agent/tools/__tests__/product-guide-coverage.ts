@@ -957,6 +957,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.mini_tool.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.lipSyncModelUnavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.lipSyncStepTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.mini_tool.lipSyncAnchorTooLate": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.lipSyncDurationOutOfRange": { described: /outside the model's duration range/ },
   "server.mini_tool.lipSyncTrackingOutOfRange": { described: /the used part of the video is outside what person tracking takes/ },
   "server.mini_tool.lipSyncTooManyPeople": { described: /A run takes up to \d+ people and \d+ dialogue rows/ },
