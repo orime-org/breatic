@@ -1377,6 +1377,39 @@ describe('matchTemplateInstance, inputs that go into a slot (inner#1825)', () =>
   });
 });
 
+describe('matchTemplateInstance, takes of one template sharing their input (inner#1825 design 8.6)', () => {
+  /**
+   * The still each of two takes is given.
+   * @param graph - The canvas.
+   * @returns Per anchor, the still it was given and what it left unassigned.
+   */
+  const bothTakes = (graph: TemplateGraph): Array<{ still: string | undefined; unassigned: unknown[] }> =>
+    ['C', 'C2'].map((anchor) => {
+      const match = matchTemplateInstance(SOUND_SKELETON, graph, anchor);
+      return { still: match.inputs.get('still')?.get('clip'), unassigned: match.unassigned };
+    });
+
+  it('gives one still wired into two takes to both, whichever anchor its tag names', () => {
+    const graph = graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], [['S', 'C'], ['S', 'C2']]);
+    expect(bothTakes(graph)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+  });
+
+  it('gives one still filled into two takes\' slot to both, whichever anchor its tag names, or none', () => {
+    const fills = new Map([['C', new Map([['image', 'S']])], ['C2', new Map([['image', 'S']])]]);
+    const named = { ...graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], []), fills };
+    expect(bothTakes(named)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+    const unnamed: TemplateGraphNode = { id: 'S', type: 'image', inputTag: { template: SOUND_ID, input: 'still' }, keeps: true };
+    const loose = { ...graphOf([plain('C', 'video'), plain('C2', 'video'), unnamed], []), fills };
+    expect(bothTakes(loose)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+  });
+
+  it('leaves a still tagged for another take, and neither wired nor filled into this one, to that take', () => {
+    const graph = graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], [['S', 'C']]);
+    const match = matchTemplateInstance(SOUND_SKELETON, graph, 'C2');
+    expect(match.inputs.get('still')).toBe(undefined);
+  });
+});
+
 describe('expandTemplate, downstream and standalone nodes and slotted inputs (inner#1825)', () => {
   beforeEach(() => {
     setLocaleMessages('en', SOUND_MESSAGES);
