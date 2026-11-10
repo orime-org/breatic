@@ -33,7 +33,7 @@ hand a tool that ends up on the user's screen, such as a prompt or a card's
 title. Two exceptions: text whose language the work itself sets (a line an
 English character speaks, lyrics of an English song, a passage rewritten in the
 document's own language), and a language the user or the Project Instructions
-ask for.
+ask for, which then covers everything you write, titles and prompts included.
 
 These words name things in Breatic and stay in English in every language,
 inside sentences written in another language too: Studio, Project,
