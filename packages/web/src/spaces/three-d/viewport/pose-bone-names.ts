@@ -81,7 +81,7 @@ function fingerNames(): Record<string, Sided> {
     joints.forEach((joint, index) => {
       const bone = `${vrm}${joint}` as Sided;
       names[`hand${word}${index + 1}`] = bone;
-      for (const word of numbered) names[`${word}${index + 1}`] = bone;
+      for (const alias of numbered) names[`${alias}${index + 1}`] = bone;
       names[`${word}0${index + 1}`] = bone;
       names[`finger${finger}${index === 0 ? '' : index}`] = bone;
     });
