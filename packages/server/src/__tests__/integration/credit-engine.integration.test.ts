@@ -35,6 +35,7 @@ import { creditLotService, creditLotRepo } from "@breatic/domain";
 import type { ActivityCursor } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-engine-test-driver";
 
@@ -233,7 +234,7 @@ describe("扣费", () => {
     await sql`UPDATE credit_lots SET created_at = NOW() - INTERVAL '1 hour' WHERE id = ${older}`;
     const newer = await seedLot(fx, 100, fx.studioId);
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -249,7 +250,7 @@ describe("扣费", () => {
     await sql`UPDATE credit_lots SET created_at = NOW() - INTERVAL '1 hour' WHERE id = ${first}`;
     const second = await seedLot(fx, 100, fx.studioId);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 50,
@@ -276,7 +277,7 @@ describe("扣费", () => {
     const second = await seedLot(fx, 100, fx.studioId);
 
     for (const amount of [12.5, 20.25, 7.125]) {
-      await creditLotService.chargeForGeneration({
+      await chargeNow({
         projectId: fx.projectId,
         actorUserId: fx.userId,
         amount,
@@ -294,7 +295,7 @@ describe("扣费", () => {
     const lotId = await seedLot(fx, 100, fx.studioId);
 
     for (const [amount, charged] of [[3.075, 3.08], [0.001, 0.01], [12.345678, 12.35]] as const) {
-      const outcome = await creditLotService.chargeForGeneration({
+      const outcome = await chargeNow({
         projectId: fx.projectId,
         actorUserId: fx.userId,
         amount,
@@ -310,7 +311,7 @@ describe("扣费", () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 7, fx.studioId);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 7.000000000000001,
@@ -325,7 +326,7 @@ describe("扣费", () => {
     const fx = await seedFixture();
     await seedLot(fx, 1, fx.studioId);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 1.234,
@@ -339,7 +340,7 @@ describe("扣费", () => {
     const fx = await seedFixture();
     const unassigned = await seedLot(fx, 500);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
@@ -383,7 +384,7 @@ describe("扣费", () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 30, fx.studioId);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,
@@ -405,7 +406,7 @@ describe("扣费", () => {
     `;
     const lotId = await seedLot(owner, 100, owner.studioId);
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: owner.projectId,
       actorUserId: guest.userId,
       amount: 10,
@@ -431,7 +432,7 @@ describe("扣不到笔时的记账", () => {
     await seedLot(fx, 100, fx.studioId);
     await sql`UPDATE projects SET deleted_at = NOW() WHERE id = ${fx.projectId}`;
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
@@ -454,14 +455,14 @@ describe("总览的两个数", () => {
     // entry_type 里，所以已消耗停在真扣到的 30。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
     });
     // 池子花光之后再生成一次：写用量、一分不扣。
     await sql`UPDATE credit_lots SET remaining_credits = 0, lifecycle = 'depleted' WHERE user_id = ${fx.userId}`;
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 999,
@@ -476,7 +477,7 @@ describe("总览的两个数", () => {
     // 抵债跟正常生成一样从一笔里扣走了钱，只是先记成欠账、后从笔里拿。
     // 不算它，同一笔钱走两条路会得出两个不同的账面。
     const fx = await seedFixture();
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 300,
@@ -502,7 +503,7 @@ describe("总览的两个数", () => {
     // 下方的流水正列着那笔钱花出去的每一行。
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,
@@ -528,7 +529,7 @@ describe("总览的两个数", () => {
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
     await seedLot(fx, 250, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 130,
@@ -545,7 +546,7 @@ describe("总览的两个数", () => {
     expect(await addUp()).toBe(Number(await creditLotService.getSpendableCredits(fx.studioId)));
 
     // And once the studio owes: every lot at zero, the debt line carrying it.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 400,
@@ -803,13 +804,13 @@ describe("并发", () => {
     const open = await holdDebtLock(fx.studioId);
 
     // 两次都要 60，而这一笔只有 100。谁也不许读到没被对方扣过的余额。
-    const first = creditLotService.chargeForGeneration({
+    const first = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 60,
     });
     await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
-    const second = creditLotService.chargeForGeneration({
+    const second = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 60,
@@ -842,7 +843,7 @@ describe("并发", () => {
       studioId: secondStudioId,
     });
     await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 1);
-    const charging = creditLotService.chargeForGeneration({
+    const charging = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
@@ -891,7 +892,7 @@ describe("欠账：状态转移表逐格", () => {
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -907,7 +908,7 @@ describe("欠账：状态转移表逐格", () => {
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -936,7 +937,7 @@ describe("欠账：状态转移表逐格", () => {
   it("clears the pool and leaves no debt when a lot is undesignated", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -988,7 +989,7 @@ describe("欠账：状态转移表逐格", () => {
     // came back designated the studio would suddenly have credits again.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -1009,7 +1010,7 @@ describe("欠账：状态转移表逐格", () => {
     expect(lot.remaining).toBe("70.000000");
     expect(lot.lifecycle).toBe("active");
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 5,
@@ -1024,14 +1025,14 @@ describe("欠账：状态转移表逐格", () => {
   it("欠账中 + 又扣不满 → 累加", async () => {
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
       referenceId: `first-${Date.now()}`,
     });
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 80,
@@ -1044,7 +1045,7 @@ describe("欠账：状态转移表逐格", () => {
   it("欠账中 + 指定进来抵不完 → 这笔归零，仍欠着", async () => {
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1067,7 +1068,7 @@ describe("欠账：状态转移表逐格", () => {
   it("欠账中 + 指定进来抵完有剩 → 债清零，余下的能花", async () => {
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1091,7 +1092,7 @@ describe("欠账：状态转移表逐格", () => {
     // 撤走既不产生也不消除债务。可用额更少了，欠的没变。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1103,7 +1104,7 @@ describe("欠账：状态转移表逐格", () => {
       requestingUserId: fx.userId,
       studioId: fx.studioId,
     });
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 1000,
@@ -1143,7 +1144,7 @@ describe("欠账：状态转移表逐格", () => {
     // 抵债。所以欠账期间可花的笔加起来必然是 0。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1153,7 +1154,7 @@ describe("欠账：状态转移表逐格", () => {
     expect(
       Number(await creditLotRepo.sumSpendableForStudio(fx.studioId)),
     ).toBe(0);
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 5,
@@ -1170,7 +1171,7 @@ describe("欠账：不变量", () => {
     // 0 - (-320) = 320；抵掉 150 之后 -150 - (-320) = 170。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1203,7 +1204,7 @@ describe("欠账：不变量", () => {
     await seedLot(fx, 30, fx.studioId);
     const reference = `inv4-${Date.now()}`;
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1223,7 +1224,7 @@ describe("欠账：不变量", () => {
     const fx = await seedFixture();
     const reference = `ctx-${Date.now()}`;
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 42,
@@ -1272,7 +1273,7 @@ describe("studio 流水：一次生成一行", () => {
     await seedLot(fx, 40, fx.studioId);
     const reference = `agg-${Date.now()}`;
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 70,
@@ -1298,7 +1299,7 @@ describe("studio 流水：一次生成一行", () => {
     await seedLot(fx, 30, fx.studioId);
     const reference = `agg-short-${Date.now()}`;
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1321,7 +1322,7 @@ describe("studio 流水：一次生成一行", () => {
     const fx = await seedFixture();
     const reference = `agg-free-${Date.now()}`;
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 42.5,
@@ -1341,7 +1342,7 @@ describe("studio 流水：一次生成一行", () => {
     // 它不发生在任何 project 里，也不用任何模型。界面上那两列合并写事件。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1395,7 +1396,7 @@ describe("studio 流水：一次生成一行", () => {
     `;
     await seedLot(fx, 30, fx.studioId);
 
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: other.userId,
       amount: 350,
@@ -1418,7 +1419,7 @@ describe("studio 流水：一次生成一行", () => {
     await seedLot(fx, 40, fx.studioId);
     await seedLot(fx, 40, fx.studioId);
     for (const n of [1, 2]) {
-      await creditLotService.chargeForGeneration({
+      await chargeNow({
         projectId: fx.projectId,
         actorUserId: fx.userId,
         amount: 35,
@@ -1550,7 +1551,7 @@ describe("studio 流水：一次生成一行", () => {
     // 游标里放它会被读侧判为无效、回落到第一页，滚到底就无限重复第一页。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
@@ -1594,7 +1595,7 @@ describe("欠账：任意序列下的两条不变量", () => {
                 studioId: fx.studioId,
               });
             } else {
-              await creditLotService.chargeForGeneration({
+              await chargeNow({
                 projectId: fx.projectId,
                 actorUserId: fx.userId,
                 amount: step.amount,
@@ -1623,14 +1624,14 @@ describe("欠账：并发", () => {
     const fx = await seedFixture();
     const open = await holdDebtLock(fx.studioId);
 
-    const first = creditLotService.chargeForGeneration({
+    const first = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
       referenceId: `con-a-${Date.now()}`,
     });
     await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
-    const second = creditLotService.chargeForGeneration({
+    const second = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 60,
@@ -1658,14 +1659,14 @@ describe("欠账：并发", () => {
 
     const open = await holdDebtRowInsert(fx.studioId);
 
-    const first = creditLotService.chargeForGeneration({
+    const first = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
       referenceId: `first-a-${Date.now()}`,
     });
     await waitUntilBlockedOn(sql, ["studio_credit_debts", "on conflict"], 1);
-    const second = creditLotService.chargeForGeneration({
+    const second = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 60,
@@ -1687,7 +1688,7 @@ describe("欠账：并发", () => {
     // 锁上，不会握着笔去等欠账行。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -1702,7 +1703,7 @@ describe("欠账：并发", () => {
       studioId: fx.studioId,
     });
     await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
-    const charging = creditLotService.chargeForGeneration({
+    const charging = chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,

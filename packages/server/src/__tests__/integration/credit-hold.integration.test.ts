@@ -29,6 +29,7 @@ import { creditsChangedChannel } from "@breatic/shared";
 import { creditHoldService, creditLotService } from "@breatic/domain";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import {
+  chargeNow,
   seedDesignatedLot,
   seedStudioFixture,
   type StudioFixture,
@@ -203,7 +204,7 @@ describe("reserveCredits", () => {
 
   it("subtracts debt before deciding", async () => {
     const fx = await studioWith(100);
-    await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130 });
+    await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130 });
     expect(await creditHoldService.reserveCredits(req(fx, ref("debt"), 1))).toEqual({
       ok: false,
       studioId: fx.studioId,
@@ -218,7 +219,7 @@ describe("reserveCredits", () => {
     const a = ref("over-a");
     await creditHoldService.reserveCredits(req(fx, a, 50));
     await creditHoldService.reserveCredits(req(fx, ref("over-b"), 45));
-    await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 60, releaseHold: a });
+    await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 60, releaseHold: a });
     expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "40.000000", held: "45.000000", available: "0.000000" });
     expect(await creditHoldService.reserveCredits(req(fx, ref("over-c"), 1))).toEqual({
       ok: false,
@@ -278,12 +279,12 @@ describe("releaseHold", () => {
   });
 });
 
-describe("chargeForGeneration with a hold", () => {
+describe("settleCharge with a hold", () => {
   it("releases the hold and charges the actual amount in one commit, beyond the hold if needed", async () => {
     const fx = await studioWith(100);
     const reference = ref("task");
     await creditHoldService.reserveCredits(req(fx, reference, 50));
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 70,
@@ -304,32 +305,42 @@ describe("chargeForGeneration with a hold", () => {
         setTimeout(() => reject(new Error("no credits:changed within 5s")), 5_000);
       });
       await subscriber.subscribe(creditsChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId));
-      await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 10 });
+      await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 10 });
       expect(JSON.parse(await heard)).toMatchObject({ type: "project-credits:changed", projectId: fx.projectId });
     } finally {
       subscriber.disconnect();
     }
   });
 
-  it("keeps the hold when the charge fails", async () => {
+  it("keeps the hold while the settlement fails and releases it when a later settlement commits", async () => {
     const fx = await studioWith(100);
     const reference = ref("boom");
     await creditHoldService.reserveCredits(req(fx, reference, 50));
     await sql`ALTER TABLE credit_ledger ADD CONSTRAINT credit_hold_test_block CHECK (description IS DISTINCT FROM 'credit-hold-boom') NOT VALID`;
     try {
       await expect(
-        creditLotService.chargeForGeneration({
+        chargeNow({
           projectId: fx.projectId,
           actorUserId: fx.userId,
           amount: 20,
           description: "credit-hold-boom",
+          referenceId: reference,
           releaseHold: reference,
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/credit_hold_test_block/) }) });
     } finally {
       await sql`ALTER TABLE credit_ledger DROP CONSTRAINT credit_hold_test_block`;
     }
     expect(await holdRows(reference)).toEqual([{ status: "held", amount: "50.000000" }]);
+
+    // The request outlived the failure, so whoever settles it next releases the hold.
+    const pending = await creditLotService.pendingChargeRequestId("operation", fx.userId, reference);
+    expect(pending).toMatch(/^[0-9a-f-]{36}$/);
+    if (pending === null) throw new Error("the failed settlement left no pending request");
+    const outcome = await creditLotService.settleCharge(pending);
+    expect(outcome).toMatchObject({ billed: true, charged: "20.000000", shortfall: "0.000000" });
+    expect(await holdRows(reference)).toEqual([{ status: "released", amount: "50.000000" }]);
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: "80.000000", held: "0.000000", available: "80.000000" });
   });
 
   it("releases the hold while payments are off", async () => {
@@ -338,7 +349,7 @@ describe("chargeForGeneration with a hold", () => {
     await creditHoldService.reserveCredits(req(fx, reference, 10));
     payments(false);
     try {
-      await creditLotService.chargeForGeneration({
+      await chargeNow({
         projectId: fx.projectId,
         actorUserId: fx.userId,
         amount: 5,
@@ -376,7 +387,7 @@ describe("hold invariant", () => {
           } else {
             const k = keys[o.slot];
             if (k && o.amount > 0) {
-              await creditLotService.chargeForGeneration({
+              await chargeNow({
                 projectId: fx.projectId,
                 actorUserId: fx.userId,
                 amount: o.amount,

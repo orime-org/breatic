@@ -6,11 +6,41 @@
  * studio, a project in it, and purchases designated to the studio.
  */
 
+import { randomUUID } from "node:crypto";
 import type postgres from "postgres";
+import { db } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { openPaymentSource } from "./payment-source.js";
 
 type Sql = ReturnType<typeof postgres>;
+
+/** What one charge asks for, as a delivery passes it to the credit engine. */
+export type ChargeArgs = Omit<Parameters<typeof creditLotService.requestCharge>[0], "kind" | "referenceId"> & {
+  /** The ledger reference; a fresh one when omitted. */
+  referenceId?: string;
+};
+
+/**
+ * Charge right away the way a delivery does: register the request in its own
+ * transaction, then settle it.
+ *
+ * The fixture for suites that need a charge on the books and are not testing
+ * how it got there. Throws rather than returning null so a reused reference
+ * fails the suite instead of silently charging nothing.
+ * @param input - What to charge and on whose behalf.
+ * @returns What the settlement did.
+ * @throws {Error} When the reference was already requested or settled.
+ */
+export async function chargeNow(input: ChargeArgs): Promise<creditLotService.ChargeOutcome> {
+  const { referenceId = `fixture-${randomUUID()}`, ...rest } = input;
+  const requestId = await db.transaction((tx) =>
+    creditLotService.requestCharge({ ...rest, kind: "operation", referenceId }, tx),
+  );
+  if (requestId === null) throw new Error(`chargeNow: ${referenceId} was already requested`);
+  const outcome = await creditLotService.settleCharge(requestId);
+  if (outcome === null) throw new Error(`chargeNow: request ${requestId} was already settled`);
+  return outcome;
+}
 
 /** A user administering a studio that owns one project. */
 export interface StudioFixture {

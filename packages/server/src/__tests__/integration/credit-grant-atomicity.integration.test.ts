@@ -4,10 +4,9 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { describe, expect, inject, it } from "vitest";
-import { creditLotService } from "@breatic/domain";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { seedDesignatedLot } from "./studio-credit-fixtures.js";
+import { chargeNow, seedDesignatedLot } from "./studio-credit-fixtures.js";
 import { GRANT_ADMIN, applied, expectGrantTables, fundingState, grantKey, postGrant, profilePath, seedDebt, seedPersonal } from "./operator-credit-grant-fixtures.js";
 import type { Sql } from "./operator-credit-grant-fixtures.js";
 
@@ -111,7 +110,7 @@ describe("operator credit grant atomicity and observed locks", () => {
     await seedDebt(suite.sql, fx, "20.000000");
     const release = await holdRow("studio_credit_debts", "studio_id", fx.studioId);
     const granting = postGrant(suite, fx, grantKey());
-    const charging = creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 30, referenceId: randomUUID() });
+    const charging = chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 30, referenceId: randomUUID() });
     try { await waitUntilBlockedOn(suite.sql, ["studio_credit_debts"], 2); }
     finally { await release(); }
     expect(applied(await granting).repaidCredits).toBe("20.000000");

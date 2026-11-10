@@ -60,7 +60,7 @@ vi.mock("@breatic/domain", async () => {
     streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig: actual.buildAgentConfig,
-    creditLotService: { chargeOnceForGeneration: vi.fn(async () => null) },
+    creditLotService: { chargeOnce: vi.fn(async () => null) },
     resolveProvider: () => "test",
     getModel: () => ({ modelId: "test" }),
   };

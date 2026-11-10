@@ -1021,7 +1021,7 @@ describe("charging a 3D generation", () => {
       fc.asyncProperty(fc.array(fc.integer({ min: 1, max: 5_000 }), { minLength: 2, maxLength: 6 }), async (charges) => {
         const answer = await admitted(s);
         const won = await Promise.all(
-          charges.map((credits) => taskService.markCompletedAndBill(answer.task_id, { outputs: [] }, credits / 100, 1)),
+          charges.map((credits) => taskService.markCompletedAndBill(answer.task_id, { outputs: [] }, credits / 100, 1, null)),
         );
         expect(won.filter(Boolean)).toHaveLength(1);
         const [task] = await sql<{ billed_credits: string }[]>`SELECT billed_credits FROM tasks WHERE id = ${answer.task_id}`;

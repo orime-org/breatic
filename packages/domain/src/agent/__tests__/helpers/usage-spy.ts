@@ -24,6 +24,7 @@ export function usageSpy(): UsageSpy {
     recordLookedUpCall: vi.fn(),
     awaitingLookup: () => [],
     settle: vi.fn(async () => 0),
+    settleForCharge: vi.fn(async () => ({ credits: 0, writeFailures: [] })),
   };
   return { recorder, serviceCalls };
 }

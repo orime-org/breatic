@@ -183,7 +183,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `chargeOnceForGeneration` already do.
+ * and `creditLotService.chargeOnce` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -786,10 +786,10 @@ export const tasks = pgTable(
      */
     providerTaskId: text("provider_task_id"),
     /**
-     * Idempotency guard for credit deduction. Set via CAS when the task
-     * is marked completed AND the file is persisted to storage. If set,
-     * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,
-     * stalled-job redelivery, or duplicate Worker instances.
+     * Set by the CAS that completes the task once its file is persisted.
+     * Only the attempt that sets it records the task's charge request
+     * (`credit_charge_requests`), in the same transaction, so BullMQ retries,
+     * stalled-job redelivery or a duplicate worker cannot record a second.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
     /**
@@ -2104,6 +2104,44 @@ export const creditHolds = pgTable(
     index("credit_holds_studio_held_idx")
       .on(table.studioId, table.expiresAt)
       .where(sql`${table.status} = 'held'`),
+  ],
+);
+
+// ── 8f. Credit charge requests (0121, inner#1617) ─────────────────────
+
+export const creditChargeRequests = pgTable(
+  "credit_charge_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
+    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // What the settlement's ledger rows carry as their reference.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // Above zero. CHECK in 0121.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    description: text("description"),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    // The credit hold the settlement releases, if any.
+    releaseHold: varchar("release_hold", { length: 255 }),
+    // 'pending' | 'settled'. CHECK in 0121.
+    status: varchar("status", { length: 16 }).$type<"pending" | "settled">().default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    // Set exactly when settled. CHECK in 0121.
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_charge_requests_key_idx").on(table.kind, table.actorUserId, table.referenceId),
+    index("credit_charge_requests_pending_idx")
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );
 
