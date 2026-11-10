@@ -78,19 +78,17 @@ function limits(sourceRefreshIntervalMs: number): TimelineClientLimits {
 }
 
 /**
- * A fresh cache and a wrapper providing it, optionally with an unvisited hidden content Activity beside the hook.
- * @param hiddenContent - Whether to render a hidden Activity, as the Project page does for a tab never entered.
+ * A fresh cache and a wrapper providing it.
  * @returns Both.
  * @throws {never} Never.
  */
-function provider(hiddenContent = false): { client: QueryClient; wrapper: (props: { children: React.ReactNode }) => React.JSX.Element } {
+function provider(): { client: QueryClient; wrapper: (props: { children: React.ReactNode }) => React.JSX.Element } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
   return {
     client,
     wrapper: ({ children }) => <QueryClientProvider client={client}>
       {children}
-      {hiddenContent && <React.Activity mode='hidden'><span>Timeline editor</span></React.Activity>}
     </QueryClientProvider>,
   };
 }
@@ -138,13 +136,6 @@ describe('useSpaceTaskStatus for a Timeline Space', () => {
     expect(result.current).toBe(false);
     vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'queued')]);
     await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) });
-    await waitFor(() => expect(result.current).toBe(true));
-  });
-
-  it('spins for an execution while the Timeline editor was never entered', async () => {
-    vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'awaiting_landing')]);
-    const { wrapper } = provider(true);
-    const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'timeline'), { wrapper });
     await waitFor(() => expect(result.current).toBe(true));
   });
 

@@ -14,7 +14,7 @@ import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-medi
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
-/** The current material form and upload facts held by an open document. */
+/** The current material form held by an open document. */
 export interface TimelineMediaDraftSnapshot {
   open: boolean;
   mode: 'project' | 'local';
@@ -37,7 +37,7 @@ interface TimelineMediaDraftInputs {
   startUpload: (uploadId: string, file: File) => void;
 }
 
-/** The one writer of material selection, upload and acceptance state. */
+/** The one writer of material selection and placement state. */
 export interface TimelineMediaDraft {
   getSnapshot: () => TimelineMediaDraftSnapshot;
   subscribe: (notify: () => void) => () => void;
@@ -105,7 +105,7 @@ function decodeDuration(fileUrl: string, signal: AbortSignal): Promise<number> {
 /**
  * Bind material work to the existing document lifetime, including hidden views.
  * @param doc - The manager-owned Timeline content document.
- * @param inputs - Its fixed Project and upload context.
+ * @param inputs - Its fixed Project context and the hand-off to background uploads.
  * @returns Its single observable material state and explicit actions.
  * @throws {never} Never.
  */
@@ -139,7 +139,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
   return {
     /**
      * Read the immutable current snapshot for React's external-store contract.
-     * @returns The current material form and upload facts.
+     * @returns The current material form.
      * @throws {never} Never.
      */
     getSnapshot(): TimelineMediaDraftSnapshot { return snapshot; },
@@ -184,7 +184,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
      */
     select(selected: ProjectRegisteredAsset): void { if (!snapshot.busy) publish({ selected, errorKey: null }); },
     /**
-     * Retain the chosen File for retries within this open document.
+     * Retain the chosen File until it is confirmed.
      * @param file - The selected local video, or null to clear it.
      * @throws {never} Never.
      */
@@ -278,7 +278,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         if (active === attempt) { active = null; publish({ busy: false }); }
       }
     },
-    /** Drop retained Files, observers and upload write-back when the document ends. */
+    /** Cancel the current attempt and drop the retained File when the document ends. */
     dispose(): void {
       if (disposed) return;
       disposed = true;
