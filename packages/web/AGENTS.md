@@ -176,7 +176,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **Client/server version drift is answered by a reload the user presses, never an automatic one: while the page still works, a new release opens a dialog the user can postpone (`ProjectUpdateNotice`); once a request is refused with `error.reason: 'request_shape'` and a newer build is live, `StaleReleaseDialog` offers only Update.** Both reload through `reloadForUpdate`, which carries the Agent draft across.
 
 ## Product guide follows the UI
-**A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for what the guide may quote and which tests cover it.
+**A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for how the guide is split into sections, what it may quote and which tests cover it.
 
 ## Tests and smoke
 **`test:smoke` and `test:visual` exist only in `packages/web`: run `pnpm --filter @breatic/web test:smoke` (or `test:visual`).** From the repo root either fails with exit code 254 ("command not found"), which is not a test failure.

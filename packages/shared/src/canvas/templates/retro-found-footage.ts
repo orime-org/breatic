@@ -14,7 +14,7 @@ export const RETRO_FOUND_FOOTAGE: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a 10-second 4:3 found-footage clip with the look of an early-2000s home camcorder: one small event at a place the user names, a hard cut to black at the end; the user only writes the place and the event",
+    "a 10-second 4:3 found-footage clip with the look of an early-2000s home camcorder: one small event at a place the user names, a hard cut to black at the end; needs the place and the event",
   goal: "social-hooks",
   triggers: {
     asks: ["retro camcorder footage", "an old home video look", "found footage"],

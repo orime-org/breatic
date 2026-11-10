@@ -93,6 +93,23 @@ async function reachPanelCorner(p: Page): Promise<void> {
   await p.mouse.wheel(500, 400);
 }
 
+/**
+ * Open the Generate panel of the first music node a card placed, the way a
+ * user does: right-click it, then the menu item. A card with one generate
+ * node opens its panel by itself, so it is left alone then; a card that
+ * proposes two or three takes (breatic#1361) opens none.
+ * @param p - The signed-in page.
+ */
+async function openFirstTake(p: Page): Promise<void> {
+  const take = visibleSpace(p).locator('.react-flow__node-audio').first();
+  await expect(take).toBeVisible({ timeout: 20_000 });
+  const panel = p.getByTestId('generate-audio-execute');
+  if (await panel.isVisible()) return;
+  await take.click({ button: 'right' });
+  await p.getByTestId('node-menu-generate').click();
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+}
+
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
     viewport: { width: 1500, height: 900 },
@@ -176,6 +193,7 @@ test('fills a music-to-video model from an attached clip, and Generate sends it 
   const card = page.getByTestId('proposal-card').last();
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByTestId('proposal-use').click();
+  await openFirstTake(page);
 
   const sent = await catchSubmit(page);
   await reachPanelCorner(page);
@@ -265,6 +283,7 @@ test('@s the lyrics it wrote in a song model\'s lyrics box @needs-model', async 
   const card = page.getByTestId('proposal-card').last();
   await expect(card).toBeVisible({ timeout: 20_000 });
   await card.getByTestId('proposal-use').click();
+  await openFirstTake(page);
 
   await expect(page.getByTestId('generate-lyrics-editor').locator('[data-reference-mention]')).toHaveCount(1, {
     timeout: 20_000,

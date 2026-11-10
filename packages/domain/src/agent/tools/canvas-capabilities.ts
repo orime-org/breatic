@@ -20,6 +20,11 @@ export interface CanvasCapabilityAnswer {
   nodes: NodeCapability[];
 }
 
+/** Where a result's look or sound comes from: the prompt, whatever style it names. */
+const LOOK_NOTE =
+  "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or " +
+  "watercolour, audio in the voice, music or sound described.";
+
 /**
  * What a text node is for, and what pointing a prompt at one does.
  *
@@ -57,7 +62,7 @@ export function renderCapabilitiesForModel(answer: CanvasCapabilityAnswer): stri
     const lines = node.modes.map((mode) => `- ${mode.mode} (${mode.label}): ${mode.what}`);
     return [`${node.nodeType} node:`, ...lines].join("\n");
   });
-  return [...blocks, TEXT_NODE_NOTE].join("\n\n");
+  return [...blocks, LOOK_NOTE, TEXT_NODE_NOTE].join("\n\n");
 }
 
 export const canvasCapabilities: Tool<

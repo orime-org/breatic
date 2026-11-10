@@ -57,11 +57,11 @@ export const TEMPLATE_GOALS = ["character", "comics-storyboards", "social-hooks"
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
 
-/** When the agent offers a template, in the words it reads. */
+/** Where a template fits, in the words the agent reads; when to propose it is the working rules' call. */
 export interface TemplateTriggers {
   /** What a user says when they ask for it outright. */
   asks: readonly string[];
-  /** What the agent sees on the canvas or in the chat that makes it worth offering unasked; none for a template only offered when asked for. */
+  /** Situations it also fits beyond being asked for; none for a template only offered when asked for. */
   offerWhen: readonly string[];
 }
 

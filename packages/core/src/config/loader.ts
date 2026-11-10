@@ -186,6 +186,7 @@ const agentConfigSchema = z.object({
    * reads it from `GET /chat/stream-config`.
    */
   attachment_max_items: z.number().int().positive().default(10),
+  product_guide_max_chars_per_call: z.number().int().positive().default(48000),
   /**
    * How long the open Space's content one message carries may be, in
    * characters (inner#1413). The browser cuts the content to this before

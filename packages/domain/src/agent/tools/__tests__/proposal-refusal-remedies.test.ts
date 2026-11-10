@@ -209,6 +209,24 @@ const SHEET_NODES: Sent["nodes"] = [
   { role: "source", type: "image", name: "Back" },
   { role: "source", type: "image", name: "Character" },
 ];
+/** The character-from-text template's style blank, as its design node's words carry it. */
+const CHARACTER_STYLE = { slot: { kind: "tweak" as const, label: "one style, e.g. 3D cartoon, anime or photorealistic", note: "one style, e.g. 3D cartoon, anime or photorealistic" } };
+/** The character-from-text template's design node, every blank written. */
+const CHARACTER_DESIGN: Sent["nodes"][number] = {
+  role: "generate",
+  type: "image",
+  name: "Character design",
+  template: { id: "character-design-from-text", key: "design" },
+  prompt: [{ text: "A full-body character design of a fox girl in a red coat, in a 3D cartoon style." }],
+};
+/** The character-from-text template's sheet, the design at index 0 @'d and noted. */
+const CHARACTER_SHEET: Sent["nodes"][number] = {
+  role: "generate",
+  type: "image",
+  name: "Sheet",
+  template: { id: "character-design-from-text" },
+  prompt: [{ slot: { kind: "note", label: "Generate Character design first" } }, { text: "A character sheet of " }, { ref: 0 }, { text: "." }],
+};
 /** The fixture sheet's edges, all but the sketch's into the sheet. */
 const SHEET_EDGES: Sent["edges"] = [
   { fromIndex: 2, toIndex: 1, into: "pool" },
@@ -424,6 +442,16 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
+  }],
+  "template-tweak-unfilled": [{
+    // The character design sent back with the template's style blank still in it (breatic#1361).
+    meets: group([{ ...CHARACTER_DESIGN, prompt: [{ text: "A full-body character design of a fox girl in a red coat, in " }, CHARACTER_STYLE, { text: "." }] }, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: [
+      `"Character design" still holds the blanks "${CHARACTER_STYLE.slot.label}".`,
+      'On node 0 ("Character design"), write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.',
+    ],
+    absent: ["who the character is"],
+    fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
@@ -673,7 +701,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...HELD_PIC, material: MISSING }, gen("image", "i2i", EDIT, { fills: { style_images: [0] } })]),
     states: [
       '"Pic" holds an address in our storage that is not registered in this studio.',
-      "Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with save_image.",
+      "Material comes only from this studio's storage: files the user uploaded in the chat, pictures saved with save_image, and pictures or clips already on the canvas.",
     ],
   }],
   "material-wrong-kind": [{
@@ -705,7 +733,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "mark-typed": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make it {✏️ mood}." }] })]),
-    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes.'],
+    states: [`"Gen" types 1 mark(s) into its words as text: "{✏️ mood}". A mark works only as a segment of its own, with the text segments kept to plain words: {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template's blank, which is filled before sending.`],
   }, {
     // Brackets typed around a ref: quoted as written, the ref inside as the agent sent it.
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

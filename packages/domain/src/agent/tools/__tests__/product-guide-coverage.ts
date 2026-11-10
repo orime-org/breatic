@@ -433,7 +433,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.panel.sourceChanged": { described: /the crop, range and turns go back to their start, the expand frame goes back over the picture, and anything drawn or written on it is cleared/ },
   "canvas.miniTool.panel.sourceChangedByPeer": { described: /the crop, range and turns go back to their start, the expand frame goes back over the picture, and anything drawn or written on it is cleared/ },
   "canvas.miniTool.panel.drawingEmpty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "canvas.miniTool.panel.free": { described: /the picture tools crop, rotate, adjust, markup and grid split are free, the tools marked \(billed by how long it runs\) in the list above are billed that way/ },
+  "canvas.miniTool.panel.free": { described: /the picture tools crop, rotate, adjust, markup and grid split are free, the tools marked \(billed by how long it runs\) in this section's list are billed that way/ },
   "canvas.miniTool.panel.close": { excluded: REASONS.SCREEN_READER, look: /The X, Esc or a click on empty canvas closes the panel; in .+, Esc first leaves the text being typed/ },
   "canvas.miniTool.panel.run": { excluded: REASONS.SCREEN_READER, look: /Pressing the arrow puts the result in new nodes/ },
   "canvas.miniTool.panel.clearSlot": { excluded: REASONS.SCREEN_READER, look: /a small X on a filled box empties it/ },
