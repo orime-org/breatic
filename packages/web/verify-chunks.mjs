@@ -179,6 +179,16 @@ const THREE_JS = { label: 'three.js', holds: (src) => /node_modules\/three\//.te
 const FABRIC = { label: 'Fabric', holds: (src) => /node_modules\/fabric\//.test(src) };
 
 /**
+ * The document snapshot panel, its preview editor and BlockNote's diff
+ * renderer with the Yjs 14 packages it runs on, which load when the panel
+ * first opens (inner#1129).
+ */
+const DOCUMENT_VERSIONS = {
+  label: 'the document snapshot panel',
+  holds: (src) => /node_modules\/@y\/(y|prosemirror)\//.test(src) || /src\/spaces\/document\/(DocumentVersionArea|document-version-(view|fold|storage))\./.test(src),
+};
+
+/**
  * What no entry may download, and the page that is allowed to.
  *
  * A1, A12 and A13 are about what lands in a user's download set, and the two
@@ -409,7 +419,10 @@ for (const [owner, downloads] of owners) {
 // static closure must not reach it: a static import of the sphere, or of
 // three.js anywhere under the canvas, puts it on every project open. Fabric is
 // the same: only an open adjust or markup panel loads it.
-const LAZY_ON_PROJECT_PAGE = [THREE_JS, FABRIC];
+const LAZY_ON_PROJECT_PAGE = [THREE_JS, FABRIC, DOCUMENT_VERSIONS];
+
+/** Lazy chunks a page loads that are allowed to name it, each by its page. */
+const PAGE_LAZY_CHILDREN = [{ page: /^ProjectPage-/, child: /^DocumentVersionArea-/ }];
 const projectChunk = chunkOf(RENDERS_A_SPACE);
 if (projectChunk !== undefined) {
   try {
@@ -478,13 +491,24 @@ if (loaderChunks.length !== 1) {
       .filter((f) => f.endsWith('.js'))
       .map((f) => [f, readFileSync(path.join(ASSETS, f), 'utf8')]),
   );
+  // A page's own lazy chunk takes what it shares with the page from the page
+  // chunk, so it names the page too. Each is listed, read only by its page,
+  // and renamed with it, which costs a returning user its bytes only once
+  // they open it; built into the page instead, every user would pay them.
+  const children = [...pageChunks].flatMap((chunk) =>
+    PAGE_LAZY_CHILDREN.filter((c) => c.page.test(chunk)).flatMap((c) =>
+      files.filter((f) => c.child.test(f) && f.endsWith('.js')).map((child) => [child, chunk])),
+  );
+  const childOf = new Set(children.map(([child]) => child));
   const soleReader = [
     [loaderChunks[0], entryChunk],
     ...[...pageChunks].map((chunk) => [chunk, loaderChunks[0]]),
+    ...children,
   ];
   for (const [renamed, allowed] of soleReader) {
     const naming = [...sources]
       .filter(([file, code]) => file !== renamed && code.includes(renamed))
+      .filter(([file]) => !(pageChunks.has(renamed) && childOf.has(file) && children.some(([c, p]) => c === file && p === renamed)))
       .map(([file]) => file);
     if (naming.length !== 1 || naming[0] !== allowed) {
       problems.push(
