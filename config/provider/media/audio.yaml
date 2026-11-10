@@ -1,11 +1,24 @@
 # Where each of our audio models runs, upstream by upstream.
 # Weight is priority: the lowest configured weight is tried first, and weights
-# are unique per model. Each binding names the upstream's model id, the field
-# the prompt goes in (`send_empty` sends it and every param even when empty),
-# and how each of our params is written there: `field`,
-# `values` (our value to the upstream's spelling), `item_key` (each list
-# entry wrapped under it), `absent_value` (holding it sends nothing) and
-# `transform`. A param not listed is not sent to that upstream. `mentions` is
+# are unique per model. A model's `rejects` are its vendor's own input limits,
+# in our param names (the prompt as `prompt`), each with the vendor's words as
+# `reason`, the vendor page as `source` and, for a limit announced for a date,
+# `from`; no upstream takes a run past them. Each binding names the upstream's
+# model id, the field the prompt goes in (`send_empty` sends it and every param
+# even when empty), and how each of our params is written there: `field` (dots
+# write under nested objects), `values` (our value to the upstream's spelling),
+# `as` (a string, a number or a one-item list), `supported` (the only values
+# this upstream takes), `item_fields` (the sub-fields of each item of a list),
+# `item_key` (each list entry wrapped under it), `absent_value` (holding it
+# sends nothing), `unset` (written when the run leaves it out) and `transform`.
+# A param this upstream has no field for is listed in `drops`: "*" serves the
+# run whatever the value, a list of values that send nothing serves only those,
+# { values, equivalent } serves those values for the reason given and
+# { all_values } any value for the reason given. `fixed` fields are sent on
+# every call, `voice_map` maps our voices to the upstream's, `output_field` is
+# where a fal result puts its files, `extra_steps` and `reused_by` are the
+# upstream's further calls, and the binding's `rejects` hold only what this
+# upstream enforces beyond the vendor. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 # `pricing` is the upstream's contract: base_price in millionths of a USD, a
 # JSONata formula (empty means base_price per call), discount_rate the percentage
@@ -13,6 +26,28 @@
 
 models:
   mureka-v9.5-generate-song:
+    rejects:
+      - when: $exists(melody) and ($exists(prompt) or $exists(song) or $exists(vocal))
+        reason: "Mureka song/generate melody_id: does not support combination with other control options (WaveSpeed refused lyrics, prompt and melody on 2026-11-07)"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
+      - when: $exists(lyrics) and $length(prompt) > 1024
+        reason: "Mureka song/generate prompt: maximum 1024 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
+      - when: $length(prompt) > 2000
+        reason: "Mureka song/easy-generate prompt: maximum 2000 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-easy-generate.html
+      - when: $length(lyrics) > 5000
+        reason: "Mureka song/generate lyrics: maximum 5000 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
+      - when: get_duration(song, min=30, max=1000000, total=1000000) > get_duration(song)
+        reason: "Mureka files/upload reference: supported audio duration range is [30,30] seconds"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-files-upload.html
+      - when: get_duration(melody, min=5, max=1000000, total=1000000) > get_duration(melody)
+        reason: "Mureka files/upload melody: supported audio duration range is [5,60] seconds"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-files-upload.html
+      - when: get_duration(vocal, min=15, max=1000000, total=1000000) > get_duration(vocal)
+        reason: "Mureka song/vocal-clone file: supported vocal duration range is [15,30] seconds"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-song-vocal-clone.html
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -50,7 +85,6 @@ models:
             endpoint: mureka-ai/vocal-clone
             at: before
             for_param: vocal
-            reused: true
             pricing:
               kind: formula
               base_price: 7500000
@@ -61,7 +95,61 @@ models:
           base_price: 225000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mureka/v9.5/generate/song
+        prompt_field: prompt
+        output_field: audio
+        params:
+          lyrics:
+            field: lyrics
+          melody:
+            field: melody_id
+          song:
+            field: reference_id
+          vocal:
+            field: vocal_id
+        extra_steps:
+          - kind: upload_reference
+            endpoint: mureka/api/files/upload
+            at: before
+            for_param: song
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: upload_melody
+            endpoint: mureka/api/files/upload
+            at: before
+            for_param: melody
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: vocal
+            endpoint: mureka/api/voice/clone
+            at: before
+            for_param: vocal
+            pricing:
+              kind: formula
+              base_price: 5000000
+              formula: ""
+              discount_rate: 100
+        rejects:
+          - when: get_duration(vocal_id) > 30
+            reason: "fal mureka/api/voice/clone audio: up to 30 seconds (Mureka trims past 30)"
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": base_price * (lyrics ? 30 : 100)}'
+          discount_rate: 100
   mureka-v9.5-generate-bgm:
+    rejects:
+      - when: $length(prompt) > 1024
+        reason: "Mureka instrumental/generate prompt: maximum 1024 characters"
+        source: https://platform.mureka.ai/docs/api/operations/post-v1-instrumental-generate.html
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -71,6 +159,16 @@ models:
           kind: formula
           base_price: 225000
           formula: ""
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mureka/v9.5/generate/instrumental
+        prompt_field: prompt
+        output_field: audio
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": base_price * 30}'
           discount_rate: 100
   lyria-3-pro-music:
     upstreams:
@@ -86,7 +184,36 @@ models:
           base_price: 80000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/lyria3/pro
+        prompt_field: prompt
+        output_field: audio
+        params:
+          image:
+            field: image_url
+        rejects:
+          - when: $length(prompt) > 5000
+            reason: fal prompt maxLength 5000
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: ""
+          discount_rate: 100
   minimax-music-cover:
+    rejects:
+      - when: $length(prompt) < 10
+        reason: "MiniMax music-cover prompt: Required, 10-300 characters"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: $length(prompt) > 300
+        reason: "MiniMax music-cover prompt: Required, 10-300 characters"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: get_duration(audio, min=6, max=1000000, total=1000000) > get_duration(audio)
+        reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
+      - when: get_duration(audio) > 360
+        reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
+        source: https://platform.minimax.io/docs/api-reference/music-generation
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -101,6 +228,13 @@ models:
           formula: ""
           discount_rate: 100
   sonilo-video-to-music:
+    rejects:
+      - when: get_duration(video) > 360
+        reason: "Sonilo video-to-music video: Max duration: 6 minutes"
+        source: https://platform.sonilo.com/docs/api/video-to-music
+      - when: $length(prompt) > 2000
+        reason: "Sonilo video-to-music prompt: maxLength 2000"
+        source: https://sonilo.com/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -115,11 +249,50 @@ models:
           formula: '{"total_price": base_price * $max([10, $min([$ceil(get_duration(video)), 360])])}'
           discount_rate: 100
   sfx-1.6-text-to-audio:
+    rejects:
+      - when: duration < 0.1
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: 100-60000"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop != true and duration > 60
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: at most 60000 without loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop = true and duration < 1
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: 1000-600000 with controls.loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: loop = true and duration > 600
+        reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: at most 600000 with controls.loop"
+        source: https://mirelo.ai/api-docs.md
+      - when: $length(prompt) > 5000
+        reason: Mirelo sfx-1.6 max_prompt_chars 5000; too long a prompt is rejected rather than truncated
+        source: https://api.mirelo.ai/v3/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
         model_id: mirelo-ai/sfx-1.6/text-to-audio
         prompt_field: text_prompt
+        params:
+          duration:
+            field: duration
+          num_samples:
+            field: num_samples
+        drops:
+          loop:
+            - false
+          double_output:
+            - false
+        rejects:
+          - when: $length(text_prompt) < 4
+            reason: WaveSpeed text_prompt minLength 4
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * duration * num_samples}'
+          discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: mirelo-ai/sfx1.6/text-to-audio
+        prompt_field: text_prompt
+        output_field: audio
         params:
           loop:
             field: ambience
@@ -129,12 +302,21 @@ models:
             field: duration
           num_samples:
             field: num_samples
+        fixed:
+          upload_audio_format: mp3
+        rejects:
+          - when: $length(text_prompt) < 4
+            reason: fal text_prompt minLength 4
         pricing:
           kind: formula
           base_price: 10000
           formula: '{"total_price": base_price * duration * num_samples}'
           discount_rate: 100
   sonilo-sfx-v1:
+    rejects:
+      - when: $length(prompt) > 2000
+        reason: "Sonilo text-to-sfx prompt: maxLength 2000"
+        source: https://sonilo.com/openapi.json
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -164,6 +346,20 @@ models:
           base_price: 50000
           formula: ""
           discount_rate: 100
+      - upstream: fal
+        weight: 2
+        model_id: fal-ai/hunyuan-video-foley
+        prompt_field: text_prompt
+        send_empty: true
+        output_field: video
+        params:
+          video:
+            field: video_url
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price": base_price * $max([1, $ceil(get_duration(video_url) / 10)])}'
+          discount_rate: 100
   vocal-remover:
     upstreams:
       - upstream: wavespeed
@@ -178,13 +374,21 @@ models:
           formula: '{"total_price": $min([$ceil(get_duration(audio)), 600]) * base_price}'
           discount_rate: 100
   veed-clean-audio:
+    rejects:
+      - when: get_duration(audio) > 1800
+        reason: "VEED Clean Audio audio_url: up to 30 minutes and 512 MB"
+        source: https://api.veed.io/openapi.yaml
+      - when: strength < 0 or strength > 1
+        reason: "VEED Clean Audio strength: minimum 0, maximum 1"
+        source: https://api.veed.io/openapi.yaml
     upstreams:
-      - upstream: wavespeed
-        weight: 1
+      - upstream: fal
+        weight: 2
         model_id: veed/clean-audio
+        output_field: audio
         params:
           audio:
-            field: audio
+            field: audio_url
           strength:
             field: strength
           target_lufs:
@@ -193,6 +397,6 @@ models:
             field: output_format
         pricing:
           kind: formula
-          base_price: 14000
-          formula: '{"total_price": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}'
+          base_price: 12500
+          formula: '{"total_price": $min([$max([$ceil($round(get_duration(audio_url)) / 60), 1]), 30]) * base_price}'
           discount_rate: 100

@@ -424,6 +424,13 @@
         "noPermission": "你在这个 Project 里没有编辑权限",
         "notMember": "你已经不是这个 Project 的成员",
         "tooFrequent": "刚才取的链接太多，等一分钟再试",
+        "pageNeedsLogin": "需要登录",
+        "pageRefused": "网站拒绝了读取",
+        "pageTooSlow": "网页打开太慢，没能读完",
+        "pageEmpty": "网页上没有能读的文字",
+        "pageUnreachable": "无法打开",
+        "pageUnsupportedType": "不是能读取的格式",
+        "pagesUnreadable": "这些网页都没能读到",
         "declined": "服务拒绝处理这项内容",
         "ourFault": "服务器出了问题，可以再试一次"
       },
@@ -431,6 +438,7 @@
       "failedStep": "{step}没有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
+      "readingPages": "{count, plural, =0 {正在读网页} =1 {正在读 {host}} other {正在读 # 个网页}}",
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查 Canvas 能做什么",
       "proposingNodes": "正在拟一份提议",
@@ -451,6 +459,7 @@
       "running": "正在调用 {tool}",
       "step": {
         "webSearch": "搜索「{query}」",
+        "webFetch": "读网页",
         "searchImages": "找「{query}」的图片",
         "understandMedia": "查看媒体",
         "saveImage": "保存图片",
@@ -2199,7 +2208,16 @@
         "mergeCells": "合并单元格",
         "textHighlight": "背景（高亮文字）",
         "fullscreen": "全屏",
-        "exitFullscreen": "退出全屏"
+        "exitFullscreen": "退出全屏",
+        "cut": "剪切",
+        "pasteAbove": "粘贴到上方",
+        "pasteBelow": "粘贴到下方",
+        "pasteLeft": "粘贴到左侧",
+        "pasteRight": "粘贴到右侧",
+        "splitMergedFirst": "请先拆分合并的单元格",
+        "noTableToPaste": "请先复制一个表格",
+        "clipboardNotAllowed": "没有读取剪贴板的权限",
+        "copyFailed": "无法复制到剪贴板"
       },
       "paste": {
         "unsupportedInCell": "当前格式不支持粘贴"
@@ -2233,7 +2251,8 @@
         },
         "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
         "notWrittenYet": "已上传，还没写进正文",
-        "notPasted": "{count} 项没有粘贴进来。"
+        "notPasted": "{count} 项没有粘贴进来。",
+        "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
       }
     },
     "readOnlyReconnect": "重新连接",
@@ -3361,7 +3380,8 @@
       "invalid_range": "超出视频范围",
       "incompatible_track": "所在轨道类型不符",
       "damaged": "该片段已无法读取",
-      "missing_source": "所用视频已丢失"
+      "missing_source": "所用视频已丢失",
+      "source_unresolved": "网页动画不可用"
     },
     "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
@@ -3414,7 +3434,8 @@
       "track_missing": "目标轨道已被移除，请选择其他轨道。",
       "id_taken": "该项已存在，请重试。",
       "main_track": "主轨不能删除。",
-      "track_not_empty": "只能删除空轨道。"
+      "track_not_empty": "只能删除空轨道。",
+      "source_unresolved": "网页动画尚未就绪，请稍后重试。"
     },
     "mainTrack": "主轨",
     "track": "画面 {index}",
@@ -3431,8 +3452,8 @@
       "linkage": "联动",
       "zoom": "缩放",
       "track": "轨道",
-      "inPoint": "入点",
-      "duration": "时长",
+      "inPoint": "入点（帧）",
+      "duration": "时长（帧）",
       "newTrack": "新建画面轨",
       "newTrackZone": "拖到这里新建轨道",
       "trackRemoved": "轨道已移除",
@@ -3444,6 +3465,69 @@
       "splitOutside": "请把播放头移到选中片段内再分割。",
       "lowestTrack": "该片段已在最下面的画面轨。",
       "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。"
+    },
+    "webAnimation": {
+      "create": "制作网页动画",
+      "executions": "执行列表",
+      "copy": "网页动画副本",
+      "durationShort": "{seconds} 秒",
+      "dialog": {
+        "title": "制作网页动画",
+        "retryTitle": "重新执行网页动画",
+        "description": "填写要求后点击“执行”。",
+        "prompt": "要求",
+        "promptPlaceholder": "例如：蓝色背景，标题从左侧滑入",
+        "engine": "引擎",
+        "aspect": "比例",
+        "duration": "时长（秒）",
+        "addAtPlayhead": "在播放头位置加入 Timeline",
+        "execute": "执行"
+      },
+      "list": {
+        "close": "关闭执行列表",
+        "completed": "已完成",
+        "inProgress": "进行中",
+        "emptyCompleted": "还没有已完成的执行。",
+        "emptyInProgress": "没有进行中的执行。"
+      },
+      "status": {
+        "awaiting_landing": "保存中",
+        "queued": "排队中",
+        "running": "制作中",
+        "cancelling": "取消中",
+        "succeeded": "成功",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "expired": "已过期"
+      },
+      "step": {
+        "landing": "保存执行请求"
+      },
+      "phase": {
+        "writing": "编写网页",
+        "validating": "校验定位与清单",
+        "saving": "保存源包"
+      },
+      "usageLabel": "用量",
+      "usage": "{credits} 积分",
+      "usagePending": "结束后结算",
+      "unavailable": "网页动画不可用",
+      "cancel": "取消",
+      "addToTimeline": "添加到 Timeline",
+      "addPlaceholder": "先加入 Timeline",
+      "retry": "重新执行",
+      "failure": {
+        "feature_disabled": "网页动画暂不可用。",
+        "check": "页面没有通过检查。",
+        "stopped": "制作意外中断。",
+        "unknown": "执行失败。"
+      },
+      "preview": {
+        "pending": "{track}：网页动画{status, select, awaiting_landing {保存中} queued {排队中} running {制作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：网页动画{status, select, failed {失败} cancelled {已取消} expired {已过期} other {不可用}}，不显示",
+        "unavailable": "{track}：网页动画不可用",
+        "loading": "{track}：网页动画加载中…"
+      }
     }
   }
 }

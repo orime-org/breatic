@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineDocumentV1 } from '@breatic/shared';
+import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import { timelineInsertionIndex, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
 import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
@@ -95,7 +96,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const mainClips = React.useMemo(() => orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID), [document.clips]);
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
-  const beforeAssetId = before === undefined ? '' : document.sources[before.sourceId]?.assetId ?? '';
+  const beforeAssetId = before === undefined ? '' : timelineClipSource(document.sources, before)?.assetId ?? '';
   const beforeAsset = useTimelineAsset(projectId, beforeAssetId);
   const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>

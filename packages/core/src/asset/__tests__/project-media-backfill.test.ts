@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { ProjectAssetReferenceEntity, StudioAssetEntity } from "@breatic/shared";
 import { AppError, ForbiddenError, NotFoundError } from "@core/app-errors.js";
-import { getTimelineConfig } from "@core/config/timeline.js";
+import { getTimelineConfig, timelineConfigSchema, type TimelineConfig } from "@core/config/timeline.js";
 import type * as TimelineConfigModule from "@core/config/timeline.js";
 import { inspectRegisteredProjectMedia, ProjectMediaScopeUnavailableError, referenceRegisteredProjectMediaDetailed } from "@core/asset/project-asset-reference.service.js";
 import type * as ReferenceServiceModule from "@core/asset/project-asset-reference.service.js";
@@ -42,7 +42,9 @@ const ASSET: StudioAssetEntity = {
   width: 1280, height: 720, durationSeconds: 2, createdAt: new Date(0), deletedAt: null,
 };
 const OTHER_ASSET: StudioAssetEntity = { ...ASSET, id: "10000000-0000-4000-8000-000000000002", storageKey: "media/two.mp4", fileUrl: "https://cdn.example/two.mp4" };
-const CONFIG = { defaults: { width: 1920, height: 1080, fps: { num: 24, den: 1 } }, assets: { page_size: 50, page_max: 100, backfill_batch_size: 2 } };
+const CONFIG: TimelineConfig = timelineConfigSchema.parse({
+  defaults: { width: 1920, height: 1080, fps: { num: 24, den: 1 } }, assets: { page_size: 50, page_max: 100, backfill_batch_size: 2 },
+});
 
 /**
  * Preserve candidate and classification fixtures as read-only boundary inputs.

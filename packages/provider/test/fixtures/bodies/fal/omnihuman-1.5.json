@@ -1,0 +1,20 @@
+{
+  "model": "omnihuman-1.5",
+  "upstream": "fal",
+  "model_id": "fal-ai/bytedance/omnihuman/v1.5",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "image": "https://example.com/image.png"
+      },
+      "prompt": "",
+      "body": {
+        "audio_url": "https://example.com/audio.mp3",
+        "image_url": "https://example.com/image.png",
+        "resolution": "720p"
+      }
+    }
+  ],
+  "steps": []
+}

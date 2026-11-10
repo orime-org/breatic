@@ -9,7 +9,7 @@
  * is hovered, with them or alone (T13, user 2026-10-21).
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BlockNoteContext } from '@blocknote/react';
 import * as Y from 'yjs';
@@ -162,6 +162,35 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
       expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
       expect(screen.queryByTestId('doc-table-col-handle')).toBeNull();
     });
+  });
+
+  it('cuts the whole table from its menu (inner#1239)', async () => {
+    const written: Record<string, string> = {};
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => {
+        const event = new Event('copy', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', {
+          value: {
+            setData: (format: string, value: string) => {
+              written[format] = value;
+            },
+            clearData: () => undefined,
+            getData: (format: string) => written[format] ?? '',
+          },
+        });
+        document.dispatchEvent(event);
+        return true;
+      }),
+    });
+    const editor = open();
+    pointAt(editor, 'b1');
+    fireEvent.click(screen.getByTestId('doc-block-table-handle'));
+
+    fireEvent.click(screen.getByTestId('doc-block-row-cut'));
+
+    await waitFor(() => expect(written['text/html']).toContain('<table'));
+    expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(false);
   });
 });
 

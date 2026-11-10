@@ -16,6 +16,7 @@ import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
+import { coverKeyFor } from "@core/infra/storage/index.js";
 import * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
 import type { ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
 
@@ -398,6 +399,36 @@ export async function findCoverOf(
     .from(studioAssets)
     .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
     .where(and(eq(studioAssets.id, videoAssetId), isNull(cover.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0].cover) : null;
+}
+
+/**
+ * The live frame cut from the video under a storage key, as some live row
+ * under that key points at it, from any studio. Rows under one key describe
+ * the same bytes, but a row filed without its cover (a document paste names
+ * only the video) does not say there is one. Only the frame written to the
+ * key derived from the video counts: any studio can pair its row with a
+ * picture of its own choosing.
+ * @param storageKey - The video's storage key.
+ * @returns The cover row, or null when no row under the key points at it.
+ * @throws {Error} When the database query fails.
+ */
+export async function findCoverUnderKey(storageKey: string): Promise<StudioAssetEntity | null> {
+  const cover = alias(studioAssets, "cover");
+  const rows = await db
+    .select({ cover })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(
+      and(
+        eq(studioAssets.storageKey, storageKey),
+        eq(studioAssets.kind, "video"),
+        isNull(studioAssets.deletedAt),
+        eq(cover.storageKey, coverKeyFor(storageKey)),
+        isNull(cover.deletedAt),
+      ),
+    )
     .limit(1);
   return rows[0] ? toEntity(rows[0].cover) : null;
 }

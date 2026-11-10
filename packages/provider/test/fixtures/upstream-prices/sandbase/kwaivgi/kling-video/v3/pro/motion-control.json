@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/v3/pro/motion-control",
+  "price_formula": "(media_duration(params.video) ?? 30.0) * 0.168"
+}

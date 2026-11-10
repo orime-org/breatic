@@ -33,6 +33,8 @@ describe('the block handle menu', () => {
       'fullscreen',
       'insertBelow',
       'duplicate',
+      'copy',
+      'cut',
       'indent',
       'unindent',
       'comment',

@@ -61,7 +61,7 @@ import {
   type ClipboardPayload,
   type CloneOptions,
 } from '@web/spaces/canvas/node-clipboard';
-import { collectAddresses, historyItems, replaceAddresses } from '@web/spaces/canvas/paste-addresses';
+import { collectAddresses, fillMissingMedia, historyItems, replaceAddresses } from '@web/spaces/canvas/paste-addresses';
 import {
   centerToTopLeft,
   createEmptyNode,
@@ -426,13 +426,13 @@ export function useNodeCreation(
       let nodes: SnapshotNode[] = cloned.nodes;
       if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
         try {
-          const { map } = await canvasApi.paste({
+          const { map, media } = await canvasApi.paste({
             project_id: projectId,
             urls: addresses.urls,
             pairs: addresses.pairs,
             history,
           });
-          nodes = replaceAddresses(nodes, new Map(Object.entries(map)));
+          nodes = fillMissingMedia(replaceAddresses(nodes, new Map(Object.entries(map))), media);
         } catch (err) {
           toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.paste.failed'));
           return null;

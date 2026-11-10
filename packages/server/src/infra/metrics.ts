@@ -16,8 +16,8 @@
  *  - `http_requests_total` — a counter labelled by method + status, so
  *    error rate is `rate(http_requests_total{status=~"5.."}[5m])`.
  *  - `db_up` — a 1/0 SELECT-1 liveness gauge refreshed on each scrape.
- *    postgres.js does not expose live pool stats, so this is the honest
- *    db signal: a drifted pool surfaces as `db_up 0` / failing queries.
+ *    Pool statistics are not exported here (#1441); a drifted pool
+ *    surfaces as `db_up 0` / failing queries and as `db_wait_timeout` logs.
  *
  * Pinned to prom-client v14, which has no `@opentelemetry/api` dependency;
  * v15 added one, for exemplars. Nothing else in the graph depends on that

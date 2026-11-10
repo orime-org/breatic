@@ -15,14 +15,19 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish three images. One of them, the media container, carries FFmpeg and
-vips:
+We publish four images, and a deployment that enables web animation builds a
+fifth, the web-animation container, from source. The media container carries
+FFmpeg and vips; the page reader carries a Chromium headless shell and the
+FFmpeg build Playwright installs beside it; the web-animation container carries
+Chromium and the DeepSeek Harness:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
+| the page reader | [packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile) | `node:24-bookworm-slim` | yes — Playwright's LGPL build, which the reader never runs |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
+| the web-animation container | [packages/ingest/web-animation.Dockerfile](./packages/ingest/web-animation.Dockerfile) | `node:24-bookworm-slim` | no — see [Web animation](#web-animation) |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
 against its libraries. The program and Breatic are separate works that happen to
@@ -106,6 +111,57 @@ loads none of its libraries. The image carries the licence texts and a
 `SOURCE` file at `/usr/share/sox-source/`, written from the installed package
 while the image is built, as the FFmpeg one above is.
 
+### Chromium and its libraries in the page reader
+
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| Chrome Headless Shell (Chrome for Testing) | `151.0.7922.34`, Playwright browser revision `1234` | **BSD-3-Clause** for Chromium, with each bundled third-party component under its own licence | `https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34` |
+| Playwright's FFmpeg | `n7.0.1-playwright-build-1011` | **LGPL-2.1-or-later** (`ffmpeg -L`); built without `--enable-gpl`, statically linked with libvpx (BSD-3-Clause) and zlib | `https://ffmpeg.org/releases/ffmpeg-7.0.1.tar.xz`; the full `configure` line is printed by `ffmpeg-linux -version` in the image |
+| Debian 12 packages installed by `playwright-core install --with-deps` | the versions Debian 12 serves when the image is built | each package's own, mostly MIT, BSD, LGPL and MPL; three fonts (`fonts-freefont-ttf`, `fonts-wqy-zenhei`, `fonts-tlwg-loma-otf`) are **GPL with a font exception**, `fonts-unifont` is **GPL-2.0-or-later**, and `fonts-ipafont-gothic` is under the **IPA Font License** | `https://sources.debian.org/` |
+
+`npx playwright-core install --with-deps --only-shell chromium`
+([packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile))
+installs all three: the browser and FFmpeg under `/ms-playwright/`, and about 110
+Debian packages of shared libraries, fonts and X11 parts the browser loads.
+The browser carries its full notices in
+`/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/LICENSE.headless_shell`,
+FFmpeg carries `COPYING.LGPLv2.1` beside its binary, and each Debian package
+carries its copyright file at `/usr/share/doc/<package>/copyright`.
+
+The reader's service drives the browser as a separate process over the
+DevTools protocol and loads none of these libraries; Playwright runs its FFmpeg
+only to record video, which the reader never does. The service's own process
+loads the five npm packages listed in the next section.
+
+### Web animation
+
+The web-animation container, the ingest Worker and the web preview carry these
+for web-animation execution:
+
+| Component | Version | Licence | How it ships | Source |
+|---|---|---|---|---|
+| Chromium | Debian bookworm's `chromium` package; the image's `/usr/share/chromium-source/SOURCE` records the exact version | **BSD-3-Clause** and the licences of the components it bundles, listed in the image at `/usr/share/doc/chromium/copyright` | A separate program the runner starts to check a package; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/chromium/` at the recorded version |
+| `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
+| `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
+| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy or a finished result is shown in a Timeline preview | https://github.com/heygen-com/hyperframes |
+| `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter`, `@fontsource-variable/noto-sans-kr`, `@fontsource-variable/noto-sans-jp`, `@fontsource-variable/noto-sans-tc` | `5.3.1`, `5.3.1`, `5.3.0`, `5.3.1`, `5.3.1`, `5.3.1` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
+
+The runner bundles nothing but Node and our own code
+(`breatic/media-container-own-code-only` holds it to that, as for the media
+container). The OFL's one prohibition, selling the fonts on their own, is not
+something Breatic does, and none of the six copyright lines declares a
+Reserved Font Name.
+
+`@hyperframes/player` 0.8.186 declares `@hyperframes/core` as a dependency
+although its published file imports nothing from it; the only mention is the
+CDN address of a runtime fallback our pages never reach, because every package
+inlines the runtime. The `pnpm.overrides` entry
+`"@hyperframes/player@0.8.186>@hyperframes/core": "-"` in the root
+`package.json` keeps that tree out of the install.
+Delete the entry once the player stops declaring `@hyperframes/core`. The
+web-animation image takes the runtime file from the `@hyperframes/core` tarball
+with `npm pack`, which installs none of its dependencies.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
@@ -113,7 +169,11 @@ and `collab` beside our own code, so every production dependency of those three
 is distributed with it. These are the ones whose licence is not one of the four
 permissive ones. The media container carries no `node_modules` at all — its
 service is bundled into a single file — and the `breatic-web` image carries the
-front-end bundle covered by the next section.
+front-end bundle covered by the next section. The page reader's service is
+bundled the same way and runs beside five installed packages, all under
+permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
+(Apache-2.0), `turndown` 7.2.0 and `unpdf` 1.1.0 (MIT), and `@mixmark-io/domino`
+2.2.0 (BSD-2-Clause), which `turndown` depends on.
 
 ### Server-side packages under other licences
 
@@ -121,7 +181,7 @@ front-end bundle covered by the next section.
 |---|---|---|---|---|
 | `@sesamecare-oss/redlock` | `1.4.0` | `packages/collab` → `@hocuspocus/extension-redis` | Reported as **UNLICENSED**, which is what its `package.json` declares. The published tarball carries a `LICENSE.md`, and that file is the MIT licence. The metadata is wrong about the package, not the other way round | https://github.com/sesamecare/redlock |
 | `json-schema` | `0.4.0` | `packages/core` → `@ai-sdk/*` → `@ai-sdk/provider` | AFL-2.1 **or** BSD-3-Clause, at the recipient's option. **Our election: BSD-3-Clause** | https://github.com/kriszyp/json-schema |
-| `postgres` | `3.4.9` | Declared by `packages/core`; also the peer `drizzle-orm` resolves | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/porsager/postgres |
+| `postgres` | `4.1.0` | Declared by `packages/core`; also the peer `drizzle-orm` resolves | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/porsager/postgres |
 | `argparse` | `2.0.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `cosmiconfig` | **Python-2.0**; the tarball's `LICENSE` is the PSF licence text | https://github.com/nodeca/argparse |
 | `caniuse-lite` | `1.0.30001809` | `packages/server` → `mjml` → `mjml-core` → `cssnano` | **CC-BY-4.0**; this entry is the attribution the licence asks for | https://github.com/browserslist/caniuse-lite |
 | `glob` | `13.0.6` | `packages/server` → `mjml` → `mjml-cli`; also `mjml-core` → `js-beautify` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/node-glob |

@@ -1,0 +1,150 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/sync-lipsync/react-1",
+  "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "lipsync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ],
+        "default": "bounce"
+      }
+    ],
+    "model_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head"
+        ],
+        "default": "face"
+      }
+    ],
+    "temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "audio_url",
+    "emotion",
+    "video_url"
+  ],
+  "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.duration": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.fps": [
+      {
+        "type": "number"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.height": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.num_frames": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "video.width": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

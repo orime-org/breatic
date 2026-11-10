@@ -67,7 +67,7 @@ models:
     takes_prompt: true
     tier: "recommended"
     description: "Top-ranked; synced audio up to 4K"
-    guide: "The default first reach: the highest-rated model on both independent boards, for a short prompt-only shot that arrives with its own soundtrack."
+    guide: "The default for a final prompt-only shot: the highest-rated model on both independent boards, a short shot that arrives with its own soundtrack."
     generation_time: 600
     icon: "gemini"
     params:
@@ -297,8 +297,8 @@ models:
       - name: "Static shot"
         sample_key: "camera-previews/minimax-h3/static-shot-640.mp4"
     tier: "optional"
-    description: "Silent 2K, 21:9 through 9:16"
-    guide: "A silent 2K clip in the widest range of framings, for a creator who will cut and score it themselves rather than accept generated audio."
+    description: "2K with sound, 21:9 through 9:16"
+    guide: "A 2K clip with generated sound, in the widest range of framings, from 21:9 through 9:16."
     generation_time: 600
     icon: "minimax"
     params:
@@ -821,7 +821,7 @@ models:
     camera_commands: *minimax_h3_camera_commands
     tier: "recommended"
     description: "Top-rated, 2K from mixed refs"
-    guide: "The default reference shot: the highest-rated model in the catalog, at the sharpest single-clip resolution any reference endpoint offers."
+    guide: "The default for a final reference shot: the highest-rated model in the catalog, at the sharpest single-clip resolution any reference endpoint offers."
     generation_time: 600
     icon: "minimax"
     source_groups:
@@ -1257,7 +1257,7 @@ models:
     takes_prompt: true
     tier: "internal"
     description: "#1 on two blind-vote leaderboards"
-    guide: "The best-judged prompt-driven rewrite of a whole clip — the default choice when a human is going to look at the result"
+    guide: "The best-judged prompt-driven rewrite of a whole clip — the default for a final rewrite a human is going to look at"
     generation_time: 600
     icon: "alibaba"
     params:

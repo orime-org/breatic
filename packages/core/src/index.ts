@@ -20,6 +20,7 @@
 
 // ── Database ─────────────────────────────────────────────────────
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
+export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
@@ -210,6 +211,14 @@ export * as projectAssetReferenceService from "@core/asset/project-asset-referen
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
+export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export {
+  TIMELINE_QUEUE,
+  TIMELINE_EXECUTION_JOB,
+  addTimelineExecutionJob,
+  type TimelineExecutionJobData,
+} from "@core/timeline/timeline-queue.js";
+export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@core/timeline/timeline-execution.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

@@ -26,6 +26,7 @@ If you are joining an existing instance, use the address provided by its operato
 - **Navigate the canvas:** scroll with a mouse wheel or two fingers to pan; pinch or use Ctrl+wheel to zoom. The viewport toolbar also provides zoom, fit-to-window, grid snapping and a minimap. Double-clicking empty canvas does not zoom.
 - **Work with selected nodes:** right-click a node or selection for available actions such as copy, duplicate, group, rename, lock/unlock, download and delete. The menu depends on the selection and your permissions; not every action applies to every node.
 - **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
+- **Make it with the Agent:** tell the Agent in the chat panel what you want to make. It first asks, in one questionnaire, only what it cannot know or see, such as who a character of yours is or whether there is existing work to match. Where the look is a matter of taste, it proposes two or three different takes at the lowest price settings and says what they cost; it sets up the later steps once you pick one. Its proposals arrive as cards: nothing is placed until you press the card's button, and nothing is generated until you start the generation.
 - **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
 
 ## Arrange videos in Timeline
@@ -37,17 +38,19 @@ Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge
 | **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
 | Select a Project video or use **Choose video** | Select a registered Project video or a local video file. |
 | **Track** and **Start frame**, then **Add to Timeline** | Confirm the track and whole-frame position and add the clip (on the main track with **Main track magnet** on, the start chooses where the clip is inserted and the main track stays end to end); a local file uploads and registers at this step. The track starts at the selected clip's track or the main track, the start at the sequence end, and each addition creates an independent clip. |
-| Click a clip | Select it; the right panel shows its **Track**, **Start frame**, **In point** and **Duration**, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. |
+| Click a clip | Select it; the right panel shows its **Track**, **Start frame**, **In point (frames)** and **Duration (frames)**, then its video's length in frames at the Timeline's frame rate, or, for a web animation copy, the request it came from. Type a whole frame and press Enter or leave the field to apply it. |
 | Drag a clip | Move it in time, onto another track, or into the dashed row above the top track to create a new track. Drag the edges of the selected clip to trim it. |
 | **Undo**, **Redo**, **Split**, **Duplicate**, **Delete** | Undo or redo your own edits, split the selected clip at the playhead, place a copy right after it, or delete it. |
 | The three switches beside **Zoom** | **Main track magnet** keeps main-track clips end to end, **Auto snap** (N) lines dragged edges up with clip edges, the playhead and frame 0, and **Linkage** moves or deletes the clips above a main-track clip with it. Hover a switch to see its name. |
 | **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. The position and each clip's length show as hours:minutes:seconds:frames. Video buffering holds the frame until playback can continue. |
 | Press a row under **Conflicts** | Select that clip, move the playhead to its start and scroll the tracks to it. Each row names the clip's track and why it conflicts; the list reads **No conflicts** when there are none. |
+| **Create web animation** | Open the dialog: **Prompt**, **Engine** (DeepSeek), **Aspect ratio** (16:9, 9:16 or 1:1), **Duration (seconds)** and **Add to the Timeline at the playhead**, which starts on. **Execute** starts the run; with the switch on, a dashed placeholder copy goes in at the playhead and shows the result once it is ready. Usage is charged when the run ends. |
+| **Executions** | Open the execution list in the right panel with **Completed** and **In progress**. Press a row to see its steps, its usage and, for a finished result, a preview. **Cancel** stops a run, **Add to Timeline now** places its placeholder, **Add to Timeline** adds a new copy of a finished result each time, and **Run again** reopens the dialog filled in as before after a failure, cancel or expiry. Each copy is edited like a video clip; changing or removing one leaves the other copies and the execution as they are. |
 | Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it; the edit buttons stay disabled for them. |
 
 Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with **Main track magnet** on they swap it with the clip before or after it; with nothing selected they move the playhead; Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes; N turns snapping on or off; Esc cancels a drag. A failed local upload retains its selected file and position in the open form for retry.
 
-Audio/image/text placement, Web Animation creation and video export are planned additions.
+Audio/image/text placement and video export are planned additions.
 
 ## Arrange a 3D scene
 

@@ -40,7 +40,16 @@ import {
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
-import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
+import { readPages, type WebReaderEnv } from "@ingest/web-reader-route.js";
+import {
+  JOB_PATH,
+  WEB_ANIMATION_CANCEL_PATH,
+  cancelWebAnimationJob,
+  readJob,
+  submitJob,
+  type JobsEnv,
+} from "@ingest/jobs/routes.js";
+import { WEB_ANIMATION_PREVIEW_PATH, serveWebAnimationPreview } from "@ingest/web-animation-preview.js";
 import {
   LONG_MEDIA_JOB_PATH,
   LONG_MEDIA_CANCEL_PATH,
@@ -98,6 +107,8 @@ export { MediaContainer } from "@ingest/media-container.js";
 export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
 export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
+export { WebReaderContainer } from "@ingest/web-reader-container.js";
+export { WebAnimationContainer } from "@ingest/jobs/web-animation-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -121,7 +132,7 @@ const ALLOWED_METHODS = "PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv, WebReaderEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -148,6 +159,7 @@ const REQUIRED_SETTINGS = [
   "MINI_TOOL_STD1",
   "MINI_TOOL_STD4",
   "LONG_MEDIA",
+  "WEB_READER",
 ] as const;
 
 /**
@@ -1367,8 +1379,6 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
    * @returns The response.
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    void ctx;
-
     const origin = allowedOrigin(request, env);
 
     // Answered before the configuration is judged. A refused preflight is a
@@ -1401,7 +1411,7 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
       );
     }
 
-    return withCors(await answer(request, env), origin);
+    return withCors(await answer(request, env, ctx), origin);
   },
 } satisfies ExportedHandler<Env>);
 
@@ -1414,11 +1424,12 @@ export default Sentry.withSentry((env: Env) => monitoringOptions(env), {
  * this was ours to fix never arrives.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
+ * @param ctx - The execution context, for work that outlives the response.
  * @returns The endpoint's response, or a 500.
  */
-async function answer(request: Request, env: Env): Promise<Response> {
+async function answer(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   try {
-    return await route(request, env);
+    return await route(request, env, ctx);
   } catch (err) {
     // Written here because catching it is what takes it off Cloudflare's own
     // error reporting: what that shows is the exceptions nobody handled. A 500
@@ -1436,9 +1447,10 @@ async function answer(request: Request, env: Env): Promise<Response> {
  * Match one request to its endpoint.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
+ * @param ctx - The execution context, for work that outlives the response.
  * @returns The endpoint's response.
  */
-async function route(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const { pathname } = new URL(request.url);
 
   if (request.method === "POST" && pathname === "/uploads") {
@@ -1455,6 +1467,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/read-pages") {
+    return readPages(request, env, ctx);
   }
 
   if (request.method === "POST" && pathname === "/long-media/jobs") {
@@ -1501,6 +1517,16 @@ async function route(request: Request, env: Env): Promise<Response> {
   const job = JOB_PATH.exec(pathname);
   if (request.method === "GET" && job) {
     return readJob(request, env, job[1] ?? "", job[2] ?? "");
+  }
+
+  const webAnimationCancel = WEB_ANIMATION_CANCEL_PATH.exec(pathname);
+  if (request.method === "POST" && webAnimationCancel) {
+    return cancelWebAnimationJob(request, env, webAnimationCancel[1] ?? "");
+  }
+
+  const preview = WEB_ANIMATION_PREVIEW_PATH.exec(pathname);
+  if (request.method === "GET" && preview) {
+    return serveWebAnimationPreview(request, env.BUCKET, env.INGEST_SHARED_SECRET, preview[1] ?? "");
   }
 
   const part = PART_PATH.exec(pathname);

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 
@@ -124,14 +124,44 @@ describe('the strip on a table (A5)', () => {
     expect(onParagraph).toMatch(/^translateY\(/);
   });
 
-  it('opens the seven table rows, full screen first', () => {
+  it('opens the table rows, full screen first', () => {
     openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
     render(<Strip />);
 
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
-    expect(rows()).toEqual(['fullscreen', 'insertBelow', 'duplicate', 'indent', 'unindent', 'comment', 'delete']);
+    expect(rows()).toEqual(['fullscreen', 'insertBelow', 'duplicate', 'copy', 'cut', 'indent', 'unindent', 'comment', 'delete']);
     expect(screen.getByTestId('doc-block-row-delete').textContent).toBe('Delete table');
+  });
+
+  it('copy puts the whole table on the clipboard (inner#1239)', async () => {
+    const written: Record<string, string> = {};
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => {
+        const event = new Event('copy', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'clipboardData', {
+          value: {
+            setData: (format: string, value: string) => {
+              written[format] = value;
+            },
+            clearData: () => undefined,
+            getData: (format: string) => written[format] ?? '',
+          },
+        });
+        document.dispatchEvent(event);
+        return true;
+      }),
+    });
+    const editor = openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
+    render(<Strip />);
+    fireEvent.click(screen.getByTestId('doc-block-table-handle'));
+
+    fireEvent.click(screen.getByTestId('doc-block-row-copy'));
+
+    await waitFor(() => expect(written['text/html']).toContain('<table'));
+    expect(written['text/html']).not.toContain('above');
+    expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(true);
   });
 
   it('greys indent on a first table and outdent at the top level', () => {

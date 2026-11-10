@@ -102,7 +102,7 @@ export const openRouterUnderstand: UnderstandAdapter = {
       model: call.modelId,
       max_tokens: call.maxOutputTokens,
       messages: [{ role: "user", content }],
-      ...(call.backend === undefined ? {} : { provider: call.backend }),
+      ...(call.provider === undefined ? {} : { provider: call.provider }),
     };
     return exchange(
       {
@@ -117,9 +117,10 @@ export const openRouterUnderstand: UnderstandAdapter = {
 
   read(body) {
     const parsed = completionSchema.safeParse(body);
-    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${parsed.error.issues[0]?.message ?? "unknown"}` };
+    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${z.prettifyError(parsed.error)}` };
     const completion = parsed.data;
-    // An error may sit at the top of the body or on the choice; words written before it are a stop.
+    // An error may sit at the top of the body or on the choice; words written before a choice's error are kept as the
+    // answer, with that choice's finish reason.
     if (completion.error !== undefined && completion.error !== null) return { error: completion.error };
     const choice = completion.choices?.[0];
     if (choice === undefined) return { unreadable: "OpenRouter's answer has no choice" };

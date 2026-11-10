@@ -22,7 +22,7 @@ The business core shared by server and worker. These rules apply when you change
 
 **A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, and a generation is charged through `chargeOnceForGeneration(refKey, ...)`, which charges each `refKey` at most once.** A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
 
-**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat holds nothing: a turn is admitted on the balance and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
+**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat and Timeline web-animation executions hold nothing: a turn or an execution is admitted on a balance above zero and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
 
 **Every consumption is multiplied by `CREDIT_MULTIPLIER` (default 1).** It is a deployment setting that the model catalog also applies, so a cost computed without it bills a different number than the one shown.
 
@@ -50,7 +50,7 @@ Before changing templates or how the agent proposes them, read the generation te
 
 **Everything about a product tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's words to the model are its `agentNote` and `triggers` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The Agent's own memory tools (`save_memory`, `delete_memory`, `read_memory`) are the one exception: their definitions give arguments and answers, and when to use them is said only in the system prompt ([server rule](../server/AGENTS.md#the-system-prompt-names-no-product-tool)). `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
 
-Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition.
+Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition. Changing such words runs the co-create suite ([server rule](../server/AGENTS.md#prompt-changes-run-the-co-create-suite)).
 
 ### One place assembles the agent
 

@@ -379,6 +379,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -466,6 +467,9 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
+  TimelineWebAnimationClipSchema,
+  TimelineClipSchema,
+  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
 } from "@shared/timeline/schema.js";
@@ -475,8 +479,14 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
+  TimelineWebAnimationClip,
+  TimelineWebAnimationContentBinding,
+  TimelineClip,
+  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
+// The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
+// module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
 export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
 export type { TimelineFraction } from "@shared/timeline/time.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
@@ -668,6 +678,25 @@ export {
   TURNED_AWAY,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
+// The key two spellings of a page share, and the pages the Agent reads (inner#1664).
+export { pageLinkKey } from "@shared/agent/page-links.js";
+export {
+  READ_PAGE_STATUSES,
+  READ_PAGE_MAX_URL_CHARS,
+  READ_PAGE_MAX_TITLE_CHARS,
+  READER_UNREACHABLE_HEADER,
+  webPageUrlSchema,
+  readPagesRequestSchema,
+  readPageResultSchema,
+  readPagesAnswerSchema,
+  readerServiceAnswerSchema,
+  READER_SERVICE_PORT,
+  type ReaderServiceAnswer,
+  type ReadPageStatus,
+  type ReadPagesRequest,
+  type ReadPageResult,
+  type ReadPagesAnswer,
+} from "@shared/agent/read-pages.js";
 export type {
   FailureLine,
   LegacyFailureLine,
@@ -854,6 +883,7 @@ export {
 // when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
+  nodeMediaEntries,
   writeNodeMedia,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";
@@ -910,6 +940,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readPagesAtIngest,
   readStoredMediaAtIngest,
   IngestAnswerError,
   UploadHttpError,
@@ -933,11 +964,11 @@ export {
   readMiniToolJobReport,
   submitMiniToolJob,
   MINI_TOOL_JOB_MAX_OUTPUTS,
-  type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
   type MiniToolJobRequest,
 } from "@shared/upload/mini-tool-job.js";
+export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
@@ -1097,3 +1128,6 @@ export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedg
 export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
+export type {
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion,
+} from "@shared/types/entities.js";

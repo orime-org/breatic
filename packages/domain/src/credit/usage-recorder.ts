@@ -32,13 +32,15 @@ export type UsageFeature =
   | "text_tool"
   | "canvas_understand"
   | "canvas_transcribe"
-  | "mini_tool";
+  | "mini_tool"
+  | "timeline_web_animation";
 
 /** What inside the operation made the call. */
 export type UsageSource =
   | "model"
   | "tool:understand_media"
   | "tool:web_search"
+  | "tool:web_fetch"
   | "tool:search_images"
   | "tool:judge_likelihood"
   | "container";
@@ -63,6 +65,8 @@ export interface UsageRow {
   costUsd: number;
   costSource: CostSource;
   credits: number;
+  /** The call's stable identity, when it has one; a second row with the same identity is never written. */
+  costIdentity: string | null;
 }
 
 /** A paid call to a service that is not a language model. */
@@ -83,6 +87,11 @@ export interface RecordedModelCall extends ModelCall {
   source: UsageSource;
   /** The OpenRouter generation id, when the caller has one. */
   generationId?: string;
+  /**
+   * A stable identity for the call (a Timeline execution's `timeline:<executionId>:<seq>`), so settling the same
+   * call again writes nothing.
+   */
+  costIdentity?: string;
 }
 
 /** An OpenRouter call whose cost was not in hand, once its generation was looked up. */
@@ -221,6 +230,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd: cost.costUsd,
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
+        costIdentity: call.costIdentity ?? null,
       });
     },
     recordServiceCall(call) {
@@ -238,6 +248,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd: cost.costUsd,
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
+        costIdentity: null,
       });
     },
     recordLookedUpCall(call) {
@@ -255,6 +266,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd,
         costSource: call.costUsd === undefined ? "missing" : "generation_lookup",
         credits: creditsForUsd(costUsd, multiplier),
+        costIdentity: null,
       });
     },
     awaitingLookup() {

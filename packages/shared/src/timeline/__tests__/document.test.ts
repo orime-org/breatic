@@ -90,6 +90,7 @@ describe("Timeline document ownership and schema", () => {
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
       clips: {},
       sources: {},
+      operationReceipts: {},
     });
     expect([...doc.share.keys()].sort()).toEqual(["clips", "sources", "timeline", "tracks"]);
     expect(doc.getMap("tracks").get("visual-1")).toBeInstanceOf(Y.Map);

@@ -95,7 +95,7 @@ describe('pasting a node from outside', () => {
   });
 
   it('creates an empty image node and asks for the address to be fetched into it', async () => {
-    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
     const ingestUrl = vi
       .spyOn(canvasApi, 'ingestUrl')
       .mockResolvedValue({ task_id: 't1' });

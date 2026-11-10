@@ -24,6 +24,9 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
+export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
+export { timelineOperationKey } from "@domain/timeline/operation-key.js";
 export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {
   containerCostUsd,
@@ -69,6 +72,7 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+export { materialFacts, type MaterialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
 export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
@@ -129,6 +133,17 @@ export {
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
+export { makeWebTools, publisherOf } from "@domain/agent/tools/web-tools.js";
+export {
+  ReadPagesRefused,
+  renderFetchForModel,
+  type ReadPages,
+  type FetchStatus,
+  type FetchedPage,
+  type FetchSource,
+  type FetchAnswer,
+} from "@domain/agent/tools/web-fetch.js";
+export { WEB_FETCH } from "@domain/agent/tools/tool-names.js";
 export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
 export type {
   ProjectRecords,

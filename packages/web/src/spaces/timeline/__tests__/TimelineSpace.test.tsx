@@ -25,7 +25,7 @@ import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { toast } from '@web/lib/toast';
 import { writeUserPreference } from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
-import { MAIN, clip as clipAt, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import { MAIN, clip as clipAt, seededDoc, sourceIdOf, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -336,7 +336,10 @@ beforeEach(() => {
   useSpaceOperationsStore.setState({ operations: {} });
   vi.mocked(timelineApi.listVideos).mockReset().mockResolvedValue({ items: [ASSET], nextCursor: null });
   vi.mocked(timelineApi.resolveAsset).mockReset().mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? LOCAL_ASSET : ASSET);
-  vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({ defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 } });
+  vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({
+    defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
+    webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
+  });
   vi.mocked(uploadMedia).mockReset().mockResolvedValue(stored());
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
@@ -476,9 +479,9 @@ describe('TimelineSpace registered-video placement', () => {
     const clips = Object.values(data.clips);
     expect(clips).toHaveLength(1);
     const clip = clips[0];
-    expect(clip).toEqual({ ...CLIP, id: clip?.id, sourceId: clip?.sourceId });
+    expect(clip).toEqual({ ...CLIP, id: clip?.id, sourceId: sourceIdOf(clip) });
     expect(Object.values(data.sources)).toHaveLength(1);
-    expect(data.sources[clip?.sourceId ?? '']).toEqual({ ...SOURCE, id: clip?.sourceId });
+    expect(data.sources[sourceIdOf(clip) ?? '']).toEqual({ ...SOURCE, id: sourceIdOf(clip) });
     expect(JSON.stringify(data)).not.toContain(ASSET.fileUrl);
     expect(JSON.stringify(data)).not.toContain(ASSET.coverUrl);
     expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toBeInTheDocument();
@@ -639,7 +642,7 @@ describe('TimelineSpace browser metadata boundary', () => {
     expect(clip?.startFrame).toBe(72);
     expect(clip?.durationFrames).toBe(30);
     expect(Object.values(layout().sources)).toEqual([{
-      ...SOURCE, id: clip?.sourceId, durationOrigin: 'decoded', durationSeconds: '1.25', extentFrames: 30,
+      ...SOURCE, id: sourceIdOf(clip), durationOrigin: 'decoded', durationSeconds: '1.25', extentFrames: 30,
     }]);
     expect(asset.durationSeconds).toBe(null);
     expect(second.getAttribute('src')).toBe(null);
@@ -801,7 +804,7 @@ describe('TimelineSpace local uploads and captured targets', () => {
     act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId: 'v2', startFrame: 20 } }, placement: OFF }); });
     await act(async () => answer.resolve(stored()));
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(3));
-    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[clip.sourceId]?.assetId === LOCAL_ASSET.assetId);
+    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[sourceIdOf(clip) ?? '']?.assetId === LOCAL_ASSET.assetId);
     expect(uploaded).toMatchObject({ trackId: 'v2', startFrame: 72, durationFrames: 48 });
   });
   it('lands a captured main-track upload at its insertion point after a peer adds a clip meanwhile', async () => {
@@ -814,7 +817,7 @@ describe('TimelineSpace local uploads and captured targets', () => {
     act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON }); });
     await act(async () => answer.resolve(stored()));
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
-    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[clip.sourceId]?.assetId === LOCAL_ASSET.assetId);
+    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[sourceIdOf(clip) ?? '']?.assetId === LOCAL_ASSET.assetId);
     expect(uploaded).toMatchObject({ trackId: MAIN, startFrame: 48, durationFrames: 48 });
     expect(layout().clips[CLIP.id]?.startFrame).toBe(0);
   });
@@ -1036,7 +1039,7 @@ describe('TimelineSpace clip actions', () => {
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
     const parts = Object.values(layout().clips).sort((left, right) => left.startFrame - right.startFrame);
     expect(parts.map((item) => [item.startFrame, item.durationFrames, item.sourceInFrame])).toEqual([[0, 47, 0], [47, 1, 47]]);
-    expect(new Set(parts.map((item) => item.sourceId)).size).toBe(1);
+    expect(new Set(parts.map((item) => sourceIdOf(item))).size).toBe(1);
     expect(parts[0]?.id).toBe(CLIP.id);
   });
 

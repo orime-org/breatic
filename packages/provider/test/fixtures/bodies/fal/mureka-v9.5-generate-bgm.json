@@ -1,0 +1,15 @@
+{
+  "model": "mureka-v9.5-generate-bgm",
+  "upstream": "fal",
+  "model_id": "mureka/v9.5/generate/instrumental",
+  "runs": [
+    {
+      "params": {},
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": []
+}

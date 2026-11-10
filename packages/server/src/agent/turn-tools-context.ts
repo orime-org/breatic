@@ -10,8 +10,8 @@
  * carry it in the shape they use: the save and the canvas proposal the
  * project (inner#1315), the 3D generation proposal the project whose images
  * it resolves (inner#1691), the document proposal the open document (inner#1509),
- * the record tools the user's records (inner#1469), and the memory tools the
- * user's memory (#1363).
+ * the record tools the user's records (inner#1469), the memory tools the
+ * user's memory (#1363), and the page read its rate-limited reader (inner#1664).
  */
 
 import type { ChatSpaceContext } from "@breatic/shared";
@@ -24,10 +24,12 @@ import {
   MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
+  WEB_FETCH,
   usageContextFor,
   type OpenDocument,
   type AgentMemory,
   type ProjectRecords,
+  type ReadPages,
   type SaveToStorage,
 } from "@breatic/domain";
 
@@ -46,6 +48,7 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  *   document proposal goes to, or null when none can be read.
  * @param turn.records - The user's records this turn may read (inner#1469).
  * @param turn.memory - The user's memory this turn may write and read (#1363).
+ * @param turn.readPages - How this turn's page reads are rate limited and sent (inner#1664).
  * @returns The context, by tool name.
  * @throws {never} Never.
  */
@@ -60,10 +63,12 @@ export function turnToolsContext(
     openDocument: OpenDocument | null;
     records: ProjectRecords;
     memory: AgentMemory;
+    readPages: ReadPages;
   },
 ): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
   if (context[SAVE_IMAGE]) context[SAVE_IMAGE] = { ...context[SAVE_IMAGE], saveToStorage: turn.saveToStorage };
+  if (context[WEB_FETCH]) context[WEB_FETCH] = { ...context[WEB_FETCH], readPages: turn.readPages };
   if (context[UNDERSTAND_MEDIA]) {
     context[UNDERSTAND_MEDIA] = {
       ...context[UNDERSTAND_MEDIA],

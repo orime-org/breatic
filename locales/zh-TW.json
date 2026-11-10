@@ -424,6 +424,13 @@
         "noPermission": "你在這個 Project 裡沒有編輯權限",
         "notMember": "你已經不是這個 Project 的成員",
         "tooFrequent": "剛才取的連結太多，等一分鐘再試",
+        "pageNeedsLogin": "需要登入",
+        "pageRefused": "網站拒絕了讀取",
+        "pageTooSlow": "網頁開啟太慢，沒能讀完",
+        "pageEmpty": "網頁上沒有能讀的文字",
+        "pageUnreachable": "無法開啟",
+        "pageUnsupportedType": "不是能讀取的格式",
+        "pagesUnreadable": "這些網頁都沒能讀到",
         "declined": "服務拒絕處理這項內容",
         "ourFault": "伺服器出了問題，可以再試一次"
       },
@@ -431,6 +438,7 @@
       "failedStep": "{step}沒有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
+      "readingPages": "{count, plural, =0 {正在讀網頁} =1 {正在讀 {host}} other {正在讀 # 個網頁}}",
       "searchingImages": "正在找「{query}」的圖片",
       "checkingCanvas": "正在查 Canvas 能做什麼",
       "proposingNodes": "正在擬一份提議",
@@ -451,6 +459,7 @@
       "running": "正在呼叫 {tool}",
       "step": {
         "webSearch": "搜尋「{query}」",
+        "webFetch": "讀網頁",
         "searchImages": "找「{query}」的圖片",
         "understandMedia": "檢視媒體",
         "saveImage": "儲存圖片",
@@ -2199,7 +2208,16 @@
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）",
         "fullscreen": "全螢幕",
-        "exitFullscreen": "結束全螢幕"
+        "exitFullscreen": "結束全螢幕",
+        "cut": "剪下",
+        "pasteAbove": "貼上到上方",
+        "pasteBelow": "貼上到下方",
+        "pasteLeft": "貼上到左側",
+        "pasteRight": "貼上到右側",
+        "splitMergedFirst": "請先分割合併的儲存格",
+        "noTableToPaste": "請先複製一個表格",
+        "clipboardNotAllowed": "沒有讀取剪貼簿的權限",
+        "copyFailed": "無法複製到剪貼簿"
       },
       "paste": {
         "unsupportedInCell": "目前格式不支援貼上"
@@ -2233,7 +2251,8 @@
         },
         "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
         "notWrittenYet": "已上傳，還沒寫進正文",
-        "notPasted": "{count} 項沒有貼上。"
+        "notPasted": "{count} 項沒有貼上。",
+        "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
       }
     },
     "readOnlyReconnect": "重新連線",
@@ -3361,7 +3380,8 @@
       "invalid_range": "超出影片範圍",
       "incompatible_track": "所在軌道類型不符",
       "damaged": "該片段已無法讀取",
-      "missing_source": "所用影片已遺失"
+      "missing_source": "所用影片已遺失",
+      "source_unresolved": "網頁動畫不可用"
     },
     "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",
@@ -3414,7 +3434,8 @@
       "track_missing": "目標軌道已被移除，請選擇其他軌道。",
       "id_taken": "此項目已存在，請重試。",
       "main_track": "主軌無法刪除。",
-      "track_not_empty": "只能刪除空軌道。"
+      "track_not_empty": "只能刪除空軌道。",
+      "source_unresolved": "網頁動畫尚未就緒，請稍後重試。"
     },
     "mainTrack": "主軌",
     "track": "畫面 {index}",
@@ -3431,8 +3452,8 @@
       "linkage": "連動",
       "zoom": "縮放",
       "track": "軌道",
-      "inPoint": "入點",
-      "duration": "時長",
+      "inPoint": "入點（影格）",
+      "duration": "時長（影格）",
       "newTrack": "新增畫面軌",
       "newTrackZone": "拖到這裡新增軌道",
       "trackRemoved": "軌道已移除",
@@ -3444,6 +3465,69 @@
       "splitOutside": "請將播放頭移到選取片段內再分割。",
       "lowestTrack": "此片段已在最下方的畫面軌。",
       "bumped": "{count, plural, other {# 個連動片段}}已移到上方軌道。"
+    },
+    "webAnimation": {
+      "create": "製作網頁動畫",
+      "executions": "執行列表",
+      "copy": "網頁動畫副本",
+      "durationShort": "{seconds} 秒",
+      "dialog": {
+        "title": "製作網頁動畫",
+        "retryTitle": "重新執行網頁動畫",
+        "description": "填寫要求後點擊「執行」。",
+        "prompt": "要求",
+        "promptPlaceholder": "例如：藍色背景，標題從左側滑入",
+        "engine": "引擎",
+        "aspect": "比例",
+        "duration": "時長（秒）",
+        "addAtPlayhead": "在播放頭位置加入 Timeline",
+        "execute": "執行"
+      },
+      "list": {
+        "close": "關閉執行列表",
+        "completed": "已完成",
+        "inProgress": "進行中",
+        "emptyCompleted": "還沒有已完成的執行。",
+        "emptyInProgress": "沒有進行中的執行。"
+      },
+      "status": {
+        "awaiting_landing": "儲存中",
+        "queued": "排隊中",
+        "running": "製作中",
+        "cancelling": "取消中",
+        "succeeded": "成功",
+        "failed": "失敗",
+        "cancelled": "已取消",
+        "expired": "已過期"
+      },
+      "step": {
+        "landing": "儲存執行請求"
+      },
+      "phase": {
+        "writing": "編寫網頁",
+        "validating": "校驗定位與清單",
+        "saving": "儲存源包"
+      },
+      "usageLabel": "用量",
+      "usage": "{credits} 點",
+      "usagePending": "結束後結算",
+      "unavailable": "網頁動畫不可用",
+      "cancel": "取消",
+      "addToTimeline": "新增至 Timeline",
+      "addPlaceholder": "先加入 Timeline",
+      "retry": "重新執行",
+      "failure": {
+        "feature_disabled": "網頁動畫暫不可用。",
+        "check": "頁面沒有通過檢查。",
+        "stopped": "製作意外中斷。",
+        "unknown": "執行失敗。"
+      },
+      "preview": {
+        "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",
+        "failed": "{track}：網頁動畫{status, select, failed {失敗} cancelled {已取消} expired {已過期} other {不可用}}，不顯示",
+        "unavailable": "{track}：網頁動畫不可用",
+        "loading": "{track}：網頁動畫載入中…"
+      }
     }
   }
 }

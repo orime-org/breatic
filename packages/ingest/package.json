@@ -5,23 +5,34 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "deploy:worker": "pnpm --filter @breatic/shared build && wrangler deploy --env production",
+    "deploy:worker": "pnpm --filter @breatic/shared build && node scripts/web-animation-fonts.mjs && wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json && tsc --noEmit -p web-reader/tsconfig.json"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
     "@cloudflare/containers": "0.3.7",
-    "@sentry/cloudflare": "catalog:"
+    "@sentry/cloudflare": "catalog:",
+    "@mozilla/readability": "0.6.0",
+    "playwright-core": "1.62.1",
+    "turndown": "7.2.0",
+    "unpdf": "1.1.0"
   },
   "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@fontsource-variable/noto-sans-jp": "5.3.1",
+    "@fontsource-variable/noto-sans-kr": "5.3.1",
+    "@fontsource-variable/noto-sans-sc": "5.3.1",
+    "@fontsource-variable/noto-sans-tc": "5.3.1",
+    "@fontsource-variable/noto-serif-sc": "5.3.1",
     "@cloudflare/vitest-pool-workers": "0.12.21",
     "@cloudflare/workers-types": "^5.20260830.1",
     "fast-check": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "^4.127.1",
-    "@types/node": "catalog:"
+    "@types/node": "catalog:",
+    "@types/turndown": "5.0.6"
   }
 }

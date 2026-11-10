@@ -42,12 +42,23 @@ const REASONS = [
   "noPermission",
   "notMember",
   "tooFrequent",
+  // Added by web_fetch (inner#1664). A link the conversation does not hold
+  // has no line: only the model is told (plan §9 Y).
+  "pageNeedsLogin",
+  "pageRefused",
+  "pageTooSlow",
+  "pageEmpty",
+  "pagesUnreadable",
+  // A page, not a link the user gave, that could not be reached or is not
+  // text (plan §13.2 row 6).
+  "pageUnreachable",
+  "pageUnsupportedType",
   "declined",
   "ourFault",
 ];
 
 describe("the reasons a user is shown", () => {
-  it("are the sixteen causes, each its own key, beside the line for a stop", () => {
+  it("are the twenty-three causes, each its own key, beside the line for a stop", () => {
     const { stopped, ...reasons } = FAILURE_LINES;
     expect(Object.keys(reasons).sort()).toEqual([...REASONS].sort());
     expect(Object.values(reasons)).toEqual(Object.keys(reasons).map((key) => `chat.tool.failure.${key}`));

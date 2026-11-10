@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { priceUsd, type PriceContract } from "../evaluate.js";
+import { evaluationMessage, holds, priceUsd, type PriceContract } from "../evaluate.js";
 
 interface PriceFixture {
   contracts: Record<string, PriceContract>;
@@ -56,7 +56,30 @@ describe("priceUsd — properties", () => {
     }));
   });
 
+  it("one formula priced at once on many runs reads each run's own clips", async () => {
+    const formula = "{\"total_price\": get_duration(video) * 1000}";
+    await fc.assert(fc.asyncProperty(fc.array(fc.array(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }), { minLength: 2, maxLength: 8 }), async (runs) => {
+      const prices = await Promise.all(runs.map((clips) => priceUsd({ basePrice: 0, formula, discountRate: 100 }, { video: clips.map(() => "u") }, { video: clips })));
+      expect(prices).toEqual(runs.map((clips) => clips.reduce((sum, clip) => sum + clip, 0) * 1000 / 1_000_000));
+    }));
+  });
+
+  it("a condition held at once on many runs reads each run's own clips", async () => {
+    await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 30 }), { minLength: 2, maxLength: 8 }), async (lengths) => {
+      const verdicts = await Promise.all(lengths.map((length) => holds("get_duration(video) > 15", { video: ["u"] }, { video: [length] })));
+      expect(verdicts).toEqual(lengths.map((length) => length > 15));
+    }));
+  });
+
   it("a formula without a finite total_price is refused", async () => {
     await expect(priceUsd({ basePrice: 1, formula: "{\"other\": 1}", discountRate: 100 }, {}, {})).rejects.toThrow("total_price");
+  });
+});
+
+describe("the words of what an evaluation threw", () => {
+  it("are its message, or the value as text when it carries none", () => {
+    expect(evaluationMessage({ message: "bad token", code: "S0201" })).toBe("bad token");
+    expect(evaluationMessage({ code: "S0201" })).toBe("[object Object]");
+    expect(evaluationMessage(undefined)).toBe("undefined");
   });
 });

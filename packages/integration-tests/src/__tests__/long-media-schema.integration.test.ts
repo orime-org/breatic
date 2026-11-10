@@ -48,7 +48,7 @@ const TABLES = [
 describe("long-media persistence migration", () => {
   it("creates each durable fact table with its lifecycle timestamps", async () => {
     const result = await db.execute(sql`
-      SELECT table_name, array_agg(column_name ORDER BY column_name) AS columns
+      SELECT table_name, array_agg(column_name::text ORDER BY column_name) AS columns
       FROM information_schema.columns
       WHERE table_schema = current_schema()
         AND table_name IN (${sql.join(TABLES.map((table) => sql`${table}`), sql`, `)})

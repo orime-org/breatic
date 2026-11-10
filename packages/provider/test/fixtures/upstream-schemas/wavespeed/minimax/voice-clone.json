@@ -1,0 +1,93 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "accuracy": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.7
+      }
+    ],
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "custom_voice_id": [
+      {
+        "type": "string"
+      }
+    ],
+    "language_boost": [
+      {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "auto"
+        ]
+      }
+    ],
+    "model": [
+      {
+        "type": "string",
+        "enum": [
+          "speech-02-hd",
+          "speech-02-turbo",
+          "speech-2.5-hd-preview",
+          "speech-2.5-turbo-preview",
+          "speech-2.6-hd",
+          "speech-2.6-turbo",
+          "speech-2.8-hd",
+          "speech-2.8-turbo"
+        ],
+        "default": "speech-02-hd"
+      }
+    ],
+    "need_noise_reduction": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "need_volume_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "audio",
+    "custom_voice_id",
+    "model"
+  ]
+}

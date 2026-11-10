@@ -29,6 +29,7 @@ import {
   checkInfraReady,
   startHealthServer,
   runGracefulShutdown,
+  closeQueues,
   InfraNotReadyError,
   flushServerAnalytics,
   adsConversionState,
@@ -39,6 +40,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
+import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -58,6 +60,7 @@ const monitoring = initSentry();
 initLogger("collab");
 
 const logger = createLogger("main");
+onDatabaseWaitTimeout((event) => logger.error(event, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,
@@ -487,6 +490,8 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
+        // The `timeline` queue a Timeline store enqueues landed executions on (inner#1711).
+        () => closeQueues(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

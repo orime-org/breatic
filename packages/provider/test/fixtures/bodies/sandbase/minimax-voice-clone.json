@@ -1,0 +1,34 @@
+{
+  "model": "minimax-voice-clone",
+  "upstream": "sandbase",
+  "model_id": "minimax/voice-clone",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "model": "speech-2.8-hd",
+        "need_noise_reduction": true
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "audio": "https://example.com/audio.mp3",
+        "noise_reduction": true,
+        "mode": "async",
+        "accuracy": 0.7,
+        "model": "minimax/voice-clone"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "kind": "speak",
+      "endpoint": "minimax/speech/2.8/hd",
+      "body": {
+        "text": "a red fox running through fresh snow at dawn",
+        "voice_id": "BreaticSample",
+        "model": "minimax/speech/2.8/hd"
+      },
+      "run": 0
+    }
+  ]
+}
