@@ -25,7 +25,7 @@ import {
 import { clearReplies } from '@web/spaces/document/document-comment-unsent';
 import type { ProjectRole } from '@breatic/shared';
 
-import { DocumentCommentRail, type Filter } from '@web/spaces/document/DocumentCommentRail';
+import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
 import {
   hoverThread,
   onSelectedThreadsChange,
@@ -156,9 +156,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // button and moves nothing (design §5). Held here because the menu opens
   // the panel and the panel closes itself, so neither owns it.
   const [railOpen, setRailOpen] = React.useState(false);
-  // What the open panel shows, kept here because a table opened full screen
-  // takes the panel away and brings it back measured afresh.
-  const [railFilter, setRailFilter] = React.useState<Filter | null>(null);
   // Opening only: the menu row this is on stands aside while the panel is up,
   // and the panel closes itself.
   const openRail = React.useCallback(() => {
@@ -194,7 +191,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // (measured 2026-09-23, design §9.5).
   const closeRail = React.useCallback(() => {
     setRailOpen(false);
-    setRailFilter(null);
     selectThreads(handle.editor, []);
     hoverThread(handle.editor, null);
     // And the draft with them: the card it is written in lives in the panel,
@@ -451,17 +447,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             </div>
             {/* Beside the body rather than over it, so opening it narrows the
               text column and closing it widens the column again (A18). */}
-            {railOpen && !inFullscreen && (
-              <DocumentCommentRail
-                editor={handle.editor}
-                rail={rail}
-                myRole={myRole}
-                onClose={closeRail}
-                scroller={viewport}
-                lastFilter={railFilter}
-                onFilter={setRailFilter}
-              />
-            )}
+            {/* Under a full-screen table the panel steps aside the way a
+              hidden Space does: what it was reading, its filter and a draft
+              stay, and it measures again on coming back. */}
+            <React.Activity mode={inFullscreen ? 'hidden' : 'visible'}>
+              {railOpen && (
+                <DocumentCommentRail
+                  editor={handle.editor}
+                  rail={rail}
+                  myRole={myRole}
+                  onClose={closeRail}
+                  scroller={viewport}
+                />
+              )}
+            </React.Activity>
           </div>
         </ScrollArea>
       </div>

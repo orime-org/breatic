@@ -304,7 +304,7 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 
-  it('takes an open comment panel away and brings it back measured afresh, with the filter the user chose', async () => {
+  it('steps an open comment panel aside and brings it back with the filter the user chose', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));
     await userEvent.click(screen.getByTestId('doc-doc-menu-trigger'));
@@ -313,7 +313,7 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
 
     enter(editor);
 
-    await waitFor(() => expect(screen.queryByTestId('doc-comment-rail')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).not.toBeVisible());
     fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
     expect(await screen.findByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
   });

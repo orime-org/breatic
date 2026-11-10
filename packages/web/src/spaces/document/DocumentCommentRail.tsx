@@ -95,18 +95,10 @@ interface DocumentCommentRailProps {
   onClose: () => void;
   /** The body's scroller, which the panel shares; null before it mounts. */
   scroller: HTMLElement | null;
-  /**
-   * The filter the panel last showed while it stayed open, so a panel taken
-   * away by a full-screen table (breatic#1427) comes back on it; null for a
-   * panel the user opens.
-   */
-  lastFilter: Filter | null;
-  /** Keeps the filter the panel shows, for {@link lastFilter}. */
-  onFilter: (filter: Filter) => void;
 }
 
 /** Which threads the panel is showing. */
-export type Filter = 'open' | 'all';
+type Filter = 'open' | 'all';
 
 /** The space kept between two cards that would otherwise run together. */
 const GAP_BETWEEN_CARDS_PX = 10;
@@ -143,8 +135,6 @@ type CardHandling = Omit<
  * @param root0.myRole - This user's role.
  * @param root0.onClose - Closes the panel.
  * @param root0.scroller - The body's scroller, moved to show a new draft card.
- * @param root0.lastFilter - The filter the panel last showed while it stayed open.
- * @param root0.onFilter - Keeps the filter the panel shows.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
@@ -153,8 +143,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   myRole,
   onClose,
   scroller,
-  lastFilter,
-  onFilter,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -176,7 +164,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     editor: ToolEditor;
     filter: Filter;
     prepared: ProposalLocation | null;
-  }>(() => ({ editor, filter: lastFilter ?? 'open', prepared: null }));
+  }>({ editor, filter: 'open', prepared: null });
   // Prepare the complete collection before committing the membership effect.
   // Keeping the processed identity lets a later manual filter stay in force.
   if (filterState.editor !== editor) {
@@ -185,9 +173,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilterState({ editor, filter: 'all', prepared: explicit });
   }
   const filter = filterState.filter;
-  React.useEffect(() => {
-    onFilter(filter);
-  }, [filter, onFilter]);
   /**
    * Applies a manual filter without replaying the current viewing command.
    * @param value - The filter the user chose.
