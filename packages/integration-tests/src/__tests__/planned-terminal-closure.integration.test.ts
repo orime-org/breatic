@@ -9,7 +9,7 @@ import type { Job } from "bullmq";
 import { ConflictError, ValidationError, createPgClient, getNodeTaskConfig, getRedis, getStreamRedis,
   initCore, initLogger, loadLocales, logger, revokeSession, sessionCookieName, setSession } from "@breatic/core";
 import { DeadlinePassed } from "@breatic/shared";
-import { miniToolExecutionRecordSchema, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
+import { miniToolExecutionRecordSchema, videoContainerJobId, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
   beginMiniToolStepAttempt, claimMiniToolSettlement, confirmMiniToolConsumption, creditHoldService, failMiniToolStep,
   miniToolConsumptionRecordSchema, miniToolExecutionService, miniToolSettlementSchema, miniToolStepStateSchema,
@@ -287,6 +287,23 @@ describe("terminal cleanup proves original call identities independently of actu
     try { await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, failure(f, "complete"))).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_closure_failed") } }); }
     finally { await pg.unsafe("DROP TRIGGER reject_terminal_closure ON tasks"); await pg.unsafe("DROP FUNCTION reject_terminal_closure()"); }
     expect(await executionSnapshot(pg, f)).toEqual(before); expect(await step(f)).toEqual(beforeStep); expect((await view(f)).hold).toBe("held"); expect((await view(f)).billed).toBeNull();
+  });
+  it.each(["generate after a done preparation", "preparation failed with no generate"] as const)("C15 cleanup closes a run whose %s", async (kind) => {
+    const f = await seed(); const jobs = fakeIngestJobs();
+    if (kind === "generate after a done preparation") runPrediction.mockImplementation(async (_connection, _model, _body, resume) => { await resume.persistTaskId(P); throw new UpstreamTaskFailed("wavespeed", "fixture refusal"); });
+    else for (let attempt = 1; attempt <= f.plan.preparation.chunkRetries + 1; attempt += 1) {
+      jobs.scripted.set(videoContainerJobId({ kind: "prep", taskId: f.taskId, input: 0, attempt }), { schemaVersion: 2, state: "failed", outputs: [], reason: "tool_failed", usage: { wallMs: 500, cpuUsec: 1000000 } });
+    }
+    // The worker dies at its terminal commit, so only the queue cleanup can end the run.
+    await pg.unsafe(`CREATE FUNCTION reject_terminal_status() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.status='failed' THEN RAISE EXCEPTION 'fixture_worker_died'; END IF; RETURN NEW; END $$`);
+    await pg.unsafe("CREATE TRIGGER reject_terminal_status BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_terminal_status()");
+    try { await runMiniToolExecutionTask(job(f), "token").catch(() => null); }
+    finally { await pg.unsafe("DROP TRIGGER reject_terminal_status ON tasks"); await pg.unsafe("DROP FUNCTION reject_terminal_status()"); }
+    expect((await executionSnapshot(pg, f)).status).toBe("running");
+    const rows = await upstreamStepRepo.listSteps(f.taskId);
+    expect(rows[0]).toMatchObject({ kind: "container_job", position: 0 });
+    expect(rows.filter((row) => row.kind === "generate").map((row) => row.position)).toEqual(kind === "generate after a done preparation" ? [1] : []);
+    await cleanup(f); const v = await view(f); expect(v.record.status).toBe("failed"); expect(v.period?.consumptionSetComplete).toBe(true);
   });
   it("C14 does not reclassify an original typed result conflict as an unknown call identity", async () => {
     const f = await seed(); const p = await returned(f);

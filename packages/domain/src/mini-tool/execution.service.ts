@@ -190,12 +190,11 @@ export async function completeResolvedMiniToolExecutionConsumptionSet(taskId: st
   const plan = await lockedPlan(taskId, tx);
   if (plan.task.status !== "completed" && plan.task.status !== "failed") return;
   const steps = await upstreamStepRepo.listSteps(taskId, tx);
-  // The remove-background executor declares exactly this provider step before IO.
   // Missing execution facts are not a proof of a complete empty call set.
   if (plan.execution.tool !== "video.remove-bg") return;
   const providerModel = plan.execution.provider.model_id;
-  if (!steps.some((step) => step.position === 0 && step.kind === "generate"
-    && step.endpoint === providerModel && step.itemIndex === 0)) return;
+  // The provider step follows the run's own model-input preparation steps; a run that failed in preparation has none.
+  if (!steps.every((step) => step.kind !== "generate" || (step.endpoint === providerModel && step.itemIndex === 0))) return;
   if (steps.some((step) => step.output.miniToolStep !== undefined
     && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep)))) return;
   await completeMiniToolConsumptionSet(taskId, tx);
