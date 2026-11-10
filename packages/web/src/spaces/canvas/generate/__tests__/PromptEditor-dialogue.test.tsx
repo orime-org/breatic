@@ -14,6 +14,9 @@ import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import * as Y from 'yjs';
 
+import en from '@locales/en.json';
+import { t } from '@breatic/shared';
+
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { PromptEditor, type PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
@@ -272,5 +275,37 @@ describe('the dialogue lines as the user works them (demo 2026-11-10-1825-dialog
     expect(screen.queryAllByTestId('dialogue-line-speaker')).toHaveLength(0);
     expect(screen.queryByTestId('dialogue-add-line')).toBeNull();
     expect(screen.queryAllByTestId('dialogue-line-remove')).toHaveLength(0);
+  });
+});
+
+/**
+ * The placeholder each line draws while it holds no words.
+ * @returns One entry per line: its placeholder, or null when it draws none.
+ */
+function linePlaceholders(): Array<string | null> {
+  return [...screen.getByTestId('generate-prompt-editor').querySelectorAll('.ProseMirror p')].map((p) =>
+    p.classList.contains('is-empty') ? p.getAttribute('data-placeholder') : null,
+  );
+}
+
+describe('an empty dialogue line (demo 2026-11-10-1825-dialogue-lines)', () => {
+  it('says whose line it is, and none once it has words', async () => {
+    const fragment = legacyPrompt(['Ava: x', 'Leo: ']);
+    const editor = await mount(fragment, NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }, { speaker: 2, text: '' }]));
+    const leo = t('canvas.generatePanel.dialogueLinePlaceholder', { name: 'Leo' });
+    expect(leo).toContain('Leo');
+    expect((en.canvas.generatePanel as unknown as Record<string, string | undefined>).dialogueLinePlaceholder).toBeDefined();
+    await waitFor(() => expect(linePlaceholders()).toEqual([null, leo]));
+  });
+
+  it('follows the line to the speaker picked for it', async () => {
+    const editor = await mount(legacyPrompt(['Ava: ', 'Leo: y']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: '' }, { speaker: 2, text: 'y' }]));
+    await waitFor(() => expect(linePlaceholders()).toEqual([t('canvas.generatePanel.dialogueLinePlaceholder', { name: 'Ava' }), null]));
+    const user = userEvent.setup();
+    await user.click(screen.getAllByTestId('dialogue-line-speaker')[0] as HTMLElement);
+    await user.click(await screen.findByTestId('dialogue-line-speaker-option-2'));
+    await waitFor(() => expect(linePlaceholders()).toEqual([t('canvas.generatePanel.dialogueLinePlaceholder', { name: 'Leo' }), null]));
   });
 });
