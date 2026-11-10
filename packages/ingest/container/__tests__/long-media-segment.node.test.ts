@@ -129,6 +129,9 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
   let dir: string;
   let server: Server;
   let objectUrl: string;
+  // The next upstream answer from this byte stops after `after` body bytes and closes its connection.
+  let drop: { from: number; after: number } | null = null;
+  let dropped = false;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "long-media-segment-"));
@@ -144,6 +147,12 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
       const to = range === null || range[2] === "" ? bytes.length - 1 : Number(range[2]);
       response.writeHead(range === null ? 200 : 206, { "content-type": "video/mp4", "content-length": to - from + 1, "accept-ranges": "bytes",
         ...(range === null ? {} : { "content-range": `bytes ${from}-${to}/${bytes.length}` }) });
+      if (drop !== null && drop.from === from) {
+        const after = drop.after;
+        [drop, dropped] = [null, true];
+        response.write(bytes.subarray(from, from + after), () => incoming.socket.destroy());
+        return;
+      }
       response.end(bytes.subarray(from, to + 1));
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -156,11 +165,11 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
   });
 
   /**
-   * Encode the segment from frame n's presentation time for ten frames and read the frame number of each frame it holds.
+   * Encode the segment from frame n's presentation time for ten frames.
    * @param n - The first frame.
-   * @returns The frame numbers, by luma.
+   * @returns The segment written, or null when none was.
    */
-  async function segmentFrames(n: number): Promise<number[]> {
+  async function segment(n: number): Promise<Uint8Array | null> {
     let written: Uint8Array | null = null;
     // The source is read for real (the container's loopback reader fetches it); the output write and report are caught.
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -170,6 +179,16 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
     }));
     const startUs = 80_000 + 40_000 * n;
     await runLongMediaSegment({ ...request, objectUrl, interval: { startUs: String(startUs), endUs: String(startUs + 400_000) }, deadlineAt: Date.now() + 600_000 });
+    return written;
+  }
+
+  /**
+   * Encode the segment from frame n's presentation time for ten frames and read the frame number of each frame it holds.
+   * @param n - The first frame.
+   * @returns The frame numbers, by luma.
+   */
+  async function segmentFrames(n: number): Promise<number[]> {
+    const written = await segment(n);
     expect(written, `the segment from frame ${n} was written`).not.toBeNull();
     const output = join(dir, `segment-${n}.mp4`);
     await writeFile(output, written!);
@@ -189,6 +208,20 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
     }
     expect(wrong).toEqual([]);
    }, 120_000);
+
+  // The seek-landing probe of the segment from frame 9 lands on the keyframe presented at frame 10 and moves back. This
+  // small source is read whole (the moov after the media data) by the first request, then from byte 48 for the packet.
+  it.each([
+    ["the read of the landing packet", { from: 48, after: 3000 }],
+    ["the read of the moov", { from: 0, after: 19_300 }],
+  ])("resumes a connection dropped inside %s of its seek probe and writes the undisturbed segment", async (_read, at) => {
+    const undisturbed = await segment(9);
+    expect(undisturbed).not.toBeNull();
+    [drop, dropped] = [at, false];
+    const resumed = await segment(9);
+    expect(dropped, "the upstream answer was dropped").toBe(true);
+    expect(resumed).toEqual(undisturbed);
+  }, 60_000);
 });
 
 describe("a segment whose source connection drops mid-read, encoded by the container's own encoder", () => {

@@ -138,7 +138,7 @@ export async function runLongMediaSegment(
 /**
  * The input seek that opens a video segment no later than its start: the start itself, moved back while the keyframe it
  * lands on is presented after the start (`seekBeforeLanding`), one one-packet ffprobe per try.
- * @param objectUrl - The source the Worker serves.
+ * @param objectUrl - The loopback reader's URL of the source the Worker serves.
  * @param startUs - The segment's start.
  * @param signal - The segment's deadline.
  * @returns The seek in microseconds.
@@ -159,11 +159,13 @@ async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: Ab
 const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
   now: () => Date.now(),
   encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => {
-    const seekUs = mediaKind === "video" ? await seekNotPastLanding(objectUrl, BigInt(interval.startUs), signal) : BigInt(interval.startUs);
-    // Through the loopback reader: FFmpeg's own read exits 0 after a dropped connection with the part it encoded (an MP3
-    // segment of its ID3 header alone), where this read resumes the drop or fails the segment.
-    const encoded = await readServedObject(objectUrl, signal, (local) => runToolBounded(
-      "ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seekUs), { maxBytes: maxOutputBytes, signal }));
+    // The seek probes and the encode both read through the loopback reader: FFmpeg's own read exits 0 after a dropped
+    // connection with the part it read (a seek probe with no packet, an MP3 segment of its ID3 header alone), where this
+    // read resumes the drop or fails the segment.
+    const encoded = await readServedObject(objectUrl, signal, async (local) => {
+      const seekUs = mediaKind === "video" ? await seekNotPastLanding(local, BigInt(interval.startUs), signal) : BigInt(interval.startUs);
+      return runToolBounded("ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seekUs), { maxBytes: maxOutputBytes, signal });
+    });
     return encoded.value;
   },
   write: async (outputUrl, bytes, signal) => {
