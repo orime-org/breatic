@@ -744,8 +744,6 @@ describe('PoseRig.apply: skinned bounds (inner#1692)', () => {
     const rest = figure.mesh.boundingSphere?.clone();
     expect(rest).toBeDefined();
     rig.apply(POSE_PRESETS.lie, false);
-    // three fills a missing sphere lazily from the bones as they are on the next frame.
-    if (figure.mesh.boundingSphere === null) figure.mesh.computeBoundingSphere();
     rig.apply({});
     expect(figure.mesh.boundingSphere?.equals(rest!)).toBe(true);
   });

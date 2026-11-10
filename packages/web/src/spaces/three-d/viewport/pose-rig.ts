@@ -279,7 +279,7 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   let applied: string | null = null;
   // The pose the skinned bounds describe: bounds follow the pose, not the bones moved by hand. Both were computed
   // at rest above, which is the empty pose's signature.
-  let bounded: string | null = '[]';
+  let bounded = '[]';
 
   return {
     kind: humanoid ? 'humanoid' : 'other',
