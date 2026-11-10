@@ -22,17 +22,15 @@
 import { z } from "zod";
 import { getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
-  lipsyncPersonStepKeys, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
+  lipsyncPersonStepKeys, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
 } from "@breatic/domain";
-import { miniToolPlanJobRequestSchema, type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
+import { type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
 import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import {
-  advanceChunks, advanceClip, advanceContainer, advanceGenerate, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, storedRequest, type ContainerStep, type ModelStepRun, type StepEnded,
+  advanceChunks, advanceClip, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { appendStep, prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
-import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -376,34 +374,20 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
   if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed };
-  const stepKey = sharedKeyOf(execution, "stitch");
-  for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
-    const jobId = `${execution.taskId}:${stepKey}:a${attempt}`;
-    const steps = await upstreamStepRepo.listSteps(execution.taskId);
-    let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
-    let request = step === undefined ? null : storedRequest(step);
-    if (request === null) {
-      const ledger = await ledgerOf(execution, deadlineAt);
+  const ledger = await ledgerOf(execution, deadlineAt);
+  const target = segmentTarget(ledger, execution.container.encode);
+  const done = await advanceRegistered(stepRun(execution), { stepKey: sharedKeyOf(execution, "stitch"), namePrefix: "LIPSYNC", container: target.format === "webm-vp9" ? "webm" : "mp4",
+    build: async () => {
       const table = ledger.plan.presentation;
       const step0 = table.runs[0]!.step;
       const stems = await Promise.all(execution.persons.map(async (person) => objectOf(execution, person.personId, "stem", userId, deadlineAt)));
-      const target = segmentTarget(ledger, execution.container.encode);
-      const [grant] = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,
-        outputs: [{ modality: "video", namePrefix: "LIPSYNC", ...(target.format === "webm-vp9" ? { container: "webm" as const } : {}) }] });
-      if (grant === undefined) throw new Error("The lip-sync output requires its upload grant");
-      request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
-        inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
-          ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))],
-        outputs: [{ ...grant, outputIndex: 0, recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target,
-          chunks: execution.layout.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: exact(BigInt((window.end - window.start) * step0), BigInt(table.timescale)) })),
-          audio: { kind: "mix", inputs: stems.map((_key, at) => inputOf(STEM, at)) } } }] });
-      step = await appendStep(execution.taskId, { kind: "container_job", endpoint: execution.container.containerClass, itemIndex: steps.length });
-    }
-    const job = await advanceRegisteredMiniToolPlanJob({ taskId: execution.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request });
-    const written = job.assets.find((entry) => entry.outputIndex === 0);
-    if (job.report.state === "done" && written !== undefined) return { state: "done", result: await registered(written.asset) as MiniToolExecutionRegistered };
-  }
-  return { state: "failed", step: "stitch", category: "failed" };
+      return { recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target,
+        chunks: execution.layout.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: exact(BigInt((window.end - window.start) * step0), BigInt(table.timescale)) })),
+        audio: { kind: "mix", inputs: stems.map((_key, at) => inputOf(STEM, at)) } },
+      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
+        ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))] };
+    } }, userId, deadlineAt);
+  return done === null ? { state: "failed", step: "stitch", category: "failed" } : { state: "done", result: done };
 }
 
 /**
