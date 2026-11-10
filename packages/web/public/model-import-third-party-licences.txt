@@ -1,6 +1,7 @@
 MODEL IMPORT THIRD-PARTY LICENCES
 
-These components are bundled inside the Three.js model-loading assets.
+These components are bundled inside the Three.js model-loading assets or ship
+with the 3D Space (the built-in figure and the pose bone-name map).
 The npm dependency notices are in third-party-licences.txt.
 
 Built-in 3D figure: Mannequiny by GDQuest and contributors

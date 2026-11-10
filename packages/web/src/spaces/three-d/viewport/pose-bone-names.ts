@@ -69,7 +69,8 @@ const SIDED_NAMES: Readonly<Record<string, Sided>> = {
 /**
  * Numbered finger names under their VRM names, the first thumb joint being VRM 1.0's metacarpal:
  * Mixamo's `HandThumb1`, VRoid's `Thumb1`, Character Creator's `Mid1` and `Pinky1`, Unreal's and
- * Mannequiny's `thumb_01`, and 3ds Max Biped's `Finger0`, `Finger01`, `Finger02` from thumb to little finger.
+ * Mannequiny's `thumb_01`, and 3ds Max Biped's `Finger<n><joint>` (the thumb's `Finger0`, `Finger01`, `Finger02`),
+ * where n counts from the thumb (0) to the little finger (4).
  * @returns Cleaned names to sided suffixes.
  */
 function fingerNames(): Record<string, Sided> {

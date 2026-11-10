@@ -485,8 +485,9 @@ export class SceneViewportRuntime {
         const { joints, restSize } = target.rig;
         const full = restSize * 0.012;
         joints.forEach(({ key, bone, rest }, index) => {
-          // Close joints such as finger knuckles get dots under half their spacing, so neighbouring dots never
-          // touch; joints at one point keep a visible dot, a click on it picks the first of them and the skin the rest.
+          // Close joints such as finger knuckles get dots under half their spacing, so unselected neighbours do not
+          // touch; no dot shrinks below 30% of full, so joints closer than that (joints at one point included) and
+          // the enlarged selected dot overlap, and a click there picks the dot whose centre is nearest the ray.
           const nearest = Math.min(...joints.filter((_, other) => other !== index).map((joint) => joint.rest.distanceTo(rest)));
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;

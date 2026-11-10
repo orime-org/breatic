@@ -59,14 +59,15 @@ Choose **3D** when creating a project or adding a Space. The type picker orders 
 | --- | --- |
 | Left **Add** button | Open the built-in object menu and add a box or figure. |
 | Left upload-arrow button | Open **Import model** and choose glTF or GLB files, a folder or a ZIP; the upload appears in the Tasks panel, where any member can place the model in the scene. |
-| Left sparkle button | Open **AI generation**: choose Text to 3D or Image to 3D from the mode button at the bottom left, write a prompt or fill the front, left, back and right views from your computer or the Project, adjust the settings and press the round generate button. The run appears in the Tasks panel. |
+| Left sparkle button | Open **AI generation**: choose Text to 3D or Image to 3D from the mode button at the bottom left, write a prompt or fill the front, left, back and right views from your computer or the Project, adjust the settings and press the round generate button. Turn on **Rig skeleton** to get a model with a skeleton that can be posed; the estimate includes that step. The run appears in the Tasks panel. |
 | Click an object; Shift-click more objects | Select objects in the viewport or object list. Click empty scene space to clear the selection. |
 | Bottom-centre selection menu | Choose Move, Rotate or Scale and drag the native scene handles; frame, duplicate or delete the selection. Multiple objects scale uniformly. |
-| Right **Properties** panel | Edit one object's name, position in metres, rotation in degrees and positive scale. Enter or leaving a field applies the value; Escape cancels its draft. |
+| Right **Properties** panel | Edit one object's name, position in metres, rotation in degrees and positive scale. Enter or leaving a field applies the value; Escape cancels its draft. A model with a skeleton adds a **Pose** section: the presets Stand, Sit, Lie down, Walk and Wave for a humanoid character, the **Adjust joints** switch and **Reset pose**. |
+| **Adjust joints** | Dots mark the character's joints. Click a dot, or a part of the body, to pick its joint, then drag the rotation rings on it; collaborators see the joint move while you drag. Escape leaves joint adjustment before it closes the panel; choosing Move, Rotate or Scale also leaves it. |
 | Padlock beside the panel's X | Lock or unlock selected objects. An Editor can unlock an object another collaborator locked. Copies start unlocked. |
 | Bottom-right bar | From left to right: Undo, Redo, Properties, Scene objects, Tasks and the minimap switch. Panel buttons toggle the corresponding right floating panel; its X also closes it. |
 | Minimap | Click its top view to navigate your personal viewing camera. |
-| Tasks panel | Lists every member's imports and generations, newest first, with filters. A finished row offers **Place in scene**; a row whose model is in the scene offers **Locate in scene**, which selects every copy and frames them. A failed generation offers **Retry** and **Remove**. |
+| Tasks panel | Lists every member's imports and generations, newest first, with filters. A finished row offers **Place in scene**; a row whose model is in the scene offers **Locate in scene**, which selects every copy and frames them. A failed generation offers **Retry** and **Remove**. A generation asked to rig a skeleton says whether the skeleton was rigged; if only that step failed, the model is still delivered and only the generation is charged. |
 | Agent proposals | Ask the Agent for a 3D model; its card opens the AI generation dialog of the 3D Space in front, filled from the proposal. |
 | Annotations | The dimmed annotation button explains on hover that annotations are still under development. |
 

@@ -98,7 +98,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Never.
    */
   const changeJointMode = React.useCallback((next: boolean): void => { setJointMode(next); setSelectedJoint(null); }, []);
-  /** Leave joint mode (design 5.2): any selection, lock, permission or panel change. */
+  /** Leave joint mode (design 5.2): any selection, lock, permission, panel or transform-tool change. */
   const leaveJointMode = React.useCallback((): void => changeJointMode(false), [changeJointMode]);
   /** Remember what the viewport found in a loaded model's skeleton. */
   const onSkeletonState = React.useCallback((id: string, state: SceneSkeletonState): void => {

@@ -4,8 +4,8 @@
 /**
  * The upstream calls one run makes, in order (#2156, design §15.1): the
  * model's `extra_steps` placed before or after its own call, each taken only
- * when the param it serves carries something, one per item where the step is
- * per item.
+ * when the param it serves asks for it (it carries something and is not a
+ * switch turned off), one per item where the step is per item.
  */
 
 import type { FullModelEntry, upstreamStepRepo } from "@breatic/domain";

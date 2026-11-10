@@ -11,8 +11,8 @@
  * a still-going answer up, and dispatch decides between the queue and the
  * task's deadline; past the deadline no step is started (inner#1337). What
  * each step answers feeds the next — an upload id, a cloned vocal or voice —
- * and the run is billed across every prediction it made plus what its steps
- * cost outside them.
+ * and the run is billed across every prediction of a step that finished plus
+ * what its steps cost outside them; an optional step that failed is not billed.
  */
 
 import { logger } from "@breatic/core";
@@ -472,11 +472,12 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  * @param params - Validated params.
  * @param outputCount - How many outputs the caller writes to nodes: 1 for a
  *   canvas generation, the tool's declared outputs for a mini-tool.
- * @returns The outputs, the model and the billed cost in USD.
- * @throws {UpstreamTaskFailed} when the upstream failed a step.
+ * @returns The outputs, the model, the billed cost in USD and, when an optional
+ *   step failed and was passed over, the notice saying so.
+ * @throws {UpstreamTaskFailed} when the upstream failed a step that is not optional.
  * @throws {StillRunning} while a step's prediction is still going.
  * @throws {DeadlinePassed} when the deadline has passed before a step is started.
- * @throws {Error} when a step already failed, cannot run, or the run answered no output.
+ * @throws {Error} when a step that is not optional already failed or cannot run, or the run answered no output.
  */
 export async function runCatalogTask(
   deps: StepDeps,

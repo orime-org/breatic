@@ -816,8 +816,8 @@ export const tasks = pgTable(
 
 /**
  * The upstream calls one task makes, in order (#2156): a Mureka upload, a
- * cloned voice, vocal or element, then the model's own call, and for Voice
- * Cloning the speech after it. Written by the worker on the task's first run
+ * cloned voice, vocal or element, then the model's own call, and after it the
+ * speech for Voice Cloning or the rig for a 3D generation asked to rig a skeleton. Written by the worker on the task's first run
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *

@@ -115,7 +115,7 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
 /**
  * A stored Space-level row as its reads hand it out.
  * @param row - The row as selected.
- * @returns The shared fields, the job and the origin.
+ * @returns The shared fields, the job, the origin and the notice.
  */
 function sceneRowOf(row: typeof nodeTasks.$inferSelect): SceneTaskRow {
   return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null,
