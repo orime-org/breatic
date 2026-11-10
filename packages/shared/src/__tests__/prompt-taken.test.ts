@@ -47,8 +47,8 @@ describe("promptTaken", () => {
   });
 
   it("follows takes_prompt for a model with no condition", () => {
-    expect(promptTaken({ ...MUREKA, prompt_when: undefined } as ModelEntry, "a2m", { compose_from: "melody" })).toBe(true);
-    expect(promptTaken({ ...MUREKA, takes_prompt: false, prompt_when: undefined } as ModelEntry, "a2m", {})).toBe(false);
+    expect(promptTaken({ ...MUREKA, prompt_when: undefined }, "a2m", { compose_from: "melody" })).toBe(true);
+    expect(promptTaken({ ...MUREKA, takes_prompt: false, prompt_when: undefined }, "a2m", {})).toBe(false);
   });
 });
 

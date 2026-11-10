@@ -119,7 +119,7 @@ describe("the 3D model catalog", () => {
   // Tripo: generate_parts is "Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced".
   it("turns separate parts off under smart low-poly and leaves the texture the user chose", () => {
     for (const name of [T23D, I23D, MULTIVIEW]) {
-      const resolved = resolveParams(declared(name) as Parameters<typeof resolveParams>[0], { smart_low_poly: true, generate_parts: true, texture: true });
+      const resolved = resolveParams(declared(name), { smart_low_poly: true, generate_parts: true, texture: true });
       expect([resolved.generate_parts, resolved.texture], name).toEqual([false, true]);
     }
   });

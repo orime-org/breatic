@@ -197,6 +197,9 @@ export const mocks = {
   // #1735 server reference-count gate (too many reference images). Default: no
   // violation (null) — existing tests stay green; the #1735 test flips it.
   violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
+  // breatic#1393 server gate (a style prompt with Mureka composing from a
+  // melody). Default: no violation; the breatic#1393 test flips it.
+  sendsUntakenPrompt: vi.fn().mockReturnValue(false),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -641,6 +644,7 @@ export const domainMock = async () => ({
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
+  sendsUntakenPrompt: mocks.sendsUntakenPrompt,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   // Shaped like the real return so a turn built on this stub spreads the
