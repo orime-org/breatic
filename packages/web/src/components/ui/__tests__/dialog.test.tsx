@@ -195,6 +195,25 @@ describe('Dialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
+  it('fills the viewport with no backdrop, gutter, border or corner when fullScreen', () => {
+    render(
+      <Dialog open>
+        <DialogContent fullScreen data-testid='content'>
+          <DialogTitle>Title</DialogTitle>
+          <DialogDescription>Description</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+    const content = screen.getByTestId('content');
+    expect(content.className).toContain('fixed');
+    expect(content.className).toContain('inset-0');
+    expect(content.className).not.toContain('rounded-overlay');
+    expect(content.className).not.toContain('border');
+    expect(content.className).not.toContain('max-w-[520px]');
+    expect(document.querySelector('.bg-overlay')).toBeNull();
+    expect(content.closest('[data-scrollbars]')).toBeNull();
+  });
+
   it('content merges custom className (tailwind-merge)', () => {
     render(
       <Dialog open>

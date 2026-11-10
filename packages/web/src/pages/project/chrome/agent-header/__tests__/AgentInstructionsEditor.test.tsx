@@ -326,6 +326,14 @@ describe('opening the Project instructions editor (#1400)', () => {
 });
 
 describe('the editor body (#1400)', () => {
+  it('fills the screen, with no backdrop around it to press', async () => {
+    const m = await mount(WRITTEN);
+    await open(m, WRITTEN);
+    const editor = screen.getByTestId('agent-instructions-editor');
+    expect(editor.className).toContain('inset-0');
+    expect(document.querySelector('.bg-overlay')).toBeNull();
+  });
+
   it('does not scroll itself: the textarea hides overflow inside a vertical ScrollArea', async () => {
     const m = await mount(WRITTEN);
     const input = await open(m, WRITTEN);

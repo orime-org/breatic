@@ -131,10 +131,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent
-        data-testid='agent-instructions-editor'
-        className='h-[calc(100dvh-2rem)] max-w-none'
-      >
+      <DialogContent fullScreen data-testid='agent-instructions-editor'>
         <div className='flex h-12 shrink-0 items-center gap-3 border-b border-border px-4'>
           <div className='min-w-0 flex-1'>
             <DialogTitle className='text-sm font-medium'>{t('chat.instructions.title')}</DialogTitle>

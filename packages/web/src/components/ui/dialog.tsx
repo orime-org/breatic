@@ -114,69 +114,87 @@ DialogOverlayScroller.displayName = 'DialogOverlayScroller';
 const OVERLAY_CONTENT_CLASS =
   'relative z-50 mx-auto w-full border border-border bg-card shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95';
 
+/**
+ * A full-screen dialog's content: it is the whole viewport, so there is no
+ * backdrop, gutter, border or corner, and nothing outside it to press.
+ */
+const FULL_SCREEN_CONTENT_CLASS =
+  'fixed inset-0 z-50 flex flex-col bg-card focus:outline-none duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
+
+interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+  /** Fill the viewport instead of floating a box over the backdrop. */
+  fullScreen?: boolean;
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay>
-      <DialogOverlayScroller>
-        <DialogPrimitive.Content
-          ref={ref}
-          // `mx-auto` centres horizontally, not `place-items-center`: Radix
-          // wraps the viewport's children in a div carrying an inline
-          // `min-width: 100%`, so that wrapper fills the grid area whatever
-          // the grid says.
-          className={cn(
-            OVERLAY_CONTENT_CLASS,
-            'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none',
-            className,
-          )}
-          {...props}
-          // Opening puts focus on the dialog itself, which draws no ring. Its
-          // first control is the header's close button, and focus handed to it
-          // by script shows a ring only when the previous focus did, so it
-          // came and went with how the dialog was opened. Tab reaches the
-          // first control; a field that should take focus says `autoFocus`,
-          // which Radix leaves in place. The focus does not scroll: the dialog
-          // is still scaled by its entry, and a scroll toward that box opens a
-          // dialog taller than the viewport part-way down.
-          onOpenAutoFocus={(e) => {
-            props.onOpenAutoFocus?.(e);
-            if (e.defaultPrevented) return;
-            e.preventDefault();
-            (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
-          }}
-          // The overlay's scrollbar rail sits outside the content and so
-          // counts as "outside" — but it is the dialog's own bar. The middle
-          // and secondary buttons both arrive here and are both vetoed;
-          // measured, the primary one never does, because the rail claims it
-          // for its drag before Radix sees it. Radix's own right-click guard
-          // is composed after this handler and so never runs on this path.
-          // The veto lives here rather than on ScrollBar because ScrollBar is
-          // every scroller in the app: a rail INSIDE a dismissable layer has
-          // already set that layer's "the pointer went down in my tree" flag,
-          // which only the document listener clears, so stopping the press
-          // there would cost the user a second click on anything outside.
-          // Declared after the spread so a caller's own handler cannot
-          // displace it, and called from here so it still runs.
-          onPointerDownOutside={(e) => {
-            props.onPointerDownOutside?.(e);
-            const target = e.detail.originalEvent.target;
-            if (
-              target instanceof Element &&
-              target.closest('[data-scrollable]')
-            ) {
-              e.preventDefault();
-            }
-          }}
-        >
-          {children}
-        </DialogPrimitive.Content>
-      </DialogOverlayScroller>
-    </DialogOverlay>
-  </DialogPortal>
-));
+  DialogContentProps
+>(({ className, children, fullScreen = false, ...props }, ref) => {
+  const content = (
+    <DialogPrimitive.Content
+      ref={ref}
+      // `mx-auto` centres horizontally, not `place-items-center`: Radix
+      // wraps the viewport's children in a div carrying an inline
+      // `min-width: 100%`, so that wrapper fills the grid area whatever
+      // the grid says.
+      className={cn(
+        fullScreen
+          ? FULL_SCREEN_CONTENT_CLASS
+          : cn(OVERLAY_CONTENT_CLASS, 'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none'),
+        className,
+      )}
+      {...props}
+      // Opening puts focus on the dialog itself, which draws no ring. Its
+      // first control is the header's close button, and focus handed to it
+      // by script shows a ring only when the previous focus did, so it
+      // came and went with how the dialog was opened. Tab reaches the
+      // first control; a field that should take focus says `autoFocus`,
+      // which Radix leaves in place. The focus does not scroll: the dialog
+      // is still scaled by its entry, and a scroll toward that box opens a
+      // dialog taller than the viewport part-way down.
+      onOpenAutoFocus={(e) => {
+        props.onOpenAutoFocus?.(e);
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
+      }}
+      // The overlay's scrollbar rail sits outside the content and so
+      // counts as "outside" — but it is the dialog's own bar. The middle
+      // and secondary buttons both arrive here and are both vetoed;
+      // measured, the primary one never does, because the rail claims it
+      // for its drag before Radix sees it. Radix's own right-click guard
+      // is composed after this handler and so never runs on this path.
+      // The veto lives here rather than on ScrollBar because ScrollBar is
+      // every scroller in the app: a rail INSIDE a dismissable layer has
+      // already set that layer's "the pointer went down in my tree" flag,
+      // which only the document listener clears, so stopping the press
+      // there would cost the user a second click on anything outside.
+      // Declared after the spread so a caller's own handler cannot
+      // displace it, and called from here so it still runs.
+      onPointerDownOutside={(e) => {
+        props.onPointerDownOutside?.(e);
+        const target = e.detail.originalEvent.target;
+        if (
+          target instanceof Element &&
+          target.closest('[data-scrollable]')
+        ) {
+          e.preventDefault();
+        }
+      }}
+    >
+      {children}
+    </DialogPrimitive.Content>
+  );
+  return (
+    <DialogPortal>
+      {fullScreen ? content : (
+        <DialogOverlay>
+          <DialogOverlayScroller>{content}</DialogOverlayScroller>
+        </DialogOverlay>
+      )}
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 interface DialogHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
