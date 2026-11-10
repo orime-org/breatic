@@ -35,7 +35,8 @@ const HOW_TO_SEND =
   "A node sent in any other mode sends a prompt, a template's shots written as one. " +
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
-  "A template with steps gets a text node listing them when it is placed, so write no node for them.";
+  "A template with steps gets a text node listing them when it is placed, so write no node for them. " +
+  "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take.";
 
 /**
  * One template written out for the agent: its nodes, wiring, inputs,
