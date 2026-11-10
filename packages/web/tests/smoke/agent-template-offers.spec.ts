@@ -21,7 +21,7 @@
 import { basename, join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, feedsOf, type CanvasProposal } from '@breatic/shared';
+import { GENERATION_TEMPLATES, feedsOf, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
@@ -50,18 +50,35 @@ let page: Page;
 let spaceId = '';
 
 /**
- * How many generated videos in a proposal draw on the material it carries,
+ * How many generations in a proposal draw on the material it carries,
  * through an edge or a filled slot, directly or through generations between.
+ * @param proposal - The proposal, as the agent sent it.
+ * @param counts - Which generations to count.
+ * @param kind - The kind of material they must draw on; any when left out.
+ * @returns The count.
+ */
+function generationsCarryingMaterial(
+  proposal: CanvasProposal,
+  counts: (node: CanvasProposal['nodes'][number]) => boolean,
+  kind?: CanvasProposal['nodes'][number]['type'],
+): number {
+  const fed = new Map<number, number[]>();
+  for (const { fromIndex, toIndex } of feedsOf(proposal)) fed.set(toIndex, [...(fed.get(toIndex) ?? []), fromIndex]);
+  const carries = (at: number, seen: Set<number>): boolean => {
+    const node = proposal.nodes[at];
+    return (node?.material !== undefined && (kind === undefined || node.type === kind)) ||
+      (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
+  };
+  return proposal.nodes.filter((node, at) => node.role === 'generate' && counts(node) && carries(at, new Set([at]))).length;
+}
+
+/**
+ * How many generated videos in a proposal draw on the material it carries.
  * @param proposal - The proposal, as the agent sent it.
  * @returns The count.
  */
 function videosCarryingMaterial(proposal: CanvasProposal): number {
-  const fed = new Map<number, number[]>();
-  for (const { fromIndex, toIndex } of feedsOf(proposal)) fed.set(toIndex, [...(fed.get(toIndex) ?? []), fromIndex]);
-  const carries = (at: number, seen: Set<number>): boolean =>
-    proposal.nodes[at]?.material !== undefined ||
-    (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
-  return proposal.nodes.filter((node, at) => node.type === 'video' && node.role === 'generate' && carries(at, new Set([at]))).length;
+  return generationsCarryingMaterial(proposal, (node) => node.type === 'video');
 }
 
 /** What the newest stored conversation's turn did and said. */
@@ -212,14 +229,20 @@ test('given a character photo and asked for two videos of her, it lands both vid
   expect(carrying, `videos drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
 });
 
-test('given a video and asked outright for background music, it reads a music template and lands an audio generation built on it @needs-model', async () => {
+test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
   test.setTimeout(240_000);
   await ask('Add background music to this video. Do not ask me anything, just propose it.', 'mini-tools/driving.mp4');
   const turn = await settledTurn(page);
-  const proposed = turn.templates.filter((id) => MUSIC_FOR_VIDEO.includes(id));
-  expect(proposed, `a landed proposal named a music template. Named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
-  expect(turn.read, `read: ${turn.read.join(', ')}`).toEqual(expect.arrayContaining(proposed));
-  expect(audioGenerations(turn), `audio generations landed; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  const read = turn.read.filter((id) => MUSIC_FOR_VIDEO.includes(id));
+  expect(read, `read a music template. Read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
+  // Solved when music on a model a read template runs draws on the video,
+  // whether the proposal names the template or the agent built it from it.
+  const models = new Set(GENERATION_TEMPLATES.filter((template) => read.includes(template.id)).map((template) => templateAnchor(template).model));
+  const scoring = turn.landed.reduce(
+    (count, proposal) => count + generationsCarryingMaterial(proposal, (node) => node.type === 'audio' && node.model !== undefined && models.has(node.model), 'video'),
+    0,
+  );
+  expect(scoring, `music on ${[...models].join(', ')} drawing on the video. Audio generations: ${String(audioGenerations(turn))}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
