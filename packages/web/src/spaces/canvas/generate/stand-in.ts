@@ -78,6 +78,28 @@ export function wireParams(
 }
 
 /**
+ * A record written from outside the panel (a template, an Agent proposal),
+ * put on the stand-in side when it brings complete stand-in entries.
+ *
+ * Such a writer names the speakers because it wants the dialogue, and without
+ * the switch {@link wireParams} would drop them. A switch the record already
+ * holds is the user's choice and stays.
+ * @param model - The model the record belongs to, or undefined when unknown.
+ * @param params - The record as the writer gives it.
+ * @returns The record, switched to the stand-in side when it brings entries for it.
+ */
+export function withStandInOn(
+  model: ModelEntry | undefined,
+  params: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const standIn = standInOf(model);
+  if (!model || !standIn || typeof params[STAND_IN_ON] === 'boolean') return { ...params };
+  const fields = model.params[standIn.name]?.fields ?? {};
+  if (completeEntries(params[standIn.name], fields).length === 0) return { ...params };
+  return { ...params, [STAND_IN_ON]: true };
+}
+
+/**
  * Whether a dialogue holds fewer complete entries than the model takes.
  * @param model - The active model.
  * @param params - Its param record.

@@ -10,6 +10,7 @@ import {
   speakersShort,
   standInOf,
   wireParams,
+  withStandInOn,
 } from '@web/spaces/canvas/generate/stand-in';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
@@ -83,5 +84,31 @@ describe('speakersShort', () => {
     expect(speakersShort(GEMINI, { speakers: half, [STAND_IN_ON]: true })).toBe(true);
     expect(speakersShort(GEMINI, { speakers: PAIR, [STAND_IN_ON]: true })).toBe(false);
     expect(speakersShort(GEMINI, { speakers: half })).toBe(false);
+  });
+});
+
+describe('withStandInOn', () => {
+  it('switches a record holding complete speakers and no switch to the dialogue side', () => {
+    const out = withStandInOn(GEMINI, { speakers: PAIR });
+    expect(out).toEqual({ speakers: PAIR, [STAND_IN_ON]: true });
+    expect(wireParams(GEMINI, out)).toEqual({ speakers: PAIR });
+  });
+
+  it('leaves a record whose speakers are missing, empty or incomplete as it was', () => {
+    const half = [{ speaker: '', voice: 'Kore' }, { speaker: 'Bo', voice: 'Nobody' }];
+    for (const speakers of [null, [], half]) {
+      expect(withStandInOn(GEMINI, { voice_id: 'Kore', speakers })).toEqual({ voice_id: 'Kore', speakers });
+    }
+    expect(withStandInOn(GEMINI, { voice_id: 'Kore' })).toEqual({ voice_id: 'Kore' });
+  });
+
+  it('keeps a switch the record already holds, even when it says single voice', () => {
+    const out = withStandInOn(GEMINI, { speakers: PAIR, [STAND_IN_ON]: false });
+    expect(out).toEqual({ speakers: PAIR, [STAND_IN_ON]: false });
+  });
+
+  it('leaves a model without a stand-in, or no model, as it was', () => {
+    expect(withStandInOn(PLAIN, { voice_id: 'x', speakers: PAIR })).toEqual({ voice_id: 'x', speakers: PAIR });
+    expect(withStandInOn(undefined, { speakers: PAIR })).toEqual({ speakers: PAIR });
   });
 });

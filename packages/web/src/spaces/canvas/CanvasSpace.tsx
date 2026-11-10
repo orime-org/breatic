@@ -1334,6 +1334,7 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
+  const modelCatalog = useQuery(modelCatalogQuery()).data;
   const {
     createNodeAt,
     createUploadNodeAt,
@@ -1341,7 +1342,7 @@ function CanvasSpaceInner({
     pastePayload,
     stepPaste,
     placeProposalAt,
-  } = useNodeCreation(projectId, spaceId);
+  } = useNodeCreation(projectId, spaceId, modelCatalog);
 
   // Once nodes just placed and the generate panel opened on one of them,
   // grown around its prompt, are laid out, the camera moves once so all of
@@ -3955,18 +3956,17 @@ function CanvasSpaceInner({
   // when Download is offered (inner#888 §7.1).
   // A model tool whose pinned model the catalog does not serve is left off,
   // as the generation panel leaves such models off its list.
-  const menuCatalog = useQuery(modelCatalogQuery()).data;
   const menuTools = React.useMemo(
     () =>
       menuDownloadUrl === null
         ? undefined
-        : servedMiniToolsFor(nodeMenu.type, menuCatalog).map((tool) => ({
+        : servedMiniToolsFor(nodeMenu.type, modelCatalog).map((tool) => ({
           id: tool.id,
           labelKey: tool.labelKey,
           icon: tool.icon,
           model: tool.run.kind === 'model',
         })),
-    [menuDownloadUrl, nodeMenu.type, menuCatalog],
+    [menuDownloadUrl, nodeMenu.type, modelCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
   // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening

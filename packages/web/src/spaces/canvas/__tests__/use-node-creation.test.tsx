@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import type * as Y from 'yjs';
-import type { CanvasProposal } from '@breatic/shared';
+import type { CanvasProposal, ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 
@@ -18,6 +18,7 @@ import { GUIDE_STEP_PX, LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout
 import { EMPTY_NODE_SIZE, GROUP_PADDING, groupRectForMembers, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
 import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useNodeCreation, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
@@ -472,6 +473,63 @@ describe('useNodeCreation', () => {
       expect(generate.mode).toBe('i2i');
       expect(generate.model).toBe('some-model');
       expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
+    });
+
+    describe('a dialogue the Agent proposes on Gemini speech', () => {
+      /** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
+      const GEMINI_TTS = {
+        name: 'gemini-3.1-flash-text-to-speech',
+        modality: 'audio',
+        mode: 'tts',
+        params: {
+          speakers: {
+            fill: 'panel',
+            type: 'items',
+            default: null,
+            min_items: 2,
+            max_items: 2,
+            replaces: 'voice_id',
+            fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+          },
+          voice_id: { fill: 'remote', remote_source: 'voices', default: 'Kore' },
+        },
+      } as unknown as ModelEntry;
+      const SPEAKERS = [
+        { speaker: 'Ava', voice: 'Kore' },
+        { speaker: 'Leo', voice: 'Puck' },
+      ];
+      const DIALOGUE: CanvasProposal = {
+        nodes: [
+          {
+            role: 'generate',
+            type: 'audio',
+            name: 'Dialogue',
+            mode: 'tts',
+            model: GEMINI_TTS.name,
+            takesPrompt: true,
+            params: { speakers: SPEAKERS },
+            prompt: [{ text: 'Ava: hi\nLeo: hello' }],
+          },
+        ],
+        edges: [],
+        rationale: '',
+        groupName: 'Dialogue',
+      };
+
+      it('lands the node on the dialogue side, so the speakers are what gets sent', () => {
+        const catalog = {
+          image: [], video: [], audio: [], tts: [GEMINI_TTS], three_d: [], total: 1, credit_multiplier: 1,
+        } as unknown as ModelCatalog;
+        const { result } = renderHook(() => useNodeCreation('p-duo', 's-duo', catalog));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(DIALOGUE, { x: 0, y: 0 }, []);
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-duo', 's-duo');
+        const record = contentAt(nodes, ids[0]).paramsByModel?.[GEMINI_TTS.name] ?? {};
+        const sent = wireParams(GEMINI_TTS, record);
+        expect(sent).toHaveProperty('speakers', SPEAKERS);
+        expect(sent).not.toHaveProperty('voice_id');
+      });
     });
 
     it('puts the prompt in the generation node, @-ing the pooled node for the user (inner#1315)', () => {

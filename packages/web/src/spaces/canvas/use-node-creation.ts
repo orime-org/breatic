@@ -11,7 +11,9 @@ import {
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
+  type ModelCatalog,
 } from '@breatic/shared';
+
 
 import {
   addEdge,
@@ -40,7 +42,9 @@ import {
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
+import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
 import {
   proposalMentionOf,
   writeProposalPrompt,
@@ -354,11 +358,13 @@ export interface PlacedProposal {
  * the pure factory cannot supply.
  * @param projectId - Owning project id.
  * @param spaceId - Canvas space id.
+ * @param catalog - The model catalog, once loaded; a proposed node's params are read against its model's entry.
  * @returns The `createNodeAt` action bound to this project / space.
  */
 export function useNodeCreation(
   projectId: string,
   spaceId: string,
+  catalog?: ModelCatalog,
 ): NodeCreation {
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
   const t = useTranslation();
@@ -515,7 +521,9 @@ export function useNodeCreation(
               // defaulted to. A source node carries neither. A node already on
               // the canvas keeps its records for other models.
               if (node.mode && node.model && (settled === undefined || node.role === 'generate')) {
-                const params = settled?.paramsByModel ?? { [node.model]: node.params ?? {} };
+                const params = settled?.paramsByModel ?? {
+                  [node.model]: withStandInOn(catalog && catalogEntryOf(catalog, node.model), node.params ?? {}),
+                };
                 setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
                 // And record it as a choice: written only as a mode switch it
                 // is forgotten the moment they look at another mode and come back.
@@ -658,7 +666,7 @@ export function useNodeCreation(
         rects: proposal.nodes.map((_, i) => spots[i] ?? { x: start.x, y: start.y, ...EMPTY_NODE_SIZE }),
       };
     },
-    [projectId, spaceId, createNodeAt, userId, t],
+    [projectId, spaceId, createNodeAt, userId, t, catalog],
   );
   return {
     createNodeAt,
