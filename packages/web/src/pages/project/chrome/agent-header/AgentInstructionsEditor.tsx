@@ -134,7 +134,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
     loaded?.updatedBy && loaded.updatedAt
       ? t('chat.instructions.lastEdited', {
         name: loaded.updatedBy,
-        time: new Date(loaded.updatedAt).toLocaleString(locale),
+        time: new Date(loaded.updatedAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' }),
       })
       : null;
 
@@ -148,13 +148,15 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
               {t('chat.instructions.description')}
             </DialogDescription>
           </div>
-          <span
-            data-testid='agent-instructions-count'
-            className={cn('shrink-0 text-xs', atLimit ? 'text-status-warning' : 'text-muted-foreground')}
-          >
-            {atLimit ? `${t('chat.instructions.atLimit', { max: AGENT_INSTRUCTIONS_MAX_CHARS })} · ` : ''}
-            {draft.length.toLocaleString(locale)} / {AGENT_INSTRUCTIONS_MAX_CHARS.toLocaleString(locale)}
-          </span>
+          {loaded === null ? null : (
+            <span
+              data-testid='agent-instructions-count'
+              className={cn('shrink-0 text-xs', atLimit ? 'text-status-warning-foreground' : 'text-muted-foreground')}
+            >
+              {atLimit ? `${t('chat.instructions.atLimit', { max: AGENT_INSTRUCTIONS_MAX_CHARS })} · ` : ''}
+              {draft.length.toLocaleString(locale)} / {AGENT_INSTRUCTIONS_MAX_CHARS.toLocaleString(locale)}
+            </span>
+          )}
           <Button
             variant='outline'
             size='sm'
@@ -196,7 +198,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
           </div>
         </ScrollArea>
         {lastEdited === null ? null : (
-          <div className='shrink-0 border-t border-border px-4 py-2 text-xs text-muted-foreground'>{lastEdited}</div>
+          <div className='mx-auto w-full max-w-[880px] shrink-0 px-6 pb-6 pt-3 text-xs text-muted-foreground'>{lastEdited}</div>
         )}
       </DialogContent>
     </Dialog>
