@@ -18,6 +18,7 @@ import { miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToo
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { chunkInputId, frameRecipeOf, FullLedgerInvalid, rangeWindow, readJobLedger, segmentRecipesOf, SOURCE_INPUT_ID } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -218,7 +219,7 @@ export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution,
   if (execution.tool !== "video.extract-frames" && execution.tool !== "video.split") throw new Error("A frames or split runner requires a frames or split run");
   let ledger: VideoPresentationLedger;
   try {
-    ledger = await readJobLedger(execution.ledgerReceipts.source, deadlineAt);
+    ledger = await readJobLedger(execution.ledgerReceipts.source, planReportingEnd(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     // The receipt is frozen for the run, so a ledger that fails it never recovers here (§91 D3b-9, D4-7).

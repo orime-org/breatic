@@ -31,6 +31,7 @@ import {
   advanceChunks, advanceClip, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, type ContainerStep, type ModelStepRun, type StepEnded,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -123,7 +124,8 @@ async function preparedOf(execution: LipSync): Promise<MiniToolPlanJobRequest> {
 }
 
 /**
- * Read the frozen full ledger; one that fails its receipt fails the run (§91 D3b-9).
+ * Read the frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). It is read until the reporting window
+ * ends, so a pickup after the deadline still reads the jobs submitted before it.
  * @param execution - The frozen run.
  * @param deadlineAt - The task deadline.
  * @returns The ledger.
@@ -132,7 +134,7 @@ async function preparedOf(execution: LipSync): Promise<MiniToolPlanJobRequest> {
  */
 async function ledgerOf(execution: LipSync, deadlineAt: number): Promise<VideoPresentationLedger> {
   try {
-    return await readJobLedger(execution.ledgerReceipts.source, deadlineAt);
+    return await readJobLedger(execution.ledgerReceipts.source, planReportingEnd(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: execution.taskId } }, "mini_tool_lipsync_ledger_invalid");

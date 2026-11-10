@@ -181,4 +181,21 @@ describe("a planned model run that throws ends with its tool's own reason (execu
     const completion = await pickup();
     expect(completion).toMatchObject({ error: reason, outputs: [{ outputIndex: 0, result: { status: "failed", error: reason } }] });
   });
+
+  it.each([
+    ["an erase", "video.erase", { kind: "erase", step: "expired", category: "timeout" }],
+    ["an expand", "video.expand", { kind: "expand", windows: [], shared: { step: "expired", category: "timeout" } }],
+    ["a lip-sync", "video.lip-sync", { kind: "lipsync", persons: [], shared: { step: "expired", category: "timeout" } }],
+  ] as const)("LD07 %s past its deadline waits for its submitted step until the reporting window ends, then commits its timeout reason", async (_name, tool, reason) => {
+    throwing(tool, null, null);
+    const runner = tool === "video.erase" ? h.erase : tool === "video.expand" ? h.expand : h.lipSync;
+    runner.mockResolvedValue({ results: new Map(), waiting: true });
+    h.deadline.mockResolvedValue(Date.now() - 1);
+    expect(await pickup()).toBeNull();
+    expect(runner).toHaveBeenCalledTimes(1);
+    // The window closes two polls (5 s each here) past the deadline.
+    h.deadline.mockResolvedValue(Date.now() - 2 * 5000);
+    const completion = await pickup();
+    expect(completion).toMatchObject({ error: reason, outputs: [{ outputIndex: 0, result: { status: "failed", error: reason } }] });
+  });
 });

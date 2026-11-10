@@ -19,7 +19,7 @@ import {
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, type LipsyncPersonState, type LipsyncPersonStep } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { advanceMiniToolPlanJob, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceMiniToolPlanJob, planReportingEnd, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
@@ -513,7 +513,8 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
 }
 
 /**
- * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9).
+ * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). It is read until the reporting
+ * window ends, so a pickup after the deadline still reads the jobs submitted before it.
  * @param run - The run.
  * @param receipt - The frozen receipt.
  * @param deadlineAt - The task deadline.
@@ -523,7 +524,7 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
  */
 export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLedgerReceipt, deadlineAt: number): Promise<VideoPresentationLedger> {
   try {
-    return await readJobLedger(receipt, deadlineAt);
+    return await readJobLedger(receipt, planReportingEnd(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: run.taskId } }, `mini_tool_${run.log}_ledger_invalid`);

@@ -5,10 +5,11 @@ import { DelayedError, type Job } from "bullmq";
 import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
 import { failureOutcome, hasUnresolvedMiniToolStepAttempts, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
   type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
-import { assertBeforeDeadline, DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
+import { DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
 import { commitMiniToolExecutionProgress, finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
 import { runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { runMiniToolLipSync } from "@worker/handlers/mini-tool/run-lip-sync.js";
@@ -52,8 +53,9 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
       const at: ModelRunAt = { position: null };
       // What this pickup settled so far, kept when a later step throws: an output registered here is never shown failed.
       const settled: VideoToolPickup = { results: new Map(), waiting: false };
+      // No run-level deadline check: a pickup after the deadline still reads every job submitted before it, while each step
+      // whose next attempt is due after it ends expired; only a wait is bounded, by the reporting window below.
       try {
-        assertBeforeDeadline(deadlineAt);
         if (execution.tool !== "video.remove-bg") {
           // Lip-sync walks its steps per pickup like the frames runner (DD §7.2, §7.3); its one output ends registered or with
           // the one §9.4 reason as its error, which the terminal commit carries as the run's error.
@@ -86,7 +88,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
             outputs: [registeredOutput(current, output)], error: null, consumptionSet: "uncertain" };
         }
       } catch (thrown) {
-        if (thrown instanceof StillRunning) {
+        // A step still running once the reporting window has closed is never read again: the run ends expired.
+        if (thrown instanceof StillRunning && Date.now() < planReportingEnd(deadlineAt)) {
           if (token === undefined) throw thrown;
           await job.moveToDelayed(thrown.resumeAt, token);
           throw new DelayedError();

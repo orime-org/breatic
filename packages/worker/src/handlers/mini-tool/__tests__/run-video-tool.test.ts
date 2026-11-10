@@ -59,7 +59,8 @@ vi.mock("@breatic/domain", async (original) => {
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
 // Partial, so a progress wrapper added beside the terminal one runs for real over the mocked domain entry.
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
-vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advancePlan }));
+// Partial, so the reporting window end stays the real one.
+vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advancePlan }));
 // §93 D6 (design §7.11, §10.8): delivery after a progress commit; the delivery workers are mocked, the wrapper is real.
 vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
@@ -709,7 +710,17 @@ describe("an attempt due after the deadline and an output registered before a th
   // Jobs whose answer moves the clock past the deadline: a chunk's report (or a read failing past the reporting window,
   // "throws"); a registered job named here reports failed.
   let atDeadline: Map<string, Record<string, unknown> | "throws">;
-  const failedReport = { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+  // Ingest ends a job it expires at its deadline as failed with its default reason (transition.ts "expired" event).
+  const failedReport = { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+  /**
+   * As the real boundary: a held job still running once its reporting window (two polls past the deadline) has closed throws
+   * DeadlinePassed instead of waiting.
+   * @param request - The job.
+   * @throws {DeadlinePassed} When it still runs at the window's end.
+   */
+  const closedWindow = (request: MiniToolPlanJobRequest): void => {
+    if (scripted.get(request.jobId) === "running" && Date.now() >= request.deadlineAt + 2 * 5000) throw new DeadlinePassed();
+  };
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -718,6 +729,7 @@ describe("an attempt due after the deadline and an output registered before a th
     h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
       if (!held.has(request.jobId) && Date.now() >= request.deadlineAt) throw new DeadlinePassed();
       held.add(request.jobId);
+      closedWindow(request);
       const answer = atDeadline.get(request.jobId);
       if (answer === undefined) return advancePlan(request);
       // A read that fails once the reporting window (two polls past the deadline) has closed throws DeadlinePassed.
@@ -730,6 +742,7 @@ describe("an attempt due after the deadline and an output registered before a th
       const request = stored ?? input.request;
       if (!held.has(request.jobId) && Date.now() >= request.deadlineAt) throw new DeadlinePassed();
       held.add(request.jobId);
+      closedWindow(request);
       if (atDeadline.has(request.jobId)) {
         vi.setSystemTime(DEADLINE + 1);
         scripted.set(request.jobId, { written: [], state: "failed" });
@@ -805,5 +818,44 @@ describe("an attempt due after the deadline and an output registered before a th
     const completion = await drive();
     expect(statuses(completion)).toEqual(["registered", "failed"]);
     expect(completion!.outputs[0]!.result).toMatchObject({ status: "registered" });
+  });
+
+  it("DL05 the first pickup after the deadline registers an output whose stitch reported done before it, while the other output's next attempt expires", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(chunkOf(0, 0), "running"); scripted.set(stitchOf(1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    // Before the deadline output 1's stitch reports done; at it, ingest expires output 0's running chunk.
+    scripted.delete(stitchOf(1)); scripted.set(chunkOf(0, 0), { written: [], state: "failed" });
+    vi.setSystemTime(DEADLINE + 1);
+    const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed", "registered"]);
+    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    expect(completion!.error).toEqual({ code: "expired" });
+    expect(since(counts)).toEqual({ ensure: 0, grants: 0, open: [chunkOf(0, 0)] });
+  });
+
+  it("DL06 a run nothing was submitted for ends expired on its first pickup after the deadline and opens nothing", async () => {
+    serve(plan("video.split", { batches: [[0]], encodes: [{ outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] }, 1));
+    vi.setSystemTime(DEADLINE + 1);
+    const completion = await drive();
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    expect(completion!.outputs.map((output) => output.result)).toEqual([{ status: "failed", error: { code: "expired" } }, { status: "failed", error: { code: "expired" } }]);
+    expect({ ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length, advance: h.advance.mock.calls.length })
+      .toEqual({ ensure: 0, grants: 0, open: 0, advance: 0 });
+  });
+
+  it("DL07 a submitted job still running after the deadline is waited for until its reporting window ends, then its output expires", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(stitchOf(1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    vi.setSystemTime(DEADLINE + 1);
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    expect(h.finish).not.toHaveBeenCalled();
+    vi.setSystemTime(DEADLINE + 2 * 5000);
+    const completion = await drive();
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
   });
 });
