@@ -126,7 +126,9 @@ test('one member writes "reply in English" and another member asking in Chinese 
     await page.goto(`/project/${project.slug}-${project.id}`);
     await writeInstructions(page, 'Always reply in English, whatever language the message is written in.');
 
-    const question = '给我三个短视频标题，主题是城市夜跑。不用生成任何东西。';
+    // A question answered in prose alone: titles or lines written for a piece
+    // of work may keep the work's own language, which the prompt allows.
+    const question = '晚上在城市里跑步，怎么保证安全？用三句话说，不用生成任何东西。';
     for (const model of [undefined, CLAUDE]) {
       const reply = await askInNewConversation(member.request, project.id, question, model);
       test.info().annotations.push({ type: `with instructions on ${model ?? 'default'}`, description: reply });
