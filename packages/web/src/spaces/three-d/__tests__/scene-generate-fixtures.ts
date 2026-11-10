@@ -38,7 +38,7 @@ const COMMON: Record<string, Record<string, unknown>> = {
   geometry_quality: choice('Geometry quality', ['standard', 'detailed'], 'standard', { standard: 'Standard', detailed: 'Detailed' }),
   smart_low_poly: toggle('Smart low-poly', false),
   generate_parts: toggle('Separate parts', false),
-  face_limit: integer('Face limit', 1, 1_500_000, {
+  face_limit: integer('Face limit', 48, 1_500_000, {
     bounds: [{ when: { flag_on: 'smart_low_poly' }, min: 500, max: 20_000 }, { when: { equals: { geometry_quality: 'detailed' } }, max: 2_000_000 }],
   }),
   auto_size: toggle('Auto size', false, TEXTURED),
@@ -54,8 +54,9 @@ const IMAGE_ONLY: Record<string, Record<string, unknown>> = {
   enable_image_autofix: toggle('Image autofix', false),
 };
 
-/** The three forced values, in their declared order (design 2.3). */
+/** The forced values, in their declared order. */
 const FORCES = [
+  { id: 'low_poly_skips_parts', when: { flag_on: 'smart_low_poly' }, set: { generate_parts: false }, lock: true },
   { id: 'parts_geometry_only', when: { flag_on: 'generate_parts' }, set: { texture: false, pbr: false }, lock: true },
   { id: 'pbr_needs_texture', when: { flag_on: 'pbr' }, set: { texture: true }, lock: true },
   { id: 'fast_uses_v35', when: { flag_on: 'texture', equals: { texture_quality: 'fast' } }, set: { texture_version: 'v3.5' }, lock: true },
