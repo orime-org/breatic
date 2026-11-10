@@ -38,7 +38,13 @@ describe('approved video tool edit boundaries', () => {
     expect(trimTimelineClip(clips, clips[1].clipId, 3, 6)).toEqual([clips[0], { ...clips[1], in: 2.5, out: 5.5 }]);
   });
   it('reorders by composition centre and retains all clip identities and source trims', () => {
-    expect(moveTimelineClip(clips, clips[1].clipId, 0, 1)).toEqual([clips[1], clips[0]]);
+    expect(moveTimelineClip(clips, clips[1].clipId, 0, 1).map(({ transition: _transition, ...clip }) => clip)).toEqual([clips[1], clips[0]].map(({ transition: _transition, ...clip }) => clip));
+  });
+  it('keeps the Fade between the clips when the second clip is dragged in front', () => {
+    expect(moveTimelineClip(clips, clips[1].clipId, 0, 1)).toEqual([{ ...clips[1], transition: clips[0].transition }, { ...clips[0], transition: { kind: 'cut', duration: 0 } }]);
+  });
+  it('leaves the clips and their transitions untouched by a drag that does not cross', () => {
+    expect(moveTimelineClip(clips, clips[0].clipId, 0.1, 3.1)).toEqual(clips);
   });
   it('never changes another row during an independent timing edit', () => {
     fc.assert(fc.property(fc.double({ min: 0, max: 100, noNaN: true }), (startTime) => {
