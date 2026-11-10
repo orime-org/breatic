@@ -554,9 +554,11 @@ body {
    variants on one editor's container, which meant a second editor could
    configure a placeholder, pass every test, and show nothing at all. It is a
    property of the extension, not of any one editor, so it lives here and every
-   editor that installs Placeholder gets it. */
+   editor that installs Placeholder gets it. A dialogue line (inner#1825) marks
+   its own words the same way, each saying whose line it is. */
 .ProseMirror p.is-editor-empty:first-child::before,
-.ProseMirror .prompt-note + p.is-empty:last-child::before {
+.ProseMirror .prompt-note + p.is-empty:last-child::before,
+.ProseMirror .dialogue-line > p.is-empty::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;

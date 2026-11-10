@@ -857,6 +857,7 @@
       "refuseExecuteNoSpeakers": "請填好說話人",
       "refuseExecuteNoLines": "至少寫一句台詞",
       "dialogueAddLine": "加一句",
+      "dialogueLinePlaceholder": "{name} 說的話",
       "audioSettings": "音色與參數",
       "audioVoice": "音色",
       "audioReadingMode": "朗讀方式",

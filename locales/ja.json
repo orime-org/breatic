@@ -857,6 +857,7 @@
       "refuseExecuteNoSpeakers": "話者を入力してください",
       "refuseExecuteNoLines": "セリフを1つ以上入力してください",
       "dialogueAddLine": "セリフを追加",
+      "dialogueLinePlaceholder": "{name} のセリフ",
       "audioSettings": "音声と設定",
       "audioVoice": "音声",
       "audioReadingMode": "読み上げ方",

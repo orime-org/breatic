@@ -857,6 +857,7 @@
       "refuseExecuteNoSpeakers": "화자를 입력하세요",
       "refuseExecuteNoLines": "대사를 한 줄 이상 입력하세요",
       "dialogueAddLine": "대사 추가",
+      "dialogueLinePlaceholder": "{name}의 대사",
       "audioSettings": "음성 및 설정",
       "audioVoice": "음성",
       "audioReadingMode": "낭독 방식",

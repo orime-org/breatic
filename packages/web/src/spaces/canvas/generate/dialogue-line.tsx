@@ -28,6 +28,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
+import { useTranslation } from '@web/i18n/use-translation';
 import { dispatchMachineEdit, MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { planDialogueLines } from '@web/spaces/canvas/generate/dialogue-lines';
@@ -173,10 +174,14 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
   // one with no edit, so a renamed speaker shows at once.
   const { lines, names } = useEditorState({ editor, selector: ({ editor: e }) => ({ lines: lineCount(e), names: [...read()] }) });
   const speaker = speakerOf(node) ?? 1;
+  const t = useTranslation();
+  // A line with no words says whose it is, drawn by the editors' placeholder
+  // rule (index.css) the way the Placeholder extension marks an empty box.
+  const empty = node.content.size === 0;
   const [open, setOpen] = React.useState(false);
   useFollowCanvasViewport(open);
   return (
-    <NodeViewWrapper className='group flex items-start gap-1.5 py-0.5'>
+    <NodeViewWrapper className='dialogue-line group flex items-start gap-1.5 py-0.5'>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -205,7 +210,11 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
-      <NodeViewContent<'p'> as='p' className='min-w-0 flex-1 py-0.5' />
+      <NodeViewContent<'p'>
+        as='p'
+        className={`min-w-0 flex-1 py-0.5${empty ? ' is-empty' : ''}`}
+        {...(empty ? { 'data-placeholder': t('canvas.generatePanel.dialogueLinePlaceholder', { name: names[speaker - 1] ?? '' }) } : {})}
+      />
       {lines > 1 && (
         <Button
           type='button'

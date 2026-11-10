@@ -870,6 +870,7 @@
       "refuseExecuteNoSpeakers": "Fill in the speakers",
       "refuseExecuteNoLines": "Write at least one line first",
       "dialogueAddLine": "Add line",
+      "dialogueLinePlaceholder": "{name}'s line",
       "audioSettings": "Voice and settings",
       "audioVoice": "Voice",
       "audioReadingMode": "Reading",
