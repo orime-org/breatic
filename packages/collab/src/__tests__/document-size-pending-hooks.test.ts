@@ -790,7 +790,7 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
     }
   });
 
-  it("P-15 spends under 1 ms per keystroke in the two listeners with 3 MB of pending structs, decoding nothing while the pending object is unchanged", async () => {
+  it("P-15 spends under a tenth of one decode of the 3 MB pending structs per keystroke in the two listeners, decoding nothing while the pending object is unchanged", async () => {
     await boot();
     const doc = stored(CV);
     Y.applyUpdate(doc, bigPending());
@@ -813,8 +813,20 @@ describe("section 6: pending content refused by value (design 4.2 step 2a)", () 
       perKeystroke.push(spent.ms);
       expect(spent.decodes).toBe(0);
     }
-    // The fastest keystroke: a collection pause or a busy machine only adds time.
-    expect(Math.min(...perKeystroke)).toBeLessThan(1);
+    // The reference: decoding the pending structs once, timed in this run, so
+    // a busy machine slows both sides. The fastest of each: a collection pause
+    // or a busy machine only adds time.
+    const pending = doc.store.pendingStructs?.update;
+    if (pending === undefined) throw new Error("no pending structs");
+    const decodes: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now();
+      Y.decodeUpdateV2(pending);
+      decodes.push(performance.now() - t0);
+    }
+    const keystroke = Math.min(...perKeystroke);
+    const decode = Math.min(...decodes);
+    expect(keystroke, `keystroke ${keystroke} ms, one decode ${decode} ms`).toBeLessThan(decode / 10);
     expect(a.close).not.toHaveBeenCalled();
     expect(refusalLogs()).toEqual([]);
   }, 120_000);

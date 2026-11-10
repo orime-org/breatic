@@ -1575,7 +1575,7 @@ function deletedNodes(): { src: Y.Doc; member: Y.Doc } {
 }
 
 describe("round 7: deep nesting through beforeSync (spec 14b.1)", () => {
-  it("R7-06 an 11-byte unknown sub-type delete of 200 000 values 3000 levels deep is judged in under 500 ms and admitted", async () => {
+  it("R7-06 an 11-byte unknown sub-type delete of 200 000 values 3000 levels deep is judged within 3x the time yjs takes to apply it and admitted", async () => {
     const { src, cover } = deep(3000, 200_000);
     expect(cover.byteLength).toBeLessThanOrEqual(12);
     await boot({ ...S_CONFIG, max_document_bytes: 100_000_000 });
@@ -1590,7 +1590,20 @@ describe("round 7: deep nesting through beforeSync (spec 14b.1)", () => {
       await expect(beforeSync(doc, c, 3, cover)).resolves.toBeUndefined();
       runs.push(performance.now() - t0);
     }
-    expect(Math.min(...runs)).toBeLessThan(500);
+    // The reference: yjs applying the same delete to copies of the document,
+    // timed the same way in this run, so a busy machine slows both sides.
+    const applies: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(src));
+      const t0 = performance.now();
+      Y.applyUpdate(copy, cover);
+      applies.push(performance.now() - t0);
+      copy.destroy();
+    }
+    const judged = Math.min(...runs);
+    const applied = Math.min(...applies);
+    expect(judged, `beforeSync ${judged} ms, applyUpdate ${applied} ms`).toBeLessThanOrEqual(3 * applied);
     expect(refusalLogs()).toEqual([]);
   }, 120_000);
 });
