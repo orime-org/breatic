@@ -30,13 +30,19 @@ import {
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 
-/** Where a node stands in the template it names, as the agent writes it. */
-export type TemplateTag = { id: string; key?: string } | { id: string; input: string };
+/**
+ * Where a node stands in the template it names, as the agent writes it;
+ * `anchor` is the index of its instance's anchor (inner#1825).
+ */
+export type TemplateTag = { id: string; key?: string; anchor?: number } | { id: string; input: string; anchor?: number };
 
-/** Where a node stands once its tag is read: the anchor, another node by key, or an input. */
+/**
+ * Where a node stands once its tag is read: the anchor, another node by key,
+ * or an input; `tagAnchor` is the anchor index its tag names, if any.
+ */
 export type TemplatePlace =
-  | { template: GenerationTemplate; key: TemplateNodeKey; anchor: boolean }
-  | { template: GenerationTemplate; input: string };
+  | { template: GenerationTemplate; key: TemplateNodeKey; anchor: boolean; tagAnchor?: number }
+  | { template: GenerationTemplate; input: string; tagAnchor?: number };
 
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
@@ -121,7 +127,7 @@ export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: r
     if (node.type !== input.type) {
       return refuse("template-key-kind", `Input "${input.key}" of template "${template.id}" takes ${input.type}; "${node.name}" is a ${node.type} node.`);
     }
-    return { template, input: input.key };
+    return { template, input: input.key, ...(tag.anchor === undefined ? {} : { tagAnchor: tag.anchor }) };
   }
   const key = tag.key ?? template.anchor;
   const own = template.nodes.find((one) => one.key === key);
@@ -131,7 +137,7 @@ export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: r
   if (node.role !== own.role || node.type !== own.type) {
     return refuse("template-key-kind", `Node "${key}" of template "${template.id}" is a ${own.role} ${own.type} node; "${node.name}" is a ${node.role} ${node.type} node.`);
   }
-  return { template, key, anchor: key === template.anchor };
+  return { template, key, anchor: key === template.anchor, ...(tag.anchor === undefined ? {} : { tagAnchor: tag.anchor }) };
 }
 
 /**

@@ -103,13 +103,14 @@ const proposalNode = z
       ),
     template: z
       .union([
-        z.object({ id: z.string().min(1), key: z.string().min(1).optional() }).strict(),
-        z.object({ id: z.string().min(1), input: z.string().min(1) }).strict(),
+        z.object({ id: z.string().min(1), key: z.string().min(1).optional(), anchor: z.number().int().min(0).optional() }).strict(),
+        z.object({ id: z.string().min(1), input: z.string().min(1), anchor: z.number().int().min(0).optional() }).strict(),
       ])
       .optional()
       .describe(
         "This node is part of a template: { id } on the node the template is anchored on, " +
-          "{ id, key } on each of its other nodes, { id, input } on a node you give for one of its inputs. " +
+          "{ id, key } on each of its other nodes, { id, key, anchor } on one no template edge touches, anchor being the index of " +
+          "the node the template is anchored on, { id, input } on a node you give for one of its inputs. " +
           "It fills the mode and model you leave out, and its params while you keep its mode and model; " +
           "what you write wins. A generate node's prompt is yours to send, rewritten from the template's",
       ),

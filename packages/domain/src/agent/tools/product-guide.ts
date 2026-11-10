@@ -731,6 +731,8 @@ export function renderProductGuide(): string {
       "dragging a box over one or more nodes, a frame covers them until you click empty canvas; right-clicking " +
       `inside that frame opens ${quoted(t("canvas.group.group"))} (only when, notes aside, every selected node ` +
       "is loose -- not a group and not inside one -- and there are at least two), " +
+      `${quoted(t("canvas.miniTool.video.join.label"))} (only when, groups aside, two or more are selected and every one is a video, or every ` +
+      "one a sound, holding something; see the Mini-tools section), " +
       `${quoted(t("canvas.contextMenu.copy"))}, ${quoted(t("canvas.contextMenu.duplicate"))}, ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("canvas.contextMenu.deleteSelection"))} ` +
       "instead of a node's own menu, so click empty canvas first to reach a node's menu. " +
@@ -824,7 +826,12 @@ export function renderProductGuide(): string {
       "top of the first shot). A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
       "says to generate them first. A picture such a template places for the first or end frame is connected " +
-      "but not @'d, and its note says to pick it into that frame once it has generated. When a template places " +
+      "but not @'d, and its note says to pick it into that frame once it has generated. A template that needs a " +
+      "video, picture or sound in one of the model's slots places an empty node for it, connected but not @'d, " +
+      "with a note saying what to put in it and to pick it into that slot; when a node holding one is already " +
+      "connected to the node, it goes straight into the slot instead. A template may also place nodes to the " +
+      "right that take the node's result once it has generated, connected to it, such as a sound made from the " +
+      "video, or nodes beside it with no connection, such as the other sections of a score. When a template places " +
       "nodes that take what it needs, a picture already " +
       "connected to the node is connected to them as well, also when the node itself does not use it. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
@@ -1077,7 +1084,8 @@ export function renderProductGuide(): string {
       "back with a message naming the two kinds. What may connect into each node:",
     ...connectionLines(),
     "A text node does not generate, so nothing uses what is connected into it; into a sound node only a " +
-      "connected text node can be used. A node's connections and focus crops together have a limit; past it a " +
+      "connected text node can be @'d. A video or picture connected into a sound node shows faded in the strip " +
+      "above the prompt and is never @'d; a model that reads one takes it in its own slot, picked there. A node's connections and focus crops together have a limit; past it a " +
       "new one is refused with a message naming the limit.",
     `In a generation panel, ${quoted(t("canvas.generatePanel.reference"))} lets you click nodes on the canvas ` +
       `to connect them; ${quoted(t("canvas.generatePanel.exitSelect"))} in the bar at the top, Esc, or pressing ` +
@@ -1174,7 +1182,15 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.param.quality"))}. ${quoted(t("canvas.miniTool.image.quickEdit.label"))} has ` +
       `only a box for what to change, which must be filled, and ${quoted(t("canvas.generatePanel.param.resolution"))}; ` +
       "the picture itself stays as it was. On these three other tools a box at the bottom takes anything to add and " +
-      "can be left empty. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
+      `can be left empty. ${quoted(t("canvas.miniTool.video.join.label"))} puts clips end to end into one, videos on a video node and ` +
+      "sounds on a sound node. Opened from the menu of several selected clips (see the Node menus section), it lists " +
+      "them as they lie on the canvas, left to right and, in one column, top to bottom; opened from one node's " +
+      "tools, it starts with that clip alone. The panel stays under the node it was opened on and shows the clips " +
+      "in a numbered row, each with its name and length: drag one to change the order, take one out while more " +
+      "than two are left, or press the add box at the end of the row to pick another from the canvas, until the " +
+      `row is full. ${quoted(t("canvas.miniTool.param.crossfade.label"))} blends each clip into the next over that ` +
+      "many seconds, at most half the shorter of the two. The arrow stays greyed out with one clip. The result is " +
+      "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +

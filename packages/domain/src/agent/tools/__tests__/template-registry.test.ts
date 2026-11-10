@@ -165,7 +165,21 @@ function bothShapesAgree(template: GenerationTemplate, registry?: readonly Gener
   const answer = answerFor(agent.sent, materials, registry);
   expect(answer).toMatchObject({ placed: true });
   if (!answer.placed) return;
-  expect(structureOf(answer, identityOf(agent.at))).toEqual(structureOf(panel.proposal, panel.identity));
+  // The user's own material node was on the canvas before the panel applied,
+  // so the panel does not tag it; the agent's landing tags the material input
+  // node it sends with its input and anchor (template-proposals pins that).
+  // Every other part, and every other node's tag, still agrees.
+  const onCanvas = new Set([...material.keys()].map((key) => `input:${key}`));
+  /**
+   * A structure with the tags of the nodes already on the canvas left out.
+   * @param structure - The structure.
+   * @returns It, without those tags.
+   */
+  const withoutCanvasTags = (structure: Structure): Structure => ({
+    ...structure,
+    tags: Object.fromEntries(Object.entries(structure.tags).filter(([who]) => !onCanvas.has(who))),
+  });
+  expect(withoutCanvasTags(structureOf(answer, identityOf(agent.at)))).toEqual(withoutCanvasTags(structureOf(panel.proposal, panel.identity)));
 }
 
 describe("every registered template passes from both entries", () => {

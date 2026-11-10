@@ -22,7 +22,7 @@ import { inputSchema } from "../proposal-input.js";
 import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
-import { FIXTURES, loadFixtureLocales } from "./template-fixtures.js";
+import { COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
 
 beforeEach(() => {
   loadFixtureLocales();
@@ -133,6 +133,10 @@ const LONG_SCRIPT = "x".repeat(600);
 
 /** An empty clip node. */
 const CLIP_EMPTY: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip" };
+/** An empty sound node, which the canvas does not wire into a picture node. */
+const SONG_EMPTY: Sent["nodes"][number] = { role: "source", type: "audio", name: "Song" };
+/** The note telling the user to pick the song into the cover model's slot. */
+const SONG_NOTE = { slot: { kind: "note" as const, label: "Put the song in Song, then pick it into the audio slot" } };
 /** A clip node holding material. */
 const CLIP_HELD: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip", material: CLIP };
 /**
@@ -283,9 +287,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['An edge flows into "Words", which generates nothing'],
   }],
   "edge-not-allowed": [{
-    meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }]),
-    states: ["The canvas does not let a video node feed an audio node", 'An edge runs from node 0 ("Clip") to node 1 ("Gen") (no into).', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.', '"Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref.'],
-    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
+    // inner#1825: a video now wires into a sound node, so the refused pair is a sound into a picture.
+    meets: group([SONG_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
+    states: ["The canvas does not let an audio node feed an image node", 'An edge runs from node 0 ("Song") to node 1 ("Gen") (no into).', 'Take every edge from node 0 ("Song") to node 1 ("Gen") off.', '"nano-banana-pro-edit-ultra" takes no audio node, so "Song" has no way into "Gen".'],
+    fix: group([SONG_EMPTY, gen("image", "i2i", EDIT)]),
   }, {
     meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
     states: ['Take every edge from node 0 ("Clip") to node 1 ("Gen") off.', '"nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen".'],
@@ -297,9 +302,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")]),
   }, {
     // The same edge twice: the fix names the pair, so following it takes both.
-    meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 1, into: "video" }]),
-    states: ['2 edges run from node 0 ("Clip") to node 1 ("Gen") (no into, into "video")', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.'],
-    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
+    meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['2 edges run from node 0 ("Clip") to node 1 ("Gen") (no into, into "pool")', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.'],
+    fix: group([CLIP_EMPTY, gen("image", "i2i", EDIT)]),
   }, {
     // Two nodes share a name: the fix names the pair by index, so the image's pool edge stays.
     meets: group([CLIP_EMPTY, { ...EMPTY_PIC, name: "Clip" }, EDIT_POOL_1], [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2, into: "pool" }]),
@@ -394,6 +399,25 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...HELD_PIC, template: { id: "fixture-sheet", key: "palette" } }, gen("image", "i2i", EDIT, { prompt: [{ text: "Make it with " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Pic"', '"fixture-sheet"', '"palette"', "takes no material"],
     templates: FIXTURES,
+  }],
+  "template-input-into": [{
+    // inner#1825: the fixture's song goes into the cover model's "audio" slot, and the edge says the pool.
+    meets: group(
+      [
+        { ...gen("audio", "a2m", COVER_MODEL, { name: "Cover", prompt: [SONG_NOTE, { text: "A slow acoustic ballad." }] }), template: { id: "fixture-slotted" } },
+        { ...SONG_EMPTY, template: { id: "fixture-slotted", input: "song" } },
+      ],
+      [{ fromIndex: 1, toIndex: 0, into: "pool" }],
+    ),
+    states: ['input "song"', '"audio" slot of node 0 ("Cover")', 'the edge from node 1 ("Song") says into "pool"', 'change the edge from node 1 ("Song") so it goes into it by an edge with into: "audio"'],
+    fix: group(
+      [
+        { ...gen("audio", "a2m", COVER_MODEL, { name: "Cover", prompt: [SONG_NOTE, { text: "A slow acoustic ballad." }] }), template: { id: "fixture-slotted" } },
+        { ...SONG_EMPTY, template: { id: "fixture-slotted", input: "song" } },
+      ],
+      [{ fromIndex: 1, toIndex: 0, into: "audio" }],
+    ),
+    templates: PLACED_FIXTURES,
   }],
   "template-edge-into": [{
     // The sketch goes into the sheet's style slot, and the edge says the pool.
@@ -984,10 +1008,11 @@ describe("every refusal states its fault, its rule and its facts", () => {
         const after = verdictFor(entry.fix, MATERIALS, entry.templates);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
         // A template edge's fix names everything its route asks, so the proposal then stands.
-        if (refusal === "template-edge-missing" || refusal === "template-edge-into") expect(after, `following the fix of "${reason}"`).toEqual({ ok: true });
+        const rewires = refusal === "template-edge-into" || refusal === "template-input-into";
+        if (refusal === "template-edge-missing" || rewires) expect(after, `following the fix of "${reason}"`).toEqual({ ok: true });
         // The fix proposal changes only what the sentence names.
         if (refusal === "template-edge-missing") wiresOneEdgeIn(entry.meets, entry.fix);
-        else if (refusal === "template-edge-into") rewiresOneEdge(entry.meets, entry.fix);
+        else if (rewires) rewiresOneEdge(entry.meets, entry.fix);
         else actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
       });
     }

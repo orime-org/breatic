@@ -59,7 +59,7 @@ import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import { anchoredInstances, checkTemplateInstances, keyStanding, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
@@ -326,7 +326,8 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
 }
 
 /**
- * Each anchored template's own nodes marked with the key they stand for, and
+ * Each anchored template's own nodes marked with the key they stand for (one
+ * no template edge touches also with its instance's anchor), and
  * each input's node with its input key and its instance's anchor unless
  * another instance already owns it, so the panel recognises the instance on the canvas later; the anchor
  * carries no mark, as on the canvas.
@@ -337,9 +338,11 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
  */
 function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
   const marks = new Map<number, ProposalNode["templateNode"]>();
-  for (const { place, match } of instances) {
+  for (const { anchor, place, match } of instances) {
     for (const [key, found] of match.keys) {
-      if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key });
+      // A node no template edge touches is tied to its instance by the anchor alone (inner#1825).
+      const tie = keyStanding(place.template, key) === "standalone" ? { anchor } : {};
+      if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key, ...tie });
     }
   }
   // An input's node is marked only when no instance claims it as its anchor

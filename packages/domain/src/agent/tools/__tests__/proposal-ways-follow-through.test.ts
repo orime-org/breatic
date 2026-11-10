@@ -284,7 +284,8 @@ describe("each refusal tells the agent a way that is there", () => {
     expect(verdict.ok ? "" : verdict.reason).not.toContain("empty");
   });
 
-  it("places an empty node the canvas will not wire unwired with a note, from fills and from params", () => {
+  // inner#1825: the canvas now wires a video into a sound node, so the empty video goes by an edge, never unwired.
+  it("places an empty video wired into a sound model's slot with a note, from fills and from params", () => {
     const setting = settingWhere("video", (s) => s.nodeType === "audio" && marks(s, "video").includes("note"));
     const slot = (waysIn(setting.chosen).get("video") ?? []).find((way) => way.mark === "note")?.into ?? "";
     const viaFills = follow(setting, probe("video", "empty"), undefined);
@@ -293,8 +294,8 @@ describe("each refusal tells the agent a way that is there", () => {
     viaParams.nodes[1] = { ...(viaParams.nodes[1] as ProposalNode), params: { [slot]: "x" } };
     for (const proposal of [viaFills, viaParams]) {
       const verdict = checkProposal(proposal, MATERIALS);
-      expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining(`unwired, with a note saying to pick it into "${slot}"`) });
-      expect(verdict.ok ? "" : verdict.reason).not.toContain("by an edge");
+      expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining(`by an edge with into: "${slot}" and a note saying to pick it there`) });
+      expect(verdict.ok ? "" : verdict.reason).not.toContain("unwired");
     }
   });
 

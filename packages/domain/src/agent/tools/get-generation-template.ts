@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { formatCredits, GENERATION_TEMPLATES, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
 
+import { keyStanding } from "@domain/agent/tools/template-consistency.js";
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
@@ -23,8 +24,10 @@ import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 /** How to send a template once read, in the words the agent reads. */
 const HOW_TO_SEND =
   `To use one, send each of its nodes as a node in ${PROPOSE_CANVAS_ACTION}: { id } in template on the anchor, { id, key } on each other node, ` +
-  "and wire them as its edges say. Give each input a node of your own wired into the nodes it feeds; " +
-  "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
+  "and wire them as its edges say. A node not wired stands beside the anchor with no edge and carries { id, key, anchor }, anchor being the anchor's index. " +
+  "Give each input a node of your own wired into the nodes it feeds; " +
+  "{ id, input } on that node is optional. An input into a slot (its line says by which) whose node holds material goes in the fed node's fills under that slot, with no edge; " +
+  "an empty one is wired with into that slot. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep; while you keep them, a value you write in a node's params wins over the template's. Send each generate node's prompt as its own, rewritten in the language " +
   "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say. A template's tweak segment is never sent as it is. " +
   "A node sent in multi_shot sends shots and no prompt, their durations adding up to the node's duration: the one you " +
@@ -52,10 +55,20 @@ export function describeTemplate(template: GenerationTemplate): string {
     const shots = node.role === "generate" && node.shots !== undefined ? `, ${String(node.shots.length)} shots` : "";
     const params = node.role === "generate" && node.params !== undefined && Object.keys(node.params).length > 0 ? `, params ${JSON.stringify(node.params)}` : "";
     const what = node.role === "generate" ? `generate ${node.type}, ${node.mode}, ${node.model}${shots}${params}` : `source ${node.type} holding ${node.resource}`;
-    return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}`;
+    // A downstream node is said so, and one no edge touches is told how its tag ties it to the anchor (inner#1825).
+    const standing = node.key === anchor.key ? "" : keyStanding(template, node.key);
+    const where =
+      standing === "standalone"
+        ? ", not wired: no edge goes into or out of it, and its tag carries the anchor's index"
+        : standing === "downstream"
+          ? ", downstream of the anchor"
+          : "";
+    return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}${where}`;
   });
   const edges = skeleton.edges.map((edge) => `"${edge.from}" into "${edge.to}" by "${edge.into ?? "pool"}"`);
-  const inputs = skeleton.inputs.map((input) => `"${input.key}" (${input.type}) into ${input.feeds.map((fed) => `"${fed}"`).join(", ")}`);
+  const inputs = skeleton.inputs.map(
+    (input) => `"${input.key}" (${input.type}) into ${input.feeds.map((fed) => `"${fed}"`).join(", ")}${input.into === undefined ? "" : ` by "${input.into}"`}`,
+  );
   const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
   const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key)}`] : []));
   return (

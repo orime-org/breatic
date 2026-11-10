@@ -506,12 +506,13 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
-  it("says a kind the canvas will not wire into the node is picked into its slot in the panel", async () => {
+  // inner#1825: the canvas now wires a video into a sound node, so an empty one goes into the slot by an edge.
+  it("says an empty video goes into a sound model's slot by an edge with a note, and one holding material through fills", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
     const line = renderGenerationModelsForModel(answer).split("\n").find((l) => l.includes("(hunyuan-video-foley)")) ?? "";
-    expect(line).toMatch(/An empty video node goes into a slot \(at most 1\) unwired, with a note saying to pick it into "video" and no ref\./);
+    expect(line).toMatch(/An empty video node goes into a slot \(at most 1\) by an edge with into: "video" and a note saying to pick it there and no ref\./);
     expect(line).toMatch(/A video node holding material goes into a slot \(at most 1\) through fills "video", with no edge and no ref\./);
-    expect(line).not.toMatch(/video node[^.]*by an edge/);
+    expect(line).not.toMatch(/unwired/);
   });
 
   it("says a node holding material goes into a slot through fills, with no note, wherever the model has a slot", async () => {
