@@ -15,6 +15,7 @@ import { loadLocales } from "@breatic/core";
 import {
   expandTemplate,
   GENERATION_TEMPLATES,
+  proposalMarkSegments,
   setLocale,
   t,
   templateSkeleton,
@@ -63,6 +64,8 @@ interface Structure {
   fills: Record<string, Record<string, string[]>>;
   tags: Record<string, unknown>;
   guides: { name: string; prompt: unknown; anchor: string }[];
+  /** Who says each line, on a node sending a dialogue as lines (inner#1825 design 8.5). */
+  lines: Record<string, number[]>;
 }
 
 /**
@@ -78,7 +81,7 @@ function structureOf(proposal: Pick<CanvasProposal, "nodes" | "edges">, identity
     refs: Object.fromEntries(
       proposal.nodes.flatMap((node, index) =>
         node.role === "generate"
-          ? [[who(index), [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)].flatMap((segment) => (segment.ref === undefined ? [] : [who(segment.ref)]))]]
+          ? [[who(index), proposalMarkSegments(node).flatMap((segment) => (segment.ref === undefined ? [] : [who(segment.ref)]))]]
           : [],
       ),
     ),
@@ -93,6 +96,12 @@ function structureOf(proposal: Pick<CanvasProposal, "nodes" | "edges">, identity
         const tag = node.templateNode;
         if (tag === undefined || tag.key === "guide") return [];
         return [[who(index), tag.anchor === undefined ? tag : { ...tag, anchor: who(tag.anchor) }]];
+      }),
+    ),
+    lines: Object.fromEntries(
+      proposal.nodes.flatMap((node, index) => {
+        const lines = (node as ProposalNode & { lines?: Array<{ speaker: number }> }).lines;
+        return lines === undefined ? [] : [[who(index), lines.map((line) => line.speaker)]];
       }),
     ),
     guides: proposal.nodes.flatMap((node) =>

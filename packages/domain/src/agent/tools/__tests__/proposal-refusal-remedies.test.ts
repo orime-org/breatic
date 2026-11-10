@@ -82,6 +82,7 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
+const DUO = "gemini-3.1-flash-text-to-speech";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -107,6 +108,15 @@ function group(nodes: Sent["nodes"], edges: Sent["edges"] = []): Sent {
 function gen(type: ProposalNode["type"], mode: string, model: string, rest: Partial<Sent["nodes"][number]> = {}): Sent["nodes"][number] {
   return { role: "generate", type, name: "Gen", mode, model, prompt: [{ text: "Make it." }], ...rest };
 }
+
+/** Two speakers, both named and voiced. */
+const PAIR = [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
+/** A dialogue sent as lines, one per turn (inner#1825 design 8.5). */
+const DIALOGUE = gen("audio", "tts", DUO, {
+  prompt: undefined,
+  params: { speakers: PAIR },
+  lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }],
+} as Partial<Sent["nodes"][number]>);
 
 /** A text-to-image generation standing on its own. */
 const DRAW = gen("image", "t2i", T2I);
@@ -476,6 +486,11 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     ],
     absent: ["who the character is"],
     fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+  }, {
+    // A blank left in a line of the dialogue, as the two-voice template's lines carry one.
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    states: ['"Gen" still holds the blanks "Ava\'s first line".'],
+    fix: group([DIALOGUE]),
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
@@ -526,6 +541,33 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([gen("video", "multi_shot", SHOTS, { params: { duration: 5 } })]),
     states: ["In the multi_shot mode the shots are what is generated. On node 0 (\"Gen\"), give shots"],
     fix: group([{ ...gen("video", "multi_shot", SHOTS, { params: { duration: 5 } }), shots: TWO_SHOTS }]),
+  }],
+  "lines-missing": [{
+    meets: group([gen("audio", "tts", DUO, { params: { speakers: PAIR }, prompt: [{ text: "Ava: Hi.\nLeo: Hello." }] })]),
+    states: ['On node 0 ("Gen"), give lines'],
+    fix: group([DIALOGUE]),
+  }],
+  "lines-with-prompt": [{
+    meets: group([{ ...DIALOGUE, prompt: [{ text: "Ava: Hi." }] }]),
+    states: ['On node 0 ("Gen"), leave prompt out.'],
+    fix: group([DIALOGUE]),
+  }],
+  "lines-without-stand-in": [{
+    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] } as Partial<Sent["nodes"][number]>)]),
+    states: [`"${TTS}" reads in one voice`, 'On node 0 ("Gen"), leave lines out.'],
+    fix: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }] })]),
+  }],
+  "line-speaker-out-of-range": [{
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 3, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    states: ["Line 2 names speaker 3", "2 speakers"],
+  }],
+  "line-empty": [{
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "   " }] }] } as Sent["nodes"][number]]),
+    states: ["Line 2 writes nothing."],
+  }],
+  "speakers-missing": [{
+    meets: group([{ ...DIALOGUE, params: { speakers: [PAIR[0], { speaker: "", voice: "Puck" }] } }]),
+    states: [`"${DUO}" reads a dialogue between 2 speakers`, "1 of them"],
   }],
   "shots-with-prompt": [{
     meets: group([{ ...STORY, prompt: [{ text: "Make it." }] }]),
@@ -738,7 +780,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ["takes no mode, model, params, fills, shots, or prompt; it carries mode."],
+    states: ["takes no mode, model, params, fills, shots, lines, or prompt; it carries mode."],
   }],
   "written-not-text": [{
     meets: group([{ ...WORDS, type: "image" }, DRAW]),
@@ -746,10 +788,13 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "written-configured": [{
     meets: group([{ ...WORDS, mode: "t2i" }, DRAW]),
-    states: ["takes no mode, model, params, fills, or shots -- nothing is generated there; it carries mode."],
+    states: ["takes no mode, model, params, fills, shots, or lines -- nothing is generated there; it carries mode."],
   }, {
     meets: group([{ ...WORDS, params: { duration: 5 } }, DRAW]),
     states: ["it carries params."],
+  }, {
+    meets: group([{ ...WORDS, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] } as Sent["nodes"][number], DRAW]),
+    states: ["it carries lines."],
   }],
   "written-empty": [{
     meets: group([{ ...WORDS, prompt: [{ text: "   " }] }, DRAW]),
@@ -763,6 +808,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]".', '{"ref": <index>} for a node'],
     absent: ["meant by"],
+  }, {
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi {✏️ mood}." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}".'],
   }],
   "param-undeclared": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

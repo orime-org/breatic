@@ -321,7 +321,8 @@ export interface AgentShape {
  * material is sent holding it, with no edge and no note, through the fills of
  * the node it feeds (inner#1825 design 4.1). A node with
  * shots sends them instead of a prompt, each with its seconds and its
- * `shot.<n>` words bound the same way, the notes on top of the first shot.
+ * `shot.<n>` words bound the same way, the notes on top of the first shot;
+ * a node with dialogue lines sends them the same way from its `line.<n>` words.
  * No guide node.
  * @param template - The template.
  * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`; `material`: input key to the address its node holds.
@@ -403,6 +404,15 @@ export function agentShape(
     const sent = (words: string): NonNullable<SentNode["prompt"]> => markedSegments(words).map((segment) => sentSegment(segment, targets));
     const at_ = index(`node:${key}`);
     const filled = Object.keys(fills).length === 0 ? {} : { fills };
+    // A node with dialogue lines sends them in place of the prompt, each its speaker and its `line.<n>` words (inner#1825 design 8.5).
+    if (node.lines !== undefined) {
+      nodes[at_] = {
+        ...(nodes[at_] as SentNode),
+        ...filled,
+        lines: node.lines.map((line, n) => ({ speaker: line.speaker, prompt: [...(n === 0 ? notes : []), ...sent(t(`${head}.line.${String(n + 1)}`))] })),
+      } as SentNode;
+      continue;
+    }
     // A node with shots sends them in place of the prompt, the notes on top of the first shot.
     nodes[at_] =
       node.shots === undefined
