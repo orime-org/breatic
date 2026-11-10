@@ -19,3 +19,7 @@ The existing native AMD64 image pipeline builds `breatic-ingest-web-animation`, 
 The independent audit session supplied the release contract and failure boundaries; the implementation session encoded and ran the failing tests before changing the manifest/publisher, then obtained 21 passing release/publication tests. Shell and JavaScript syntax, five stable Compose tags and workflow matrix/gate checks are also verified locally. Full native image execution, complete product CI and formal tag publication remain required after review. Historical release manifests are not modified or republished.
 
 See [versioned releases](../../self-host/RELEASE.md) for artifact identities, supported architectures and interrupted-publication behavior.
+
+## Separate release configuration gate: promoter terms
+
+The pre-publication audit found that the selected source set `promoter_terms_version` to `2026-11-08`, while the public `https://breatic.ai/promoter-terms/` URL returned HTTP 404 and the selected homepage source had no promoter-terms page. A version string alone does not establish that the terms are available. This release therefore keeps the existing empty-value setting, leaving new promoter applications closed until an approved terms version is actually published. No legal text is invented and no referral business logic is changed. Maintainer review of this release PR includes this configuration choice.
