@@ -109,7 +109,7 @@ const RECEIPT = {
 const PEOPLE = ["person-1", "person-3"] as const;
 type Person = (typeof PEOPLE)[number];
 const BOX_X: Record<number, Person> = { 80: "person-1", 200: "person-3" };
-const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 25 }, { start: 25, end: 50 }] };
+const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 25 }, { start: 25, end: 50 }], tracking: { forward: [{ start: 12, end: 50 }], reverse: [{ start: 0, end: 13 }] } };
 // Both people's anchor is frame 12 of the used frames [0, 50): a forward clip [12, 50) and a reversed one [0, 12].
 const CLIPS = trackingClips({ start: 0, end: 50 }, 12);
 
@@ -431,6 +431,21 @@ describe("lip-sync step bodies after track submits (§97 D21; execution design �
       const mine = tracks.filter((body) => body.video === publicUrl(job.outputs[0]!.storageKey) && body.box_prompts[0]!.x_min === x);
       expect(mine.map((body) => body.box_prompts[0]!.frame_index), `${person} on the ${String(job.outputs[0]!.recipe.order)} clip`).toEqual([0]);
     }
+  });
+
+  // Execution design §10.2: admission freezes the reversed clip's chunks from the reverse buffer it read, counted in the
+  // stages and the quote; the worker sends exactly those chunks and their stitch, whatever today's buffer holds.
+  it("LC00b prepares the reversed clip in exactly the chunks the plan froze, then stitches them latest first", async () => {
+    const reverse = [{ start: 0, end: 5 }, { start: 5, end: 10 }, { start: 10, end: 13 }];
+    const layout = { ...LAYOUT, tracking: { forward: LAYOUT.tracking.forward, reverse } };
+    const f = await seed({ layout, stageJobs: plannedStageJobs(layout) }); await drive(f);
+    const shared = f.execution.sharedStepKeys as Record<string, string>;
+    const chunks = jobsOf("prepare_model_input").filter((job) => job.outputs[0]!.recipe.order === "reverse");
+    expect(chunks.map((job) => job.outputs[0]!.recipe.window)).toEqual(reverse);
+    for (const [k, job] of chunks.entries()) expect(job.jobId).toContain(`${shared["prepare:rev"]}.c${k}`);
+    const stitch = jobsOf("stitch").filter((job) => job.jobId.includes(`${shared["prepare:rev"]}:`));
+    expect(stitch).toHaveLength(1);
+    expect(stitch[0]!.inputs.map((input) => input.storageKey).slice(1)).toEqual(chunks.map((job) => job.outputs[0]!.storageKey).reverse());
   });
 
   it("LC01 fetches each clip's SAM3 RLE link into ${track step key}:${attemptId}, pins it, and joins both for faces", async () => {

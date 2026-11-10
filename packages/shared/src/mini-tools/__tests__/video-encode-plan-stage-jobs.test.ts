@@ -46,9 +46,23 @@ describe("stage job counts of a frozen layout (§97 D12-1)", () => {
   });
 
   it("SJ06 lip-sync: two people, one unchunked preparation and one composite chunk need at most four jobs at once", () => {
-    const stages = api.plannedStageJobs({ preparation: [w(0, 90)], persons: 2, composite: [w(0, 90)] });
+    const stages = api.plannedStageJobs({ preparation: [w(0, 90)], persons: 2, composite: [w(0, 90)], tracking: { forward: [], reverse: [] } });
     expect(stages).toEqual([{ stage: "prepare", jobs: 1 }, { stage: "faces", jobs: 2 }, { stage: "clip_stem", jobs: 4 }, { stage: "composite", jobs: 1 }, { stage: "stitch", jobs: 1 }]);
     expect(max(stages)).toBe(4);
+  });
+
+  // Execution design §10.2: the tracking clips are prepared side by side, prepare:fwd and every reversed chunk of prepare:rev
+  // at once, and the reversed chunks are then stitched; each is a container job the cap and the quote count.
+  it("SJ09 lip-sync: prepare:fwd and the reversed clip's chunks are one stage, their stitch the next", () => {
+    const tracking = { forward: [w(30, 90)], reverse: [w(0, 11), w(11, 22), w(22, 31)] };
+    expect(api.plannedStageJobs({ preparation: [w(0, 90)], persons: 1, composite: [w(0, 90)], tracking }))
+      .toEqual([{ stage: "prepare", jobs: 1 }, { stage: "track_prepare", jobs: 4 }, { stage: "track_prepare_stitch", jobs: 1 }, { stage: "faces", jobs: 1 },
+        { stage: "clip_stem", jobs: 2 }, { stage: "composite", jobs: 1 }, { stage: "stitch", jobs: 1 }]);
+    // A reversed clip in one job is not stitched; a clip the preparation itself is sends none.
+    expect(api.plannedStageJobs({ preparation: [w(0, 90)], persons: 1, composite: [w(0, 90)], tracking: { forward: [], reverse: [w(0, 31)] } }))
+      .toContainEqual({ stage: "track_prepare", jobs: 1 });
+    expect(api.plannedStageJobs({ preparation: [w(0, 90)], persons: 1, composite: [w(0, 90)], tracking: { forward: [], reverse: [w(0, 31)] } }).map((stage) => stage.stage))
+      .not.toContain("track_prepare_stitch");
   });
 
   it("SJ07 a split whose total jobs exceed a cap of four has a largest stage within it", () => {

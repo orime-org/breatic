@@ -636,10 +636,11 @@ export async function eachSubmitted<T>(steps: readonly (() => Promise<T>)[]): Pr
   return values;
 }
 
-/** A tracking clip to prepare: its presentation frames, its order and the step key of its prepared video. */
+/** A tracking clip to prepare: the windows of its jobs (`clipJobWindows`), its order and the step key of its prepared video. */
 export interface ClipStep {
   stepKey: string;
-  clip: { start: number; end: number };
+  /** One window for a clip prepared whole; a reversed clip's chunks in source order. */
+  windows: readonly { start: number; end: number }[];
   order: "forward" | "reverse";
   ledger: VideoPresentationLedger;
   target: MiniToolPlanTarget;
@@ -648,9 +649,9 @@ export interface ClipStep {
 }
 
 /**
- * Prepare a tracking clip (execution design §10.2): one `prepare_model_input` job, or, for a reversed clip whose decoded
- * frames pass `encoding.reverse_buffer_bytes`, one reversed job per chunk of at most that many frames and a stitch that
- * joins them latest chunk first, so the k-th chunk of the reversed clip is the (n − 1 − k)-th of the forward one.
+ * Prepare a tracking clip (execution design §10.2) in the jobs its windows name: one `prepare_model_input` job, or, for a
+ * reversed clip chunked by the reverse buffer, one reversed job per chunk and a stitch that joins them latest chunk first,
+ * so the k-th chunk of the reversed clip is the (n − 1 − k)-th of the forward one.
  * @param run - The run.
  * @param planned - The clip.
  * @param deadlineAt - The task deadline.
@@ -659,7 +660,7 @@ export interface ClipStep {
  * @throws {Error} When persistence or the job boundary fails.
  */
 export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadlineAt: number): Promise<StepEnded> {
-  const { ledger, target, clip, order } = planned;
+  const { ledger, target, windows, order } = planned;
   /**
    * The job preparing one window of the clip.
    * @param window - The window.
@@ -672,11 +673,7 @@ export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadline
   const prepare = (window: { start: number; end: number }, stepKey: string): ContainerStep => ({ stepKey, contentType: "video/mp4", failed: planned.failed,
     build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale: ledger.plan.presentation.timescale,
       entries: windowEntries(ledger, window), target, audio: null, order }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: run.sourceKey }] }) });
-  // The reverse filter holds every decoded frame of its window, 8-bit 4:2:0 at the target size.
-  const most = Math.max(1, Math.floor(getMiniToolsConfig().encoding.reverse_buffer_bytes / (target.width * target.height * 1.5)));
-  if (order === "forward" || clip.end - clip.start <= most) return advanceContainer(run, prepare(clip, planned.stepKey), deadlineAt);
-  const windows: { start: number; end: number }[] = [];
-  for (let start = clip.start; start < clip.end; start += most) windows.push({ start, end: Math.min(clip.end, start + most) });
+  if (windows.length === 1) return advanceContainer(run, prepare(windows[0]!, planned.stepKey), deadlineAt);
   // A chunk's key is the clip's with its index, so no chunk is found again as the whole clip.
   const chunks = await advanceChunks(run, windows.map((window, k) => prepare(window, `${planned.stepKey}.c${k}`)), deadlineAt);
   if (!("keys" in chunks)) return chunks;

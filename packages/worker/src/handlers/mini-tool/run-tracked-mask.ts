@@ -12,7 +12,7 @@
 import { getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
 import { lipsyncStepKey, upstreamStepRepo, type miniToolAnalysisService, type MiniToolStepJson } from "@breatic/domain";
 import {
-  hashMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, presentationFrameAt, presentationFramesIn, trackingClips,
+  hashMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, presentationFrameAt, presentationFramesIn, trackingClips, clipJobWindows,
   type MiniToolAnalysisResult,
 } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
@@ -65,7 +65,8 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
     ...(clips.reverse === null ? [] : [{ order: "reverse" as const, clip: clips.reverse, suffix: "rev", itemIndex: 1 }])];
 
   const prepared = await eachSubmitted(sides.map((side) => async (): Promise<string> => {
-    const ended = await advanceClip(run, { stepKey: keyOf(`prepare:${side.suffix}`), clip: side.clip, order: side.order, ledger, target, failed: (reason) => ({ failed: reason }) }, deadlineAt);
+    const windows = clipJobWindows(side.clip, side.order, target, config.encoding.reverse_buffer_bytes);
+    const ended = await advanceClip(run, { stepKey: keyOf(`prepare:${side.suffix}`), windows, order: side.order, ledger, target, failed: (reason) => ({ failed: reason }) }, deadlineAt);
     if (!("key" in ended)) throw new TrackedMaskFailed(trackedMaskFailure("prepare", { reason: ended.failed }));
     return ended.key;
   }));

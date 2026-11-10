@@ -215,7 +215,8 @@ async function personContainer(execution: LipSync, stepKey: string, contentType:
 
 /**
  * A shared tracking clip's prepared video: the run's preparation for a forward clip starting on frame 0, else the clip's
- * own preparation `prepare:fwd` or `prepare:rev` on the preparation's target (execution design §10.2).
+ * own preparation `prepare:fwd` or `prepare:rev` on the preparation's target in the jobs the plan froze (execution design
+ * §10.2).
  * @param execution - The frozen run.
  * @param order - The clip.
  * @param deadlineAt - The task deadline.
@@ -230,7 +231,8 @@ async function clipVideo(execution: LipSync, order: "forward" | "reverse", deadl
   const prepared = await preparedOf(execution);
   if (order === "forward" && clip.start === 0) return { key: prepared.outputs[0]!.storageKey };
   const { target } = prepared.outputs[0]!.recipe as { target: MiniToolPlanTarget };
-  return await advanceClip(stepRun(execution), { stepKey: sharedKeyOf(execution, order === "forward" ? "prepare:fwd" : "prepare:rev"), clip, order,
+  const windows = execution.layout.tracking[order];
+  return await advanceClip(stepRun(execution), { stepKey: sharedKeyOf(execution, order === "forward" ? "prepare:fwd" : "prepare:rev"), windows, order,
     ledger: await ledgerOf(execution, deadlineAt), target: { ...target, format: undefined }, failed: () => ({ failed: "failed", step: "prepare" }) }, deadlineAt) as Ended;
 }
 

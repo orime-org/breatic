@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
-import { trackingClips } from "../tracking-clips.js";
+import { clipJobWindows, trackingClips } from "../tracking-clips.js";
 
 // Execution design §10.2: the hosted SAM3 takes its prompt on frame 0 only (probe sam3-mid-anchor, code 1405), so a
 // range [s, e) anchored at a is tracked forward from a and, when a > s, reversed from a back to s.
@@ -26,6 +26,19 @@ describe("trackingClips (execution design §10.2)", () => {
   it("TC05 refuses an anchor outside the range", () => {
     expect(() => trackingClips({ start: 0, end: 90 }, 90)).toThrow(RangeError);
     expect(() => trackingClips({ start: 10, end: 90 }, 9)).toThrow(RangeError);
+  });
+
+  // The reverse filter holds every decoded frame of its window, 8-bit 4:2:0 at the prepared size: a 3840x2160 frame is
+  // 12441600 bytes, so a 2 GiB buffer holds 172 of them and the 1801 frames up to an anchor at 60 s of 30 fps are 11 jobs.
+  it("TC06 a reversed clip over the reverse buffer is prepared in chunks of the frames the buffer holds; a forward clip in one job", () => {
+    const uhd = { width: 3840, height: 2160 };
+    const windows = clipJobWindows({ start: 0, end: 1801 }, "reverse", uhd, 2_147_483_648);
+    expect(windows).toHaveLength(11);
+    expect(windows[0]).toEqual({ start: 0, end: 172 });
+    expect(windows.at(-1)).toEqual({ start: 1720, end: 1801 });
+    for (let at = 1; at < windows.length; at += 1) expect(windows[at]!.start).toBe(windows[at - 1]!.end);
+    expect(clipJobWindows({ start: 1800, end: 2700 }, "forward", uhd, 2_147_483_648)).toEqual([{ start: 1800, end: 2700 }]);
+    expect(clipJobWindows({ start: 0, end: 172 }, "reverse", uhd, 2_147_483_648)).toEqual([{ start: 0, end: 172 }]);
   });
 });
 

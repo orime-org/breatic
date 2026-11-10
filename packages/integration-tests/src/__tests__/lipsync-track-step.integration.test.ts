@@ -57,7 +57,7 @@ const PERSONS = [
   { personId: "person-3", detectionNumber: 3, anchor: { frameIndex: 12, pts: 0.48 }, anchorFaceBox: { x: 0.625, y: 0.4, width: 0.125, height: 0.2 } },
 ];
 const PIXEL_BOXES = { "person-1": { x_min: 80, y_min: 36, x_max: 144, y_max: 90 }, "person-3": { x_min: 200, y_min: 72, x_max: 240, y_max: 108 } };
-const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 50 }] };
+const LAYOUT = { preparation: [{ start: 0, end: 50 }], persons: 2, composite: [{ start: 0, end: 50 }], tracking: { forward: [{ start: 12, end: 50 }], reverse: [{ start: 0, end: 13 }] } };
 const CLIPS = trackingClips({ start: 0, end: 50 }, 12);
 
 let pg: ReturnType<typeof createPgClient>;

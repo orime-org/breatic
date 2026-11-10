@@ -60,7 +60,8 @@ interface Plan extends Record<string, unknown> {
   persons?: { personId: string; detectionNumber: number; stepKeys?: Record<string, string> }[];
   sharedStepKeys?: Record<string, string>;
   usedRange: { start: 0; end: number };
-  layout?: { preparation: { start: number; end: number }[]; persons: number; composite: { start: number; end: number }[] };
+  layout?: { preparation: { start: number; end: number }[]; persons: number; composite: { start: number; end: number }[];
+    tracking: { forward: { start: number; end: number }[]; reverse: { start: number; end: number }[] } };
   stageJobs?: { stage: string; jobs: number }[];
 }
 
@@ -502,6 +503,24 @@ describe("lip-sync stage job counts at admission (§97 D12-1; frames-split §5.4
     expect(one.stageJobs).toContainEqual({ stage: "clip_stem", jobs: 2 });
     speak(f, [[0, 0, 0], [1, 1, 1.5]]);
     await refused(f, { key: "server.mini_tool.runTooLong", params: { max: 3 } });
+  });
+
+  // Execution design §10.2: the anchor at frame 500 reverses the frames [0, 500] through the reverse buffer, which at the
+  // 960x540 prepared size holds 100 of them: six reversed chunks sent with prepare:fwd at once, then their stitch.
+  it("LS03 freezes the reversed clip's chunks from the reverse buffer and refuses them over the parallel cap", async () => {
+    settings.encoding.reverse_buffer_bytes = 100 * 960 * 540 * 1.5;
+    settings.encoding.max_parallel_chunks = 7;
+    const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }], { anchorFrame: 500 });
+    speak(f, [[0, 0, 0], [0, 1, 3]]);
+    const frozen = await plan(await control(f));
+    const tracking = frozen.layout!.tracking;
+    expect(tracking.forward).toEqual([{ start: 500, end: 1011 }]);
+    expect(tracking.reverse).toHaveLength(6);
+    expect(tracking.reverse.at(-1)).toEqual({ start: 500, end: 501 });
+    expect(frozen.stageJobs).toContainEqual({ stage: "track_prepare", jobs: 7 });
+    expect(frozen.stageJobs).toContainEqual({ stage: "track_prepare_stitch", jobs: 1 });
+    settings.encoding.max_parallel_chunks = 6;
+    await refused(f, { key: "server.mini_tool.runTooLong", params: { max: 6 } });
   });
 });
 

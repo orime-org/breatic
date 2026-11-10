@@ -398,20 +398,27 @@ export type FramesExecutionLayout = { batches: number[][]; encodes: { outputInde
 export type RemovalExecutionLayout = { preparation: FrameWindow[] };
 /** Erase and expand: the preparation chunks and the model composite chunks. */
 export type CompositeExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[] };
-/** Lip-sync: the preparation chunks, the people it generates for and the composite chunks. */
-export type LipsyncExecutionLayout = { preparation: FrameWindow[]; persons: number; composite: FrameWindow[] };
+/**
+ * Lip-sync: the preparation chunks, the people it generates for, the composite chunks and the jobs preparing the tracking
+ * clips (execution design §10.2): `forward` the one prepare:fwd job, none when the clip is the preparation itself or
+ * absent; `reverse` each prepare:rev job's window (`clipJobWindows`), stitched when there are several.
+ */
+export type LipsyncExecutionLayout = { preparation: FrameWindow[]; persons: number; composite: FrameWindow[]; tracking: { forward: FrameWindow[]; reverse: FrameWindow[] } };
 /** Transitions: the encode chunks and the overlap window chunks on the output grid. */
 export type TransitionExecutionLayout = { encode: FrameWindow[]; window: FrameWindow[] };
 /** The job layout an execution freezes at admission, by tool (§97 D12-1). */
 export type MiniToolExecutionLayout = FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
 /** A stage of a planned execution and the container jobs it sends at once. */
-export type MiniToolStageJobs = { stage: "prepare" | "prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number };
+export type MiniToolStageJobs = {
+  stage: "prepare" | "prepare_stitch" | "track_prepare" | "track_prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number;
+};
 
 /**
  * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§97 D12-1;
  * frames-split §5.4): frames and split encode every batch and chunk, then stitch each chunked output; a prepared model
- * input stitches its chunks only when there are several; erase and expand composite each chunk, lip-sync runs each
- * person's faces and its clip and stem, then the composite; transitions encode the encode and window chunks; every
+ * input stitches its chunks only when there are several; erase and expand composite each chunk, lip-sync prepares its
+ * tracking clips side by side and stitches a chunked reversed one, runs each person's faces and its clip and stem, then the
+ * composite; transitions encode the encode and window chunks; every
  * composited or transitioned result is stitched once.
  * @param layout - The frozen layout.
  * @returns Each stage and its job count.
@@ -436,6 +443,8 @@ export function plannedStageJobs(layout: MiniToolExecutionLayout): MiniToolStage
     add("prepare", layout.preparation.length);
     add("prepare_stitch", layout.preparation.length > 1 ? 1 : 0);
     if ("persons" in layout) {
+      add("track_prepare", layout.tracking.forward.length + layout.tracking.reverse.length);
+      add("track_prepare_stitch", layout.tracking.reverse.length > 1 ? 1 : 0);
       add("faces", layout.persons);
       add("clip_stem", layout.persons * 2);
       add("composite", layout.composite.length);

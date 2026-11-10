@@ -33,6 +33,27 @@ export function trackingClips(range: FrameRange, anchor: number): TrackingClips 
 }
 
 /**
+ * The prepare_model_input jobs a tracking clip is prepared in (execution design §10.2): a forward clip in one job; a
+ * reversed clip, whose reverse filter holds every decoded frame of its window 8-bit 4:2:0 at the prepared size, in chunks
+ * of at most the frames `reverseBufferBytes` holds, in source order, which a stitch then joins latest chunk first.
+ * @param clip - The clip, [start, end).
+ * @param order - Its order.
+ * @param picture - The prepared picture's size.
+ * @param picture.width - Its width.
+ * @param picture.height - Its height.
+ * @param reverseBufferBytes - The bytes one reversed job may hold (`encoding.reverse_buffer_bytes`).
+ * @returns The jobs' windows: one for a clip prepared whole, several for a chunked reversed one.
+ * @throws {never} Never.
+ */
+export function clipJobWindows(clip: FrameRange, order: "forward" | "reverse", picture: { width: number; height: number }, reverseBufferBytes: number): FrameRange[] {
+  const most = Math.max(1, Math.floor(reverseBufferBytes / (picture.width * picture.height * 1.5)));
+  if (order === "forward" || clip.end - clip.start <= most) return [clip];
+  const windows: FrameRange[] = [];
+  for (let start = clip.start; start < clip.end; start += most) windows.push({ start, end: Math.min(clip.end, start + most) });
+  return windows;
+}
+
+/**
  * Whether an erase anchor lies inside its tracking range (execution design §10.2): range.start ≤ anchor.pts < range.end.
  * @param range - The range in presentation seconds.
  * @param anchor - The anchor; its presentation time decides.

@@ -24,7 +24,7 @@ const layout = z.strictObject({
   encodes: z.array(z.strictObject({ outputIndex: index, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) })),
 });
 const frameWindows = z.array(z.strictObject({ start: index, end: index })).min(1);
-const stageJobs = z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() }));
+const stageJobs = z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "track_prepare", "track_prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() }));
 const container = {
   containerClass: z.literal("MiniToolContainerStd4"), precheckSeconds: z.number().positive(),
   size: z.strictObject({ instance_type: z.string().min(1), vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
@@ -83,7 +83,8 @@ const storedPlanSchema = z.union([
         clip: fingerprint, stem: fingerprint, gen: fingerprint }) })).min(1),
     sharedStepKeys: z.record(z.string().regex(/^(prepare:fwd|prepare:rev|composite:\d+|stitch)$/), fingerprint),
     tracking: z.strictObject({ model: z.string().min(1) }), cropSize: z.number().int().positive(), faceFeather: z.number().min(0).max(1),
-    layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows }), stageJobs,
+    layout: z.strictObject({ preparation: frameWindows, persons: z.number().int().positive(), composite: frameWindows,
+      tracking: z.strictObject({ forward: z.array(z.strictObject({ start: index, end: index })).max(1), reverse: z.array(z.strictObject({ start: index, end: index })) }) }), stageJobs,
     container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index,
       rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
