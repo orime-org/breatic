@@ -970,6 +970,22 @@ export interface TimelineWebResolution {
   executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
 }
 
+/**
+ * One snapshot of a document Space's body, without the body itself
+ * (inner#1129). Times are UTC ISO at microsecond precision; `createdBy.name`
+ * is the saver's personal studio name, null once that studio is gone.
+ */
+export interface DocumentVersion {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  name: string | null;
+  schemaVersion: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { id: string; name: string | null };
+}
+
 /** The immutable source version a web-animation execution produced (inner#1711). `createdAt` is UTC ISO at microsecond precision. */
 export interface WebAnimationSourceVersion {
   id: string;

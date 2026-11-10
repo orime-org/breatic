@@ -33,6 +33,8 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  document_versions_max_per_space: z.number().int().positive().default(100),
+  document_versions_page_size: z.number().int().positive().default(30),
   studio_project_page_default: z.number().int().positive().default(50),
   studio_project_page_max: z.number().int().positive().default(100),
   credit_page_default: z.number().int().positive().default(30),
@@ -110,6 +112,16 @@ export function getCanvasReferencePoolCap(): number {
  */
 export function getNodeHistoryPageSize(): number {
   return loadConfig().node_history_page_size;
+}
+
+/**
+ * How many live snapshots one document may hold, and how many a list page
+ * returns (inner#1129).
+ * @returns The ceiling and the page size.
+ */
+export function getDocumentVersionLimits(): { maxPerSpace: number; pageSize: number } {
+  const config = loadConfig();
+  return { maxPerSpace: config.document_versions_max_per_space, pageSize: config.document_versions_page_size };
 }
 
 /**

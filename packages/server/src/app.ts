@@ -20,6 +20,7 @@ import { errorHandler } from "@server/middleware/error-handler.js";
 import { authRoute } from "@server/routes/auth.js";
 import { chatRoute } from "@server/routes/chat.js";
 import { canvasRoute } from "@server/routes/canvas.js";
+import { documentsRoute } from "@server/routes/documents.js";
 import { miniToolsRoute } from "@server/routes/mini-tools.js";
 import { projectsRoute } from "@server/routes/projects.js";
 import { projectJoinRequestsRoute } from "@server/routes/project-join-requests.js";
@@ -80,6 +81,7 @@ export function createApp(): Hono {
   app.route("/api/v1/auth", authRoute);
   app.route("/api/v1/chat", chatRoute);
   app.route("/api/v1/canvas", canvasRoute);
+  app.route("/api/v1/documents", documentsRoute);
   app.route("/api/v1/mini-tools", miniToolsRoute);
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);

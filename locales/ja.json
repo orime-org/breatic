@@ -333,6 +333,9 @@
       "view_not_image": "ビュー {index}（{slot, select, front {正面} left {左} back {背面} right {右} other {余分}}）：このファイルは{kind, select, video {動画} audio {音声} other {モデルなどのファイル}}で、画像ではありません。",
       "still_running": "この生成はまだ終了処理中で、結果が出る可能性があります。しばらくしてからもう一度お試しください。",
       "has_result": "この生成は結果が出ており、タスク一覧に戻りました。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
     }
   },
   "chat": {

@@ -333,6 +333,9 @@
       "view_not_image": "뷰 슬롯 {index}({slot, select, front {정면} left {왼쪽} back {뒷면} right {오른쪽} other {초과}}): 이 파일은 {kind, select, video {동영상} audio {오디오} other {모델 등 다른 파일}}이며 이미지가 아닙니다.",
       "still_running": "이 생성은 아직 마무리 중이며 결과가 나올 수 있습니다. 잠시 후 다시 시도해 주세요.",
       "has_result": "이 생성은 결과가 나왔으며 작업 목록으로 돌아왔습니다."
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
     }
   },
   "chat": {

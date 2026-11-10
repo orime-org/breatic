@@ -333,6 +333,9 @@
       "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
+    },
+    "document": {
+      "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
   },
   "chat": {

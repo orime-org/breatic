@@ -333,6 +333,9 @@
       "view_not_image": "第 {index} 个视图槽（{slot, select, front {正面} left {左侧} back {背面} right {右侧} other {多余}}）：这个文件是{kind, select, video {视频} audio {音频} other {模型或其他文件}}，不是图片。",
       "still_running": "这次生成还在收尾，可能还会出结果，请稍后再试。",
       "has_result": "这次生成已经出了结果，结果已回到任务列表。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     }
   },
   "chat": {
