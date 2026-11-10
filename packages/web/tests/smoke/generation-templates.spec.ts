@@ -524,7 +524,8 @@ test('picking music for your video places the video it asks for, wired into the 
   const note = prompt.locator('[data-prompt-note]');
   await expect(note).toHaveCount(1);
   await expect(note).toContainText('Add your video first, then pick it into the Video slot');
-  expect(await prompt.locator('.ProseMirror').evaluate((root) => (root.firstElementChild?.querySelector('[data-prompt-note]') ?? null) !== null)).toBe(true);
+  // The note is the editor's first block itself.
+  expect(await prompt.locator('.ProseMirror').evaluate((root) => root.firstElementChild?.matches('[data-prompt-note]') === true)).toBe(true);
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
   await expect(page.getByTestId('generate-audio-tool-sound-video')).toBeVisible();
   await expect(page.getByTestId('generate-audio-sound-video-clear')).toHaveCount(0);

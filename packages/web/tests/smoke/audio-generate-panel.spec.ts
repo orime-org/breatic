@@ -549,7 +549,11 @@ test('a video and a picture connect into an audio node, and its reference rail s
     await expect(row).toHaveAttribute('aria-disabled', 'true');
     await expect(row).toHaveCSS('opacity', '0.5');
   }
-  await rows.first().click();
+  // Pressed where it sits: Playwright takes an aria-disabled row for one it
+  // cannot click, and this one answers a click with a toast.
+  const box = await rows.first().boundingBox();
+  if (box === null) throw new Error('the first reference row has no box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.locator('[data-sonner-toast][data-type="warning"]').first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('generate-prompt-editor').locator('[data-reference-mention]')).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('audio-picture-references.png') });
