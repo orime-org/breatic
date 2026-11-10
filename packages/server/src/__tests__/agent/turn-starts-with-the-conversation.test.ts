@@ -64,6 +64,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 // The turn asks the conversation what it is called. Answered with a name it
 // did not have before, which is the case that has anything to send.
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "已经有名字了"),
 }));
 

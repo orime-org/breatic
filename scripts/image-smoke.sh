@@ -40,5 +40,9 @@ case "$IMAGE_KIND" in
       'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 && test -s /usr/share/ffmpeg-source/SOURCE && test -s /usr/share/doc/breatic/THIRD-PARTY.md'
     docker run --rm --network none -v "$PWD/scripts/ingest-media-smoke.mjs:/tmp/media-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/media-smoke.mjs
     ;;
+  ingestWebReader)
+    docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /usr/share/doc/breatic/THIRD-PARTY.md'
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-reader-smoke.mjs
+    ;;
   *) echo 'Unknown image kind' >&2; exit 1 ;;
 esac

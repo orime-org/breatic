@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -439,5 +439,34 @@ describe('what the marker rewriting leaves alone', () => {
     const annotation = document.querySelector('annotation');
     expect(annotation?.textContent ?? '').toContain('[1]');
     expect(annotation?.querySelector('citation-chip')).toBeNull();
+  });
+});
+
+describe('a source whose page has no title', () => {
+  const untitled: ChatSource = { url: 'https://untitled.example/page', title: '', publisher: 'Untitled', indexes: [1] };
+
+  it('shows its address in the title line of the source box', async () => {
+    render(
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: [untitled] }} />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    const row = screen.getByTestId('source-box-row');
+    // Once as the title line, once as the address line under it.
+    expect(within(row).getAllByText(untitled.url)).toHaveLength(2);
+  });
+
+  it('shows its address in the title line of the hover card on its marker', async () => {
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'A claim [1].', citations: { 1: untitled } }}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('citation-chip'));
+
+    const card = await screen.findByTestId('source-hover-card');
+    expect(within(card).getAllByText(untitled.url)).toHaveLength(2);
   });
 });

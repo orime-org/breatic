@@ -45,7 +45,7 @@ vi.mock("@breatic/core", async (importOriginal) => (await import("../helpers/ove
 vi.mock("@breatic/domain", async () => (await import("../helpers/overflow-turn.js")).overflowDomain());
 vi.mock("@server/modules", async (importOriginal) => (await import("../helpers/mock-core.js")).serverModulesMock(importOriginal));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", async () => (await import("../helpers/overflow-turn.js")).overflowRepo());
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn: async () => null }));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({ getMessagesForLlm: async () => [], titleForTurn: async () => null }));
 vi.mock("@server/agent/turn-context.js", async () => (await import("../helpers/overflow-turn.js")).overflowTurnContext());
 vi.mock("@server/agent/memory-consolidator.js", async () => (await import("../helpers/overflow-turn.js")).overflowConsolidator());
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
