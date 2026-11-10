@@ -200,6 +200,14 @@ describe("gatherScenePose", () => {
     expect(valuesSchema().safeParse(gathered).success).toBe(false);
   });
 
+  it("collects a pose.__proto__ key as an own key, so validation rejects the record", () => {
+    const gathered = exported<Gather>("gatherScenePose")({ ...VALUES, "pose.__proto__": { "h:hips": "garbage" } });
+    const pose = gathered.pose as Record<string, unknown>;
+    expect(Object.keys(pose)).toEqual(["__proto__"]);
+    expect(pose["h:hips"]).toBeUndefined();
+    expect(valuesSchema().safeParse(gathered).success).toBe(false);
+  });
+
   it("yields values the object schema accepts when the stored pose is valid", () => {
     const gathered = exported<Gather>("gatherScenePose")({ ...VALUES, "pose.h:leftUpperArm": QUARTER_TURN });
     expect(valuesSchema().safeParse(gathered).success).toBe(true);

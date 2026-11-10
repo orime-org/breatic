@@ -80,17 +80,12 @@ export const ScenePoseSchema = z.custom<ScenePose>(isScenePose, 'Invalid scene p
  * @returns A copy without the flat keys, carrying `pose` only when the record had any.
  */
 export function gatherScenePose(record: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  const values: Record<string, unknown> = {};
-  const pose: Record<string, unknown> = {};
-  let posed = false;
-  for (const [key, value] of Object.entries(record)) {
-    if (key.startsWith(SCENE_POSE_KEY_PREFIX)) {
-      pose[key.slice(SCENE_POSE_KEY_PREFIX.length)] = value;
-      posed = true;
-    } else values[key] = value;
-  }
-  if (posed) values.pose = pose;
-  return values;
+  // Object.fromEntries defines own keys, so a stored `pose.__proto__` is validated like any other key.
+  const entries = Object.entries(record);
+  const pose = entries.filter(([key]) => key.startsWith(SCENE_POSE_KEY_PREFIX))
+    .map(([key, value]) => [key.slice(SCENE_POSE_KEY_PREFIX.length), value]);
+  const values = Object.fromEntries(entries.filter(([key]) => !key.startsWith(SCENE_POSE_KEY_PREFIX)));
+  return pose.length > 0 ? { ...values, pose: Object.fromEntries(pose) } : values;
 }
 
 /**
@@ -122,8 +117,8 @@ export type SceneModel = z.infer<typeof SceneModelSchema>;
 export type SceneObjectValues = z.infer<typeof SceneObjectValuesSchema>;
 export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
-/** Record keys that commands overwrite after creation; `model` is fixed at creation. */
-export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;
+/** Record keys that commands overwrite after creation; `model` is fixed at creation and a pose is stored as flat `pose.` keys. */
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model' | 'pose'>;
 
 /** Configured import budgets carried by the readable Project API. */
 export interface SceneImportLimits {

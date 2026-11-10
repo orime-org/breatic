@@ -107,6 +107,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
     ['a hips translation with four components', 'pose.t:hips', [0, 0, 0, 1]],
     ['a non-finite component', 'pose.h:leftUpperArm', [0, 0, Number.NaN, 1]],
     ['a key outside the h:, n: and t:hips forms', 'pose.x:leftUpperArm', [0, 0, 0, 1]],
+    ['a pose.__proto__ key carrying a bone', 'pose.__proto__', { 'h:hips': 'garbage' }],
   ])('isolates a record holding %s as invalid while other objects stay readable', (_label, key, value) => {
     const doc = sceneDoc();
     applySceneCommand(doc, { type: 'create', objects: [BASE, { ...BASE, id: OTHER }] }, Symbol(), true);

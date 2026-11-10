@@ -312,7 +312,7 @@ export class SceneSession {
 
   /**
    * Preview only fields supplied by the active control, keeping committed values independent.
-   * @param patches - Complete transform fields previewed by the active local gesture.
+   * @param patches - The active gesture's draft per object: the transform fields a drag supplies, or the whole pose a joint drag shows.
    */
   previewGesture(patches: readonly SceneGestureDraft[]): void {
     if (!this.gesture) return;

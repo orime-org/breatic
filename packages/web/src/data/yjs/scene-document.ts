@@ -66,8 +66,7 @@ function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
 function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
   const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
-  const stored: Record<string, unknown> = {};
-  value.forEach((item: unknown, key: string) => { stored[key] = item; });
+  const stored: Record<string, unknown> = Object.fromEntries(value.entries());
   return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherScenePose(stored), model, id });
 }
 
