@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { VIDEO_TOOL_IDS, videoToolDraftSchema, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
-import { createVideoToolDraft, resetDialoguePeople, editDialogue, trimTimelineClip, moveTimelineClip } from '../video/video-tool-edit';
+import { createVideoToolDraft, resetDialoguePeople, editDialogue, trimTimelineClip } from '../video/video-tool-edit';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const rows: VideoToolDialogueRow[] = [0, 1, 2].map((index) => ({ dialogueId: `20000000-0000-4000-8000-00000000000${index}`, personId: 'person-a', analysisRunId: '30000000-0000-4000-8000-000000000001', audioInputId: `40000000-0000-4000-8000-00000000000${index}`, startTime: [0, 1.25, 3][index] }));
@@ -36,15 +36,6 @@ describe('approved video tool edit boundaries', () => {
   });
   it('retains the full source mapping when timeline handles trim a clip', () => {
     expect(trimTimelineClip(clips, clips[1].clipId, 3, 6)).toEqual([clips[0], { ...clips[1], in: 2.5, out: 5.5 }]);
-  });
-  it('reorders by composition centre and retains all clip identities and source trims', () => {
-    expect(moveTimelineClip(clips, clips[1].clipId, 0, 1).map(({ transition: _transition, ...clip }) => clip)).toEqual([clips[1], clips[0]].map(({ transition: _transition, ...clip }) => clip));
-  });
-  it('keeps the Fade between the clips when the second clip is dragged in front', () => {
-    expect(moveTimelineClip(clips, clips[1].clipId, 0, 1)).toEqual([{ ...clips[1], transition: clips[0].transition }, { ...clips[0], transition: { kind: 'cut', duration: 0 } }]);
-  });
-  it('leaves the clips and their transitions untouched by a drag that does not cross', () => {
-    expect(moveTimelineClip(clips, clips[0].clipId, 0.1, 3.1)).toEqual(clips);
   });
   it('never changes another row during an independent timing edit', () => {
     fc.assert(fc.property(fc.double({ min: 0, max: 100, noNaN: true }), (startTime) => {

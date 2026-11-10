@@ -11,7 +11,7 @@
  */
 
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
@@ -102,6 +102,25 @@ describe('the transitions Dialog holds the current video and the picked input (c
     expect(rows[0].actions.map((action) => action.id)).toEqual([hostClip.clipId, pickedClip.clipId]);
     await user.click(clipSelector());
     expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual(['1. Current', '2. Picked']);
+  });
+});
+
+describe('only the swap control changes the order (canvas design invariant 11.2)', () => {
+  it('makes no clip draggable and hands the track no move callbacks, so a drag can neither reorder nor commit', () => {
+    open(vi.fn());
+    const rows = track.props?.editorData as { actions: { movable?: boolean; flexible?: boolean }[] }[];
+    expect(rows[0].actions.map((action) => [action.movable, action.flexible])).toEqual([[false, true], [false, true]]);
+    expect(track.props?.onActionMoveStart).toBeUndefined();
+    expect(track.props?.onActionMoveEnd).toBeUndefined();
+  });
+
+  it('still trims a clip from its resize handles', () => {
+    const onChange = vi.fn();
+    open(onChange);
+    const props = track.props as { onActionResizeStart: () => void; onActionResizeEnd: (value: { action: { id: string }; start: number; end: number }) => void };
+    act(() => { props.onActionResizeStart(); });
+    act(() => { props.onActionResizeEnd({ action: { id: hostClip.clipId }, start: 0.5, end: 4 }); });
+    expect(lastDraft(onChange).params.clips).toEqual([{ ...hostClip, in: 1.5 }, pickedClip]);
   });
 });
 

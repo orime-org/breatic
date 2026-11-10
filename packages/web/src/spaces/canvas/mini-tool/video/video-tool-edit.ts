@@ -63,19 +63,3 @@ export function trimTimelineClip(clips: readonly VideoToolTimelineClip[], id: st
     return clip.clipId === id ? { ...source, in: source.in + start - at, out: source.out + end - until } : source;
   });
 }
-
-/**
- * Reorders clips by the moved track action's centre; each transition stays at its junction, carried by whichever clip now
- * comes before it, as the swap control does.
- * @throws {Error} When the supplied plan is invalid.
- * @param clips - The full ordered source clip sequence.
- * @param id - The stable identity of the row or clip being edited.
- * @param start - The new composition start from the timeline handle.
- * @param end - The new composition end from the timeline handle.
- * @returns The current value derived from these inputs.
- */
-export function moveTimelineClip(clips: readonly VideoToolTimelineClip[], id: string, start: number, end: number): VideoToolTimelineClip[] {
-  const plan = planVideoTimelineSeconds(clips);
-  return plan.clips.map((clip, index) => ({ clip: clips[index], position: clip.clipId === id ? (start + end) / 2 : (clip.start + clip.end) / 2, index }))
-    .sort((left, right) => left.position - right.position || left.index - right.index).map((entry, index) => ({ ...entry.clip, transition: clips[index].transition }));
-}
