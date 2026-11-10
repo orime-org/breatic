@@ -9,10 +9,10 @@
 import * as React from 'react';
 import { act, render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { TimelineClip } from '@breatic/shared';
+import { t, type TimelineClip } from '@breatic/shared';
 
 import type { TimelineUploadEntry, TimelineUploads } from '@web/spaces/timeline/timeline-uploads';
-import { useTimelineUploadViews } from '@web/spaces/timeline/use-timeline-upload-views';
+import { timelineUploadText, useTimelineUploadViews } from '@web/spaces/timeline/use-timeline-upload-views';
 
 const CLIPS = [{ id: 'clip-1', kind: 'upload', upload: { uploadId: 'upload-1', name: 'a.mp4', durationSeconds: 2 } } as unknown as TimelineClip];
 
@@ -66,5 +66,13 @@ describe('useTimelineUploadViews', () => {
     const screen = render(<View />);
     act(() => set({ phase: 'uploading', progress: 0.5 }));
     expect(screen.getByTestId('view').textContent).toBe('uploading:0.5');
+  });
+});
+
+describe('timelineUploadText', () => {
+  it.each(['tooLarge', 'unsupportedType'] as const)('names the file when its upload failed as %s', (reason) => {
+    const text = timelineUploadText(t, { state: 'failed', progress: null, reason, retryable: false }, 'beach.mp4');
+    expect(text).toContain('beach.mp4');
+    expect(text).not.toContain('{');
   });
 });

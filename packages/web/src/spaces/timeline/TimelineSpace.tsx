@@ -69,8 +69,8 @@ interface TimelineConflictRowProps {
   projectId: string;
   clip: TimelineClip;
   assetId: string;
-  /** A web copy's name; a video is named by its asset. */
-  webName: string | null;
+  /** A web copy's or upload placeholder's name; null names a video by its asset. */
+  name: string | null;
   track: string;
   reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
@@ -110,7 +110,7 @@ const ZOOM_STEP = 0.1;
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
- * @param props.webName - A web copy's or upload placeholder's name.
+ * @param props.name - A web copy's or upload placeholder's name, or null to use its video's name.
  * @param props.track - Its track's name.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
@@ -118,10 +118,10 @@ const ZOOM_STEP = 0.1;
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, webName, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, name: label, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
-  const name = webName ?? (asset.data?.displayName || t('timeline.video'));
+  const name = label ?? (asset.data?.displayName || t('timeline.video'));
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
@@ -294,10 +294,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }), [visible, uploadViews, labels, t]);
   const selectedUploadView = selected?.kind === 'upload' ? uploadViews.get(selected.id) : undefined;
   const selectedUploadId = selected?.kind === 'upload' ? selected.upload.uploadId : null;
+  const selectedUploadName = selected?.kind === 'upload' ? selected.upload.name : '';
   const retryUpload = React.useCallback((): void => { if (selectedUploadId !== null) uploads.retry(selectedUploadId); }, [uploads, selectedUploadId]);
   const selectedUpload = React.useMemo(() => selectedUploadView === undefined ? null
-    : { text: timelineUploadText(t, selectedUploadView), failed: selectedUploadView.state === 'failed', onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
-  [selectedUploadView, readOnly, retryUpload, t]);
+    : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
+  [selectedUploadView, selectedUploadName, readOnly, retryUpload, t]);
   // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
   // loaded pages no copy uses. It is allocated again whenever the frame, the document or the resolution changes, and
   // without the Timeline limits it premounts and keeps nothing.
@@ -755,7 +756,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             {hasConflicts ? <>
               <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
               {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                webName={clip.kind === 'web-animation' ? webClips.get(clip.id)?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+                name={clip.kind === 'web-animation' ? webClips.get(clip.id)?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

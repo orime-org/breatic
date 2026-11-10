@@ -8,7 +8,7 @@
  */
 
 import * as React from 'react';
-import type { TimelineClip } from '@breatic/shared';
+import { uploadableFormatList, type TimelineClip } from '@breatic/shared';
 
 import type { UploadFailureReason } from '@web/data/upload/media-upload';
 import type { useTranslation } from '@web/i18n/use-translation';
@@ -48,12 +48,16 @@ export function timelineUploadView(entry: TimelineUploadEntry | undefined, acces
  * The second line a placeholder shows on its track and in its properties.
  * @param t - The translator.
  * @param view - What it shows.
+ * @param name - The placeholder's file name, which a failure reason names.
  * @returns The text.
  * @throws {never} Never.
  */
-export function timelineUploadText(t: ReturnType<typeof useTranslation>, view: TimelineUploadView): string {
+export function timelineUploadText(t: ReturnType<typeof useTranslation>, view: TimelineUploadView, name: string): string {
   if (view.state === 'uploading') return view.progress === null ? t('timeline.upload.uploading') : t('timeline.upload.progress', { progress: Math.round(view.progress * 100) });
-  if (view.state === 'failed') return view.reason === null ? t('timeline.upload.failed') : t(uploadFailureMessageKey(view.reason));
+  if (view.state === 'failed') {
+    // The same parameters the Canvas and Document refusals pass (canvas-upload.ts, document-uploads.ts).
+    return view.reason === null ? t('timeline.upload.failed') : t(uploadFailureMessageKey(view.reason), { filename: name, kind: 'video', formats: uploadableFormatList('video') });
+  }
   return t(`timeline.upload.${view.state}`);
 }
 

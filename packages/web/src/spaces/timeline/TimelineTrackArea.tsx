@@ -129,7 +129,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
-  const detail = upload !== null ? timelineUploadText(t, upload) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+  const detail = upload !== null && clip.kind === 'upload' ? timelineUploadText(t, upload, clip.upload.name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
     : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
   const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
   const waiting = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
