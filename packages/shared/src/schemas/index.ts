@@ -48,6 +48,9 @@ export {
   chatRenameConversationSchema,
   chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  AGENT_INSTRUCTIONS_MAX_CHARS,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
@@ -90,4 +93,6 @@ export type {
   ChatCreateConversationInput,
   ChatRenameConversationInput,
   ChatSetModelInput,
+  AgentInstructionsSaveInput,
+  AgentInstructionsView,
 } from "@shared/schemas/api.js";

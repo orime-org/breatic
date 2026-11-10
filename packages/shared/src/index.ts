@@ -351,6 +351,9 @@ export {
   chatRenameConversationSchema,
   chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  AGENT_INSTRUCTIONS_MAX_CHARS,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -391,6 +394,8 @@ export type {
   ChatCreateConversationInput,
   ChatRenameConversationInput,
   ChatSetModelInput,
+  AgentInstructionsSaveInput,
+  AgentInstructionsView,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";

@@ -912,6 +912,34 @@ export const CONVERSATION_TITLE_MAX_CHARS = 200;
  */
 export const CHAT_MESSAGE_MAX_CHARS = 10_000;
 
+/** How long a Project's instructions for the Agent may be, by `.length` (#1400). */
+export const AGENT_INSTRUCTIONS_MAX_CHARS = 10_000;
+
+/** Query for reading a Project's instructions for the Agent. */
+export const agentInstructionsQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/**
+ * Body for saving a Project's instructions for the Agent. The text is kept
+ * exactly as typed; one with no visible character clears them.
+ */
+export const agentInstructionsSaveSchema = z.object({
+  project_id: z.string().uuid(),
+  text: z.string().max(AGENT_INSTRUCTIONS_MAX_CHARS),
+});
+export type AgentInstructionsSaveInput = z.infer<typeof agentInstructionsSaveSchema>;
+
+/** A Project's instructions as the editor shows them. */
+export interface AgentInstructionsView {
+  /** The text as saved; empty when there are none. */
+  text: string;
+  /** Display name of whoever saved them last, or null when there are none. */
+  updatedBy: string | null;
+  /** When they were last saved (ISO), or null when there are none. */
+  updatedAt: string | null;
+}
+
 /**
  * Body for naming a conversation.
  *
