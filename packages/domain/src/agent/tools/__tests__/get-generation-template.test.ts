@@ -20,7 +20,9 @@ import { templateSegmentsText as shown } from "@domain/agent/tools/template-expa
 
 import { describeTemplate } from "../get-generation-template.js";
 import { CANVAS_TOOLS, TOOL_MAP } from "../index.js";
-import { TEMPLATE_CRAFT } from "../template-craft.js";
+import { TEMPLATE_CRAFT, templateCraft } from "../template-craft.js";
+
+import { loadFixtureLocales, SLOTTED, STANDALONE } from "./template-fixtures.js";
 
 beforeEach(() => {
   loadLocales();
@@ -121,11 +123,11 @@ describe("get_generation_template", () => {
 
   it("adds the craft that fits the template: video craft for a video, character craft for a character goal", async () => {
     const scene = await read("single-view-refs-scene");
-    expect(scene).toContain(TEMPLATE_CRAFT.all);
+    expect(scene).toContain(TEMPLATE_CRAFT.picture);
     expect(scene).toContain(TEMPLATE_CRAFT.video);
     expect(scene).toContain(TEMPLATE_CRAFT.character);
     const grid = await read("storyboard-grid-25");
-    expect(grid).toContain(TEMPLATE_CRAFT.all);
+    expect(grid).toContain(TEMPLATE_CRAFT.picture);
     expect(grid).not.toContain(TEMPLATE_CRAFT.video);
     expect(grid).not.toContain(TEMPLATE_CRAFT.character);
     const bible = await read("character-bible");
@@ -134,7 +136,7 @@ describe("get_generation_template", () => {
   });
 
   it("lets a template that asks for labels put them in the picture, and keeps out any other text", () => {
-    expect(TEMPLATE_CRAFT.all).toContain("put no text in the picture unless the template asks for labels");
+    expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for labels");
   });
 
   it("has words in every craft section", () => {
@@ -236,4 +238,59 @@ describe("what one apply of a template costs (inner#1816)", () => {
       expect(await read(id)).toContain(`One apply of this template costs ${formatCredits(sum, "en-US")} credits at its settings.`);
     });
   }
+});
+
+describe("a template whose input goes into a slot or whose node stands beside the anchor (inner#1825 design 4.1, 4.2)", () => {
+  beforeEach(() => {
+    loadFixtureLocales();
+    setLocale("en");
+  });
+
+  it("names the slot an input goes into", () => {
+    expect(describeTemplate(SLOTTED)).toContain('"song" (audio) into "cover" by "audio"');
+  });
+
+  it("says a node beside the anchor is not wired and its tag carries the anchor's index", () => {
+    const said = describeTemplate(STANDALONE);
+    const outro = said.split("; ").find((line) => line.includes('"outro"')) ?? "";
+    expect(outro).toMatch(/not wired|no edge/i);
+    expect(outro).toContain("anchor");
+  });
+
+  it("says how to send a slot input holding material and a node beside the anchor", async () => {
+    const said = await read("storyboard-grid-25");
+    expect(said).toMatch(/material[^.]*\bfills\b/);
+    expect(said).toContain("{ id, key, anchor }");
+  });
+});
+
+describe("the craft each template gets by what it generates (inner#1825 design 10)", () => {
+  it("gives an audio-only template the audio craft and not the picture or video craft", () => {
+    loadFixtureLocales();
+    const craft = templateCraft(SLOTTED);
+    expect(TEMPLATE_CRAFT).toHaveProperty("audio");
+    expect(craft).toContain(TEMPLATE_CRAFT.audio);
+    expect(craft).not.toContain(TEMPLATE_CRAFT.picture);
+    expect(craft).not.toContain(TEMPLATE_CRAFT.video);
+  });
+
+  it("writes music, voice and sound effects in the audio craft", () => {
+    expect(TEMPLATE_CRAFT).toHaveProperty("audio");
+    for (const word of ["BPM", "instrument", "pause", "breath"]) expect(TEMPLATE_CRAFT.audio, word).toContain(word);
+  });
+
+  it("gives a template generating a video and its sound the picture, video and audio craft", () => {
+    const craft = templateCraft(byId("clip-ambience-foley"));
+    expect(craft).toContain(TEMPLATE_CRAFT.picture);
+    expect(craft).toContain(TEMPLATE_CRAFT.video);
+    expect(craft).toContain(TEMPLATE_CRAFT.audio);
+  });
+
+  it("keeps a template generating no sound to the picture craft it had", () => {
+    for (const id of ["storyboard-grid-25", "single-view-refs-scene"]) {
+      const craft = templateCraft(byId(id));
+      expect(craft, id).toContain(TEMPLATE_CRAFT.picture);
+      expect(craft, id).not.toContain(TEMPLATE_CRAFT.audio);
+    }
+  });
 });

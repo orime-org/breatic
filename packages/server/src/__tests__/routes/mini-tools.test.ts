@@ -458,6 +458,38 @@ describe("POST /mini-tools", () => {
     expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
+  // inner#1825 §6.4: the worker reads the source and then the clips, in the order the user set.
+  it("queues a join with the source key and the other clips' keys in order", async () => {
+    vi.mocked(assetRepo.findLiveByStorageKey).mockImplementation(
+      async (key: string) => ({ storageKey: key, kind: "video", sizeBytes: 1_000, durationSeconds: 4 }) as never,
+    );
+    const res = await post({
+      tool: "video.join",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/v/a.mp4", duration: 4 },
+      params: { crossfade: 0 },
+      slots: { clips: [{ url: "https://assets.example.com/v/b.mp4" }, { url: "https://assets.example.com/v/c.mp4" }] },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockQueueAdd.mock.calls[0]?.[1]).toMatchObject({
+      sourceKey: "v/a.mp4",
+      extraKeys: ["v/b.mp4", "v/c.mp4"],
+    });
+  });
+
+  it("queues a one-input container tool without extra keys", async () => {
+    await post({
+      tool: "video.cut",
+      node_ids: [NODE_A],
+      source: { url: OURS, duration: 8 },
+      params: { range: { start: 0, end: 2 } },
+    });
+
+    expect(mockQueueAdd.mock.calls[0]?.[1]).toMatchObject({ sourceKey: "v/abc.mp4" });
+    expect(mockQueueAdd.mock.calls[0]?.[1]).not.toHaveProperty("extraKeys");
+  });
+
   it("accepts a container source in our bucket whatever studio filed it", async () => {
     const res = await post({
       tool: "video.cut",

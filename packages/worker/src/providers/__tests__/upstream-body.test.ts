@@ -353,3 +353,46 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(255) })).not.toThrow();
   });
 });
+
+/**
+ * Qwen3 TTS Voice Design (inner#1825 §8): a voice described in words. The
+ * description has a neutral English default, so a run the user or the Agent
+ * left it empty on still speaks.
+ */
+describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inner#1825)", () => {
+  beforeAll(() => {
+    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+  });
+
+  /**
+   * The body a run of this model sends for these params.
+   * @param given - The job's params, prompt already lifted out.
+   * @param prompt - The cleaned prompt.
+   * @returns The upstream body.
+   */
+  function bodyFor(given: Record<string, unknown>, prompt: string): Record<string, unknown> {
+    const found = getFullModelConfig("tts").models.find((m) => m.name === "qwen3-tts-voice-design");
+    if (!found) throw new Error("qwen3-tts-voice-design missing from the tts catalog");
+    const [, validated] = validateModelParams("tts", "qwen3-tts-voice-design", given);
+    return upstreamBody(found, validated, prompt);
+  }
+
+  it("sends the line as text, with the described voice and the language", () => {
+    expect(
+      bodyFor({ voice_description: "An old man, slow and gravelly", language: "English" }, "The night was long."),
+    ).toEqual({
+      text: "The night was long.",
+      voice_description: "An old man, slow and gravelly",
+      language: "English",
+    });
+  });
+
+  it("sends the default English description and auto language when the run names neither", () => {
+    const body = bodyFor({}, "Hello there.");
+    expect(body.text).toBe("Hello there.");
+    expect(body.language).toBe("auto");
+    expect(typeof body.voice_description).toBe("string");
+    // English, and long enough to describe a voice.
+    expect(body.voice_description).toMatch(/^[\x20-\x7E]{20,}$/);
+  });
+});

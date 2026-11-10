@@ -111,7 +111,8 @@ const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => 
 
 /**
  * The names a generate node's reference marks may use in one language: each
- * input feeding it and each template node wired into its pool.
+ * input feeding its pool (an input with `into` goes into a slot instead) and
+ * each template node wired into its pool.
  * @param locale - The locale.
  * @param template - The template.
  * @param key - The generate node.
@@ -119,7 +120,7 @@ const marksOf = (text: string): string[] => markedSegments(text).flatMap((s) => 
  */
 const poolNamesOf = (locale: string, template: GenerationTemplate, key: string): Array<string | undefined> => [
   ...template.inputs
-    .filter((input) => feedsOf(template, input).includes(key))
+    .filter((input) => feedsOf(template, input).includes(key) && input.into === undefined)
     .map((input) => raw(locale, textKey(template, `input.${input.key}.name`))),
   ...template.edges
     .filter((edge) => edge.to === key && (edge.into ?? 'pool') === 'pool')
@@ -185,8 +186,26 @@ const SOCIAL_HOOKS = [
 /** The social hook templates a video panel lists. */
 const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov' && id !== 'flash-photo-dump-grid');
 
-/** The templates the plan's G13 gives no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream'];
+/** The sound, music and voice templates (inner#1825), in registry order. */
+const SOUND = [
+  'ambience-sfx-bed',
+  'voice-line',
+  'two-voice-dialogue',
+  'underscore-bgm',
+  'voice-from-descriptor',
+  'song-cover',
+  'voice-clone-line',
+  'score-for-my-video',
+  'music-mood-from-image',
+  'clip-ambience-foley',
+  'section-mapped-score',
+];
+
+/** The sound templates an audio panel lists: all but the one anchored on its video. */
+const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
+
+/** The templates the plan's G13 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'song-cover'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -212,8 +231,58 @@ const CATALOG = new Map(
   }),
 );
 
+/** One catalog model as a template check reads it: the modes it runs in and its params. */
+interface CatalogModel {
+  mode: string | string[];
+  params: Record<string, ParamDescriptor>;
+}
+
+/** Every model of the catalog, by name, as `config/models` declares them. */
+const MODELS = new Map(
+  ['video', 'image', 'audio', 'tts'].flatMap((kind) => {
+    const file = resolve(import.meta.dirname, `../../../../../config/models/${kind}/models.yaml`);
+    const { models } = parse(readFileSync(file, 'utf-8')) as { models: Array<CatalogModel & { name: string }> };
+    return models.map((model): [string, CatalogModel] => [model.name, model]);
+  }),
+);
+
+/**
+ * Checks that a template has every string it needs in all five languages, the
+ * names within the node name cap and a node with shots with no prompt.
+ * @param template - The template.
+ */
+function expectEveryString(template: GenerationTemplate): void {
+  const names = [
+    'name',
+    ...template.nodes.filter((node) => node.key !== template.anchor).map((node) => `node.${node.key}.name`),
+    ...template.inputs.map((input) => `input.${input.key}.name`),
+  ];
+  const keys = [
+    ...names,
+    'description',
+    ...generateNodes(template).flatMap((node) => wordKeysOf(template, node)),
+    ...template.inputs.map((input) => `input.${input.key}.note`),
+    ...template.steps.map((step) => `step.${step}`),
+  ];
+  for (const locale of LOCALES) {
+    for (const key of keys) {
+      const text = raw(locale, textKey(template, key));
+      expect(typeof text === 'string' && text.length > 0, `${template.id} ${locale} ${key}`).toBe(true);
+    }
+    for (const key of names) {
+      const length = [...(raw(locale, textKey(template, key)) ?? '')].length;
+      expect(length, `${template.id} ${locale} ${key}`).toBeLessThanOrEqual(MAX_NODE_NAME_LEN);
+    }
+    // A node with shots has its words in the shots alone.
+    for (const node of generateNodes(template).filter((one) => one.shots !== undefined)) {
+      const prompt = node.key === template.anchor ? 'prompt' : `node.${node.key}.prompt`;
+      expect(raw(locale, textKey(template, prompt)), `${template.id} ${locale} ${prompt}`).toBeUndefined();
+    }
+  }
+}
+
 describe('generation templates', () => {
-  it('lists each node type its templates in registry order, audio none yet', () => {
+  it('lists each node type its templates in registry order, the sound ones under audio and the foley clip under video', () => {
     expect(templatesFor('image').map((t) => t.id)).toEqual([
       'costume-sheet',
       'character-bible',
@@ -228,8 +297,10 @@ describe('generation templates', () => {
       'identity-locked-sequence',
       'character-showcase-orbit',
       ...SOCIAL_HOOK_VIDEOS,
+      'clip-ambience-foley',
     ]);
-    expect(templatesFor('audio')).toEqual([]);
+    // inner#1825 changes this contract: audio had no template until the sound goal.
+    expect(templatesFor('audio').map((t) => t.id)).toEqual(SOUND_AUDIO);
   });
 
   it('fixes the mode, model and the params the real runs settled on', () => {
@@ -296,13 +367,15 @@ describe('generation templates', () => {
         },
       },
     };
-    expect(GENERATION_TEMPLATES.map((template) => template.id).sort()).toEqual(Object.keys(expected).sort());
+    // The sound templates' settings are checked key by key under their own describe below.
+    expect(GENERATION_TEMPLATES.map((template) => template.id).sort()).toEqual([...Object.keys(expected), ...SOUND].sort());
     for (const template of GENERATION_TEMPLATES) {
+      expect(template.anchor, template.id).toBe('result');
+      if (SOUND.includes(template.id)) continue;
       const nodes = Object.fromEntries(
         generateNodes(template).map(({ key, type, mode, model, params, shots }) => [key, { type, mode, model, params, ...(shots === undefined ? {} : { shots }) }]),
       );
       expect(nodes, template.id).toEqual(expected[template.id]);
-      expect(template.anchor, template.id).toBe('result');
     }
   });
 
@@ -386,12 +459,13 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'social-hooks']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'social-hooks', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
+      ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       'storyboard-grid-25': 'comics-storyboards',
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -404,7 +478,7 @@ describe('creative goals and triggers', () => {
     for (const template of GENERATION_TEMPLATES) {
       expect(template.goal, template.id).toBe(goals[template.id]);
       expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
-      // The plan's G13 writes "none" for when to offer these unasked.
+      // The plan's G13 and G19 write "none" for when to offer these unasked.
       expect(template.triggers.offerWhen.length === 0, `${template.id} offerWhen`).toBe(NEVER_OFFERED_UNASKED.includes(template.id));
       for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
         expect(words.trim().length, template.id).toBeGreaterThan(0);
@@ -442,8 +516,9 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
+      ['sound', ['clip-ambience-foley']],
     ]);
-    expect(templateGoalsFor('audio')).toEqual([]);
+    expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([['sound', SOUND_AUDIO]]);
   });
 });
 
@@ -489,16 +564,30 @@ describe('generation template registry checks', () => {
     }
   });
 
-  it('anchors every template on a generate node that is the only end every other node reaches', () => {
+  it('anchors every template on a generate node, every other node upstream of it, downstream of it or wired to nothing', () => {
+    // inner#1825 replaces the rule that every node reaches the anchor: a node
+    // may also follow the anchor, or stand beside it with no template edge.
+    const placed = { upstream: 0, downstream: 0, standalone: 0 };
     for (const template of GENERATION_TEMPLATES) {
       expect(anchorOf(template)?.key, template.id).toBe(template.anchor);
-      expect(template.edges.filter((edge) => edge.from === template.anchor), template.id).toEqual([]);
-      const reaches = new Set([template.anchor]);
+      const upstream = new Set([template.anchor]);
+      const downstream = new Set([template.anchor]);
       for (let pass = 0; pass < template.nodes.length; pass += 1) {
-        for (const edge of template.edges) if (reaches.has(edge.to)) reaches.add(edge.from);
+        for (const edge of template.edges) {
+          if (upstream.has(edge.to)) upstream.add(edge.from);
+          if (downstream.has(edge.from)) downstream.add(edge.to);
+        }
       }
-      expect([...reaches].sort(), template.id).toEqual(template.nodes.map((node) => node.key).sort());
+      for (const node of template.nodes) {
+        if (node.key === template.anchor) continue;
+        const wired = template.edges.some((edge) => edge.from === node.key || edge.to === node.key);
+        const where = upstream.has(node.key) ? 'upstream' : downstream.has(node.key) ? 'downstream' : wired ? undefined : 'standalone';
+        expect(where, `${template.id} ${node.key}`).toBeDefined();
+        if (where) placed[where] += 1;
+      }
     }
+    expect(placed.downstream, 'a template has a node downstream of its anchor, so the rule runs on one').toBeGreaterThan(0);
+    expect(placed.standalone, 'a template has a node with no template edge, so the rule runs on one').toBeGreaterThan(0);
   });
 
   it('wires its nodes with no circle, as a canvas takes no edge that closes one', () => {
@@ -534,7 +623,7 @@ describe('generation template registry checks', () => {
           // The same reading the panel and the agent bind marks with.
           const targets = templateMarkTargets(template, node.key);
           const contributors =
-            template.inputs.filter((input) => feedsOf(template, input).includes(node.key)).length +
+            template.inputs.filter((input) => feedsOf(template, input).includes(node.key) && input.into === undefined).length +
             template.edges.filter((edge) => edge.to === node.key && (edge.into ?? 'pool') === 'pool').length;
           const where = `${template.id} ${locale} ${node.key}`;
           expect(targets.size, `${where}: targets named apart`).toBe(contributors);
@@ -557,35 +646,7 @@ describe('generation template registry checks', () => {
   });
 
   it('has every string in all five languages, the names within the node name cap', () => {
-    for (const template of GENERATION_TEMPLATES) {
-      const names = [
-        'name',
-        ...template.nodes.filter((node) => node.key !== template.anchor).map((node) => `node.${node.key}.name`),
-        ...template.inputs.map((input) => `input.${input.key}.name`),
-      ];
-      const keys = [
-        ...names,
-        'description',
-        ...generateNodes(template).flatMap((node) => wordKeysOf(template, node)),
-        ...template.inputs.map((input) => `input.${input.key}.note`),
-        ...template.steps.map((step) => `step.${step}`),
-      ];
-      for (const locale of LOCALES) {
-        for (const key of keys) {
-          const text = raw(locale, textKey(template, key));
-          expect(typeof text === 'string' && text.length > 0, `${template.id} ${locale} ${key}`).toBe(true);
-        }
-        for (const key of names) {
-          const length = [...(raw(locale, textKey(template, key)) ?? '')].length;
-          expect(length, `${template.id} ${locale} ${key}`).toBeLessThanOrEqual(MAX_NODE_NAME_LEN);
-        }
-        // A node with shots has its words in the shots alone.
-        for (const node of generateNodes(template).filter((one) => one.shots !== undefined)) {
-          const prompt = node.key === template.anchor ? 'prompt' : `node.${node.key}.prompt`;
-          expect(raw(locale, textKey(template, prompt)), `${template.id} ${locale} ${prompt}`).toBeUndefined();
-        }
-      }
-    }
+    for (const template of GENERATION_TEMPLATES) expectEveryString(template);
   });
 });
 
@@ -878,5 +939,171 @@ describe('character template layouts (inner#1846)', () => {
     const costume = raw('en', 'canvas.template.costume-sheet.prompt') ?? '';
     expect(costume).toContain('exactly 3 full-body figures of equal width');
     expect(costume).toContain('2 by 2 grid of exactly 4 equal close-up panels');
+  });
+});
+
+describe('sound, music and voice templates (inner#1825)', () => {
+  /** A generate node's settings as the design's table gives them; `params` lists only the ones it fixes. */
+  type Settings = { type: string; mode: string; model: string; params?: Record<string, unknown> };
+  const LYRIA = 'lyria-3-pro-music';
+  /** Each template's anchor, as the design's section 9 gives it. */
+  const ANCHORS: Record<string, Settings> = {
+    'ambience-sfx-bed': { type: 'audio', mode: 'sfx', model: 'sfx-1.6-text-to-audio', params: { loop: true, duration: 30 } },
+    'voice-line': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd' },
+    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.1-flash-text-to-speech' },
+    'underscore-bgm': { type: 'audio', mode: 't2m', model: LYRIA },
+    'voice-from-descriptor': { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design' },
+    'song-cover': { type: 'audio', mode: 'a2m', model: 'minimax-music-cover' },
+    'voice-clone-line': { type: 'audio', mode: 'voice_clone', model: 'minimax-voice-clone' },
+    'score-for-my-video': { type: 'audio', mode: 'a2m', model: 'sonilo-video-to-music' },
+    'music-mood-from-image': { type: 'audio', mode: 't2m', model: LYRIA },
+    'clip-ambience-foley': { type: 'video', mode: 't2v', model: 'kling-v3.0-4k-text-to-video', params: { generate_audio: false } },
+    'section-mapped-score': { type: 'audio', mode: 't2m', model: LYRIA },
+  };
+  /** Each template's inputs, as the design's section 9 gives them. */
+  const INPUTS: Record<string, Array<{ key: string; type: string; into: string }>> = {
+    'song-cover': [{ key: 'song', type: 'audio', into: 'audio' }],
+    'voice-clone-line': [{ key: 'sample', type: 'audio', into: 'audio' }],
+    'score-for-my-video': [{ key: 'video', type: 'video', into: 'video' }],
+    'music-mood-from-image': [{ key: 'image', type: 'image', into: 'image' }],
+  };
+  /** The templates whose guide text node lists steps: trim to length, and trim then join the sections. */
+  const WITH_STEPS = ['underscore-bgm', 'section-mapped-score'];
+
+  /**
+   * A sound template by id, failing the test when it is not registered.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const sound = (id: string): GenerationTemplate => {
+    const template = byId(id);
+    if (!template) throw new Error(`template ${id} is not registered`);
+    return template;
+  };
+
+  /**
+   * A node's settings in the shape of the table.
+   * @param node - The generate node.
+   * @returns Its type, mode and model.
+   */
+  const settingsOf = (node: TemplateGenerateNode): Settings => ({ type: node.type, mode: node.mode, model: node.model });
+
+  it('registers all eleven under the sound goal, which the panels list last', () => {
+    for (const id of SOUND) expect(byId(id)?.goal, id).toBe('sound');
+    expect(TEMPLATE_GOALS[TEMPLATE_GOALS.length - 1]).toBe('sound');
+  });
+
+  it('anchors each on the node type, mode, model and params the design gives', () => {
+    for (const id of SOUND) {
+      const anchor = anchorOf(sound(id));
+      const { params, ...settings } = ANCHORS[id] as Settings;
+      expect(anchor && settingsOf(anchor), id).toEqual(settings);
+      if (params) expect(anchor?.params, id).toMatchObject(params);
+    }
+  });
+
+  it('names two distinct speakers on the dialogue and writes each line after a speaker\'s name, in every language', () => {
+    const template = sound('two-voice-dialogue');
+    const anchor = anchorOf(template);
+    const speakers = anchor?.params.speakers as Array<{ speaker?: unknown }> | undefined;
+    expect(speakers).toHaveLength(2);
+    const names = (speakers ?? []).map((one) => one.speaker);
+    for (const name of names) expect(typeof name === 'string' && name.trim().length > 0, String(name)).toBe(true);
+    expect(new Set(names).size).toBe(2);
+    for (const locale of LOCALES) {
+      const prompt = raw(locale, textKey(template, 'prompt')) ?? '';
+      for (const name of names) expect(prompt, `${locale} ${String(name)}`).toMatch(new RegExp(`${String(name)}\\s*[:：]`));
+    }
+  });
+
+  it('gives the voice-design anchor an English voice description to start from', () => {
+    const description = anchorOf(sound('voice-from-descriptor'))?.params.voice_description;
+    expect(typeof description === 'string' && description.trim().length > 0).toBe(true);
+    expect(String(description)).toMatch(/^[\x20-\x7E]+$/);
+  });
+
+  it('feeds each user input straight into the slot the design gives, and the others take none', () => {
+    for (const id of SOUND) {
+      const template = sound(id);
+      expect(
+        template.inputs.map((input) => ({ key: input.key, type: input.type, into: input.into })),
+        id,
+      ).toEqual(INPUTS[id] ?? []);
+    }
+  });
+
+  it('wires the foley clip\'s video into the video slot of one audio node downstream of it', () => {
+    const template = sound('clip-ambience-foley');
+    const others = generateNodes(template).filter((node) => node.key !== template.anchor);
+    expect(others.map(settingsOf)).toEqual([{ type: 'audio', mode: 'sfx', model: 'hunyuan-video-foley' }]);
+    expect(template.edges).toEqual([{ from: template.anchor, to: others[0]?.key, into: 'video' }]);
+  });
+
+  it('gives the section-mapped score three more sections as generate nodes of the same model, wired to nothing', () => {
+    const template = sound('section-mapped-score');
+    const others = template.nodes.filter((node) => node.key !== template.anchor);
+    expect(others).toHaveLength(3);
+    for (const node of others) {
+      expect(node.role, node.key).toBe('generate');
+      if (node.role === 'generate') expect(settingsOf(node), node.key).toEqual({ type: 'audio', mode: 't2m', model: LYRIA });
+    }
+    expect(template.edges).toEqual([]);
+    expect(template.inputs).toEqual([]);
+  });
+
+  it('lists follow-up steps only on the two templates that trim and join by hand', () => {
+    for (const id of SOUND) {
+      const steps = sound(id).steps;
+      if (WITH_STEPS.includes(id)) expect(steps.length, id).toBeGreaterThan(0);
+      else expect(steps, id).toEqual([]);
+    }
+  });
+
+  it('has every string of each sound template in all five languages', () => {
+    for (const id of SOUND) expectEveryString(sound(id));
+  });
+});
+
+describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
+  /** Every input with `into`, with its template, across the registry. */
+  const slotted = (): Array<{ template: GenerationTemplate; input: GenerationTemplate['inputs'][number] }> =>
+    GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.into !== undefined).map((input) => ({ template, input })));
+
+  it('has inputs that go into a slot, so the checks below run on something', () => {
+    expect(slotted().length).toBeGreaterThan(0);
+  });
+
+  it('feeds such an input into exactly one node, into a slot that node\'s model declares in its mode for the input\'s type, filled from the canvas', () => {
+    expect(slotted().length).toBeGreaterThan(0);
+    for (const { template, input } of slotted()) {
+      const where = `${template.id} ${input.key} into ${String(input.into)}`;
+      const fed = feedsOf(template, input);
+      expect(fed, where).toHaveLength(1);
+      const node = generateNodes(template).find((one) => one.key === fed[0]);
+      expect(node, where).toBeDefined();
+      if (!node) continue;
+      const model = MODELS.get(node.model);
+      expect(model, `${where}: ${node.model} in the catalog`).toBeDefined();
+      if (!model) continue;
+      expect([model.mode].flat(), `${where}: ${node.model} runs in ${node.mode}`).toContain(node.mode);
+      const slot = model.params[input.into as string];
+      expect(slot, `${where}: a param of ${node.model}`).toBeDefined();
+      expect(slot?.accepts, where).toBe(input.type);
+      expect(slot?.fill, where).toBe('canvas');
+      if (slot?.modes !== undefined) expect(slot.modes, where).toContain(node.mode);
+    }
+  });
+
+  it('never @s such an input in the prompt of the node it goes into, in any language', () => {
+    expect(slotted().length).toBeGreaterThan(0);
+    for (const { template, input } of slotted()) {
+      for (const node of generateNodes(template).filter((one) => feedsOf(template, input).includes(one.key))) {
+        for (const locale of LOCALES) {
+          const name = raw(locale, textKey(template, `input.${input.key}.name`));
+          const labels = wordsOf(locale, template, node).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
+          expect(labels, `${template.id} ${locale} ${node.key} ${input.key}`).not.toContain(name);
+        }
+      }
+    }
   });
 });

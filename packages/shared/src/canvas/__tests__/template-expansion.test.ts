@@ -1244,3 +1244,186 @@ describe('matchTemplateInstance, an input fed only into nodes not placed yet tak
     });
   });
 });
+
+// ── nodes downstream of the anchor, standalone nodes and slotted inputs (inner#1825) ──
+
+const SOUND_ID = 'fixture-sound';
+
+/**
+ * The fixture of the design's 4.1 and 4.2: a video anchor, an audio node
+ * downstream of it taking the video into its video slot, a standalone node
+ * wired to nothing, and an input going straight into the anchor's first-frame
+ * slot rather than its pool.
+ */
+const SOUND_FIXTURE: GenerationTemplate = {
+  id: SOUND_ID,
+  anchor: 'clip',
+  nodes: [
+    { key: 'clip', role: 'generate', type: 'video', mode: 't2v', model: 'fixture-video', params: {} },
+    { key: 'foley', role: 'generate', type: 'audio', mode: 'sfx', model: 'fixture-foley', params: {} },
+    { key: 'outro', role: 'generate', type: 'video', mode: 't2v', model: 'fixture-video', params: {} },
+  ],
+  edges: [{ from: 'clip', to: 'foley', into: 'video' }],
+  inputs: [{ key: 'still', type: 'image', into: 'image' }],
+  steps: [],
+  agentNote: 'a fixture with sound',
+  goal: 'character',
+  triggers: { asks: ['a fixture'], offerWhen: [] },
+};
+
+/** The sound fixture's skeleton, written out by hand so the match tests do not lean on `templateSkeleton`. */
+const SOUND_SKELETON: TemplateSkeleton = {
+  id: SOUND_ID,
+  anchor: 'clip',
+  nodes: new Map([
+    ['clip', { role: 'generate', type: 'video' }],
+    ['foley', { role: 'generate', type: 'audio' }],
+    ['outro', { role: 'generate', type: 'video' }],
+  ]),
+  edges: [{ from: 'clip', to: 'foley', into: 'video' }],
+  inputs: [{ key: 'still', type: 'image', feeds: ['clip'], into: 'image' }],
+  steps: [],
+};
+
+const STILL_NOTE = 'Drop a still, then pick it into the first frame';
+
+/** The sound fixture's strings; the input's name equals its key so an appended input node names itself. */
+const SOUND_MESSAGES = {
+  canvas: {
+    template: {
+      [SOUND_ID]: {
+        name: 'Sound fixture',
+        prompt: 'Film the street. {✏️ the action}',
+        node: {
+          foley: { name: 'Foley', prompt: 'Sound every footstep.' },
+          outro: { name: 'Outro', prompt: 'Close on the empty street.' },
+        },
+        input: { still: { name: 'still', note: STILL_NOTE } },
+      },
+    },
+  },
+};
+
+/**
+ * A node of the sound fixture tagged as one of its keys, with the anchor its tag names.
+ * @param id - The node id.
+ * @param key - The key.
+ * @param type - Its type.
+ * @param anchor - The anchor id its tag names, if any.
+ * @returns The node.
+ */
+const soundTagged = (id: string, key: string, type: ProposalNodeType, anchor?: string): TemplateGraphNode =>
+  ({ id, type, tag: { template: SOUND_ID, key, ...(anchor === undefined ? {} : { anchor }) }, keeps: true });
+
+/**
+ * A node given for the sound fixture's still, tagged for the instance at one anchor.
+ * @param id - The node id.
+ * @param anchor - The anchor id its tag names.
+ * @returns The node.
+ */
+const stillFor = (id: string, anchor: string): TemplateGraphNode =>
+  ({ id, type: 'image', inputTag: { template: SOUND_ID, input: 'still', anchor }, keeps: true });
+
+describe('matchTemplateInstance, keys downstream of the anchor and keys wired to nothing (inner#1825)', () => {
+  it('matches a downstream key along the anchor’s outgoing edges', () => {
+    const graph = graphOf([plain('C', 'video'), soundTagged('F', 'foley', 'audio')], [['C', 'F']]);
+    expect(matchTemplateInstance(SOUND_SKELETON, graph, 'C').keys.get('foley')).toEqual({ kind: 'one', node: 'F' });
+  });
+
+  it('reports a downstream key missing when its tagged node hangs off another anchor or off nothing', () => {
+    const elsewhere = graphOf([plain('C', 'video'), plain('C2', 'video'), soundTagged('F', 'foley', 'audio')], [['C2', 'F']]);
+    expect(matchTemplateInstance(SOUND_SKELETON, elsewhere, 'C').keys.get('foley')).toEqual({ kind: 'missing' });
+    const loose = graphOf([plain('C', 'video'), soundTagged('F', 'foley', 'audio')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, loose, 'C').keys.get('foley')).toEqual({ kind: 'missing' });
+  });
+
+  it('matches a standalone key by the anchor its tag names, and reports it missing when the tag names another anchor', () => {
+    const own = graphOf([plain('C', 'video'), soundTagged('O', 'outro', 'video', 'C')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, own, 'C').keys.get('outro')).toEqual({ kind: 'one', node: 'O' });
+    const other = graphOf([plain('C', 'video'), plain('C2', 'video'), soundTagged('O', 'outro', 'video', 'C2')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, other, 'C').keys.get('outro')).toEqual({ kind: 'missing' });
+  });
+});
+
+describe('matchTemplateInstance, inputs that go into a slot (inner#1825)', () => {
+  it('assigns a node tagged for the input and this instance’s anchor though no edge joins them, and passes one tagged for another anchor', () => {
+    const own = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C')], []), 'C');
+    expect(own.inputs.get('still')).toEqual(new Map([['clip', 'S']]));
+    expect(own.unassigned).toEqual([]);
+    const other = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C2')], []), 'C');
+    expect(other.inputs.get('still')).toBe(undefined);
+  });
+
+  it('assigns the node the fed node’s fills name under the input’s slot', () => {
+    const graph: TemplateGraph = {
+      ...graphOf([plain('C', 'video'), plain('S')], []),
+      fills: new Map([['C', new Map([['image', 'S']])]]),
+    };
+    const match = matchTemplateInstance(SOUND_SKELETON, graph, 'C');
+    expect(match.inputs.get('still')).toEqual(new Map([['clip', 'S']]));
+    expect(match.unassigned).toEqual([]);
+  });
+});
+
+describe('expandTemplate, downstream and standalone nodes and slotted inputs (inner#1825)', () => {
+  beforeEach(() => {
+    setLocaleMessages('en', SOUND_MESSAGES);
+    setLocale('en');
+  });
+
+  it('wires a new input into the slot it goes into and notes it on top of that node', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    const who = identityIn(result, 1, { 0: 'clip' });
+    expect(edgesBy(result, who)).toEqual([
+      { from: 'clip', to: 'foley', into: 'video' },
+      { from: 'still', to: 'clip', into: 'image' },
+    ]);
+    expect(result.rewritten.get(0)?.prompt?.[0]).toEqual(note(STILL_NOTE));
+  });
+
+  it('fills the slot from a given node that holds material, with no note, and notes a given empty one instead', () => {
+    const given: TemplateExpansionInput = {
+      anchorAt: 0,
+      base: 2,
+      inputs: new Map([['still', new Map([['clip', 1]])]]),
+      wired: [],
+      reuse: new Map(),
+      guide: false,
+    };
+    const held = expandTemplate(SOUND_FIXTURE, given).rewritten.get(0);
+    expect(held?.fills).toEqual({ image: [1] });
+    expect((held?.prompt ?? []).filter((segment) => segment.slot?.kind === 'note')).toEqual([]);
+    const empty = expandTemplate(SOUND_FIXTURE, { ...given, emptyNodes: new Set([1]) }).rewritten.get(0);
+    expect(empty?.fills).toBe(undefined);
+    expect(empty?.prompt?.[0]).toEqual(note(STILL_NOTE));
+  });
+
+  it('writes the anchor’s index into a standalone node’s templateNode', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    const outro = result.appended.find((node) => node.templateNode?.key === 'outro');
+    expect(outro?.templateNode).toEqual({ template: SOUND_ID, key: 'outro', anchor: 0 });
+  });
+
+  it('finds every node a fresh apply placed when the template is applied again, so none is placed twice', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    // As the canvas lands it: the anchor at 0 is C, each appended node N<index>; edges carry no into.
+    const idOf = (index: number): string => (index === 0 ? 'C' : `N${String(index)}`);
+    const nodes: TemplateGraphNode[] = [plain('C', 'video')];
+    for (const [at, node] of result.appended.entries()) {
+      const id = idOf(1 + at);
+      const placed = node.templateNode;
+      if (placed === undefined || placed.key === TEMPLATE_GUIDE_KEY) continue;
+      const anchor = placed.anchor === undefined ? {} : { anchor: idOf(placed.anchor) };
+      nodes.push(
+        (placed.input === true
+          ? { id, type: node.type, inputTag: { template: placed.template, input: placed.key, ...anchor }, keeps: true }
+          : { id, type: node.type, tag: { template: placed.template, key: placed.key, ...anchor }, keeps: true }),
+      );
+    }
+    const graph = graphOf(nodes, result.edges.map((edge): GraphEdge => [idOf(edge.fromIndex), idOf(edge.toIndex)]));
+    const again = matchTemplateInstance(templateSkeleton(SOUND_FIXTURE), graph, 'C');
+    expect([...again.keys.values()].map((found) => found.kind)).toEqual(['one', 'one']);
+    expect(again.inputs.get('still')?.get('clip')).toBeDefined();
+    expect(again.unassigned).toEqual([]);
+  });
+});
