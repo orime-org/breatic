@@ -127,6 +127,7 @@
       "attachment_limit_reached": "这个会话的附件已达上限 {limit} 个，请先删除一些再上传。"
     },
     "canvas": {
+      "prompt_not_taken": "这个模型在当前设置下不接受风格。去掉风格后再生成。",
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "history_entry_not_found": "找不到这条历史记录",
@@ -838,6 +839,7 @@
       "coverSongTip": "挑一个音频节点，翻唱这首",
       "selectCoverSongFromCanvas": "挑一首要翻唱的歌",
       "errorNoMusicSong": "先挑一首歌",
+      "errorNoMusicMelody": "先挑一段旋律",
       "moodImage": "参考图",
       "moodImageTip": "挑一张图，定下音乐的情绪",
       "removeMoodImage": "移除参考图",
@@ -849,7 +851,7 @@
       "musicLyricsLabel": "歌词",
       "lyricsMissing": "先写下歌词",
       "refuseExecuteNoStyle": "先写下风格",
-      "refuseExecuteNoReference": "挑一段整曲、旋律或人声",
+      "refuseExecuteNoReference": "先挑一段整曲或人声",
       "creditsPerThousandChars": "{credits} / 千字",
       "itemsAdd": "添加",
       "itemsRemove": "移除",
@@ -865,6 +867,7 @@
       "audioLanguageSearch": "搜索语言…",
       "audioOptionEmpty": "没有匹配项",
       "param": {
+        "compose_from": "生成依据",
         "language": "语言",
         "speakers": "说话人",
         "emotion": "情绪",
@@ -2391,6 +2394,7 @@
       "proposalBusy": "正在提交另一次生成。",
       "readOnlyCreate": "Viewer 不能添加、导入或生成模型。",
       "force": {
+        "low_poly_skips_parts": "智能低面数不拆分部件。",
         "parts_geometry_only": "拆分部件只生成几何。",
         "pbr_needs_texture": "PBR 需要贴图。",
         "fast_uses_v35": "Fast 贴图只有 v3.5。"

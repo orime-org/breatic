@@ -127,6 +127,7 @@
       "attachment_limit_reached": "この会話の添付ファイルは上限の {limit} 件に達しています。いくつか削除してからアップロードしてください。"
     },
     "canvas": {
+      "prompt_not_taken": "このモデルは現在の設定ではスタイルを受け付けません。スタイルを外してから生成してください。",
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "history_entry_not_found": "履歴が見つかりません",
@@ -838,6 +839,7 @@
       "coverSongTip": "音声ノードを選び、その曲をカバーします",
       "selectCoverSongFromCanvas": "カバーする曲を選ぶ",
       "errorNoMusicSong": "先に楽曲を選んでください",
+      "errorNoMusicMelody": "先にメロディを選んでください",
       "moodImage": "参考画像",
       "moodImageTip": "画像を選び、雰囲気を決めます",
       "removeMoodImage": "参考画像を外す",
@@ -849,7 +851,7 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
+      "refuseExecuteNoReference": "先に楽曲かボーカルを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
       "itemsRemove": "削除",
@@ -865,6 +867,7 @@
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
+        "compose_from": "生成のもと",
         "language": "言語",
         "speakers": "話者",
         "emotion": "感情",
@@ -2391,6 +2394,7 @@
       "proposalBusy": "別の生成を送信中です。",
       "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
       "force": {
+        "low_poly_skips_parts": "スマートローポリではパーツ分割できません。",
         "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
         "pbr_needs_texture": "PBR にはテクスチャが必要です。",
         "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"

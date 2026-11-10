@@ -54,12 +54,12 @@ describe('what an audio run collects', () => {
       vocal: REFERENCE,
     });
 
-    expect(audioSlotsForModel(song, 'a2m')).toEqual([
+    expect(audioSlotsForModel(song, 'a2m', {})).toEqual([
       'musicSong',
       'musicMelody',
       'musicVocal',
     ]);
-    expect(audioSlotsForModel(song, 't2m')).toEqual([]);
+    expect(audioSlotsForModel(song, 't2m', {})).toEqual([]);
   });
 
   it('gives one param to whichever slot the mode row names for it', () => {
@@ -69,8 +69,8 @@ describe('what an audio run collects', () => {
       audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
     });
 
-    expect(audioSlotsForModel(takesAudio, 'voice_clone')).toEqual(['refAudio']);
-    expect(audioSlotsForModel(takesAudio, 'a2m')).toEqual(['coverSong']);
+    expect(audioSlotsForModel(takesAudio, 'voice_clone', {})).toEqual(['refAudio']);
+    expect(audioSlotsForModel(takesAudio, 'a2m', {})).toEqual(['coverSong']);
   });
 
   it('draws the video slot for sound effects and the image slot for text to music', () => {
@@ -81,16 +81,16 @@ describe('what an audio run collects', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image', optional: true },
     });
 
-    expect(audioSlotsForModel(video, 'sfx')).toEqual(['soundVideo']);
-    expect(audioSlotsForModel(video, 'a2m')).toEqual(['soundVideo']);
-    expect(audioSlotsForModel(image, 't2m')).toEqual(['moodImage']);
+    expect(audioSlotsForModel(video, 'sfx', {})).toEqual(['soundVideo']);
+    expect(audioSlotsForModel(video, 'a2m', {})).toEqual(['soundVideo']);
+    expect(audioSlotsForModel(image, 't2m', {})).toEqual(['moodImage']);
   });
 
   it('offers only the ones the model has', () => {
     const oneOnly = model({ song: REFERENCE });
 
-    expect(audioSlotsForModel(oneOnly, 'a2m')).toEqual(['musicSong']);
-    expect(audioSlotsForModel(undefined, 'a2m')).toEqual([]);
+    expect(audioSlotsForModel(oneOnly, 'a2m', {})).toEqual(['musicSong']);
+    expect(audioSlotsForModel(undefined, 'a2m', {})).toEqual([]);
   });
 
   it('opens a lyrics box where the model keeps one', () => {
@@ -117,18 +117,18 @@ describe('what an audio run still needs', () => {
       vocal: { ...REFERENCE, optional: true },
     });
 
-    expect(audioSlotsForModel(music, 'a2m')).toEqual(['musicSong', 'musicVocal']);
-    expect(audioMissing(music, 'a2m', {})).toEqual([['song']]);
+    expect(audioSlotsForModel(music, 'a2m', {})).toEqual(['musicSong', 'musicVocal']);
+    expect(audioMissing(music, 'a2m', {}, {})).toEqual([['song']]);
   });
 
   it('counts a filled place as filled', () => {
     const music = model({ song: REFERENCE });
 
-    expect(audioMissing(music, 'a2m', { musicSong: 'https://a.mp3' })).toEqual([]);
+    expect(audioMissing(music, 'a2m', { musicSong: 'https://a.mp3' }, {})).toEqual([]);
   });
 
   it('asks nothing of a place this mode does not collect', () => {
-    expect(audioMissing(model({ song: REFERENCE }), 't2m', {})).toEqual([]);
+    expect(audioMissing(model({ song: REFERENCE }), 't2m', {}, {})).toEqual([]);
   });
 
   it('asks for any one of a group the model declares for the mode', () => {
@@ -140,11 +140,44 @@ describe('what an audio run still needs', () => {
       source_groups: [{ mode: 'a2m', any_of: ['song', 'vocal'] }],
     };
 
-    expect(audioMissing(music, 'a2m', {})).toEqual([['song', 'vocal']]);
-    expect(audioMissing(music, 'a2m', { musicVocal: 'https://v.mp3' })).toEqual([]);
+    expect(audioMissing(music, 'a2m', {}, {})).toEqual([['song', 'vocal']]);
+    expect(audioMissing(music, 'a2m', { musicVocal: 'https://v.mp3' }, {})).toEqual([]);
   });
 
   it('needs nothing when no model resolves', () => {
-    expect(audioMissing(undefined, 'a2m', {})).toEqual([]);
+    expect(audioMissing(undefined, 'a2m', {}, {})).toEqual([]);
+  });
+});
+
+describe('a song model that composes from style and references or from a melody (breatic#1393)', () => {
+  /**
+   * A place drawn only on one side of the setting.
+   * @param side - The setting it is drawn under.
+   * @returns The place.
+   */
+  const on = (side: string): ParamDescriptor => ({ ...REFERENCE, optional: true, when: { equals: { compose_from: side } } });
+  const composer: ModelEntry = {
+    ...model({
+      compose_from: { description: '', default: 'references', values: ['references', 'melody'], fill: 'panel', modes: ['a2m'] },
+      song: on('references'),
+      vocal: on('references'),
+      melody: on('melody'),
+    }),
+    source_groups: [{ mode: 'a2m', any_of: ['song', 'vocal', 'melody'] }],
+  };
+
+  it('draws the places of the side it composes from', () => {
+    expect(audioSlotsForModel(composer, 'a2m', {})).toEqual(['musicSong', 'musicVocal']);
+    expect(audioSlotsForModel(composer, 'a2m', { compose_from: 'melody' })).toEqual(['musicMelody']);
+  });
+
+  it('counts no pick left in a place of the other side, and names only the places drawn', () => {
+    expect(audioMissing(composer, 'a2m', { musicSong: 'https://s.mp3' }, { compose_from: 'melody' })).toEqual([['melody']]);
+    expect(audioMissing(composer, 'a2m', { musicMelody: 'https://m.mp3' }, {})).toEqual([['song', 'vocal']]);
+  });
+
+  it('needs nothing more once a drawn place holds a pick', () => {
+    expect(audioMissing(composer, 'a2m', { musicMelody: 'https://m.mp3' }, { compose_from: 'melody' })).toEqual([]);
+    expect(audioMissing(composer, 'a2m', { musicVocal: 'https://v.mp3' }, {})).toEqual([]);
   });
 });

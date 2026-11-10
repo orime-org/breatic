@@ -127,6 +127,7 @@
       "attachment_limit_reached": "이 대화의 첨부 파일이 최대 {limit}개에 도달했습니다. 일부를 삭제한 후 업로드하세요."
     },
     "canvas": {
+      "prompt_not_taken": "이 모델은 현재 설정에서 스타일을 받지 않습니다. 스타일을 지운 뒤 생성하세요.",
       "model_requires_source": "이 모델에는 소스 입력이 필요합니다. 이미지, 동영상 또는 오디오 노드를 연결하세요",
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
       "history_entry_not_found": "기록을 찾을 수 없습니다",
@@ -838,6 +839,7 @@
       "coverSongTip": "오디오 노드를 골라 그 곡을 커버합니다",
       "selectCoverSongFromCanvas": "커버할 곡 고르기",
       "errorNoMusicSong": "곡을 먼저 고르세요",
+      "errorNoMusicMelody": "멜로디를 먼저 고르세요",
       "moodImage": "참고 이미지",
       "moodImageTip": "이미지를 골라 분위기를 정합니다",
       "removeMoodImage": "참고 이미지 제거",
@@ -849,7 +851,7 @@
       "musicLyricsLabel": "가사",
       "lyricsMissing": "먼저 가사를 적으세요",
       "refuseExecuteNoStyle": "먼저 스타일을 적으세요",
-      "refuseExecuteNoReference": "전체 곡, 멜로디, 보컬 중 하나를 고르세요",
+      "refuseExecuteNoReference": "전체 곡이나 보컬을 먼저 고르세요",
       "creditsPerThousandChars": "{credits} / 1000자",
       "itemsAdd": "추가",
       "itemsRemove": "삭제",
@@ -865,6 +867,7 @@
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
       "param": {
+        "compose_from": "생성 기준",
         "language": "언어",
         "speakers": "화자",
         "emotion": "감정",
@@ -2391,6 +2394,7 @@
       "proposalBusy": "다른 생성을 제출하는 중입니다.",
       "readOnlyCreate": "Viewer는 모델을 추가, 가져오기, 생성할 수 없습니다.",
       "force": {
+        "low_poly_skips_parts": "스마트 로우폴리에서는 파트를 분리하지 않습니다.",
         "parts_geometry_only": "파트 분리는 지오메트리만 생성합니다.",
         "pbr_needs_texture": "PBR에는 텍스처가 필요합니다.",
         "fast_uses_v35": "Fast 텍스처는 v3.5만 지원합니다."

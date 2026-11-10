@@ -54,11 +54,13 @@ interface RawModel {
 const ROOT = resolve(import.meta.dirname, "..");
 
 /**
- * Params the application layer turns into the prompt itself besides those
- * the catalog marks `into_prompt`: no upstream field carries them. Copied
- * from the families in `packages/worker/src/providers/families/`.
+ * Params only the application layer reads besides those the catalog marks
+ * `into_prompt`: it turns them into the prompt itself, or uses them to choose
+ * what is sent (Mureka's `compose_from`); no upstream field carries them.
+ * Copied from the families in `packages/worker/src/providers/families/`.
  */
 const APP_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  "mureka-v9.5-generate-song": ["compose_from"],
   "nano-banana-2": ["enable_camera", "camera", "lens", "focal_length", "aperture"],
   "nano-banana-2-relight": [
     "light_azimuth",

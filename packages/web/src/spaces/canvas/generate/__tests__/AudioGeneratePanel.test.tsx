@@ -94,6 +94,7 @@ const BASE = {
   model: 'elevenlabs-v3',
   currentModel: ELEVEN,
   modelTakesPrompt: true,
+  promptShown: true,
   mode: 'tts',
   modeOptions: AUDIO_MODE_OPTIONS,
   voiceList: initialVoiceListState,

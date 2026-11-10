@@ -127,6 +127,7 @@
       "attachment_limit_reached": "This conversation has reached its limit of {limit} attachments. Delete some before uploading more."
     },
     "canvas": {
+      "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
       "history_entry_not_found": "History entry not found",
@@ -851,6 +852,7 @@
       "coverSongTip": "Pick an audio node to cover",
       "selectCoverSongFromCanvas": "Pick a song to cover",
       "errorNoMusicSong": "Pick a song first",
+      "errorNoMusicMelody": "Pick a melody first",
       "moodImage": "Reference image",
       "moodImageTip": "Pick an image to set the mood",
       "removeMoodImage": "Remove reference image",
@@ -862,7 +864,7 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, melody or vocals",
+      "refuseExecuteNoReference": "Pick a song or vocals first",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
       "itemsRemove": "Remove",
@@ -878,6 +880,7 @@
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
+        "compose_from": "Compose from",
         "language": "Language",
         "speakers": "Speakers",
         "emotion": "Emotion",
@@ -2391,6 +2394,7 @@
       "proposalBusy": "Another generation is being submitted.",
       "readOnlyCreate": "Viewers can’t add, import or generate models.",
       "force": {
+        "low_poly_skips_parts": "Smart low-poly doesn't separate parts.",
         "parts_geometry_only": "Separate parts generates geometry only.",
         "pbr_needs_texture": "PBR needs texture.",
         "fast_uses_v35": "Fast texture uses v3.5 only."

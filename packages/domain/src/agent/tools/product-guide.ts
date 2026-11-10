@@ -1051,7 +1051,11 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. A melody does not mix with the other references: for a model that ` +
+      `takes one, the sound panel's settings hold ${quoted(t("canvas.generatePanel.param.compose_from"))}, where Style & ` +
+      `references shows ${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicVocal"))} and ` +
+      `the ${quoted(t("canvas.generatePanel.musicStyleLabel"))} box, and Melody shows only ` +
+      `${quoted(t("canvas.generatePanel.musicMelody"))} and the lyrics. The picture panel's only one is its style area, which ` +
       "holds up to three pictures and works its own way (see the picture panel in the Inside the generation panel section), and the video panel shows " +
       "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
@@ -1497,7 +1501,7 @@ export function renderProductGuide(): string {
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share, in two columns with each setting's name at the left of its row: switches, choices that show the value set and list every value when clicked, and number boxes. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
-      `${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
+      `${quoted(t("spaces.threeD.force.low_poly_skips_parts"))} ${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
       "A value a setting does not accept shows the rule it breaks under that setting. " +
       "The middle part holds the mode's own content and, below it, its own settings laid out the same way. " +
       `For Text to 3D that is the ${quoted(t("spaces.threeD.generateDialog.prompt"))} box with a character count. ` +

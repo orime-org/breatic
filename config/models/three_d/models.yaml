@@ -108,7 +108,8 @@ models:
         label: "Face limit"
         default: null
         type: "integer"
-        min: 1
+        # WaveSpeed's floor; fal and SandBase take 1000 up.
+        min: 48
         max: 1500000
         fill: "panel"
         bounds:
@@ -154,6 +155,13 @@ models:
         max_length: 255
         fill: "panel"
     forces: &tripo_forces
+      # First: forces apply in order and a value they switch off is not restored, so parts go off
+      # before parts_geometry_only can switch off the texture the user chose. Tripo: generate_parts is
+      # "Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced".
+      - id: "low_poly_skips_parts"
+        when: { flag_on: "smart_low_poly" }
+        set: { generate_parts: false }
+        lock: true
       - id: "parts_geometry_only"
         when: { flag_on: "generate_parts" }
         set: { texture: false, pbr: false }
