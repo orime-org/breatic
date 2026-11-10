@@ -278,13 +278,20 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const column = React.useRef<HTMLElement>(null);
   const [spaceWidth, setSpaceWidth] = React.useState(0);
+  // Hidden under a full-screen table the row is the window's width; the body's
+  // width stays, so the render that shows the outline again lays it out for
+  // the body it comes back to.
+  const hiddenNow = React.useRef(hidden);
+  React.useLayoutEffect(() => {
+    hiddenNow.current = hidden;
+  }, [hidden]);
   React.useEffect(() => {
     const space = column.current?.parentElement;
     if (space === null || space === undefined) return undefined;
     setSpaceWidth(space.getBoundingClientRect().width);
     const sizes = new ResizeObserver((entries) => {
       const mine = entries.find((e) => e.target === space);
-      if (mine !== undefined) setSpaceWidth(mine.contentRect.width);
+      if (mine !== undefined && !hiddenNow.current) setSpaceWidth(mine.contentRect.width);
     });
     sizes.observe(space);
     return () => sizes.disconnect();
@@ -296,9 +303,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   // while the outline floats and is shown: tiling, or the setting turned off
   // from another document, drops it.
   const [tucked, setTucked] = React.useState(false);
-  // Hidden under a full-screen table the row is the window's width; the
-  // tuck the user left belongs to the body's width and waits for it.
-  if (tucked && !hidden && !(floating && visible)) setTucked(false);
+  if (tucked && !(floating && visible)) setTucked(false);
   const open = visible && !tucked;
   const onToggle = React.useCallback(() => {
     if (tucked) setTucked(false);

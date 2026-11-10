@@ -96,14 +96,17 @@ interface DocumentCommentRailProps {
   /** The body's scroller, which the panel shares; null before it mounts. */
   scroller: HTMLElement | null;
   /**
-   * Hidden while a table is open full screen (breatic#1427), kept mounted so
-   * its filter and the card it last brought into view come back as they were.
+   * The filter the panel last showed while it stayed open, so a panel taken
+   * away by a full-screen table (breatic#1427) comes back on it; null for a
+   * panel the user opens.
    */
-  hidden?: boolean;
+  lastFilter: Filter | null;
+  /** Keeps the filter the panel shows, for {@link lastFilter}. */
+  onFilter: (filter: Filter) => void;
 }
 
 /** Which threads the panel is showing. */
-type Filter = 'open' | 'all';
+export type Filter = 'open' | 'all';
 
 /** The space kept between two cards that would otherwise run together. */
 const GAP_BETWEEN_CARDS_PX = 10;
@@ -140,6 +143,8 @@ type CardHandling = Omit<
  * @param root0.myRole - This user's role.
  * @param root0.onClose - Closes the panel.
  * @param root0.scroller - The body's scroller, moved to show a new draft card.
+ * @param root0.lastFilter - The filter the panel last showed while it stayed open.
+ * @param root0.onFilter - Keeps the filter the panel shows.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
@@ -148,7 +153,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   myRole,
   onClose,
   scroller,
-  hidden = false,
+  lastFilter,
+  onFilter,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -170,7 +176,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     editor: ToolEditor;
     filter: Filter;
     prepared: ProposalLocation | null;
-  }>({ editor, filter: 'open', prepared: null });
+  }>(() => ({ editor, filter: lastFilter ?? 'open', prepared: null }));
   // Prepare the complete collection before committing the membership effect.
   // Keeping the processed identity lets a later manual filter stay in force.
   if (filterState.editor !== editor) {
@@ -179,6 +185,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilterState({ editor, filter: 'all', prepared: explicit });
   }
   const filter = filterState.filter;
+  React.useEffect(() => {
+    onFilter(filter);
+  }, [filter, onFilter]);
   /**
    * Applies a manual filter without replaying the current viewing command.
    * @param value - The filter the user chose.
@@ -492,9 +501,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Runs again on `heights` so a card whose box arrives after it came to be
   // read is shown once it is there.
   React.useLayoutEffect(() => {
-    // Hidden, the panel measures nothing and scrolls nothing: the body under
-    // a full-screen table belongs to the table.
-    if (hidden) return;
     if (reveal === null || (typeof reveal !== 'string' && !isCurrentProposalLocation(reveal, editor))) {
       revealed.current = null;
       return;
@@ -536,7 +542,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
     revealed.current = { key: reveal, height: readHeight, top: scroller.scrollTop };
-  }, [reveal, reading, readTop, heights, lifted, scroller, editor, hidden]);
+  }, [reveal, reading, readTop, heights, lifted, scroller, editor]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
@@ -686,7 +692,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     <aside
       ref={aside}
       data-testid='doc-comment-rail'
-      hidden={hidden}
       className='flex flex-none flex-col border-l border-border'
       style={PANEL_WIDTH}
     >

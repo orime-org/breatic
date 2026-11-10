@@ -304,20 +304,32 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 
-  it('keeps an open comment panel mounted and hidden, so it comes back as it was', async () => {
+  it('takes an open comment panel away and brings it back measured afresh, with the filter the user chose', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));
     await userEvent.click(screen.getByTestId('doc-doc-menu-trigger'));
     await userEvent.click(await screen.findByTestId('doc-doc-menu-comments'));
-    const rail = await screen.findByTestId('doc-comment-rail');
+    await userEvent.click(await screen.findByTestId('doc-comment-rail-filter-all'));
 
     enter(editor);
 
-    await waitFor(() => expect(rail).not.toBeVisible());
-    expect(rail.isConnected).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId('doc-comment-rail')).toBeNull());
     fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
-    await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBe(rail));
-    expect(rail).toBeVisible();
+    expect(await screen.findByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('opens a closed and reopened comment panel on unresolved comments', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    await userEvent.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await userEvent.click(await screen.findByTestId('doc-doc-menu-comments'));
+    await userEvent.click(await screen.findByTestId('doc-comment-rail-filter-all'));
+
+    await userEvent.click(screen.getByTestId('doc-comment-rail-close'));
+    await userEvent.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await userEvent.click(await screen.findByTestId('doc-doc-menu-comments'));
+
+    expect(await screen.findByTestId('doc-comment-rail-filter-open')).toHaveAttribute('aria-pressed', 'true');
   });
 
   /**
