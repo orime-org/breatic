@@ -342,7 +342,7 @@ describe("userMessageForModel", () => {
   });
 
   it("names a language the Project Instructions ask for as an exception, so the reminder does not override them (#1400)", () => {
-    const reminder = userMessageForModel("clock", { chips: [], message: "hi" }).split("\n\n").at(-1) ?? "";
+    const reminder = String(userMessageForModel("clock", { chips: [], message: "hi" })).split("\n\n").at(-1) ?? "";
     expect(reminder).toMatch(/^\(Reply and write every text/);
     expect(reminder).toMatch(/unless[^.]*Project Instructions[^.]*ask for a specific language/);
   });
