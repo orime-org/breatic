@@ -203,7 +203,7 @@ export function parsePhysicalVideoPackets(metadata: unknown, packetBytes: Buffer
 }
 
 /** Tagged ffprobe `color_space` values and the matrix the plan records for them. */
-const TAGGED_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", smpte170m: "bt601", bt470bg: "bt601", bt2020nc: "bt2020nc" };
+export const TAGGED_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", smpte170m: "bt601", bt470bg: "bt601", bt2020nc: "bt2020nc" };
 
 /**
  * Resolve the colour matrix once for the plan (§4.3): a tag is kept; an untagged or `unknown` stream is BT.709 when its

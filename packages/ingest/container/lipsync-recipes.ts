@@ -30,7 +30,8 @@ import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
 import { runPlanCommand, startPlanCommand, type PlanPipe } from "@ingest/container/plan-command.js";
 import { readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
-  BT709_TAGS, RecipeFailure, detect, local, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson, type PlanLimits,
+  BT709_TAGS, RecipeFailure, detect, local, modelResultDecode, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson,
+  type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
 
 /** The lip-sync recipes. */
@@ -606,15 +607,18 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
 
 /**
  * A video's frames in presentation order on its own stream clock: each frame's presentation time and, for the last, its
- * end (its packet duration, or the step before it when none is recorded); the clock's tick as a fraction of a second.
+ * end (its packet duration, or the step before it when none is recorded); the clock's tick as a fraction of a second; and
+ * the scale options that decode it as a model result ({@link modelResultDecode}).
  * @param file - The video.
  * @param run - The lifetime and IO bounds.
- * @returns The tick and the frames' times in ticks.
+ * @returns The tick, the frames' times in ticks and the decode options.
+ * @throws {RangeError} When the result's tagged matrix has no decode value.
  * @throws {Error} When ffprobe fails or the stream has no time base.
  */
-async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigint]; starts: bigint[]; end: bigint; lead: bigint }> {
+async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigint]; starts: bigint[]; end: bigint; lead: bigint; decode: string }> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries",
-    "stream=time_base:packet=pts,dts,duration", "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[]; packets?: { pts?: number; dts?: number; duration?: number }[] };
+    "stream=time_base,color_space,color_range:packet=pts,dts,duration", "-of", "json", file], run)).toString("utf8")) as
+    { streams?: ({ time_base?: string } & Record<string, unknown>)[]; packets?: { pts?: number; dts?: number; duration?: number }[] };
   const [numerator, denominator] = (answer.streams?.[0]?.time_base ?? "").split("/").map(Number);
   if (!Number.isSafeInteger(numerator) || !Number.isSafeInteger(denominator) || numerator! <= 0 || denominator! <= 0) throw new Error("The lip-sync result has no time base");
   const packets = (answer.packets ?? []).filter((packet) => Number.isSafeInteger(packet.pts)).sort((a, b) => a.pts! - b.pts!);
@@ -624,7 +628,7 @@ async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigi
   // How far a packet is presented after it is decoded: a demuxer that searches a seek time on the decode clock (the mov
   // demuxer of an MP4 without an edit list) lands on a keyframe up to this much later in presentation time.
   const lead = packets.reduce((most, packet) => Number.isSafeInteger(packet.dts) && packet.pts! - packet.dts! > most ? packet.pts! - packet.dts! : most, 0);
-  return { tick: [BigInt(numerator!), BigInt(denominator!)], starts, end: (starts.at(-1) ?? 0n) + duration, lead: BigInt(lead) };
+  return { tick: [BigInt(numerator!), BigInt(denominator!)], starts, end: (starts.at(-1) ?? 0n) + duration, lead: BigInt(lead), decode: modelResultDecode(answer.streams?.[0] ?? {}) };
 }
 
 /**
@@ -691,7 +695,7 @@ function copyPicture(frame: Picture): Picture {
  * @param run - The lifetime and IO bounds of one command.
  * @returns Nothing once written.
  * @throws {RangeError} When the result frame step is not a whole number of the chunk's ticks, the raw source window is over the
- * plan's disk budget, or the source or a person's result ends early.
+ * plan's disk budget, the source or a person's result ends early, or a person's result has a tagged matrix with no decode value.
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: LipsyncRecipeRequest, run: Run): Promise<void> {
@@ -733,7 +737,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
         const seek = (Math.floor(Math.max(0, at - seconds(times.lead)) * 1e6) / 1e6).toFixed(6);
         decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-copyts", "-noaccurate_seek", "-seek_timestamp", "1",
           "-ss", seek, "-i", result, "-map", "0:v:0", "-frames:v", String(to - from + 1),
-          "-vf", `select=gte(t\\,${at}),scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
+          "-vf", `select=gte(t\\,${at}),scale=${person.cropSize}:${person.cropSize}:${times.decode}:out_color_matrix=bt709:out_range=tv`], false, run);
       }
       persons.push({ faces, track, shows, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false),
         position: (used[0] ?? 0) - 1, current: null, cropSize: person.cropSize });

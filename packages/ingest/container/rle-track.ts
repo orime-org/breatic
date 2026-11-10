@@ -42,14 +42,16 @@ export function rleForeground(counts: string | null, size: { width: number; heig
 }
 
 /**
- * A video's frame presentation times in seconds, in presentation order, as ffprobe reads its packets.
+ * A video's frame presentation times in seconds, in presentation order, as ffprobe reads its packets, and its stream's
+ * colour tags.
  * @param file - The video.
  * @param run - The lifetime and IO bounds.
- * @returns The sorted times.
+ * @returns The sorted times and the stream's `color_space` and `color_range`.
  * @throws {Error} When ffprobe fails.
  */
-export async function presentationTimes(file: string, run: PlanCommandOptions): Promise<number[]> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "packet=pts_time",
-    "-of", "json", file], run)).toString("utf8")) as { packets?: { pts_time?: string }[] };
-  return (answer.packets ?? []).map((packet) => Number(packet.pts_time)).filter(Number.isFinite).sort((a, b) => a - b);
+export async function presentationTimes(file: string, run: PlanCommandOptions): Promise<{ times: number[]; stream: Record<string, unknown> }> {
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries",
+    "stream=color_space,color_range:packet=pts_time", "-of", "json", file], run)).toString("utf8")) as
+    { streams?: Record<string, unknown>[]; packets?: { pts_time?: string }[] };
+  return { times: (answer.packets ?? []).map((packet) => Number(packet.pts_time)).filter(Number.isFinite).sort((a, b) => a - b), stream: answer.streams?.[0] ?? {} };
 }

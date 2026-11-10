@@ -18,6 +18,7 @@ import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
+import { TAGGED_MATRICES } from "@ingest/container/physical-video-probe.js";
 import { probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -137,6 +138,36 @@ export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | 
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
   return `${source.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
+}
+
+/**
+ * The scale options that decode a model's video result (erase, expand, lip-sync), from the result's own tags: its
+ * `color_space` mapped as a source's is, and BT.601 when untagged, because the providers encode RGB with swscale's default
+ * and write no tags (measured on VACE expand and Bria eraser output, 720p included, so the source rule's BT.709 for an
+ * untagged stream of 720 lines or more does not hold here); its `color_range`, and limited range when untagged.
+ * @param stream - The result's ffprobe video stream, read for its `color_space` and `color_range`.
+ * @returns The `in_color_matrix` and `in_range` options.
+ * @throws {RangeError} When the tagged matrix has no decode value.
+ */
+export function modelResultDecode(stream: Record<string, unknown>): string {
+  const tag = typeof stream.color_space === "string" && stream.color_space !== "" && stream.color_space !== "unknown" ? stream.color_space : null;
+  const matrix = SCALE_MATRICES[tag === null ? "bt601" : TAGGED_MATRICES[tag] ?? tag];
+  if (matrix === undefined) throw new RangeError(`No decode matrix for ${String(tag)}`);
+  return `in_color_matrix=${matrix}:in_range=${stream.color_range === "pc" ? "pc" : "tv"}`;
+}
+
+/**
+ * Probe a model's video result for its colour tags and return the scale options that decode it ({@link modelResultDecode}).
+ * @param file - The result.
+ * @param run - The lifetime and IO bounds.
+ * @returns The `in_color_matrix` and `in_range` options.
+ * @throws {RangeError} When the tagged matrix has no decode value.
+ * @throws {Error} When ffprobe fails.
+ */
+export async function probeModelResultDecode(file: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<string> {
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_range",
+    "-of", "json", file], run)).toString("utf8")) as { streams?: Record<string, unknown>[] };
+  return modelResultDecode(answer.streams?.[0] ?? {});
 }
 
 /**
@@ -614,14 +645,14 @@ function ticksFrom(time: MiniToolPlanExact, origin: MiniToolPlanExact, clock: bi
  * Expand lays each background over the target from its
  * window's start by its own PTS (cropped to the product ROI and scaled to the target first when it is a whole model frame),
  * fades each later background in across its overlap with the one before by presentation time, and places the source at its
- * frozen rectangle on top. Model outputs are SDR BT.709 (§5.3). The audio is the stitch's.
+ * frozen rectangle on top. A background is SDR and decoded with its own colour tags ({@link modelResultDecode}). The audio is the stitch's.
  * @param recipe - The composite recipe.
  * @param files - The downloaded inputs by id.
  * @param output - The file to write.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RangeError} When a time is malformed or the plan matrix has no decode value.
- * @throws {Error} When an input is missing or FFmpeg fails.
+ * @throws {RangeError} When a time is malformed or the plan's or a background's matrix has no decode value.
+ * @throws {Error} When an input is missing or FFprobe or FFmpeg fails.
  */
 async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: ReadonlyMap<string, string>, output: string, run: Run): Promise<void> {
   const { entries, target } = recipe;
@@ -646,6 +677,7 @@ async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: Reado
     // On the output's own time base: a model output at a higher rate than the window's clock keeps every frame's PTS.
     return `[${inputs++}:v:0]${chain},setpts=PTS-STARTPTS+(${ticksFrom(from, origin, clock)}/${clock})/TB`;
   };
+  const decodes = await Promise.all(recipe.backgrounds.map((background) => probeModelResultDecode(local(files, background.inputId), run)));
   graph.push("[v]split[sv][sc]", `[sc]pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black[b0]`);
   recipe.backgrounds.forEach((background, at) => {
     const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
@@ -654,7 +686,7 @@ async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: Reado
     // On the background's own timeline from its first frame, so a chunk opening inside the overlap never starts the fade before 0.
     const fade = overlap === null || overlap[0] <= 0n ? "" : `,setpts=PTS-STARTPTS,format=yuva420p,fade=t=in:st=0:d=${seconds(overlap)}:alpha=1`;
     graph.push(`${placed(background.inputId, background.window.start,
-      `${crop}scale=${target.width}:${target.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}${fade}`)}[g${at}]`,
+      `${crop}scale=${target.width}:${target.height}:${decodes[at]!}:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}${fade}`)}[g${at}]`,
     `[b${at}][g${at}]overlay[b${at + 1}]`);
   });
   graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y}[o]`);

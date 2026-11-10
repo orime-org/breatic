@@ -17,8 +17,8 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { presentationTimes, readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
-  BT709_TAGS, decodedPicture, local, minus, picture, placement, readVideoMetadata, RecipeFailure, roundTimes, seconds, span, videoOutput, windowGraph,
-  type PlanLimits,
+  BT709_TAGS, decodedPicture, local, minus, modelResultDecode, picture, placement, probeModelResultDecode, readVideoMetadata, RecipeFailure, roundTimes, seconds, span,
+  videoOutput, windowGraph, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -209,22 +209,24 @@ async function windowMask(recipe: MiniToolPlanModelWindowMask, request: ModelRec
 }
 
 /**
- * The PNG of the frame whose presentation time is closest to `time`, the earlier on a tie (execution design §10.5 condition).
+ * The PNG of the frame whose presentation time is closest to `time`, the earlier on a tie (execution design §10.5 condition),
+ * decoded from the previous window's model result with its own colour tags ({@link modelResultDecode}).
  * @param recipe - The condition frame.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
+ * @throws {RangeError} When the result's tagged matrix has no decode value.
  * @throws {Error} When the video has no frame or FFmpeg fails.
  */
 async function frameAt(recipe: MiniToolPlanFrameAt, request: ModelRecipeRequest, run: Run): Promise<void> {
   const source = local(request.inputs, recipe.inputId);
-  const times = await presentationTimes(source, run);
+  const { times, stream } = await presentationTimes(source, run);
   if (times.length === 0) throw new Error("The condition video has no frame");
   const [numerator, denominator] = rational(recipe.time);
   const target = Number(numerator) / Number(denominator);
   let best = 0;
   times.forEach((time, at) => { if (Math.abs(time - target) < Math.abs(times[best]! - target) - 1e-9) best = at; });
-  await runPlanCommand("ffmpeg", [...HEAD, "-i", source, "-vf", `select=eq(n\\,${best}),scale=${recipe.target.width}:${recipe.target.height}:in_color_matrix=bt709,format=rgb24`,
+  await runPlanCommand("ffmpeg", [...HEAD, "-i", source, "-vf", `select=eq(n\\,${best}),scale=${recipe.target.width}:${recipe.target.height}:${modelResultDecode(stream)},format=rgb24`,
     "-frames:v", "1", "-fps_mode", "passthrough", "-f", "image2", "-c:v", "png", "-update", "1", request.output], run);
 }
 
@@ -246,14 +248,15 @@ function y4m(width: number, height: number, planes: readonly Uint8Array[]): Buff
  * grid slot's result frame through its RLE mask, dilated by `matte.dilate` pixels and feathered by `matte.feather`, at the
  * picture's size (source × (1 − m) + result × m, per 4:4:4 plane, so the source outside the mask is kept as decoded);
  * outside the range the source. The result's own timestamps are ignored: the result frames and masks are laid out per chunk
- * frame with the chunk's presented durations, on its clock.
+ * frame with the chunk's presented durations, on its clock. The result is decoded with its own colour tags ({@link modelResultDecode}).
  * @param recipe - The composite.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
  * @throws {RecipeFailure} `model_output_mismatch` when a chunk with frames in the range reads a result with another frame
  * count than the grid, `tracking_output_mismatch` when the RLE does not cover the range.
- * @throws {Error} When FFmpeg fails.
+ * @throws {RangeError} When the result's tagged matrix has no decode value.
+ * @throws {Error} When FFprobe or FFmpeg fails.
  */
 async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: ModelRecipeRequest, run: Run): Promise<void> {
   const { target, range, grid, matte } = recipe;
@@ -272,8 +275,9 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   }
   if (slots.size > 0) {
     const decoded = join(directory, "result.yuv");
-    await runPlanCommand("ffmpeg", [...HEAD, "-i", local(request.inputs, recipe.result), "-fps_mode", "passthrough",
-      "-vf", `scale=${rect.width}:${rect.height}:in_color_matrix=bt709:out_color_matrix=bt709:out_range=tv,format=yuv444p`, "-f", "rawvideo", decoded], run);
+    const result = local(request.inputs, recipe.result);
+    await runPlanCommand("ffmpeg", [...HEAD, "-i", result, "-fps_mode", "passthrough",
+      "-vf", `scale=${rect.width}:${rect.height}:${await probeModelResultDecode(result, run)}:out_color_matrix=bt709:out_range=tv,format=yuv444p`, "-f", "rawvideo", decoded], run);
     const resultFile = await open(decoded, "r");
     try {
       const { size } = await resultFile.stat();

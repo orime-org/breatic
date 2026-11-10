@@ -816,6 +816,37 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     });
   });
 
+  // A model result's colour comes from its own tags, BT.601 when untagged (modelResultDecode): person 1's result is one
+  // saturated colour, untagged as swscale encodes RGB by default, or converted and tagged BT.709 as the provider returns it.
+  it.each([['untagged BT.601', false], ['tagged BT.709', true]] as const)('LM12 a person result (%s) keeps its RGB on the face', async (_case, tagged) => {
+    const colour = [200, 40, 60];
+    const raw = join(dir, `lm09-${String(tagged)}.rgb`);
+    await writeFile(raw, Buffer.alloc(64 * 64 * 3 * 18).map((_unused, at) => colour[at % 3]!));
+    const name = `lm09-${String(tagged)}.mp4`;
+    await make(name, ['-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '64x64', '-framerate', String(FPS), '-i', raw,
+      ...(tagged ? ['-vf', 'scale=out_color_matrix=bt709:out_range=tv', '-colorspace', 'bt709', '-color_range', 'tv'] : []),
+      '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS)]);
+    const color = (await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=color_space', '-of', 'csv=p=0', join(dir, name)])).stdout.trim();
+    expect(color, 'the fixture carries the provider\'s tags').toBe(tagged ? 'bt709' : 'unknown');
+    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, name) }, recipe({ ...OPAQUE, crf: 0 }));
+    // Decoded from the chunk's own tags with accurate rounding (swscale's fast YUV-to-RGB path is off by up to three).
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', file, '-fps_mode', 'passthrough', '-sws_flags', 'accurate_rnd+full_chroma_int',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+    const bytes = stdout as unknown as Buffer;
+    const frames = bytes.length / (W * H * 3);
+    expect(frames).toBe(WINDOW.end - WINDOW.start);
+    for (let j = 0; j < frames; j += 1) {
+      const rect = face1(lipsyncSourceFrameAt(TIMELINE, TABLE, WINDOW.start + j));
+      if (rect === null) continue;
+      const sums = [0, 0, 0];
+      for (let y = rect.y + 16; y < rect.y + 32; y += 1) for (let x = rect.x + 12; x < rect.x + 28; x += 1) for (let c = 0; c < 3; c += 1) sums[c]! += bytes[(j * W * H + y * W + x) * 3 + c]!;
+      const rgb = sums.map(sum => sum / 256);
+      // Within swscale's default BT.601-to-BT.709 rounding of a 4:2:0 picture (up to 5 on a saturated channel in the amd64
+      // media image); decoding with the wrong matrix is off by 11 or more.
+      rgb.forEach((channel, at) => expect(Math.abs(channel - colour[at]!), `frame ${j} face ${'RGB'[at]} (${rgb.map(Math.round).join(',')})`).toBeLessThan(6));
+    }
+  });
+
   // DD §7.2 step 6: the face's edge is feathered over the recipe's frozen fraction of its shorter side. Person 2's 48x48 face
   // starts at x = 104 inside its foreground; columns 106 and 107 lie 2.5 and 3.5 pixels in from that edge, so their weight is
   // min(1, distance / max(1, 48 × feather)).

@@ -38,6 +38,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
+import { modelResultDecode } from '@ingest/container/presentation-recipes.js';
 import { canonicalMediaType } from '@shared/upload/media-type.js';
 import { sniffMimeType } from '@shared/upload/sniff-mime.js';
 import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
@@ -50,7 +51,8 @@ type Exact = { numerator: string; denominator: string };
 type Recipe = Record<string, unknown>;
 type Rect = { x: number; y: number; width: number; height: number };
 interface Report { ok: boolean; reason?: string; outputs: { outputIndex: number }[] }
-interface Stream { codec_type: string; codec_name: string; width?: number; height?: number; pix_fmt?: string; color_range?: string }
+interface Stream { codec_type: string; codec_name: string; width?: number; height?: number; pix_fmt?: string; color_range?: string; color_space?: string }
+type Rgb = readonly [number, number, number];
 interface Packet { pts_time: string; duration_time: string; flags: string }
 
 const r = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
@@ -58,6 +60,8 @@ const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, std
 const W = 64;
 const H = 36;
 const TARGET = { width: W, height: H, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
+// A lossless segment, so a colour comparison measures the decode matrices and not the encoder's error.
+const LOSSLESS_TARGET = { ...TARGET, crf: 0 };
 const HDR = { colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' };
 const SOURCE = '10000000-0000-4000-8000-000000000001';
 const RESULT = '10000000-0000-4000-8000-0000000000e0';
@@ -239,14 +243,16 @@ async function lumaMeans(path: string, rect: Rect = { x: 0, y: 0, width: W, heig
 }
 
 /**
- * The mean red, green and blue of a rectangle of every frame, decoded to RGB by FFmpeg from the stream's own tags.
+ * The mean red, green and blue of a rectangle of every frame, decoded to RGB by FFmpeg from the stream's own tags with
+ * accurate rounding and full chroma interpolation (swscale's fast YUV-to-RGB path is off by up to three).
  * @param path - The file.
  * @param size - The picture size.
  * @param rect - The rectangle.
  * @returns Per frame, [R, G, B].
  */
 async function rgbMeans(path: string, size: { width: number; height: number }, rect: Rect): Promise<number[][]> {
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-sws_flags', 'accurate_rnd+full_chroma_int',
+    '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
   const bytes = stdout as unknown as Buffer;
   const frame = size.width * size.height * 3;
   return Array.from({ length: bytes.length / frame }, (_unused, at) => [0, 1, 2].map((channel) => {
@@ -254,6 +260,54 @@ async function rgbMeans(path: string, size: { width: number; height: number }, r
     for (let y = rect.y; y < rect.y + rect.height; y += 1) for (let x = rect.x; x < rect.x + rect.width; x += 1) sum += bytes[at * frame + (y * size.width + x) * 3 + channel]!;
     return sum / (rect.width * rect.height);
   }));
+}
+
+// Saturated colours whose BT.601 and BT.709 decodes differ by well over the tolerance below.
+const RED: Rgb = [200, 40, 60];
+const GREEN: Rgb = [40, 180, 70];
+const BLUE: Rgb = [50, 70, 210];
+// How the providers write a result (measured on VACE expand and Bria eraser output): RGB converted by swscale's default
+// BT.601 with no colour tags; the tagged case is a BT.709 limited-range result such as lip-sync returns.
+// Each band's rows clear of the chroma resampling across its edges (a 4:2:0 to 4:4:4 round trip spreads it about four rows).
+const threeBands = (_x: number, y: number): Rgb => (y < 12 ? RED : y < 24 ? GREEN : BLUE);
+const BAND_ROWS = [{ y: 2, height: 6, colour: RED }, { y: 16, height: 4, colour: GREEN }, { y: 28, height: 6, colour: BLUE }] as const;
+const RESULT_TAGGINGS = [['untagged and encoded BT.601, as the providers write it', false], ['tagged BT.709 limited range', true]] as const;
+
+/**
+ * Encode an RGB picture, repeated, as a model provider does: rgb24 to yuv420p by swscale's default BT.601 with no colour
+ * tags, or converted and tagged BT.709 limited range.
+ * @param name - Its file name.
+ * @param clip - Its size, rate and frame count.
+ * @param colourAt - Each pixel's RGB.
+ * @param tagged - Whether the result is tagged BT.709.
+ * @returns Its path.
+ */
+async function providerVideo(name: string, clip: { width: number; height: number; fps: number; frames: number }, colourAt: (x: number, y: number) => Rgb, tagged: boolean): Promise<string> {
+  const picture = Buffer.alloc(clip.width * clip.height * 3);
+  for (let y = 0; y < clip.height; y += 1) for (let x = 0; x < clip.width; x += 1) picture.set(colourAt(x, y), (y * clip.width + x) * 3);
+  const raw = join(dir, `${name}.rgb`);
+  await writeFile(raw, Buffer.concat(Array.from({ length: clip.frames }, () => picture)));
+  const tags = tagged ? ['-vf', 'scale=out_color_matrix=bt709:out_range=tv', '-colorspace', 'bt709', '-color_range', 'tv'] : [];
+  await make(name, ['-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${clip.width}x${clip.height}`, '-framerate', String(clip.fps), '-i', raw, ...tags,
+    '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(clip.fps)]);
+  const path = join(dir, name);
+  expect((await video(path)).color_space, 'the fixture carries the provider\'s tags').toBe(tagged ? 'bt709' : undefined);
+  return path;
+}
+
+// swscale's default (not accurate_rnd) BT.601-to-BT.709 conversion of a 4:2:0 picture is off by up to 5 on a saturated
+// channel in the amd64 media image (up to 4 on arm64); decoding with the wrong matrix is off by 11 or more on these colours.
+const RGB_TOLERANCE = 6;
+
+/**
+ * Require a measured mean RGB to be an expected colour within the conversion's rounding ({@link RGB_TOLERANCE}).
+ * @param measured - The mean [R, G, B].
+ * @param expected - The colour.
+ * @param label - What was measured.
+ * @returns Nothing.
+ */
+function expectRgb(measured: number[], expected: readonly number[], label: string): void {
+  measured.forEach((channel, at) => expect(Math.abs(channel - expected[at]!), `${label} ${'RGB'[at]} (${measured.map(Math.round).join(',')} vs ${expected.join(',')})`).toBeLessThan(RGB_TOLERANCE));
 }
 
 /**
@@ -544,6 +598,12 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
     const [picture] = await rgbMeans(file, { width: 32, height: 18 }, { x: 0, y: 0, width: 32, height: 18 });
     expect(Math.abs(picture![0]! - frames[expected]!)).toBeLessThan(3);
   });
+
+  it.each(RESULT_TAGGINGS)('FA02 frame_at decodes a previous window\'s result (%s) with its own matrix: the PNG keeps its RGB', async (_case, tagged) => {
+    const previous = await providerVideo(`fa02-${String(tagged)}.mp4`, { width: W, height: H, fps: 16, frames: 8 }, threeBands, tagged);
+    const file = await produce({ [RESULT]: previous }, { kind: 'frame_at', inputId: RESULT, time: r(1, 10), target: { width: W, height: H } }, 'image/png');
+    for (const { y, height, colour } of BAND_ROWS) expectRgb((await rgbMeans(file, { width: W, height: H }, { x: 4, y, width: 56, height }))[0]!, colour, `band at row ${y}`);
+  });
 });
 
 describe('model_composite erase (execution design §10.4 model grid and composite rows)', () => {
@@ -561,11 +621,12 @@ describe('model_composite erase (execution design §10.4 model grid and composit
    * @param erase.range - The erase range.
    * @param erase.grid - The model grid.
    * @param erase.matte - The matte, none when absent.
+   * @param erase.target - The segment target, {@link TARGET} when absent.
    * @returns The recipe.
    */
   function erase(chunk: { window: { start: number; end: number }; timescale: number; entries: Recipe[] },
-    erase: { table: VideoPresentationTable; range: { startFrame: number; frameCount: number }; grid: Recipe; matte?: { dilate: number; feather: number } }): Recipe {
-    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, ...chunk, target: TARGET, result: RESULT, rle: RLE, table: erase.table, range: erase.range, grid: erase.grid,
+    erase: { table: VideoPresentationTable; range: { startFrame: number; frameCount: number }; grid: Recipe; matte?: { dilate: number; feather: number }; target?: Recipe }): Recipe {
+    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, ...chunk, target: erase.target ?? TARGET, result: RESULT, rle: RLE, table: erase.table, range: erase.range, grid: erase.grid,
       matte: erase.matte ?? { dilate: 0, feather: 0 }, rleSize: { width: W, height: H } };
   }
 
@@ -665,6 +726,20 @@ describe('model_composite erase (execution design §10.4 model grid and composit
       erase({ window: { start: 7, end: 10 }, timescale: 25, entries: [span(r(7, 25), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }));
     await expectErased(file, source, [null, null, null], [7, 8, 9]);
   });
+
+  it.each(RESULT_TAGGINGS)('EC09 a model result (%s) keeps its RGB in the erased half, and the untouched half keeps the source\'s', async (_case, tagged) => {
+    const result = await providerVideo(`ec09-${String(tagged)}.mp4`, { width: W, height: H, fps: 30, frames: 4 }, threeBands, tagged);
+    const source = join(dir, 'greys25.mp4');
+    const file = await produce({ [SOURCE]: source, [RESULT]: result, [RLE]: await rle(`ec09-${String(tagged)}.json`, Array(4).fill(LEFT)) },
+      erase({ window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 }, target: LOSSLESS_TARGET }));
+    const size = { width: W, height: H };
+    const bands = await Promise.all(BAND_ROWS.map(({ y, height }) => rgbMeans(file, size, { x: 4, y, width: 24, height })));
+    const [untouched, original] = await Promise.all([rgbMeans(file, size, RIGHT_IN), rgbMeans(source, size, RIGHT_IN)]);
+    for (let n = 3; n <= 6; n += 1) {
+      BAND_ROWS.forEach(({ y, colour }, at) => expectRgb(bands[at]![n]!, colour, `frame ${n} erased band at row ${y}`));
+      expectRgb(untouched[n]!, original[n]!, `frame ${n} untouched half`);
+    }
+  });
 });
 
 describe('model_composite expand (execution design §10.5 composite row and failure paragraph)', () => {
@@ -680,5 +755,46 @@ describe('model_composite expand (execution design §10.5 composite row and fail
     const strip = { x: 0, y: 0, width: 128, height: 16 };
     const [background, surround] = [await lumaMeans(join(dir, 'bg159.mp4'), strip), await lumaMeans(file, strip)];
     expect(Math.abs(surround.at(-1)! - background.at(-1)!)).toBeLessThan(4);
+  });
+
+  it.each(RESULT_TAGGINGS)('EX02 a model background (%s) keeps its RGB in the generated margins around the source', async (_case, tagged) => {
+    const displayRect = { x: 32, y: 18, width: 64, height: 36 };
+    const colourAt = (x: number, y: number): Rgb => (y < 18 ? (x < 64 ? RED : GREEN) : BLUE);
+    const background = await providerVideo(`ex02-${String(tagged)}.mp4`, { width: 128, height: 72, fps: 16, frames: 8 }, colourAt, tagged);
+    const recipe = {
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))],
+      target: { ...LOSSLESS_TARGET, width: 128, height: 72, displayRect }, backgrounds: [{ inputId: BACKGROUND, window: { start: r(0), end: r(2, 5) } }],
+    };
+    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4'), [BACKGROUND]: background }, recipe);
+    const size = { width: 128, height: 72 };
+    // Clear of the chroma resampling across the colour edges at y = 18 and x = 64 and the source's edge at y = 54.
+    const [left, right, bottom] = await Promise.all([rgbMeans(file, size, { x: 4, y: 2, width: 52, height: 10 }), rgbMeans(file, size, { x: 68, y: 2, width: 56, height: 10 }),
+      rgbMeans(file, size, { x: 4, y: 58, width: 120, height: 12 })]);
+    expect(left).toHaveLength(10);
+    left.forEach((_unused, n) => {
+      expectRgb(left[n]!, RED, `frame ${n} top-left margin`);
+      expectRgb(right[n]!, GREEN, `frame ${n} top-right margin`);
+      expectRgb(bottom[n]!, BLUE, `frame ${n} bottom margin`);
+    });
+  });
+});
+
+describe('modelResultDecode (the one decode rule for a model\'s video result)', () => {
+  it.each([
+    ['tagged BT.709 decodes BT.709', { color_space: 'bt709', color_range: 'tv' }, 'in_color_matrix=bt709:in_range=tv'],
+    ['tagged smpte170m decodes BT.601', { color_space: 'smpte170m', color_range: 'tv' }, 'in_color_matrix=bt601:in_range=tv'],
+    ['tagged bt470bg decodes BT.601', { color_space: 'bt470bg' }, 'in_color_matrix=bt601:in_range=tv'],
+    ['tagged bt2020nc decodes BT.2020', { color_space: 'bt2020nc', color_range: 'tv' }, 'in_color_matrix=bt2020:in_range=tv'],
+    ['a full-range tag is kept', { color_space: 'bt709', color_range: 'pc' }, 'in_color_matrix=bt709:in_range=pc'],
+    ['untagged decodes BT.601 limited range', {}, 'in_color_matrix=bt601:in_range=tv'],
+    ['an unknown tag decodes BT.601 limited range', { color_space: 'unknown', color_range: 'unknown' }, 'in_color_matrix=bt601:in_range=tv'],
+    // The 1280x720 Bria eraser output is untagged and BT.601: the source rule's BT.709 from 720 lines does not apply.
+    ['an untagged 720p result still decodes BT.601', { width: 1280, height: 720 }, 'in_color_matrix=bt601:in_range=tv'],
+  ] as const)('%s', (_case, stream, expected) => {
+    expect(modelResultDecode(stream)).toBe(expected);
+  });
+
+  it('a tag with no decode matrix is refused', () => {
+    expect(() => modelResultDecode({ color_space: 'ycgco' })).toThrow(RangeError);
   });
 });
