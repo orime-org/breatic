@@ -183,7 +183,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `chargeOnceForGeneration` already do.
+ * and `creditLotService.chargeOnce` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",

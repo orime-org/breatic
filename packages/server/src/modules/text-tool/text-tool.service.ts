@@ -241,9 +241,13 @@ async function chargeRecorded(
     logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
   );
   try {
-    const credits = await usage.settle();
+    const { credits, writeFailures } = await usage.settleForCharge();
+    for (const err of writeFailures) {
+      logger.error({ err, userId, tool }, "agent_usage_record_failed");
+    }
     if (credits <= 0) return serializeCreditMicro(0n);
-    const outcome = await creditLotService.chargeOnceForGeneration(
+    const outcome = await creditLotService.chargeOnce(
+      "operation",
       usage.operation.operationKey,
       {
         projectId,
@@ -256,13 +260,11 @@ async function chargeRecorded(
     );
     return outcome?.charged ?? serializeCreditMicro(0n);
   } catch (err) {
-    // The text is already generated and already streamed, so this failure
-    // has nowhere to go: the caller gets its `done` event either way and
-    // sees nothing. This line is the only trace the run leaves of money it
-    // used and did not collect.
+    // The text is already generated and already streamed. A request that was
+    // recorded waits pending for the sweep, which settles it.
     logger.error(
       { err, userId, tool, tokens },
-      "text_tool_credit_charge_failed",
+      "credit_charge_settle_failed",
     );
     return serializeCreditMicro(0n);
   }
