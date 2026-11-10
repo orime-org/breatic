@@ -137,9 +137,11 @@ test('one member writes "reply in English" and another member asking in Chinese 
     }
 
     await writeInstructions(page, '');
-    const after = await askInNewConversation(member.request, project.id, question, undefined);
-    test.info().annotations.push({ type: 'after clearing', description: after });
-    expect(after, `the reply after clearing: ${after}`).toMatch(HAN);
+    for (const model of [undefined, CLAUDE]) {
+      const after = await askInNewConversation(member.request, project.id, question, model);
+      test.info().annotations.push({ type: `after clearing on ${model ?? 'default'}`, description: after });
+      expect(after, `the reply after clearing on ${model ?? 'the default model'}: ${after}`).toMatch(HAN);
+    }
   } finally {
     try {
       await member.close();
