@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import { getAgentConfig } from "@breatic/core";
 import {
+  AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
   canConnect,
@@ -407,9 +408,20 @@ export function renderProductGuide(): string {
       "narrower. At its top, left to right: two speech bubbles, which open " +
       `${quoted(t("chat.history.title"))}, the earlier conversations, most recently used first; the ` +
       `conversation's name, ${quoted(t("chat.conversation.untitled"))} until it has one, which double-clicking ` +
-      "renames; and a plus sign, which starts a new conversation. In the list, click a conversation to switch to " +
+      "renames; a scroll icon (hovering it shows " +
+      `${quoted(t("chat.instructions.open"))}), which opens the Project instructions; and a plus sign, which ` +
+      "starts a new conversation. In the list, click a conversation to switch to " +
       "it; hovering one shows three dots with " +
       `${quoted(t("chat.conversation.rename"))} and ${quoted(t("chat.conversation.delete"))}, which asks first.`,
+    "The Project instructions are one plain text per Project that the Agent receives with every message in " +
+      "every conversation of that Project, from every member: standing requirements such as the language to " +
+      "reply in, a style to keep or how prompts are written. The Owner and every Editor can change them. The " +
+      "scroll icon opens them full screen; the counter at the top shows how many of the " +
+      `${AGENT_INSTRUCTIONS_MAX_CHARS.toLocaleString("en")} characters are used, and at the limit no more can be typed. ` +
+      `${quoted(t("chat.instructions.save"))} saves them and Cancel or Esc leaves without saving; when two members ` +
+      "save, the later save is kept, and the line at the bottom names who saved last. Saving an empty text " +
+      "removes them. While the Project has instructions the scroll icon carries a small dot. They apply from " +
+      "the next message on, in every conversation, new or old.",
     `A new conversation shows a greeting, ${quoted(t("chat.empty.capabilities"))} and five suggestions; ` +
       "clicking one puts its words in the message box without sending them. The empty box reads " +
       `${quoted(t("chat.composer.placeholder"))}. Enter sends the message and Shift+Enter starts a new line. The ` +
