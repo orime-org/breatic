@@ -511,9 +511,6 @@ describe("the limits a reseller states beyond its schema", () => {
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [16, 15] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [15, 15] } }, "30 seconds"],
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [16, 15] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [15, 15] } }, "30 seconds"],
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 31 } }, { prompt: "a fox", params: { duration: 30 } }, "[4, 30]"],
-    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { resolution: "4k" } }, { prompt: "a fox", params: { resolution: "1080p" } }, "1080p"],
-    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, resolution: "4k" } }, { prompt: "a fox", params: { image: URL_A, resolution: "1080p" } }, "1080p"],
-    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, resolution: "4k" }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, resolution: "1080p" }, durations: { video: [5] } }, "1080p"],
     ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
     ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { images: Array<string>(7).fill(URL_A) } }, { prompt: "a fox", params: { images: Array<string>(6).fill(URL_A) } }, "up to 6 images"],
     ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 19, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 18, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
@@ -737,6 +734,19 @@ describe("the limits a reseller states beyond its schema", () => {
     }
     return { wrong, used };
   };
+
+  // ByteDance states 1080p as Seedance 2.5's ceiling, yet WaveSpeed lists 4k and a 4k run returned 3840x2160 (2026-11-09, breatic#1393): 4k is WaveSpeed's alone, not a vendor limit.
+  it.each([
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { resolution: "4k" } }, ["fal", "sandbase"]],
+    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, resolution: "4k" } }, ["fal", "sandbase"]],
+    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, resolution: "4k" }, durations: { video: [5] } }, []],
+  ] as [string, Partial<EstimateInput>, string[]][])("serves a %s run at 4k on WaveSpeed only", async (model, fourK, without) => {
+    const rules = provider.pricingRules(model);
+    expect(await rejectedInput(rules, "wavespeed", run(withDefaults(model, fourK)))).toBeUndefined();
+    for (const upstream of without) {
+      expect(await rejectedInput(rules, upstream, run(withDefaults(model, fourK)))).toEqual({ param: "resolution", value: "4k" });
+    }
+  });
 
   it.each(VENDOR)("keeps a %s run its vendor's words refuse off every upstream, and lets the nearest run the vendor takes through", async (...row) => {
     const { wrong } = await vendorVerdict(row);
