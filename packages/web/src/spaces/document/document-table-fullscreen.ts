@@ -39,7 +39,6 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
-import { dragSourceOf } from '@web/spaces/document/document-table-drag';
 import { fromYjs, undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** Where the body goes back to once full screen has ended. */
@@ -379,7 +378,7 @@ function escapeOut(editor: ExtensionEditor, ended: CompositionEnd, view: EditorV
  * @returns True while full screen, having taken the event.
  */
 function takeDrag(view: EditorView, event: Event): boolean {
-  if (!inTableFullscreen(view.state) || dragSourceOf(view.state) !== null) return false;
+  if (!inTableFullscreen(view.state)) return false;
   const transfer = (event as DragEvent).dataTransfer;
   if (transfer) transfer.dropEffect = 'none';
   event.preventDefault();
