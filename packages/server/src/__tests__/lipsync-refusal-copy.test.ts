@@ -26,6 +26,22 @@ const ENGLISH: Readonly<Record<string, string>> = {
   lipSyncAnchorTooLate: "The frame you detected people on is too far from the start of the video to track back in one run. Detect people on an earlier frame, or use a shorter or lower-resolution video.",
 };
 
+/** The word each locale's lip-sync panel uses for detecting people (its `canvas.miniTool.videoUI.redetectPeople` button). */
+const DETECT_WORD: Readonly<Record<(typeof LOCALES)[number], string>> = { en: "detect", "zh-CN": "识别", "zh-TW": "辨識", ja: "検出", ko: "감지" };
+
+/** The zh-CN anchor refusal the user approved, naming the panel's own action. */
+const ZH_CN_ANCHOR_TOO_LATE = "识别人物的画面离视频开头太远，一次跟踪不回去。请在更靠前的画面上识别人物，或换一段更短、分辨率更低的视频。";
+
+/**
+ * One locale's lip-sync panel label for detecting people again.
+ * @param locale - The locale code.
+ * @returns The `canvas.miniTool.videoUI.redetectPeople` text.
+ */
+function redetectLabel(locale: string): string {
+  const catalog = JSON.parse(readFileSync(resolve(MONOREPO_ROOT, "locales", `${locale}.json`), "utf8")) as { canvas: { miniTool: { videoUI: { redetectPeople: string } } } };
+  return catalog.canvas.miniTool.videoUI.redetectPeople;
+}
+
 /**
  * One locale's `server.mini_tool` messages.
  * @param locale - The locale code.
@@ -57,5 +73,15 @@ describe("lip-sync refusal copy (§97 D19-2)", () => {
   it("en carries the fixed refusal text", () => {
     const own = messages("en");
     for (const [key, english] of Object.entries(ENGLISH)) expect(own[key], `server.mini_tool.${key}`).toBe(english);
+  });
+
+  it.each(LOCALES)("%s names the anchor refusal's way out with the panel's own detect action", (locale) => {
+    const word = DETECT_WORD[locale];
+    expect(redetectLabel(locale).toLowerCase(), `${locale} redetectPeople`).toContain(word);
+    expect((messages(locale).lipSyncAnchorTooLate as string).toLowerCase(), `${locale} lipSyncAnchorTooLate`).toContain(word);
+  });
+
+  it("zh-CN carries the approved anchor refusal text", () => {
+    expect(messages("zh-CN").lipSyncAnchorTooLate).toBe(ZH_CN_ANCHOR_TOO_LATE);
   });
 });
