@@ -135,6 +135,7 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicMelody',
     tipKey: 'canvas.generatePanel.musicMelodyTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicMelody',
+    errorKey: 'canvas.generatePanel.errorNoMusicMelody',
   },
   musicVocal: {
     field: 'musicVocal',
@@ -209,7 +210,13 @@ export function audioMissing(
   for (const slot of audioSlotsForModel(model, mode, params)) {
     sources[AUDIO_SLOTS[slot].param] = slotUrls[slot];
   }
-  return missingSources(model, mode, sources);
+  // A group names only its places on screen, so the refusal names what the
+  // user can pick into: Mureka V9.5 Song draws its melody or its song and
+  // vocals, never all three.
+  return missingSources(model, mode, sources).map((group) => {
+    const drawn = group.filter((param) => param in sources);
+    return drawn.length > 0 ? drawn : group;
+  });
 }
 
 /**

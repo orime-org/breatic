@@ -148,3 +148,36 @@ describe('what an audio run still needs', () => {
     expect(audioMissing(undefined, 'a2m', {}, {})).toEqual([]);
   });
 });
+
+describe('a song model that composes from style and references or from a melody (breatic#1393)', () => {
+  /**
+   * A place drawn only on one side of the setting.
+   * @param side - The setting it is drawn under.
+   * @returns The place.
+   */
+  const on = (side: string): ParamDescriptor => ({ ...REFERENCE, optional: true, when: { equals: { compose_from: side } } });
+  const composer: ModelEntry = {
+    ...model({
+      compose_from: { description: '', default: 'references', values: ['references', 'melody'], fill: 'panel', modes: ['a2m'] },
+      song: on('references'),
+      vocal: on('references'),
+      melody: on('melody'),
+    }),
+    source_groups: [{ mode: 'a2m', any_of: ['song', 'vocal', 'melody'] }],
+  };
+
+  it('draws the places of the side it composes from', () => {
+    expect(audioSlotsForModel(composer, 'a2m', {})).toEqual(['musicSong', 'musicVocal']);
+    expect(audioSlotsForModel(composer, 'a2m', { compose_from: 'melody' })).toEqual(['musicMelody']);
+  });
+
+  it('counts no pick left in a place of the other side, and names only the places drawn', () => {
+    expect(audioMissing(composer, 'a2m', { musicSong: 'https://s.mp3' }, { compose_from: 'melody' })).toEqual([['melody']]);
+    expect(audioMissing(composer, 'a2m', { musicMelody: 'https://m.mp3' }, {})).toEqual([['song', 'vocal']]);
+  });
+
+  it('needs nothing more once a drawn place holds a pick', () => {
+    expect(audioMissing(composer, 'a2m', { musicMelody: 'https://m.mp3' }, { compose_from: 'melody' })).toEqual([]);
+    expect(audioMissing(composer, 'a2m', { musicVocal: 'https://v.mp3' }, {})).toEqual([]);
+  });
+});

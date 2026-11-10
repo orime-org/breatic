@@ -228,6 +228,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.errorNoEndFrame": { described: /A required slot left empty stops the run with a message naming it/ },
   "canvas.generatePanel.errorNoLeftAudio": { described: /A required slot left empty stops the run with a message naming it/ },
   "canvas.generatePanel.errorNoMusicSong": { described: /A required slot left empty stops the run with a message naming it/ },
+  "canvas.generatePanel.errorNoMusicMelody": { described: /A required slot left empty stops the run with a message naming it/ },
   "canvas.generatePanel.errorNoRefAudio": { described: /A required slot left empty stops the run with a message naming it/ },
   "canvas.generatePanel.errorNoReferenceMention": { described: /A video model that needs one says what is still missing/ },
   "canvas.generatePanel.errorNoRightAudio": { described: /A required slot left empty stops the run with a message naming it/ },

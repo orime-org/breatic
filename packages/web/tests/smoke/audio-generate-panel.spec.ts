@@ -256,8 +256,8 @@ test.describe('reference to music in a window tall enough for its settings', () 
   test.use({ viewport: { width: 1500, height: 900 } });
 
   test('reference to music: style and references or a melody, picked in the settings, and any reference satisfies the gate', async ({ page }) => {
-  // Seeded left of the origin: the minimap in the bottom-right corner sits
-  // above the panel and takes clicks meant for it (#2051).
+    // Seeded left of the origin: the minimap in the bottom-right corner sits
+    // above the panel and takes clicks meant for it (#2051).
     const sourceId = crypto.randomUUID();
     const nodeId = crypto.randomUUID();
     await seedNode(sourceId, 'audio', 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=', -350, -240);
@@ -284,9 +284,9 @@ test.describe('reference to music in a window tall enough for its settings', () 
       timeout: 15_000,
     });
 
-    // With both boxes filled and no slot picked, the click says a reference is
-    // missing. The lyrics go in first because they are refused ahead of the
-    // slots — this model demands them too.
+    // With both boxes filled and no slot picked, the click asks for one of
+    // the two places on screen. The lyrics go in first because they are
+    // refused ahead of the slots — this model demands them too.
     await page.getByTestId('generate-prompt-editor').click();
     await page.keyboard.type('same mood, slower');
     // The lyrics are a row while the style box is open (#1201); opening them
@@ -295,7 +295,7 @@ test.describe('reference to music in a window tall enough for its settings', () 
     await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
     await page.keyboard.type('same road home');
     await page.getByTestId('generate-audio-execute').click();
-    await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song, melody or vocals', {
+    await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song or vocals', {
       timeout: 10_000,
     });
 
@@ -309,6 +309,10 @@ test.describe('reference to music in a window tall enough for its settings', () 
     await expect(page.getByTestId('generate-audio-tool-music-vocal')).toHaveCount(0);
     await expect(page.getByTestId('generate-prompt-group-prompt')).toHaveCount(0);
     await expect(page.getByTestId('generate-lyrics-editor')).toBeVisible();
+    await page.getByTestId('generate-audio-execute').click();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Pick a melody first' })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // The melody alone is enough for the gate.
     await page.getByTestId('generate-audio-tool-music-melody').click();
