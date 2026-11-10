@@ -124,7 +124,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       const generation = proposal.nodes[to];
       const chosen = generation === undefined ? undefined : chosenModelOf(generation);
       // The registry test passes every template through this check, so its edges go a way their model takes.
-      const entry = node === undefined || chosen === undefined ? undefined : entriesFor(chosen, node.type, holdingOf(node)).find((one) => one.way.into === into && one.by === "edge");
+      const entry = node === undefined || chosen === undefined ? undefined : entriesFor(chosen, node.type, holdingOf(node), generation?.params ?? {}).find((one) => one.way.into === into && one.by === "edge");
       const how = entry === undefined ? `by an edge with into: "${into}"` : entryPhrase(entry);
       const marks = [...(entry?.ref === true ? ["ref"] : []), ...(entry?.note === true ? ["note"] : [])];
       const placed = generation?.role === "generate" ? sentWords(generation.mode).placed : "";

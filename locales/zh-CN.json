@@ -127,6 +127,7 @@
       "attachment_limit_reached": "这个会话的附件已达上限 {limit} 个，请先删除一些再上传。"
     },
     "canvas": {
+      "prompt_not_taken": "这个模型在当前设置下不接受风格。去掉风格后再生成。",
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "history_entry_not_found": "找不到这条历史记录",
@@ -851,6 +852,7 @@
       "coverSongTip": "挑一个音频节点，翻唱这首",
       "selectCoverSongFromCanvas": "挑一首要翻唱的歌",
       "errorNoMusicSong": "先挑一首歌",
+      "errorNoMusicMelody": "先挑一段旋律",
       "moodImage": "参考图",
       "moodImageTip": "挑一张图，定下音乐的情绪",
       "removeMoodImage": "移除参考图",
@@ -862,7 +864,7 @@
       "musicLyricsLabel": "歌词",
       "lyricsMissing": "先写下歌词",
       "refuseExecuteNoStyle": "先写下风格",
-      "refuseExecuteNoReference": "挑一段整曲、旋律或人声",
+      "refuseExecuteNoReference": "先挑一段整曲或人声",
       "creditsPerThousandChars": "{credits} / 千字",
       "itemsAdd": "添加",
       "itemsRemove": "移除",
@@ -878,6 +880,7 @@
       "audioLanguageSearch": "搜索语言…",
       "audioOptionEmpty": "没有匹配项",
       "param": {
+        "compose_from": "生成依据",
         "language": "语言",
         "speakers": "说话人",
         "emotion": "情绪",
@@ -2220,6 +2223,8 @@
         "splitCell": "拆分单元格",
         "mergeCells": "合并单元格",
         "textHighlight": "背景（高亮文字）",
+        "fullscreen": "全屏",
+        "exitFullscreen": "退出全屏",
         "cut": "剪切",
         "pasteAbove": "粘贴到上方",
         "pasteBelow": "粘贴到下方",
@@ -2402,6 +2407,7 @@
       "proposalBusy": "正在提交另一次生成。",
       "readOnlyCreate": "Viewer 不能添加、导入或生成模型。",
       "force": {
+        "low_poly_skips_parts": "智能低面数不拆分部件。",
         "parts_geometry_only": "拆分部件只生成几何。",
         "pbr_needs_texture": "PBR 需要贴图。",
         "fast_uses_v35": "Fast 贴图只有 v3.5。"
@@ -3425,8 +3431,6 @@
       "more": "加载更多",
       "chooseFile": "选择视频",
       "fileEmpty": "选择本地视频文件。",
-      "preparing": "正在准备视频…",
-      "progress": "正在上传 {progress}%",
       "confirm": "添加到 Timeline",
       "insertAfter": "将插在 {name} 之后",
       "insertFirst": "将插在主轨最前面"
@@ -3440,7 +3444,6 @@
       "invalid_range": "请输入视频范围内的帧。",
       "target_missing": "目标已变化。请检查位置后重试。",
       "clip_removed": "该片段已被其他成员移除。",
-      "upload": "上传失败。可以使用已选文件重试。",
       "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
       "track_missing": "目标轨道已被移除，请选择其他轨道。",
       "id_taken": "该项已存在，请重试。",
@@ -3539,6 +3542,14 @@
         "unavailable": "{track}：网页动画不可用",
         "loading": "{track}：网页动画加载中…"
       }
+    },
+    "upload": {
+      "uploading": "上传中",
+      "progress": "上传中 {progress}%",
+      "failed": "上传失败",
+      "waiting": "已上传，等待编辑权限",
+      "unfinished": "未完成",
+      "preview": "{track}：{state, select, failed {视频上传失败，不显示} unfinished {视频未完成，不显示} other {视频上传中…}}"
     }
   }
 }

@@ -7,6 +7,7 @@ import { EMPTY_TIMELINE_WEB_RESOLUTION, resolveTimelineClipExtent, type Timeline
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { parseTimelineFrame, timelineClipIntervalValid, timelineSourceOverflow } from '@web/data/yjs/timeline-time';
 
+import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -24,6 +25,8 @@ interface TimelineClipPropertiesProps {
   name: string;
   /** The request a web-animation copy came from. */
   request?: string | null;
+  /** An upload placeholder's status line, and the retry this page can offer for it. */
+  upload?: { text: string; failed: boolean; progress: number | null; onRetry: (() => void) | null } | null;
   conflict: boolean;
   reason?: TimelineArrangementReason['code'] | null;
   labels: TimelineTrackLabels;
@@ -79,6 +82,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @param props.clip - The selected clip.
  * @param props.name - Its display name.
  * @param props.request - The request a web copy came from, when known.
+ * @param props.upload - An upload placeholder's status and retry.
  * @param props.conflict - Whether the arrangement reports a conflict.
  * @param props.reason - The first reason it conflicts, if any (only a conflicting clip has one).
  * @param props.labels - Track names.
@@ -88,7 +92,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, name, request = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
@@ -154,6 +158,14 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
         <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
       </Tooltip>
       {request !== null && <span data-testid='timeline-clip-request' className='break-words text-xs text-muted-foreground'>{request}</span>}
+      {upload !== null && <span className='flex min-w-0 items-center gap-2'>
+        <span data-testid='timeline-clip-upload' className={cn('min-w-0 break-words text-xs', upload.failed ? 'text-status-error-foreground' : 'text-muted-foreground')}>{upload.text}</span>
+        {upload.onRetry !== null && <Button data-testid='timeline-upload-retry' variant='outline' size='compact' onClick={upload.onRetry}>{t('timeline.retry')}</Button>}
+      </span>}
+      {upload !== null && upload.progress !== null && <span data-testid='timeline-upload-progress' role='progressbar' aria-valuenow={Math.round(upload.progress * 100)}
+        aria-valuemin={0} aria-valuemax={100} className='h-1 w-full overflow-hidden rounded-full bg-muted'>
+        <span className='block h-full bg-primary' style={{ width: `${Math.round(upload.progress * 100)}%` }} />
+      </span>}
       {conflict && <span className='flex min-w-0 gap-1 text-status-error-foreground'>
         <span className='shrink-0'>{t('timeline.conflict')}</span>
         {reason !== null && <><span className='shrink-0'>·</span><span className='min-w-0 truncate'>{t(`timeline.conflictReason.${reason}`)}</span></>}

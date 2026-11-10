@@ -10,8 +10,9 @@
  * a slot grows a field.
  *
  * Which of them a mode can draw is its row in `AUDIO_MODE_OPTIONS`; which of
- * those a run collects is the model's to say, read off its `fill` and `modes`
- * declarations by {@link audioSlotsForModel} below. One param can be two
+ * those a run collects is the model's to say, read off its `fill`, `modes` and
+ * `when` declarations (the last against the run's stored params) by
+ * {@link audioSlotsForModel} below. One param can be two
  * places: `audio` is the voice sample under Voice Cloning and the song to
  * cover under Reference to Music.
  *
@@ -19,7 +20,7 @@
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
-import { PANEL_EDITOR_PARAM, appliesInMode, missingSources } from '@breatic/shared';
+import { PANEL_EDITOR_PARAM, appliesInMode, gateHolds, missingSources, paramsForMode, resolveParams } from '@breatic/shared';
 import type { MissingSource, ModelEntry } from '@breatic/shared';
 import { AudioLines, Clapperboard, Image, Mic, Music2, Music4 } from 'lucide-react';
 
@@ -135,6 +136,7 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicMelody',
     tipKey: 'canvas.generatePanel.musicMelodyTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicMelody',
+    errorKey: 'canvas.generatePanel.errorNoMusicMelody',
   },
   musicVocal: {
     field: 'musicVocal',
@@ -165,19 +167,25 @@ export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;
  * The slots this model draws in this mode, in the order the toolbar shows.
  *
  * The mode's row lists every place it can take a source; the model draws the
- * ones it declares (#2156, design §6).
+ * ones it declares (#2156, design §6) whose condition holds on the run's
+ * params: Mureka V9.5 Song shows the song and vocals or the melody, by the
+ * compose-from setting (breatic#1393).
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
+ * @param params - The params stored for the model.
  * @returns Those slots, in the row's order; none before a model resolves.
  */
 export function audioSlotsForModel(
   model: ModelEntry | undefined,
   mode: string,
+  params: Readonly<Record<string, unknown>>,
 ): AudioSlot[] {
   if (model === undefined) return [];
-  return audioModeOption(mode).slots.filter(
-    (slot) => filledFromCanvas(model.params[AUDIO_SLOTS[slot].param], mode) !== undefined,
-  );
+  const resolved = resolveParams(model, paramsForMode(params, model.params, mode));
+  return audioModeOption(mode).slots.filter((slot) => {
+    const spec = model.params[AUDIO_SLOTS[slot].param];
+    return filledFromCanvas(spec, mode) !== undefined && (spec?.when === undefined || gateHolds(spec.when, resolved));
+  });
 }
 
 /**
@@ -188,6 +196,7 @@ export function audioSlotsForModel(
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
  * @param slotUrls - What the node's slots hold.
+ * @param params - The params stored for the model, which say which slots are drawn.
  * @returns Each unmet requirement; empty when the run has what it needs or no
  *   model resolves.
  */
@@ -195,13 +204,20 @@ export function audioMissing(
   model: ModelEntry | undefined,
   mode: string,
   slotUrls: AudioSlotUrls,
+  params: Readonly<Record<string, unknown>>,
 ): MissingSource[] {
   if (model === undefined) return [];
-  const params: Record<string, unknown> = {};
-  for (const slot of audioSlotsForModel(model, mode)) {
-    params[AUDIO_SLOTS[slot].param] = slotUrls[slot];
+  const sources: Record<string, unknown> = {};
+  for (const slot of audioSlotsForModel(model, mode, params)) {
+    sources[AUDIO_SLOTS[slot].param] = slotUrls[slot];
   }
-  return missingSources(model, mode, params);
+  // A group names only its places on screen, so the refusal names what the
+  // user can pick into: Mureka V9.5 Song draws its melody or its song and
+  // vocals, never all three.
+  return missingSources(model, mode, sources).map((group) => {
+    const drawn = group.filter((param) => param in sources);
+    return drawn.length > 0 ? drawn : group;
+  });
 }
 
 /**

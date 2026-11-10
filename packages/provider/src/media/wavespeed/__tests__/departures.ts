@@ -52,13 +52,6 @@ const shotsOffTotal = (run: Run): boolean => {
 };
 
 /**
- * Whether a Seedance 2.5 run asks for 4K, which ByteDance's Seedance 2.5 does not output.
- * @param run - The run.
- * @returns True when it does.
- */
-const seedance4k = (run: Run): boolean => run.params.resolution === "4k";
-
-/**
  * Whether a Tripo run holds an input pair Tripo refuses with error 1004: texture quality fast on a texture version
  * other than v3.5, or parts with texture or PBR on (each on by default).
  * @param run - The run.
@@ -80,10 +73,6 @@ export const OUTSIDE_VENDOR: Readonly<Record<string, (run: Run) => boolean>> = {
   // Kling: "sum of all shot durations must equal the total video duration".
   "kling-v3.0-4k-text-to-video": shotsOffTotal,
   "kling-video-o3-4k-image-to-video": shotsOffTotal,
-  // ByteDance: "Dreamina Seedance 2.5: Default 720p; supports 480p, 720p, and 1080p".
-  "seedance-2.5-text-to-video": seedance4k,
-  "seedance-2.5-image-to-video": seedance4k,
-  "seedance-2.5-video-extend": seedance4k,
   // MiniMax: "Audio duration: at least 10 seconds, no longer than 5 minutes".
   "minimax-voice-clone": (r) => (r.durations?.audio ?? []).some((s) => s < 10 || s > 300),
   // Tripo: "Any other texture version returns `1004`"; generate_parts with "`texture=true` or `pbr=true` ... is rejected with error code `1004`".

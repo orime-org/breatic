@@ -180,11 +180,5 @@
       }
     }
   ],
-  "untaken": [
-    {
-      "param": "resolution",
-      "value": "4k"
-    }
-  ],
   "steps": []
 }

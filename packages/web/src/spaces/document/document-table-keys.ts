@@ -48,6 +48,7 @@ import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/docu
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -307,6 +308,8 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
 function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const view = editor.prosemirrorView;
   const { selection } = view.state;
+  // A table open full screen is the whole body on screen: the caret stays in it.
+  if (inTableFullscreen(view.state)) return false;
   const exit = selection.empty ? tableExit(view, selection.$head, dir) : null;
   if (exit === null) return false;
   const before = dir === 'up' || dir === 'left';
@@ -380,6 +383,7 @@ const EXTENDING: Readonly<Record<string, Extending>> = {
  */
 function extendAcrossTable(view: EditorView, key: Extending): boolean {
   const { selection, doc } = view.state;
+  if (inTableFullscreen(view.state)) return false;
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return false;
   const { $head, anchor } = selection;
   const step = key.back ? -1 : 1;

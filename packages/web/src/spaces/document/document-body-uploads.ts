@@ -14,7 +14,7 @@
 
 import type * as Y from 'yjs';
 
-import { claimIn } from '@web/spaces/document/document-pending-status';
+import { claimIn } from '@web/lib/upload-claims';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { ClaimChannel, UploadController, UploadSource } from '@web/spaces/document/document-upload-controller';

@@ -22,7 +22,7 @@ beforeAll(() => {
 /** Each ref model, the caps its upstream publishes per pool, and its group. */
 const REF_MODELS: ReadonlyArray<readonly [string, Readonly<Record<string, number>>]> = [
   ["minimax-h3-reference-to-video", { images: 9, videos: 3, audios: 3 }],
-  ["gemini-omni-1.1-flash-reference-to-video", { images: 10, videos: 3 }],
+  ["gemini-omni-1.1-flash-reference-to-video", { images: 6, videos: 3 }],
   ["wan-3.0-reference-to-video", { images: 10, videos: 5, audios: 5 }],
   ["happyhorse-1.1-reference-to-video", { images: 9 }],
 ];
@@ -42,6 +42,10 @@ function videoEntry(name: string): FullModelEntry {
 }
 
 describe("reference-to-video config wiring", () => {
+  it("tells the picker Gemini Omni takes the 6 references Google allows", () => {
+    expect(videoEntry("gemini-omni-1.1-flash-reference-to-video").description).toMatch(/^6 refs\b/);
+  });
+
   it.each(REF_MODELS)("%s declares the ref and multi-shot modes", (name) => {
     expect(videoEntry(name).mode).toEqual(["ref", "multi_shot"]);
   });

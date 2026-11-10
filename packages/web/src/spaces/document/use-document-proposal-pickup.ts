@@ -34,6 +34,7 @@ import {
 } from '@web/spaces/document/document-proposal-landing';
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { pendingFor, useDocumentProposals, type PendingDocumentProposal } from '@web/stores/document-proposals';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /** The execution holding this handle's serial queue. */
 interface PickupOwner {
@@ -127,6 +128,9 @@ export function useDocumentProposalPickup(
           const next = pendingFor(spaceId)[0];
           if (next === undefined) break;
           const id = next.proposal.proposalId;
+          // A table open full screen hides the body a proposal lands in or
+          // points at: the card's press ends it first (#1427 §5.3).
+          setTableFullscreen(handle.editor, null);
 
           /**
            * Hands the body where this request's proposal is, a comment's thread

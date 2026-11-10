@@ -502,7 +502,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [29.9] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "[30,30]"],
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [14] } }, { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [15] } }, "[15,30]"],
     // Measured on WaveSpeed (2026-11-07): lyrics, prompt and melody failed; lyrics and melody completed.
-    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
     ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "300 seconds"],
     ["dreamactor-v2", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
@@ -511,9 +511,6 @@ describe("the limits a reseller states beyond its schema", () => {
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [16, 15] } }, { prompt: "a fox", params: { duration: 5, audios: [URL_A, URL_A] }, durations: { audios: [15, 15] } }, "30 seconds"],
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [16, 15] } }, { prompt: "a fox", params: { duration: 5, videos: [URL_A, URL_A] }, durations: { videos: [15, 15] } }, "30 seconds"],
     ["seedance-2.5-text-to-video", { prompt: "a fox", params: { duration: 31 } }, { prompt: "a fox", params: { duration: 30 } }, "[4, 30]"],
-    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { resolution: "4k" } }, { prompt: "a fox", params: { resolution: "1080p" } }, "1080p"],
-    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, resolution: "4k" } }, { prompt: "a fox", params: { image: URL_A, resolution: "1080p" } }, "1080p"],
-    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, resolution: "4k" }, durations: { video: [5] } }, { prompt: "go on", params: { video: URL_A, resolution: "1080p" }, durations: { video: [5] } }, "1080p"],
     ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3.5] } }, { prompt: "a fox", params: { videos: [URL_A] }, durations: { videos: [3] } }, "3 seconds"],
     ["gemini-omni-1.1-flash-reference-to-video", { prompt: "a fox", params: { images: Array<string>(7).fill(URL_A) } }, { prompt: "a fox", params: { images: Array<string>(6).fill(URL_A) } }, "up to 6 images"],
     ["wan-3.0-reference-to-video", { prompt: "a fox", params: { duration: 19, videos: [URL_A] }, durations: { videos: [12] } }, { prompt: "a fox", params: { duration: 18, videos: [URL_A] }, durations: { videos: [12] } }, "30 seconds"],
@@ -534,7 +531,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["minimax-speech-2.8-hd", { prompt: "x".repeat(10001), params: { voice_id: "Wise_Woman" } }, { prompt: "x".repeat(10000), params: { voice_id: "Wise_Woman" } }, "10,000"],
     ["mureka-v9.5-generate-song", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "maximum 1024"],
     ["mureka-v9.5-generate-song", { prompt: "x".repeat(2001) }, { prompt: "x".repeat(2000) }, "maximum 2000"],
-    ["mureka-v9.5-generate-song", { params: { lyrics: "la", melody: URL_A }, durations: { melody: [4] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [5] } }, "[5,60]"],
+    ["mureka-v9.5-generate-song", { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [4] } }, { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [5] } }, "[5,60]"],
     ["minimax-music-cover", { prompt: "x".repeat(9), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(10), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
     ["minimax-music-cover", { prompt: "x".repeat(301), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(300), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
     ["minimax-music-cover", { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [5.9] } }, { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [6] } }, "6 seconds to 6 minutes"],
@@ -610,9 +607,9 @@ describe("the limits a reseller states beyond its schema", () => {
     ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A, character_orientation: "image" }, durations: { video: [10] } }, "up to 10 s"],
     ["kling-v3-pro-motion", { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30.5] } }, { prompt: "dance", params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "up to 30 s"],
     ["omnihuman-1.5", { params: { image: URL_A, audio: URL_A }, durations: { audio: [60] } }, { params: { image: URL_A, audio: URL_A }, durations: { audio: [59.9] } }, "less than 60 seconds"],
-    ["tripo-h3.1-t23d", { prompt: "a fox", params: { generate_parts: true, smart_low_poly: true } }, { prompt: "a fox", params: { generate_parts: true } }, "Not compatible with smart_low_poly"],
-    ["tripo-h3.1-i23d", { params: { image: URL_A, generate_parts: true, smart_low_poly: true } }, { params: { image: URL_A, generate_parts: true } }, "Not compatible with smart_low_poly"],
-    ["tripo-h3.1-multiview", { params: { images: [URL_A, URL_A], generate_parts: true, smart_low_poly: true } }, { params: { images: [URL_A, URL_A], generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-t23d", unforced({ prompt: "a fox", params: { generate_parts: true, smart_low_poly: true } }), { prompt: "a fox", params: { generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-i23d", unforced({ params: { image: URL_A, generate_parts: true, smart_low_poly: true } }), { params: { image: URL_A, generate_parts: true } }, "Not compatible with smart_low_poly"],
+    ["tripo-h3.1-multiview", unforced({ params: { images: [URL_A, URL_A], generate_parts: true, smart_low_poly: true } }), { params: { images: [URL_A, URL_A], generate_parts: true } }, "Not compatible with smart_low_poly"],
     ["tripo-h3.1-t23d", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "up to 1024 characters"],
     ["tripo-h3.1-t23d", { prompt: "a fox", params: { negative_prompt: "x".repeat(256) } }, { prompt: "a fox", params: { negative_prompt: "x".repeat(255) } }, "up to 255 characters"],
     ["tripo-h3.1-t23d", { prompt: "a fox", params: { smart_low_poly: true, face_limit: 499 } }, { prompt: "a fox", params: { smart_low_poly: true, face_limit: 500 } }, "500 – 20,000"],
@@ -737,6 +734,19 @@ describe("the limits a reseller states beyond its schema", () => {
     }
     return { wrong, used };
   };
+
+  // ByteDance states 1080p as Seedance 2.5's ceiling, yet WaveSpeed lists 4k and a 4k run returned 3840x2160 (2026-11-09, breatic#1393): 4k is WaveSpeed's alone, not a vendor limit.
+  it.each([
+    ["seedance-2.5-text-to-video", { prompt: "a fox", params: { resolution: "4k" } }, ["fal", "sandbase"]],
+    ["seedance-2.5-image-to-video", { prompt: "a fox", params: { image: URL_A, resolution: "4k" } }, ["fal", "sandbase"]],
+    ["seedance-2.5-video-extend", { prompt: "go on", params: { video: URL_A, resolution: "4k" }, durations: { video: [5] } }, []],
+  ] as [string, Partial<EstimateInput>, string[]][])("serves a %s run at 4k on WaveSpeed only", async (model, fourK, without) => {
+    const rules = provider.pricingRules(model);
+    expect(await rejectedInput(rules, "wavespeed", run(withDefaults(model, fourK)))).toBeUndefined();
+    for (const upstream of without) {
+      expect(await rejectedInput(rules, upstream, run(withDefaults(model, fourK)))).toEqual({ param: "resolution", value: "4k" });
+    }
+  });
 
   it.each(VENDOR)("keeps a %s run its vendor's words refuse off every upstream, and lets the nearest run the vendor takes through", async (...row) => {
     const { wrong } = await vendorVerdict(row);

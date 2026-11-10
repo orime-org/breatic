@@ -914,8 +914,8 @@ models:
     mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "optional"
-    description: "10 refs, 4K, lip-synced audio"
-    guide: "For a short reference-locked shot that needs the most identity anchors, 4K, and spoken dialogue produced in the same pass."
+    description: "6 refs, 4K, lip-synced audio"
+    guide: "For a short reference-locked shot built from up to six images, at 4K, with spoken dialogue produced in the same pass."
     generation_time: 600
     icon: "gemini"
     source_groups:
@@ -938,8 +938,8 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        # The upstream takes 10 images; 3 of them are kept for the style slot.
-        max_items: 7
+        # The upstream takes 6 images (Google, from 2026-12-03); 3 of them are kept for the style slot.
+        max_items: 3
         accepts: "image"
         optional: true
         fill: "pool"

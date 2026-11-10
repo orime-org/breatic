@@ -72,7 +72,7 @@ interface ResolvableParam {
  * @param params - The params.
  * @returns True when every part given holds.
  */
-function gateHolds(when: CatalogGate, params: Readonly<Record<string, unknown>>): boolean {
+export function gateHolds(when: CatalogGate, params: Readonly<Record<string, unknown>>): boolean {
   if (when.flag_on !== undefined && params[when.flag_on] !== true) return false;
   return Object.entries(when.equals ?? {}).every(([key, value]) => params[key] === value);
 }

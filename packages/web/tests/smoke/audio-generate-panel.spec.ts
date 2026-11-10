@@ -248,76 +248,98 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   });
 });
 
-test('reference to music: three slots, and any one of them satisfies the gate', async ({ page }) => {
-  // Seeded left of the origin: the minimap in the bottom-right corner sits
-  // above the panel and takes clicks meant for it (#2051).
-  const sourceId = crypto.randomUUID();
-  const nodeId = crypto.randomUUID();
-  await seedNode(sourceId, 'audio', 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=', -350, -240);
-  await seedNode(nodeId, 'audio', undefined, -50, -240);
-  await openGenerate(nodeId);
+test.describe('reference to music in a window tall enough for its settings', () => {
+  // With the style box, the lyrics box and the settings row, the panel runs
+  // past a 720px window's bottom, and the settings open above a pill that is
+  // already off screen; a wider window keeps the minimap clear of the panel,
+  // as agent-proposal-material's does.
+  test.use({ viewport: { width: 1500, height: 900 } });
 
-  await page.getByTestId('generate-audio-mode-trigger').click();
-  await page.getByTestId('generate-audio-mode-a2m').click();
+  test('reference to music: style and references or a melody, picked in the settings, and any reference satisfies the gate', async ({ page }) => {
+    // Seeded left of the origin: the minimap in the bottom-right corner sits
+    // above the panel and takes clicks meant for it (#2051).
+    const sourceId = crypto.randomUUID();
+    const nodeId = crypto.randomUUID();
+    await seedNode(sourceId, 'audio', 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=', -350, -240);
+    await seedNode(nodeId, 'audio', undefined, -50, -240);
+    await openGenerate(nodeId);
 
-  // Three slots, not one: the model takes a reference song, a melody and a
-  // voice to sing with, any of them on its own. None of them is the voice
-  // sample the cloning mode asks for.
-  await expect(page.getByTestId('generate-audio-tool-music-song')).toBeVisible({
-    timeout: 15_000,
+    await page.getByTestId('generate-audio-mode-trigger').click();
+    await page.getByTestId('generate-audio-mode-a2m').click();
+
+    // Composing from style and references by default: a reference song and a
+    // voice to sing with, which Mureka combines freely, and no melody, which it
+    // takes only on its own (breatic#1393). None of them is the voice sample the
+    // cloning mode asks for.
+    await expect(page.getByTestId('generate-audio-tool-music-song')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('generate-audio-tool-music-vocal')).toBeVisible();
+    await expect(page.getByTestId('generate-audio-tool-music-melody')).toHaveCount(0);
+    await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
+
+    // $0.225 a call is 22.5 credits, part-credits kept (`formatCredits`).
+    // Nothing is picked yet, so no upload or clone step is priced in.
+    await expect(page.getByTestId('generate-audio-rate')).toHaveText('22.5', {
+      timeout: 15_000,
+    });
+
+    // With both boxes filled and no slot picked, the click asks for one of
+    // the two places on screen. The lyrics go in first because they are
+    // refused ahead of the slots — this model demands them too.
+    await page.getByTestId('generate-prompt-editor').click();
+    await page.keyboard.type('same mood, slower');
+    // The lyrics are a row while the style box is open (#1201); opening them
+    // puts the caret in their box.
+    await page.getByTestId('generate-prompt-group-lyrics-toggle').click();
+    await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
+    await page.keyboard.type('same road home');
+    await page.getByTestId('generate-audio-execute').click();
+    await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song or vocals first', {
+      timeout: 10_000,
+    });
+
+    // Composing from a melody, chosen in the settings: the melody slot alone,
+    // and no style box; the lyrics stay.
+    await page.getByTestId('generate-audio-settings-trigger').click();
+    await page.getByTestId('generate-param-compose_from-option-melody').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('generate-audio-tool-music-melody')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('generate-audio-tool-music-song')).toHaveCount(0);
+    await expect(page.getByTestId('generate-audio-tool-music-vocal')).toHaveCount(0);
+    await expect(page.getByTestId('generate-prompt-group-prompt')).toHaveCount(0);
+    await expect(page.getByTestId('generate-lyrics-editor')).toBeVisible();
+    await page.getByTestId('generate-audio-execute').click();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Pick a melody first' })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // The melody alone is enough for the gate.
+    await page.getByTestId('generate-audio-tool-music-melody').click();
+    await visibleSpace(page).locator(`.react-flow__node[data-id="${sourceId}"]`).click();
+    await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 10_000 });
+
+    // Stopping here rather than clicking submit again: with the gate satisfied
+    // the click sends a real task to the vendor and spends what this model
+    // bills. What leaves the panel on a melody run is pinned by the unit cases
+    // (`AudioGeneratePanelContainer.test.tsx`); what only a real run reaches is
+    // the wiring above — the setting shows, the slot renders, the pick lands on
+    // the node and the toolbar shows it.
+    //
+    // The pick and the setting are values ON THE NODE, so a trip through another
+    // mode and back finds them still there, and the mode in between offers its
+    // own slots rather than these.
+    await page.getByTestId('generate-audio-mode-trigger').click();
+    await page.getByTestId('generate-audio-mode-voice-clone').click();
+    await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('generate-audio-tool-music-melody')).toHaveCount(0);
+
+    await page.getByTestId('generate-audio-mode-trigger').click();
+    await page.getByTestId('generate-audio-mode-a2m').click();
+    await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 15_000 });
   });
-  await expect(page.getByTestId('generate-audio-tool-music-melody')).toBeVisible();
-  await expect(page.getByTestId('generate-audio-tool-music-vocal')).toBeVisible();
-  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
-
-  // $0.225 a call is 22.5 credits, part-credits kept (`formatCredits`).
-  // Nothing is picked yet, so no upload or clone step is priced in.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('22.5', {
-    timeout: 15_000,
-  });
-
-  // With both boxes filled and no slot picked, the click says a reference is
-  // missing and names the three this mode offers. The lyrics go in first
-  // because they are refused ahead of the slots — this model demands them too.
-  await page.getByTestId('generate-prompt-editor').click();
-  await page.keyboard.type('same mood, slower');
-  // The lyrics are a row while the style box is open (#1201); opening them
-  // puts the caret in their box.
-  await page.getByTestId('generate-prompt-group-lyrics-toggle').click();
-  await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
-  await page.keyboard.type('same road home');
-  await page.getByTestId('generate-audio-execute').click();
-  await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song, melody or vocals', {
-    timeout: 10_000,
-  });
-
-  // The middle slot alone is enough: the vendor takes whichever are given, and
-  // a gate demanding a particular one would grey the button out for a user who
-  // filled another.
-  await page.getByTestId('generate-audio-tool-music-melody').click();
-  await visibleSpace(page).locator(`.react-flow__node[data-id="${sourceId}"]`).click();
-  await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 10_000 });
-
-  // Stopping here rather than clicking submit again: with the gate satisfied
-  // the click sends a real task to the vendor and spends what this model
-  // bills. Which of the three satisfies it is pinned by the unit case
-  // that walks all three (`generate-guards.test.ts`); what only a real run
-  // reaches is the wiring above — the slot renders, the pick lands on the node
-  // and the toolbar shows it.
-  //
-  // The pick is a value ON THE NODE, so a trip through another mode and back
-  // finds it still there, and the mode in between offers its own slots rather
-  // than these.
-  await page.getByTestId('generate-audio-mode-trigger').click();
-  await page.getByTestId('generate-audio-mode-voice-clone').click();
-  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByTestId('generate-audio-tool-music-melody')).toHaveCount(0);
-
-  await page.getByTestId('generate-audio-mode-trigger').click();
-  await page.getByTestId('generate-audio-mode-a2m').click();
-  await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 15_000 });
 });
 
 test('Gemini keeps its reading mode, language and speakers in the settings pill', async ({ page }) => {
