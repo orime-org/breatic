@@ -14,7 +14,7 @@ export const POV_CONTINUOUS_SHOT: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a 12-second vertical first-person walk in one continuous take, the camera at eye height on the walker's head, no cuts and no zoom, ending on what is revealed at the destination; the user writes the place, the way and the reveal",
+    "a 12-second vertical first-person walk in one continuous take, the camera at eye height on the walker's head, no cuts and no zoom, ending on what is revealed at the destination; needs the place, the way and the reveal",
   goal: "social-hooks",
   triggers: {
     asks: ["a first-person video", "a POV shot", "one continuous take"],

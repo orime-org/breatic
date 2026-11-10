@@ -34,6 +34,7 @@ import {
   sessionCookieName,
   loadLocales,
   getStorageAdapter,
+  coverKeyFor,
 } from "@breatic/core";
 import type { Hono } from "hono";
 
@@ -321,6 +322,118 @@ describe("POST /canvas/paste", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).data.map).toEqual({});
     expect(await history(a.projectId, node)).toEqual([]);
+  });
+
+  // A document block holds only the video's address (inner#1537 §5.4): the
+  // server files the cover the ledger knows, the way an upload does.
+  it("registers a video named alone together with the cover its row points at", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const videoKey = key("video");
+    const cover = await asset(a.studioId, a.userId, { key: coverKeyFor(videoKey), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: videoKey, kind: "video", coverAssetId: cover.id });
+    const res = await paste(b.cookie, b.projectId, { urls: [vid.url] });
+    expect(res.status).toBe(200);
+    const rows = await ledger(b.studioId);
+    const coverRow = rows.find((r) => r.content_hash === cover.hash);
+    const videoRow = rows.find((r) => r.content_hash === vid.hash);
+    expect(coverRow?.source).toBe("cover");
+    expect(videoRow?.cover_asset_id).toBe(coverRow?.id);
+    expect((await res.json()).data.map).toEqual({ [vid.url]: videoRow?.file_url, [cover.url]: coverRow?.file_url });
+  });
+
+  it("takes the cover from another row under the same key when the first row it finds has none", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const c = await seedEditor();
+    const shared = key("video");
+    const hash = crypto.randomBytes(32).toString("hex");
+    // Filed first and without a cover, the way a document paste into another studio filed it.
+    await asset(c.studioId, c.userId, { key: shared, kind: "video", hash });
+    const cover = await asset(a.studioId, a.userId, { key: coverKeyFor(shared), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: shared, kind: "video", hash, coverAssetId: cover.id });
+    const res = await paste(b.cookie, b.projectId, { urls: [vid.url] });
+    expect(res.status).toBe(200);
+    const rows = await ledger(b.studioId);
+    const coverRow = rows.find((r) => r.content_hash === cover.hash);
+    expect(rows.find((r) => r.content_hash === hash)?.cover_asset_id).toBe(coverRow?.id);
+  });
+
+  it("gives the cover the ledger knows to a video the target studio holds without one", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const videoKey = key("video");
+    const cover = await asset(a.studioId, a.userId, { key: coverKeyFor(videoKey), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: videoKey, kind: "video", coverAssetId: cover.id });
+    const theirs = await asset(b.studioId, b.userId, { key: key("video"), kind: "video", hash: vid.hash });
+    const res = await paste(b.cookie, b.projectId, { urls: [vid.url] });
+    expect(res.status).toBe(200);
+    const [row] = await sql<{ cover_asset_id: string | null }[]>`SELECT cover_asset_id FROM studio_assets WHERE id = ${theirs.id}`;
+    expect(row?.cover_asset_id).not.toBeNull();
+  });
+
+  it("answers each address's media as the target studio's ledger holds it", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const videoKey = key("video");
+    const cover = await asset(a.studioId, a.userId, { key: coverKeyFor(videoKey), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: videoKey, kind: "video", coverAssetId: cover.id });
+    const res = await paste(b.cookie, b.projectId, { urls: [img.url, vid.url] });
+    expect(res.status).toBe(200);
+    const { map, media } = (await res.json()).data;
+    expect(media[map[img.url]]).toEqual({ coverUrl: null, width: 640, height: 480, duration: null, mimeType: "image/png", size: 4096 });
+    expect(media[map[vid.url]]).toEqual({ coverUrl: map[cover.url], width: 640, height: 480, duration: null, mimeType: "video/mp4", size: 4096 });
+  });
+
+  it("fills a media history row's thumbnail and numbers from the ledger when the copy carries none", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const videoKey = key("video");
+    const cover = await asset(a.studioId, a.userId, { key: coverKeyFor(videoKey), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: videoKey, kind: "video", coverAssetId: cover.id });
+    const node = crypto.randomUUID();
+    const res = await paste(b.cookie, b.projectId, {
+      urls: [vid.url],
+      history: [{ node_id: node, kind: "media", content: vid.url }],
+    });
+    expect(res.status).toBe(200);
+    const { map } = (await res.json()).data;
+    expect(await history(b.projectId, node)).toEqual([
+      { entry_type: "upload", content: map[vid.url], thumbnail_url: map[cover.url], user_id: b.userId, media_width: 640, mime_type: "video/mp4" },
+    ]);
+  });
+
+  // Another studio can point its row of a video at any picture through a pair;
+  // a video named alone takes only the frame cut from its own bytes.
+  it("takes no picture another studio paired with a video as that video's cover", async () => {
+    const victim = await seedEditor();
+    const other = await seedEditor();
+    const b = await seedEditor();
+    const videoKey = key("video");
+    const hash = crypto.randomBytes(32).toString("hex");
+    const vid = await asset(victim.studioId, victim.userId, { key: videoKey, kind: "video", hash });
+    const planted = await asset(other.studioId, other.userId, { key: key("image") });
+    const pairRes = await paste(other.cookie, other.projectId, { pairs: [{ url: vid.url, cover: planted.url }] });
+    expect(pairRes.status).toBe(200);
+
+    const res = await paste(b.cookie, b.projectId, { urls: [vid.url] });
+    expect(res.status).toBe(200);
+    const rows = await ledger(b.studioId);
+    expect(rows.find((r) => r.content_hash === planted.hash)).toBeUndefined();
+    expect(rows.find((r) => r.content_hash === hash)?.cover_asset_id).toBeNull();
+  });
+
+  it("keeps the numbers a copy carries in its history row", async () => {
+    const a = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const node = crypto.randomUUID();
+    const res = await paste(a.cookie, a.projectId, {
+      urls: [img.url],
+      history: [{ node_id: node, kind: "media", content: img.url, width: 100, mimeType: "image/webp" }],
+    });
+    expect(res.status).toBe(200);
+    expect((await history(a.projectId, node))[0]).toMatchObject({ media_width: 100, mime_type: "image/webp" });
   });
 
   it("answers 404 to someone with no role and 403 to a viewer, writing nothing", async () => {

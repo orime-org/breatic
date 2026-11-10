@@ -72,9 +72,9 @@ beforeEach(() => {
     membershipTier: 'base',
   });
   // Skipping the transfer would succeed at once: paste answers an empty
-  // map, snapshot a row id.
+  // map and no media, snapshot a row id.
   vi.mocked(apiPost).mockImplementation(async (url: string) =>
-    url === '/canvas/paste' ? { map: {} } : { id: 'h-1' },
+    url === '/canvas/paste' ? { map: {}, media: {} } : { id: 'h-1' },
   );
 });
 

@@ -116,6 +116,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 
@@ -238,6 +239,7 @@ describe("what a plain chat turn hands the model", () => {
       "save_memory",
       "search_conversations",
       "search_images",
+      "web_fetch",
       "web_search",
     ]);
   });

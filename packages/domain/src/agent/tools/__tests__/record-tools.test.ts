@@ -67,7 +67,8 @@ function records(over: Partial<ProjectRecords> = {}): ProjectRecords {
  * @param name - The tool.
  * @param input - What the model sent.
  * @param recs - The turn's records.
- * @returns What the tool answered.
+ * @returns The text the model reads of the answer: the answer itself, or the
+ *   `text` of a conversation read, which also carries the user's links (inner#1664).
  * @throws {Error} When the tool is not registered, or when the call fails.
  */
 async function call(name: string, input: Record<string, unknown>, recs: ProjectRecords): Promise<string> {
@@ -76,8 +77,10 @@ async function call(name: string, input: Record<string, unknown>, recs: ProjectR
   const tool: Tool = build();
   if (!tool.execute) throw new Error(`${name} has no execute`);
   const answer: unknown = await tool.execute(input, { toolCallId: "t1", messages: [], context: { records: recs } } as never);
-  if (typeof answer !== "string") throw new Error(`${name} answered with ${typeof answer}`);
-  return answer;
+  if (typeof answer === "string") return answer;
+  const text = (answer as { text?: unknown } | null)?.text;
+  if (typeof text !== "string") throw new Error(`${name} answered with no text`);
+  return text;
 }
 
 /**

@@ -457,11 +457,11 @@ describe("searching the user's messages", () => {
     });
     const records = recordsFor(turn);
     const read = TOOL_MAP.read_conversation!();
-    const shown = (await read.execute!({ conversation_id: other }, {
+    const shown = ((await read.execute!({ conversation_id: other }, {
       toolCallId: "t1",
       messages: [],
       context: { records },
-    } as never)) as string;
+    } as never)) as { text: string }).text;
     const words = ["HEADER-ONLY-WORD", "NESTED-QUESTION-WORD", "PAST-CUT-WORD"];
     const found: string[] = [];
     for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);
@@ -491,11 +491,11 @@ describe("searching the user's messages", () => {
       parts: [{ type: "tool", toolCallId: "ask-err", toolName: "ask_user", input, status: "error" }],
     });
     const records = recordsFor(turn);
-    const shown = (await TOOL_MAP.read_conversation!().execute!({ conversation_id: other }, {
+    const shown = ((await TOOL_MAP.read_conversation!().execute!({ conversation_id: other }, {
       toolCallId: "t1",
       messages: [],
       context: { records },
-    } as never)) as string;
+    } as never)) as { text: string }).text;
     const words = ["EARLYHEAD", "LATE-QUESTION-WORD"];
     const found: string[] = [];
     for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);

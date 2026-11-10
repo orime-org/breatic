@@ -80,7 +80,7 @@ export const CitationMark = React.memo(function CitationMark({
       >
         <div className='flex flex-col gap-1'>
           <span className='text-2xs text-muted-foreground'>{source.publisher}</span>
-          <span className='text-xs font-medium leading-snug'>{source.title}</span>
+          <span className='text-xs font-medium leading-snug'>{source.title || source.url}</span>
           <span className='break-all text-2xs text-muted-foreground'>{source.url}</span>
         </div>
       </HoverCardContent>

@@ -12,7 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 
-import type { GenerationTemplate, ProposalNode } from "@breatic/shared";
+import type { GenerationTemplate, PromptSegment, ProposalNode } from "@breatic/shared";
 
 import { nodeLabel, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { expandAt, templatePlace, type TemplateExpansion } from "@domain/agent/tools/template-expansion.js";
@@ -210,5 +210,63 @@ describe("expandTemplate", () => {
   it("reads the registry when no other is given", () => {
     const out = expandTemplate(named({ id: "storyboard-grid-25" }), AT);
     expect(out).toMatchObject({ ok: true, node: { mode: "i2i", model: EDIT, params: { aspect_ratio: "1:1", resolution: "4k" } } });
+  });
+});
+
+// The Agent sent a template's character design with its style blank still in
+// the prompt, leaving the user to fill it in by hand (breatic#1361): a
+// template's tweak segment is never sent as it is.
+describe("a template's tweak segments left in the prompt", () => {
+  const DESIGN: Tag = { id: "character-design-from-text", key: "design" };
+  const WHO = "who the character is: age, build, face, hair, outfit, colours";
+  const STYLE = "one style, e.g. 3D cartoon, anime or photorealistic";
+  const SHEET_TEXT = "name, role, age, 3 to 5 personality keywords and a one-line theme";
+
+  /**
+   * A tweak segment as a template writes it.
+   * @param label - Its label.
+   * @returns The segment.
+   */
+  const tweak = (label: string): PromptSegment => ({ slot: { kind: "tweak", label, note: label } });
+
+  /**
+   * The design node with the prompt the agent sent.
+   * @param prompt - The prompt.
+   * @returns The node naming the design key.
+   */
+  const design = (prompt: PromptSegment[]): ProposalNode & { template: Tag } =>
+    named(DESIGN, { name: "Character design", prompt });
+
+  // Blanks are held by one check, the generate check on the whole proposal
+  // (`checkBlanks`), which the tool's path runs after expansion; how it
+  // refuses a template's own blanks is pinned in proposal-tweak-blanks.test.ts.
+  it("expands a node keeping the template's own tweak segments, leaving them to the generate check", () => {
+    const prompt = [{ text: "A full-body character design of " }, tweak(WHO), { text: ", in " }, tweak(STYLE), { text: "." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("expands the anchor keeping its own tweak segment, leaving it to the generate check", () => {
+    const prompt = [{ text: "A character sheet. " }, tweak(SHEET_TEXT), { ref: 1 }];
+    const out = expandTemplate(named({ id: "character-design-from-text" }, { name: "Sheet", prompt }), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a prompt whose every template tweak segment is filled", () => {
+    const prompt = [{ text: "A full-body character design of a twelve-year-old fox girl in a red coat, in a 3D cartoon style." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a tweak segment the agent wrote itself, whose label is none of the template's", () => {
+    const prompt = [{ text: "A full-body character design of a fox girl, in a 3D cartoon style, wearing " }, tweak("the coat's colour"), { text: "." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a tweak segment whose label belongs to another node of the template, not this one", () => {
+    const prompt = [{ text: "A full-body character design of a fox girl, in a 3D cartoon style. " }, tweak(SHEET_TEXT)];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
   });
 });

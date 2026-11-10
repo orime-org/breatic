@@ -350,5 +350,7 @@ function pendingExternalHTML(block: { props: Record<string, unknown> }): { dom: 
   const { name } = block.props;
   const line = document.createElement('p');
   line.textContent = t('spaces.document.media.pendingExport', { name: typeof name === 'string' ? name : '' });
+  // The canvas counts this line as a medium it could not paste (inner#1537).
+  line.setAttribute('data-upload-pending', '');
   return { dom: line };
 }

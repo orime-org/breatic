@@ -54,7 +54,7 @@ const promptSegment = z.union([
       slot: z.union([
         z
           .object({
-            kind: z.literal("tweak").describe("Words only the user can write"),
+            kind: z.literal("tweak").describe("A blank a template wrote; fill it before sending"),
             label: z.string().trim().min(1).describe("What to write"),
             note: z
               .string()
@@ -99,7 +99,7 @@ const proposalNode = z
       .optional()
       .describe(
         `role source only: the address of material in the user's storage -- a file uploaded in the chat, ` +
-          `or a picture saved with ${SAVE_IMAGE}. Leave it out for an empty node`,
+          `a picture saved with ${SAVE_IMAGE}, or a picture or clip already on the canvas. Leave it out for an empty node`,
       ),
     template: z
       .union([

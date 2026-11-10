@@ -424,6 +424,13 @@
         "noPermission": "이 Project의 편집 권한이 없습니다",
         "notMember": "더 이상 이 Project의 멤버가 아닙니다",
         "tooFrequent": "방금 가져온 링크가 너무 많습니다. 1분 후 다시 시도하세요",
+        "pageNeedsLogin": "로그인이 필요합니다",
+        "pageRefused": "사이트가 읽기를 거부했습니다",
+        "pageTooSlow": "페이지가 너무 늦게 열려 다 읽지 못했습니다",
+        "pageEmpty": "페이지에 읽을 수 있는 글이 없습니다",
+        "pageUnreachable": "열 수 없습니다",
+        "pageUnsupportedType": "읽을 수 있는 형식이 아닙니다",
+        "pagesUnreadable": "어느 페이지도 읽지 못했습니다",
         "declined": "서비스가 이 내용의 처리를 거부했습니다",
         "ourFault": "서버에 문제가 발생했습니다. 다시 시도하세요"
       },
@@ -431,6 +438,7 @@
       "failedStep": "{step} 실패",
       "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
+      "readingPages": "{count, plural, =0 {웹페이지 읽는 중} =1 {{host} 읽는 중} other {웹페이지 #개 읽는 중}}",
       "searchingImages": "“{query}” 이미지 검색 중",
       "checkingCanvas": "Canvas로 만들 수 있는 것 확인 중",
       "proposingNodes": "제안을 정리하는 중",
@@ -451,6 +459,7 @@
       "running": "{tool} 실행 중",
       "step": {
         "webSearch": "“{query}” 검색",
+        "webFetch": "웹페이지 읽기",
         "searchImages": "“{query}” 이미지 검색",
         "understandMedia": "미디어 확인",
         "saveImage": "이미지 저장",
@@ -2240,7 +2249,8 @@
         },
         "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
         "notWrittenYet": "업로드됨, 아직 추가되지 않음",
-        "notPasted": "{count}개 항목을 붙여넣지 못했습니다."
+        "notPasted": "{count}개 항목을 붙여넣지 못했습니다.",
+        "stillUploading": "이미지, 동영상, 오디오 {count}개는 업로드 중이라 붙여넣지 않았습니다. 업로드가 완료되면 다시 복사하세요."
       }
     },
     "readOnlyReconnect": "다시 연결",

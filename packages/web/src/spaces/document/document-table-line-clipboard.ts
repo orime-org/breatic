@@ -28,6 +28,7 @@ import { PASTED_MEDIA_KEY, type PastedMediaJudge } from '@web/spaces/document/do
 import { readTransfer, type Transfer } from '@web/spaces/document/document-paste-read';
 import { judgedTable } from '@web/spaces/document/document-put';
 import { withoutRowIds } from '@web/spaces/document/document-comment-paste';
+import { readClipboard, type ClipboardText } from '@web/lib/read-clipboard';
 import { cellAt, deleteColumnAt, deleteRowAt, insertLinesOf } from '@web/spaces/document/document-table-run';
 import { holdPendingCell } from '@web/spaces/document/document-table-target';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -205,35 +206,6 @@ export async function cutTableLine(editor: LineEditor, cellPos: number, scope: L
     return 'cut';
   } finally {
     held.release();
-  }
-}
-
-/** The clipboard's HTML and plain text, as an async read hands them. */
-interface ClipboardText {
-  readonly html: string;
-  readonly plain: string;
-}
-
-/**
- * Reads the clipboard's HTML and plain text. Chromium hands HTML cleaned
- * (styles dropped, CSS inlined) unless asked for it as written, which is what
- * a paste event hands; other engines ignore the request.
- * @returns The text, or null when the read is refused.
- */
-async function readClipboard(): Promise<ClipboardText | null> {
-  try {
-    // `unsanitized` is in the Clipboard API spec but not yet in TypeScript's DOM types.
-    const read = navigator.clipboard.read.bind(navigator.clipboard) as (options: { unsanitized: readonly string[] }) => Promise<ClipboardItems>;
-    const items = await read({ unsanitized: ['text/html'] });
-    let html = '';
-    let plain = '';
-    for (const item of items) {
-      if (html === '' && item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
-      if (plain === '' && item.types.includes('text/plain')) plain = await (await item.getType('text/plain')).text();
-    }
-    return { html, plain };
-  } catch {
-    return null;
   }
 }
 

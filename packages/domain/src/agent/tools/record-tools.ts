@@ -18,6 +18,7 @@ import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, formatCredits, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
+import { pageLinksIn } from "@domain/agent/page-links.js";
 import { cutMarker, keptText, messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import {
@@ -503,8 +504,28 @@ const activityInput = z
 /** What each record tool's `execute` is handed besides its input. */
 type RecordsOptions = { abortSignal?: AbortSignal; context: RecordsContext };
 
+/**
+ * What the two conversation reads answer with: the text the model reads, and
+ * the links the user wrote in the messages read, which `web_fetch` may then
+ * read, later in this turn or in a later one (inner#1664). A link the Agent
+ * wrote is left out: it is the model's own text.
+ */
+export interface ConversationRead {
+  text: string;
+  userLinks: string[];
+}
+
+/**
+ * The links the user wrote in a set of messages.
+ * @param messages - The messages, each with who wrote it and its text.
+ * @returns The links, in order.
+ */
+function userLinksIn(messages: readonly { role: string; text: string }[]): string[] {
+  return messages.flatMap((m) => (m.role === "user" ? pageLinksIn(m.text) : []));
+}
+
 /** List or search the user's conversations in this project. */
-const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsContext> = tool({
+const searchConversations: Tool<z.infer<typeof searchInput>, ConversationRead, RecordsContext> = tool({
   description:
     "Find what was said in the user's conversations in this project, including this one's earlier turns and " +
     "turns no longer in your context. Without a query, list the conversations: id, title, last update, turns, " +
@@ -519,23 +540,28 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
   inputSchema: searchInput,
   contextSchema: recordsContextSchema,
   metadata: { runningLine: "chat.tool.searchingConversations" },
-  execute: async ({ query, conversation_id, cursor }, { abortSignal, context }: RecordsOptions): Promise<string> => {
+  toModelOutput: ({ output }) => ({ type: "text", value: output.text }),
+  execute: async ({ query, conversation_id, cursor }, { abortSignal, context }: RecordsOptions): Promise<ConversationRead> => {
     const { records } = context;
     const terms = (query ?? "").trim().split(/\s+/).filter(Boolean).slice(0, getAgentConfig().records_search_max_terms);
     if (terms.length === 0) {
-      return conversationList(await guarded(() => records.listConversations(cursor), abortSignal, { cursor }));
+      const listed = await guarded(() => records.listConversations(cursor), abortSignal, { cursor });
+      return { text: conversationList(listed), userLinks: [] };
     }
     const page = await guarded(
       () => records.searchMessages(terms, { conversationId: conversation_id, cursor }),
       abortSignal,
       { conversationId: conversation_id, cursor },
     );
-    return hitList(page, terms, cursor, conversation_id);
+    return {
+      text: hitList(page, terms, cursor, conversation_id),
+      userLinks: userLinksIn(page.hits.map((h) => ({ role: h.role, text: h.body }))),
+    };
   },
 });
 
 /** Read whole turns of one of the user's conversations. */
-const readConversation: Tool<z.infer<typeof readInput>, string, RecordsContext> = tool({
+const readConversation: Tool<z.infer<typeof readInput>, ConversationRead, RecordsContext> = tool({
   description:
     "Read the turns of one of the user's conversations in this project as they were said: the words, what " +
     "was attached, the questions asked and the answers given, and the tools called with what they answered; " +
@@ -547,13 +573,17 @@ const readConversation: Tool<z.infer<typeof readInput>, string, RecordsContext> 
   inputSchema: readInput,
   contextSchema: recordsContextSchema,
   metadata: { runningLine: "chat.tool.readingConversation" },
-  execute: async ({ conversation_id, from_turn, to_turn }, { abortSignal, context }: RecordsOptions): Promise<string> => {
+  toModelOutput: ({ output }) => ({ type: "text", value: output.text }),
+  execute: async ({ conversation_id, from_turn, to_turn }, { abortSignal, context }: RecordsOptions): Promise<ConversationRead> => {
     const read = await guarded(
       () => context.records.readConversation(conversation_id, { fromTurn: from_turn, toTurn: to_turn }),
       abortSignal,
       { conversationId: conversation_id },
     );
-    return turnPage(read, to_turn);
+    return {
+      text: turnPage(read, to_turn),
+      userLinks: userLinksIn(read.messages.map((m) => ({ role: m.role, text: messageText(m.parts) }))),
+    };
   },
 });
 
