@@ -744,3 +744,41 @@ describe('round 1 of the implementation review (breatic#1427)', () => {
     expect(selectionInTable(ours)).toBe(true);
   });
 });
+
+describe('cases design section 6 names (breatic#1427)', () => {
+  it('ends full screen, back to the scroll position at entry, when undo takes back inserting the table', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'Before' }]);
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    managers.get(editor)!.stopCapturing();
+    enter(editor);
+
+    expect(() => editor.undo()).not.toThrow();
+
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('a1');
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'scrollTop', value: 120 } });
+  });
+
+  it('ends full screen, without throwing, when the table is the only block and its last row is deleted', () => {
+    const { editor } = open([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })]);
+    enter(editor);
+
+    expect(() => deleteRowAt(editor as never, cellsIn(editor.prosemirrorState.doc)[0]!)).not.toThrow();
+
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('a1');
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'scrollTop', value: 120 } });
+  });
+
+  it('keeps a selection running between two cells, the one Shift and a click make', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    const view = editor.prosemirrorView!;
+    const cells = cellsIn(view.state.doc);
+
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[3]!)));
+
+    const { selection } = editor.prosemirrorState;
+    expect(selection).toBeInstanceOf(CellSelection);
+    expect([(selection as CellSelection).$anchorCell.pos, (selection as CellSelection).$headCell.pos]).toEqual([cells[0], cells[3]]);
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+});
