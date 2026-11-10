@@ -1458,7 +1458,7 @@
         "targetPerson": "目标人物",
         "timelineComposition": "合成时间线",
         "timelineEmpty": "时间线为空",
-        "timelineInstructions": "选择片段，调整顺序与入出点，设置相邻片段转场，播放预览后导出。",
+        "timelineInstructions": "拖动片段两端调整入出点，用交换按钮调换两段顺序，设置两段之间的转场，播放预览后导出。",
         "timelineProperties": "片段设置",
         "trackObject": "跟踪选区",
         "trackingPrompt": "描述要跟踪的对象，留空则只按选区跟踪",

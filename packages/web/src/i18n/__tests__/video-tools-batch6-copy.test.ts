@@ -51,6 +51,17 @@ const ENGLISH: Readonly<Record<string, string>> = {
 /** The demo's transition type label in each locale (the demo's `messages.json`, key `transition`). */
 const TRANSITION_LABEL: Readonly<Record<string, string>> = { en: 'Type', 'zh-CN': '转场类型', 'zh-TW': '轉場類型', ja: '種類', ko: '유형' };
 
+/** The zh-CN transitions timeline instructions the user approved: two clips, ends trimmed, the swap button orders them, one transition. */
+const ZH_CN_TIMELINE_INSTRUCTIONS = '拖动片段两端调整入出点，用交换按钮调换两段顺序，设置两段之间的转场，播放预览后导出。';
+
+/** How each catalog names a button inside a sentence: bare in English, in corner brackets in zh-TW, ja and ko. */
+const BUTTON_IN_SENTENCE: Readonly<Record<string, (label: string) => string>> = {
+  en: (label) => label,
+  'zh-TW': (label) => `「${label}」`,
+  ja: (label) => `「${label}」`,
+  ko: (label) => `「${label}」`,
+};
+
 describe('batch-6 video tool copy in every locale (§97; canvas design §4)', () => {
   it.each(LOCALE_CATALOGS)('%s has every key with its placeholders', (_tag, catalog) => {
     for (const [key, placeholders] of KEYS) {
@@ -67,5 +78,15 @@ describe('batch-6 video tool copy in every locale (§97; canvas design §4)', ()
 
   it.each(LOCALE_CATALOGS)('%s labels the transition type as the demo does', (tag, catalog) => {
     expect(readPath(catalog, 'canvas.miniTool.videoUI.transition')).toBe(TRANSITION_LABEL[tag]);
+  });
+
+  it('zh-CN timeline instructions describe the two-clip timeline the user approved', () => {
+    const [, zhCN] = LOCALE_CATALOGS[1];
+    expect(readPath(zhCN, 'canvas.miniTool.videoUI.timelineInstructions')).toBe(ZH_CN_TIMELINE_INSTRUCTIONS);
+  });
+
+  it.each(LOCALE_CATALOGS.filter(([tag]) => tag !== 'zh-CN'))('%s timeline instructions name the swap button by its own label', (tag, catalog) => {
+    const label = String(readPath(catalog, 'canvas.miniTool.videoUI.swapClips'));
+    expect(String(readPath(catalog, 'canvas.miniTool.videoUI.timelineInstructions'))).toContain(BUTTON_IN_SENTENCE[tag]!(label));
   });
 });

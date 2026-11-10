@@ -1458,7 +1458,7 @@
         "targetPerson": "Target person",
         "timelineComposition": "Composition",
         "timelineEmpty": "The timeline is empty",
-        "timelineInstructions": "Select a clip, change its order and trim it. Set transitions between adjacent clips, then play the preview before exporting.",
+        "timelineInstructions": "Drag either end of a clip to set its in and out points, press Swap order to swap the two clips, and set the transition between them. Play the preview, then export.",
         "timelineProperties": "Clip settings",
         "trackObject": "Track selection",
         "trackingPrompt": "Describe the object to track, or leave empty to track the selection only",
