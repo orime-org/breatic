@@ -322,7 +322,12 @@ async function bill(pickup: Pickup): Promise<void> {
     );
   });
   if (requestId === null) return;
-  await settleChargeLogged(requestId, { executionId: row.id, amount });
+  await settleChargeLogged(requestId, {
+    executionId: row.id,
+    userId: row.actorUserId,
+    projectId: row.projectId,
+    amount,
+  });
 }
 
 /**

@@ -1336,14 +1336,15 @@ export class MainAgent {
         // logger. This is the layer that knows the user and the
         // conversation.
         for (const stepFailure of failures) {
+          if (stepFailure.step === "bill") {
+            logger.error(
+              { err: stepFailure.error, userId, conversationId, refKey: usage.operation.operationKey, amount: creditsUsed },
+              "credit_charge_settle_failed",
+            );
+            continue;
+          }
           logger.error(
-            {
-              err: stepFailure.error,
-              userId,
-              conversationId,
-              step: stepFailure.step,
-              ...(stepFailure.step === "bill" ? { refKey: usage.operation.operationKey, amount: creditsUsed } : {}),
-            },
+            { err: stepFailure.error, userId, conversationId, step: stepFailure.step },
             "turn_finalizer_step_failed",
           );
         }

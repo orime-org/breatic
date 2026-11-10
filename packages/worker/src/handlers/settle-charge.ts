@@ -11,13 +11,16 @@ import { logger } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { parseCreditDecimal } from "@breatic/shared";
 
+/** What every line about a stuck charge carries: who is charged, how much, and what the delivery was. */
+export type SettleLogContext = { userId: string; amount: number | string } & Record<string, unknown>;
+
 /**
  * Settle a request; never throws. A settlement that fails is already counted
  * on the request by the credit engine and stays pending for the sweep.
  * @param requestId - The request.
  * @param context - Who and what the charge is for, logged with every line.
  */
-export async function settleChargeLogged(requestId: string, context: Record<string, unknown>): Promise<void> {
+export async function settleChargeLogged(requestId: string, context: SettleLogContext): Promise<void> {
   try {
     const outcome = await creditLotService.settleCharge(requestId);
     if (outcome === null) return;

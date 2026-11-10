@@ -25,7 +25,7 @@ export async function sweepCreditCharges(): Promise<void> {
     await settleChargeLogged(request.id, {
       kind: request.kind,
       referenceId: request.referenceId,
-      actorUserId: request.actorUserId,
+      userId: request.actorUserId,
       amount: request.amount,
       attempts: request.attempts,
     });

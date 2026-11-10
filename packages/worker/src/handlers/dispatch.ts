@@ -1231,7 +1231,10 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
   try {
     requestId = await creditLotService.pendingChargeRequestId("task", userId, taskId);
   } catch (err) {
-    logger.error({ err, taskId, userId }, "credit_charge_request_lookup_failed");
+    logger.error(
+      { err, taskId, userId, projectId: run.projectId, amount: run.creditsUsed },
+      "credit_charge_request_lookup_failed",
+    );
     return;
   }
   if (requestId === null) {
@@ -1242,7 +1245,7 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
     taskId,
     userId,
     projectId: run.projectId,
-    creditsUsed: run.creditsUsed,
+    amount: run.creditsUsed,
     wasFirst: run.wasFirst,
   });
 }
