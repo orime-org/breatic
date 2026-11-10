@@ -15,7 +15,7 @@ import { logger } from "@breatic/core";
 import { miniToolStepStateSchema, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
 import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared/mini-tools";
-import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceChunks, advanceContainer, storedRequest, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
@@ -99,8 +99,8 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
   // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
   // new run freezes the repaired ledger). A transport failure keeps the normal retry.
-  // Read until the reporting window ends, so a pickup after the deadline still reads the jobs submitted before it.
-  const ledger = await readJobLedger(execution.ledgerReceipts.source, planReportingEnd(deadlineAt)).catch((error: unknown) => {
+  // Reading it starts no new work, so a pickup after the deadline still reads the jobs submitted before it (`planReadUntil`).
+  const ledger = await readJobLedger(execution.ledgerReceipts.source, planReadUntil(deadlineAt)).catch((error: unknown) => {
     if (error instanceof FullLedgerInvalid) {
       logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_prepare_ledger_invalid");
       throw new UpstreamTaskFailed("container", "source_ledger_invalid");

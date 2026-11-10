@@ -14,11 +14,11 @@
 
 import { logger } from "@breatic/core";
 import { assetRepo, openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
-import { miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
+import { DeadlinePassed, miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { chunkInputId, frameRecipeOf, FullLedgerInvalid, rangeWindow, readJobLedger, segmentRecipesOf, SOURCE_INPUT_ID } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -139,6 +139,11 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
     try {
       job = await advanceRegisteredMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request });
     } catch (error) {
+      // A job that can no longer be submitted or waited for expires its unwritten outputs; the other batches are still read.
+      if (error instanceof DeadlinePassed) {
+        for (const index of pending) pickup.results.set(index, failedResult("expired"));
+        return;
+      }
       if (!(error instanceof StillRunning)) throw error;
       pickup.waiting = true;
       return;
@@ -221,7 +226,7 @@ export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution,
   if (execution.tool !== "video.extract-frames" && execution.tool !== "video.split") throw new Error("A frames or split runner requires a frames or split run");
   let ledger: VideoPresentationLedger;
   try {
-    ledger = await readJobLedger(execution.ledgerReceipts.source, planReportingEnd(deadlineAt));
+    ledger = await readJobLedger(execution.ledgerReceipts.source, planReadUntil(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     // The receipt is frozen for the run, so a ledger that fails it never recovers here (§91 D3b-9, D4-7).

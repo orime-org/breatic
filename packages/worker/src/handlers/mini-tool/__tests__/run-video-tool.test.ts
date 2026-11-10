@@ -817,6 +817,30 @@ describe("an attempt due after the deadline and an output registered before a th
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
   });
 
+  // A worker backlog can run the first pickup after the deadline once the reporting window (two polls past it) has closed:
+  // what already finished is read and registered, and only what never finished expires.
+  it("DL09 a first pickup after the reporting window registers a stitch that reported done while a chunk still running expires", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(chunkOf(0, 0), "running"); scripted.set(stitchOf(1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.delete(stitchOf(1));
+    vi.setSystemTime(DEADLINE + 2 * 5000 + 1);
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed", "registered"]);
+    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+  });
+
+  it("DL10 a first pickup after the reporting window registers a batch that reported done while a batch still running expires", async () => {
+    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
+    scripted.set(batchId(0, 1), "running"); scripted.set(batchId(1, 1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.delete(batchId(1, 1));
+    vi.setSystemTime(DEADLINE + 2 * 5000 + 1);
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["failed", "registered"]);
+    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+  });
+
   it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");

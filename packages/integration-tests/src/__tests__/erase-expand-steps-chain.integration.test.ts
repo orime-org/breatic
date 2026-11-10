@@ -640,6 +640,33 @@ describe("a step whose next attempt is due after the deadline ends the run with 
     expect((result.error as { windows: unknown[] }).windows[0]).toEqual({ windowIndex: 0, step: "generate", category: "timeout" });
   });
 
+  /**
+   * Make the first job of a recipe kind run until the deadline passes and report done before the first pickup after it,
+   * which runs after the reporting window (two polls past the deadline) has closed, as a worker backlog does.
+   * @param kind - The recipe kind.
+   * @returns The deadline each pickup runs under.
+   */
+  function pastReportingWindow(kind: string): (deadlineAt: number) => number {
+    let held: string | null = null;
+    let passed = false;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (held === null && job?.outputs[0]?.recipe.kind === kind) { held = job.jobId; scripted.set(held, { schemaVersion: 2, state: "running" }); }
+      return original(input, init);
+    });
+    return (deadlineAt) => {
+      if (held !== null && !passed) { passed = true; scripted.delete(held); }
+      return passed ? Date.now() - 2 * (outside.config() as core.MiniToolsConfig).poll_interval_ms - 1 : deadlineAt;
+    };
+  }
+
+  it("EX11 an erase whose stitch reported done is registered by its first pickup after the reporting window", async () => {
+    const deadlineOf = pastReportingWindow("stitch");
+    const { result } = await admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", { position: null }, deadlineOf);
+    expect(result).toMatchObject({ status: "registered" });
+  });
+
   it("EX06 an expand whose composite fails on every attempt before the deadline keeps composite / failed", async () => {
     const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
     vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {

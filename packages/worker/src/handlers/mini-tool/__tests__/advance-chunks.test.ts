@@ -203,4 +203,26 @@ describe("a container step ingest ended at its deadline ends expired (execution 
     const planned = { stepKey: "stitch", namePrefix: "ERASE", container: "mp4" as const, build: chunk(0).build };
     expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
+
+  it("CL08 a registered stitch that can no longer be submitted or waited for ends with the expiry mark instead of throwing", async () => {
+    h.grants.mockImplementation(async () => [{ storageKey: "derived/out.mp4", contentType: "video/mp4", coverKey: "derived/out.cover.jpg" }]);
+    h.registered.mockRejectedValue(new DeadlinePassed());
+    const planned = { stepKey: "stitch", namePrefix: "ERASE", container: "mp4" as const, build: chunk(0).build };
+    expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
+  });
+
+  it("CL09 a chunk that can no longer be waited for expires while every other submitted chunk is still read and recorded", async () => {
+    for (const k of [0, 1, 2]) jobs.set(jobOf(k, 1), "running");
+    expect(await pickup()).toBeInstanceOf(StillRunning);
+    // Chunk 0 still runs once its reporting window has closed, which the boundary answers with DeadlinePassed; 1 and 2 are done.
+    jobs.delete(jobOf(1, 1)); jobs.delete(jobOf(2, 1));
+    const normal = h.advance.getMockImplementation()!;
+    h.advance.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+      if (request.jobId === jobOf(0, 1)) throw new DeadlinePassed();
+      return normal(request);
+    });
+    expect(await pickup()).toEqual({ failed: "chunk 0: expired", expired: true });
+    const done = h.record.mock.calls.map((call) => call[0] as { outcome: string }).filter((value) => value.outcome === "done");
+    expect(done).toHaveLength(2);
+  });
 });

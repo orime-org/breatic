@@ -19,7 +19,7 @@ import {
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, type LipsyncPersonState, type LipsyncPersonStep } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { advanceMiniToolPlanJob, planReportingEnd, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceMiniToolPlanJob, planReadUntil, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
@@ -439,8 +439,8 @@ export type ContainerStep = ContainerStepRequest & ({ stepKey: string; jobId?: (
  * @param planned - The step.
  * @param deadlineAt - The task deadline.
  * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
- * @returns The output, the failure (`expired` when a next attempt is due after the deadline or ingest ended an attempt at
- * it), or null when the next attempt is not opened.
+ * @returns The output, the failure (`expired` when a next attempt is due after the deadline, ingest ended an attempt at it,
+ * or a job can no longer be submitted or waited for), or null when the next attempt is not opened.
  * @throws {StillRunning} While a job runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
@@ -475,8 +475,16 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
       : storedRequest(existing)!;
     const step = existing ?? await appendStep(run.taskId, { kind: "container_job", endpoint: containerClass, itemIndex: planned.chunkIndex ?? steps.length });
     const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: planned.chunkIndex ?? step.position, chargeTo: "user", request: candidate });
-    // The job boundary answers only a terminal report; a running job throws StillRunning.
-    const report = readMiniToolPlanJobReport(request, await advanceMiniToolPlanJob(request)) as EndedMiniToolPlanJob;
+    // The job boundary answers only a terminal report; a running job throws StillRunning, and DeadlinePassed once it can no
+    // longer be submitted or waited for: this step expires, while the pickup still reads every other step.
+    let ended: EndedMiniToolPlanJob;
+    try {
+      ended = await advanceMiniToolPlanJob(request);
+    } catch (error) {
+      if (error instanceof DeadlinePassed) return { ...planned.failed("expired"), expired: true };
+      throw error;
+    }
+    const report = readMiniToolPlanJobReport(request, ended) as EndedMiniToolPlanJob;
     const output = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: run.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
       ...(report.state === "failed" ? { error: { code: report.reason }, presentation: { retire: [output] } } : { presentation: planned.done?.(output) ?? { pin: [output] } }) },
@@ -521,8 +529,8 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
 }
 
 /**
- * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). It is read until the reporting
- * window ends, so a pickup after the deadline still reads the jobs submitted before it.
+ * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). Reading it starts no new work, so it
+ * is read after the deadline too, and a pickup then still reads the jobs submitted before it (`planReadUntil`).
  * @param run - The run.
  * @param receipt - The frozen receipt.
  * @param deadlineAt - The task deadline.
@@ -532,7 +540,7 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
  */
 export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLedgerReceipt, deadlineAt: number): Promise<VideoPresentationLedger> {
   try {
-    return await readJobLedger(receipt, planReportingEnd(deadlineAt));
+    return await readJobLedger(receipt, planReadUntil(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: run.taskId } }, `mini_tool_${run.log}_ledger_invalid`);
@@ -610,7 +618,7 @@ export interface RegisteredStep {
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
  * @returns The registered output, the last attempt's reason once every attempt failed, or `expired` when a next attempt is
- * due after the deadline or ingest ended an attempt at it.
+ * due after the deadline, ingest ended an attempt at it, or the job can no longer be submitted or waited for.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence, grants or registration fail.
  */
@@ -633,8 +641,15 @@ export async function advanceRegistered(run: ModelStepRun, planned: RegisteredSt
         inputs: built.inputs, outputs: [{ ...grant, outputIndex, recipe: built.recipe }] });
       step = await appendStep(run.taskId, { kind: "container_job", endpoint: run.container.containerClass, itemIndex: steps.length });
     }
-    const job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
-      planned.retire === undefined ? {} : { retire: planned.retire });
+    let job: Awaited<ReturnType<typeof advanceRegisteredMiniToolPlanJob>>;
+    try {
+      job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
+        planned.retire === undefined ? {} : { retire: planned.retire });
+    } catch (error) {
+      // A job that can no longer be submitted or waited for expires this step; the pickup still reads every other step.
+      if (error instanceof DeadlinePassed) return { failed: "expired", expired: true };
+      throw error;
+    }
     const written = job.assets.find((entry) => entry.outputIndex === outputIndex);
     if (job.report.state === "done" && written !== undefined) return await registered(written.asset) as MiniToolExecutionRegistered;
     reason = job.report.state === "failed" ? job.report.reason : "tool_failed";

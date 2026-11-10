@@ -15,7 +15,7 @@ import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanR
 import { planVideoTimeline, presentationCoveringFrame, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -110,7 +110,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
   let clips: Clip[];
   try {
     clips = await Promise.all(timeline.clips.map(async (placed) => ({ inputId: placed.inputId, storageKey: execution.sourceKeys[placed.inputId]!,
-      ledger: await readJobLedger(execution.ledgerReceipts[placed.inputId]!, planReportingEnd(deadlineAt)), startFrame: placed.startFrame, inFrame: placed.inFrame, frameCount: placed.frameCount })));
+      ledger: await readJobLedger(execution.ledgerReceipts[placed.inputId]!, planReadUntil(deadlineAt)), startFrame: placed.startFrame, inFrame: placed.inFrame, frameCount: placed.frameCount })));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     // The receipts are frozen for the run, so a ledger that fails one never recovers here (§91 D3b-9).

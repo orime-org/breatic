@@ -3,7 +3,7 @@
 
 import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
-  assertBeforeDeadline, untilDeadline, untilDeadlineIfAhead,
+  assertBeforeDeadline, DEFAULT_TIMEOUT_MS, untilDeadline, untilDeadlineIfAhead,
   miniToolPlanJobRequestSchema, readMiniToolPlanJob, submitMiniToolPlanJob,
   EmptyBody, HttpRetryError, UploadHttpError,
   type MiniToolPlanJobReport, type MiniToolPlanJobRequest,
@@ -22,6 +22,19 @@ export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done
  */
 export function planReportingEnd(deadlineAt: number): number {
   return deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms;
+}
+
+/**
+ * The bound of a read of what already exists (a run's frozen ledger): the reporting window, or once it has closed the
+ * transport's own bound, since reading what is stored starts no new work (as `untilDeadlineIfAhead` does for a report read).
+ * @param deadlineAt - The task deadline.
+ * @param now - The clock now, in epoch ms.
+ * @returns The read's absolute deadline, in epoch ms.
+ * @throws {never} Never.
+ */
+export function planReadUntil(deadlineAt: number, now: number = Date.now()): number {
+  const reportingEnd = planReportingEnd(deadlineAt);
+  return now < reportingEnd ? reportingEnd : now + DEFAULT_TIMEOUT_MS;
 }
 
 /**
