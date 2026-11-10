@@ -842,7 +842,7 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲かボーカルのいずれかを選んでください",
+      "refuseExecuteNoReference": "先に楽曲かボーカルを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
       "itemsRemove": "削除",

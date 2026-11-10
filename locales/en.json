@@ -855,7 +855,7 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song or vocals",
+      "refuseExecuteNoReference": "Pick a song or vocals first",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
       "itemsRemove": "Remove",

@@ -1111,7 +1111,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     typePrompt('warm indie folk');
     typeLyrics('la la la');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a song or vocals', expect.anything()));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a song or vocals first', expect.anything()));
   });
 
   it('carries a picked reference under the name its vendor reads', async () => {

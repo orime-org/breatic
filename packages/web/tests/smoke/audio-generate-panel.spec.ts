@@ -295,7 +295,7 @@ test.describe('reference to music in a window tall enough for its settings', () 
     await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
     await page.keyboard.type('same road home');
     await page.getByTestId('generate-audio-execute').click();
-    await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song or vocals', {
+    await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song or vocals first', {
       timeout: 10_000,
     });
 
