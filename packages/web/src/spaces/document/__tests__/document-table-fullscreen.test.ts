@@ -24,6 +24,7 @@ import { postComment } from '@web/spaces/document/document-comment-post';
 import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { pressTargetOf } from '@web/spaces/document/document-body-press';
+import { insertAiAnswer } from '@web/spaces/document/document-ai-text';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import { setLinkToolbarUp } from '@web/spaces/document/document-bars';
@@ -834,6 +835,19 @@ describe('a write that ends full screen (breatic#1427)', () => {
 
     leaveFullscreenForWrite(editor, { from: at, to: at + 2 }, at);
 
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+});
+
+describe('an AI answer that writes nothing (breatic#1427)', () => {
+  it('leaves the table open full screen', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    const after = (editor.document as unknown as { id: string }[]).at(-1)!.id;
+
+    const result = insertAiAnswer({ editor } as never, after, { preview: [], leftOut: 0 } as never, () => ({ available: true, writeAccess: 'granted' }));
+
+    expect(result.outcome).toBe('nothingWritten');
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 });
