@@ -4,8 +4,9 @@
 /**
  * Full screen as a component reads it (breatic#1427).
  *
- * Opening and ending full screen are meta-only transactions, which the
- * editor's change events do not report; the plugin's own view does.
+ * Opening and ending full screen by command can be transactions carrying
+ * nothing but a meta, which the editor's change events do not report; the
+ * plugin's own view sees every change of its state, those included.
  */
 
 import * as React from 'react';

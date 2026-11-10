@@ -383,7 +383,7 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 
-  it('brings the caret into view when a write leaving full screen replaces the whole table', async () => {
+  it('brings where the write starts into view when a write leaving full screen replaces the whole table', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));
     const viewport = surface.closest('[data-radix-scroll-area-viewport]')!;
@@ -406,7 +406,7 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
       editor.replaceBlocks([id], [{ type: 'paragraph', content: 'Rewritten' }] as never);
     });
 
-    // The caret stands 2000 down a 600 tall scroller whose top is at 100: 0 + 2000 - 100 - 300.
+    // Where the write starts stands 2000 down a 600 tall scroller whose top is at 100: 0 + 2000 - 100 - 300.
     await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1600 }));
   });
 
