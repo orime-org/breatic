@@ -106,7 +106,7 @@ async function storeMessage(tx: postgres.TransactionSql, owner: Owner, parts: un
   const [row] = await tx<{ id: string }[]>`
     INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, updated_at)
     VALUES (${owner.conversationId}, ${owner.userId}, 'assistant', ${seq++}, 1,
-            ${tx.json(parts as postgres.JSONValue)}, '2026-01-02T03:04:05Z')
+            ${tx.json(parts)}, '2026-01-02T03:04:05Z')
     RETURNING id
   `;
   return row!.id;
@@ -136,7 +136,7 @@ async function storeTask(tx: postgres.TransactionSql, owner: Owner, params: Reco
   const [row] = await tx<{ id: string }[]>`
     INSERT INTO tasks (user_id, space_id, task_type, mode, status, params)
     VALUES (${owner.userId}, ${crypto.randomUUID()}, 'understand', 'append', 'completed',
-            ${tx.json(params as postgres.JSONValue)})
+            ${tx.json(params)})
     RETURNING id
   `;
   return row!.id;
@@ -157,7 +157,7 @@ async function storeHistory(
   const [row] = await tx<{ id: string }[]>`
     INSERT INTO node_history (project_id, node_id, user_id, entry_type, status, content, metadata)
     VALUES (${owner.projectId}, ${crypto.randomUUID()}, ${owner.userId}, 'generation', 'success',
-            'a caption', ${tx.json(metadata as postgres.JSONValue)})
+            'a caption', ${tx.json(metadata)})
     RETURNING id
   `;
   return row!.id;

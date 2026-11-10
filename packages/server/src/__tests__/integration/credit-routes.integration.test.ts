@@ -306,7 +306,7 @@ describe("GET /credits/lots", () => {
     ];
     await sql`
       UPDATE credit_lots SET created_at = '2026-08-21T00:00:00Z'
-      WHERE id = ANY(${sql.array(ids)}::uuid[])
+      WHERE id = ANY(${ids}::uuid[])
     `;
 
     const seen: string[] = [];
