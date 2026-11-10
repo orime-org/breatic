@@ -1521,7 +1521,7 @@ export function renderProductGuide(): string {
       `With ${quoted(t("spaces.threeD.pose.jointMode"))} on, dots mark the character's joints, drawn over the model, and the move, rotate and scale handles are hidden; ` +
       "click a dot, or a part of the body, to pick its joint, then drag the rotation rings that appear on it. Releasing saves only that joint; " +
       `each preset, reset or joint drag is one undo step. Choosing ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} or ${quoted(t("spaces.threeD.scale"))}, ` +
-      "changing the selection, a lock, losing editing access or switching or closing the panel turns joint adjustment off. " +
+      "changing the selection, a lock, losing editing access or switching or closing the panel turns joint adjustment off; while it is on, none of those three shows as the current tool. " +
       "These controls are greyed for a Viewer and on a locked object, like the position boxes.",
     `The padlock button in the properties header, just left of its X, shows an open or closed lock using the ordinary button colours. ` +
       `Its tooltip is ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}. ` +

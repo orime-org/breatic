@@ -709,6 +709,45 @@ proposes a generation with `propose_scene_generation`; its card in the chat
 column opens the dialog of the 3D Space in front filled from the proposal, and
 the run records `origin` `agent`.
 
+The Rig skeleton switch (`rig_skeleton`, the last common toggle, off by default)
+asks for an extra step after generation: each Tripo entry declares an optional
+`tripo3d/rig` step (`at: after`, `for_param: rig_skeleton`) that WaveSpeed runs
+on the generated model with `spec: vrm`. The shared `stepRequested` decides,
+in the estimate and in the worker's plan alike, that the step counts only when
+the switch is on, and `upstreamBody` keeps the switch out of the generation's
+own request. When an optional step fails for good, the worker delivers the
+generation's model, bills only the steps that produced output and returns the
+notice `rig_failed`, which `generationOutcome` stores on the row
+(`node_tasks.notice`, migration 0121). The task list says under such a row that
+a skeleton will be rigged, was rigged, or failed so the model can't be posed.
+
+A model with bones can be posed. A pose is stored on the object record as flat
+keys, one per bone: `pose.h:<VRM humanoid bone>` and `pose.t:hips` (the hips'
+offset in hip heights) for a humanoid rig, `pose.n:<node name>` for any other;
+`gatherScenePose` collects them into own keys, so a malformed key makes the
+record invalid. `pose` commands write them (presets and Reset pose replace the
+whole pose, a joint drag writes only the bones it changed); `patch` commands
+never touch them. `pose-rig.ts` measures each instance at rest, both skinned
+bounds included, and maps its bones through `pose-bone-names.ts` (VRM, VRoid,
+Mixamo, Unreal and Mannequiny, Character Creator, 3ds Max Biped and the Rigify
+torso chain, fingers included); a rig is humanoid only when every mapped bone
+hangs under the hips, otherwise its named bones are posed one by one. The
+presets in `pose-presets.ts` are VRM rotations tuned on the built-in figure,
+GDQuest's Mannequiny (`viewport/assets/figure.glb`, CC-BY, credited in
+`THIRD-PARTY.md`). Skinned bounds are recomputed only for a settled pose they
+do not yet describe, so drags, collaborators' previews and the minimap skip the
+vertex pass.
+
+The Pose section of Properties offers the presets, an Adjust joints switch and
+Reset pose. Joint mode draws a dot on every joint over the model, each rimmed in
+the background colour and sized from its rest spacing to the nearest joint, and
+puts the rotation rings on the selected one; the object tools show as not
+current. A click picks the dot whose centre is nearest the ray, and a press on
+another joint's dot selects it before the rings see the press. Escape cancels a
+drag, then leaves joint mode, then closes the panel. Every drag (move, rotate,
+scale or a joint) reaches collaborators through the scene awareness gesture
+while it lasts and writes the document once on release.
+
 Opening a registered model checks its registered size, reads at most
 `max_artifact_bytes`, unpacks a ZIP in the worker (a manifest, `files/` paths
 only, no zip64) and parses it the same way. Texture edges are held to
