@@ -1021,13 +1021,84 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
   });
 
-  it('keeps the style box in Text to Music after a melody was chosen in Reference to Music', async () => {
+  it('keeps and sends the style in Text to Music after a melody was chosen in Reference to Music', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 't2m',
       model: 'mureka-v9.5-generate-song',
       paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
     });
     expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
+    typePrompt('lo-fi piano');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.prompt).toBe('lo-fi piano');
+    // A setting of Reference to Music alone stays off a Text to Music run.
+    expect(params).not.toHaveProperty('compose_from');
+  });
+
+  it('sends no style written before switching to a melody, and keeps it on the node', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    const node = { mode: 'a2m', model: 'mureka-v9.5-generate-song', musicMelody: { url: 'https://x/m.mp3' } };
+    const view = await openPanel(node);
+    typePrompt('lo-fi piano');
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor')).toHaveTextContent('lo-fi piano'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-param-compose_from-option-melody'));
+    // The canvas hands the panel the node the setting was written to.
+    view.rerender(panelTree({ ...node, paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }));
+    await waitFor(() => expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull());
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.melody).toBe('https://x/m.mp3');
+    expect(params?.prompt ?? '').toBe('');
+    expect(getPromptFragment('p', 's', 'target', storedMode())?.toString()).toContain('lo-fi piano');
+  });
+
+  it('inserts a rail row into the lyrics when composing from a melody, with no style box drawn', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 'a2m', model: 'mureka-v9.5-generate-song', paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } },
+      returnsTrue,
+      board,
+    );
+    expect(await screen.findByTestId('generate-lyrics-editor')).toBeVisible();
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    await waitFor(() =>
+      expect(getLyricsFragment('p', 's', 'target', storedMode())?.toString()).toContain('sourceNodeId="src"'),
+    );
+  });
+
+  it('asks for the melody when composing from one with nothing picked', async () => {
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      // Picked while composing from style and references; not on screen now.
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a melody first', expect.anything()));
+  });
+
+  it('asks for a song or vocals when composing from style and references with nothing picked', async () => {
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      musicMelody: { url: 'https://x/m.mp3' },
+    });
+    typePrompt('warm indie folk');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a song or vocals', expect.anything()));
   });
 
   it('carries a picked reference under the name its vendor reads', async () => {
