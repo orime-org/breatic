@@ -131,6 +131,7 @@ Escape 先取消当前字段草稿或变换手势，再次按下时收起已打�
 | 待办列表 | `Cmd+Shift+9` | `Ctrl+Shift+9` |
 | 代码块 | `Cmd+Option+C` | `Ctrl+Alt+C` |
 | 引用 | `Cmd+Shift+B` | `Ctrl+Shift+B` |
+| 退出全屏打开的表格 | `Esc` | `Esc` |
 
 ### 聊天
 

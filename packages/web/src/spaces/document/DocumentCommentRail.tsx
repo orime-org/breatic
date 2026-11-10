@@ -800,10 +800,15 @@ const MOVES = 'transition-[top] duration-200 ease-out motion-reduce:transition-n
  * them makes the browser compute its style at the place it was first put —
  * with the transition on, it then slides from the top of the column to its
  * words. It arrives where it belongs instead, and moves smoothly after that.
+ * A box put away with its panel (a hidden Space, a full-screen table) arrives
+ * again when the panel comes back: what moved meanwhile is measured anew.
  * @returns False until the frame after the box first appears.
  */
 function useArrived(): boolean {
   const [arrived, setArrived] = React.useState(false);
+  React.useLayoutEffect(() => () => {
+    setArrived(false);
+  }, []);
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
       setArrived(true);

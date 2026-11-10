@@ -633,6 +633,10 @@ export function DocumentLinkToolbar({
       // and took the whole toolbar away — one press doing two dismissals.
       if (event && answered.current === event) return;
       answered.current = event ?? null;
+      // The Escape is this toolbar's: marking it is how a listener further up
+      // the page (a table open full screen, #1427) knows the press is
+      // spent. It still bubbles, for whoever only listens.
+      if (reason === 'escape-key') event?.preventDefault();
       if (reason === 'escape-key' || reason === 'outside-press') {
         dismiss();
         return;

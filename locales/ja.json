@@ -2207,6 +2207,8 @@
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）",
+        "fullscreen": "全画面",
+        "exitFullscreen": "全画面を終了",
         "cut": "切り取り",
         "pasteAbove": "上に貼り付け",
         "pasteBelow": "下に貼り付け",

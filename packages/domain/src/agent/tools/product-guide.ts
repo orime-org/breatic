@@ -1788,7 +1788,8 @@ export function renderProductGuide(): string {
       "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
-      `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
+      `whole table; click it for a menu with ${quoted(t("spaces.document.table.fullscreen"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
       `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
@@ -1799,7 +1800,12 @@ export function renderProductGuide(): string {
       `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
-      "when no cell has words.",
+      "when no cell has words. " +
+      `${quoted(t("spaces.document.table.fullscreen"))} lays that table alone over the whole window, for editing ` +
+      "it with room to see every column: type in its cells and format the words, use the AI menu on selected " +
+      "words, add, delete and move rows and columns, drag column widths, and merge or split cells. Escape, or " +
+      `the button at the top right named ${quoted(t("spaces.document.table.exitFullscreen"))}, goes back to the ` +
+      "document where the table stands.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +

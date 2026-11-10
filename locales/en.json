@@ -2207,6 +2207,8 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight",
+        "fullscreen": "Full screen",
+        "exitFullscreen": "Exit full screen",
         "cut": "Cut",
         "pasteAbove": "Paste above",
         "pasteBelow": "Paste below",
