@@ -190,3 +190,21 @@ export async function completeMiniToolConsumptionSet(taskId: string, transaction
   };
   return transaction === undefined ? db.transaction(execute) : execute(transaction);
 }
+
+/**
+ * Close an ended computation's call set once every submit attempt it persisted is resolved, whatever its tool or lane
+ * (execution design §6.12). Every billable call stores its identity before IO (a provider call's submit intent, a
+ * container job's consumption), and an ended task opens no new identity, so the persisted steps are the whole call set.
+ * @param taskId - The mini-tool task, an execution or an analysis.
+ * @param tx - The transaction committing its terminal outcome or a late receipt.
+ * @returns Nothing; the set stays open while the task runs or any attempt is unresolved.
+ * @throws {Error} When the task is absent or closure persistence fails.
+ */
+export async function completeResolvedMiniToolConsumptionSet(taskId: string, tx: DbTx): Promise<void> {
+  const task = await taskRepo.lockMiniToolConsumptionTask(taskId, tx);
+  if (!task || (task.status !== "completed" && task.status !== "failed")) return;
+  const steps = await upstreamStepRepo.listSteps(taskId, tx);
+  if (steps.some((step) => step.output.miniToolStep !== undefined
+    && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep)))) return;
+  await completeMiniToolConsumptionSet(taskId, tx);
+}

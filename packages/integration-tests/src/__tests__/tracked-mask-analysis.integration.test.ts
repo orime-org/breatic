@@ -223,3 +223,47 @@ describe("the tracked mask analysis executor (execution design §10.2, §10.3)",
     expect(failure).toMatchObject({ failure: { code: "empty_foreground", step: "join" } });
   });
 });
+
+// C15 for an analysis (planned-terminal-closure.integration.test.ts): an analysis the queue cleanup ends closes its
+// consumption set once no submit attempt is unresolved, so its SAM3 calls and container usage settle.
+describe("a tracked mask analysis the queue cleanup ends (execution design §6.12)", () => {
+  /**
+   * End the analysis as the queue does after the worker died at its terminal commit.
+   * @param f - The fixture.
+   * @returns The settlement's closure flag and the task status.
+   */
+  async function queueCleanup(f: Fixture): Promise<{ status: string; complete: unknown }> {
+    const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");
+    const { MINI_TOOL_ANALYSIS_JOB } = await import("@breatic/shared/mini-tools");
+    await cleanupFailedJobNodes(core.getStreamRedis(), { name: MINI_TOOL_ANALYSIS_JOB, data: { taskId: f.taskId } as never, finishedOn: Date.now() }, "worker died");
+    const [task] = await pg<{ status: string; complete: unknown }[]>`SELECT status,result#>'{settlement,consumptionSetComplete}' AS complete FROM tasks WHERE id=${f.taskId}`;
+    return task!;
+  }
+
+  it("C15a an analysis whose calls and jobs all returned closes at cleanup and records every usage", async () => {
+    const f = await seed();
+    await drive(f);
+    expect(await queueCleanup(f)).toEqual({ status: "failed", complete: true });
+    const { runMiniToolSettlement } = await import("@breatic/domain");
+    const { taskRepo } = await import("@breatic/domain");
+    for (let round = 0; round < 40; round += 1) {
+      const wake = await taskRepo.waitingMiniToolSettlement(f.taskId);
+      if (wake === null) break;
+      const result = await runMiniToolSettlement({ taskId: f.taskId, settlementVersion: wake.settlementVersion }, async (input) => input.consumption.identity.kind === "provider"
+        ? { state: "known", costUsd: 0.2, costSource: "generation_lookup", raw: { fixtureCost: 0.2 } }
+        : { state: "known", costUsd: 0.01, costSource: "computed", raw: { fixtureCost: 0.01 } });
+      if (result.failure !== undefined) throw result.failure;
+    }
+    const [billed] = await pg<{ billed: string | null }[]>`SELECT billed_at::text AS billed FROM tasks WHERE id=${f.taskId}`;
+    expect(billed!.billed).not.toBeNull();
+    const [usage] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM agent_usage_records WHERE project_id=${f.projectId}`;
+    expect(usage!.count).toBe(submitted.length + outside.runPrediction.mock.calls.length);
+  });
+
+  it("C15a an analysis whose SAM3 submit got no answer stays open at cleanup", async () => {
+    outside.runPrediction.mockImplementation(async () => { throw new Error("connection reset after the request was sent"); });
+    const f = await seed();
+    await drive(f).catch(() => null);
+    expect(await queueCleanup(f)).toEqual({ status: "failed", complete: false });
+  });
+});

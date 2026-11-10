@@ -471,3 +471,76 @@ describe("a throwing step leaves the run's position at it (execution design §10
     expect(at.position).toMatchObject({ tool: "video.expand", current });
   });
 });
+
+// C15 for erase (planned-terminal-closure.integration.test.ts): a run the queue cleanup ends closes its consumption set
+// once no submit attempt is unresolved, whatever its tool, so its paid model call and container usage settle.
+describe("an erase the queue cleanup ends closes its consumption set once every attempt is resolved (execution design §6.12)", () => {
+  beforeEach(() => {
+    core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "fixture-never-sent", STRIPE_SECRET_KEY: "sk_test_unused",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused", UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV });
+  });
+
+  /**
+   * End the run as the queue does after the worker died at its terminal commit.
+   * @param taskId - The run.
+   * @returns Nothing.
+   */
+  async function queueCleanup(taskId: string): Promise<void> {
+    const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");
+    await cleanupFailedJobNodes(core.getStreamRedis(), { name: "execute-mini-tool", data: { taskId, source: "mini_tool", executionKind: "planned" }, finishedOn: Date.now() }, "worker died");
+  }
+
+  /**
+   * The run's settlement period and hold.
+   * @param taskId - The run.
+   * @returns Them.
+   */
+  async function money(taskId: string): Promise<{ status: string; complete: unknown; billed: number | null; hold: string | undefined; spent: number[] }> {
+    const [task] = await pg<{ status: string; complete: unknown; billed: number | null }[]>`SELECT status,result#>'{settlement,consumptionSetComplete}' AS complete,billed_credits::float8 AS billed FROM tasks WHERE id=${taskId}`;
+    const [hold] = await pg<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${taskId}`;
+    const spent = (await pg<{ amount: number }[]>`SELECT amount::float8 AS amount FROM credit_ledger WHERE reference_id=${taskId} AND entry_type='spend'`).map((row) => row.amount);
+    return { ...task!, hold: hold?.status, spent };
+  }
+
+  /**
+   * Run the settlement owner until it bills or has nothing due, every consumption's cost known.
+   * @param taskId - The run.
+   * @returns Nothing.
+   */
+  async function settle(taskId: string): Promise<void> {
+    const { runMiniToolSettlement } = await import("@breatic/domain");
+    for (let round = 0; round < 20; round += 1) {
+      const wake = await taskRepo.waitingMiniToolSettlement(taskId);
+      if (wake === null) return;
+      const result = await runMiniToolSettlement({ taskId, settlementVersion: wake.settlementVersion }, async (input) => input.consumption.identity.kind === "provider"
+        ? { state: "known", costUsd: 0.3, costSource: "generation_lookup", raw: { fixtureCost: 0.3 } }
+        : { state: "known", costUsd: 0.01, costSource: "computed", raw: { fixtureCost: 0.01 } });
+      if (result.failure !== undefined) throw result.failure;
+    }
+  }
+
+  it("C15e an erase whose model call and jobs all returned closes at cleanup and charges its usage", async () => {
+    const f = await seedErase();
+    const { result } = await admitAndDrive(f, "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase");
+    expect(result).toMatchObject({ status: "registered" });
+    expect((await money(f.body.run_id)).hold).toBe("held");
+    await queueCleanup(f.body.run_id);
+    expect(await money(f.body.run_id)).toMatchObject({ status: "failed", complete: true });
+    await settle(f.body.run_id);
+    const after = await money(f.body.run_id);
+    expect(after.hold).toBe("released");
+    expect(after.billed).toBeGreaterThan(0);
+    expect(after.spent).toEqual([-after.billed!]);
+  });
+
+  it("C15e an erase whose model submit got no answer stays open at cleanup and holds its credits", async () => {
+    fault = (model) => (model === BRIA_ENDPOINT ? new Error("connection reset after the request was sent") : undefined);
+    const f = await seedErase();
+    const { result } = await admitAndDrive(f, "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase");
+    expect(result).toMatchObject({ status: "failed" });
+    await queueCleanup(f.body.run_id);
+    expect(await money(f.body.run_id)).toMatchObject({ status: "failed", complete: false, billed: null, hold: "held", spent: [] });
+    const { settleMiniToolCharge } = await import("@breatic/domain");
+    expect(await settleMiniToolCharge(f.body.run_id)).toEqual({ state: "pending" });
+  });
+});

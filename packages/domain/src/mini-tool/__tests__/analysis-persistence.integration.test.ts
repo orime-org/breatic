@@ -71,8 +71,11 @@ async function artifact(studioId: string, userId: string, role: MiniToolAnalysis
   return { role, assetId: id, canonicalURL: url, contentHash: hash, kind, mimeType, size: 128, frameMetadata: null };
 }
 
-/** Seed a frozen task with registered references and independent execution facts. */
-async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0): Promise<Fixture> {
+/**
+ * Seed a frozen task with registered references and independent execution facts.
+ * @param open - Whether the task also holds a provider submit intent with no answer, so an uncertain outcome leaves its set open.
+ */
+async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0, open = false): Promise<Fixture> {
   const { userId, studioId, projectId } = await seedStudioFixture(pg, "analysis-persistence");
   await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${projectId},${userId},'owner')`;
   const taskId = crypto.randomUUID(); const spaceId = crypto.randomUUID(); const hostNodeId = crypto.randomUUID();
@@ -110,8 +113,26 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
   await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output) VALUES (${stepId},${taskId},0,'container_job','analysis-fixture','done',${pg.json({ miniToolConsumption: fact, preservedOutput: true })})`;
   await pg`INSERT INTO node_tasks (id,project_id,space_id,node_id,kind,action,status,started_by_user_id,budget_ms,label,task_id)
     VALUES (${nodeTaskId},${projectId},${spaceId},${hostNodeId},'generation','mini_tool','running',${userId},${getNodeTaskConfig().default_budget_ms},'analysis',${taskId})`;
+  if (open) {
+    const intentStepId = crypto.randomUUID(); const fingerprint = "a".repeat(64);
+    const intent = { schemaVersion: 1, scope: { taskId, stepId: intentStepId, kind: "generate", endpoint: "analysis-fixture-model", itemIndex: 0 }, deadlineAt: Date.parse("2099-01-01T00:00:00Z"),
+      requestBody: {}, requestFingerprint: fingerprint, chargeTo: "user", creditMultiplier: 1, result: null, error: null, conflicts: [],
+      attempts: [{ attemptId: crypto.randomUUID(), preparedAt: T0, requestFingerprint: fingerprint, resolution: { kind: "unresolved" } }] };
+    await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,item_index,status,output) VALUES (${intentStepId},${taskId},1,'generate','analysis-fixture-model',0,'pending',${pg.json({ miniToolStep: intent })})`;
+  }
   if (kind !== "people") await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${studioId},${userId},${taskId},1,'held','2099-01-01T00:00:00Z')`;
   return { taskId, userId, nodeTaskId, stepId, consumptionKey: key, result, initial };
+}
+
+/**
+ * Seed a task whose call set an uncertain outcome cannot close: it also holds a provider submit intent with no answer.
+ * @param kind - The analysis kind.
+ * @param status - The task status.
+ * @param at - The acceptance instant.
+ * @returns The fixture.
+ */
+async function seedOpen(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0): Promise<Fixture> {
+  return seed(kind, status, at, true);
 }
 
 /** Observe SQL and execution facts through an independent PostgreSQL pool. */
@@ -284,13 +305,22 @@ describe("atomic analysis computation completion", () => {
   });
 
   it.each(["result", "error"] as const)("retains incomplete identities after an uncertain %s outcome", async (kind) => {
-    const f = await seed("scene_cuts"); const before = await snapshot(f);
+    const f = await seedOpen("scene_cuts"); const before = await snapshot(f);
     const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
     const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
     expect(finished.record.status).toBe(kind === "result" ? "completed" : "failed");
     const after = await snapshot(f);
     expect(after.task.result.settlement).toEqual(before.task.result.settlement);
     assertPreserved(before, after);
+  });
+
+  it.each(["result", "error"] as const)("closes a set with no unresolved attempt after an uncertain %s outcome (execution design §6.12)", async (kind) => {
+    const f = await seed("scene_cuts"); const before = await snapshot(f);
+    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
+    const after = await snapshot(f);
+    expect(after.task.result.settlement).toMatchObject({ version: 8, consumptionSetComplete: true, pendingConsumptionKeys: [f.consumptionKey] });
+    expect({ holds: after.holds, usage: after.usage, ledger: after.ledger, step: after.step }).toEqual({ holds: before.holds, usage: 0, ledger: 0, step: before.step });
   });
 
   it.each(["completed", "failed"] as const)("preserves the existing %s outcome while closing its proven identities", async (status) => {
@@ -401,7 +431,7 @@ describe("atomic analysis computation completion", () => {
 
 describe("persistent analysis results", () => {
   it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits the complete %s result and preserves execution facts", async (kind) => {
-    const f = await seed(kind); const before = await snapshot(f);
+    const f = await seedOpen(kind); const before = await snapshot(f);
     const expected = { ...f.initial, status: "completed", result: f.result };
     expect(await record(f)).toEqual(expected);
     const after = await snapshot(f);
@@ -411,18 +441,18 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["pending", "running"] as const)("completes a task from %s", async (status) => {
-    const f = await seed("people", status);
+    const f = await seedOpen("people", status);
     expect(await record(f)).toEqual({ ...f.initial, status: "completed", result: f.result });
   });
 
   it.each(["pending", "running"] as const)("stores the original failure from %s", async (status) => {
-    const f = await seed("scene_cuts", status); const before = await snapshot(f);
+    const f = await seedOpen("scene_cuts", status); const before = await snapshot(f);
     expect(await fail(f)).toEqual({ ...f.initial, status: "failed", error: ERROR });
     const after = await snapshot(f); expect(after.task.status).toBe("failed"); assertPreserved(before, after);
   });
 
   it("keeps committed people identities and all SQL fields on a replay", async () => {
-    const f = await seed(); const committed = await record(f); const before = await snapshot(f);
+    const f = await seedOpen(); const committed = await record(f); const before = await snapshot(f);
     const incoming = people(f);
     incoming.analysisInput.profile.params = Object.fromEntries(Object.entries(incoming.analysisInput.profile.params).reverse());
     expect(await record(f, incoming)).toEqual(committed);
@@ -432,7 +462,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["failed", "cancelled"] as const)("preserves %s and its error when a matching result arrives late", async (status) => {
-    const f = await seed("people", status); const before = await snapshot(f);
+    const f = await seedOpen("people", status); const before = await snapshot(f);
     const expected = { ...f.initial, result: f.result };
     expect(await record(f)).toEqual(expected);
     const after = await snapshot(f); expect(after.task.status).toBe(status); expect(after.task.completed_at).toBe(before.task.completed_at); assertPreserved(before, after);
@@ -443,13 +473,13 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["people", "scene_cuts"] as const)("accepts empty %s results as complete analysis", async (kind) => {
-    const f = await seed(kind); const result = f.result.kind === "people" ? { ...f.result, people: [] } : { ...f.result, cuts: [] };
+    const f = await seedOpen(kind); const result = f.result.kind === "people" ? { ...f.result, people: [] } : { ...f.result, cuts: [] };
     expect(await record(f, result)).toEqual({ ...f.initial, status: "completed", result });
   });
 
   it("keeps two distinct SQL instants within the same JavaScript millisecond", async () => {
     for (const at of [T0, "2026-10-24T09:03:03.100002Z"]) {
-      const f = await seed("people", "running", at);
+      const f = await seedOpen("people", "running", at);
       expect((await record(f)).acceptedAt).toBe(at);
       expect((await domain.miniToolAnalysisService.get(f.taskId, f.userId)).acceptedAt).toBe(at);
     }
@@ -472,14 +502,14 @@ describe("persistent analysis results", () => {
     { field: "fingerprint", change: (r) => ({ ...r, inputFingerprint: "f".repeat(64) }) },
   ];
   it.each(identityChanges)("rejects frozen $field changes without a partial write", async ({ change, rehash }) => {
-    const f = await seed(); const before = await snapshot(f); const incoming = change(people(f));
+    const f = await seedOpen(); const before = await snapshot(f); const incoming = change(people(f));
     if (rehash) incoming.inputFingerprint = await fingerprintMiniToolAnalysisInput(incoming.analysisInput);
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError);
     expect(await snapshot(f)).toEqual(before);
   });
 
   it("rejects a different valid analysis kind for the original task", async () => {
-    const f = await seed(); const before = await snapshot(f);
+    const f = await seedOpen(); const before = await snapshot(f);
     const input = projectMiniToolAnalysisInput({ kind: "scene_cuts", source: { canonicalURL: f.result.binding.canonicalURL }, profile: getMiniToolsConfig().analyses.scene_cuts.profile, params: { range: { start: 0, end: 5 } } });
     const raw: Record<string, unknown> = { ...f.result, kind: "scene_cuts", analysisInput: input, inputFingerprint: await fingerprintMiniToolAnalysisInput(input), timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [] };
     delete raw.people; delete raw.anchor;
@@ -488,7 +518,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["people", "scene_cuts", "tracked_mask"] as const)("applies the complete typed %s schema at the write boundary", async (kind) => {
-    const f = await seed(kind); const before = await snapshot(f);
+    const f = await seedOpen(kind); const before = await snapshot(f);
     const invalid = f.result.kind === "people" ? { ...f.result, people: [{ ...f.result.people[0]!, faceBox: { x: 0.9, y: 0, width: 0.2, height: 0.3 } }] }
       : f.result.kind === "scene_cuts" ? { ...f.result, cuts: [{ frameIndex: 20, pts: 1, detectionScore: 85 }] }
         : { ...f.result, sourceFrameMapping: f.result.sourceFrameMapping.slice(1) };
@@ -496,20 +526,20 @@ describe("persistent analysis results", () => {
   });
 
   it("rejects an unsupported result schema version", async () => {
-    const f = await seed(); const before = await snapshot(f);
+    const f = await seedOpen(); const before = await snapshot(f);
     await expect(record(f, { ...f.result, schemaVersion: 2 })).rejects.toBeInstanceOf(z.ZodError);
     expect(await snapshot(f)).toEqual(before);
   });
 
   it("checks the frozen input even when the callback repeats the accepted fingerprint", async () => {
-    const f = await seed(); const before = await snapshot(f); const incoming = people(f);
+    const f = await seedOpen(); const before = await snapshot(f); const incoming = people(f);
     incoming.analysisInput.profile.version = "changed-with-original-fingerprint";
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError);
     expect(await snapshot(f)).toEqual(before);
   });
 
   it.each(["range", "region", "points", "trackingPrompt"] as const)("checks frozen tracking %s independently of its declared fingerprint", async (field) => {
-    const f = await seed("tracked_mask"); const before = await snapshot(f); const incoming = structuredClone(f.result);
+    const f = await seedOpen("tracked_mask"); const before = await snapshot(f); const incoming = structuredClone(f.result);
     if (incoming.analysisInput.kind !== "tracked_mask") throw new Error("Expected tracking input");
     if (field === "range") incoming.analysisInput.range = { start: 1, end: 4 };
     if (field === "region") incoming.analysisInput.region.box = { x: 0.2, y: 0.1, width: 0.2, height: 0.3 };
@@ -520,19 +550,19 @@ describe("persistent analysis results", () => {
   });
 
   it.each([{ label: "null", value: null }, { label: "nonfinite JSON", value: { cost: NaN } }, { label: "missing", value: undefined }])("refuses a $label failure without changing task state", async ({ value }) => {
-    const f = await seed(); const before = await snapshot(f);
+    const f = await seedOpen(); const before = await snapshot(f);
     await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: value, consumptionSet: "uncertain" })).rejects.toBeInstanceOf(z.ZodError);
     expect(await snapshot(f)).toEqual(before);
   });
 
   it("rejects a conflicting replacement for a committed person identity", async () => {
-    const f = await seed(); await record(f); const before = await snapshot(f); const incoming = people(f);
+    const f = await seedOpen(); await record(f); const before = await snapshot(f); const incoming = people(f);
     incoming.people[0]!.personId = "person-replacement";
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError); expect(await snapshot(f)).toEqual(before);
   });
 
   it("keeps the current sibling settlement in both writer orders", async () => {
-    const f = await seed();
+    const f = await seedOpen();
     await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,version}','8'::jsonb) WHERE id=${f.taskId}`;
     const before = await snapshot(f); const committed = await record(f); assertPreserved(before, await snapshot(f));
     await db.transaction(async (tx) => {
@@ -545,14 +575,14 @@ describe("persistent analysis results", () => {
   });
 
   it("rejects a missing task and a non-analysis task", async () => {
-    const f = await seed();
+    const f = await seedOpen();
     await expect(record(f, f.result, crypto.randomUUID())).rejects.toBeInstanceOf(NotFoundError);
     await pg`UPDATE tasks SET task_type='video' WHERE id=${f.taskId}`;
     const before = await snapshot(f); await expect(record(f)).rejects.toBeInstanceOf(NotFoundError); expect(await snapshot(f)).toEqual(before);
   });
 
   it.each(["people", "scene_cuts"] as const)("preserves completed %s work when admission receives a queue error", async (kind) => {
-    const f = await seed(kind); const before = await snapshot(f);
+    const f = await seedOpen(kind); const before = await snapshot(f);
     const params = before.task.params as Record<string, unknown>;
     const frozen = domain.miniToolAnalysisService.miniToolFrozenAnalysisSchema.parse(params.analysis);
     const body = miniToolAnalysisRequestSchema.parse({
@@ -585,7 +615,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["result", "error"] as const)("rolls back every task field when its %s UPDATE fails", async (event) => {
-    const f = await seed(); const before = await snapshot(f);
+    const f = await seedOpen(); const before = await snapshot(f);
     await pg.unsafe(`CREATE OR REPLACE FUNCTION reject_analysis_metadata() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid THEN RAISE EXCEPTION 'fixture_analysis_update_failure'; END IF; RETURN NEW; END $$`);
     await pg.unsafe("CREATE TRIGGER reject_analysis_metadata BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_analysis_metadata()");
     try {
@@ -599,7 +629,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["tasks", "credit_holds", "task_commit"] as const)("rolls back an unused admission's metadata and hold when %s rejects its UPDATE", async (failurePoint) => {
-    const f = await seed("scene_cuts", "pending");
+    const f = await seedOpen("scene_cuts", "pending");
     await pg`DELETE FROM task_upstream_steps WHERE id=${f.stepId}`;
     await pg`UPDATE tasks SET result=result-'settlement' WHERE id=${f.taskId}`;
     const [before] = await pg<{ status: string; result: unknown }[]>`SELECT status,result FROM tasks WHERE id=${f.taskId}`;
@@ -625,7 +655,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["error-result", "result-error", "result-result"] as const)("serializes %s under the original task PK lock", async (order) => {
-    const f = await seed(); let release!: () => void; let opened!: () => void;
+    const f = await seedOpen(); let release!: () => void; let opened!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const active = new Promise<void>((resolve) => { opened = resolve; });
     const held = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; opened(); await gate; });
@@ -644,7 +674,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["result", "error"] as const)("publishes its %s state and metadata in one visible transaction", async (event) => {
-    const f = await seed(); const before = await snapshot(f); const key = crypto.randomInt(1, 2 ** 30);
+    const f = await seedOpen(); const before = await snapshot(f); const key = crypto.randomInt(1, 2 ** 30);
     let release!: () => void; let opened!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const active = new Promise<void>((resolve) => { opened = resolve; });
@@ -671,7 +701,7 @@ describe("persistent analysis results", () => {
 
   it("preserves the state-table invariants under repeated result and error sequences", async () => {
     await fc.assert(fc.asyncProperty(fc.array(fc.constantFrom("result", "error"), { minLength: 1, maxLength: 6 }), async (events) => {
-      const f = await seed(); const before = await snapshot(f);
+      const f = await seedOpen(); const before = await snapshot(f);
       for (const event of events) await (event === "result" ? record(f) : fail(f));
       const after = await snapshot(f); const success = events[0] === "result";
       expect(after.task.status).toBe(success ? "completed" : "failed");

@@ -212,3 +212,54 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     expect(pinned).toEqual(waiting);
   });
 });
+
+// C15 for split (planned-terminal-closure.integration.test.ts): a container-only run the queue cleanup ends has no submit
+// attempt to wait for, so its consumption set closes and its measured usage settles.
+describe("a split the queue cleanup ends closes its consumption set (execution design §6.12)", () => {
+  it("C15s a split whose jobs all ended closes at cleanup, releases its hold and charges its container usage", async () => {
+    core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused",
+      UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV });
+    const target = await seedStudioFixture(pg, "split-cleanup");
+    await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
+    await seedDesignatedLot(pg, target, 1000);
+    const sourceId = randomUUID(); const sourceKey = `video/split-cleanup/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
+    await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
+      VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
+    const presented = await presentedSource(hash, sourceKey, publicUrl);
+    outside.snapshots.set(sourceKey, presented.snapshot);
+    for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
+    const cuts = [2.5];
+    const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
+      draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
+        mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
+      analysis_refs: [], presentation_ref: presented.presentationRef,
+      outputs: planVideoSplit(REMOVAL_TABLE as VideoPresentationTable, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+    const admitted = await post(target.userId, body);
+    expect(admitted.status, await admitted.clone().text()).toBe(201);
+    const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
+    const stored = await taskRepo.getMiniToolExecutionTask(task.id);
+    const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
+    const run = ((await import("@worker/handlers/mini-tool/run-video-tool.js")) as unknown as Record<string, Runner>).runMiniToolVideoTool!;
+    let results = new Map<number, Record<string, unknown>>();
+    for (let pickup = 0; pickup < 60 && results.size < body.outputs.length; pickup += 1) {
+      try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
+    }
+    expect([...results.values()].map((result) => result.status)).toEqual(body.outputs.map(() => "registered"));
+    // The worker died at its terminal commit, so only the queue cleanup ends the run.
+    const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");
+    await cleanupFailedJobNodes(core.getStreamRedis(), { name: "execute-mini-tool", data: { taskId: task.id, source: "mini_tool", executionKind: "planned" }, finishedOn: Date.now() }, "worker died");
+    const [ended] = await pg<{ status: string; complete: unknown }[]>`SELECT status,result#>'{settlement,consumptionSetComplete}' AS complete FROM tasks WHERE id=${task.id}`;
+    expect(ended).toEqual({ status: "failed", complete: true });
+    const { runMiniToolSettlement } = await import("@breatic/domain");
+    for (let round = 0; round < 60; round += 1) {
+      const wake = await taskRepo.waitingMiniToolSettlement(task.id);
+      if (wake === null) break;
+      const result = await runMiniToolSettlement({ taskId: task.id, settlementVersion: wake.settlementVersion }, async () => ({ state: "known", costUsd: 0.01, costSource: "computed", raw: { fixtureCost: 0.01 } }));
+      if (result.failure !== undefined) throw result.failure;
+    }
+    const [billed] = await pg<{ billed: number | null }[]>`SELECT billed_credits::float8 AS billed FROM tasks WHERE id=${task.id}`;
+    expect(billed!.billed).toBeGreaterThan(0);
+    expect((await pg<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${task.id}`).map((row) => row.status)).toEqual(["released"]);
+    expect((await pg<{ amount: number }[]>`SELECT amount::float8 AS amount FROM credit_ledger WHERE reference_id=${task.id} AND entry_type='spend'`).map((row) => row.amount)).toEqual([-billed!.billed!]);
+  });
+});

@@ -12,8 +12,7 @@ import { canonicalMiniToolValue, hashMiniToolValue, miniToolConsumptionIdentityS
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as stepRepo from "@domain/task/upstreamStep.repo.js";
 import { miniToolConsumptionRecordSchema, miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
-import { openMiniToolConsumptionForStepAttempt } from "@domain/mini-tool/consumption-producer.service.js";
-import { completeResolvedMiniToolExecutionConsumptionSet } from "@domain/mini-tool/execution.service.js";
+import { completeResolvedMiniToolConsumptionSet, openMiniToolConsumptionForStepAttempt } from "@domain/mini-tool/consumption-producer.service.js";
 import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson, type MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
@@ -128,7 +127,7 @@ export async function recordMiniToolStepIdentity(input: RecordMiniToolStepIdenti
     }
     const stored = consumption ?? await openMiniToolConsumptionForStepAttempt(request, tx);
     if (task.result.miniToolExecution !== undefined && (task.status === "completed" || task.status === "failed")) {
-      await completeResolvedMiniToolExecutionConsumptionSet(task.id, tx);
+      await completeResolvedMiniToolConsumptionSet(task.id, tx);
     }
     return { step: await reread(task.id, step.id, tx), consumption: stored, conflict: false };
   });

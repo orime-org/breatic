@@ -9,8 +9,8 @@ import { canonicalMiniToolValue, miniToolExecutionOutputSchema, plannedFailureRe
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
 import { executionPlanFromTask, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
-import { hasUnresolvedMiniToolStepAttempts, miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
-import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
+import { completeMiniToolConsumptionSet, completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
@@ -88,7 +88,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
     // A repeated terminal commit changes nothing; a running execution whose outputs progress commits already hold still ends here.
     if (current.resultVersion > 0 && !changed && plan.task.status !== "pending" && plan.task.status !== "running") {
       if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
-      else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
+      else await completeResolvedMiniToolConsumptionSet(id, tx);
       return { task: await currentTask(id, tx), execution: plan.execution, record: recordFromPlan({ ...plan, task: await currentTask(id, tx) }) };
     }
     if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
@@ -103,7 +103,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
     await synchronizeMiniToolDelivery(plan.task, record, tx);
     await releaseUnretryablePins(id, plan.execution.tool, record, tx);
     if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
-    else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
+    else await completeResolvedMiniToolConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
   });
@@ -177,27 +177,6 @@ export async function getMiniToolExecution(projectId: string, runId: string, use
   const record = recordFromPlan(await executionPlanFromTask(task));
   const taken = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(task.id));
   return { ...record, outputs: record.outputs.map((output) => taken.has(output.outputIndex) ? { ...output, takenOver: true } : output) };
-}
-
-/**
- * Prove the frozen execution's declared step range and original identities under its task lock.
- * @param taskId - The original planned execution, never a replacement computation.
- * @param tx - The receipt or terminal transaction already owning the parent lock.
- * @returns Nothing while the original range or any call identity remains unproven.
- * @throws {Error} When the frozen execution, original steps or closure persistence is invalid.
- */
-export async function completeResolvedMiniToolExecutionConsumptionSet(taskId: string, tx: DbTx): Promise<void> {
-  const plan = await lockedPlan(taskId, tx);
-  if (plan.task.status !== "completed" && plan.task.status !== "failed") return;
-  const steps = await upstreamStepRepo.listSteps(taskId, tx);
-  // Missing execution facts are not a proof of a complete empty call set.
-  if (plan.execution.tool !== "video.remove-bg") return;
-  const providerModel = plan.execution.provider.model_id;
-  // The provider step follows the run's own model-input preparation steps; a run that failed in preparation has none.
-  if (!steps.every((step) => step.kind !== "generate" || (step.endpoint === providerModel && step.itemIndex === 0))) return;
-  if (steps.some((step) => step.output.miniToolStep !== undefined
-    && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep)))) return;
-  await completeMiniToolConsumptionSet(taskId, tx);
 }
 
 /**

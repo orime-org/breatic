@@ -12,7 +12,7 @@ import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
-import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import { completeMiniToolConsumptionSet, completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
@@ -126,6 +126,7 @@ export async function finishMiniToolAnalysis(taskId: string, completion: MiniToo
     const frozen = miniToolFrozenAnalysisSchema.parse(task.params.analysis);
     const record = outcome.kind === "result" ? await recordLockedAnalysis(task, outcome.result, tx) : await failLockedAnalysis(task, outcome.error, tx);
     if (outcome.consumptionSet === "complete") await completeMiniToolConsumptionSet(task.id, tx);
+    else await completeResolvedMiniToolConsumptionSet(task.id, tx);
     return {
       record,
       context: { taskId: task.id, userId: task.userId, projectId: frozen.projectId, spaceId: frozen.spaceId, hostNodeId: frozen.hostNodeId },
