@@ -372,6 +372,22 @@ export const canvasProposalSchema = z.object({
 export type CanvasProposal = z.infer<typeof canvasProposalSchema>;
 
 /**
+ * Each run of words a node sends, kept apart: the main prompt, then each shot
+ * (#2218), then each dialogue line (inner#1825 design 8.5). A mark is read
+ * within one run, never across two.
+ * @param node - The proposed node.
+ * @returns The runs, prompt first; a node with none has none.
+ * @throws {never} Never.
+ */
+export function proposalWordRuns(node: ProposalNode): PromptSegment[][] {
+  return [
+    ...(node.prompt === undefined ? [] : [node.prompt]),
+    ...(node.shots ?? []).map((shot) => shot.prompt),
+    ...(node.lines ?? []).map((line) => line.prompt),
+  ];
+}
+
+/**
  * Every segment of a node that can carry a mark: the main prompt, then each
  * shot in turn (#2218), then each dialogue line.
  * @param node - The proposed node.
@@ -379,7 +395,7 @@ export type CanvasProposal = z.infer<typeof canvasProposalSchema>;
  * @throws {never} Never.
  */
 export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
-  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt), ...(node.lines ?? []).flatMap((line) => line.prompt)];
+  return proposalWordRuns(node).flat();
 }
 
 /**

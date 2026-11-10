@@ -265,6 +265,7 @@ export {
   layoutFeedsOf,
   TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
+  proposalWordRuns,
   markReadsBack,
   markText,
   writtenMark,

@@ -150,6 +150,7 @@ export {
   markedSegments,
   marksTypedIn,
   proposalMarkSegments,
+  proposalWordRuns,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
