@@ -309,3 +309,23 @@ describe('an empty dialogue line (demo 2026-11-10-1825-dialogue-lines)', () => {
     await waitFor(() => expect(linePlaceholders()).toEqual([t('canvas.generatePanel.dialogueLinePlaceholder', { name: 'Leo' }), null]));
   });
 });
+
+describe('a speaker with no name yet', () => {
+  it('reads as its row in the settings, on the picker, in the menu and in the empty line\'s placeholder', async () => {
+    const editor = await mount(legacyPrompt(['', 'Leo: y']), ['  ', 'Leo']);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: '' }, { speaker: 2, text: 'y' }]));
+    const row = t('canvas.generatePanel.audioSpeakerRow', { n: 1 });
+    expect(row).not.toContain('audioSpeakerRow');
+    await waitFor(() => expect(screen.getAllByTestId('dialogue-line-speaker')[0]).toHaveTextContent(row));
+    await waitFor(() => expect(linePlaceholders()).toEqual([t('canvas.generatePanel.dialogueLinePlaceholder', { name: row }), null]));
+    const user = userEvent.setup();
+    await user.click(screen.getAllByTestId('dialogue-line-speaker')[0] as HTMLElement);
+    expect(await screen.findByTestId('dialogue-line-speaker-option-1')).toHaveTextContent(row);
+    expect(screen.getByTestId('dialogue-line-speaker-option-2')).toHaveTextContent('Leo');
+  });
+
+  it('is never matched by a line\'s words, so a line starting with a colon keeps them', async () => {
+    const editor = await mount(legacyPrompt([': hi']), ['', 'Leo']);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: ': hi' }]));
+  });
+});
