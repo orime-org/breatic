@@ -167,12 +167,17 @@ export default function DocumentVersionArea({
 
   React.useEffect(() => {
     if (host.current === null) return undefined;
-    preview.mount(host.current);
+    // The editor takes over the element it mounts on; this one is its own, as
+    // the body's surface is, so the column's element keeps React's classes.
+    const surface = document.createElement('div');
+    host.current.appendChild(surface);
+    preview.mount(surface);
     controller.open();
     void controller.list();
     return () => {
       controller.close();
       preview.unmount();
+      surface.remove();
     };
   }, [preview, controller]);
 

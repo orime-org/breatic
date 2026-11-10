@@ -128,6 +128,8 @@ describe('the snapshot panel', () => {
     expect(screen.queryByTestId('doc-doc-menu-trigger')).toBeNull();
     expect(await screen.findByTestId('doc-version-row-v1')).toHaveTextContent('First draft');
     await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
+    // Mounted inside the column's element, as the body is, so that element's own classes stay React's.
+    expect(screen.getByTestId('doc-version-preview-body').querySelector('.ProseMirror[contenteditable="false"]')).not.toBeNull();
 
     await user.click(screen.getByTestId('doc-version-close'));
     expect(screen.queryByTestId('doc-version-panel')).toBeNull();
