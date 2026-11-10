@@ -142,6 +142,14 @@ const CLONE: ModelEntry = {
   },
 };
 
+/** A voice-cloning model that reads no prompt, as ElevenLabs Voice Changer does. */
+const CHANGER: ModelEntry = {
+  ...CLONE,
+  name: 'elevenlabs-voice-changer',
+  display_name: 'ElevenLabs Voice Changer',
+  takes_prompt: false,
+};
+
 /** The sound-effect model, as `config/models/audio/sonilo.yaml` declares it. */
 const SFX: ModelEntry = {
   ...ELEVEN,
@@ -227,7 +235,7 @@ function catalog(): ModelCatalog {
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
     audio: [SFX, T2M, BGM, A2M],
-    tts: [ELEVEN, FISH, CLONE],
+    tts: [ELEVEN, FISH, CLONE, CHANGER],
     three_d: [],
     total: 2,
     credit_multiplier: 1,
@@ -1019,6 +1027,11 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(screen.getByTestId('generate-audio-tool-music-vocal')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-audio-tool-music-melody')).toBeNull();
     expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
+  });
+
+  it('keeps its one box open for a model that takes no prompt and has no lyrics box', async () => {
+    await openPanel({ mode: 'voice_clone', model: 'elevenlabs-voice-changer' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeVisible();
   });
 
   it('keeps and sends the style in Text to Music after a melody was chosen in Reference to Music', async () => {

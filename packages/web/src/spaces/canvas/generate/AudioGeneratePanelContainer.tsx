@@ -452,8 +452,9 @@ function AudioGeneratePanelBody({
     setSeenLyrics(shownLyricsFragment);
     setExpanded('prompt');
   }
-  // With no style box (a run that takes no prompt), the lyrics box is the one on show.
-  const shownBox = vm.promptRequired ? expanded : 'lyrics';
+  // A run whose style box is left out (Mureka V9.5 Song composing from a
+  // melody) shows its lyrics box; a lone box stays as it is.
+  const shownBox = vm.promptRequired || !lyrics ? expanded : 'lyrics';
   // Set by the user's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
