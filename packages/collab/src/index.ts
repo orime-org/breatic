@@ -40,6 +40,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
+import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -59,6 +60,7 @@ const monitoring = initSentry();
 initLogger("collab");
 
 const logger = createLogger("main");
+onDatabaseWaitTimeout((event) => logger.error(event, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,

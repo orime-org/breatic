@@ -33,7 +33,66 @@ import {
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 
-const inputSchema = z.object({}).strict();
+/**
+ * The guide's sections, grouped by where in the product they apply, each
+ * with when to read it. The tool's description carries this index so a call
+ * names only the sections it needs (#1361); `product-guide-sections.test.ts`
+ * holds it to the headings the guide renders.
+ */
+const INDEX: readonly { group: string; sections: readonly (readonly [name: string, when: string])[] }[] = [
+  {
+    group: "Everywhere in a Project",
+    sections: [
+      ["The top bar", "the project name, members, sharing, credits and the account menu"],
+      ["Spaces", "space tabs, the spaces list, making, renaming, closing and deleting a space"],
+      ["The chat panel", "this chat: sending, attaching, mentions, past conversations, how a reply shows"],
+      ["When something is wrong", "a banner, notice or error on screen, and what to do about it"],
+    ],
+  },
+  {
+    group: "Canvas",
+    sections: [
+      ["Making nodes", "adding nodes to a canvas"],
+      ["Filling a node", "putting text, pictures, video or sound into a node"],
+      ["Node menus", "a node's right-click menu and toolbar, and the menus for a group or several nodes"],
+      ["Notes", "sticky notes on the canvas"],
+      ["Moving around the canvas", "panning, zooming, selecting, copying and pasting"],
+      ["Generating", "running a generation, tasks on a node, multi-shot"],
+      ["Inside the generation panel", "the panel's mode, model, prompt and settings for each media"],
+      ["Source slots", "filling a model's source slots on screen"],
+      ["Connections", "wiring nodes together"],
+      ["Mini-tools", "the tools on a picture, video or sound node, such as Upscale"],
+      ["Focus crops", "cropping part of a picture as a source"],
+      ["Mentions", "mentioning nodes in a prompt"],
+      ["Groups and undo", "groups, locking and undo"],
+      ["Proposal cards", "placing a canvas proposal from this chat and what to do once it lands"],
+    ],
+  },
+  {
+    group: "Document",
+    sections: [
+      ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
+      ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
+    ],
+  },
+  { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks and the view in a 3D space"]] },
+];
+
+/** Every section name the index lists. */
+const SECTION_NAMES: readonly string[] = INDEX.flatMap(({ sections }) => sections.map(([name]) => name));
+
+/** Who the agent is talking to, which every answer from the guide assumes. */
+const PREAMBLE = "You are talking to someone who can edit this project: people who can only view it do not get this chat.";
+
+const inputSchema = z
+  .object({
+    sections: z
+      .array(z.string().min(1))
+      .min(1)
+      .describe("The names of the sections to read, as the index lists them"),
+  })
+  .strict();
 
 /** The node types a user can create, in the order the create menus list them. */
 export const CREATABLE = ["text", "image", "audio", "video"] as const satisfies readonly NodeType[];
@@ -199,12 +258,10 @@ function templateMenuLine(type: GenerationNodeType, node: string): string {
  * Every quoted name is text the user's screen shows: a menu row, words on a
  * button, or a tooltip that appears on hover. A control whose name lives only
  * in its accessible label is described by how it looks.
- * @returns The whole guide as the model reads it.
+ * @returns Every section of the guide; a call reads only the sections it names (`readSections`).
  */
 export function renderProductGuide(): string {
   return [
-    "You are talking to someone who can edit this project: people who can only view it do not get this chat.",
-    "",
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
       "goes back to the studio; the project's name, which the project's owner or the studio's admin renames by " +
@@ -286,7 +343,7 @@ export function renderProductGuide(): string {
     "A project holds spaces; the ones open right now are tabs along the top. The first time a project is " +
       "opened in a browser only the newest space is open; after that the browser keeps the tabs the user had " +
       "open, even none. A space someone else makes, or one brought back, does not become a tab by itself: open " +
-      `it from ${quoted(t("spaces.drawer.title"))} (below), which lists every space. Each tab shows a ` +
+      `it from ${quoted(t("spaces.drawer.title"))}, which lists every space. Each tab shows a ` +
       "type icon and the " +
       "space's name, and hovering a tab shows its full name. A small spinning mark at the far left means this " +
       "browser currently knows of ongoing work in that space, including collaborator tasks reflected in its " +
@@ -324,7 +381,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.drawer.action.rename"))}, ` +
       `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +
       `${quoted(t("spaces.drawer.action.delete"))}, which asks whether to delete the space by name, says the ` +
-      `owner can restore it (from ${quoted(t("activity.header"))}, below), with ` +
+      `owner can restore it (from ${quoted(t("activity.header"))}), with ` +
       `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. ` +
       `${quoted(t("spaces.drawer.action.delete"))} is greyed on a locked space, with ` +
       `${quoted(t("spaces.drawer.action.deleteLocked"))} written under it, and on the project's only space, with ` +
@@ -382,7 +439,7 @@ export function renderProductGuide(): string {
       "if the model list cannot be read at that moment, nothing is attached and " +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
-      "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
+      "handle's menu (see the Document spaces section); the same line handed over again leaves one chip holding what " +
       "it reads now, and the same selection handed over again unchanged leaves one chip. Each attachment shows " +
       "as a small " +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
@@ -433,7 +490,12 @@ export function renderProductGuide(): string {
       "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
       "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
-      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. Links in a reply open in a new tab. A code block shows a " +
+      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. " +
+      "The Agent can read web pages and PDFs behind links the user gives in the conversation, several at once, and " +
+      "pages its own searches found; the pages it read are among the sources under the reply. Pages that need a " +
+      "login, and sites that refuse to be read (such as WeChat articles, Zhihu and Xiaohongshu), cannot be read: the " +
+      "user can copy the page's text into the message, or attach a screenshot or a PDF of it. Links to pictures, " +
+      "audio and video are understood as media. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the user appear as a row of squares, the last showing a plus and " +
@@ -523,7 +585,7 @@ export function renderProductGuide(): string {
       "node. An empty file makes no node, and a message names it. Several files at once arrive four to a row " +
       "inside a new group named, in every language, like 3 files; if only one of them is accepted, it arrives " +
       "alone. Files dropped on top of a node, or pasted while a node is selected, still make new nodes: to fill " +
-      "a node that exists, use double-click or its right-click menu (next section).",
+      "a node that exists, use double-click or its right-click menu (the Node menus section).",
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
       "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
@@ -560,7 +622,7 @@ export function renderProductGuide(): string {
       "(on a text node, until the file has been read), " +
       "the person uploading sees a grey shimmering placeholder on the node; an upload that ends before then " +
       "leaves the node where it is and replaces the placeholder with a red line saying why (such as the two " +
-      "messages above), which only that person sees and which goes away when the page is refreshed, when they " +
+      "messages this paragraph names), which only that person sees and which goes away when the page is refreshed, when they " +
       "upload to the node again, or once a generation they run from the node's panel is accepted. After that " +
       "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
       "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
@@ -733,7 +795,7 @@ export function renderProductGuide(): string {
       "page, not the canvas. Except while nodes are being picked for a panel or a note is being placed, click a " +
       "node to select it and Cmd/Ctrl-click to add or remove one. Cmd/Ctrl+A does not select every node. " +
       "Backspace or Delete, once the space was the last thing clicked and nothing is being typed in (see " +
-      "pasting, above, for handing the keys back from this chat), removes the selected nodes and connections; " +
+      "the Making nodes section for handing the keys back from this chat), removes the selected nodes and connections; " +
       "locked ones, " +
       "ones with tasks still running and notes you may not delete stay, and a message says why. Other people in " +
       "the same space show as named pointers and as name tags on what they have selected.",
@@ -788,7 +850,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
       `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. In the video panel's Multi-Shot mode ` +
-      "(see below), the shots take the prompt's place, and pressing it may say " +
+      "(the Inside the generation panel section), the shots take the prompt's place, and pressing it may say " +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
       `${quoted(t("canvas.generatePanel.refuseStoryboardDurationMismatch", { shots: 6, total: 5 }))} or ` +
@@ -985,7 +1047,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
       `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
-      "holds up to three pictures and works its own way (see the picture panel above), and the video panel shows " +
+      "holds up to three pictures and works its own way (see the picture panel in the Inside the generation panel section), and the video panel shows " +
       "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
       "Which ones show depends on " +
@@ -1113,7 +1175,7 @@ export function renderProductGuide(): string {
       `only a box for what to change, which must be filled, and ${quoted(t("canvas.generatePanel.param.resolution"))}; ` +
       "the picture itself stays as it was. On these three other tools a box at the bottom takes anything to add and " +
       "can be left empty. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
-      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in the list above are billed that way, and the others show an ` +
+      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
@@ -1298,7 +1360,7 @@ export function renderProductGuide(): string {
       "landing buttons wait while it spins. A proposal that already landed, as one may after a reload, is shown " +
       `where it landed instead, the way ${quoted(t("chat.documentProposal.view"))} shows it, and the card then ` +
       "shows it landed. A passage that changed since the proposal is still shown, with the " +
-      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as below, and ` +
+      `toast ${quoted(t("chat.documentProposal.changed"))} A deleted passage or document is told as this section says of a deleted passage, and ` +
       `when locating fails the toast says ${quoted(t("chat.documentProposal.failedLocate"))} Switching to another ` +
       "Space, or closing the document's tab, while it still waits for the document ends the wait without a word; " +
       `the same holds for ${quoted(t("chat.documentProposal.view"))}.`,
@@ -1580,7 +1642,7 @@ export function renderProductGuide(): string {
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
       "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
       "keeping their headings, lists and other blocks; pasted with the " +
-      "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
+      "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (as this section says of media); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
@@ -1599,7 +1661,7 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.quote"))}; the alignment menu lists ` +
       `${quoted(t("spaces.document.commands.alignLeft"))}, ${quoted(t("spaces.document.commands.alignCenter"))} ` +
       `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
-      "Comments below). The speech bubble with a plus puts the selected text into the Agent's box as an " +
+      "Comments in this section). The speech bubble with a plus puts the selected text into the Agent's box as an " +
       "attachment written as Markdown (bold, italic, strikethrough, code and links are kept; underline, colour " +
       "and alignment are not), opening the Agent panel if it is hidden. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
@@ -1916,22 +1978,62 @@ export function renderProductGuide(): string {
   ].join("\n");
 }
 
+/**
+ * The sections a call names, from the whole guide rendered in the request's
+ * locale.
+ * @param names - The section names, as the index lists them.
+ * @returns The sections, joined in the order asked.
+ * @throws {Error} When a name is not in the index, or the sections run past the per-call cap.
+ */
+export function readSections(names: readonly string[]): string {
+  const unknown = names.filter((name) => !SECTION_NAMES.includes(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `The guide has no section ${unknown.map(quoted).join(", ")}. Its sections are: ${SECTION_NAMES.map(quoted).join(", ")}. Call again with names from that list.`,
+    );
+  }
+  const byName = new Map(
+    renderProductGuide()
+      .split(/\n(?=## )/)
+      .map((part) => [part.split("\n")[0]?.slice(3) ?? "", part] as const),
+  );
+  const text = [...new Set(names)]
+    .map((name) => {
+      const section = byName.get(name);
+      if (section === undefined) throw new Error(`The guide lists "${name}" in its index but renders no such section.`);
+      return section;
+    })
+    .join("\n\n");
+  const cap = getAgentConfig().product_guide_max_chars_per_call;
+  if (text.length > cap) {
+    throw new Error(
+      `Those sections run to ${String(text.length)} characters, past the ${String(cap)} one call may read. Call again with fewer sections.`,
+    );
+  }
+  return text;
+}
+
+/**
+ * The index the tool's description carries.
+ * @returns One line per section, grouped.
+ */
+function renderIndex(): string {
+  return INDEX.map(({ group, sections }) => `${group}: ${sections.map(([name, when]) => `"${name}" (${when})`).join("; ")}.`).join(" ");
+}
+
 export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
-    "How the user operates our product: the top bar, the space tabs and the spaces list, this chat panel, and " +
-    "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
-    "panel and what is in it, the mini-tools on a picture, video or sound node, source slots, focus crops, " +
-    "mentions, groups, placing a proposal card; 3D Space " +
-    "objects, model generation and its proposal card, transforms, locks, personal view and collaboration; writing in a " +
-    "document; and what the screen shows when something goes wrong. Read it before telling the user how to do something here. " +
+    `How the user operates our product, in sections; name the ones you need. ${PREAMBLE} ` +
+    `Sections: ${renderIndex()} ` +
+    "Read the sections before telling the user how to do something here. " +
     "Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the user's screen shows; describe an icon-only control the way it describes it.",
   inputSchema,
   metadata: { runningLine: "chat.tool.readingGuide" },
   execute: async (
-    _input: z.infer<typeof inputSchema>,
+    { sections }: z.infer<typeof inputSchema>,
     // Unused: builds text and returns, so there is nothing to abandon.
     // Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<string> => renderProductGuide(),
+  ): Promise<string> => readSections(sections),
 });

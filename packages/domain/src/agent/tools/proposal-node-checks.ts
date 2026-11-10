@@ -68,7 +68,7 @@ export function checkMaterial(node: ProposalNode, at: NodeLabel, materials: Mate
   }
   if (facts === "missing") {
     // A mistyped address and one copied from another studio read the same here.
-    return refuse("material-missing", `"${node.name}" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with ${SAVE_IMAGE}.`);
+    return refuse("material-missing", `"${node.name}" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat, pictures saved with ${SAVE_IMAGE}, and pictures or clips already on the canvas.`);
   }
   if (facts.kind !== node.type) {
     return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);
@@ -175,7 +175,7 @@ function typedMarks(node: ProposalNode): TypedMark[] {
 const SEGMENT_FORMS: Record<NonNullable<PromptSegment["slot"]>["kind"], string> = {
   asset: '{"ref": <index>} for a node',
   note: '{"slot": {"kind": "note", "label": "…"}} for a note',
-  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes',
+  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template\'s blank, which is filled before sending',
 };
 
 /**

@@ -9,11 +9,15 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./src/index.ts"
+    },
+    "./page-links": {
+      "import": "./dist/agent/page-links.js",
+      "types": "./src/agent/page-links.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean --sourcemap",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup src/index.ts src/agent/page-links.ts --format esm --clean --sourcemap",
+    "dev": "tsup src/index.ts src/agent/page-links.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint .",

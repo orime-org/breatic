@@ -78,6 +78,7 @@ describe("tools accept the cancellation signal", () => {
       "search_conversations",
       "search_images",
       "understand_media",
+      "web_fetch",
       "web_search",
     ]);
   });

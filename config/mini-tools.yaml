@@ -28,6 +28,12 @@ classes:
     vcpu: 4
     memory_gib: 12
     disk_gb: 20
+  # The page reader web_fetch runs (inner#1664); no op names it.
+  WebReaderContainer:
+    instance_type: "standard-2"
+    vcpu: 1
+    memory_gib: 6
+    disk_gb: 12
 
 ops:
   crop:
