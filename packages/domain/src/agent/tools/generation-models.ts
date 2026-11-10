@@ -160,7 +160,9 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
  */
 function renderModel(model: PricedModelInfo): string {
   const price = model.price ? `${renderPrice(model.price)}, ` : "";
-  const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
+  const prompt = !model.takesPrompt
+    ? " Takes no prompt: its words come from its sources."
+    : model.promptWhen === undefined ? "" : ` Takes a prompt only while ${gateWords(model.promptWhen, false)}.`;
   const cap =
     model.maxInputChars !== undefined
       ? `, takes at most ${model.maxInputChars} characters of prompt`
@@ -233,7 +235,8 @@ function renderModel(model: PricedModelInfo): string {
       const how = spec.fromReferencePool
         ? `filled on the canvas, not typed here, by an edge into this node, then a mention of it in ${wordsBox(model)}`
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
-      return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
+      const drawn = spec.gate === undefined ? "" : `; it applies only while ${gateWords(spec.gate, false)}`;
+      return `    ${name}:${shape}${howMany} ${how}${drawn}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the
     // only useful thing to say is that asking for another value goes nowhere.

@@ -197,6 +197,11 @@ export interface ModelInfo {
    */
   takesPrompt: boolean;
   /**
+   * What has to hold for a model that takes a prompt to draw its box: Mureka
+   * V9.5 Song composing from a melody takes none.
+   */
+  promptWhen?: ParamGate;
+  /**
    * The bracketed camera commands it reads out of its prompt,
    * for a model that declares them.
    */
@@ -395,10 +400,11 @@ function projectParam(
   // The picker's own list, so the user is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  // Only a control waits on something: material is held to this mode's slots
-  // by the projection above. The name a clause gives is a param of this same
-  // model, which `assertParamDeclarations` refuses at load time otherwise.
-  const gate = by === "panel" ? spec.when : undefined;
+  // A control and a slot can both wait on another setting: Mureka V9.5 Song
+  // draws its melody slot only while it composes from a melody. The name a
+  // clause gives is a param of this same model, which
+  // `assertParamDeclarations` refuses at load time otherwise.
+  const gate = by === "panel" || by === "canvas" ? spec.when : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -574,6 +580,7 @@ function modelsIn(
         ? { maxInputChars: entry.max_input_chars }
         : {}),
       takesPrompt: entry.takes_prompt,
+      ...(entry.prompt_when !== undefined ? { promptWhen: entry.prompt_when } : {}),
       ...(entry.camera_commands !== undefined
         ? { cameraCommands: entry.camera_commands.map((command) => command.name) }
         : {}),

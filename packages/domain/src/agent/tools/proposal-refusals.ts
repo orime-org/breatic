@@ -51,6 +51,8 @@ export const REFUSALS = {
   "multishot-no-shots": "node",
   "shots-with-prompt": "node",
   "no-prompt-box": "node",
+  "prompt-box-gated-off": false,
+  "slot-gated-off": false,
   "ref-outside": "node",
   "ref-self": "node",
   "ref-arrives-otherwise": false,

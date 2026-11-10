@@ -14,6 +14,7 @@ import { loadLocales } from "@breatic/core";
 import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
+  gateHolds,
   type CanvasProposal,
   type GenerationNodeType,
   type PromptSegment,
@@ -133,16 +134,25 @@ function probe(kind: string, what: ProbeKind): ProposalNode {
  */
 function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined): CanvasProposal {
   const { nodeType, mode, chosen } = setting;
-  const prompt: PromptSegment[] = chosen.takesPrompt ? [{ text: "Make it. " }] : [];
+  // A slot drawn only under another setting is followed with that setting, as
+  // its line in the listing says; the prompt is written only where its box is drawn.
+  const gate = entry === undefined ? undefined : chosen.params[entry.way.into]?.gate;
+  const drawing: Record<string, unknown> = gate === undefined ? {} : { ...(gate.flag_on === undefined ? {} : { [gate.flag_on]: true }), ...gate.equals };
+  const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, info]) => [name, info.default]));
+  const takesWords = chosen.takesPrompt && (chosen.promptWhen === undefined || gateHolds(chosen.promptWhen, { ...defaults, ...drawing }));
+  const prompt: PromptSegment[] = takesWords ? [{ text: "Make it. " }] : [];
   if (entry?.ref === true) prompt.push({ ref: 0 });
   if (entry?.note === true) prompt.push(NOTE);
+  const words = wordsFor(chosen, prompt);
+  const params = { ...words.params, ...drawing };
   const gen: ProposalNode = {
     role: "generate",
     type: nodeType,
     name: "Gen",
     mode,
     model: chosen.name,
-    ...wordsFor(chosen, prompt),
+    ...words,
+    ...(Object.keys(params).length > 0 ? { params } : {}),
     ...(entry?.by === "fills" ? { fills: { [entry.way.into]: [0] } } : {}),
   };
   const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;

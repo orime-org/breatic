@@ -485,6 +485,20 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: [`"${HEAD}" draws no prompt box`, 'On node 1 ("Gen"), keep only notes'],
     fix: group([EMPTY_PIC, gen("video", "talking_head", HEAD, { prompt: [NOTE] })]),
   }],
+  "prompt-box-gated-off": [{
+    meets: group(
+      [WORDS, { role: "source", type: "audio", name: "Tune" }, gen("audio", "a2m", SONG, { prompt: [{ text: "Lo-fi piano. " }, NOTE], params: { compose_from: "melody" } })],
+      [{ fromIndex: 0, toIndex: 2, into: "lyrics" }, { fromIndex: 1, toIndex: 2, into: "melody" }],
+    ),
+    states: [`"${SONG}" draws its prompt box only while "compose_from" is "references"`],
+  }],
+  "slot-gated-off": [{
+    meets: group(
+      [WORDS, { role: "source", type: "audio", name: "Tune" }, gen("audio", "a2m", SONG, { prompt: [{ text: "Upbeat pop. " }, NOTE] })],
+      [{ fromIndex: 0, toIndex: 2, into: "lyrics" }, { fromIndex: 1, toIndex: 2, into: "melody" }],
+    ),
+    states: [`"Tune" goes into "melody" of "Gen", and "${SONG}" draws "melody" only while "compose_from" is "melody".`],
+  }],
   "ref-outside": [{
     meets: group([gen("image", "t2i", T2I, { prompt: [{ text: "Make " }, { ref: 7 }] })]),
     states: ['A ref in "Gen" points outside the group: {"ref": 7}. On node 0 ("Gen"), take every {"ref": 7} out.'],
@@ -562,10 +576,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @\'ing it, or through fills "style_images" on "Gen", with no edge and no ref.', 'An empty image node goes into "Gen"'],
   }, {
     meets: group(
-      [...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { melody: [0, 1, 2], vocal: [1] } })],
+      [...["A", "X", "C"].map((name, i): Sent["nodes"][number] => ({ role: "source", type: "audio", name, material: TUNES[i] })), WORDS, gen("audio", "a2m", SONG, { prompt: [{ text: "Make a song." }], fills: { song: [0, 1, 2], vocal: [1] } })],
       [{ fromIndex: 3, toIndex: 4, into: "lyrics" }],
     ),
-    states: ['by "melody", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 audio node(s) and holds "X".'],
+    states: ['by "song", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 audio node(s) and holds "X".'],
   }],
   "ref-missing": [{
     meets: group([WORDS, { ...STORY }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
