@@ -5,6 +5,7 @@ import { PROBE_MAX_BYTES, probeArgs, readProbeOutput, type ReadFrom } from "@ing
 import { realVideoStream } from "@ingest/media-metadata.js";
 import type { MeasuredStreamWindow } from "@ingest/long-media-measured-window.js";
 import { readStreamWindow } from "@ingest/container/stream-window.js";
+import { readServedObject } from "@ingest/container/served-object-read.js";
 import { runTool } from "./run-tool.js";
 
 /** The stderr tail kept for a failed measuring read's error. */
@@ -90,8 +91,11 @@ export async function measureLongMediaStreams(objectUrl: string, stdout: string,
 
 const LONG_MEDIA_PROBE_DEPS: LongMediaProbeRunDeps = {
   execute: async (objectUrl, signal) => {
-    const result = await runTool("ffprobe", probeArgs(objectUrl), { maxBytes: PROBE_MAX_BYTES, signal });
-    return result?.toString("utf8") ?? null;
+    // Through the loopback reader, as the measuring read is: FFprobe's own HTTP read exits 0 with a partial answer (a
+    // moov-at-end MP4 without its audio stream) when the connection drops inside the header, where this read resumes
+    // the drop or fails.
+    const { value } = await readServedObject(objectUrl, signal, (local) => runTool("ffprobe", probeArgs(local), { maxBytes: PROBE_MAX_BYTES, signal }));
+    return value?.toString("utf8") ?? null;
   },
   measure: (objectUrl, stdout, signal) => measureLongMediaStreams(objectUrl, stdout, signal),
   report: async (reportUrl, result) => {

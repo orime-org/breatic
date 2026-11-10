@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { createInterface } from 'node:readline';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
 import { protocolsFor, type ReadFrom } from '@ingest/probe-command.js';
 import { startPlanCommand } from '@ingest/container/plan-command.js';
+import { readServedObject } from '@ingest/container/served-object-read.js';
 
 /** An exact time as a numerator over a positive denominator, in seconds. */
 export type ExactSeconds = readonly [bigint, bigint];
@@ -127,50 +126,11 @@ export function videoPacketAccumulator(stream: Record<string, unknown>): WindowA
 }
 
 /**
- * Read a served object's bytes in order and fail unless they reach the length its first answer announced. A server
- * that offers byte ranges (as the Worker serving the object does) has a dropped connection resumed with a Range request
- * from where it stopped, as FFmpeg's `-reconnect` does; the object is immutable, so the resumed answer continues the
- * same bytes.
- * @param url - Where the object is served.
- * @param signal - The read's lifetime.
- * @yields {Uint8Array} The object's bytes, start to end.
- * @returns Nothing once the last byte is yielded.
- * @throws {Error} When an answer is not the whole object or the asked range, or the bytes stop short and cannot resume.
- */
-async function* servedObjectBytes(url: string, signal: AbortSignal): AsyncGenerator<Uint8Array, void, undefined> {
-  let read = 0;
-  let size = -1;
-  let resumable = false;
-  for (;;) {
-    const answered = await fetch(url, { signal, headers: read === 0 ? {} : { range: `bytes=${read}-` } });
-    const length = answered.headers.get('content-length') ?? '';
-    if (read === 0 && answered.status === 200 && /^\d+$/u.test(length) && Number.isSafeInteger(Number(length))) {
-      size = Number(length);
-      resumable = answered.headers.get('accept-ranges') === 'bytes';
-    } else if (read === 0 || answered.status !== 206 || answered.headers.get('content-range') !== `bytes ${read}-${size - 1}/${size}`) {
-      await answered.body?.cancel();
-      throw new Error(`The stream read failed: the source at byte ${read} was answered ${answered.status}`);
-    }
-    const before = read;
-    try {
-      if (answered.body !== null) for await (const chunk of answered.body) { read += chunk.byteLength; yield chunk; }
-    } catch (error) {
-      // A dropped connection ends the body early; the count below decides whether the read resumes or fails.
-      if (signal.aborted) throw error;
-    }
-    if (read === size) return;
-    // Each resumed answer has to bring bytes, so a server that keeps dropping at once ends the read.
-    if (read > size || read === before || !resumable) throw new Error(`The stream read failed: the source stopped at ${read} of ${size} bytes`);
-  }
-}
-
-/**
  * Measure the window one stream covers by streaming FFprobe's entries line by line, so a long source never holds its
  * list: an audio stream from its decoded frames, which apply the codec's priming and end trimming (Opus pre-skip,
- * Matroska CodecDelay) that packet timestamps include; a video stream from its packets. A served object is read by
- * this process and fed to FFprobe's stdin, because FFprobe exits 0 with the entries seen so far when its own read
- * stops early, and its log is no sign of a whole read (FFmpeg 8.0.1 logs an Opus packet error at the end of every Opus
- * stream): counting the bytes against the announced length is what tells a whole read from a cut one.
+ * Matroska CodecDelay) that packet timestamps include; a video stream from its packets. A served object is read through
+ * `readServedObject`, because FFprobe exits 0 with the entries seen so far when its own read stops early, and its log is
+ * no sign of a whole read (FFmpeg 8.0.1 logs an Opus packet error at the end of every Opus stream).
  * @param input - Where the source is read.
  * @param stream - The ffprobe stream (its `index`, `codec_type`, `time_base` and, for audio, `sample_rate`).
  * @param from - Whether the source is the served object or a local file.
@@ -179,30 +139,34 @@ async function* servedObjectBytes(url: string, signal: AbortSignal): AsyncGenera
  * @param run.stderrTailBytes - The stderr tail kept.
  * @returns The window, or null when a clock fact is missing or nothing is read.
  * @throws {PlanCommandExit} When FFprobe exits non-zero.
- * @throws {Error} When a served object's read does not reach its end, or the read is cancelled.
+ * @throws {Error} When a served object's read does not complete, or the read is cancelled.
  */
 export async function readStreamWindow(input: string, stream: Record<string, unknown>, from: ReadFrom,
+  run: { signal: AbortSignal; stderrTailBytes: number }): Promise<StreamWindow | null> {
+  if (from === 'object') return (await readServedObject(input, run.signal, (local) => probeStreamWindow(local, stream, from, run))).value;
+  return probeStreamWindow(input, stream, from, run);
+}
+
+/**
+ * Run FFprobe over one stream and fold its entries into the stream's window.
+ * @param input - Where FFprobe reads the source.
+ * @param stream - The ffprobe stream.
+ * @param from - What FFprobe reads, which decides the protocols it may open.
+ * @param run - The read's lifetime and the stderr tail kept for its error.
+ * @param run.signal - The lifetime; aborting kills FFprobe.
+ * @param run.stderrTailBytes - The stderr tail kept.
+ * @returns The window, or null when a clock fact is missing or nothing is read.
+ * @throws {PlanCommandExit} When FFprobe exits non-zero.
+ * @throws {Error} When the read is cancelled.
+ */
+async function probeStreamWindow(input: string, stream: Record<string, unknown>, from: ReadFrom,
   run: { signal: AbortSignal; stderrTailBytes: number }): Promise<StreamWindow | null> {
   const audio = stream.codec_type === 'audio';
   const accumulator = audio ? decodedAudioAccumulator(stream) : videoPacketAccumulator(stream);
   if (accumulator === null) return null;
-  const served = from === 'object';
-  const pipe = startPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', served ? 'pipe' : protocolsFor(from),
+  const pipe = startPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', protocolsFor(from),
     '-select_streams', String(stream.index), '-show_entries', audio ? 'frame=pts,nb_samples' : 'packet=pts,duration', '-of', 'compact=p=0',
-    served ? 'pipe:0' : input], run, { stdin: served, stdout: true });
-  // The read's own failure, kept apart from the pipe's: FFprobe closing its stdin before the end (it stopped reading, as
-  // it would on a local file, or was stopped) breaks the pipe, and then its exit decides.
-  let readFailure: unknown;
-  /**
-   * The served object's bytes, keeping the read's failure.
-   * @yields {Uint8Array} The bytes.
-   * @returns Nothing at the end.
-   * @throws {Error} The read's failure.
-   */
-  const bytes = async function* (): AsyncGenerator<Uint8Array, void, undefined> {
-    try { yield* servedObjectBytes(input, run.signal); } catch (error) { readFailure = error; throw error; }
-  };
-  const fed = served ? pipeline(Readable.from(bytes()), pipe.stdin!).catch(() => undefined) : Promise.resolve();
+    input], run, { stdout: true });
   let clockless = false;
   try {
     for await (const line of createInterface({ input: pipe.stdout!, crlfDelay: Infinity })) {
@@ -211,10 +175,8 @@ export async function readStreamWindow(input: string, stream: Record<string, unk
       if (!accumulator.add(fields)) { clockless = true; pipe.stop(); break; }
     }
   } finally {
-    await fed;
     await pipe.done.catch((error: unknown) => { if (!clockless) throw error; });
   }
   if (clockless) return null;
-  if (readFailure !== undefined) throw readFailure;
   return accumulator.window();
 }

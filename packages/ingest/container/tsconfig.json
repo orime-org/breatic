@@ -34,6 +34,7 @@
     "./alpha-presentation.ts",
     "./presentation-run.ts",
     "./stream-window.ts",
+    "./served-object-read.ts",
     "./presentation-recipes.ts",
     "./plan-command.ts",
     "./plan-run.ts",
