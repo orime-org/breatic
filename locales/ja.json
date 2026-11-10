@@ -605,7 +605,7 @@
       "title": "Project の指示",
       "description": "この Project のすべての会話で Agent に送られます。メンバー全員で共有します。",
       "placeholder": "例：英語で回答する。配色は青と白だけにする。",
-      "atLimit": "10,000 文字の上限に達しました",
+      "atLimit": "{max, number} 文字の上限に達しました",
       "lastEdited": "{name} が {time} に最終更新",
       "save": "保存",
       "saved": "保存しました",

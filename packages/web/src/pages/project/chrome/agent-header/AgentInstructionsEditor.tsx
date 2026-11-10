@@ -143,7 +143,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
             data-testid='agent-instructions-count'
             className={cn('shrink-0 text-xs', atLimit ? 'text-status-warning' : 'text-muted-foreground')}
           >
-            {atLimit ? `${t('chat.instructions.atLimit')} · ` : ''}
+            {atLimit ? `${t('chat.instructions.atLimit', { max: AGENT_INSTRUCTIONS_MAX_CHARS })} · ` : ''}
             {draft.length.toLocaleString(locale)} / {AGENT_INSTRUCTIONS_MAX_CHARS.toLocaleString(locale)}
           </span>
           <Button

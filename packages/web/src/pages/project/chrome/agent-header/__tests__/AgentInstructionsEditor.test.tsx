@@ -377,7 +377,7 @@ describe('the editor body (#1400)', () => {
   });
 
   it('says the limit is reached at exactly 10000, and not one short of it', async () => {
-    const atLimit = t('chat.instructions.atLimit');
+    const atLimit = t('chat.instructions.atLimit', { max: MAX });
     expect(atLimit).not.toBe('chat.instructions.atLimit');
 
     const m = await mount(EMPTY);
@@ -395,7 +395,7 @@ describe('the editor body (#1400)', () => {
     const m = await mount(EMPTY);
     await open(m, { ...WRITTEN, text: 'x'.repeat(MAX) });
     expect(counterText()).toContain(`${MAX}/${MAX}`);
-    expect(screen.getByTestId('agent-instructions-count')).toHaveTextContent(t('chat.instructions.atLimit'));
+    expect(screen.getByTestId('agent-instructions-count')).toHaveTextContent(t('chat.instructions.atLimit', { max: MAX }));
   });
 
   it('shows who edited last when someone has', async () => {
@@ -562,6 +562,13 @@ describe('saving (#1400)', () => {
 });
 
 describe('the copy (#1400)', () => {
+  it('writes the limit through {max, number} in every locale, the way the counter beside it formats it', () => {
+    for (const [tag, catalog] of LOCALE_CATALOGS) {
+      const line = (catalog as { chat?: { instructions?: { atLimit?: unknown } } }).chat?.instructions?.atLimit;
+      expect(line, `${tag} chat.instructions.atLimit`).toContain('{max, number}');
+    }
+  });
+
   it.each(['open', 'saved', 'cleared', 'atLimit', 'lastEdited'])(
     'every locale has chat.instructions.%s',
     (key) => {

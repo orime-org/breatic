@@ -605,7 +605,7 @@
       "title": "Project instructions",
       "description": "Sent to the Agent in every conversation in this Project. Shared by all members.",
       "placeholder": "For example: reply in English; use only blue and white.",
-      "atLimit": "10,000-character limit reached",
+      "atLimit": "{max, number}-character limit reached",
       "lastEdited": "Last edited by {name} on {time}",
       "save": "Save",
       "saved": "Saved",
