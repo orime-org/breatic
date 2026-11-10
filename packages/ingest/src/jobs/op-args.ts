@@ -19,6 +19,7 @@ import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denois
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
+import { ffmpegSeconds, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -240,7 +241,7 @@ export function outputRefusal(probe: ProbeReport, medium: "audio" | "video"): Co
  * @throws {Error} When a param the operation needs is missing.
  */
 export function opRuns(
-  op: VideoOp,
+  op: Exclude<VideoOp, "cut">,
   params: Record<string, unknown>,
   input: string,
   output: string,
@@ -264,27 +265,6 @@ export function opRuns(
           `${EVEN},setpts=PTS/${rate.toFixed(6)}`,
           "-filter:a",
           atempoChain(rate),
-          ...H264,
-          ...AAC,
-          ...FASTSTART,
-          output,
-        ],
-      ];
-    }
-    case "cut": {
-      const range = params.range as { start: number; end: number };
-      return [
-        [
-          ...QUIET,
-          "-ss",
-          range.start.toFixed(3),
-          "-to",
-          range.end.toFixed(3),
-          ...SOURCE,
-          "-i",
-          input,
-          "-vf",
-          EVEN,
           ...H264,
           ...AAC,
           ...FASTSTART,
@@ -356,7 +336,7 @@ function denoiseFilter(intensity: number): string {
 
 /** One program and its arguments. */
 export interface Command {
-  readonly program: "ffmpeg" | "sox";
+  readonly program: "ffmpeg" | "ffprobe" | "sox";
   readonly args: string[];
 }
 
@@ -646,5 +626,49 @@ export function opSteps(
   source: ProbeReport,
 ): RunStep[] {
   if (AUDIO_OPS.has(op)) return audioSteps(op as AudioOp, params, input, output, source);
-  return opRuns(op as VideoOp, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
+  if (op === "cut") return cutSteps(params, input, output);
+  return opRuns(op as Exclude<VideoOp, "cut">, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
+}
+
+/**
+ * Cut the range the panel set, on the source's timeline from the file's start as FFmpeg counts it (its format start time
+ * added). The mov demuxer of an MP4 with B-frames and no edit list can land an input seek on a keyframe presented after
+ * the cut's start, so the steps read the start time, probe where the seek lands and move it back until it lands at or
+ * before the start (`seekBeforeLanding`); the cut itself then drops the frames between the seek and the start.
+ * @param params - The cut's params: `range` in seconds.
+ * @param input - The local copy of the source.
+ * @param output - The file the cut writes.
+ * @returns The measuring step that starts the chain.
+ * @throws {never} Building the steps cannot fail.
+ */
+function cutSteps(params: Record<string, unknown>, input: string, output: string): RunStep[] {
+  const range = params.range as { start: number; end: number };
+  const [fromUs, toUs] = [range.start, range.end].map((seconds) => BigInt(seconds.toFixed(3).replace(".", "")) * 1000n) as [bigint, bigint];
+  // ffprobe writes its answer to stderr, which is what a measuring step hands on.
+  const answer = (args: string[]): string[] => [...args, "-o", "pipe:2"];
+  const landing = (targetUs: bigint, seekUs: bigint, lastDtsUs: bigint | null): RunStep => ({
+    kind: "measure",
+    program: "ffprobe",
+    args: answer(seekLandingArgs(input, seekUs, "own-file")),
+    then: (stderr) => {
+      const next = seekBeforeLanding(targetUs, seekUs, stderr, lastDtsUs);
+      if (next !== null) return [landing(targetUs, next.seekUs, next.dtsUs)];
+      return [{
+        kind: "run",
+        program: "ffmpeg",
+        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, "-i", input,
+          ...(seekUs < targetUs ? ["-ss", ffmpegSeconds(targetUs - seekUs)] : []), "-t", ffmpegSeconds(toUs - fromUs),
+          "-vf", EVEN, ...H264, ...AAC, ...FASTSTART, output],
+      }];
+    },
+  });
+  return [{
+    kind: "measure",
+    program: "ffprobe",
+    args: answer(["-v", "error", ...SOURCE, "-show_entries", "format=start_time", "-of", "csv=p=0", input]),
+    then: (stderr) => {
+      const targetUs = fromUs + (readMicroseconds(stderr) ?? 0n);
+      return [landing(targetUs, targetUs, null)];
+    },
+  }];
 }

@@ -129,11 +129,24 @@ export function seekLandingArgs(objectUrl: string, atUs: bigint, from: ReadFrom 
  * @throws {never} An answer it cannot read keeps the seek.
  */
 export function seekBeforeLanding(targetUs: bigint, seekUs: bigint, answer: string, lastDtsUs: bigint | null): { seekUs: bigint; dtsUs: bigint } | null {
-  const times = /^(-?\d+\.\d{6}),(-?\d+\.\d{6})\s*$/u.exec(answer.trim().split("\n")[0] ?? "");
-  if (times === null) return null;
+  // The answer's own line: a measuring step reads it from stderr, where an error line may come first.
+  const times = answer.split("\n").map((line) => /^(-?\d+\.\d{6}),(-?\d+\.\d{6})$/u.exec(line.trim())).find((match) => match !== null);
+  if (times === undefined) return null;
   const [ptsUs, dtsUs] = [microsecondsOf(times[1]!), microsecondsOf(times[2]!)];
   if (ptsUs <= targetUs || ptsUs <= dtsUs || (lastDtsUs !== null && dtsUs >= lastDtsUs)) return null;
   return { seekUs: seekUs - (ptsUs - dtsUs), dtsUs };
+}
+
+/**
+ * The first line of an ffprobe answer that is one time in seconds with six decimals (`-show_entries format=start_time -of
+ * csv=p=0`), as integer microseconds.
+ * @param answer - What ffprobe printed.
+ * @returns The microseconds, or null when no line is such a time (`N/A`).
+ * @throws {never} An answer it cannot read gives null.
+ */
+export function readMicroseconds(answer: string): bigint | null {
+  const line = answer.split("\n").map((text) => text.trim()).find((text) => /^-?\d+\.\d{6}$/u.test(text));
+  return line === undefined ? null : microsecondsOf(line);
 }
 
 /**
@@ -149,8 +162,13 @@ function microsecondsOf(seconds: string): bigint {
   return negative ? -value : value;
 }
 
-/** Format integer microseconds without converting source timestamps to floating point. */
-function ffmpegSeconds(microseconds: bigint): string {
+/**
+ * Format integer microseconds without converting source timestamps to floating point.
+ * @param microseconds - The time.
+ * @returns Seconds with six decimals, as FFmpeg reads a time.
+ * @throws {never} Formatting cannot fail.
+ */
+export function ffmpegSeconds(microseconds: bigint): string {
   const sign = microseconds < 0n ? "-" : "";
   const absolute = microseconds < 0n ? -microseconds : microseconds;
   const whole = absolute / 1_000_000n;
