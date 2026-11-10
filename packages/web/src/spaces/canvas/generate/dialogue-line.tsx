@@ -175,6 +175,13 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
   const { lines, names } = useEditorState({ editor, selector: ({ editor: e }) => ({ lines: lineCount(e), names: [...read()] }) });
   const speaker = speakerOf(node) ?? 1;
   const t = useTranslation();
+  /**
+   * What a speaker is called on screen: the name, or before one is written the
+   * row the settings show for that speaker.
+   * @param at - The speaker, from 1.
+   * @returns The label.
+   */
+  const label = (at: number): string => names[at - 1]?.trim() || t('canvas.generatePanel.audioSpeakerRow', { n: at });
   // A line with no words says whose it is, drawn by the editors' placeholder
   // rule (index.css) the way the Placeholder extension marks an empty box.
   const empty = node.content.size === 0;
@@ -193,19 +200,19 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
             className='inline-flex h-6 max-w-28 shrink-0 items-center gap-1 rounded-chrome border border-border bg-background px-1.5 text-xs text-foreground hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-expanded:border-active-border'
           >
             <span data-testid='dialogue-line-speaker-dot' className='size-2 shrink-0 rounded-full' style={{ background: speakerColour(speaker) }} />
-            <span className='min-w-0 truncate'>{names[speaker - 1] ?? ''}</span>
+            <span className='min-w-0 truncate'>{label(speaker)}</span>
             <ChevronDown className='size-3 shrink-0 text-muted-foreground' aria-hidden='true' />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align='start' avoidCollisions={false} className='w-max'>
-          {names.map((name, at) => (
+          {names.map((_, at) => (
             <DropdownMenuItem
               key={at}
               data-testid={`dialogue-line-speaker-option-${String(at + 1)}`}
               onSelect={() => updateAttributes({ [SPEAKER_ATTR]: at + 1 })}
             >
               <span className='size-2 shrink-0 rounded-full' style={{ background: speakerColour(at + 1) }} />
-              {name}
+              {label(at + 1)}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -213,7 +220,7 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
       <NodeViewContent<'p'>
         as='p'
         className={`min-w-0 flex-1 py-0.5${empty ? ' is-empty' : ''}`}
-        {...(empty ? { 'data-placeholder': t('canvas.generatePanel.dialogueLinePlaceholder', { name: names[speaker - 1] ?? '' }) } : {})}
+        {...(empty ? { 'data-placeholder': t('canvas.generatePanel.dialogueLinePlaceholder', { name: label(speaker) }) } : {})}
       />
       {lines > 1 && (
         <Button
