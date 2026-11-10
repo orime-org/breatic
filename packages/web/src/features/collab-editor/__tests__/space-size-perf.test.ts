@@ -10,9 +10,12 @@
  * 10.8 MiB, `BIG(4000)` to about 2.7 MiB.
  *
  * Each case measures the same operation first in warning, then full (or over
- * the ceiling) on the same document, and asserts a ratio, never an absolute
- * time. Mounting `BIG(16000)` takes about 20 s in jsdom, so every case has a
- * ten-minute timeout. Run this file on its own.
+ * the ceiling), and asserts a ratio, never an absolute time. A case that
+ * deletes the whole body (PF-02, PF-04) opens a fresh `BIG(n)` for every
+ * measurement and closes it after; the others measure on one document.
+ * Mounting `BIG(16000)` takes about 20 s in jsdom, so every case has a
+ * ten-minute timeout. The file runs as the `size-perf` project in
+ * `vitest.config.mts`, in a fork of its own.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

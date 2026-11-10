@@ -79,7 +79,7 @@ Check: does this test change something that exists once per process and does not
 
 **In `vitest.setup.ts`, run the resets that must always happen before any hygiene step that can throw.** One exception in an `afterEach` skips the lines after it for every later file in the package, not only the failing test.
 
-**A full local run of web's unit tests can stop with `JavaScript heap out of memory`, because all its files share that one fork; run web in four shards as CI does.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4; an out-of-memory stop is not a test failure.
+**Run web's unit tests in four shards as CI does: an unsharded run puts the `size-perf` timing cases beside every other file, and their warning-to-full ratios can fail under that load.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4. Web's forks get an 8 GB heap from the root `poolOptions.forks.execArgv` in `vitest.config.mts`; vitest ignores an `execArgv` set inside one project, and the root value overrides `NODE_OPTIONS`.
 
 **vitest 3.2.7 has no `list` reporter.** `--reporter=list` makes it look for a package named `list`, it runs no tests, and the exit looks like a finished run. Use one of vitest's own reporter names (`default`, `verbose`, `dot`, `json`).
 
