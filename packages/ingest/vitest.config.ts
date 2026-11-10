@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Two projects, split by which runtime a test needs.
+ * Three projects: two split by which runtime a test needs, and the page
+ * reader's service, which runs on Node in its own image
+ * (`web-reader/vitest.config.ts`).
  *
  * Almost everything here runs inside workerd, the runtime this Worker is
  * deployed to, because the things worth testing have no Node equivalent to
@@ -37,7 +39,9 @@ const NODE_TESTS = "{src,container}/**/__tests__/**/*.node.test.ts";
 const workers = defineWorkersProject({
   test: {
     name: "workers",
-    exclude: ["**/node_modules/**", NODE_TESTS],
+    // The page reader's service runs on Node in its own image: its project is
+    // web-reader/vitest.config.ts.
+    exclude: ["**/node_modules/**", NODE_TESTS, "web-reader/**"],
     // vitest's default is 5s, and one case here deliberately waits two real
     // seconds to tell a re-issued token's window from a carried-forward one.
     // Two seconds of head-room is not enough on a machine running the other
@@ -58,9 +62,10 @@ const workers = defineWorkersProject({
         // immediately.
         miniflare: {
           compatibilityDate: "2026-03-10",
-          // The Sentry SDK needs `AsyncLocalStorage`; wrangler.toml.template
-          // carries the same flag for `wrangler dev` and deploys.
-          compatibilityFlags: ["nodejs_compat"],
+          // The Sentry SDK needs `AsyncLocalStorage`, and `/read-pages` needs
+          // the request's signal to see its caller leave; wrangler.toml.template
+          // carries the same flags for `wrangler dev` and deploys.
+          compatibilityFlags: ["nodejs_compat", "enable_request_signal"],
           r2Buckets: ["BUCKET"],
           // Bound, and deliberately with no image behind it. Declaring one
           // would make every run of this suite need Docker and a built image
@@ -76,6 +81,7 @@ const workers = defineWorkersProject({
             MINI_TOOL_STD1: { className: "MiniToolContainerStd1", useSQLite: true },
             MINI_TOOL_STD4: { className: "MiniToolContainerStd4", useSQLite: true },
             LONG_MEDIA: { className: "LongMediaJobTestObject", useSQLite: true },
+            WEB_READER: { className: "WebReaderContainer", useSQLite: true },
           },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every
@@ -103,4 +109,4 @@ const node = defineConfig({
   resolve: { alias },
 });
 
-export default defineConfig({ test: { projects: [workers, node] } });
+export default defineConfig({ test: { projects: [workers, node, "./web-reader/vitest.config.ts"] } });

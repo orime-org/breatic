@@ -136,7 +136,10 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
         code,
         // The Worker's own names for what our side did; the other three
         // describe the address, and are causes in their own right.
-        code === "store_failed" || code === "assemble_failed" || code === "upright_failed"
+        code === "store_failed" ||
+        code === "assemble_failed" ||
+        code === "upright_failed" ||
+        code === "reader_not_started"
           ? "internal"
           : code,
       ] as const,

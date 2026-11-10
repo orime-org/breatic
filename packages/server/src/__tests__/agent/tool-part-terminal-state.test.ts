@@ -177,6 +177,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 // event that opens the turn. Answered with a name already set: these tests are
 // about what a turn streams, not about how a conversation comes by its name.
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "already named"),
 }));
 

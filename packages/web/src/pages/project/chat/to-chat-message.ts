@@ -25,6 +25,7 @@ import {
   isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
+  pageLinkKey,
   readQuestionnaire,
   sceneGenerationProposalSchema,
   spaceRequestInputSchema,
@@ -76,6 +77,9 @@ const THINKING_TIME = 'data-thinking-time';
 
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
+
+/** The tool that reads pages; its pages join the same source row (inner#1664). */
+const FETCH_TOOL = 'web_fetch';
 
 /** The tool that finds pictures and puts them in front of the user. */
 const RESULTS_TOOL = 'search_images';
@@ -145,7 +149,7 @@ function assetsOf(output: unknown): ChatAsset[] {
 }
 
 /**
- * The pages one finished search returned, or nothing.
+ * The pages one finished search or page read returned, or nothing.
  *
  * A result gets here in three shapes and only one of them holds sources: what
  * the tool answers with today, the model's own text on a row stored before
@@ -190,6 +194,7 @@ function runningLineOf(part: unknown): { runningLine?: string } {
  */
 const STEP_KEYS: Readonly<Record<string, string>> = {
   web_search: 'chat.tool.step.webSearch',
+  web_fetch: 'chat.tool.step.webFetch',
   search_images: 'chat.tool.step.searchImages',
   understand_media: 'chat.tool.step.understandMedia',
   save_image: 'chat.tool.step.saveImage',
@@ -557,7 +562,7 @@ export function toChatMessage(
         if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) sceneProposals.push(proposal);
       }
-      if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
+      if (status === 'success' && (getToolName(part) === SEARCH_TOOL || getToolName(part) === FETCH_TOOL)) {
         found.push(...sourcesOf(part.output));
       }
       if (getToolName(part) === ASK_TOOL) {
@@ -607,23 +612,29 @@ export function toChatMessage(
   placeOpen();
   placeDeferred(true);
 
-  // A page found by two searches was handed two numbers, and the prose can
-  // carry either: one line answers to both, and both numbers resolve to that
-  // line. Rebuilt rather than pushed to as the loop goes, so no line is ever
-  // handed out before it knows every number it answers to.
+  // A page found by two searches, or by a search and a read, was handed two
+  // numbers, and the prose can carry either: one line answers to both, and
+  // both numbers resolve to that line. Two spellings of one link are one page
+  // (`pageLinkKey`). Rebuilt rather than pushed to as the loop goes, so no
+  // line is ever handed out before it knows every number it answers to.
+  // Sources are taken by number rather than by when the page turned up: two
+  // searches in one step take their numbers when their answers arrive, and
+  // the parts arrive in the order the model asked. So each line is the source
+  // with its smallest number (its address and title, unless that title is
+  // empty and a later source has one), its numbers rise, and the lines follow
+  // the numbers in the prose.
   const byUrl = new Map<string, ChatSource>();
-  for (const [index, source] of found) {
-    const kept = byUrl.get(source.url);
+  for (const [index, source] of [...found].sort(([a], [b]) => a - b)) {
+    const key = pageLinkKey(source.url);
+    const kept = byUrl.get(key);
     byUrl.set(
-      source.url,
-      kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
+      key,
+      kept === undefined
+        ? source
+        : { ...kept, title: kept.title || source.title, indexes: [...kept.indexes, index] },
     );
   }
-  // By number rather than by when the page turned up: two searches in one
-  // step take their numbers when their answers arrive, and the parts arrive
-  // in the order the model asked. Reading down the list follows the numbers
-  // in the prose.
-  const sources = [...byUrl.values()].sort((a, b) => (a.indexes[0] ?? 0) - (b.indexes[0] ?? 0));
+  const sources = [...byUrl.values()];
   const citations: Record<number, ChatSource> = {};
   for (const line of sources) for (const n of line.indexes) citations[n] = line;
 

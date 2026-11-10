@@ -33,6 +33,8 @@ import { assetService, creditLotService, createUsageRecorder } from "@breatic/do
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
+import { makePageLinks, pageLinksForTurn, type PageLinks } from "@server/agent/page-links.js";
+import { readPagesFor } from "@server/agent/read-pages.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
@@ -318,6 +320,11 @@ export class MainAgent {
     // Media a questionnaire may show: what `search_images` returned in this
     // conversation, read from the history and added to as this turn searches.
     const vouchedMedia = new Set<string>();
+    // The links web_fetch may read (inner#1664): the history's, this turn's
+    // message and what this turn's tools come back with; the turns folded into
+    // memory are read only when a link misses those, once per turn.
+    let pageLinks: PageLinks | undefined;
+    let foldedLinks: Promise<PageLinks> | undefined;
     /** Capability, tool set and preparation cache remain fixed through consolidation. */
     let fixedAgentConfig: ResolvedAgentConfig | undefined;
     let preparePictures: PrepareAgentPictures | undefined;
@@ -543,6 +550,9 @@ export class MainAgent {
         }
       }
       const storage = await getStorageAdapter();
+      // The history above the watermark is added each time it is read.
+      pageLinks ??= makePageLinks();
+      for (const row of history) pageLinks.addRow(row);
 
       if (preparePictures === undefined) {
         turnStudioId = await assetService.resolveOwnerStudioId(projectId);
@@ -558,6 +568,16 @@ export class MainAgent {
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
           mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
+          pageUrlFor: async (url) => {
+            const held = pageLinks?.urlFor(url);
+            if (held !== undefined) return held;
+            foldedLinks ??= pageLinksForTurn(conversationId, watermark).catch((err: unknown) => {
+              // A failed read is tried again on the next miss.
+              foldedLinks = undefined;
+              throw err;
+            });
+            return (await foldedLinks).urlFor(url);
+          },
           preparePictures,
           // The Spaces a request to read Spaces may name: this turn's list.
           spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
@@ -595,6 +615,8 @@ export class MainAgent {
             ? userMessageForModel(opening.clockNote, preparedTurn ?? opening.turn, unchanged)
             : continuationMessageForModel(opening.clockNote, opening.space, unchanged),
       };
+      // This turn's message is not in the history the set was read from.
+      pageLinks.addUserMessage(userMessage);
       requestPictureFacts = [...pictureFactsOfRows(history), ...(preparedTurn?.pictures ?? [])];
       const replayed = replayRows(history, agentConfig, { messages: [userMessage], pictures: preparedTurn?.pictures ?? [] });
       // Keep logical facts before projection so a later turn can reselect pictures.
@@ -908,6 +930,7 @@ export class MainAgent {
             spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
           }),
           memory: agentMemoryFor({ userId, projectId, conversationId }),
+          readPages: readPagesFor({ userId }),
         }) as never,
         // One ceiling for the whole turn, every stream of it together: a
         // stream that carries on after a fold has the steps already taken
@@ -1020,6 +1043,8 @@ export class MainAgent {
           if (toolCall.toolName === "search_images") {
             for (const url of searchedPictures(toolOutput.output)) vouchedMedia.add(url);
           }
+          // A page this turn found or read may be read later in the same turn.
+          pageLinks?.addToolResult(toolCall.toolName, toolOutput.output);
         },
         // Records nothing a failure itself: the same failure reaches the end of
         // the stream as an error chunk and is recorded there, alongside the

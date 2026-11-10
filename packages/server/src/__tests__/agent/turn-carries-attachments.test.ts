@@ -58,7 +58,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn }));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({ getMessagesForLlm: async () => [], titleForTurn }));
 vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
