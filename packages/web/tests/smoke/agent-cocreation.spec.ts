@@ -208,9 +208,6 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
     if (docRead !== undefined) extra.current_space = { id: space.id, name: space.name, kind: 'document', state: 'loaded', ...docRead };
     else if (spaceType === 'canvas') extra.current_space = { id: space.id, name: space.name, kind: 'canvas', state: 'loaded', content: '', total_chars: 0, detail: canvasDetail };
     else extra.current_space = { id: space.id, name: space.name, kind: space.type, state: 'unreadable' };
-    if (scenario.instructions !== undefined) {
-      await dataOf(await api.put('/api/v1/chat/instructions', { data: { project_id: project.id, text: scenario.instructions } }), 'save instructions');
-    }
     if (scenario.memory !== undefined) {
       const earlier = await dataOf<{ id: string }>(
         await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
@@ -223,6 +220,11 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
       });
       if (!res.ok()) throw new Error(`memory message: ${String(res.status())} ${await res.text()}`);
       if (!/"toolName":"save_memory"/.test(await res.text())) throw new Error(`the memory turn of ${scenario.id} saved no entry`);
+    }
+    // After the memory turn: saved first, the instructions make the agent
+    // decline to keep a memory that conflicts with them.
+    if (scenario.instructions !== undefined) {
+      await dataOf(await api.put('/api/v1/chat/instructions', { data: { project_id: project.id, text: scenario.instructions } }), 'save instructions');
     }
     const conversation = await dataOf<{ id: string }>(
       await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
