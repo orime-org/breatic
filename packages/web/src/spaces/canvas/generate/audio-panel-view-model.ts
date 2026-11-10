@@ -18,7 +18,7 @@
  * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
-import type { ModelEntry } from '@breatic/shared';
+import { dialogueSideOf, dialogueSpeakers, type ModelEntry } from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
@@ -65,6 +65,11 @@ export interface AudioPanelViewModel {
   voiceRequired: boolean;
   /** Whether a dialogue holds fewer complete speakers than the model takes. */
   speakersShort: boolean;
+  /**
+   * The speakers' names, from speaker 1, the prompt editor offers per line on
+   * the dialogue side (inner#1825 design 8.5); null reading in one voice.
+   */
+  dialogueNames: string[] | null;
   /** Whether a voice will be sent: the node's record holds one, or the list's first stands in ({@link withListDefaultVoice}). */
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
@@ -130,6 +135,7 @@ export function buildAudioPanelViewModel(input: {
     promptRequired: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
     speakersShort: speakersShort(current, params),
+    dialogueNames: dialogueSideOf(current, params) ? dialogueSpeakers(current, params).map((one) => one.speaker) : null,
     voiceChosen,
     voiceSelectedId: voiceChosen
       ? (storedRecord?.[voiceParam as string] as string)

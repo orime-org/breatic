@@ -528,7 +528,7 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
   };
   const DIALOGUE = { _stand_in_on: true, speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: '', voice: 'Puck' }] };
 
-  it('gives each speaker a row reading the name and the voice, with the script hint under them (#2256)', () => {
+  it('gives each speaker a row reading the name and the voice, with no script hint under them (#2256, inner#1825)', () => {
     render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Speaker 1');
@@ -536,7 +536,8 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     expect(screen.getByTestId('generate-audio-row-speakers-1')).toHaveTextContent('Speaker 2');
     expect(screen.getByTestId('generate-audio-row-speakers-1').textContent).not.toContain('·');
     expect(screen.queryByTestId('generate-audio-row-speakers-2')).toBeNull();
-    expect(screen.getByText('Write each line as "Name: line"')).toBeInTheDocument();
+    // The lines say who speaks each one in the prompt box now (inner#1825 design 8.5).
+    expect(screen.queryByText('Write each line as "Name: line"')).toBeNull();
     expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Dialogue · 2');
   });
 

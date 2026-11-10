@@ -15,49 +15,9 @@
  * they are simply not sent).
  */
 
-import { completeEntries, type ModelEntry } from '@breatic/shared';
+import { isStandInOn, standInOf, STAND_IN_ON, type ModelEntry } from '@breatic/shared';
 
-/**
- * The record key holding whether the stand-in is the side in use.
- *
- * Not a catalog param: {@link wireParams} takes it off before anything leaves
- * the browser, and the reconciler keeps it only on a model that has a stand-in.
- */
-export const STAND_IN_ON = '_stand_in_on';
-
-/** The stand-in a model declares. */
-export interface StandIn {
-  /** The param that stands in, e.g. `speakers`. */
-  readonly name: string;
-  /** The param it replaces, e.g. `voice_id`. */
-  readonly replaces: string;
-  /** The fewest complete entries a run takes. */
-  readonly min: number;
-}
-
-/**
- * The stand-in this model declares, if any.
- * @param model - The active model, or undefined before one resolves.
- * @returns The stand-in, or null when the model declares none.
- */
-export function standInOf(model: ModelEntry | undefined): StandIn | null {
-  if (!model) return null;
-  for (const [name, spec] of Object.entries(model.params)) {
-    if (typeof spec.replaces === 'string' && spec.replaces in model.params) {
-      return { name, replaces: spec.replaces, min: spec.min_items ?? 1 };
-    }
-  }
-  return null;
-}
-
-/**
- * Whether the record has the stand-in side switched on.
- * @param params - The model's param record.
- * @returns True only for an explicit true.
- */
-export function isStandInOn(params: Readonly<Record<string, unknown>>): boolean {
-  return params[STAND_IN_ON] === true;
-}
+export { isStandInOn, speakersShort, standInOf, STAND_IN_ON, withStandInOn, type StandIn } from '@breatic/shared';
 
 /**
  * The params that leave the browser: the side not in use is dropped, and the
@@ -75,42 +35,4 @@ export function wireParams(
   if (!standIn) return rest;
   const { [isStandInOn(params) ? standIn.replaces : standIn.name]: _dropped, ...sent } = rest;
   return sent;
-}
-
-/**
- * A record written from outside the panel (a template, an Agent proposal),
- * put on the stand-in side when it brings complete stand-in entries.
- *
- * Such a writer names the speakers because it wants the dialogue, and without
- * the switch {@link wireParams} would drop them. A switch the record already
- * holds is the user's choice and stays.
- * @param model - The model the record belongs to, or undefined when unknown.
- * @param params - The record as the writer gives it.
- * @returns The record, switched to the stand-in side when it brings entries for it.
- */
-export function withStandInOn(
-  model: ModelEntry | undefined,
-  params: Readonly<Record<string, unknown>>,
-): Record<string, unknown> {
-  const standIn = standInOf(model);
-  if (!model || !standIn || typeof params[STAND_IN_ON] === 'boolean') return { ...params };
-  const fields = model.params[standIn.name]?.fields ?? {};
-  if (completeEntries(params[standIn.name], fields).length === 0) return { ...params };
-  return { ...params, [STAND_IN_ON]: true };
-}
-
-/**
- * Whether a dialogue holds fewer complete entries than the model takes.
- * @param model - The active model.
- * @param params - Its param record.
- * @returns True only on the stand-in side and below its floor.
- */
-export function speakersShort(
-  model: ModelEntry | undefined,
-  params: Readonly<Record<string, unknown>>,
-): boolean {
-  const standIn = standInOf(model);
-  if (!model || !standIn || !isStandInOn(params)) return false;
-  const fields = model.params[standIn.name]?.fields ?? {};
-  return completeEntries(params[standIn.name], fields).length < standIn.min;
 }

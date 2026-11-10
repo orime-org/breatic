@@ -98,7 +98,9 @@ export function resolveParamsForModel(
   }
   // Which side of a stand-in is in use is the user's choice, not a catalog
   // param, so it is kept by name rather than by declaration (stand-in.ts).
-  if (standInOf(model) && current[STAND_IN_ON] === true) next[STAND_IN_ON] = true;
+  // An explicit false is kept too: with speakers held and no switch, the
+  // record reads as the dialogue a landing writer meant (`dialogueSideOf`).
+  if (standInOf(model) && typeof current[STAND_IN_ON] === 'boolean') next[STAND_IN_ON] = current[STAND_IN_ON];
   return next;
 }
 

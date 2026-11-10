@@ -1235,7 +1235,7 @@ describe('AudioGeneratePanelContainer — a dialogue written line by line (inner
     // The sentence, not just that one appeared: an empty dialogue would
     // otherwise say the prompt one.
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
-    expect((en.canvas.generatePanel as Record<string, string | undefined>).refuseExecuteNoLines).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
+    expect((en.canvas.generatePanel as unknown as Record<string, string | undefined>).refuseExecuteNoLines).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
   });
 
   it('sends the lines written out after each speaker\'s name', async () => {

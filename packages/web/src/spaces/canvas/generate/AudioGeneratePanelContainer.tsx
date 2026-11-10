@@ -508,6 +508,7 @@ function AudioGeneratePanelBody({
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
       speakersShort: fresh.speakersShort,
+      linesEmpty: fresh.dialogueNames !== null && extractPromptText(freshPrompt).length === 0,
       missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
@@ -582,6 +583,12 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  // The speakers by name, kept the same object while the names are the same.
+  const dialogueKey = vm.dialogueNames === null ? undefined : JSON.stringify(vm.dialogueNames);
+  const dialogue = React.useMemo(
+    () => (dialogueKey === undefined ? undefined : { names: JSON.parse(dialogueKey) as string[] }),
+    [dialogueKey],
+  );
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -602,9 +609,11 @@ function AudioGeneratePanelBody({
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
+          dialogue={dialogue}
         />
       ) : null,
     [
+      dialogue,
       fragment,
       promptPlaceholder,
       onPromptChange,
@@ -693,6 +702,7 @@ function AudioGeneratePanelBody({
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
         speakersShort: vm.speakersShort,
+        linesEmpty: vm.dialogueNames !== null && extractPromptText(promptText).length === 0,
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls),
         lyricsRequired: lyrics,
         lyricsText,

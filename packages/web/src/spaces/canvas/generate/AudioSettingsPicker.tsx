@@ -349,9 +349,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
             />
           ))}
-          {dialogue ? (
-            <p className='px-1 pt-1 text-xs text-muted-foreground'>{t('canvas.generatePanel.audioSpeakersNote')}</p>
-          ) : null}
           {(shared.length > 0 || layout.inline.length > 0) && layout.rows.length > 0 ? (
             <div className='mx-1 my-1 h-px bg-border' />
           ) : null}

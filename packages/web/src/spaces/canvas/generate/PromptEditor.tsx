@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
 import { Selection } from '@tiptap/pm/state';
+import { Plus } from 'lucide-react';
 import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { endKeptEditor, keptEditor } from '@web/spaces/canvas/kept-editors';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
@@ -33,8 +35,16 @@ import {
   MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
+  serializeDialogueText,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
+import {
+  addDialogueLine,
+  DialogueLines,
+  DialogueParagraph,
+  dialogueNormalisation,
+  SpeakerParagraph,
+} from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
@@ -100,6 +110,8 @@ interface PromptWiring {
   placeholder: string;
   onTextChange: (text: string) => void;
   onAtMentionsChange: (sourceIds: string[]) => void;
+  /** The speakers' names on the dialogue side, from speaker 1. */
+  dialogueNames: readonly string[];
   /** Where the open `@` popup registers its refresh. */
   suggestionRefresh: { current: (() => void) | null };
 }
@@ -111,6 +123,8 @@ const keptOf = new WeakMap<
     wiring: PromptWiring;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
+    /** Whether it was built with dialogue lines. */
+    dialogue: boolean;
     /** Whether the user has put a caret in this editor since it was built. */
     caretPlaced: boolean;
     hadFocus: boolean;
@@ -189,6 +203,29 @@ interface PromptEditorProps {
    * extension mounts only when present (it throws on a null provider).
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
+  /**
+   * On the dialogue side of a model whose speakers stand in for its voice
+   * (inner#1825 design 8.5): the speakers' names, from speaker 1. The box then
+   * holds one line per turn, each with a picker for who says it, and reports
+   * and serializes the lines as the `Name: line` script. Absent, it is one
+   * prompt.
+   */
+  dialogue?: { readonly names: readonly string[] };
+}
+
+/**
+ * The string a prompt editor hands the model: its words, or on the dialogue
+ * side its lines as the script.
+ * @param editor - The editor.
+ * @param wiring - What it reads from the component showing it.
+ * @param dialogue - Whether it holds dialogue lines.
+ * @param tokens - Each media chip's words; the wiring's when absent.
+ * @returns The string.
+ */
+function serialized(editor: Editor, wiring: PromptWiring, dialogue: boolean, tokens?: MentionTokens): string {
+  return dialogue
+    ? serializeDialogueText(editor, wiring.references, wiring.dialogueNames, tokens ?? wiring.mentionTokens)
+    : serializePromptText(editor, wiring.references, wiring.blockSeparator, tokens ?? wiring.mentionTokens);
 }
 
 /**
@@ -214,6 +251,7 @@ interface PromptEditorProps {
  * @param root0.startingHeight - How tall the box opens before anything is typed.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param root0.mentionTokens - Each media chip's words in the serialized string, by pool id.
+ * @param root0.dialogue - The speakers' names on the dialogue side; absent for one prompt.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -234,6 +272,7 @@ export const PromptEditor = React.forwardRef<
     startingHeight = 'full',
     blockSeparator,
     mentionTokens = NO_MENTION_TOKENS,
+    dialogue,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -246,6 +285,9 @@ export const PromptEditor = React.forwardRef<
   // replaced by another, ends it; hiding the Space does not (inner#1235 A13).
   const panelSession = useCanvasSession((st) => st.panelSession);
   const resolveName = collaboratorNames?.resolve;
+  const t = useTranslation();
+  const dialogueOn = dialogue !== undefined;
+  const dialogueNames = dialogue?.names;
   const editor = React.useMemo((): Editor => {
     /**
      * Builds the editor, with its handlers reading the wiring box.
@@ -260,6 +302,7 @@ export const PromptEditor = React.forwardRef<
         placeholder,
         onTextChange,
         onAtMentionsChange,
+        dialogueNames: dialogueNames ?? [],
         suggestionRefresh: { current: null },
       };
       // The editor is built during render, and binding it to a fragment that
@@ -277,9 +320,7 @@ export const PromptEditor = React.forwardRef<
        */
       const report = (e: Editor): void => {
         if (constructing) return;
-        wiring.onTextChange(
-          serializePromptText(e, wiring.references, wiring.blockSeparator, wiring.mentionTokens),
-        );
+        wiring.onTextChange(serialized(e, wiring, dialogueOn));
         wiring.onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       };
       const built = new Editor({
@@ -287,7 +328,15 @@ export const PromptEditor = React.forwardRef<
           // Notes on operating the panel sit above the words and are never
           // sent (inner#977); the document keeps a line below them to write in.
           PromptDocument,
-          Paragraph,
+          // On the dialogue side each paragraph is a line with its speaker
+          // (inner#1825 design 8.5); every box keeps the attribute, so a
+          // line's speaker survives an edit made reading in one voice.
+          ...(dialogueOn
+            ? [
+              DialogueParagraph.configure({ names: () => wiring.dialogueNames }),
+              DialogueLines.configure({ names: () => wiring.dialogueNames }),
+            ]
+            : [SpeakerParagraph]),
           Text,
           PromptNote,
           // The caret between two adjacent chips (no auto space — user
@@ -347,6 +396,7 @@ export const PromptEditor = React.forwardRef<
         wiring,
         caretProvider,
         mentionEmptyLabel,
+        dialogue: dialogueOn,
         caretPlaced: false,
         hadFocus: false,
         returning: false,
@@ -368,14 +418,15 @@ export const PromptEditor = React.forwardRef<
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&
-        bound.mentionEmptyLabel === mentionEmptyLabel
+        bound.mentionEmptyLabel === mentionEmptyLabel &&
+        bound.dialogue === dialogueOn
       );
     });
     // Everything else reaches a kept editor through its wiring below, not by
     // rebuilding it. The panel's session is listed so that a panel ending
     // under a mounted editor builds this one a new editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession]);
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession, dialogueOn]);
 
   const kept = keptOf.get(editor);
   if (kept !== undefined) {
@@ -387,6 +438,7 @@ export const PromptEditor = React.forwardRef<
       placeholder,
       onTextChange,
       onAtMentionsChange,
+      dialogueNames: dialogueNames ?? [],
     });
   }
   // Back on screen after a switch of Space, the caret goes back in if it was
@@ -453,17 +505,12 @@ export const PromptEditor = React.forwardRef<
         if (editor.isDestroyed) return;
         editor.commands.focus(keptOf.get(editor)?.caretPlaced === true ? null : 'end');
       },
-      serializePrompt: (tokens?: MentionTokens): string | null =>
-        editor.isDestroyed
-          ? null
-          : serializePromptText(
-            editor,
-            references,
-            blockSeparator,
-            tokens ?? mentionTokens,
-          ),
+      serializePrompt: (tokens?: MentionTokens): string | null => {
+        const wiring = keptOf.get(editor)?.wiring;
+        return editor.isDestroyed || wiring === undefined ? null : serialized(editor, wiring, dialogueOn, tokens);
+      },
     }),
-    [editor, references, blockSeparator, mentionTokens],
+    [editor, dialogueOn],
   );
   // Re-report the substituted prompt text when the POOL changes (round-2
   // adversarial): a text chip resolves its source node's content at
@@ -474,12 +521,20 @@ export const PromptEditor = React.forwardRef<
   // node gains words; an emptied node leaves the button lit but dead). A media
   // chip's words move the same way: mentioning a second picture or switching
   // model renumbers them with no edit to this chip.
+  const namesKey = dialogueNames?.join('\n');
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
-    onTextChange(
-      serializePromptText(editor, references, blockSeparator, mentionTokens),
-    );
-  }, [editor, references, blockSeparator, mentionTokens, onTextChange]);
+    const wiring = keptOf.get(editor)?.wiring;
+    if (editor.isDestroyed || wiring === undefined) return;
+    onTextChange(serialized(editor, wiring, dialogueOn));
+  }, [editor, references, blockSeparator, mentionTokens, onTextChange, dialogueOn, namesKey]);
+  // The lines read the speakers' names too: a renamed speaker is put right on
+  // every line (a typed prefix may name one now) and shown at once, through a
+  // machine edit even when no line changes, which the lines re-read on.
+  React.useEffect(() => {
+    const wiring = keptOf.get(editor)?.wiring;
+    if (!dialogueOn || editor.isDestroyed || wiring === undefined) return;
+    dispatchMachineEdit(editor.view, dialogueNormalisation(editor.state, wiring.dialogueNames) ?? editor.state.tr);
+  }, [editor, dialogueOn, namesKey]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
@@ -646,6 +701,19 @@ export const PromptEditor = React.forwardRef<
       }
     >
       <EditorContent editor={editor} />
+      {dialogueOn && (
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          data-testid='dialogue-add-line'
+          onClick={() => addDialogueLine(editor, keptOf.get(editor)?.wiring.dialogueNames.length ?? 0)}
+          className='mt-1 inline-flex h-6 w-fit items-center gap-1 rounded-chrome px-1.5 text-xs text-muted-foreground hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        >
+          <Plus className='size-3' aria-hidden='true' />
+          {t('canvas.generatePanel.dialogueAddLine')}
+        </Button>
+      )}
     </ScrollArea>
   );
 });
