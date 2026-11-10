@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import * as Y from 'yjs';
 
@@ -22,9 +23,10 @@ interface LiveEditor {
   view: {
     state: unknown;
     pasteText: (text: string) => boolean;
+    someProp: (name: 'handleKeyDown', f: (handler: (view: unknown, event: KeyboardEvent) => boolean) => boolean | undefined) => boolean | undefined;
   };
-  state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: Record<string, unknown>; textContent: string }) => boolean | void) => void } };
-  commands: { insertContentAt: (at: number, text: string) => boolean; undo: () => boolean };
+  state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: Record<string, unknown>; textContent: string }, pos: number) => boolean | void) => void } };
+  commands: { insertContentAt: (at: number, text: string) => boolean; undo: () => boolean; setTextSelection: (at: number) => boolean };
 }
 
 /**
@@ -186,5 +188,89 @@ describe('PromptEditor on the single side', () => {
     const editor = await mount(fragment);
     await waitFor(() => expect(linesOf(editor).map((line) => line.text)).toEqual(['Ava：x', 'y']));
     expect(storedLines(fragment)).toEqual([{ speaker: null, text: 'Ava：x' }, { speaker: null, text: 'y' }]);
+  });
+});
+
+/**
+ * Where the first paragraph's words end in the editor's document.
+ * @param editor - The live editor.
+ * @returns The position.
+ */
+function endOfFirstLine(editor: LiveEditor): number {
+  let end = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (end >= 0) return false;
+    if (node.type.name !== 'paragraph') return true;
+    end = pos + 1 + node.textContent.length;
+    return false;
+  });
+  return end;
+}
+
+/**
+ * Presses a key in the editor the way ProseMirror receives it.
+ * @param editor - The live editor.
+ * @param key - The key.
+ */
+function press(editor: LiveEditor, key: string): void {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  act(() => {
+    editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, event));
+  });
+}
+
+describe('the dialogue lines as the user works them (demo 2026-11-10-1825-dialogue-lines)', () => {
+  it('starts each line with a speaker picker showing that speaker\'s name and colour dot', async () => {
+    await mount(legacyPrompt(['Ava: x', 'Leo: y']), NAMES);
+    await waitFor(() => expect(screen.getAllByTestId('dialogue-line-speaker')).toHaveLength(2));
+    const [first, second] = screen.getAllByTestId('dialogue-line-speaker');
+    expect(first).toHaveTextContent('Ava');
+    expect(second).toHaveTextContent('Leo');
+    expect(within(first as HTMLElement).getByTestId('dialogue-line-speaker-dot')).toBeInTheDocument();
+    expect(within(second as HTMLElement).getByTestId('dialogue-line-speaker-dot')).toBeInTheDocument();
+  });
+
+  it('sets the line\'s speaker to the one picked in its picker', async () => {
+    const fragment = legacyPrompt(['Ava: x', 'Leo: y']);
+    const editor = await mount(fragment, NAMES);
+    await waitFor(() => expect(screen.getAllByTestId('dialogue-line-speaker')).toHaveLength(2));
+    const user = userEvent.setup();
+    await user.click(screen.getAllByTestId('dialogue-line-speaker')[0] as HTMLElement);
+    await user.click(await screen.findByTestId('dialogue-line-speaker-option-2'));
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: 'x' }, { speaker: 2, text: 'y' }]));
+    expect(storedLines(fragment)).toEqual([{ speaker: 2, text: 'x' }, { speaker: 2, text: 'y' }]);
+  });
+
+  it('starts a new line said by the other speaker on Enter at the end of a line', async () => {
+    const editor = await mount(legacyPrompt(['Ava: x']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    press(editor, 'Enter');
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }, { speaker: 2, text: '' }]));
+  });
+
+  it('adds a line said by the other speaker than the last one with the add line button', async () => {
+    const editor = await mount(legacyPrompt(['Ava: x', 'Leo: y']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }, { speaker: 2, text: 'y' }]));
+    fireEvent.click(screen.getByTestId('dialogue-add-line'));
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }, { speaker: 2, text: 'y' }, { speaker: 1, text: '' }]));
+  });
+
+  it('deletes a line with its ×, and offers no × once one line is left', async () => {
+    const editor = await mount(legacyPrompt(['Ava: x', 'Leo: y']), NAMES);
+    await waitFor(() => expect(screen.getAllByTestId('dialogue-line-remove')).toHaveLength(2));
+    fireEvent.click(screen.getAllByTestId('dialogue-line-remove')[0] as HTMLElement);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: 'y' }]));
+    expect(screen.queryAllByTestId('dialogue-line-remove')).toHaveLength(0);
+  });
+
+  it('draws no speaker picker, add line button or × on the single side', async () => {
+    const editor = await mount(legacyPrompt(['Ava: x', 'y']));
+    await waitFor(() => expect(linesOf(editor)).toHaveLength(2));
+    expect(screen.queryAllByTestId('dialogue-line-speaker')).toHaveLength(0);
+    expect(screen.queryByTestId('dialogue-add-line')).toBeNull();
+    expect(screen.queryAllByTestId('dialogue-line-remove')).toHaveLength(0);
   });
 });
