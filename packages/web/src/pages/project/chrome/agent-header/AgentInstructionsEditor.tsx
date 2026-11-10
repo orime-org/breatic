@@ -16,6 +16,7 @@ import {
   saveAgentInstructions,
 } from '@web/data/api/agent-instructions';
 import { useTranslation } from '@web/i18n/use-translation';
+import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { toast } from '@web/lib/toast';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { cn } from '@web/lib/utils';
@@ -60,7 +61,7 @@ interface AgentInstructionsEditorProps {
  * is back; the draft is taken from it once and the cache never changes it
  * afterwards. A read that settles after this opening was closed only updates
  * the cache. While a save waits, the input and Cancel are off and Esc does
- * nothing.
+ * nothing; an Esc that belongs to the input method never closes it.
  * @param root0 - Component props.
  * @param root0.projectId - The Project whose instructions are edited.
  * @param root0.onClose - Closes the editor.
@@ -73,6 +74,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
   const [draft, setDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const composition = React.useMemo(() => compositionEnd(), []);
   useAutosizeTextarea(box, draft);
 
   React.useEffect(() => {
@@ -108,6 +110,13 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
     },
     [saving, onClose],
   );
+  const onEscapeKeyDown = React.useCallback(
+    (e: KeyboardEvent): void => {
+      // An input method's own Escape dismisses its candidates, not the editor.
+      if (keyBelongsToInputMethod(e, composition)) e.preventDefault();
+    },
+    [composition],
+  );
   const onChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setDraft(e.target.value);
   }, []);
@@ -131,7 +140,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent fullScreen data-testid='agent-instructions-editor'>
+      <DialogContent fullScreen onEscapeKeyDown={onEscapeKeyDown} data-testid='agent-instructions-editor'>
         <div className='flex h-12 shrink-0 items-center gap-3 border-b border-border px-4'>
           <div className='min-w-0 flex-1'>
             <DialogTitle className='text-sm font-medium'>{t('chat.instructions.title')}</DialogTitle>
@@ -179,6 +188,7 @@ export function AgentInstructionsEditor({ projectId, onClose }: AgentInstruction
                 autoFocus
                 disabled={saving}
                 onChange={onChange}
+                onCompositionEnd={composition.mark}
                 placeholder={t('chat.instructions.placeholder')}
                 className='min-h-40 resize-none overflow-hidden rounded-none border-0 bg-transparent p-0 text-sm leading-7 shadow-none focus-visible:ring-0'
               />
