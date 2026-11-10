@@ -2860,6 +2860,43 @@ models:
           formula: "{\"total_price\": $ceil(base_price * $length(text) / 1000)}"
           discount_rate: 100
 
+  # inner#1825 §8: a voice described in words, one call straight to audio.
+  - name: "qwen3-tts-voice-design"
+    display_name: "Qwen3 TTS"
+    variant: "Voice Design"
+    mode: "tts"
+    takes_prompt: true
+    prompt_upstream: "text"
+    tier: "optional"
+    description: "Any voice you describe in words"
+    guide: "A voice written out in words, its age, gender, tone, pace and accent, read in one pass with no preset voice to pick."
+    generation_time: 120
+    icon: "qwen"
+    params:
+      voice_description:
+        description: "The voice to speak in, described in words: age, gender, tone, pace, accent"
+        label: "Voice description"
+        type: "text"
+        # The catalog has no required text param; with a default the line
+        # still speaks when the user or the Agent leaves it, and the panel
+        # shows it to change.
+        default: "A clear, warm adult narrator with a neutral accent, speaking at a calm, steady pace."
+        fill: "panel"
+      language:
+        description: "Language of the speech; auto detects it from the line"
+        label: "Language"
+        default: "auto"
+        values: ["auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/qwen3-tts/voice-design"
+        priority: 1
+        pricing:
+          base_price: 5000
+          formula: "{\"total_price\": $length(text) < 100 ? base_price * 1.0 : base_price * $length(text) / 100}"
+          discount_rate: 100
+
   - name: "minimax-voice-clone"
     display_name: "MiniMax Voice Clone"
     mode: "voice_clone"

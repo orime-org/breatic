@@ -21,8 +21,8 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-import { inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal } from "@ingest/jobs/op-args.js";
-import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
+import { clipRefusal, inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal, type ExtraInput } from "@ingest/jobs/op-args.js";
+import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
@@ -33,6 +33,8 @@ export interface RunBody {
   op: ContainerOp;
   params: Record<string, unknown>;
   input: string;
+  /** The inputs after the source, in order: a join's further clips (inner#1825 §6.4). */
+  extra?: string[];
   outputs: { url: string; key: string; coverUrl?: string }[];
   reportUrl: string;
 }
@@ -91,19 +93,36 @@ export async function runJob(job: RunBody): Promise<void> {
       reason = "internal";
       throw err;
     };
+    /**
+     * Download one input and probe it, refusing one the operation cannot take.
+     * @param url - Where the Durable Object serves it.
+     * @param file - The local copy to write.
+     * @param first - Whether it is the source.
+     * @returns Its probe.
+     * @throws {Error} When the download fails or the input is refused.
+     */
+    const fetched = async (url: string, file: string, first: boolean): Promise<ProbeReport> => {
+      await download(url, file).catch(ours);
+      const probe = readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8"));
+      const refused = (first ? inputRefusal(job.op, probe) : null) ?? clipRefusal(job.op, probe);
+      if (refused !== null) {
+        reason = refused;
+        throw new Error(`input refused: ${refused}`);
+      }
+      return probe;
+    };
     const input = join(dir, "source");
-    await download(job.input, input).catch(ours);
-    const source = readProbeOutput((await runCommand("ffprobe", probeArgs(input, "own-file"))).stdout.toString("utf8"));
-    const refused = inputRefusal(job.op, source);
-    if (refused !== null) {
-      reason = refused;
-      throw new Error(`source refused: ${refused}`);
+    const source = await fetched(job.input, input, true);
+    const extra: ExtraInput[] = [];
+    for (const [i, url] of (job.extra ?? []).entries()) {
+      const path = join(dir, `source-${i + 1}`);
+      extra.push({ path, probe: await fetched(url, path, false) });
     }
     for (const output of job.outputs) {
       const file = join(dir, outputFileName(job.op));
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      await runSteps(opSteps(job.op, job.params, input, file, dir, source));
+      await runSteps(opSteps(job.op, job.params, input, file, dir, source, extra));
       const probed = await runCommand("ffprobe", probeArgs(file, "own-file")).then((out) => out.stdout, () => null);
       const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
       const empty = outputRefusal(report, mediumOf(job.op));

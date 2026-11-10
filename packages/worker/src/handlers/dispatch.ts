@@ -124,6 +124,8 @@ export interface TaskJobData {
   toolId?: string;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order (inner#1825 §6.4). */
+  extraKeys?: string[];
   /**
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
@@ -375,7 +377,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds, sceneRowId } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, extraKeys, targetNodeIds, sceneRowId } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -569,6 +571,7 @@ async function runTaskBody(
         toolId,
         params,
         ...(sourceKey !== undefined && { sourceKey }),
+        ...(extraKeys !== undefined && { extraKeys }),
         userId,
         projectId,
         taskId,
@@ -1671,6 +1674,8 @@ interface RunMiniToolOpts {
   params: Record<string, unknown>;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order. */
+  extraKeys?: string[];
   userId: string;
   projectId: string | undefined;
   taskId: string;
@@ -1725,6 +1730,7 @@ export async function runMiniTool(
       projectId,
       params,
       sourceKey: opts.sourceKey,
+      ...(opts.extraKeys !== undefined && { extraKeys: opts.extraKeys }),
       deadlineAt: resume.deadlineAt,
     });
   }
