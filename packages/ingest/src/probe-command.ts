@@ -41,24 +41,29 @@ export type ReadFrom = "object" | "own-file";
  * @param mediaKind - The source file's probed audio or video kind.
  * @param interval - The half-open source-time interval to encode.
  * @param profile - The encoding parameters frozen into this media job.
+ * @param seekUs - Where the input seek opens, at or before the interval's start (`seekNotPastLanding`); the frames
+ * between it and the start are decoded and dropped.
  * @returns FFmpeg arguments that write one MP3 audio file or one fragmented MP4 video file to stdout.
- * @throws {RangeError} When the source-time interval is invalid.
+ * @throws {RangeError} When the source-time interval is invalid or the seek is after its start.
  */
 export function longMediaSegmentArgs(
   objectUrl: string,
   mediaKind: "audio" | "video",
   interval: { startUs: string; endUs: string },
   profile: LongMediaJobRequest["encodingProfile"],
+  seekUs: bigint = BigInt(interval.startUs),
 ): string[] {
   const startUs = BigInt(interval.startUs);
   const durationUs = BigInt(interval.endUs) - startUs;
   if (durationUs <= 0n) throw new RangeError("A long-media segment interval must have positive duration.");
+  if (seekUs > startUs) throw new RangeError("A long-media segment's seek must not be after its start.");
   const args = [
     "-v", "error",
     "-protocol_whitelist", PROTOCOLS,
     "-seek_timestamp", "1",
-    "-ss", ffmpegSeconds(startUs),
+    "-ss", ffmpegSeconds(seekUs),
     "-i", objectUrl,
+    ...(seekUs < startUs ? ["-ss", ffmpegSeconds(startUs - seekUs)] : []),
     "-t", ffmpegSeconds(durationUs),
   ];
   if (mediaKind === "video") {
@@ -86,6 +91,62 @@ export function longMediaSegmentArgs(
   }
   args.push("pipe:1");
   return args;
+}
+
+/**
+ * Build the ffprobe call that reads the first video packet an input seek to a source time lands on, searched as FFmpeg's
+ * own input seek searches it (an absolute stream time, as `-seek_timestamp 1`): that keyframe's presentation and decode
+ * times.
+ * @param objectUrl - Where the container reads the object.
+ * @param atUs - The seek time in microseconds.
+ * @param from - Whether that is a served object or the container's own file.
+ * @returns The argument list, without the program name; ffprobe prints `pts,dts` in seconds.
+ * @throws {never} Building the list cannot fail.
+ */
+export function seekLandingArgs(objectUrl: string, atUs: bigint, from: ReadFrom = "object"): string[] {
+  return [
+    "-v", "error",
+    "-protocol_whitelist", protocolsFor(from),
+    "-select_streams", "v:0",
+    "-read_intervals", `${ffmpegSeconds(atUs)}%+#1`,
+    "-show_entries", "packet=pts_time,dts_time",
+    "-of", "csv=p=0",
+    objectUrl,
+  ];
+}
+
+/**
+ * The next input seek for a decode that must start no later than a target. The mov demuxer of an MP4 with B-frames and
+ * no edit list searches a seek time on the decode clock, which runs behind the presentation clock, so it can land on a
+ * keyframe presented after the target. Such a landing moves the seek back by that keyframe's presentation lead, below its
+ * decode time, so the next landing is an earlier keyframe.
+ * @param targetUs - The first presentation time the decode must reach, in microseconds.
+ * @param seekUs - The seek just probed.
+ * @param answer - What `seekLandingArgs` printed for it.
+ * @param lastDtsUs - The decode time of the keyframe the previous seek landed on, or null for the first probe.
+ * @returns The earlier seek and the decode time of the keyframe this one landed on; null when this seek stands: it lands
+ * at or before the target, on no video packet, or on the same keyframe as before (nothing earlier exists).
+ * @throws {never} An answer it cannot read keeps the seek.
+ */
+export function seekBeforeLanding(targetUs: bigint, seekUs: bigint, answer: string, lastDtsUs: bigint | null): { seekUs: bigint; dtsUs: bigint } | null {
+  const times = /^(-?\d+\.\d{6}),(-?\d+\.\d{6})\s*$/u.exec(answer.trim().split("\n")[0] ?? "");
+  if (times === null) return null;
+  const [ptsUs, dtsUs] = [microsecondsOf(times[1]!), microsecondsOf(times[2]!)];
+  if (ptsUs <= targetUs || ptsUs <= dtsUs || (lastDtsUs !== null && dtsUs >= lastDtsUs)) return null;
+  return { seekUs: seekUs - (ptsUs - dtsUs), dtsUs };
+}
+
+/**
+ * Read seconds printed with six decimals as integer microseconds.
+ * @param seconds - The printed time, such as `-0.080000`.
+ * @returns The microseconds.
+ * @throws {never} The caller passes only text its pattern matched.
+ */
+function microsecondsOf(seconds: string): bigint {
+  const negative = seconds.startsWith("-");
+  const [whole, fraction] = seconds.replace("-", "").split(".");
+  const value = BigInt(whole!) * 1_000_000n + BigInt(fraction!);
+  return negative ? -value : value;
 }
 
 /** Format integer microseconds without converting source timestamps to floating point. */

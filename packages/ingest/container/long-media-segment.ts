@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
-import { longMediaSegmentArgs } from "@ingest/probe-command.js";
+import { longMediaSegmentArgs, PROBE_MAX_BYTES, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 import { runToolBounded } from "./run-tool.js";
 
 /** The Container's request to encode and write one source-time segment. */
@@ -134,12 +134,33 @@ export async function runLongMediaSegment(
   await deps.report(request.reportUrl, "failed");
 }
 
+/**
+ * The input seek that opens a video segment no later than its start: the start itself, moved back while the keyframe it
+ * lands on is presented after the start (`seekBeforeLanding`), one one-packet ffprobe per try.
+ * @param objectUrl - The source the Worker serves.
+ * @param startUs - The segment's start.
+ * @param signal - The segment's deadline.
+ * @returns The seek in microseconds.
+ * @throws {Error} When ffprobe fails, so the segment fails rather than lose its first frames.
+ */
+async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: AbortSignal): Promise<bigint> {
+  let [seekUs, lastDtsUs]: [bigint, bigint | null] = [startUs, null];
+  for (;;) {
+    const answer = await runToolBounded("ffprobe", seekLandingArgs(objectUrl, seekUs), { maxBytes: PROBE_MAX_BYTES, signal });
+    if (answer === null || answer === "over_cap") throw new Error("The long media segment's seek probe failed");
+    const next = seekBeforeLanding(startUs, seekUs, answer.toString("utf8"), lastDtsUs);
+    if (next === null) return seekUs;
+    [seekUs, lastDtsUs] = [next.seekUs, next.dtsUs];
+  }
+}
+
 /** The production encoder and intercepted Worker calls. */
 const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
   now: () => Date.now(),
   encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => runToolBounded(
     "ffmpeg",
-    longMediaSegmentArgs(objectUrl, mediaKind, interval, profile),
+    longMediaSegmentArgs(objectUrl, mediaKind, interval, profile,
+      mediaKind === "video" ? await seekNotPastLanding(objectUrl, BigInt(interval.startUs), signal) : BigInt(interval.startUs)),
     { maxBytes: maxOutputBytes, signal },
   ),
   write: async (outputUrl, bytes, signal) => {
