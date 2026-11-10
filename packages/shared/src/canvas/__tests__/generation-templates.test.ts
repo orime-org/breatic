@@ -80,7 +80,8 @@ const textKey = (template: GenerationTemplate, rest: string): string => `canvas.
 
 /**
  * Where a generate node's words live under the template's locale entry: one
- * key per shot (`shot.<n>`, from 1) for a node with shots, else its prompt;
+ * key per shot (`shot.<n>`, from 1) for a node with shots, one per line
+ * (`line.<n>`, from 1) for a node with dialogue lines, else its prompt;
  * the anchor's sit at the template's top, the others under `node.<key>`.
  * @param template - The template.
  * @param node - The generate node.
@@ -88,6 +89,7 @@ const textKey = (template: GenerationTemplate, rest: string): string => `canvas.
  */
 const wordKeysOf = (template: GenerationTemplate, node: TemplateGenerateNode): string[] => {
   const head = node.key === template.anchor ? '' : `node.${node.key}.`;
+  if (node.lines !== undefined) return node.lines.map((_, at) => `${head}line.${String(at + 1)}`);
   return node.shots === undefined ? [`${head}prompt`] : node.shots.map((_, at) => `${head}shot.${String(at + 1)}`);
 };
 
@@ -273,8 +275,8 @@ function expectEveryString(template: GenerationTemplate): void {
       const length = [...(raw(locale, textKey(template, key)) ?? '')].length;
       expect(length, `${template.id} ${locale} ${key}`).toBeLessThanOrEqual(MAX_NODE_NAME_LEN);
     }
-    // A node with shots has its words in the shots alone.
-    for (const node of generateNodes(template).filter((one) => one.shots !== undefined)) {
+    // A node with shots or lines has its words in them alone.
+    for (const node of generateNodes(template).filter((one) => one.shots !== undefined || one.lines !== undefined)) {
       const prompt = node.key === template.anchor ? 'prompt' : `node.${node.key}.prompt`;
       expect(raw(locale, textKey(template, prompt)), `${template.id} ${locale} ${prompt}`).toBeUndefined();
     }
@@ -1004,7 +1006,7 @@ describe('sound, music and voice templates (inner#1825)', () => {
     }
   });
 
-  it('names two distinct speakers on the dialogue and writes each line after a speaker\'s name, in every language', () => {
+  it('names two distinct speakers on the dialogue and gives three lines, Ava, Leo, Ava, each words only, in every language', () => {
     const template = sound('two-voice-dialogue');
     const anchor = anchorOf(template);
     const speakers = anchor?.params.speakers as Array<{ speaker?: unknown }> | undefined;
@@ -1012,10 +1014,21 @@ describe('sound, music and voice templates (inner#1825)', () => {
     const names = (speakers ?? []).map((one) => one.speaker);
     for (const name of names) expect(typeof name === 'string' && name.trim().length > 0, String(name)).toBe(true);
     expect(new Set(names).size).toBe(2);
+    expect(anchor?.lines).toEqual([{ speaker: 1 }, { speaker: 2 }, { speaker: 1 }]);
     for (const locale of LOCALES) {
-      const prompt = raw(locale, textKey(template, 'prompt')) ?? '';
-      for (const name of names) expect(prompt, `${locale} ${String(name)}`).toMatch(new RegExp(`${String(name)}\\s*[:：]`));
+      expect(raw(locale, textKey(template, 'prompt')), `${locale} prompt`).toBeUndefined();
+      for (const at of [1, 2, 3]) {
+        const line = raw(locale, textKey(template, `line.${String(at)}`)) ?? '';
+        expect(line.trim().length, `${locale} line.${String(at)}`).toBeGreaterThan(0);
+        for (const name of names) expect(line, `${locale} line.${String(at)} ${String(name)}`).not.toMatch(new RegExp(`^\\s*${String(name)}\\s*[:：]`));
+      }
     }
+  });
+
+  it('tells the agent the dialogue goes line by line, with no name in front of a line', () => {
+    const note = sound('two-voice-dialogue').agentNote;
+    expect.soft(note).not.toMatch(/starting with the speaker's name and a colon/);
+    expect.soft(note).toMatch(/\bline/);
   });
 
   it('gives the voice-design anchor an English voice description to start from', () => {
