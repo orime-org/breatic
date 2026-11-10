@@ -14,6 +14,17 @@ import { StillRunning } from "@worker/providers/still-running.js";
 export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done" | "failed" }>;
 
 /**
+ * The end of a planned job's reporting window: two polls past its deadline, the last instant a job ingest still holds can
+ * be read; a job it does not hold by then was never submitted.
+ * @param deadlineAt - The job's deadline.
+ * @returns The window's end, in epoch ms.
+ * @throws {never} Never.
+ */
+export function planReportingEnd(deadlineAt: number): number {
+  return deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms;
+}
+
+/**
  * Distinguish a transport interruption from a completed malformed or refused answer.
  * @param error - The original shared client's exception.
  * @returns Whether another pickup may read the same durable job again.
@@ -55,7 +66,7 @@ function rethrowPlanFailure(error: unknown, request: MiniToolPlanJobRequest, pha
 export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest): Promise<EndedMiniToolPlanJob> {
   const job = miniToolPlanJobRequestSchema.parse(request);
   const poll = getMiniToolsConfig().poll_interval_ms;
-  const reportingEnd = job.deadlineAt + poll * 2;
+  const reportingEnd = planReportingEnd(job.deadlineAt);
   let report: MiniToolPlanJobReport | null;
   try {
     report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job, untilDeadlineIfAhead(reportingEnd));

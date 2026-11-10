@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { env, getMiniToolsConfig, getRawEnvVar } from "@breatic/core";
+import { env, getRawEnvVar } from "@breatic/core";
 import { containerCostUsd, getFullModelConfig, miniToolConsumptionRecordSchema, type MiniToolConsumptionRecord } from "@breatic/domain";
 import { httpRequest, miniToolPlanJobRequestSchema, readMiniToolPlanJob, type MiniToolPlanJobRequest, type UntilDeadline } from "@breatic/shared";
 import { bearerHeaders, HttpStatusError } from "@worker/providers/http.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 
 /** Original consumption and the immutable request needed to authenticate a container report. */
 export interface MiniToolConsumptionLookupInput {
@@ -102,7 +103,7 @@ export async function lookupMiniToolConsumption(input: MiniToolConsumptionLookup
   const report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, plan, bound);
   // Ingest turns a submit after the job's deadline into a failed record, so a job it does not hold once the reporting window
   // (advanceMiniToolPlanJob's) has closed was never submitted: an attempt that never ran costs the user nothing.
-  if (report === null && Date.now() >= plan.deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms) return { state: "known", costUsd: 0, costSource: "computed", raw: null };
+  if (report === null && Date.now() >= planReportingEnd(plan.deadlineAt)) return { state: "known", costUsd: 0, costSource: "computed", raw: null };
   if (report === null || report.state === "starting" || report.state === "running") return { state: "pending", reason: "container-report-pending" };
   // An ended attempt with no usage had a container that never started or vanished without measuring itself: the
   // failure is ours, so it costs the user nothing. Missing CPU time alone is priced from the provisioned vCPU.

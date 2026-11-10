@@ -21,7 +21,7 @@ import {
   type VideoPresentationChunkUnit, type VideoPresentationLedger, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
 } from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
-import { advanceMiniToolPlanJob } from '@worker/handlers/mini-tool/advance-plan-job.js';
+import { advanceMiniToolPlanJob, planReportingEnd } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/providers/still-running.js';
 import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
@@ -233,7 +233,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
       }
       again = true;
     } else {
-      report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, untilDeadlineIfAhead(pickup.capability.deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms));
+      report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, untilDeadlineIfAhead(planReportingEnd(pickup.capability.deadlineAt)));
     }
     const usage = report !== null && (report.state === 'done' || report.state === 'failed') ? report.usage : undefined;
     // An unfinished attempt holds the job (§7.1.1 `Rec`). An ended one with no usage had a container that never
