@@ -856,6 +856,7 @@
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
       "param": {
+        "compose_from": "생성 기준",
         "language": "언어",
         "speakers": "화자",
         "emotion": "감정",

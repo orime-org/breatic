@@ -856,6 +856,7 @@
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
+        "compose_from": "生成のもと",
         "language": "言語",
         "speakers": "話者",
         "emotion": "感情",

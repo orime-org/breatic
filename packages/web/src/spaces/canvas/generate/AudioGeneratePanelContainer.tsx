@@ -268,8 +268,8 @@ function AudioGeneratePanelBody({
   // keeps the words to sing in a box of its own. A mode two models serve
   // differently is drawn differently for each.
   const slots = React.useMemo(
-    () => audioSlotsForModel(vm.modelEntry, mode),
-    [vm.modelEntry, mode],
+    () => audioSlotsForModel(vm.modelEntry, mode, vm.params),
+    [vm.modelEntry, mode, vm.params],
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
@@ -450,6 +450,8 @@ function AudioGeneratePanelBody({
     setSeenLyrics(shownLyricsFragment);
     setExpanded('prompt');
   }
+  // With no style box (a run that takes no prompt), the lyrics box is the one on show.
+  const shownBox = vm.promptRequired ? expanded : 'lyrics';
   // Set by the user's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
@@ -459,19 +461,19 @@ function AudioGeneratePanelBody({
   React.useEffect(() => {
     if (!focusOnOpen.current) return;
     focusOnOpen.current = false;
-    (expanded === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
-  }, [expanded, lyricsEditorRef, promptEditorRef]);
+    (shownBox === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
+  }, [shownBox, lyricsEditorRef, promptEditorRef]);
   // The rail's insert lands in the box on show: a chip put into the hidden
   // one would arrive where the writer cannot see it.
   const onInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       const target =
-        expanded === 'lyrics' && lyricsEditorRef.current
+        shownBox === 'lyrics' && lyricsEditorRef.current
           ? lyricsEditorRef.current
           : promptEditorRef.current;
       target?.insertReference(item);
     },
-    [expanded, promptEditorRef, lyricsEditorRef],
+    [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
   const onExecute = React.useCallback((): void => {
@@ -508,14 +510,14 @@ function AudioGeneratePanelBody({
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
       speakersShort: fresh.speakersShort,
-      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls),
+      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
     });
     if (verdict != null) {
       const key = slotRefusalKey(
         AUDIO_SLOTS,
-        audioSlotsForModel(fresh.modelEntry, mode),
+        audioSlotsForModel(fresh.modelEntry, mode, fresh.params),
         verdict,
       );
       // `max` comes from the same value the gate judged by, so the sentence
@@ -668,7 +670,8 @@ function AudioGeneratePanelBody({
       model={vm.model}
       currentModel={vm.modelEntry}
       creditText={creditText}
-      modelTakesPrompt={vm.promptRequired}
+      modelTakesPrompt={vm.takesPrompt}
+      promptShown={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
       voiceList={voices.state}
@@ -693,7 +696,7 @@ function AudioGeneratePanelBody({
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
         speakersShort: vm.speakersShort,
-        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls),
+        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
       })?.refusal ?? null}
@@ -701,7 +704,7 @@ function AudioGeneratePanelBody({
       lyricsSlot={lyricsSlot}
       promptLabel={promptLabel}
       promptPlaceholder={promptPlaceholder}
-      expanded={expanded}
+      expanded={shownBox}
       onExpand={onExpand}
       promptFragment={fragment}
       lyricsFragment={shownLyricsFragment}

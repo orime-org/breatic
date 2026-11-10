@@ -194,11 +194,22 @@ const A2M: ModelEntry = {
   name: 'mureka-v9.5-generate-song',
   display_name: 'Mureka V9.5 Song',
   mode: ['t2m', 'a2m'],
+  // A melody takes no style, song or vocals (breatic#1393), as the catalog has it.
+  prompt_when: { equals: { compose_from: 'references' } },
   params: {
+    compose_from: {
+      description: '',
+      label: 'Compose from',
+      default: 'references',
+      values: ['references', 'melody'],
+      value_labels: { references: 'Style & references', melody: 'Melody' },
+      modes: ['a2m'],
+      fill: 'panel',
+    },
     lyrics: { description: '', default: null, fill: 'editor' },
-    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
+    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
   },
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
@@ -974,6 +985,49 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     // the prompt default (a blank line between blocks); lyrics are the field
     // whose line structure IS the content.
     expect(payload?.params.lyrics).toBe('[Verse]\nmorning light');
+  });
+
+  it('composes from a melody and the lyrics alone, with no style box', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      musicMelody: { url: 'https://x/m.mp3' },
+      // Picked while composing from style and references; kept, not sent.
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull();
+    expect(screen.getByTestId('generate-audio-tool-music-melody')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-audio-tool-music-song')).toBeNull();
+    expect(screen.queryByTestId('generate-audio-tool-music-vocal')).toBeNull();
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.melody).toBe('https://x/m.mp3');
+    // An undrawn slot travels as null, which the worker leaves out of the request.
+    expect(params?.song ?? null).toBeNull();
+    expect(params?.prompt ?? '').toBe('');
+  });
+
+  it('offers song and vocals, and no melody, when composing from style and references', async () => {
+    await openPanel({ mode: 'a2m', model: 'mureka-v9.5-generate-song' });
+    expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-tool-music-song')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-tool-music-vocal')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-audio-tool-music-melody')).toBeNull();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
+  });
+
+  it('keeps the style box in Text to Music after a melody was chosen in Reference to Music', async () => {
+    await openPanel({
+      mode: 't2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+    });
+    expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
   });
 
   it('carries a picked reference under the name its vendor reads', async () => {

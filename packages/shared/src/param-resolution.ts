@@ -14,7 +14,8 @@
  */
 
 import { extractPromptText } from "@shared/agent/extract-prompt.js";
-import type { ParamBound, ParamForce, ParamGate, ParamScalar } from "@shared/types/model-catalog.js";
+import { paramsForMode } from "@shared/param-modes.js";
+import type { ParamBound, ParamDescriptor, ParamForce, ParamGate, ParamScalar } from "@shared/types/model-catalog.js";
 
 /** What resolution reads off one declared param. */
 export interface ResolvableParam {
@@ -162,6 +163,33 @@ export function resolveParams(
     }
   }
   return out;
+}
+
+/**
+ * Whether a run in this mode sends the prompt: the model takes one and its
+ * `prompt_when`, when it has one, holds on the run's resolved params. Params
+ * are stored per model across modes, so a choice made in another mode is
+ * dropped before resolving: Mureka V9.5 Song composes from a melody without a
+ * style prompt in Reference to Music, and still takes one in Text to Music.
+ * @param model - The model.
+ * @param model.takes_prompt - Whether it takes a prompt at all.
+ * @param model.prompt_when - The condition its prompt is taken under.
+ * @param mode - The mode the run is in.
+ * @param params - The params stored for the model.
+ * @returns True when the run sends the prompt.
+ */
+export function promptTaken(
+  model: ResolvableModel & {
+    readonly takes_prompt: boolean;
+    readonly prompt_when?: ParamGate;
+    readonly params?: Readonly<Record<string, ResolvableParam & Pick<ParamDescriptor, "modes">>>;
+  },
+  mode: string,
+  params: Readonly<Record<string, unknown>>,
+): boolean {
+  if (!model.takes_prompt) return false;
+  if (model.prompt_when === undefined) return true;
+  return gateHolds(model.prompt_when, resolveParams(model, paramsForMode(params, model.params ?? {}, mode)));
 }
 
 /**

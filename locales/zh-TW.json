@@ -856,6 +856,7 @@
       "audioLanguageSearch": "搜尋語言…",
       "audioOptionEmpty": "沒有符合項目",
       "param": {
+        "compose_from": "生成依據",
         "language": "語言",
         "speakers": "說話人",
         "emotion": "情緒",

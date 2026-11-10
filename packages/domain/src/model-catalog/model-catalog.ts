@@ -160,6 +160,8 @@ export interface FullModelEntry {
   forces?: ParamForce[];
   /** The most characters the prompt takes once cleaned (inner#1691). */
   prompt_max_length?: number;
+  /** The condition the prompt is taken under, read through shared `promptTaken`. */
+  prompt_when?: ParamGate;
   /** The three params that together set one camera pose (inner#830). */
   camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
@@ -371,6 +373,7 @@ function projectModelEntry(
     // The panel locks and the run resolves by these, the same as every reader (inner#1691).
     forces: m.forces,
     prompt_max_length: m.prompt_max_length,
+    prompt_when: m.prompt_when,
   };
 }
 

@@ -13,7 +13,7 @@
  * on the machine that ships the yaml.
  */
 
-import { PARAM_FILLS, gateParams } from "@breatic/shared";
+import { PARAM_FILLS, gateParams, type ParamGate } from "@breatic/shared";
 import { z } from "zod";
 
 import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
@@ -26,6 +26,8 @@ export interface ParamClaimant {
   readonly mode?: string | readonly string[];
   /** Its parameters, as the yaml declares them. */
   readonly params?: Record<string, unknown>;
+  /** The condition its prompt is taken under, when it has one. */
+  readonly prompt_when?: ParamGate;
 }
 
 /** A value a choice or a switch can hold. */
@@ -192,6 +194,10 @@ export function assertParamDeclarations(
     const namedPools = new Set(
       [...pools].filter((pool) => typeof (params[pool] as { mention?: unknown }).mention === "string"),
     );
+    // The prompt's condition reads the model's own params, as a param's gate does.
+    for (const gate of model.prompt_when === undefined ? [] : gateParams(model.prompt_when)) {
+      if (!names.has(gate)) faults.push(`${model.name}: prompt_when names "${gate}", which this model does not declare`);
+    }
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
