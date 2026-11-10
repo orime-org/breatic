@@ -37,6 +37,8 @@ interface FoldState {
   readonly opened: ReadonlySet<string>;
 }
 
+const NO_FOLDS: readonly VersionFold[] = [];
+
 export const versionFoldKey = new PluginKey<FoldState>('doc-version-fold');
 
 /**
@@ -128,7 +130,7 @@ const versionFold = new Plugin<FoldState>({
  * @returns The folds, in document order.
  */
 export function versionFolds(state: EditorState): readonly VersionFold[] {
-  return versionFoldKey.getState(state)?.folds ?? [];
+  return versionFoldKey.getState(state)?.folds ?? NO_FOLDS;
 }
 
 /**

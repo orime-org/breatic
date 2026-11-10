@@ -93,7 +93,11 @@ export function buildVersionPreview(options: {
   return buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
     extensions: [
-      DiffVersioningExtension(),
+      // Colours follow the kind of change, not an author (index.css, `.doc-body`).
+      DiffVersioningExtension({
+        getAttributionMarkClassName: ({ contentType, modificationType }) =>
+          `doc-version-${modificationType === 'attrs' ? 'format' : modificationType}${contentType === 'block' ? '-block' : ''}`,
+      }),
       documentVersionFoldExtension(),
       createVersioningExtension<Json>((editor) => ({
         adapter: previewAdapter(editor as unknown as Editor, options),

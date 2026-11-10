@@ -45,6 +45,13 @@ import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/doc
 import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { sourceSpot } from '@web/spaces/document/document-proposal-landing';
 import { revealInTable, tableViewportOf } from '@web/spaces/document/document-table-reveal';
+import type { DocumentScope } from '@web/data/api/documents';
+import { DocumentSnapshotNameDialog } from '@web/spaces/document/DocumentSnapshotNameDialog';
+import { useDocumentVersions } from '@web/spaces/document/use-document-versions';
+
+// The snapshot panel, its preview editor and the diff renderer load when the
+// panel first opens (inner#1129 design §7.1).
+const DocumentVersionArea = React.lazy(() => import('@web/spaces/document/DocumentVersionArea'));
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -67,6 +74,8 @@ interface DocumentEditorProps {
   pending?: PendingUploadsStore | null;
   /** Where an Agent proposal just landed, to show the user (inner#1509). */
   landed?: ProposalLocation | null;
+  /** The document, for its snapshots; without it the snapshot commands are not drawn. */
+  scope?: DocumentScope | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -135,6 +144,7 @@ function cutTo(box: DOMRect, frame: DOMRect): DOMRect {
  * @param root0.files - What admits files into this body.
  * @param root0.pending - What the body's pending media blocks read.
  * @param root0.landed - The block an Agent proposal just landed.
+ * @param root0.scope - The document, for its snapshots.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -145,8 +155,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   files = null,
   pending = null,
   landed = null,
+  scope = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
+  // The snapshot panel takes the body's place while open; the comment panel
+  // and it are never up together (inner#1129 design §7.2).
+  const versions = useDocumentVersions(handle.editor, scope);
+  const { panelOpen, restoring, closePanel } = versions;
   // The one bit that says whether the panel is on screen, and the user is
   // the only one who writes it: a comment arriving from a peer marks the `⋯`
   // button and moves nothing (design §5). Held here because the menu opens
@@ -164,8 +179,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     selectedThreadsIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
-    if (pressed.length > 0) setRailOpen(true);
-  }, [pressed]);
+    if (pressed.length === 0 || restoring) return;
+    if (panelOpen) closePanel();
+    setRailOpen(true);
+  }, [pressed, panelOpen, restoring, closePanel]);
   // A comment being written is written in the panel, so the panel is up
   // whenever a draft is open, aimed or dropped (A1 · A2, design §9.6). The
   // entries dispatch the range and nothing else; this is the one place that
@@ -175,8 +192,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     draftIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
-    if (draft !== null) setRailOpen(true);
-  }, [draft]);
+    if (draft === null || restoring) return;
+    if (panelOpen) closePanel();
+    setRailOpen(true);
+  }, [draft, panelOpen, restoring, closePanel]);
   // Closing it ends both the reading and the pointer, because the panel is
   // the only thing that releases either and it is about to be gone. The
   // reading, left standing, makes the next press on the same highlight read
@@ -240,6 +259,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   const shown = React.useRef<ProposalLocation | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
+    // The body is unseen behind the snapshot panel: close it first, and this
+    // runs again once the body is on screen to be measured. A restore being
+    // written finishes first.
+    if (landed !== null && (panelOpen || restoring)) {
+      if (!restoring) closePanel();
+      return undefined;
+    }
     if (landed === null || landed.how === 'comment' || !isCurrentProposalLocation(landed, handle.editor)) return undefined;
     const spot = landed.how === 'source'
       ? sourceSpot(handle.editor.prosemirrorState.doc, landed)
@@ -320,7 +346,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       window.clearTimeout(timer);
       setLandedBox((current) => current?.location === landed ? null : current);
     };
-  }, [landed, viewport, handle.editor]);
+  }, [landed, viewport, handle.editor, panelOpen, restoring, closePanel]);
 
   // The scroller is where a press on blank space leaves the focus, and where
   // a press in the body is first read (inner#1127 A20). A Space hidden
@@ -329,14 +355,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // focus is.
   React.useEffect(() => {
     const view = handle.editor.prosemirrorView;
-    if (viewport === null || view === null || readOnly) return;
+    // With the snapshot panel open the scroller shows the preview, and a
+    // Cmd/Ctrl+Z there must not undo the body nobody can see.
+    if (viewport === null || view === null || readOnly || panelOpen) return;
     const detach = attachBodyScroller(view, viewport, handle.editor);
     recomputeBodyFocus(view);
     return () => {
       detach();
       releaseBodyFocus(view);
     };
-  }, [handle, viewport, readOnly]);
+  }, [handle, viewport, readOnly, panelOpen]);
 
   // Back on screen after a switch of Space, the caret goes back in if it was
   // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
@@ -376,7 +404,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
       <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
-        <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
+        {/* It lists the body's headings, and the body is behind the snapshot panel. */}
+        {!panelOpen && (
+          <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
+        )}
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}
@@ -401,15 +432,24 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 style={{ ...landedBox.style, ...LANDED_MARK_FADE }}
               />
             )}
+            {/* Behind the snapshot panel the body stays mounted and
+                collaborating, out of sight and out of the flow (tiptap skill
+                "Hide a container, do not unmount it"). */}
             <div
               {...{ [BODY_BLANK]: '' }}
-              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
+              data-testid='document-body-column'
+              className={panelOpen
+                ? 'pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden'
+                : 'flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'}
               style={GUTTER_START}
             >
               <DocumentMenuEntry
                 commentsOpen={railOpen}
                 onOpenComments={openRail}
                 unresolvedComments={rail.unresolved.length}
+                versionsOpen={panelOpen}
+                onSaveSnapshot={scope === null || readOnly ? null : versions.requestSave}
+                onRestoreSnapshot={scope === null ? null : versions.openPanel}
               />
               <div
                 ref={body}
@@ -422,6 +462,18 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             </div>
             {/* Beside the body rather than over it, so opening it narrows the
               text column and closing it widens the column again (A18). */}
+            {panelOpen && scope !== null && (
+              <React.Suspense fallback={null}>
+                <DocumentVersionArea
+                  editor={handle.editor}
+                  scope={scope}
+                  versions={versions}
+                  readOnly={readOnly}
+                  viewport={viewport}
+                  columnStyle={GUTTER_START}
+                />
+              </React.Suspense>
+            )}
             {railOpen && (
               <DocumentCommentRail
                 editor={handle.editor}
@@ -458,6 +510,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      <DocumentSnapshotNameDialog
+        mode={versions.naming ? 'save' : null}
+        currentName=''
+        pending={versions.saving}
+        onClose={versions.cancelSave}
+        onSubmit={(name) => void versions.save(name)}
+      />
       {/* The button on the cell the caret is in; a viewer gets none of it
           either (inner#1126 A18). */}
       {viewport !== null && !readOnly && (

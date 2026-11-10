@@ -8,13 +8,9 @@
  * One "…" button is all that stays on screen (user 2026-08-22); the commands
  * appear when it opens. The menu-system ruling's §2.1 survey is the reason:
  * whole-document commands sit behind a single "…" in five of the six products
- * it looked at. What opens today is the comment panel's row (#18) and two
- * snapshot commands, neither of those working yet (task #19).
- *
- * The not-open-yet state is dimmed, `aria-disabled`, does nothing when
- * clicked, a cursor that says so, and a note badge that stays put. HTML `disabled` is what this
- * avoids — it drops the item out of the focus order, and a control meant to be
- * discovered has to stay in it.
+ * it looked at. It holds the comment panel's row (#18) and the two snapshot
+ * commands (inner#1129): a viewer, who has nothing to save, sees only the one
+ * that opens the snapshot panel.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -31,11 +27,19 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-/** The rows that stand for commands which are not open yet. */
-const COMING_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
+/** Every row an editor sees. */
+const ITEM_IDS = ['doc-doc-menu-comments', 'doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
 
-/** Every row, the working one among them. */
-const ITEM_IDS = [...COMING_IDS, 'doc-doc-menu-comments'].sort();
+/** The document the snapshot rows are for. */
+const SCOPE = { projectId: 'p', spaceId: 's' };
+
+/**
+ * The menu's own items, rather than everything sharing their test-id prefix.
+ * @returns Their test ids, sorted.
+ */
+function menuItems(): (string | null)[] {
+  return Array.from(document.querySelectorAll('[role="menuitem"]')).map((el) => el.getAttribute('data-testid')).sort();
+}
 
 describe('the whole-document command entry', () => {
   const NAME = 'project-p/document-menu-entry';
@@ -79,63 +83,40 @@ describe('the whole-document command entry', () => {
   it('opens onto exactly those three commands', async () => {
     // The whole set at once: an item added or dropped has to turn this red,
     // and two separate existence checks leave a gap for it to slip through.
-
     const user = userEvent.setup();
-    render(<DocumentEditor handle={handle} />);
+    render(<DocumentEditor handle={handle} scope={SCOPE} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await screen.findByTestId('doc-doc-menu-save-snapshot');
 
-    // The menu's own items, rather than everything sharing their test-id
-    // prefix: a row is free to carry marks and labels inside it, and counting
-    // by prefix would read each of those as another command.
-    const ids = Array.from(document.querySelectorAll('[role="menuitem"]')).map(
-      (el) => el.getAttribute('data-testid'),
-    );
-
-    expect(ids.sort()).toEqual(ITEM_IDS);
+    expect(menuItems()).toEqual(ITEM_IDS);
   });
 
-  it('marks both snapshot rows as not open yet: focusable, dimmed, badged', async () => {
+  it('shows a viewer only the way into the snapshots', async () => {
+    const user = userEvent.setup();
+    render(<DocumentEditor handle={handle} scope={SCOPE} readOnly />);
+    await user.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await screen.findByTestId('doc-doc-menu-restore-snapshot');
+
+    expect(menuItems()).toEqual(['doc-doc-menu-comments', 'doc-doc-menu-restore-snapshot']);
+  });
+
+  it('draws no snapshot rows for a body with no document behind it', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
+    await screen.findByTestId('doc-doc-menu-comments');
 
-    for (const id of COMING_IDS) {
-      const item = await screen.findByTestId(id);
-      expect(item).toHaveAttribute('aria-disabled', 'true');
-      expect(item.className).toContain('cursor-not-allowed');
-      expect(item.querySelector('.opacity-50')).not.toBeNull();
-      // 说明这一条为什么点不动的那枚徽章。只断言它有字 —— 钉住某种语言
-      // 等于钉住测试环境的 locale。
-      const note = item.querySelector('.text-2xs');
-      expect(note).not.toBeNull();
-      expect(note?.textContent?.trim()).toBeTruthy();
-    }
+    expect(menuItems()).toEqual(['doc-doc-menu-comments']);
   });
 
-  it('reaches the items by keyboard, so no HTML disabled', async () => {
+  it('opens the name dialog from the save row, leaving the document as it was', async () => {
     const user = userEvent.setup();
-    render(<DocumentEditor handle={handle} />);
-    await user.click(screen.getByTestId('doc-doc-menu-trigger'));
-
-    for (const id of COMING_IDS) {
-      const item = await screen.findByTestId(id);
-      expect(item.hasAttribute('disabled')).toBe(false);
-      expect(item.getAttribute('data-disabled')).toBeNull();
-    }
-  });
-
-  it('does nothing when an item is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DocumentEditor handle={handle} />);
+    render(<DocumentEditor handle={handle} scope={SCOPE} />);
     const before = JSON.stringify(handle.editor.document);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
-    const item = await screen.findByTestId('doc-doc-menu-save-snapshot');
-    await user.click(item);
+    await user.click(await screen.findByTestId('doc-doc-menu-save-snapshot'));
 
-    // The menu stays put (`onSelect` calls preventDefault) and the document
-    // is untouched.
-    expect(screen.getByTestId('doc-doc-menu-save-snapshot')).toBeInTheDocument();
+    expect(await screen.findByTestId('doc-snapshot-name-dialog')).toBeInTheDocument();
     expect(JSON.stringify(handle.editor.document)).toBe(before);
   });
 
@@ -154,7 +135,7 @@ describe('the whole-document command entry', () => {
     const user = userEvent.setup();
     render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
-    await screen.findByTestId('doc-doc-menu-save-snapshot');
+    await screen.findByTestId('doc-doc-menu-comments');
 
     expect(document.body.style.pointerEvents).not.toBe('none');
     expect(

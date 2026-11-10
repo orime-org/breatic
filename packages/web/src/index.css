@@ -743,6 +743,40 @@ body {
     content: attr(data-label);
   }
 
+  /* ---- Snapshot comparison (inner#1129) ----
+     The marks BlockNote's diff renderer draws, under the class names
+     `document-version-view.ts` gives them: added green, removed red and
+     struck through, a change of format or attributes blue. A block-level
+     mark wraps its blocks in a `display: contents` span, so the colour goes
+     on the blocks inside it. The library's own "Deleted" badge hangs off its
+     default class names, so it does not appear here; the banner's legend
+     (`doc-version-legend-*`) says it, in the same colours. */
+  .doc-body .doc-version-insert,
+  .doc-body .doc-version-insert-block > *,
+  .doc-version-legend-insert {
+    background-color: var(--color-palette-green-bg);
+    color: var(--color-palette-green);
+    text-decoration: none;
+  }
+
+  .doc-body .doc-version-delete,
+  .doc-body .doc-version-delete-block > *,
+  .doc-version-legend-delete {
+    color: var(--color-palette-red);
+    text-decoration: line-through;
+  }
+
+  .doc-body .doc-version-format,
+  .doc-body .doc-version-format-block > *,
+  .doc-version-legend-format {
+    background-color: var(--color-palette-blue-bg);
+  }
+
+  /* The blocks a comparison folds away; the fold row stands in for them. */
+  .doc-body .doc-version-folded {
+    display: none;
+  }
+
   /* ---- A line's text fills the row it sits on ----
      BlockNote lays a block's content out as a flex row carrying a marker and the
      inline content. Neither of them grows, so the width between the last glyph
