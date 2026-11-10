@@ -339,7 +339,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
             </p>
             <p className='mt-0.5 text-xs text-muted-foreground'>{state}</p>
             {rigNote === null ? null : <p data-testid='scene-task-rig-note'
-              className={cn('mt-0.5 text-xs', rigNote === 'rigFailed' ? 'text-status-warning-foreground' : 'text-muted-foreground')}>
+              className={cn('mt-0.5 text-pretty text-xs', rigNote === 'rigFailed' ? 'text-status-warning-foreground' : 'text-muted-foreground')}>
               {t(`spaces.threeD.taskList.${rigNote}`)}</p>}
           </> : <p className='mt-1 text-xs text-muted-foreground'>{`${starter} · ${state}`}</p>}
           {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'

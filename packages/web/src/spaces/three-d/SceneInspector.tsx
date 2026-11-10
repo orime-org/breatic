@@ -44,7 +44,7 @@ const PoseSection = React.memo(function PoseSection({ objectId, state, mutable, 
     <h3 className='text-xs font-medium'>{t('spaces.threeD.pose.title')}</h3>
     {state === 'none' ? <p className='text-xs text-muted-foreground' data-testid='scene-pose-no-skeleton'>{t('spaces.threeD.pose.noSkeleton')}</p> : <>
       {state === 'humanoid'
-        ? <div className='flex flex-wrap gap-1'>{POSE_PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={!mutable}
+        ? <div className='grid grid-cols-3 gap-1'>{POSE_PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={!mutable}
           data-testid={`scene-pose-preset-${name}`} onClick={() => session.execute({ type: 'pose', id: objectId, set: POSE_PRESETS[name], replace: true })}>
           {t(`spaces.threeD.pose.${name}`)}</Button>)}</div>
         : <p className='text-xs text-muted-foreground' data-testid='scene-pose-humanoid-only'>{t('spaces.threeD.pose.humanoidOnly')}</p>}
@@ -52,7 +52,7 @@ const PoseSection = React.memo(function PoseSection({ objectId, state, mutable, 
         <span id={labelId} className='text-xs'>{t('spaces.threeD.pose.jointMode')}</span>
         <Switch aria-labelledby={labelId} checked={jointMode} disabled={!mutable} data-testid='scene-pose-joint-mode' onCheckedChange={onJointModeChange} />
       </div>
-      <Button variant='outline' size='compact' disabled={!mutable} data-testid='scene-pose-reset'
+      <Button variant='outline' size='compact' className='w-full' disabled={!mutable} data-testid='scene-pose-reset'
         onClick={() => session.execute({ type: 'pose', id: objectId, set: {}, replace: true })}>{t('spaces.threeD.pose.reset')}</Button>
     </>}
   </section>;
