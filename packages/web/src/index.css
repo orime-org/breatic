@@ -1280,6 +1280,13 @@ body {
     margin-left: 0;
   }
 
+  /* The exit button takes the top-right corner the way the whole-document
+     entry takes the right gutter, so the table starts one gutter down and its
+     header never shares a line with the button. */
+  [data-table-fullscreen] .doc-body {
+    padding-top: var(--doc-body-gutter);
+  }
+
   /* While the last block is one a drag has to reach past (a divider, a fallback
      block or an empty line), presses go through the widget to the surface, so a
      press below the last block can start a drag that reaches it; a click there

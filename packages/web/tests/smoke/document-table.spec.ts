@@ -414,6 +414,20 @@ test('breatic#1427: Full screen lays the table over the window for editing, and 
   await expect(page.locator(`${EDITOR} .bn-block-content`).filter({ hasText: 'lead' })).toBeHidden();
   await expect(page.getByTestId('doc-table-fullscreen-exit')).toBeVisible();
 
+  // The way out stands in the corner the media full screen uses, its label
+  // ends where it ends, and the table starts below it.
+  const exitBox = (await page.getByTestId('doc-table-fullscreen-exit').boundingBox())!;
+  const screenSize = page.viewportSize()!;
+  expect(screenSize.width - (exitBox.x + exitBox.width)).toBe(16);
+  expect(exitBox.y).toBe(16);
+  const tableTop = (await page.locator(`${EDITOR} [data-node-type='docTable']`).boundingBox())!.y;
+  expect(tableTop).toBeGreaterThanOrEqual(exitBox.y + exitBox.height + 8);
+  await page.getByTestId('doc-table-fullscreen-exit').hover();
+  const label = (await page.getByRole('tooltip').locator('..').boundingBox())!;
+  expect(Math.round(label.x + label.width)).toBe(Math.round(exitBox.x + exitBox.width));
+  await page.mouse.move(screenSize.width / 2, screenSize.height / 2, { steps: 8 });
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+
   // Editing in a cell is the same table, and undo takes it back in place.
   await clickAndSettle(page, page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }));
   await page.keyboard.press('End');

@@ -44,13 +44,13 @@ export const DocumentTableFullscreenExit = React.memo(function DocumentTableFull
           size='icon'
           aria-label={label}
           data-testid='doc-table-fullscreen-exit'
-          className='absolute right-3 top-3 z-30'
+          className='absolute right-4 top-4 z-30'
           onClick={exit}
         >
           <Minimize2 className='h-4 w-4' />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side='bottom'>{label}</TooltipContent>
+      <TooltipContent side='bottom' align='end'>{label}</TooltipContent>
     </Tooltip>
   );
 });
