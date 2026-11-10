@@ -1383,7 +1383,7 @@ describe('matchTemplateInstance, takes of one template sharing their input (inne
    * @param graph - The canvas.
    * @returns Per anchor, the still it was given and what it left unassigned.
    */
-  const bothTakes = (graph: TemplateGraph): Array<{ still: string | undefined; unassigned: unknown[] }> =>
+  const bothTakes = (graph: TemplateGraph): Array<{ still: string | undefined; unassigned: readonly unknown[] }> =>
     ['C', 'C2'].map((anchor) => {
       const match = matchTemplateInstance(SOUND_SKELETON, graph, anchor);
       return { still: match.inputs.get('still')?.get('clip'), unassigned: match.unassigned };
