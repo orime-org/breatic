@@ -4,7 +4,8 @@
 /**
  * The later lookup of an OpenRouter call whose cost was not in hand (#296): it retries while
  * OpenRouter has no answer, records the call once it does, and charges it
- * under a key of its own.
+ * under a key of its own, as an `operation` charge request (inner#1617). A
+ * usage row that cannot be written does not stop the charge.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,14 +15,14 @@ import type * as DomainModule from "@breatic/domain";
 import type * as CoreModule from "@breatic/core";
 
 const lookupGeneration = vi.hoisted(() => vi.fn());
-const chargeOnceForGeneration = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null));
+const chargeOnce = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   return {
     ...actual,
     lookupGeneration: (...args: unknown[]) => lookupGeneration(...args),
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
   };
 });
 
@@ -71,6 +72,24 @@ function recorderIntoRows(
 }
 
 /**
+ * The real recorder, whose every row write fails.
+ * @param options - What the handler opens it with.
+ * @returns A recorder.
+ */
+function recorderThatCannotWrite(
+  options: Parameters<typeof createUsageRecorder>[0],
+): ReturnType<typeof createUsageRecorder> {
+  return createUsageRecorder({
+    ...options,
+    pricing: { models: {}, services: { brave_web_search: { per_request: 0 }, brave_image_search: { per_request: 0 } } },
+    multiplier: 1,
+    write: async () => {
+      throw new Error("agent_usage_records insert failed");
+    },
+  });
+}
+
+/**
  * A job at a given attempt.
  * @param attemptsMade - Attempts already made before this one.
  * @returns The job.
@@ -103,15 +122,16 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
         reasoningTokens: 5,
       }),
     ]);
-    expect(chargeOnceForGeneration).toHaveBeenCalledWith(
+    expect(chargeOnce).toHaveBeenCalledExactlyOnceWith(
+      "operation",
       "turn:c1:4:gen:gen-9",
-      expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3 }),
+      expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3, provider: "openrouter" }),
     );
   });
 
   it("logs a charge whose readers could not be told", async () => {
     lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
-    chargeOnceForGeneration.mockResolvedValueOnce({
+    chargeOnce.mockResolvedValueOnce({
       billed: true, charged: 3, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
     } as never);
 
@@ -130,7 +150,7 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     await runUsageLookup(job, recorderIntoRows);
 
     expect(rows).toEqual([expect.objectContaining({ costUsd: 0.03, costSource: "generation_lookup" })]);
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
   });
 
   it("asks again later while OpenRouter has no answer yet", async () => {
@@ -139,7 +159,7 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     await expect(runUsageLookup(jobAt(0), recorderIntoRows)).rejects.toThrow();
 
     expect(rows).toEqual([]);
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
   });
 
   it("asks again later while OpenRouter found the generation but has no cost on it", async () => {
@@ -156,7 +176,7 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     await runUsageLookup(jobAt(2), recorderIntoRows);
 
     expect(rows).toEqual([expect.objectContaining({ costSource: "missing", costUsd: 0 })]);
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
     expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
       expect.objectContaining({ generationId: "gen-9" }),
       "agent_usage_cost_missing",
@@ -171,16 +191,34 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     expect(rows).toEqual([expect.objectContaining({ costSource: "missing" })]);
   });
 
-  it("keeps the row when the charge fails, and says so", async () => {
+  it("keeps the row when the charge fails, and says so without throwing", async () => {
     lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
-    chargeOnceForGeneration.mockRejectedValueOnce(new Error("db down"));
+    chargeOnce.mockRejectedValueOnce(new Error("db down"));
 
-    await runUsageLookup(jobAt(0), recorderIntoRows);
+    await expect(runUsageLookup(jobAt(0), recorderIntoRows)).resolves.toBeUndefined();
 
     expect(rows).toHaveLength(1);
     expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
       expect.objectContaining({ generationId: "gen-9" }),
-      "agent_usage_lookup_charge_failed",
+      "credit_charge_settle_failed",
+    );
+  });
+
+  // The amount is counted before the row is written, so a write that fails
+  // leaves the charge whole: the user had the call, so the call is charged.
+  it("still charges the full amount when the usage row cannot be written, and logs the write", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+
+    await expect(runUsageLookup(jobAt(0), recorderThatCannotWrite)).resolves.toBeUndefined();
+
+    expect(chargeOnce).toHaveBeenCalledExactlyOnceWith(
+      "operation",
+      "turn:c1:4:gen:gen-9",
+      expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3 }),
+    );
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      "agent_usage_record_failed",
     );
   });
 });

@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
 /**
@@ -69,7 +69,7 @@ vi.mock("@breatic/domain", async () => {
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig,
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
     resolveProvider: () => "test",
     getModel: () => {
       const model = new MockLanguageModelV4({
@@ -204,7 +204,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, foldIfTooLong, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfTooLong, chargeOnce, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -388,7 +388,7 @@ describe("a turn the user stopped", () => {
       await runAndStop([{ type: "text-start", id: "t1" }]);
 
       // Nothing finished, so nothing is owed.
-      expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+      expect(chargeOnce).not.toHaveBeenCalled();
       // Still a record: the turn happened, and it was stopped.
       expect(wrapUpMessages()).toHaveLength(1);
       await new Promise((resolve) => setImmediate(resolve));
@@ -404,20 +404,88 @@ describe("decimal shortfall consumption", () => {
   it("M20 keeps a zero decimal shortfall silent", async () => {
     const { logger } = await import("@breatic/core");
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
     await runTurn(saidAndSpent("settled", 100));
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
   });
 
   it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
     const { logger } = await import("@breatic/core");
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
     await runTurn(saidAndSpent("settled", 100));
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
       [expect.objectContaining({ userId: "u1", conversationId: "c1", studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
     ]);
+  });
+});
+
+describe("a turn's charge comes before its reply is saved (inner#1617)", () => {
+  it("asks for the charge before it writes the reply", async () => {
+    // The charge request is the turn's earliest durable record: a crash
+    // between the two must leave the charge, not the reply, behind.
+    await runTurn(saidAndSpent("in order", 100));
+
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    expect(chargeOnce.mock.calls[0]).toEqual([
+      "operation",
+      expect.stringMatching(/^turn:c1:/),
+      expect.objectContaining({ projectId: "p1", actorUserId: "u1", amount: 101 }),
+    ]);
+    const replyOrder = addMessage.mock.calls
+      .map(([, msg], i) => ({ msg, order: addMessage.mock.invocationCallOrder[i]! }))
+      .filter(({ msg }) => msg.role === "assistant")
+      .map(({ order }) => order);
+    expect(replyOrder).toHaveLength(1);
+    expect(chargeOnce.mock.invocationCallOrder[0]).toBeLessThan(replyOrder[0]!);
+  });
+
+  it("still saves the reply when the charge throws, and logs the failed step", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    const down = new Error("the database is down");
+    chargeOnce.mockRejectedValueOnce(down);
+
+    await runTurn(saidAndSpent("kept anyway", 100));
+
+    expect(wrapUpMessages()).toHaveLength(1);
+    expect(wrapUpMessages()[0]?.parts).toContainEqual({ type: "text", text: "kept anyway" });
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: down, step: "bill" }),
+      "turn_finalizer_step_failed",
+    );
+  });
+
+  it("charges the full amount when a usage row could not be written, and logs the row", async () => {
+    const { logger } = await import("@breatic/core");
+    const { createUsageRecorder } = await import("@breatic/domain");
+    vi.mocked(logger.error).mockClear();
+    const lost = new Error("usage row insert failed");
+    type Recorder = ReturnType<typeof createUsageRecorder>;
+    const opened = vi.mocked(createUsageRecorder);
+    const double = opened.getMockImplementation()!;
+    opened.mockImplementation((options) => {
+      const recorder: Recorder = double(options);
+      return {
+        ...recorder,
+        settle: async () => {
+          throw lost;
+        },
+        settleForCharge: async () => ({ ...(await recorder.settleForCharge()), writeFailures: [lost] }),
+      };
+    });
+    try {
+      await runTurn(saidAndSpent("rows lost", 100));
+    } finally {
+      opened.mockImplementation(double);
+    }
+
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    // One input token and 100 output tokens, a credit each in the double.
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ amount: 101 });
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: lost }), "agent_usage_record_failed");
+    expect(wrapUpMessages()).toHaveLength(1);
   });
 });

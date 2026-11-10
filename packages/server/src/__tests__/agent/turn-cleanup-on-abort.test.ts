@@ -35,7 +35,7 @@ const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
+const chargeOnce = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
   charged: "5.000000",
   shortfall: "0.000000",
@@ -96,7 +96,7 @@ vi.mock("@breatic/domain", async () => {
       instructions: { base: "sys" },
       tools: {},
     }),
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
     resolveProvider: () => "test",
     getModel: () => new MockLanguageModelV4({}),
   };
@@ -133,7 +133,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, foldIfTooLong, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnce, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
@@ -235,11 +235,11 @@ describe("a turn cut short by the client", () => {
           ),
       ),
     ).toBe(true);
-    expect(chargeOnceForGeneration).toHaveBeenCalled();
+    expect(chargeOnce).toHaveBeenCalled();
     // What it billed for is the call the stream actually reported (the
     // recorder double counts a credit per token), not the figure the
     // consuming getter would have produced.
-    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ amount: 900 });
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ amount: 900 });
     expect(usageRead).not.toHaveBeenCalled();
   });
 });
@@ -249,7 +249,7 @@ describe("一个回合扣不满时", () => {
     // domain 不写日志，短扣以返回值表达，由知道任务和用户的这一层记。worker
     // 那条路照做了；少了这一处，池子见底那一刻花掉的部分没有任何东西能让人
     // 事后发现。
-    chargeOnceForGeneration.mockResolvedValueOnce({
+    chargeOnce.mockResolvedValueOnce({
       billed: true,
       charged: "30.000000",
       shortfall: "70.000000",
@@ -281,7 +281,7 @@ describe("一个回合扣不满时", () => {
   });
 
   it("logs a turn charge whose users could not be told", async () => {
-    chargeOnceForGeneration.mockResolvedValueOnce({
+    chargeOnce.mockResolvedValueOnce({
       billed: true,
       charged: "30.000000",
       shortfall: "0.000000",

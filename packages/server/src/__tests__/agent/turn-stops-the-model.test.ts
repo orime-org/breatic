@@ -42,7 +42,7 @@ let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
 const usageRows: DomainModule.UsageRow[] = [];
 /** The tools the turn is given, set per test. */
@@ -110,7 +110,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       instructions: { base: "system" },
       tools: turnTools,
     }),
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
     // Real, writing into `usageRows` at a price for the test model.
     createUsageRecorder: (options: Parameters<typeof actual.createUsageRecorder>[0]) =>
       actual.createUsageRecorder({
@@ -198,7 +198,7 @@ beforeEach(() => {
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  [addMessage, foldIfTooLong, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnce].forEach((m) => m.mockClear());
   usageRows.length = 0;
 });
 

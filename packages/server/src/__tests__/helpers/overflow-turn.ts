@@ -283,7 +283,7 @@ export interface World {
   /** Every model call a usage recorder was handed, under the recorder's key. */
   recorded: Array<{ key: string; usage: { inputTokens?: number; outputTokens?: number } }>;
   /** Every charge taken. */
-  charges: Array<{ key: string; amount: number }>;
+  charges: Array<{ kind: string; key: string; amount: number }>;
   /** The type of every chunk on the wire so far, in order, as it arrives. */
   wire: string[];
   /** Awaited inside each fold before it ends. */
@@ -508,8 +508,8 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
       };
     },
     creditLotService: {
-      chargeOnceForGeneration: async (key: string, charge: { amount: number }) => {
-        world.charges.push({ key, amount: charge.amount });
+      chargeOnce: async (kind: string, key: string, charge: { amount: number }) => {
+        world.charges.push({ kind, key, amount: charge.amount });
         return null;
       },
     },

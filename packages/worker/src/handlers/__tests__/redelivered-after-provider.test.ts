@@ -25,6 +25,10 @@ const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockGetByIdInternal = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async () => undefined));
+const mockError = vi.hoisted(() => vi.fn());
+const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<string | null> => null));
+const mockSettleCharge = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<unknown> => null));
+const mockRecordSettleFailure = vi.hoisted(() => vi.fn(async (_requestId: string, _err: unknown): Promise<void> => undefined));
 
 vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
@@ -48,7 +52,7 @@ vi.mock("@breatic/core", () => ({
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
@@ -60,7 +64,11 @@ vi.mock("@breatic/domain", () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
-  creditLotService: {},
+  creditLotService: {
+    pendingChargeRequestId: mockPendingChargeRequestId,
+    settleCharge: mockSettleCharge,
+    recordSettleFailure: mockRecordSettleFailure,
+  },
   creditHoldService: { releaseHold: mockReleaseHold },
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
@@ -148,14 +156,17 @@ describe("a job redelivered after it was charged", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 5, result: null });
+    mockPendingChargeRequestId.mockResolvedValue(null);
   });
 
-  // A worker that died between marking the task billed and charging it
-  // leaves the run's hold standing; this exit is the last code that sees the
-  // run, and the job completes, so no failure handler runs after it.
-  it("releases the run's credit hold", async () => {
+  // With no request left pending the charge was settled (or there was none):
+  // a hold still standing is this exit's to release, because the job
+  // completes and no failure handler runs after it.
+  it("releases the run's credit hold when no charge request is pending", async () => {
     await runTask(JOB);
 
+    expect(mockPendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
+    expect(mockSettleCharge).not.toHaveBeenCalled();
     expect(mockReleaseHold).toHaveBeenCalledWith("task-1");
   });
 
@@ -163,5 +174,40 @@ describe("a job redelivered after it was charged", () => {
     mockReleaseHold.mockRejectedValueOnce(new Error("db down"));
 
     await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+  });
+});
+
+// inner#1617: a worker that died between completing the task and settling its
+// charge left the request pending. The redelivery settles it, which charges
+// once and releases the hold in the settle's own commit.
+describe("a job redelivered with its charge still pending", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 5, result: null });
+    mockPendingChargeRequestId.mockResolvedValue("req-1");
+    mockSettleCharge.mockResolvedValue({ billed: true, charged: "5.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+  });
+
+  it("settles the pending request and leaves the hold to that settle", async () => {
+    await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+
+    expect(mockPendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
+    expect(mockSettleCharge).toHaveBeenCalledExactlyOnceWith("req-1");
+    expect(mockReleaseHold).not.toHaveBeenCalled();
+    expect(mockRecordSettleFailure).not.toHaveBeenCalled();
+  });
+
+  it("keeps the hold, records and logs the failure, and still returns the stored outcome when the settle fails", async () => {
+    const down = new Error("db down");
+    mockSettleCharge.mockRejectedValueOnce(down);
+
+    await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+
+    expect(mockRecordSettleFailure).toHaveBeenCalledExactlyOnceWith("req-1", down);
+    expect(mockError).toHaveBeenCalledWith(
+      expect.objectContaining({ err: down, taskId: "task-1", requestId: "req-1" }),
+      "credit_charge_settle_failed",
+    );
+    expect(mockReleaseHold).not.toHaveBeenCalled();
   });
 });

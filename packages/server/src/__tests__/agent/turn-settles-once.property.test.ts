@@ -24,6 +24,10 @@
  * nothing at all, which is the very defect the failed-turn path exists to
  * prevent.
  *
+ * The charge is stated the same way: exactly one when the turn recorded any
+ * usage, and none when it recorded nothing. `≤ 1` would also pass a turn that
+ * used credits and charged for none, which is the loss inner#1617 closes.
+ *
  * A turn the user stopped is not generated here. Stopping is driven by a
  * signal rather than by anything the model says, so it has no counterpart
  * among the parts a model produces; `turn-cleanup-on-abort.test.ts` and
@@ -39,7 +43,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]) => null);
 
 /** What the model produces this run. */
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
@@ -75,7 +79,7 @@ vi.mock("@breatic/domain", async () => {
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "m", instructions: { base: "s" }, tools: {} }),
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
     resolveProvider: () => "test",
     getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
@@ -143,17 +147,26 @@ const unitArbitrary = fc.oneof(
   }),
 );
 
+/** What one turn left behind. */
+interface Settled {
+  storedReplies: number;
+  /** The credits the turn's usage recorder holds once the turn is over. */
+  recorded: number;
+  /** Every call the turn made to `chargeOnce`. */
+  charges: unknown[][];
+}
+
 /**
  * Run one turn over the given model output.
  * @param units - What the model does, in order.
  * @param letGoAfter - Read this many chunks and then walk away; read to the
  *   end when absent.
- * @returns What was stored and what was charged.
+ * @returns What was stored, what was recorded and what was charged.
  */
 async function settle(
   units: readonly Unit[],
   letGoAfter?: number,
-): Promise<{ storedReplies: number; charges: number }> {
+): Promise<Settled> {
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
   modelSays.parts = [...units.flatMap((u) => u.parts), FINISHED];
@@ -175,27 +188,48 @@ async function settle(
   const storedReplies = addMessage.mock.calls
     .map(([, msg]) => msg)
     .filter((msg) => msg.role === "assistant").length;
-  return { storedReplies, charges: chargeOnceForGeneration.mock.calls.length };
+  const { createUsageRecorder } = await import("@breatic/domain");
+  const recorder = vi.mocked(createUsageRecorder).mock.results.at(-1)?.value as
+    | { settleForCharge: () => Promise<{ credits: number }> }
+    | undefined;
+  if (recorder === undefined) throw new Error("the turn opened no usage recorder");
+  const { credits: recorded } = await recorder.settleForCharge();
+  return { storedReplies, recorded, charges: chargeOnce.mock.calls };
+}
+
+/**
+ * Check the turn charged exactly what it recorded, once, or nothing when it
+ * recorded nothing.
+ * @param settled - What the turn left behind.
+ */
+function expectChargedOnceForUsage(settled: Settled): void {
+  if (settled.recorded > 0) {
+    expect(settled.charges).toHaveLength(1);
+    expect(settled.charges[0]?.[0]).toBe("operation");
+    expect(settled.charges[0]?.[2]).toMatchObject({ amount: settled.recorded });
+  } else {
+    expect(settled.charges).toEqual([]);
+  }
 }
 
 beforeEach(() => {
-  [addMessage, foldIfTooLong, chargeOnceForGeneration].forEach((m) => {
+  [addMessage, foldIfTooLong, chargeOnce].forEach((m) => {
     m.mockClear();
   });
 });
 
 describe("whatever the model says, the turn settles up once", () => {
-  it("stores what it owes and charges at most once, read to the end", async () => {
+  it("stores what it owes and charges what it recorded exactly once, read to the end", async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(unitArbitrary, { maxLength: 8 }), async (units) => {
-        [addMessage, chargeOnceForGeneration].forEach((m) => {
+        [addMessage, chargeOnce].forEach((m) => {
           m.mockClear();
         });
-        const { storedReplies, charges } = await settle(units);
-        expect(storedReplies).toBe(1);
-        // At most one, not exactly one: a turn where no step finished spent
-        // nothing and owes nothing. What must never happen is two.
-        expect(charges).toBeLessThanOrEqual(1);
+        const settled = await settle(units);
+        expect(settled.storedReplies).toBe(1);
+        // A turn where no step finished spent nothing and owes nothing; any
+        // other turn owes exactly what it recorded, once.
+        expectChargedOnceForUsage(settled);
       }),
       { numRuns: 120 },
     );
@@ -207,17 +241,19 @@ describe("whatever the model says, the turn settles up once", () => {
         fc.array(unitArbitrary, { maxLength: 8 }),
         fc.nat({ max: 10 }),
         async (units, letGoAfter) => {
-          [addMessage, chargeOnceForGeneration].forEach((m) => {
+          [addMessage, chargeOnce].forEach((m) => {
             m.mockClear();
           });
-          const { storedReplies, charges } = await settle(units, letGoAfter);
+          const settled = await settle(units, letGoAfter);
           // Not an equality here: what a turn has produced by the time the
           // reader lets go depends on where in the stream that lands, and a
           // rule derived from the parts alone could not say. What it can say
           // is that letting go never doubles anything -- which is the defect
-          // two entrances to one wrap-up would produce.
-          expect(storedReplies).toBeLessThanOrEqual(1);
-          expect(charges).toBeLessThanOrEqual(1);
+          // two entrances to one wrap-up would produce. The charge does follow
+          // from what was recorded: whatever the turn used before the reader
+          // left is charged once.
+          expect(settled.storedReplies).toBeLessThanOrEqual(1);
+          expectChargedOnceForUsage(settled);
         },
       ),
       { numRuns: 120 },

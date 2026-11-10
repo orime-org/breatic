@@ -292,14 +292,7 @@ export const mocks = {
     }),
     getUnassignedCredits: vi.fn().mockResolvedValue("0.000000"),
     getGrantedCredits: vi.fn().mockResolvedValue("0.000000"),
-    chargeForGeneration: vi.fn().mockResolvedValue({
-      billed: true,
-      charged: "5.000000",
-      shortfall: "0.000000",
-      studioId: "s0000000-0000-4000-8000-000000000001",
-      lotIds: ["l0000000-0000-4000-8000-000000000001"],
-    }),
-    chargeOnceForGeneration: vi.fn().mockResolvedValue({
+    chargeOnce: vi.fn().mockResolvedValue({
       billed: true,
       charged: "5.000000",
       shortfall: "0.000000",
@@ -578,6 +571,7 @@ function usageRecorderDouble(options: {
   recordLookedUpCall: () => void;
   awaitingLookup: () => readonly string[];
   settle: () => Promise<number>;
+  settleForCharge: () => Promise<{ credits: number; writeFailures: unknown[] }>;
 } {
   let credits = 0;
   const { operationKey, feature, actorUserId, projectId } = options;
@@ -590,6 +584,7 @@ function usageRecorderDouble(options: {
     recordLookedUpCall: () => {},
     awaitingLookup: () => [],
     settle: async () => credits,
+    settleForCharge: async () => ({ credits, writeFailures: [] }),
   };
 }
 

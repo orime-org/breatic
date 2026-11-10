@@ -9,24 +9,27 @@
  * job before submitting it, submits the fixed `timeline:<executionId>` job, and throws `StillRunning` while the job
  * runs. Only a terminal report settles: each completed call is a usage row under `timeline:<executionId>:<seq>`, an
  * interrupted or cut-off call a zero row marked missing, an upstream error no row, the container one row; then the
- * `billed_at` gate decides whether this writer charges actual use. Acceptance held no credits, so no path releases a
- * hold and no charge names one; the run has no spend ceiling of its own. The job lock is re-checked before the source
- * insert, the usage, the charge and the terminal transition.
+ * `billed_at` gate decides whether this writer charges actual use: it writes a `timeline_execution` charge request in
+ * the same commit as `billed_at` and then settles it (inner#1617), and a settle that fails leaves the request pending
+ * for the sweep without failing the execution. Acceptance held no credits, so no path releases a hold and no charge
+ * names one; the run has no spend ceiling of its own. The job lock is re-checked before the source insert, the usage,
+ * the charge and the terminal transition.
  *
  * Real database and Yjs database; the ingest Worker is a stand-in on `INGEST_BASE_URL`, the Manifest is served from
- * a stubbed storage read, and only the credit engine's charge and hold release are doubles, so they can be counted.
+ * a stubbed storage read, and only the credit engine's settle and hold release are doubles, so they can be counted.
+ * The charge request itself is the real row.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 
-const charge = vi.hoisted(() => vi.fn(async (_input: Record<string, unknown>): Promise<Record<string, unknown>> => ({})));
+const settle = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<Record<string, unknown> | null> => null));
 const release = vi.hoisted(() => vi.fn(async (_referenceId: string): Promise<void> => {}));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   return {
     ...actual,
-    creditLotService: { ...actual.creditLotService, chargeForGeneration: charge },
+    creditLotService: { ...actual.creditLotService, settleCharge: settle },
     creditHoldService: { ...actual.creditHoldService, releaseHold: release },
   };
 });
@@ -84,8 +87,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  charge.mockReset();
-  charge.mockImplementation(async () => ({ billed: true, charged: "0", shortfall: "0", studioId: null }));
+  settle.mockReset();
+  settle.mockImplementation(async () => ({ billed: true, charged: "0", shortfall: "0", studioId: null, lotIds: [] }));
   release.mockReset();
 });
 
@@ -131,13 +134,55 @@ async function pickUp(fx: ExecutionFixture, lockAnswers: number[] = [1], token =
   return job;
 }
 
+/** One charge request, as the credit engine stores it. */
+interface ChargeRequest {
+  id: string;
+  kind: string;
+  projectId: string | null;
+  actorUserId: string;
+  amount: number;
+  referenceId: string;
+  releaseHold: string | null;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+}
+
 /**
- * The charges made for one execution.
+ * The charge requests written for one execution.
  * @param executionId - The execution.
- * @returns The inputs the credit engine received.
+ * @returns Its requests.
  */
-function chargesFor(executionId: string): Record<string, unknown>[] {
-  return charge.mock.calls.map(([input]) => input).filter((input) => input.referenceId === executionId);
+async function chargesFor(executionId: string): Promise<ChargeRequest[]> {
+  const rows = await sql<{
+    id: string; kind: string; project_id: string | null; actor_user_id: string; amount: string; reference_id: string;
+    release_hold: string | null; status: string; attempts: number; last_error: string | null;
+  }[]>`
+    SELECT id, kind, project_id, actor_user_id, amount::text AS amount, reference_id, release_hold, status, attempts, last_error
+    FROM credit_charge_requests WHERE reference_id = ${executionId}
+  `;
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    projectId: row.project_id,
+    actorUserId: row.actor_user_id,
+    amount: Number(row.amount),
+    referenceId: row.reference_id,
+    releaseHold: row.release_hold,
+    status: row.status,
+    attempts: row.attempts,
+    lastError: row.last_error,
+  }));
+}
+
+/**
+ * How many times the credit engine was asked to settle one execution's requests.
+ * @param executionId - The execution.
+ * @returns The settle calls naming one of its requests.
+ */
+async function settlesFor(executionId: string): Promise<number> {
+  const ids = new Set((await chargesFor(executionId)).map((request) => request.id));
+  return settle.mock.calls.filter(([requestId]) => ids.has(requestId)).length;
 }
 
 /**
@@ -180,6 +225,7 @@ function signalsFor(publish: { mock: { calls: unknown[][] } }, fx: ExecutionFixt
 async function expectedCharge(fx: ExecutionFixture): Promise<Record<string, unknown>> {
   const rows = await usageRows(sql, fx.execution.id);
   return expect.objectContaining({
+    kind: "timeline_execution",
     projectId: fx.projectId,
     actorUserId: fx.userId,
     amount: toChargeCredits(rows.reduce((sum, row) => sum + row.credits, 0)),
@@ -192,7 +238,7 @@ async function expectedCharge(fx: ExecutionFixture): Promise<Record<string, unkn
  * @param fx - The execution.
  */
 async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
-  expect(chargesFor(fx.execution.id).filter((input) => "releaseHold" in input)).toEqual([]);
+  expect((await chargesFor(fx.execution.id)).filter((request) => request.releaseHold !== null)).toEqual([]);
   expect(release.mock.calls.filter(([referenceId]) => referenceId === fx.execution.id)).toEqual([]);
   expect(await holdsFor(sql, fx.execution.id)).toEqual([]);
 }
@@ -233,7 +279,7 @@ describe("picking up a queued execution", () => {
       model: config.model,
     });
     expect(submitted.viewport.width * 9).toBe(submitted.viewport.height * 16);
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
   });
 
@@ -296,7 +342,7 @@ describe("picking up a running execution again", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 2, billedAt: null });
     expect(ingest.calls.map((call) => call.route)).toEqual(["read"]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
   });
 
@@ -349,7 +395,7 @@ describe("picking up a cancelling execution", () => {
     expect(ingest.calls.filter((call) => call.route === "cancel").map((call) => call.jobId)).toEqual([`timeline:${fx.execution.id}`]);
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
-    expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    expect(await chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
     await expectNothingHeld(fx);
   });
 
@@ -363,7 +409,7 @@ describe("picking up a cancelling execution", () => {
     expect((await read(fx.execution.id)).status).toBe("cancelled");
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
   });
 });
@@ -386,7 +432,8 @@ describe("settling a terminal report", () => {
     ]);
     expect(rows.some((r) => r.cost_identity === `timeline:${fx.execution.id}:2`)).toBe(false);
     const charged = await expectedCharge(fx);
-    expect(chargesFor(fx.execution.id)).toEqual([charged]);
+    expect(await chargesFor(fx.execution.id)).toEqual([charged]);
+    expect(await settlesFor(fx.execution.id)).toBe(1);
     const amount = toChargeCredits(rows.reduce((sum, r) => sum + r.credits, 0));
     expect(Number(row.billedCredits)).toBe(amount);
     expect(row.billedAt).not.toBeNull();
@@ -408,7 +455,7 @@ describe("settling a terminal report", () => {
       [`timeline:${fx.execution.id}:4`, "missing", 0],
     ]);
     expect(await sourceRows(sql, fx.execution.id)).toEqual([]);
-    expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    expect(await chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
     await expectNothingHeld(fx);
   });
 
@@ -421,8 +468,50 @@ describe("settling a terminal report", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "fps_mismatch", resultSourceVersionId: null });
     expect(await sourceRows(sql, fx.execution.id)).toEqual([]);
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
-    expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    expect(await chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
     await expectNothingHeld(fx);
+  });
+
+  // inner#1617: the request committed with billed_at, so a settle that fails loses nothing. The execution still
+  // ends as it should, and the request waits pending, its failure counted, for the sweep.
+  it("keeps the request pending, records and logs the failure, and still succeeds when the settle fails", async () => {
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "done"));
+    await serveManifest(fx, manifest());
+    settle.mockRejectedValue(new Error("settle blew up"));
+    await pickUp(fx);
+    const row = await read(fx.execution.id);
+    expect(row.status).toBe("succeeded");
+    expect(row.billedAt).not.toBeNull();
+    const requests = await chargesFor(fx.execution.id);
+    expect(requests).toEqual([await expectedCharge(fx)]);
+    expect(requests[0]).toMatchObject({ status: "pending", attempts: 1 });
+    expect(requests[0]!.lastError).toContain("settle blew up");
+    expect(errorLogs()).toContainEqual(
+      expect.objectContaining({ msg: "credit_charge_settle_failed", requestId: requests[0]!.id }),
+    );
+  });
+
+  it("writes no charge request when the billed_at update rolls back with it", async () => {
+    // The request and billed_at share one commit: a request refused by the database takes billed_at with it, so a
+    // later pickup still finds the execution unbilled and charges it then.
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "done"));
+    await serveManifest(fx, manifest());
+    // DDL takes no bind parameters; the id is a uuid this suite minted.
+    await sql.unsafe(`ALTER TABLE credit_charge_requests ADD CONSTRAINT timeline_worker_block CHECK (reference_id <> '${fx.execution.id}') NOT VALID`);
+    try {
+      await pickUp(fx).catch(() => undefined);
+    } finally {
+      await sql`ALTER TABLE credit_charge_requests DROP CONSTRAINT timeline_worker_block`;
+    }
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
+    expect((await read(fx.execution.id)).billedAt).toBeNull();
+    await pickUp(fx, [1], "after-rollback");
+    expect(await chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    expect((await read(fx.execution.id)).status).toBe("succeeded");
   });
 
   it("charges and releases nothing when another writer already set billed_at", async () => {
@@ -433,7 +522,7 @@ describe("settling a terminal report", () => {
     expect(await timelineExecutionRepo.markBilled(fx.execution.id, "1.25")).toBe(true);
     await pickUp(fx);
     expect((await read(fx.execution.id)).status).toBe("succeeded");
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
   });
 
@@ -443,11 +532,12 @@ describe("settling a terminal report", () => {
     ingest.read = () => json(report(fx, "done"));
     await serveManifest(fx, manifest());
     await pickUp(fx, [1, 1, 1, 0], "first-token").catch(() => undefined);
-    expect(chargesFor(fx.execution.id)).toHaveLength(1);
+    expect(await chargesFor(fx.execution.id)).toHaveLength(1);
     const rowsAfterFirst = await usageRows(sql, fx.execution.id);
     await pickUp(fx, [1], "second-token");
     expect((await read(fx.execution.id)).status).toBe("succeeded");
-    expect(chargesFor(fx.execution.id)).toHaveLength(1);
+    expect(await chargesFor(fx.execution.id)).toHaveLength(1);
+    expect(await settlesFor(fx.execution.id)).toBe(1);
     expect(await usageRows(sql, fx.execution.id)).toEqual(rowsAfterFirst);
     expect(await sourceRows(sql, fx.execution.id)).toHaveLength(1);
     await expectNothingHeld(fx);
@@ -471,7 +561,8 @@ describe("settling a terminal report", () => {
           );
           const row = await read(fx.execution.id);
           const sources = await sourceRows(sql, fx.execution.id);
-          expect(chargesFor(fx.execution.id)).toHaveLength(1);
+          expect(await chargesFor(fx.execution.id)).toHaveLength(1);
+          expect(await settlesFor(fx.execution.id)).toBe(1);
           expect(row).toMatchObject({ status: "succeeded", resultSourceVersionId: sources[0]!.id });
           expect(sources).toHaveLength(1);
           const rows = await usageRows(sql, fx.execution.id);
@@ -499,7 +590,7 @@ describe("the job lock", () => {
     await runTimelineExecution(asJob(job), TOKEN).catch(() => undefined);
     expect(await sourceRows(sql, fx.execution.id)).toHaveLength(sources);
     expect(await usageRows(sql, fx.execution.id)).toHaveLength(usage);
-    expect(chargesFor(fx.execution.id)).toHaveLength(charges);
+    expect(await chargesFor(fx.execution.id)).toHaveLength(charges);
     expect((await read(fx.execution.id)).status).toBe("running");
     expect(job.extendLock).toHaveBeenCalledTimes(answers.length);
     expect(job.extendLock.mock.calls.every(([token]) => token === TOKEN)).toBe(true);
@@ -516,7 +607,7 @@ describe("an ingest Worker without web-animation execution", () => {
     const row = await read(fx.execution.id);
     expect(row.status).toBe(status);
     if (status === "failed") expect(row.failureReason).toBe("feature_disabled");
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
   }
@@ -559,7 +650,7 @@ describe("the original deadline", () => {
     await pickUp(fx);
     expect((await read(fx.execution.id)).status).toBe("expired");
     expect((await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model")).toEqual(modelRows(fx.execution.id));
-    expect(chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
+    expect(await chargesFor(fx.execution.id)).toEqual([await expectedCharge(fx)]);
     await expectNothingHeld(fx);
   });
 
@@ -573,7 +664,7 @@ describe("the original deadline", () => {
     expect(ingest.calls.filter((call) => call.route === "cancel").map((call) => call.jobId)).toEqual([`timeline:${fx.execution.id}`]);
     expect((await read(fx.execution.id)).status).toBe("running");
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
   });
 
   it("leaves a running job alone within two polls of the deadline", async () => {
@@ -593,7 +684,7 @@ describe("the original deadline", () => {
     await pickUp(fx);
     expect((await read(fx.execution.id)).status).toBe("expired");
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
-    expect(chargesFor(fx.execution.id)).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
     await expectNothingHeld(fx);
   });
 });

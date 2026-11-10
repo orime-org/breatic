@@ -19,7 +19,7 @@ import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 
 const SHOWN = "44444444-4444-4444-8444-444444444444";
@@ -86,7 +86,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     memoryTitle: actual.memoryTitle,
     countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
   };
 });
 
@@ -214,7 +214,7 @@ beforeEach(() => {
   commitConsolidation.mockResolvedValue("written");
   // `clearAllMocks` forgets calls, not implementations: a case that made one
   // of these reject would otherwise leave it rejecting for every case after.
-  chargeOnceForGeneration.mockResolvedValue(null);
+  chargeOnce.mockResolvedValue(null);
 });
 
 describe("a consolidation that works", () => {
@@ -242,7 +242,7 @@ describe("a consolidation that works", () => {
 
     expect(getModel).toHaveBeenCalledWith(CONSOLIDATION_MODEL);
     expect(getModel).not.toHaveBeenCalledWith("anthropic/claude-opus-5.5");
-    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ model: CONSOLIDATION_MODEL });
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ model: CONSOLIDATION_MODEL });
   });
 
   it("records the fold, which spent money and moved the watermark", async () => {
@@ -349,10 +349,11 @@ describe("a consolidation that works", () => {
   it("bills the studio once for the call, under the key of this fold and this attempt", async () => {
     await consolidate();
 
-    const key = chargeOnceForGeneration.mock.calls[0]?.[0] as string;
+    expect(chargeOnce.mock.calls[0]?.[0]).toBe("operation");
+    const key = chargeOnce.mock.calls[0]?.[1] as string;
     expect(key).toMatch(new RegExp(`^consolidate:${CONVERSATION}:7:${FOLD_ID}:1$`));
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
-    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ projectId: PROJECT, actorUserId: USER, amount: 400 });
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ projectId: PROJECT, actorUserId: USER, amount: 400 });
     expect(vi.mocked(createUsageRecorder).mock.calls[0]?.[0]).toMatchObject({
       operationKey: key,
       feature: "memory_consolidation",
@@ -362,7 +363,7 @@ describe("a consolidation that works", () => {
   });
 
   it("logs a charge whose users could not be told", async () => {
-    chargeOnceForGeneration.mockResolvedValueOnce({
+    chargeOnce.mockResolvedValueOnce({
       billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
     });
     await consolidate();
@@ -386,6 +387,7 @@ describe("a consolidation that works", () => {
       recordLookedUpCall: vi.fn(),
       awaitingLookup: () => ["gen-5"],
       settle: async () => 0,
+      settleForCharge: async () => ({ credits: 0, writeFailures: [] }),
     });
 
     await consolidate();
@@ -396,7 +398,7 @@ describe("a consolidation that works", () => {
       operation,
       expect.objectContaining({ description: "Memory consolidation", charge: true }),
     );
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
   });
 });
 
@@ -422,7 +424,7 @@ describe("an answer that fails its checks", () => {
 
     await consolidate();
 
-    const [first, second] = chargeOnceForGeneration.mock.calls.map((call) => call[0] as string);
+    const [first, second] = chargeOnce.mock.calls.map((call) => call[1] as string);
     expect(first).toMatch(new RegExp(`^consolidate:${CONVERSATION}:7:${FOLD_ID}:1$`));
     expect(second).toBe(first?.replace(/:1$/, ":2"));
   });
@@ -432,7 +434,7 @@ describe("an answer that fails its checks", () => {
     await consolidate();
     await consolidate();
 
-    const keys = chargeOnceForGeneration.mock.calls.map((call) => call[0] as string);
+    const keys = chargeOnce.mock.calls.map((call) => call[1] as string);
     expect(keys).toHaveLength(2 * ATTEMPTS);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -445,7 +447,7 @@ describe("an answer that fails its checks", () => {
     expect(outcome).toBe("failed");
     expect(generateTextRetry).toHaveBeenCalledTimes(ATTEMPTS);
     expect(commitConsolidation).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(ATTEMPTS);
+    expect(chargeOnce).toHaveBeenCalledTimes(ATTEMPTS);
     const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
     expect(said).toContain("memory_consolidation_failed");
   });
@@ -458,7 +460,7 @@ describe("an answer that fails its checks", () => {
     expect(outcome).toBe("failed");
     expect(generateTextRetry).toHaveBeenCalledTimes(1);
     expect(commitConsolidation).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -470,7 +472,7 @@ describe("a consolidation that fails", () => {
 
     expect(outcome).toBe("failed");
     expect(commitConsolidation).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -500,7 +502,7 @@ describe("a consolidation that fails", () => {
 
     expect(outcome).toBe("failed");
     expect(logger.error).toHaveBeenCalled();
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
   });
 
   it("is untouched when the memory it reads first cannot be read, and calls nothing", async () => {
@@ -510,7 +512,7 @@ describe("a consolidation that fails", () => {
 
     expect(outcome).toBe("untouched");
     expect(generateTextRetry).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 });
@@ -524,7 +526,7 @@ describe("a consolidation the user did not wait for", () => {
 
     expect(outcome).toBe("aborted");
     expect(generateTextRetry).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(chargeOnce).not.toHaveBeenCalled();
     expect(commitConsolidation).not.toHaveBeenCalled();
   });
 
@@ -566,29 +568,67 @@ describe("a consolidation the user did not wait for", () => {
 
 describe("a consolidation whose bill could not be settled", () => {
   it("still counts as written, and says so in the log", async () => {
-    chargeOnceForGeneration.mockRejectedValue(new Error("redis is down"));
+    const down = new Error("the database is down");
+    chargeOnce.mockRejectedValue(down);
 
     const outcome = await consolidate();
 
     expect(outcome).toBe("written");
-    expect(logger.error).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: down, userId: USER, conversationId: CONVERSATION }),
+      "credit_charge_settle_failed",
+    );
+  });
+
+  it("charges the full amount when a usage row could not be written, and logs the row", async () => {
+    // inner#1617: the recorder counts a row's credits before writing it, so a
+    // lost row does not lose the charge.
+    const lost = new Error("usage row insert failed");
+    const operation = {
+      operationKey: `consolidate:${CONVERSATION}:7:fold:1`,
+      feature: "memory_consolidation" as const,
+      actorUserId: USER,
+      projectId: PROJECT,
+    };
+    vi.mocked(createUsageRecorder).mockReturnValueOnce({
+      operation,
+      recordModelCall: vi.fn(),
+      recordServiceCall: vi.fn(),
+      recordLookedUpCall: vi.fn(),
+      awaitingLookup: () => [],
+      settle: async () => {
+        throw lost;
+      },
+      settleForCharge: async () => ({ credits: 12, writeFailures: [lost] }),
+    });
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("written");
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    expect(chargeOnce.mock.calls[0]).toEqual([
+      "operation",
+      operation.operationKey,
+      expect.objectContaining({ projectId: PROJECT, actorUserId: USER, amount: 12 }),
+    ]);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: lost }), "agent_usage_record_failed");
   });
 });
 
 describe("decimal shortfall consumption", () => {
   it("M20 keeps a zero decimal shortfall silent", async () => {
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
     await consolidate();
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
   });
 
   it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
     await consolidate();
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
       [expect.objectContaining({ userId: USER, conversationId: CONVERSATION, studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
     ]);
