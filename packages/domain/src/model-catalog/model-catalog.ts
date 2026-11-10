@@ -46,7 +46,7 @@ import type {
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
-import { extractPromptText, fitsSomeMode, promptTaken } from "@breatic/shared";
+import { extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 
 /** Root directory for model YAML configs. */
@@ -469,7 +469,9 @@ export async function estimateTaskCredits(
 }
 
 /**
- * One run of a served model, priced by its contract the way the panels price it.
+ * One run of a served model, priced by its contract the way the panels price it:
+ * on its params as the run resolves them, so what its settings do not send is
+ * not priced.
  * @param model - Model name.
  * @param input - The run as set up so far; `{ params: {} }` prices the defaults.
  * @returns The credits and how they bound the charge, or undefined for a model
@@ -482,7 +484,7 @@ export async function estimateModelCredits(
 ): Promise<CreditEstimate | undefined> {
   const entry = findCatalogEntry(model);
   if (!entry?.pricing) return undefined;
-  return estimateCredits({ ...entry, pricing: entry.pricing }, input, env.CREDIT_MULTIPLIER);
+  return estimateCredits({ ...entry, pricing: entry.pricing }, { ...input, params: resolveParams(entry, input.params) }, env.CREDIT_MULTIPLIER);
 }
 
 /**

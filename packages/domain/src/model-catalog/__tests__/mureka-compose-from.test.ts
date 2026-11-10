@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { promptTaken, resolveParams, sanitizeModelCatalog, type ModelEntry } from "@breatic/shared";
 
-import { getFullModelConfig, getModelCatalog, sendsUntakenPrompt } from "../model-catalog.js";
+import { estimateTaskCredits, getFullModelConfig, getModelCatalog, sendsUntakenPrompt } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 const NAME = "mureka-v9.5-generate-song";
@@ -62,5 +62,11 @@ describe("Mureka V9.5 Song's compose-from setting", () => {
     // Text to Music sends no compose_from: the default holds.
     expect(sendsUntakenPrompt(NAME, { prompt: "lo-fi piano", lyrics: "la" })).toBe(false);
     expect(sendsUntakenPrompt(undefined, { prompt: "x" })).toBe(false);
+  });
+
+  it("prices a run without the material of the side it does not compose from", async () => {
+    const run = { compose_from: "melody", lyrics: "la", melody: "https://x/melody.mp3" };
+    const alone = await estimateTaskCredits(NAME, { params: run, prompt: "" });
+    expect(await estimateTaskCredits(NAME, { params: { ...run, vocal: "https://x/vocal.mp3" }, prompt: "" })).toBe(alone);
   });
 });
