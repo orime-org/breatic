@@ -393,13 +393,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
       <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
-        <DocumentOutline
-          editor={handle.editor}
-          viewport={viewport}
-          readOnly={readOnly}
-          commentsOpen={railOpen}
-          hidden={inFullscreen}
-        />
+        {/* Under a full-screen table the outline steps aside the way a
+          hidden Space does, folds and tuck kept. */}
+        <React.Activity mode={inFullscreen ? 'hidden' : 'visible'}>
+          <DocumentOutline
+            editor={handle.editor}
+            viewport={viewport}
+            readOnly={readOnly}
+            commentsOpen={railOpen}
+          />
+        </React.Activity>
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}

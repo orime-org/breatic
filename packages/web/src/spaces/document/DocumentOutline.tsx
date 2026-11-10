@@ -45,11 +45,6 @@ interface DocumentOutlineProps {
   readOnly: boolean;
   /** Whether the comment panel is open beside the body; it takes width from the text. */
   commentsOpen: boolean;
-  /**
-   * Hidden while a table is open full screen (breatic#1427), kept mounted so
-   * the headings folded in it come back folded.
-   */
-  hidden?: boolean;
 }
 
 /** A jump on its way to a heading, until the body arrives or the user takes over. */
@@ -270,7 +265,6 @@ export const DocumentOutline = React.memo(function DocumentOutline({
   viewport,
   readOnly,
   commentsOpen,
-  hidden = false,
 }: DocumentOutlineProps): React.JSX.Element {
   const t = useTranslation();
   const visible = useDocumentViewStore((s) => s.outlineVisible);
@@ -278,20 +272,16 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const column = React.useRef<HTMLElement>(null);
   const [spaceWidth, setSpaceWidth] = React.useState(0);
-  // Hidden under a full-screen table the row is the window's width; the body's
-  // width stays, so the render that shows the outline again lays it out for
-  // the body it comes back to.
-  const hiddenNow = React.useRef(hidden);
+  // In layout effects: an outline put away under a full-screen table stops
+  // watching before the row widens to the window, and reads the row again
+  // before it paints on coming back.
   React.useLayoutEffect(() => {
-    hiddenNow.current = hidden;
-  }, [hidden]);
-  React.useEffect(() => {
     const space = column.current?.parentElement;
     if (space === null || space === undefined) return undefined;
     setSpaceWidth(space.getBoundingClientRect().width);
     const sizes = new ResizeObserver((entries) => {
       const mine = entries.find((e) => e.target === space);
-      if (mine !== undefined && !hiddenNow.current) setSpaceWidth(mine.contentRect.width);
+      if (mine !== undefined) setSpaceWidth(mine.contentRect.width);
     });
     sizes.observe(space);
     return () => sizes.disconnect();
@@ -471,7 +461,6 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       ref={column}
       data-testid='doc-outline-column'
       data-layout={floating ? 'floating' : 'tiled'}
-      hidden={hidden}
       className='relative flex min-h-0 flex-none flex-col'
       style={open && !floating ? OPEN_WIDTH : SHUT_WIDTH}
     >
