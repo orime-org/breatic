@@ -415,7 +415,7 @@ describe('a click beside a picture', () => {
   });
 });
 
-describe('a press on blank space while a table is open full screen (breatic#1427)', () => {
+describe('a press on blank space while a table is open full screen (#1427)', () => {
   it('keeps the comment that was open, the way a press in a cell does', async () => {
     const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
     const editor = open();

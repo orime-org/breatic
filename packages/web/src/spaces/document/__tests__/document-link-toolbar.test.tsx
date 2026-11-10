@@ -477,7 +477,7 @@ describe('dismissing the field', () => {
   });
 
   it('marks the Escape it takes, so nothing further up the page answers the same press', async () => {
-    // A table open full screen ends on an Escape nobody took (breatic#1427
+    // A table open full screen ends on an Escape nobody took (#1427
     // design §5.3); the toolbar closing on that press has to say it took it.
     openToolbar();
     await screen.findByTestId('doc-link-toolbar');

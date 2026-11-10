@@ -516,7 +516,7 @@ function AiPanel({
     [side, viewport],
   );
   // Over a table open full screen the panel lives inside it, frozen or not:
-  // the full-screen area covers the page under it (breatic#1427).
+  // the full-screen area covers the page under it (#1427).
   const inFullscreen = useTableFullscreen(editor).table !== null;
   const { refs, floatingStyles, placement, isPositioned, update } = useFloating({
     open: true,

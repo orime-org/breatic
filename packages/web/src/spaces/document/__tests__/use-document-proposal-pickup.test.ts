@@ -131,7 +131,7 @@ describe('taking up the cards pressed for this document', () => {
     expect(result.current).toMatchObject({ how: 'write', blockId: 'b9' });
   });
 
-  it('ends a table full screen before taking up a card, so the body it acts on is on screen (breatic#1427)', async () => {
+  it('ends a table full screen before taking up a card, so the body it acts on is on screen (#1427)', async () => {
     const order: string[] = [];
     setTableFullscreen.mockImplementation(() => order.push('exit'));
     landProposal.mockImplementation(() => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the editor area does around a table open full screen (breatic#1427
+ * What the editor area does around a table open full screen (#1427
  * §5.3-§5.4): ends it on an Escape pressed outside the editor and when the
  * editor turns read-only, starts the body at the top on entry, and on the way
  * out scrolls back to where the plugin says the user came from.

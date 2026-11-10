@@ -3067,7 +3067,7 @@ describe('the comment panel', () => {
     });
   });
 
-  describe('a table opened full screen and left again (breatic#1427)', () => {
+  describe('a table opened full screen and left again (#1427)', () => {
     /** Puts a table under the line and opens it full screen. */
     function openTableFullscreen(): void {
       const { editor } = handle;

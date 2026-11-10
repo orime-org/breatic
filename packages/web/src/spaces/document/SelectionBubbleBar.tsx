@@ -188,7 +188,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
 ];
 
 /**
- * The entries a table open full screen leaves out (breatic#1427 §5.1): both
+ * The entries a table open full screen leaves out (#1427 §5.1): both
  * need a panel the full-screen table covers, the comment panel and the Agent.
  */
 const OUT_OF_FULLSCREEN: ReadonlySet<string> = new Set([addToAgentTool.id, commentTool.id]);

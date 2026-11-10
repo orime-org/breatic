@@ -129,7 +129,7 @@ export function useDocumentProposalPickup(
           if (next === undefined) break;
           const id = next.proposal.proposalId;
           // A table open full screen hides the body a proposal lands in or
-          // points at: the card's press ends it first (breatic#1427 §5.3).
+          // points at: the card's press ends it first (#1427 §5.3).
           setTableFullscreen(handle.editor, null);
 
           /**

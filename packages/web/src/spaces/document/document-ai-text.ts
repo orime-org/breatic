@@ -994,7 +994,7 @@ export function replaceAiAnswer(
   if (cover === null) return { outcome: 'targetGone' };
   if (answer.preview.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
   const { editor } = handle;
-  // A table open full screen shows only its cells (breatic#1427 §5.3).
+  // A table open full screen shows only its cells (#1427 §5.3).
   leaveFullscreenForWrite(editor, cover, cover.from);
   asOneUndoStep(undoOf(handle), () => {
     editor.transact((tr) => {
@@ -1026,7 +1026,7 @@ export function insertAiAnswer(
   const blocks = answer.preview.map((b) => withoutIds(b as Read));
   if (blocks.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
   const end = below.pos + below.node.nodeSize;
-  // A table open full screen shows only its cells (breatic#1427 §5.3).
+  // A table open full screen shows only its cells (#1427 §5.3).
   leaveFullscreenForWrite(handle.editor, { from: below.pos, to: end }, end);
   asOneUndoStep(undoOf(handle), () => {
     handle.editor.insertBlocks(blocks as never, blockId, 'after');

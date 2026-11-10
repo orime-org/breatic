@@ -129,6 +129,7 @@ These shortcuts act inside the document editor, not on canvas nodes. On macOS, `
 | To-do list | `Cmd+Shift+9` | `Ctrl+Shift+9` |
 | Code block | `Cmd+Option+C` | `Ctrl+Alt+C` |
 | Quote | `Cmd+Shift+B` | `Ctrl+Shift+B` |
+| Leave a table opened full screen | `Esc` | `Esc` |
 
 ### Chat
 

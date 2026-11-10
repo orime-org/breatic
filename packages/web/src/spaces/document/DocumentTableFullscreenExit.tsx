@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The way out of a table open full screen (breatic#1427 §5.1): one button at
+ * The way out of a table open full screen (#1427 §5.1): one button at
  * the top right of the window, named on hover.
  */
 

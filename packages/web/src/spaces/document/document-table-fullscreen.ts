@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A table opened full screen (breatic#1427, design §5.3-§5.4).
+ * A table opened full screen (#1427, design §5.3-§5.4).
  *
  * The editor area covers the window and shows this one table; the rest of the
  * body is still in the same editor, hidden. This plugin is what keeps the user

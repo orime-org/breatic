@@ -1227,7 +1227,7 @@ describe('pressing replace and insert (A6)', () => {
     );
   });
 
-  it('ends a table full screen before writing outside the table, so the user sees the result (breatic#1427)', async () => {
+  it('ends a table full screen before writing outside the table, so the user sees the result (#1427)', async () => {
     const { editor, call } = await polishing();
     await streams(call, ['Hi'], true);
     await waitFor(() => {
@@ -1251,7 +1251,7 @@ describe('pressing replace and insert (A6)', () => {
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
 
-  it('hangs a panel opened over the whole body inside a table that goes full screen (breatic#1427)', async () => {
+  it('hangs a panel opened over the whole body inside a table that goes full screen (#1427)', async () => {
     const editor = openSharedBody('<p>hello world</p>');
     mountDocumentEditor(editor, false, 'project-1');
     act(() => {

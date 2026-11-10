@@ -116,7 +116,7 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
   );
 
   // A table open full screen is edited from inside: its own strip, which acts
-  // on it as a block of the body, stays away (breatic#1427 §5.1).
+  // on it as a block of the body, stays away (#1427 §5.1).
   const fullscreen = useTableFullscreen(editor).table !== null;
   const open = {
     row: state?.show === true && state.rowIndex !== undefined && (only === undefined || only === 'row'),

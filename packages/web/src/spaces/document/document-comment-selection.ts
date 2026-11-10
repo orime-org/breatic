@@ -441,7 +441,7 @@ function buildSelectionPlugin(
       handleClick: (view, pos, event): boolean => {
         if (event.button !== 0) return false;
         const hits = threadsAtPosition(view.state.doc, pos);
-        // A table open full screen has no comment panel (breatic#1427 §5.1):
+        // A table open full screen has no comment panel (#1427 §5.1):
         // a press on a highlight there only places the caret, and is
         // answered so the library's own handler does not open it either.
         if (inTableFullscreen(view.state)) return hits.length > 0;

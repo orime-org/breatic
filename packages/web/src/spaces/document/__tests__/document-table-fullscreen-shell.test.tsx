@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the user sees of a table opened full screen (breatic#1427, design
+ * What the user sees of a table opened full screen (#1427, design
  * §5.1 and §5.4): the row that opens it, the editor area covering the window
  * with only the table, the way out, and the entries full screen leaves out.
  *
@@ -255,7 +255,7 @@ describe('the editor area in full screen', () => {
   });
 });
 
-describe('round 1 of the implementation review (breatic#1427)', () => {
+describe('round 1 of the implementation review (#1427)', () => {
   it('leaves full screen alone for an Escape outside the editor that something else already took', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));
@@ -292,7 +292,7 @@ describe('round 1 of the implementation review (breatic#1427)', () => {
   });
 });
 
-describe('round 2 of the implementation review (breatic#1427)', () => {
+describe('round 2 of the implementation review (#1427)', () => {
   it('leaves full screen alone for the Escape that comes right after an input method ends outside the editor', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));

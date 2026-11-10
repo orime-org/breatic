@@ -132,7 +132,7 @@ function rowOf(id: BlockMenuRow['id']): BlockMenuRow {
  * Copy and cut put the whole table on the clipboard (inner#1239).
  */
 export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
-  // Opens the table over the whole window for editing (breatic#1427).
+  // Opens the table over the whole window for editing (#1427).
   { id: 'fullscreen', labelKey: 'spaces.document.table.fullscreen', Icon: Maximize2 },
   rowOf('insertBelow'),
   rowOf('duplicate'),

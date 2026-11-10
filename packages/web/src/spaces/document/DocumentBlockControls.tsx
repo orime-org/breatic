@@ -52,7 +52,7 @@ export function DocumentBlockControls({
   );
 
   // A table open full screen has no block handles in its cells: their menu
-  // and drag act on blocks of the body (breatic#1427 §5.1).
+  // and drag act on blocks of the body (#1427 §5.1).
   const fullscreen = useTableFullscreen(editor).table !== null;
 
   return (

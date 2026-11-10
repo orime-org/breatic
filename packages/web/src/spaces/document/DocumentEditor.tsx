@@ -210,7 +210,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
-  // A table open full screen (breatic#1427): this area covers the window and
+  // A table open full screen (#1427): this area covers the window and
   // shows that table alone; what it leaves out is listed in design §5.1.
   const fullscreen = useTableFullscreen(handle.editor);
   const inFullscreen = fullscreen.table !== null;

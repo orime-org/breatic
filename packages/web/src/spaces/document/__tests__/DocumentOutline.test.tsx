@@ -861,7 +861,7 @@ describe('DocumentOutline', () => {
       expect(useDocumentViewStore.getState().outlineVisible).toBe(true);
     });
 
-    it('keeps the tuck through a table opened full screen at a width that tiles (breatic#1427)', () => {
+    it('keeps the tuck through a table opened full screen at a width that tiles (#1427)', () => {
       renderWith([h('a', 1, 'One'), tableBlock({ rows: [{ cells: ['a1'] }] }), h('b', 2, 'Two')]);
       resizeTo(639);
       fireEvent.click(row('Two'));

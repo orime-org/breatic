@@ -399,7 +399,7 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
   expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
 });
 
-test('breatic#1427: Full screen lays the table over the window for editing, and Escape goes back to where it stood', async () => {
+test('#1427: Full screen lays the table over the window for editing, and Escape goes back to where it stood', async () => {
   await openFreshDocument(page);
   await smallTable(page);
   const before = await page.locator(`${EDITOR} [data-node-type='docTable']`).boundingBox();

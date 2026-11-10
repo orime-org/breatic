@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A table opened full screen (breatic#1427, design §5.3-§5.5): the state the
+ * A table opened full screen (#1427, design §5.3-§5.5): the state the
  * full-screen plugin keeps, how the caret and every local write stay inside
  * the table, and the ways full screen ends on its own.
  *
@@ -672,7 +672,7 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
   });
 });
 
-describe('round 1 of the implementation review (breatic#1427)', () => {
+describe('round 1 of the implementation review (#1427)', () => {
   it('takes every cell on a select-all when a cell merged down covers the last column', () => {
     const { editor } = open([
       { type: 'paragraph', content: 'Before' },
@@ -767,7 +767,7 @@ describe('round 1 of the implementation review (breatic#1427)', () => {
   });
 });
 
-describe('cases design section 6 names (breatic#1427)', () => {
+describe('cases design section 6 names (#1427)', () => {
   it('ends full screen, back to the scroll position at entry, when undo takes back inserting the table', () => {
     const { editor } = open([{ type: 'paragraph', content: 'Before' }]);
     editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
@@ -805,7 +805,7 @@ describe('cases design section 6 names (breatic#1427)', () => {
   });
 });
 
-describe('a press in full screen (breatic#1427)', () => {
+describe('a press in full screen (#1427)', () => {
   it('reads a press on a cell as on its words, with the blocks around the table hidden and measuring nothing', () => {
     const { editor } = open(BETWEEN);
     enter(editor);
@@ -818,7 +818,7 @@ describe('a press in full screen (breatic#1427)', () => {
   });
 });
 
-describe('a write that ends full screen (breatic#1427)', () => {
+describe('a write that ends full screen (#1427)', () => {
   it('records where the write starts, to be brought into view', () => {
     const { editor } = open(BETWEEN);
     enter(editor);
@@ -840,7 +840,7 @@ describe('a write that ends full screen (breatic#1427)', () => {
   });
 });
 
-describe('an AI answer that writes nothing (breatic#1427)', () => {
+describe('an AI answer that writes nothing (#1427)', () => {
   it('leaves the table open full screen', () => {
     const { editor } = open(BETWEEN);
     const id = enter(editor);
@@ -853,7 +853,7 @@ describe('an AI answer that writes nothing (breatic#1427)', () => {
   });
 });
 
-describe('an AI answer written over words outside a full-screen table (breatic#1427)', () => {
+describe('an AI answer written over words outside a full-screen table (#1427)', () => {
   it('ends full screen, recording where the answer starts', () => {
     const { editor } = open(BETWEEN);
     const view = editor.prosemirrorView!;
@@ -878,7 +878,7 @@ describe('an AI answer written over words outside a full-screen table (breatic#1
   });
 });
 
-describe('an AI answer written below a full-screen table (breatic#1427)', () => {
+describe('an AI answer written below a full-screen table (#1427)', () => {
   it('ends full screen, recording where the answer starts', () => {
     const { editor } = open(BETWEEN);
     const tableId = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;

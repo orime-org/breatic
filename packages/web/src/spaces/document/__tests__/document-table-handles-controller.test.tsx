@@ -194,7 +194,7 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
   });
 });
 
-describe('a table open full screen (breatic#1427)', () => {
+describe('a table open full screen (#1427)', () => {
   it('keeps the row and column handles over a cell and leaves the table\'s own strip out', () => {
     const editor = open();
     const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;

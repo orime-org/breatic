@@ -433,7 +433,7 @@ export async function landProposal(
     const blockId = proposal.blockId!;
     const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
     // A table opened full screen during the wait shows only its cells
-    // (breatic#1427 §5.3).
+    // (#1427 §5.3).
     setTableFullscreen(handle.editor, null);
     await commentOn(handle.editor as never, body, (state) =>
       currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {

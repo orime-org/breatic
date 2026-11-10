@@ -236,7 +236,7 @@ export function buildDocumentEditor(
     ],
   });
 
-  // A table open full screen takes every drop (breatic#1427), so no line says
+  // A table open full screen takes every drop (#1427), so no line says
   // where one would land; a table's own row and column drags draw none either.
   const tableDrags = holdDropLineInTableDrags(fileDropPosition);
   /**

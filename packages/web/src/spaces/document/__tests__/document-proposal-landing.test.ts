@@ -599,7 +599,7 @@ describe('where a proposal points in the document, before anything lands (inner#
   });
 });
 
-describe('a table opened full screen while a proposal lands (breatic#1427)', () => {
+describe('a table opened full screen while a proposal lands (#1427)', () => {
   it('ends full screen again and writes, when the table went full screen during the wait', async () => {
     const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
     const { editor } = handle;

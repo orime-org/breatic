@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Full screen as a component reads it (breatic#1427).
+ * Full screen as a component reads it (#1427).
  *
  * Opening and ending full screen by command can be transactions carrying
  * nothing but a meta, which the editor's change events do not report; the

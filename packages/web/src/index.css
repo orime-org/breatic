@@ -1264,7 +1264,7 @@ body {
     height: auto;
   }
 
-  /* A table open full screen (breatic#1427): the body shows that table alone.
+  /* A table open full screen (#1427): the body shows that table alone.
      Every block not holding it goes, the trailing widget with them; a block it
      is nested under keeps only the path down to it. The table's own cells hold
      block groups too, which the first rule leaves alone. */
