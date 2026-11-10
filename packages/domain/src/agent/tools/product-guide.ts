@@ -819,7 +819,8 @@ export function renderProductGuide(): string {
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
-      "and writes the shots in place of the prompt, each with its seconds and its words. The pictures it needs are " +
+      "and writes the shots in place of the prompt, each with its seconds and its words. A dialogue template " +
+      "writes its lines in place of the prompt, each for its speaker. The pictures it needs are " +
       "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
       "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
@@ -1034,9 +1035,16 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 1 }))}, ` +
       `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 2 }))} and so on, each showing that speaker's ` +
       "name and voice. Opening a speaker's row shows a box for the speaker's name at the top and the same voice " +
-      "list as the single voice below it; picking a voice sets it and closes the list. The note under the rows " +
-      `says ${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
-      `the speakers not filled in shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
+      "list as the single voice below it; picking a voice sets it and closes the list. In the dialogue the prompt " +
+      "box holds one line per turn: each line starts with a small button showing a coloured dot and the name of " +
+      "who says it, which opens the speakers to pick another, and the rest of the line is only the words said; " +
+      "the names are put in front when it is sent, so no name or colon is typed. Enter at the end of a line starts " +
+      `a new line for the other speaker, and so does ${quoted(t("canvas.generatePanel.dialogueAddLine"))} under the ` +
+      "lines; pointing at a line shows an X at its right end that deletes it, except on the only line. Words " +
+      "already in the box stay when switching between one voice and the dialogue; a line typed or pasted as a " +
+      "speaker's name and a colon goes to that speaker with the name taken off. Pressing generate with no line " +
+      `written shows ${quoted(t("canvas.generatePanel.refuseExecuteNoLines"))}, and with the speakers not filled in ` +
+      `shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
       "models the pill shows only their settings. Picking a model that has just been taken away shows " +
       `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made by an older version of the ` +
       "product shows only " +
@@ -1186,10 +1194,10 @@ export function renderProductGuide(): string {
       "sounds on a sound node. Opened from the menu of several selected clips (see the Node menus section), it lists " +
       "them as they lie on the canvas, left to right and, in one column, top to bottom; opened from one node's " +
       "tools, it starts with that clip alone. The panel stays under the node it was opened on and shows the clips " +
-      "in a numbered row, each with its name and length: drag one to change the order, take one out while more " +
+      `in a numbered row headed ${quoted(t("canvas.miniTool.panel.joinClips"))}, each with its name and length: drag one to change the order, take one out while more ` +
       "than two are left, or press the add box at the end of the row to pick another from the canvas, until the " +
       `row is full. ${quoted(t("canvas.miniTool.param.crossfade.label"))} blends each clip into the next over that ` +
-      "many seconds, at most half the shorter of the two. The arrow stays greyed out with one clip. The result is " +
+      `many seconds, at most half the shorter of the two. With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +

@@ -488,7 +488,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }, {
     // A blank left in a line of the dialogue, as the two-voice template's lines carry one.
-    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "Ava's first line" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
     states: ['"Gen" still holds the blanks "Ava\'s first line".'],
     fix: group([DIALOGUE]),
   }],

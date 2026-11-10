@@ -153,6 +153,22 @@ const proposalNode = z
           "shot's own prompt and whole seconds, which add up to the duration. " +
           "The main prompt is not sent then, so leave it out; refs and notes go in a shot too",
       ),
+    lines: z
+      .array(
+        z
+          .object({
+            speaker: z.number().int(),
+            prompt: z.array(promptSegment),
+          })
+          .strict(),
+      )
+      .min(1)
+      .optional()
+      .describe(
+        "role generate only, on a model whose speakers stand in for its voice once params name them: " +
+          "the dialogue, one line per turn, each { speaker, prompt }, speaker the number of a speaker in params counted from 1, " +
+          "prompt only the words said, with no name or colon in front. The main prompt is not sent then, so leave it out; refs and notes go in a line too",
+      ),
     // Last on purpose. While this sat before mode and model the default model
     // never wrote it: asked to copy an input holding it character for
     // character, it wrote params, prompt and shots in its place, and 62

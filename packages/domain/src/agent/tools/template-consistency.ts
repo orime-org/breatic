@@ -144,7 +144,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       const entry = ways.find((one) => one.by === "edge");
       const how = entry === undefined ? `by an edge with into: "${into}"` : entryPhrase(entry);
       const marks = [...(entry?.ref === true ? ["ref"] : []), ...(entry?.note === true ? ["note"] : [])];
-      const placed = generation?.role === "generate" ? sentWords(generation.mode).placed : "";
+      const placed = generation?.role === "generate" ? sentWords(generation).placed : "";
       const shot = marks.length > 0 && placed !== "" ? `, its ${marks.join(" and ")}${placed}` : "";
       const lead = edge === "add" ? `send ${subject} into it` : `change the edge from ${subject} so it goes into it`;
       return fixOn(nodeLabel(proposal.nodes, to), `${lead} ${how}${shot}.`);

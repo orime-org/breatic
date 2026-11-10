@@ -48,11 +48,13 @@ import {
   templateGuideNode,
   type CanvasProposal,
   type GenerationTemplate,
+  type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
 
 import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
 import { checkBlanks, checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
@@ -504,13 +506,24 @@ function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number
 }
 
 /**
- * A node's written words, as a price billed by length reads them.
+ * A segment run's written words.
+ * @param segments - The segments.
+ * @returns Their text, joined.
+ */
+function textOf(segments: readonly PromptSegment[]): string {
+  return segments.map((segment) => ("text" in segment ? segment.text : "")).join("");
+}
+
+/**
+ * A node's written words, as a price billed by length reads them: a
+ * dialogue's script with each line after its speaker's name, else its
+ * prompt's and shots' words.
  * @param node - The node.
- * @returns Its prompt's and shots' words, joined.
+ * @returns The words, joined.
  */
 function wordsOf(node: ProposalNode): string {
-  const segments = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
-  return segments.map((segment) => ("text" in segment ? segment.text : "")).join("");
+  if (onDialogueSide(node)) return proposalDialogueText(node, textOf);
+  return textOf([...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)]);
 }
 
 /**

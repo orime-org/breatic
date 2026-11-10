@@ -460,7 +460,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // inner#1825: the sound templates.
   "canvas.template.ambience-sfx-bed.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.voice-line.prompt": { described: /replaces that mode's prompt with the template's/ },
-  "canvas.template.two-voice-dialogue.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.two-voice-dialogue.line.1": { described: /writes its lines in place of the prompt/ },
+  "canvas.template.two-voice-dialogue.line.2": { described: /writes its lines in place of the prompt/ },
+  "canvas.template.two-voice-dialogue.line.3": { described: /writes its lines in place of the prompt/ },
   "canvas.template.underscore-bgm.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.voice-from-descriptor.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.song-cover.prompt": { described: /replaces that mode's prompt with the template's/ },
