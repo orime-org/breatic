@@ -26,6 +26,11 @@ const webExtent = z.union([
 const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
 const webCopySchema = z.object(webCopy).strict();
 
+/** The rate, gain, mute and transform every newly placed clip starts with. */
+export const TIMELINE_DEFAULT_PLACEMENT = {
+  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+} as const;
+
 /** The editing user's local placement switches, carried with each command. */
 export type TimelineEditPlacement = z.infer<typeof placement>;
 
@@ -299,7 +304,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     const source = { timebase: extent.fps, extentFrames: 'durationFrames' in extent ? extent.durationFrames : extent.acceptedDurationFrames };
     const draft: TimelineWebAnimationClip = {
       id: clipId, trackId: '', kind: 'web-animation', contentBinding: binding, startFrame, sourceInFrame: 0, durationFrames: 1,
-      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      ...TIMELINE_DEFAULT_PLACEMENT,
     };
     const durationFrames = timelineSourceRoom(draft, source, current.settings.fps);
     let trackId = placeWebAnimationClip(tracks, clips, { start: startFrame, end: startFrame + durationFrames });

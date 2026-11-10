@@ -3,7 +3,7 @@
 
 import * as Y from 'yjs';
 import {
-  durationToFrames, newId as createId, type ProjectRegisteredAsset, type TimelineVideoSource, type TimelineWebResolution,
+  durationToFrames, newId as createId, TimelineVideoClipSchema, type ProjectRegisteredAsset, type TimelineVideoSource, type TimelineWebResolution,
 } from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
@@ -226,9 +226,7 @@ function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, ob
 export const TIMELINE_UPLOAD_ORIGIN = Symbol('timeline-upload');
 
 // The fields a video clip keeps when a placeholder becomes one; anything else on the record is dropped.
-const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set([
-  'id', 'trackId', 'kind', 'sourceId', 'startFrame', 'sourceInFrame', 'durationFrames', 'rate', 'gain', 'mute', 'transform',
-]);
+const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape));
 
 /**
  * Turn every placeholder of one registered upload into a video clip of its asset, in one untracked transaction

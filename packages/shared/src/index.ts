@@ -482,7 +482,6 @@ export type {
   TimelineWebAnimationClip,
   TimelineWebAnimationContentBinding,
   TimelineUploadClip,
-  TimelineUploadFields,
   TimelineClip,
   TimelineOperationReceipt,
   TimelineDocumentV1,

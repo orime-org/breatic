@@ -47,13 +47,11 @@ export interface TimelineWebAnimationClip extends Omit<TimelineVideoClip, "kind"
   contentBinding: TimelineWebAnimationContentBinding;
 }
 
-/** The local file a placeholder stands for while its upload runs in the uploader's browser. */
-export interface TimelineUploadFields { uploadId: string; name: string; durationSeconds: number }
-
 /** A placeholder for a local video still uploading; it becomes a video clip with the same id once registered. */
 export interface TimelineUploadClip extends Omit<TimelineVideoClip, "kind" | "sourceId"> {
   kind: "upload";
-  upload: TimelineUploadFields;
+  /** The local file it stands for while the upload runs in the uploader's browser. */
+  upload: { uploadId: string; name: string; durationSeconds: number };
 }
 
 /** Any placement on a track, discriminated by `kind`. */

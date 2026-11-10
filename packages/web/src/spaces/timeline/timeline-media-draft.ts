@@ -4,7 +4,7 @@
 import type * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
 import { durationToFrames, newId, TIMELINE_MAIN_TRACK_ID, type ProjectRegisteredAsset, type TimelineUploadClip } from '@breatic/shared';
-import type { TimelineEditCommand, TimelineEditPlacement, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
+import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 import { timelineApi } from '@web/data/api/timeline';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
@@ -248,7 +248,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           const clip: TimelineUploadClip = {
             id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
             startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
-            rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+            ...TIMELINE_DEFAULT_PLACEMENT,
           };
           const applied = inputs.edit({ operation: 'add_upload', parameters: { clip, ...(target.newTrackId === undefined ? {} : { newTrackId: target.newTrackId }) }, placement });
           if (!applied.ok) { publish({ errorKey: applied.reason }); return; }

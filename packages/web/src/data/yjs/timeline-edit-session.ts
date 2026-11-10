@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import type { TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
+import { TimelineVideoClipSchema, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -40,7 +40,7 @@ export interface TimelineEditSession {
 interface RecordSnapshot { clips: Record<string, Record<string, unknown>>; tracks: Record<string, Record<string, unknown>> }
 
 // The fields every clip kind shares; the only ones a repair writes into a clip whose kind is not the snapshot's.
-const PLACEMENT_FIELDS: ReadonlySet<string> = new Set(['id', 'trackId', 'startFrame', 'sourceInFrame', 'durationFrames', 'rate', 'gain', 'mute', 'transform']);
+const PLACEMENT_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape).filter((key) => key !== 'kind' && key !== 'sourceId'));
 
 // Writes that complete revived records and their sources; untracked, so they never become an undo step of their own.
 const REPAIR_ORIGIN = Symbol('timeline-record-repair');
