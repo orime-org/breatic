@@ -72,12 +72,8 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const pairs = [...input.pairs];
   const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
   for (const address of new Set(input.urls)) {
-    if (paired.has(address)) continue;
-    const source = await sourceOf(address);
-    if (source?.kind !== "video") continue;
-    // Any row under the key may be the one sourceOf found, and one filed
-    // without its cover does not say there is one.
-    const cover = await assetRepo.findCoverUnderKey(source.storageKey);
+    const key = paired.has(address) ? null : storage.keyFromUrl(address);
+    const cover = key === null ? null : await assetRepo.findCoverUnderKey(key);
     if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
   }
   for (const pair of pairs) {

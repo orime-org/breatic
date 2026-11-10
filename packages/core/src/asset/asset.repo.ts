@@ -423,6 +423,7 @@ export async function findCoverUnderKey(storageKey: string): Promise<StudioAsset
     .where(
       and(
         eq(studioAssets.storageKey, storageKey),
+        eq(studioAssets.kind, "video"),
         isNull(studioAssets.deletedAt),
         eq(cover.storageKey, coverKeyFor(storageKey)),
         isNull(cover.deletedAt),
