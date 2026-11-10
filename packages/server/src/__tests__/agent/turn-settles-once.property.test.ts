@@ -249,11 +249,18 @@ describe("whatever the model says, the turn settles up once", () => {
           // reader lets go depends on where in the stream that lands, and a
           // rule derived from the parts alone could not say. What it can say
           // is that letting go never doubles anything -- which is the defect
-          // two entrances to one wrap-up would produce. The charge does follow
-          // from what was recorded: whatever the turn used before the reader
-          // left is charged once.
+          // two entrances to one wrap-up would produce. The amount is not
+          // compared with the recorder: this reader lets go without an abort
+          // signal, so the model double can record usage after the bill step
+          // read it. The product never takes that path -- both chat entries
+          // pass the signal from `streamUntilClientLeaves` -- and the exact
+          // amount is held by the read-to-the-end property above.
           expect(settled.storedReplies).toBeLessThanOrEqual(1);
-          expectChargedOnceForUsage(settled);
+          expect(settled.charges.length).toBeLessThanOrEqual(1);
+          if (settled.charges.length === 1) {
+            expect(settled.charges[0]?.[0]).toBe("operation");
+            expect((settled.charges[0]?.[2] as { amount: number }).amount).toBeGreaterThan(0);
+          }
         },
       ),
       { numRuns: 120 },
