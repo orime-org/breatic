@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { Bone, BoxGeometry, Group, Mesh, Vector3, type Object3D, type PerspectiveCamera } from 'three';
+import { Bone, BoxGeometry, Group, Mesh, Vector3, type MeshBasicMaterial, type Object3D, type PerspectiveCamera, type SphereGeometry } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
@@ -11,7 +11,7 @@ import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 import { POSE_PRESETS } from '@web/spaces/three-d/viewport/pose-presets';
 import { loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
-import type { SceneRemotePeer, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneRemotePeer, SceneSkeletonState, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 // Tests run from packages/web; the bytes are the committed asset the browser fetches.
 const FIGURE_PATH = 'src/spaces/three-d/viewport/assets/figure.glb';
@@ -62,6 +62,39 @@ function props(remotePeers: readonly SceneRemotePeer[] = []): SceneViewportProps
 }
 
 /**
+ * A sized host for a viewport, with the given CSS variables set before the viewport reads them.
+ * @param style - CSS variables to set.
+ * @returns The host.
+ */
+function hostOf(style: Readonly<Record<string, string>> = {}): HTMLDivElement {
+  const host = document.createElement('div'); document.body.append(host);
+  Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+  for (const [name, value] of Object.entries(style)) host.style.setProperty(name, value);
+  return host;
+}
+
+type JointDot = { key: string; mesh: Mesh<SphereGeometry, MeshBasicMaterial> };
+
+/**
+ * Open joint mode on the one object and wait for its dots.
+ * @param overrides - Props to change.
+ * @param kind - The skeleton the model reports.
+ * @param style - CSS variables set on the host before the dots are made.
+ * @returns The runtime, its props and its dots.
+ */
+async function openJoints(overrides: Partial<SceneViewportProps> = {}, kind: SceneSkeletonState = 'humanoid', style: Readonly<Record<string, string>> = {}): Promise<{ runtime: SceneViewportRuntime; joints: SceneViewportProps; host: HTMLDivElement; dots: () => JointDot[] }> {
+  const host = hostOf(style);
+  const onSkeletonState = vi.fn();
+  const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState, ...overrides };
+  const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+  await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', kind));
+  runtime.update(joints);
+  const dots = (): JointDot[] => (runtime as unknown as { markerItems: JointDot[] }).markerItems;
+  await vi.waitFor(() => expect(dots().length).toBeGreaterThan(0));
+  return { runtime, joints, host, dots };
+}
+
+/**
  * The last pose the viewport gave the figure, and whether it was settled.
  * @returns The object id, pose and settled flag of the last call.
  */
@@ -72,10 +105,8 @@ function lastPose(): { id: unknown; pose: unknown; settled: unknown } {
 
 describe('the viewport poses the real figure and settles its bounds (inner#1692 acceptance 11 and 12)', () => {
   it('shows the document pose settled, a collaborator\'s drag unsettled, and the document pose settled again once it is withdrawn', async () => {
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
     const onSkeletonState = vi.fn();
-    const runtime = new SceneViewportRuntime(host, { ...props(), onSkeletonState }); owners.push(() => runtime.dispose());
+    const runtime = new SceneViewportRuntime(hostOf(), { ...props(), onSkeletonState }); owners.push(() => runtime.dispose());
     await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
     expect(lastPose()).toEqual({ id: 'one', pose: LYING, settled: true });
 
@@ -88,19 +119,8 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
   });
 
   it('repaints the joint dots in the new theme\'s colours when the theme changes', async () => {
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-    host.style.setProperty('--color-status-selected', '#111111');
-    host.style.setProperty('--color-foreground', '#222222');
-    const onSkeletonState = vi.fn();
-    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: 'h:leftLowerArm', onSkeletonState };
-    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
-    runtime.update(joints);
-    const markers = (): Array<{ key: string; mesh: { material: { color: { getHexString(): string } } } }> =>
-      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { material: { color: { getHexString(): string } } } }> }).markerItems;
-    await vi.waitFor(() => expect(markers().length).toBeGreaterThan(0));
-    const colourOf = (key: string): string | undefined => markers().find((marker) => marker.key === key)?.mesh.material.color.getHexString();
+    const { host, dots } = await openJoints({ selectedJoint: 'h:leftLowerArm' }, 'humanoid', { '--color-status-selected': '#111111', '--color-foreground': '#222222' });
+    const colourOf = (key: string): string | undefined => dots().find((dot) => dot.key === key)?.mesh.material.color.getHexString();
     expect(colourOf('h:leftLowerArm')).toBe('222222');
     expect(colourOf('h:head')).toBe('111111');
     host.style.setProperty('--color-status-selected', '#333333');
@@ -112,15 +132,8 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
   });
 
   it('sizes the joint dots to the character as it is scaled in joint mode, and keeps them as it is posed', async () => {
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-    const onSkeletonState = vi.fn();
-    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
-    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
-    runtime.update(joints);
-    const radius = (): number | undefined => (runtime as unknown as { markerItems: Array<{ mesh: { scale: { x: number } } }> }).markerItems[0]?.mesh.scale.x;
-    await vi.waitFor(() => expect(radius()).toBeGreaterThan(0));
+    const { runtime, joints, dots } = await openJoints();
+    const radius = (): number | undefined => dots()[0]?.mesh.scale.x;
     const full = radius() ?? 0;
     runtime.update({ ...joints, objects: [{ ...FIGURE, scale: [0.2, 0.2, 0.2] }] });
     expect(radius()).toBeCloseTo(full * 0.2, 5);
@@ -129,17 +142,9 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
   });
 
   it('keeps every joint dot clear of its neighbours, the body dots at full size', async () => {
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-    const onSkeletonState = vi.fn();
-    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
-    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
-    runtime.update(joints);
-    const dots = (): Array<{ key: string; mesh: { position: Vector3; scale: { x: number } } }> =>
-      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { position: Vector3; scale: { x: number } } }> }).markerItems;
-    await vi.waitFor(() => expect(dots().length).toBeGreaterThan(40));
+    const { dots } = await openJoints();
     const radiusOf = (key: string): number => dots().find((dot) => dot.key === key)?.mesh.scale.x ?? 0;
+    expect(dots().length).toBeGreaterThan(40);
     for (const [index, a] of dots().entries()) {
       for (const b of dots().slice(index + 1)) {
         expect(a.mesh.position.distanceTo(b.mesh.position), `${a.key} and ${b.key}`).toBeGreaterThan(a.mesh.scale.x + b.mesh.scale.x);
@@ -156,16 +161,7 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
      * @returns The radius.
      */
     const hipsDot = async (pose: SceneObject['pose']): Promise<number> => {
-      const host = document.createElement('div'); document.body.append(host);
-      Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-      const onSkeletonState = vi.fn();
-      const joints = { ...props(), objects: [{ ...FIGURE, pose }], selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
-      const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-      await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
-      runtime.update(joints);
-      const dots = (): Array<{ key: string; mesh: { scale: { x: number } } }> =>
-        (runtime as unknown as { markerItems: Array<{ key: string; mesh: { scale: { x: number } } }> }).markerItems;
-      await vi.waitFor(() => expect(dots().length).toBeGreaterThan(40));
+      const { dots } = await openJoints({ objects: [{ ...FIGURE, pose }] });
       return dots().find((dot) => dot.key === 'h:hips')?.mesh.scale.x ?? 0;
     };
     expect(await hipsDot(POSE_PRESETS.sit)).toBeCloseTo(await hipsDot({}), 6);
@@ -179,31 +175,16 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     const right = new Bone(); right.name = 'PelvisR'; right.position.set(0, 1, 0);
     root.add(left, right); model.add(root);
     vi.mocked(loadSceneModel).mockResolvedValueOnce(model);
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-    const onSkeletonState = vi.fn();
-    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
-    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'other'));
-    runtime.update(joints);
-    const dots = (): Array<{ key: string; mesh: { scale: { x: number } } }> =>
-      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { scale: { x: number } } }> }).markerItems;
-    await vi.waitFor(() => expect(dots().length).toBe(3));
+    const { dots } = await openJoints({}, 'other');
+    expect(dots()).toHaveLength(3);
     for (const dot of dots()) expect(dot.mesh.scale.x, dot.key).toBeGreaterThan(0.005);
   });
 
   it('selects the dot whose centre a click lands on, even through the larger selected dot in front of it', async () => {
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
-    const onSkeletonState = vi.fn();
     const onJointSelect = vi.fn();
-    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: 'h:leftThumbMetacarpal', onSkeletonState, onJointSelect };
-    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
-    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
-    runtime.update(joints);
-    const inner = runtime as unknown as { camera: PerspectiveCamera; renderer: { domElement: HTMLCanvasElement }; markerItems: Array<{ key: string; mesh: { position: Vector3 } }> };
-    await vi.waitFor(() => expect(inner.markerItems.length).toBeGreaterThan(40));
-    const at = (key: string): Vector3 => inner.markerItems.find((dot) => dot.key === key)?.mesh.position.clone() ?? new Vector3();
+    const { runtime, joints, dots } = await openJoints({ selectedJoint: 'h:leftThumbMetacarpal', onJointSelect });
+    const inner = runtime as unknown as { camera: PerspectiveCamera; renderer: { domElement: HTMLCanvasElement } };
+    const at = (key: string): Vector3 => dots().find((dot) => dot.key === key)?.mesh.position.clone() ?? new Vector3();
     const selected = at('h:leftThumbMetacarpal');
     const target = at('h:leftThumbProximal');
     // Look past the selected joint at the next one, slightly off their line, so the selected dot is in front.
