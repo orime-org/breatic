@@ -104,7 +104,6 @@ vi.mock("@breatic/domain", async () => ({
   creditLotService: {
     settleCharge: h.settleCharge,
     pendingChargeRequestId: vi.fn(async () => null),
-    recordSettleFailure: vi.fn(async () => undefined),
   },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,

@@ -7,7 +7,8 @@
  * One delivery per run, driven through a random sequence of the events that
  * can reach it: the delivery committing, a delivery rolled back by a crash, a
  * redelivery, the delivering process settling at once, the process dying
- * before it does, a settlement failing, and the sweep. After every step and at
+ * before it does, a settlement failing (which the engine counts on the
+ * row), and the sweep. After every step and at
  * the end the invariants hold:
  *
  *   I1  delivered ⇔ exactly one request row; never two.
@@ -130,7 +131,7 @@ async function commitDelivery(run: Run): Promise<string | null> {
 async function sweep(run: Run): Promise<boolean> {
   const listed = await creditLotService.listSweepableChargeRequests(0, 100_000);
   const [mine] = await rowsOf(run);
-  if (!mine || !listed.includes(mine.id)) return false;
+  if (!mine || !listed.some((row) => row.id === mine.id)) return false;
   await creditLotService.settleCharge(mine.id);
   return true;
 }
@@ -188,7 +189,7 @@ async function apply(run: Run, event: Event): Promise<void> {
             failure = err;
           });
           expect(failure).toMatchObject({ cause: expect.objectContaining({ message: expect.stringContaining(name) }) });
-          await creditLotService.recordSettleFailure(before.id, failure);
+          // The engine counts the failure on the row itself.
           const [after] = await rowsOf(run);
           expect(after).toMatchObject({ status: "pending", attempts: before.attempts + 1 });
         } else {

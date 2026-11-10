@@ -452,8 +452,10 @@ describe("a turn's charge comes before its reply is saved (inner#1617)", () => {
 
     expect(wrapUpMessages()).toHaveLength(1);
     expect(wrapUpMessages()[0]?.parts).toContainEqual({ type: "text", text: "kept anyway" });
+    const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
+    expect(refKey).toMatch(/^turn:/);
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err: down, step: "bill" }),
+      expect.objectContaining({ err: down, step: "bill", refKey, amount: charged.amount }),
       "turn_finalizer_step_failed",
     );
   });

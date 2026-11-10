@@ -574,8 +574,9 @@ describe("a consolidation whose bill could not be settled", () => {
     const outcome = await consolidate();
 
     expect(outcome).toBe("written");
+    const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err: down, userId: USER, conversationId: CONVERSATION }),
+      expect.objectContaining({ err: down, userId: USER, conversationId: CONVERSATION, refKey, amount: charged.amount }),
       "credit_charge_settle_failed",
     );
   });

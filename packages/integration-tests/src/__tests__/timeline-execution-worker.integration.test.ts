@@ -473,23 +473,31 @@ describe("settling a terminal report", () => {
   });
 
   // inner#1617: the request committed with billed_at, so a settle that fails loses nothing. The execution still
-  // ends as it should, and the request waits pending, its failure counted, for the sweep.
+  // ends as it should, and the request waits pending, its failure counted on the row by the credit engine, for
+  // the sweep. The settle here is the real one, refused by the ledger, so the engine's own count is what is read.
   it("keeps the request pending, records and logs the failure, and still succeeds when the settle fails", async () => {
     const fx = await seed("running");
     const ingest = installFakeIngest(fx);
     ingest.read = () => json(report(fx, "done"));
     await serveManifest(fx, manifest());
-    settle.mockRejectedValue(new Error("settle blew up"));
-    await pickUp(fx);
+    const { creditLotService: real } = await vi.importActual<typeof DomainModule>("@breatic/domain");
+    settle.mockImplementation((requestId) => real.settleCharge(requestId) as Promise<Record<string, unknown> | null>);
+    // DDL takes no bind parameters; the id is a uuid this suite minted.
+    await sql.unsafe(`ALTER TABLE credit_ledger ADD CONSTRAINT timeline_ledger_block CHECK (reference_id IS DISTINCT FROM '${fx.execution.id}') NOT VALID`);
+    try {
+      await pickUp(fx);
+    } finally {
+      await sql.unsafe("ALTER TABLE credit_ledger DROP CONSTRAINT timeline_ledger_block");
+    }
     const row = await read(fx.execution.id);
     expect(row.status).toBe("succeeded");
     expect(row.billedAt).not.toBeNull();
     const requests = await chargesFor(fx.execution.id);
     expect(requests).toEqual([await expectedCharge(fx)]);
     expect(requests[0]).toMatchObject({ status: "pending", attempts: 1 });
-    expect(requests[0]!.lastError).toContain("settle blew up");
+    expect(requests[0]!.lastError).toContain("timeline_ledger_block");
     expect(errorLogs()).toContainEqual(
-      expect.objectContaining({ msg: "credit_charge_settle_failed", requestId: requests[0]!.id }),
+      expect.objectContaining({ msg: "credit_charge_settle_failed", executionId: fx.execution.id, requestId: requests[0]!.id }),
     );
   });
 

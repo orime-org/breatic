@@ -26,6 +26,7 @@ const resolveOwnerStudioId = vi.fn<(projectId: string) => Promise<string>>();
 const appendLedgerEntry = vi.fn(async (..._args: unknown[]) => undefined);
 const recordStandaloneUsage = vi.fn(async (..._args: unknown[]) => undefined);
 const markSettled = vi.fn(async (..._args: unknown[]) => undefined);
+const recordFailure = vi.fn(async (..._args: unknown[]): Promise<void> => undefined);
 const committed = { value: false };
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -64,7 +65,7 @@ vi.mock("@domain/credit/creditCharge.repo.js", () => ({
   }),
   markSettled: (...args: unknown[]) => markSettled(...args),
   insertPending: async () => null,
-  recordFailure: async () => undefined,
+  recordFailure: (...args: unknown[]) => recordFailure(...args),
 }));
 
 vi.mock("@domain/asset/asset.service.js", () => ({
@@ -95,6 +96,8 @@ beforeEach(() => {
   appendLedgerEntry.mockClear();
   recordStandaloneUsage.mockClear();
   markSettled.mockClear();
+  recordFailure.mockReset();
+  recordFailure.mockResolvedValue(undefined);
   committed.value = false;
 });
 
@@ -150,5 +153,40 @@ describe("解析 studio 的查询本身失败", () => {
 
     expect(markSettled).not.toHaveBeenCalled();
     expect(committed.value).toBe(false);
+  });
+});
+
+describe("a settlement that fails (inner#1617)", () => {
+  it("counts the failure on the request with the whole error chain, outermost first, and rethrows", async () => {
+    const root = new Error("connection terminated unexpectedly");
+    const wrapped = new Error("Failed query: select studio", { cause: root });
+    resolveOwnerStudioId.mockRejectedValueOnce(wrapped);
+
+    await expect(charge()).rejects.toBe(wrapped);
+
+    expect(recordFailure).toHaveBeenCalledExactlyOnceWith(
+      "req-1",
+      "Failed query: select studio <- connection terminated unexpectedly",
+    );
+  });
+
+  it("throws both errors when the failure cannot be recorded either", async () => {
+    const down = new Error("pool exhausted");
+    const stillDown = new Error("still exhausted");
+    resolveOwnerStudioId.mockRejectedValueOnce(down);
+    recordFailure.mockRejectedValueOnce(stillDown);
+
+    const thrown = await charge().catch((err: unknown) => err);
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([down, stillDown]);
+  });
+
+  it("records nothing when the settlement succeeds", async () => {
+    resolveOwnerStudioId.mockRejectedValueOnce(new NotFoundError("gone"));
+
+    await charge();
+
+    expect(recordFailure).not.toHaveBeenCalled();
   });
 });

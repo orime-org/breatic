@@ -48,7 +48,6 @@ const h = vi.hoisted(() => {
     upsertGenerationSucceeded: vi.fn(),
     settleCharge: vi.fn(),
     pendingChargeRequestId: vi.fn(),
-    recordSettleFailure: vi.fn(),
     /** The request the stand-in completion wrote, or null when it wrote none. */
     request: { id: null as string | null },
     error: vi.fn(),
@@ -125,7 +124,6 @@ vi.mock("@breatic/domain", async () => ({
   creditLotService: {
     settleCharge: h.settleCharge,
     pendingChargeRequestId: h.pendingChargeRequestId,
-    recordSettleFailure: h.recordSettleFailure,
   },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   // A dollar is a credit here, so each case's cost is the figure to round.
@@ -254,7 +252,6 @@ beforeEach(() => {
     return true;
   });
   h.pendingChargeRequestId.mockImplementation(async () => h.request.id);
-  h.recordSettleFailure.mockResolvedValue(undefined);
   h.recordProviderResult.mockReset();
   h.resolveRegisteredProjectMedia.mockReset();
   h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({

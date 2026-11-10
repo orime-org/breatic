@@ -396,7 +396,7 @@ describe("settleCharge", () => {
     expect(await readRequest(id)).toMatchObject({ status: "settled" });
   });
 
-  it("leaves the row pending and charges nothing when the settlement fails", async () => {
+  it("leaves the row pending, counts the failure and charges nothing when the settlement fails", async () => {
     const fx = await studioWith(100);
     const description = `boom-${randomUUID()}`;
     const reference = ref("fail");
@@ -407,40 +407,78 @@ describe("settleCharge", () => {
     } finally {
       await unblock();
     }
-    expect(await readRequest(id)).toMatchObject({ status: "pending", attempts: 0, settled: false });
+    const row = (await readRequest(id))!;
+    expect(row).toMatchObject({ status: "pending", attempts: 1, settled: false });
+    expect(row.last_error).toMatch(/charge_req_block_/);
     expect(await ledgerFor(reference)).toEqual([]);
     expect(await remaining(fx.lotId)).toBe("100.000000");
   });
-});
 
-describe("recordSettleFailure", () => {
-  it("counts the failure, keeps the error and moves the row to the back of the sweep", async () => {
+  it("counts every failed settlement, keeps the latest error and moves the row to the back of the sweep", async () => {
     const fx = await studioWith(100);
-    const id = (await request(taskCharge(fx, ref("record"), 5)))!;
+    const description = `boom-again-${randomUUID()}`;
+    const id = (await request(taskCharge(fx, ref("record"), 5, { description })))!;
     await sql`UPDATE credit_charge_requests SET updated_at = now() - interval '1 hour' WHERE id = ${id}`;
     const before = (await readRequest(id))!.updated_at;
 
-    await creditLotService.recordSettleFailure(id, new Error("connection terminated"));
-    const once = (await readRequest(id))!;
-    expect(once).toMatchObject({ status: "pending", attempts: 1, settled: false });
-    expect(once.last_error).toContain("connection terminated");
-    expect(once.updated_at.getTime()).toBeGreaterThan(before.getTime() + 30 * 60_000);
+    const unblock = await blockLedger(description);
+    try {
+      await expect(creditLotService.settleCharge(id)).rejects.toThrow();
+      const once = (await readRequest(id))!;
+      expect(once).toMatchObject({ status: "pending", attempts: 1, settled: false });
+      expect(once.last_error).toMatch(/^Failed query: .* <- .*charge_req_block_/s);
+      expect(once.updated_at.getTime()).toBeGreaterThan(before.getTime() + 30 * 60_000);
 
-    await creditLotService.recordSettleFailure(id, new Error("deadlock detected"));
-    const twice = (await readRequest(id))!;
-    expect(twice.attempts).toBe(2);
-    expect(twice.last_error).toContain("deadlock detected");
+      await expect(creditLotService.settleCharge(id)).rejects.toThrow();
+      expect((await readRequest(id))!.attempts).toBe(2);
+    } finally {
+      await unblock();
+    }
+
+    expect(await creditLotService.settleCharge(id)).toMatchObject({ charged: "5.000000" });
+    expect(await readRequest(id)).toMatchObject({ status: "settled", attempts: 2, settled: true });
   });
 
-  it("leaves a settled row exactly as it was", async () => {
+  it("leaves a settled row exactly as it was when a later settlement would have failed", async () => {
     const fx = await studioWith(100);
-    const id = (await request(taskCharge(fx, ref("settled-record"), 5)))!;
+    const description = `late-${randomUUID()}`;
+    const id = (await request(taskCharge(fx, ref("settled-record"), 5, { description })))!;
     await creditLotService.settleCharge(id);
     const before = (await readRequest(id))!;
 
-    await creditLotService.recordSettleFailure(id, new Error("late failure report"));
+    const unblock = await blockLedger(description);
+    try {
+      expect(await creditLotService.settleCharge(id)).toBeNull();
+    } finally {
+      await unblock();
+    }
 
     expect(await readRequest(id)).toEqual(before);
+  });
+
+  it("throws both errors when the failure cannot be recorded either", async () => {
+    const fx = await studioWith(100);
+    const description = `both-${randomUUID()}`;
+    const reference = ref("both");
+    const id = (await request(taskCharge(fx, reference, 5, { description })))!;
+    const unblock = await blockLedger(description);
+    const name = `charge_req_record_block_${randomUUID().replaceAll("-", "")}`;
+    await sql.unsafe(`ALTER TABLE credit_charge_requests ADD CONSTRAINT ${name} CHECK (attempts = 0 OR reference_id <> '${reference}') NOT VALID`);
+    let thrown: unknown = null;
+    try {
+      await creditLotService.settleCharge(id).catch((err: unknown) => {
+        thrown = err;
+      });
+    } finally {
+      await sql.unsafe(`ALTER TABLE credit_charge_requests DROP CONSTRAINT ${name}`);
+      await unblock();
+    }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    const errors = (thrown as AggregateError).errors;
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/charge_req_block_/) }) });
+    expect(errors[1]).toMatchObject({ cause: expect.objectContaining({ message: expect.stringContaining(name) }) });
+    expect(await readRequest(id)).toMatchObject({ status: "pending", attempts: 0, last_error: null });
   });
 });
 
@@ -448,7 +486,11 @@ describe("listSweepableChargeRequests", () => {
   it("lists pending rows older than the minimum age, oldest first, up to the limit, skipping locked ones", async () => {
     const fx = await studioWith(100);
     const ids: string[] = [];
-    for (let i = 0; i < 4; i++) ids.push((await request(taskCharge(fx, ref(`sweep-${i}`), 1)))!);
+    const refs: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      refs.push(ref(`sweep-${i}`));
+      ids.push((await request(taskCharge(fx, refs[i]!, 1)))!);
+    }
     const [a, b, c, d] = ids as [string, string, string, string];
     const fresh = (await request(taskCharge(fx, ref("sweep-fresh"), 1)))!;
     const settled = (await request(taskCharge(fx, ref("sweep-settled"), 1)))!;
@@ -463,8 +505,11 @@ describe("listSweepableChargeRequests", () => {
     try {
       const mine = new Set([a, b, c, d, fresh, settled]);
       const all = await creditLotService.listSweepableChargeRequests(30_000, 10_000);
-      expect(all.filter((id) => mine.has(id))).toEqual([b, c, a, d]);
-      expect(await creditLotService.listSweepableChargeRequests(30_000, 2)).toEqual([b, c]);
+      expect(all.map((row) => row.id).filter((id) => mine.has(id))).toEqual([b, c, a, d]);
+      const firstTwo = await creditLotService.listSweepableChargeRequests(30_000, 2);
+      expect(firstTwo.map((row) => row.id)).toEqual([b, c]);
+      // What the sweep logs for a stuck charge comes with the row.
+      expect(firstTwo[0]).toEqual({ id: b, kind: "task", referenceId: refs[1], actorUserId: fx.userId, amount: "1.000000", attempts: 0 });
 
       // A row being settled right now is skipped rather than waited on.
       const open = await holdLock((tx) => tx`SELECT id FROM credit_charge_requests WHERE id = ${b} FOR UPDATE`);
@@ -473,7 +518,7 @@ describe("listSweepableChargeRequests", () => {
           creditLotService.listSweepableChargeRequests(30_000, 2),
           new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("the sweep waited on a locked row")), 5_000)),
         ]);
-        expect(listed).toEqual([c, a]);
+        expect(listed.map((row) => row.id)).toEqual([c, a]);
       } finally {
         await open();
       }
@@ -486,9 +531,10 @@ describe("listSweepableChargeRequests", () => {
     const fx = await studioWith(100);
     const id = (await request(taskCharge(fx, ref("age"), 1)))!;
     try {
-      expect(await creditLotService.listSweepableChargeRequests(60_000, 10_000)).not.toContain(id);
+      const ids = async (): Promise<string[]> => (await creditLotService.listSweepableChargeRequests(60_000, 10_000)).map((row) => row.id);
+      expect(await ids()).not.toContain(id);
       await sql`UPDATE credit_charge_requests SET updated_at = now() - interval '61 seconds' WHERE id = ${id}`;
-      expect(await creditLotService.listSweepableChargeRequests(60_000, 10_000)).toContain(id);
+      expect(await ids()).toContain(id);
     } finally {
       await sql`DELETE FROM credit_charge_requests WHERE id = ${id}`;
     }
@@ -515,6 +561,34 @@ describe("markCompletedAndBill with a charge", () => {
     `;
     expect(rows).toEqual([{ kind: "task", reference_id: taskId, release_hold: taskId, amount: "12.000000", status: "pending" }]);
     expect(await creditLotService.pendingChargeRequestId("task", fx.userId, taskId)).toMatch(UUID);
+  });
+
+  it("completes a task whose model and provider names are longer than the ledger keeps, cut to the ledger's widths", async () => {
+    const fx = await studioWith(100);
+    const taskId = await seedTask(fx);
+    const model = `m${"x".repeat(299)}`;
+    const provider = `p${"y".repeat(119)}`;
+    const won = await taskService.markCompletedAndBill(taskId, {}, 7, 900, {
+      actorUserId: fx.userId,
+      projectId: fx.projectId,
+      amount: 7,
+      model,
+      provider,
+    });
+    expect(won).toBe(true);
+    const [task] = await sql<{ status: string }[]>`SELECT status FROM tasks WHERE id = ${taskId}`;
+    expect(task).toEqual({ status: "completed" });
+    const [stored] = await sql<{ id: string; model: string; provider: string }[]>`
+      SELECT id, model, provider FROM credit_charge_requests WHERE reference_id = ${taskId}
+    `;
+    expect(stored).toEqual({ id: stored!.id, model: model.slice(0, 100), provider: provider.slice(0, 50) });
+
+    expect(await creditLotService.settleCharge(stored!.id)).toMatchObject({ billed: true, charged: "7.000000" });
+    const ledger = await sql<{ model: string; provider: string; amount: string }[]>`
+      SELECT model, provider, amount::text AS amount FROM credit_ledger WHERE reference_id = ${taskId}
+    `;
+    expect(ledger).toEqual([{ model: model.slice(0, 100), provider: provider.slice(0, 50), amount: "-7.000000" }]);
+    expect(await readRequest(stored!.id)).toMatchObject({ status: "settled" });
   });
 
   it("rolls the completion back when the request cannot be written", async () => {

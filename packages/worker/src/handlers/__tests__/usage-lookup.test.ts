@@ -198,8 +198,10 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     await expect(runUsageLookup(jobAt(0), recorderIntoRows)).resolves.toBeUndefined();
 
     expect(rows).toHaveLength(1);
+    const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
+    expect(refKey).toBe("turn:c1:4:gen:gen-9");
     expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
-      expect.objectContaining({ generationId: "gen-9" }),
+      expect.objectContaining({ generationId: "gen-9", refKey, actorUserId: "u-1", amount: charged.amount }),
       "credit_charge_settle_failed",
     );
   });

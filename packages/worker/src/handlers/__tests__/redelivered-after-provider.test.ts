@@ -199,15 +199,15 @@ describe("a job redelivered with its charge still pending", () => {
     expect(mockRecordSettleFailure).not.toHaveBeenCalled();
   });
 
-  it("keeps the hold, records and logs the failure, and still returns the stored outcome when the settle fails", async () => {
+  it("keeps the hold, logs the failure, leaves the counting to the engine, and still returns the stored outcome when the settle fails", async () => {
     const down = new Error("db down");
     mockSettleCharge.mockRejectedValueOnce(down);
 
     await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
 
-    expect(mockRecordSettleFailure).toHaveBeenCalledExactlyOnceWith("req-1", down);
+    expect(mockRecordSettleFailure).not.toHaveBeenCalled();
     expect(mockError).toHaveBeenCalledWith(
-      expect.objectContaining({ err: down, taskId: "task-1", requestId: "req-1" }),
+      { taskId: "task-1", userId: "user-1", projectId: "proj-1", creditsUsed: 5, wasFirst: false, err: down, requestId: "req-1" },
       "credit_charge_settle_failed",
     );
     expect(mockReleaseHold).not.toHaveBeenCalled();

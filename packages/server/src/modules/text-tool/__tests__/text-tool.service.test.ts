@@ -210,6 +210,9 @@ describe("扣费失败", () => {
     expect(message).toBe("credit_charge_settle_failed");
     expect(ctx).toMatchObject({ userId: "u-1", tool: "generate", tokens: 2000 });
     expect(ctx.err).toBe(charge.fail);
+    // What finds the pending request the sweep will settle: its key and amount.
+    expect(charge.calls).toHaveLength(1);
+    expect(ctx).toMatchObject({ refKey: charge.calls[0]![1], amount: (charge.calls[0]![2] as { amount: number }).amount });
   });
 
   it("reports zero credits used when the charge fails", async () => {
