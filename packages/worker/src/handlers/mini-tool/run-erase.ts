@@ -96,7 +96,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
       link: (answer) => { const parsed = outputs.safeParse(answer); return parsed.success ? parsed.data[0] : null; },
       body: () => Promise.resolve(upstreamBody(catalogModel(plan.model), { video: storage.publicUrl(prepared.key), mask_video: storage.publicUrl(mask.key), copy_audio: false }, "") as Record<string, MiniToolStepJson>) },
     userId, deadlineAt);
-    if (!("key" in result)) return fail("generate", result.failed as EraseFailureReason["category"]);
+    if (!("key" in result)) return fail("generate", result.failed as EraseFailureReason["category"], result.expired);
     position.step = "composite";
     const output = segmentTarget(ledger, plan.container.encode);
     const chunks = await advanceChunks(run, plan.composite.map((window, k) => ({ stepKey: keyOf(plan, `composite:${k}`), contentType: "video/mp4",

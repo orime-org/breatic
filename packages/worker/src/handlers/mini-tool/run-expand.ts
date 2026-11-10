@@ -144,6 +144,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
           ...VACE_FIXED, size: plan.size, duration: window.duration, seed: plan.seed,
           ...(condition === undefined ? {} : { image: storage.publicUrl((condition as { key: string }).key) }) }, plan.prompt) as Record<string, MiniToolStepJson>) }, userId, deadlineAt);
       if (!("key" in ended)) {
+        if (ended.expired === true) return expire();
         windows[k]!.failure = { step: "generate", category: ended.failed as "model_rejected" | "timeout" | "failed" };
         return fail(null);
       }

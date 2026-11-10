@@ -855,6 +855,27 @@ describe("a lip-sync step whose next attempt is due after the deadline ends the 
     expect(await expireAtDeadline(kind)).toEqual({ status: "failed", error: { kind: "lipsync", persons: [], shared: { step: "expired", category: "timeout" } } });
   });
 
+  it("LX05 a person's generate step due after the deadline ends as the expiry line and appends no generate step", async () => {
+    const f = await seed();
+    let held: string | null = null;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (held === null && job?.outputs[0]?.recipe.kind === "lipsync_stem") { held = job.jobId; scripted.set(held, { schemaVersion: 2, state: "running" }); }
+      return original(input, init);
+    });
+    const lipSync = await runner();
+    let deadlineAt = f.deadlineAt;
+    let result: Record<string, unknown> | undefined;
+    for (let pickup = 0; pickup < 30 && result === undefined; pickup += 1) {
+      // The stem reports done once the deadline has passed, so the generate step after it is due after the deadline.
+      if (held !== null && deadlineAt === f.deadlineAt) { scripted.delete(held); deadlineAt = Date.now() - 1; }
+      try { result = (await lipSync(f.execution, f.userId, deadlineAt)).results.get(0); } catch (error) { if (!(error instanceof StillRunning)) throw error; }
+    }
+    expect((await upstreamStepRepo.listSteps(f.execution.taskId)).map((step) => step.endpoint)).not.toContain(GENERATOR);
+    expect(result).toEqual({ status: "failed", error: { kind: "lipsync", persons: [], shared: { step: "expired", category: "timeout" } } });
+  });
+
   it("LX04 the preparation expired at the deadline ends the run as expired, which the entry commits as the expiry line", async () => {
     await expect(expireAtDeadline("prepare_model_input")).rejects.toBeInstanceOf(DeadlinePassed);
   });

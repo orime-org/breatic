@@ -172,6 +172,18 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
     expect(await preparedPins(f)).toEqual([{ prepared_key: key, tool_input_id: f.plan.presentationRef.source.toolInputId, keys: [key] }]);
   });
 
+  it("PP05 a provider step due after the deadline ends the run expired and appends no generate step", async () => {
+    const f = await seed(); completeProvider(); backend(f);
+    const prep = `${f.plan.taskId}:prep:0:a1`;
+    jobs.scripted.set(prep, { schemaVersion: 2, state: "running" });
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false)).rejects.toBeInstanceOf(StillRunning);
+    // The preparation reports done once the deadline has passed, so the provider step after it is due after the deadline.
+    jobs.scripted.delete(prep);
+    await expect(runMiniToolRemoveBackground(f.plan.taskId, Date.now() - 1, false)).rejects.toBeInstanceOf(shared.DeadlinePassed);
+    expect((await upstreamStepRepo.listSteps(f.plan.taskId)).map((row) => row.kind)).not.toContain("generate");
+    expect(runPrediction).not.toHaveBeenCalled();
+  });
+
   it("PP02 a chunked preparation pins the stitched object; once the stitch is committed its chunk outputs are registered for reclaim", async () => {
     const f = await seed(); completeProvider(); backend(f);
     const plan = structuredClone(f.plan);

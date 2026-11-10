@@ -288,7 +288,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
             x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
             x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "person") as Record<string, MiniToolStepJson>;
         } }, userId, deadlineAt);
-      return "key" in ended ? ended : { failed: ended.failed as Category, step: "track" };
+      return "key" in ended ? ended : { failed: ended.failed as Category, step: "track", ...expiryOf(ended) };
     }
     case "track_join": {
       const clips = clipsOf(execution);
@@ -340,7 +340,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
           // §9.3: only a model that accepts it is told to cut the result off at the audio's end.
           ...(execution.generator.providerSyncMode === "cut_off" ? { sync_mode: "cut_off" } : {}),
         }, "") as Record<string, MiniToolStepJson> }, userId, deadlineAt);
-      return "key" in ended ? ended : { failed: ended.failed as Category, step: "gen" };
+      return "key" in ended ? ended : { failed: ended.failed as Category, step: "gen", ...expiryOf(ended) };
     }
     default: throw new Error(`The lip-sync step ${String(kind)} is no person's`);
   }

@@ -340,7 +340,7 @@ export interface GenerateStep {
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
- * @returns The object, or the failure category.
+ * @returns The object, or the failure category (`timeout`, marked expired, when the step is due after the deadline).
  * @throws {StillRunning} While the prediction runs.
  * @throws {Error} When persistence or the link fetch fails.
  */
@@ -350,6 +350,8 @@ export async function advanceGenerate(run: ModelStepRun, planned: GenerateStep, 
   if (step === undefined) {
     const original = await reused(run, planned.stepKey);
     if (original !== null) return { key: original };
+    // A call opened after the deadline is never submitted, so no step is appended for it: the step ends expired, a timeout.
+    if (Date.now() >= deadlineAt) return { failed: "timeout", expired: true };
     step = await appendStep(run.taskId, { kind: "generate", endpoint: planned.endpoint, itemIndex: planned.itemIndex });
   }
   let state = stateOf(step);

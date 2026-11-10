@@ -8,7 +8,7 @@ import {
   assetRepo, beginMiniToolStepAttempt, type MiniToolStepJson, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema,
   readMiniToolExecutionPlan, recordMiniToolStepIdentity, recordMiniToolStepResult, upstreamStepRepo,
 } from "@breatic/domain";
-import type { StudioAssetEntity } from "@breatic/shared";
+import { assertBeforeDeadline, type StudioAssetEntity } from "@breatic/shared";
 import { storeFromUrl } from "@worker/handlers/backend-upload.js";
 import { appendStep, prepareModelInput } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
@@ -40,6 +40,7 @@ async function registeredAsset(assetId: string): Promise<{ asset: StudioAssetEnt
  * @param retryStarting - The existing pickup retry fact passed to the provider transport.
  * @param onProviderReturned - The application records this pickup's durable return boundary before later IO.
  * @returns The actual registered winner and its live cover.
+ * @throws {DeadlinePassed} When the provider step would be appended after the deadline.
  * @throws {Error} When the persisted lane, planning, provider or canonical receipt cannot advance.
  */
 export async function runMiniToolRemoveBackground(
@@ -58,6 +59,8 @@ export async function runMiniToolRemoveBackground(
     const prepared = await prepareModelInput(execution, deadlineAt, execution.body.video.job.slice(0, -":prep:0".length));
     body = { ...execution.body, video: (await getStorageAdapter()).publicUrl(prepared) };
   }
+  // A call opened after the deadline is never submitted, so no step is appended for it.
+  if (found === undefined) assertBeforeDeadline(deadlineAt);
   const owned = found ?? await appendStep(task.id, { kind: "generate", endpoint: execution.provider.model_id, itemIndex: 0 });
   if (owned.kind !== "generate" || owned.endpoint !== execution.provider.model_id || owned.itemIndex !== 0) {
     throw new Error("Video removal lost its original provider step");

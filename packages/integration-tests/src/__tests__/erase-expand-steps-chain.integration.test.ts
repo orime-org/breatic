@@ -29,7 +29,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
-import { creditHoldService, miniToolExecutionService, miniToolFrozenAnalysisSchema, presentationPinService, taskRepo } from "@breatic/domain";
+import { creditHoldService, miniToolExecutionService, miniToolFrozenAnalysisSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolById, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -602,6 +602,42 @@ describe("a step whose next attempt is due after the deadline ends the run with 
     const deadlineOf = expireAtDeadline(kind, false);
     const { result } = await admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", { position: null }, deadlineOf);
     expect(result).toEqual({ status: "failed", error: { kind: "erase", step: "expired", category: "timeout" } });
+  });
+
+  /**
+   * Make the first job of a recipe kind run until the deadline passes and then report done, so the step after it is due
+   * after the deadline; every pickup from then on runs past it.
+   * @param kind - The recipe kind.
+   * @returns The deadline each pickup runs under.
+   */
+  function doneAfterDeadline(kind: string): (deadlineAt: number) => number {
+    let held: string | null = null;
+    let passed = false;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (held === null && job?.outputs[0]?.recipe.kind === kind) { held = job.jobId; scripted.set(held, { schemaVersion: 2, state: "running" }); }
+      return original(input, init);
+    });
+    return (deadlineAt) => {
+      if (held !== null && !passed) { passed = true; scripted.delete(held); }
+      return passed ? Date.now() - 1 : deadlineAt;
+    };
+  }
+
+  it("EX09 an erase whose generate step is due after the deadline ends as erase / expired / timeout and appends no generate step", async () => {
+    const deadlineOf = doneAfterDeadline("bria_mask");
+    const { plan, result } = await admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", { position: null }, deadlineOf);
+    expect((await upstreamStepRepo.listSteps(String(plan.taskId))).map((step) => step.kind)).not.toContain("generate");
+    expect(result).toEqual({ status: "failed", error: { kind: "erase", step: "expired", category: "timeout" } });
+  });
+
+  it("EX10 an expand whose first window's generate step is due after the deadline ends with the expiry line and appends no generate step", async () => {
+    const deadlineOf = doneAfterDeadline("model_window_mask");
+    const { plan, result } = await admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand", { position: null }, deadlineOf);
+    expect((await upstreamStepRepo.listSteps(String(plan.taskId))).map((step) => step.kind)).not.toContain("generate");
+    expect(result).toMatchObject({ status: "failed", error: { kind: "expand", shared: { step: "expired", category: "timeout" } } });
+    expect((result.error as { windows: unknown[] }).windows[0]).toEqual({ windowIndex: 0, step: "generate", category: "timeout" });
   });
 
   it("EX06 an expand whose composite fails on every attempt before the deadline keeps composite / failed", async () => {
