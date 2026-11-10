@@ -53,14 +53,7 @@ export async function runPlanCommand(program: string, args: readonly string[], o
 }
 
 /** A spawned plan program whose stdin or stdout its caller streams; `done` settles once the process has closed. */
-export interface PlanPipe {
-  stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void;
-  /**
-   * The stderr tail written so far, which a program that logs a failed read and still exits 0 (FFprobe) leaves behind.
-   * @returns It, decoded as UTF-8.
-   */
-  stderrTail(): string;
-}
+export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void }
 
 /**
  * Start one directly spawned plan program whose stdin or stdout the caller streams (execution design paragraph before
@@ -74,8 +67,7 @@ export interface PlanPipe {
  * @param pipes - Which of stdin and stdout the caller streams.
  * @param pipes.stdin - Whether the caller writes its stdin.
  * @param pipes.stdout - Whether the caller reads its stdout.
- * @returns The streams, `done` (rejected with PlanCommandExit, an AbortError or the spawn error), `stop`, which kills it,
- * and the stderr tail.
+ * @returns The streams, `done` (rejected with PlanCommandExit, an AbortError or the spawn error) and `stop`, which kills it.
  * @throws {DOMException} When the lifetime is already cancelled.
  * @throws {RangeError} When an IO bound is not a positive safe integer.
  */
@@ -121,5 +113,5 @@ export function startPlanCommand(program: string, args: readonly string[], optio
   });
   // A caller that stops early awaits `done` after `stop`; until then a rejection is not unhandled.
   done.catch(() => undefined);
-  return { stdin: child.stdin, stdout: child.stdout, done, stop, stderrTail: () => stderr.toString("utf8") };
+  return { stdin: child.stdin, stdout: child.stdout, done, stop };
 }

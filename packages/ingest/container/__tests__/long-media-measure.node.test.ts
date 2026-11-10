@@ -150,6 +150,11 @@ async function measureServed(path: string, fraction: number, resumable: boolean)
 }
 
 describe("measuring a served source whose connection drops mid-body", () => {
+  it("measures a whole served Opus WebM, whatever FFmpeg logs at its end", async () => {
+    const measured = await measureServed(opusWebm, 1, true);
+    expect(seconds(measured[0]!.end)).toBeGreaterThan(2.99);
+  });
+
   it("resumes the read and measures the whole source", async () => {
     const measured = await measureServed(opusWebm, 0.6, true);
     expect(seconds(measured[0]!.end)).toBeGreaterThan(2.99);
