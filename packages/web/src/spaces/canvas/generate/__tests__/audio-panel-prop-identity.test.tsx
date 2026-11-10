@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The audio container hands its memoized panel the same slot list while the
- * slots it draws are unchanged.
+ * The audio container's props for its memoized children keep their identity
+ * while their content is unchanged.
  *
- * The view model behind the panel rebuilds on every canvas mutation — every
- * frame of any node drag — and the slots a song model draws depend on its
- * stored params (Mureka V9.5 Song's compose-from setting, breatic#1393). Read
- * off the params as rebuilt, the list is a fresh array per frame and the
- * panel's React.memo never bails. Asserted on the array handed down, as
- * `video-panel-prop-identity.test.tsx` does, because identity is what the memo
- * compares.
+ * `AudioGeneratePanel` is `React.memo`, and the view model behind it rebuilds
+ * on every canvas mutation — every frame of any node drag. A prop rebuilt with
+ * it defeats the memo, which is the same as not having one. The image panel
+ * shipped exactly that and had to be repaired; the video one carries the same
+ * case for its slot objects.
+ *
+ * Asserted on the object the container hands down rather than on a render
+ * count: a count would also rise for unrelated reasons and pass for the wrong
+ * reason, while identity is exactly what `React.memo` compares.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -41,13 +43,40 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   })),
 }));
 
-/** Every `slots` array the panel has been handed, newest last. */
+vi.mock('@web/data/api/voices', () => ({
+  voicesApi: {
+    list: () => Promise.resolve({ voices: [], hasMore: false }),
+    get: () => Promise.resolve({ id: 'Aria', name: 'Aria' }),
+  },
+}));
+
+/** Every `promptSlot` the panel has been handed, newest last. */
+const seenPromptSlots: unknown[] = [];
+/** Every `params` object the panel has been handed, newest last. */
+const seenParams: unknown[] = [];
+/** Every `references` array it has been handed, newest last. */
+const seenReferences: unknown[] = [];
+/**
+ * Every `slots` array it has been handed, newest last. The slots a song model
+ * draws hang on its stored params (breatic#1393), so they are read off the
+ * content-stable params rather than the ones the view model rebuilds.
+ */
 const seenSlots: unknown[] = [];
 
-// Not wrapped in React.memo: a memo here would hide the re-render measured.
+// Standing in for the real panel is what lets the case read the prop objects
+// themselves. Deliberately NOT wrapped in React.memo: a memo here would hide
+// the very re-render being measured.
 vi.mock('@web/spaces/canvas/generate/AudioGeneratePanel', () => ({
-  AudioGeneratePanel: (props: { slots: unknown }): null => {
+  AudioGeneratePanel: (props: {
+    params: unknown;
+    references: unknown;
+    promptSlot: unknown;
+    slots: unknown;
+  }): null => {
+    seenParams.push(props.params);
     seenSlots.push(props.slots);
+    seenReferences.push(props.references);
+    seenPromptSlots.push(props.promptSlot);
     return null;
   },
 }));
@@ -55,11 +84,25 @@ vi.mock('@web/spaces/canvas/generate/AudioGeneratePanel', () => ({
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { addNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
-import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { canvasSessions } from '@web/stores/canvas-session';
 
-const LAST_WRITE_LOCAL = (): boolean => true;
+/**
+ * Stands in for the canvas's "who made the newest write" getter.
+ *
+ * Module-level so its identity is stable across renders: the container lists
+ * it in an effect's dependencies, and a fresh function each render would run
+ * that effect every time.
+ * @returns Always true — these cases never assert on the message it picks.
+ */
+function returnsTrue(): boolean {
+  return true;
+}
+
 
 const CANVAS: CanvasContextValue = {
   projectId: 'p',
@@ -69,81 +112,86 @@ const CANVAS: CanvasContextValue = {
   caretProvider: null,
 };
 
-const MODEL = 'mureka-v9.5-generate-song';
-
-/** A source place drawn on one side of the compose-from setting. */
-const on = (side: string): ModelEntry['params'][string] => ({
-  description: '',
-  default: null,
-  fill: 'canvas',
-  accepts: 'audio',
-  optional: true,
-  modes: ['a2m'],
-  when: { equals: { compose_from: side } },
-});
-
-/** Mureka V9.5 Song, as far as the slots it draws read it. */
-const SONG: ModelEntry = {
-  name: MODEL,
-  display_name: 'Mureka V9.5 Song',
-  modality: 'audio',
-  mode: ['t2m', 'a2m'],
+const ELEVEN: ModelEntry = {
+  name: 'elevenlabs-v3',
+  display_name: 'ElevenLabs V3',
+  modality: 'tts',
+  mode: 'tts',
   description: '',
   guide: '',
   tier: 'recommended',
-  generation_time: 300,
+  generation_time: 30,
   takes_prompt: true,
-  prompt_when: { equals: { compose_from: 'references' } },
   params: {
-    compose_from: { description: '', label: 'Compose from', default: 'references', values: ['references', 'melody'], modes: ['a2m'], fill: 'panel' },
-    lyrics: { description: '', default: null, fill: 'editor' },
-    song: on('references'),
-    melody: on('melody'),
-    vocal: on('references'),
+    voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
+    stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
-  source_groups: [{ mode: 'a2m', any_of: ['song', 'vocal', 'melody'] }],
   providers: [],
 };
 
 /**
- * A catalog serving the song model alone.
+ * A catalog holding the one text-to-speech model this case needs.
  * @returns The catalog.
  */
 function catalog(): ModelCatalog {
-  return { image: [], video: [], audio: [SONG], tts: [], three_d: [], total: 1, credit_multiplier: 1 };
+  return {
+    image: [],
+    video: [],
+    audio: [],
+    tts: [ELEVEN],
+    three_d: [],
+    total: 1,
+    credit_multiplier: 1,
+  };
 }
 
 /**
- * The container's node list, freshly built each call, as the canvas hands it down.
- * @param composeFrom - The setting stored for the model.
- * @returns One audio node in Reference to Music.
+ * The container's node list, freshly built each call.
+ *
+ * A new array every time is what the canvas really hands down — ReactFlow
+ * rebuilds it on every board mutation — so this is the input that must not
+ * reach the memoized panel as a new params or references object.
+ * @returns One audio node and one text node feeding it.
  */
-function nodes(composeFrom: string): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
+function nodes(
+  stability = 1,
+): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
   return [
     {
       id: 'target',
       type: 'audio',
-      data: { handling: false, mode: 'a2m', model: MODEL, paramsByModel: { [MODEL]: { compose_from: composeFrom } } },
+      data: {
+        handling: false,
+        model: 'elevenlabs-v3',
+        paramsByModel: { 'elevenlabs-v3': { stability } },
+      },
     },
+    { id: 'src', type: 'text', data: { handling: false, name: 'The script' } },
   ] as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'];
 }
 
 /**
- * The panel tree around one audio node.
- * @param composeFrom - The setting stored for the model.
- * @returns The element.
+ * The whole tree, so a case can re-render it with different node content.
+ * @param stability - The stored param value the node carries.
+ * @returns The element to render.
  */
-function tree(composeFrom: string): React.ReactElement {
+function tree(stability = 1): React.ReactElement {
   return (
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ReactFlow
+        nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+        edges={[]}
+        panOnDrag={false}
+      >
         <CanvasContext.Provider value={CANVAS}>
           <AudioGeneratePanelContainer
             projectId='p'
             spaceId='s'
-            edges={[]}
-            nodes={nodes(composeFrom)}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            edges={[{ id: 'e1', source: 'src', target: 'target' }]}
+            nodes={nodes(stability)}
+            getLastWriteWasLocal={returnsTrue}
             placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
@@ -152,55 +200,107 @@ function tree(composeFrom: string): React.ReactElement {
   );
 }
 
+/**
+ * Mounts the container around that node, with one incoming text edge.
+ * @returns The render result, so the case can force a re-render.
+ */
+function mount(): ReturnType<typeof render> {
+  return render(tree());
+}
+
 describe('the audio container keeps its memoized panel bail-able', () => {
   beforeEach(() => {
+    seenParams.length = 0;
+    seenReferences.length = 0;
+    seenPromptSlots.length = 0;
     seenSlots.length = 0;
     _resetForTests();
-    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
+    canvasSessions.of('s').setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
     addNode('p', 's', {
       id: 'target',
       type: 'audio',
       position: { x: 0, y: 0 },
-      data: { name: 'A', createdAt: 1000, createdBy: 'u1', locked: false, attachments: [], mode: 'a2m', model: MODEL, paramsByModel: { [MODEL]: { compose_from: 'references' } } },
+      data: {
+        name: 'A',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        state: 'idle',
+        attachments: [],
+        model: 'elevenlabs-v3',
+        paramsByModel: { 'elevenlabs-v3': { stability: 1 } },
+      },
     } as Parameters<typeof addNode>[2]);
-    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   });
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  /**
-   * Mounts the panel and waits for the catalog to land.
-   * @returns The render result.
-   */
-  async function open(): Promise<ReturnType<typeof render>> {
-    const view = render(tree('references'));
+  it('hands down the prompt editor on the very first render', async () => {
+    // A null promptSlot is how the panel is told the node has no prompt
+    // container, and it then renders one sentence saying the node is too old.
+    // Resolving the fragment after the first commit makes every modern node
+    // paint that sentence first.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    mount();
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
     });
-    await waitFor(() => expect(seenSlots.at(-1)).toEqual(['musicSong', 'musicVocal']));
-    return view;
-  }
-
-  it('hands down the SAME slots array while the stored params are unchanged', async () => {
-    const { rerender } = await open();
-    const before = seenSlots.at(-1);
-    const rendersBefore = seenSlots.length;
-
-    // A board mutation: a brand-new nodes array carrying the same params.
-    rerender(tree('references'));
-
-    expect(seenSlots.length).toBeGreaterThan(rendersBefore);
-    expect(Object.is(before, seenSlots.at(-1))).toBe(true);
+    await waitFor(() => {
+      expect(seenPromptSlots.length).toBeGreaterThan(0);
+    });
+    expect(seenPromptSlots[0]).not.toBeNull();
   });
 
-  it('hands down a DIFFERENT slots array once the setting really changes', async () => {
-    const { rerender } = await open();
-    const before = seenSlots.at(-1);
+  it('hands down the SAME params, references and slots while their content is unchanged', async () => {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    const { rerender } = mount();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(0);
+    });
+    const paramsBefore = seenParams.at(-1);
+    const referencesBefore = seenReferences.at(-1);
+    const slotsBefore = seenSlots.at(-1);
 
-    rerender(tree('melody'));
+    // What a node drag does: the same board, a new nodes array.
+    rerender(tree());
 
-    expect(Object.is(before, seenSlots.at(-1))).toBe(false);
-    expect(seenSlots.at(-1)).toEqual(['musicMelody']);
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(1);
+    });
+    expect(seenParams.at(-1)).toBe(paramsBefore);
+    expect(seenReferences.at(-1)).toBe(referencesBefore);
+    expect(seenSlots.at(-1)).toBe(slotsBefore);
+  });
+
+  it('hands down a NEW params object once the content changes', async () => {
+    // The other half of the identity contract: holding on when the content
+    // moved would leave the picker showing a value the node no longer holds,
+    // which is what a key frozen to a constant would do.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    const { rerender } = mount();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(0);
+    });
+    const before = seenParams.at(-1);
+
+    // What the params picker's write looks like from up here: the canvas hands
+    // down a node carrying a different stored value.
+    rerender(tree(0));
+
+    await waitFor(() => {
+      expect(seenParams.at(-1)).not.toBe(before);
+    });
+    expect(seenParams.at(-1)).toEqual(expect.objectContaining({ stability: 0 }));
   });
 });
