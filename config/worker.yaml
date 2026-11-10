@@ -29,6 +29,8 @@ concurrency:
     audio-peaks: 2
     # One durable SQL outbox scan runs at a time; its jobs only enqueue stable operation wakes.
     long-media-dispatch: 1
+    # One charge sweep round runs at a time; settlements lock their own rows.
+    credit-charge-sweep: 1
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential

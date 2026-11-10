@@ -77,7 +77,8 @@ vi.mock("@breatic/domain", () => ({
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@breatic/shared")>()),
   NO_CONSENT: { analytics: false, ads: false },
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),
