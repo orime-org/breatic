@@ -48,6 +48,12 @@ const workers = defineWorkersProject({
     // eight packages' suites beside this one; every other package in the repo
     // raises this for the same reason.
     testTimeout: 30_000,
+    // workerd starts only after the two Node projects have finished. Started
+    // beside them on CI, it dropped the pool's first connection to its runner
+    // in about two runs of three (#1448), and miniflare 4.20260310.0 has no
+    // listener for that error, so vitest exited 1 before the workers project
+    // ran a file. Later miniflare handles it, but needs vitest 4.
+    sequence: { groupOrder: 1 },
     poolOptions: {
       workers: {
         main: "./src/index.ts",
@@ -65,7 +71,7 @@ const workers = defineWorkersProject({
           // The Sentry SDK needs `AsyncLocalStorage`, and `/read-pages` needs
           // the request's signal to see its caller leave; wrangler.toml.template
           // carries the same flags for `wrangler dev` and deploys.
-          compatibilityFlags: process.env.DIAG_VARIANT === "no-signal" ? ["nodejs_compat"] : ["nodejs_compat", "enable_request_signal"],
+          compatibilityFlags: ["nodejs_compat", "enable_request_signal"],
           r2Buckets: ["BUCKET"],
           // Bound, and deliberately with no image behind it. Declaring one
           // would make every run of this suite need Docker and a built image
@@ -81,7 +87,7 @@ const workers = defineWorkersProject({
             MINI_TOOL_STD1: { className: "MiniToolContainerStd1", useSQLite: true },
             MINI_TOOL_STD4: { className: "MiniToolContainerStd4", useSQLite: true },
             LONG_MEDIA: { className: "LongMediaJobTestObject", useSQLite: true },
-            ...(process.env.DIAG_VARIANT === "no-reader-binding" ? {} : { WEB_READER: { className: "WebReaderContainer", useSQLite: true } }),
+            WEB_READER: { className: "WebReaderContainer", useSQLite: true },
           },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every
@@ -109,4 +115,4 @@ const node = defineConfig({
   resolve: { alias },
 });
 
-export default defineConfig({ test: { projects: process.env.DIAG_VARIANT === "no-reader-project" ? [workers, node] : [workers, node, "./web-reader/vitest.config.ts"] } });
+export default defineConfig({ test: { projects: [workers, node, "./web-reader/vitest.config.ts"] } });

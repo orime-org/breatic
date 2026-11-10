@@ -191,7 +191,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [base]
+        variant: [a, b]
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-workspace
