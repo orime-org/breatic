@@ -484,7 +484,7 @@ export class SceneViewportRuntime {
         const full = restSize * 0.012;
         joints.forEach(({ key, bone, rest }, index) => {
           // Close joints such as finger knuckles get dots under half their spacing, so neighbouring dots never
-          // touch; joints at one point keep a visible dot and the click picks among them by centre.
+          // touch; joints at one point keep a visible dot, a click on it picks the first of them and the skin the rest.
           const nearest = Math.min(...joints.filter((_, other) => other !== index).map((joint) => joint.rest.distanceTo(rest)));
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;

@@ -725,6 +725,16 @@ describe('PoseRig.apply: skinned bounds (inner#1692)', () => {
     expect(box).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the bounds measured at rest when the first pose shown is rest', () => {
+    const figure = buildFigure();
+    const rig = rigOf(figure.root);
+    const box = vi.spyOn(figure.mesh, 'computeBoundingBox');
+    rig.apply({});
+    expect(box).not.toHaveBeenCalled();
+    rig.apply(POSE_PRESETS.sit);
+    expect(box).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves the bounds alone while a pose is still being dragged and recomputes them once it settles', () => {
     const figure = buildFigure();
     const rig = rigOf(figure.root);
