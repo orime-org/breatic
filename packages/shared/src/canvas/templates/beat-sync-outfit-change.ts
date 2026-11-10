@@ -16,7 +16,7 @@ export const BEAT_SYNC_OUTFIT_CHANGE: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 12-second vertical outfit-change challenge of the user's person: on each beat they spin and come back in the next theme's outfit and backdrop, the face and build unchanged; the user lists the themes",
+    "a 12-second vertical outfit-change challenge of the user's person: on each beat they spin and come back in the next theme's outfit and backdrop, the face and build unchanged; needs the themes",
   goal: "social-hooks",
   triggers: {
     asks: ["an outfit change on the beat", "a transformation video", "a transition challenge"],

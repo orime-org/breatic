@@ -564,7 +564,13 @@ describe("a mark the agent writes as words", () => {
     expect(answer).toMatchObject({ ok: false });
     const reason = answer.ok ? "" : answer.reason;
     expect(reason).toContain(`types 2 mark(s) into its words as text: "${asset}", "{✏️ the weather}".`);
-    expect(reason).toContain('{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the user writes.');
+    expect(reason).toContain(`{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template's blank, which is filled before sending.`);
+  });
+
+  it("describes a tweak segment as a template's blank filled before sending, never as words the user writes", () => {
+    const said = JSON.stringify(inputSchema.toJSONSchema());
+    expect(said).toContain("A blank a template wrote; fill it before sending");
+    expect(said).not.toContain("Words only the user can write");
   });
 
   it("tells a written node to take a typed reference or note out, the way the role check does", () => {

@@ -23,8 +23,7 @@ export const TEMPLATE_CRAFT = {
     "visible beat every 2 to 3 seconds; one main camera move per shot, with its start, direction and end and " +
     "what stays still; one light source logic; sound in layers, saying where silence falls.",
   character:
-    "Craft for a character: when one character appears in several pictures or videos, make a character sheet " +
-    "before the shots; keep the reference's rendering (a 3D render stays 3D, a drawing stays a drawing) unless " +
+    "Craft for a character: keep the reference's rendering (a 3D render stays 3D, a drawing stays a drawing) unless " +
     "the prompt names another style.",
 } as const;
 

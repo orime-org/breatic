@@ -8,6 +8,27 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { ToolCall } from '@web/pages/project/chat/types';
 
 /**
+ * The site and how many pages a page read names, for its running line
+ * (inner#1664). The arguments arrive as a half-built object while the model
+ * writes them, so the site shows as its address arrives; until a first
+ * address parses, the host is empty and the count 0.
+ * @param args - The call's arguments so far.
+ * @returns The first page's host and the page count, or an empty host and 0.
+ */
+function pagesOf(args: ToolCall['args']): { host: string; count: number } {
+  const pages = typeof args === 'object' ? args.pages : undefined;
+  if (!Array.isArray(pages) || pages.length === 0) return { host: '', count: 0 };
+  const first: unknown = pages[0];
+  const url = first !== null && typeof first === 'object' ? (first as { url?: unknown }).url : undefined;
+  if (typeof url !== 'string') return { host: '', count: 0 };
+  try {
+    return { host: new URL(url).hostname, count: pages.length };
+  } catch {
+    return { host: '', count: 0 };
+  }
+}
+
+/**
  * The sentence shown while a tool runs, when the tool has one to give.
  *
  * The key travels on the call itself: the tool declares it in the SDK's
@@ -25,7 +46,7 @@ function sentenceFor(
 ): string {
   const query =
     typeof call.args === 'object' && typeof call.args.query === 'string' ? call.args.query : '';
-  if (call.runningLine !== undefined) return t(call.runningLine, { query });
+  if (call.runningLine !== undefined) return t(call.runningLine, { query, ...pagesOf(call.args) });
   // Nothing declared, so the tool's own identifier is what there is to say.
   // It stays English in every language: it is a name in the code, like the
   // product nouns the glossary freezes, and translating it would name

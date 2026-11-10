@@ -76,6 +76,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 }));
 
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 

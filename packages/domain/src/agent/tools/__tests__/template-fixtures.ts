@@ -223,7 +223,8 @@ export interface AgentShape {
  * built from `templateSkeleton`: one node per key carrying `template: { id,
  * key }` (the anchor's key written or left out), one empty source node per
  * input wired into the nodes it feeds, the template edges, each generate
- * node's locale prompt with each reference mark bound by name to a ref, and
+ * node's locale prompt with each reference mark bound by name to a ref and
+ * each tweak mark written as words, and
  * each input's note as a note on top of every node it feeds. A node with
  * shots sends them instead of a prompt, each with its seconds and its
  * `shot.<n>` words bound the same way, the notes on top of the first shot.
@@ -294,7 +295,8 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
 
 /**
  * One segment of a template's locale prompt as the agent sends it: a
- * reference mark becomes the ref of the node whose name is its label.
+ * reference mark becomes the ref of the node whose name is its label, and a
+ * tweak mark becomes words.
  * @param segment - The segment.
  * @param targets - Name to index of every node the prompt may @.
  * @returns The segment as sent.
@@ -308,7 +310,8 @@ function sentSegment(segment: PromptSegment, targets: ReadonlyMap<string, number
     if (ref === undefined) throw new Error(`no target named "${slot.label}"`);
     return { ref };
   }
-  return slot.kind === "tweak" ? { slot: { kind: "tweak", label: slot.label, note: slot.note } } : { slot: { kind: "note", label: slot.label } };
+  // The agent fills every tweak with words before sending (breatic#1361); its label stands in for them.
+  return slot.kind === "tweak" ? { text: slot.label } : { slot: { kind: "note", label: slot.label } };
 }
 
 /**

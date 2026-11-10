@@ -28,6 +28,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Options, type Sql } from "postgres";
+import { getDatabaseTimeouts } from "@core/config/database.js";
 import { env } from "@core/config/env.js";
 
 /**
@@ -47,6 +48,11 @@ import { env } from "@core/config/env.js";
  *   regardless of activity, so a slowly-leaking connection
  *   doesn't outlive its safe window;
  * - `max: <pool size>` - caller-supplied;
+ * - `queue_timeout` / `connect_timeout` - from `config/database.yaml`;
+ *   postgres.js queues a query without limit by default (its connect limit
+ *   defaults to 30 s and is set here so both live in config);
+ * - `infer: true` - keeps postgres.js 3's typing: parameters typed from their
+ *   JavaScript values, and `timestamp` columns read in local time.
  *
  * Callers override individual fields via `opts`; the factory
  * spreads `opts` last, so `opts.idle_timeout = 0` (postgres.js
@@ -76,9 +82,13 @@ export function createPgClient(
   opts: { name: string } & Options<Record<string, never>>,
 ): Sql {
   const { name, ...override } = opts;
+  const { connectTimeoutS, queueTimeoutS } = getDatabaseTimeouts();
   return postgres(url, {
     idle_timeout: 30,
     max_lifetime: 60 * 30,
+    connect_timeout: connectTimeoutS,
+    queue_timeout: queueTimeoutS,
+    infer: true,
     connection: { application_name: name },
     ...override,
   });
@@ -174,7 +184,7 @@ function runBound(
  * A transaction holds one pool connection; a query it issues through the pool
  * handle would wait for a second one, and once every connection is held by a
  * transaction waiting that way, nothing in the process can reach the database
- * again. Binding the handle to the open transaction, as Spring, Rails, Django
+ * until the queue timeouts fail the waiting requests. Binding the handle to the open transaction, as Spring, Rails, Django
  * and Sequelize do, makes that wait impossible. A transaction opened inside
  * another becomes a savepoint.
  * @param getReal - Builds (once) and returns the pool-backed Drizzle instance.
@@ -381,3 +391,36 @@ export const yjsRawPg: Sql = new Proxy(
     },
   },
 );
+
+/** A pool's size and what its connections are doing at one moment. */
+export interface PoolState {
+  /** Connections the pool may hold. */
+  readonly max: number;
+  /** Connections open now. */
+  readonly connections: number;
+  /** Connections being opened. */
+  readonly opening: number;
+  /** Open connections with nothing in flight and not leased. */
+  readonly idle: number;
+  /** Connections held by a transaction or reserve. */
+  readonly leased: number;
+  /** Queries, transactions and reserves waiting for a connection. */
+  readonly waiting: number;
+}
+
+/**
+ * Size and counts of one pool, or null when it has not been built.
+ * @param pool - The pool.
+ * @returns Its state.
+ */
+function stateOf(pool: Sql | null): PoolState | null {
+  return pool === null ? null : { max: pool.options.max, ...pool.stats };
+}
+
+/**
+ * The main and Yjs pools as they are now; a pool not built yet is null.
+ * @returns Both pools' states.
+ */
+export function poolStates(): { main: PoolState | null; yjs: PoolState | null } {
+  return { main: stateOf(_pgClient), yjs: stateOf(_yjsPgClient) };
+}

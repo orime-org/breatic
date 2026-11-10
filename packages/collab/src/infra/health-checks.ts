@@ -67,8 +67,8 @@ export interface CollabHealthProbes {
   /**
    * Resolves true when this instance still hears `project_members` changes
    * (inner#911): a nonce sent on the probe channel comes back over the listen
-   * connection. postgres.js does not report whether it is listening, and a
-   * re-listen it gives up on stays silent, so this is a real round trip.
+   * connection. postgres.js does not report whether it is listening right
+   * now, so this is a real round trip.
    */
   probeMemberListen: () => Promise<boolean>;
 }

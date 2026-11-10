@@ -6,15 +6,12 @@
  * transaction handle — real Postgres.
  *
  * Those two transactions hold a row lock (`studios` / `projects`) for their
- * whole length. A read issued without the handle does not join the
- * transaction: it asks the pool for a SECOND connection while the first is
- * still held. Under concurrent confirms that is how the pool empties itself,
- * and it empties into a shape that does not recover — the connection the lock
- * holder cannot get is the one it needs before it can commit and let go, so
- * everything queued behind that row waits with it. Nothing times that wait
- * out: postgres.js queues a query until a pooled connection frees up and has
- * no option to bound that queue (`connect_timeout`, which does have a default,
- * bounds establishing a new socket — a different phase entirely).
+ * whole length. A read on a separate connection while the first is still
+ * held is how the pool empties itself under concurrent confirms: the
+ * connection the lock holder cannot get is the one it needs before it can
+ * commit and let go, so everything queued behind that row waits with it until
+ * the pool's queue timeout (`config/database.yaml`) fails it. Queries through
+ * `db` inside a transaction run on that transaction (`packages/core/AGENTS.md#queries-bind-to-the-open-transaction`).
  *
  * A signature that merely accepts a handle proves nothing; what these cases
  * pin is that the query actually runs inside the caller's transaction, by
