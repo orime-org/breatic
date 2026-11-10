@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { probeArgs } from "@ingest/probe-command.js";
+import { probeArgs, type ReadFrom } from "@ingest/probe-command.js";
 import { buildLongMediaProbeReport } from "@ingest/long-media-probe-report.js";
 import * as probeOwner from "../long-media-probe.js";
 
@@ -37,7 +39,7 @@ function probed(path: string): string {
  * The measuring entry, read at call time so its absence fails each case on its own.
  * @returns It.
  */
-function measure(): (objectUrl: string, stdout: string, signal: AbortSignal, from: "own-file") => Promise<{ index: number; start: { numerator: string; denominator: string }; end: { numerator: string; denominator: string } }[]> {
+function measure(): (objectUrl: string, stdout: string, signal: AbortSignal, from: ReadFrom) => Promise<{ index: number; start: { numerator: string; denominator: string }; end: { numerator: string; denominator: string } }[]> {
   const value: unknown = Reflect.get(probeOwner, "measureLongMediaStreams");
   expect(value, "measureLongMediaStreams is exported").toBeTypeOf("function");
   return value as never;
@@ -97,5 +99,72 @@ describe("measuring the streams of a long-media source that declare no duration"
 
   it("measures nothing for an MP4 whose streams declare their durations", async () => {
     await expect(measure()(aacMp4, probed(aacMp4), AbortSignal.timeout(60_000), "own-file")).resolves.toEqual([]);
+  });
+});
+
+/**
+ * Serve one file over HTTP, closing the first response's connection after part of its body while declaring the full
+ * length, as an R2 or outbound stream reset does. A resumable server offers byte ranges and answers the reconnect's Range
+ * request in full; one that offers none drops every response the same way.
+ * @param path - The file.
+ * @param fraction - The share of the body the first response sends.
+ * @param resumable - Whether the server offers byte ranges.
+ * @returns The server and the file's URL.
+ */
+async function serveDroppingOnce(path: string, fraction: number, resumable: boolean): Promise<{ server: Server; url: string }> {
+  const bytes = readFileSync(path);
+  let first = true;
+  const server = createServer((request, response) => {
+    const range = /^bytes=(\d+)-/.exec(request.headers.range ?? "");
+    const from = range === null ? 0 : Number(range[1]);
+    const headers: Record<string, string | number> = { "content-type": "video/webm", "content-length": bytes.length - from };
+    if (resumable) headers["accept-ranges"] = "bytes";
+    if (range !== null) headers["content-range"] = `bytes ${from}-${bytes.length - 1}/${bytes.length}`;
+    response.writeHead(range === null ? 200 : 206, headers);
+    if (first || !resumable) {
+      first = false;
+      response.write(bytes.subarray(0, Math.floor(bytes.length * fraction)), () => request.socket.destroy());
+      return;
+    }
+    response.end(bytes.subarray(from));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/source.webm` };
+}
+
+/**
+ * Measure the audio-only WebM through a server that drops its first response.
+ * @param resumable - Whether the server answers the reconnect.
+ * @returns The measured windows.
+ */
+async function measureDropped(resumable: boolean): Promise<Awaited<ReturnType<ReturnType<typeof measure>>>> {
+  const { server, url } = await serveDroppingOnce(opusWebm, 0.6, resumable);
+  try {
+    return await measure()(url, probed(opusWebm), AbortSignal.timeout(60_000), "object");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+describe("measuring a served source whose connection drops mid-body", () => {
+  it("resumes the read and measures the whole source", async () => {
+    const measured = await measureDropped(true);
+    expect(seconds(measured[0]!.end)).toBeGreaterThan(2.99);
+  });
+
+  it("fails rather than take the part read before the drop as the source's length", async () => {
+    await expect(measureDropped(false)).rejects.toThrow(/read failed/);
+  });
+});
+
+describe("measuring a truncated local source", () => {
+  it("measures what a WebM cut short holds, as before", async () => {
+    const cut = join(dir, "cut.webm");
+    const bytes = readFileSync(opusWebm);
+    writeFileSync(cut, bytes.subarray(0, Math.floor(bytes.length * 0.6)));
+    const measured = await measure()(cut, probed(opusWebm), AbortSignal.timeout(60_000), "own-file");
+    expect(seconds(measured[0]!.end)).toBeGreaterThan(1);
+    expect(seconds(measured[0]!.end)).toBeLessThan(2.5);
   });
 });

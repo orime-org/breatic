@@ -12,6 +12,16 @@ import { runTool } from "./run-tool.js";
 /** The stderr tail kept for a failed measuring read's error. */
 const MEASURE_STDERR_TAIL_BYTES = 65536;
 
+/**
+ * FFprobe's error lines that leave a read whole (measured with FFmpeg 7.1): the HTTP layer reporting a dropped
+ * connection, which `-reconnect` then resumes with a Range request, and the Matroska demuxer reaching the end of a
+ * truncated file, whose window is what it holds. A drop that cannot be resumed adds the demuxer's `Read error`.
+ */
+const WHOLE_READ_STDERR = [
+  /^\[http @ 0x[0-9a-f]+\] Stream ends prematurely at \d+, should be \d+$/u,
+  /^\[matroska,webm @ 0x[0-9a-f]+\] File ended prematurely$/u,
+];
+
 /** The Container's fenced request to inspect one immutable source. */
 export interface LongMediaProbeRunRequest {
   objectUrl: string;
@@ -67,7 +77,7 @@ export async function runLongMediaProbe(
  * @param accumulator - Where the entries go.
  * @param signal - The probe's lifetime.
  * @returns The stream's window.
- * @throws {Error} When FFprobe fails or an entry carries no exact clock.
+ * @throws {Error} When FFprobe fails, reports an error (a dropped read still exits 0) or an entry carries no exact clock.
  */
 async function readWindow(args: string[], accumulator: WindowAccumulator, signal: AbortSignal): Promise<StreamWindow> {
   const pipe = startPlanCommand("ffprobe", args, { signal, stderrTailBytes: MEASURE_STDERR_TAIL_BYTES }, { stdout: true });
@@ -80,6 +90,11 @@ async function readWindow(args: string[], accumulator: WindowAccumulator, signal
     }
   } finally {
     await pipe.done.catch((error: unknown) => { if (!clockless) throw error; });
+  }
+  // FFprobe exits 0 after a failed read, with the frames seen so far; any other error line fails the window.
+  const stderr = pipe.stderrTail();
+  if (stderr.split("\n").some((line) => line.length > 0 && !WHOLE_READ_STDERR.some((whole) => whole.test(line)))) {
+    throw new Error(`The long media stream read failed: ${stderr}`);
   }
   const window = accumulator.window();
   if (clockless || window === null) throw new Error("The long media stream clock could not be measured");
@@ -107,7 +122,10 @@ export async function measureLongMediaStreams(objectUrl: string, stdout: string,
     const audio = stream.codec_type === "audio";
     const accumulator = audio ? decodedAudioAccumulator(stream) : videoPacketAccumulator(stream);
     if (accumulator === null) throw new Error("The long media stream clock could not be measured");
-    const window = await readWindow(["-v", "error", "-protocol_whitelist", protocolsFor(from), "-select_streams", String(stream.index),
+    // A served object's read resumes with a Range request after a dropped connection instead of ending early.
+    const reconnect = from === "object" ? ["-reconnect", "1", "-reconnect_on_network_error", "1"] : [];
+    // `repeat` keeps every line, so a repeated one is checked rather than folded into "Last message repeated".
+    const window = await readWindow(["-v", "repeat+error", "-protocol_whitelist", protocolsFor(from), ...reconnect, "-select_streams", String(stream.index),
       "-show_entries", audio ? "frame=pts,nb_samples" : "packet=pts,duration", "-of", "compact=p=0", objectUrl], accumulator, signal);
     measured.push({
       index: Number(stream.index),
