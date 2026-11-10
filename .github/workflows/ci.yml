@@ -191,12 +191,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [base, no-signal, no-reader-binding, no-reader-project]
+        variant: [base]
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-workspace
       - name: Build
         run: pnpm turbo build --filter=!@breatic/web
+      - name: Show every workerd message
+        run: |
+          for f in node_modules/.pnpm/@cloudflare+vitest-pool-workers@*/node_modules/@cloudflare/vitest-pool-workers/dist/pool/index.mjs; do
+            sed -i 's/if (ignoreMessages.some((message) => str.includes(message))) {/if (false) {/' "$f"
+            grep -c "if (false) {" "$f"
+          done
       - name: Run ingest under load six times
         env:
           DATABASE_URL: postgres://localhost/test
@@ -210,7 +216,7 @@ jobs:
             echo "::group::round $i"
             pnpm turbo test --filter=!@breatic/web --filter=!@breatic/ingest --force --continue > /tmp/others-$i.log 2>&1 &
             others=$!
-            (cd packages/ingest && NODE_OPTIONS="--trace-exit --import $PWD/scripts/diag-exit.mjs" pnpm exec vitest run > /tmp/ingest-$i.log 2>&1; echo "round $i ingest exit=$?" >> /tmp/ingest-$i.log)
+            (cd packages/ingest && NODE_DEBUG=vitest-pool-workers:index NODE_OPTIONS="--trace-exit --import $PWD/scripts/diag-exit.mjs" pnpm exec vitest run > /tmp/ingest-$i.log 2>&1; echo "round $i ingest exit=$?" >> /tmp/ingest-$i.log)
             cat /tmp/ingest-$i.log
             wait $others
             echo "::endgroup::"
