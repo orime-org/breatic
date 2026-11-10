@@ -91,13 +91,17 @@ describe("planned lifecycle start and complete media-index transaction (W15/M)",
   });
   it("M02 publishes version1 using original target, recipe and actual winner while preserving siblings", async () => {
     const f = await seedExecution(pg, "running"); const result = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f));
-    expect(result.record).toEqual({ ...f.record, status: "completed", resultVersion: 1, outputs: completion(f).outputs });
+    // The run made no call, so the terminal commit closes its empty consumption set and settlement waits.
+    expect(result.record).toEqual({ ...f.record, status: "completed", resultVersion: 1, billingState: "waiting", outputs: completion(f).outputs });
     const row = await executionSnapshot(pg, f); expect(row.status).toBe("completed"); expect(row.result.preserved).toEqual({ token: "original" });
     expect(result.record.sourceBindings[0]!.mediaInfo.duration).toBe(5.055); expect(result.record.outputs[0]!.result).toEqual(f.registered);
   });
   it("M03 replays identical media without version inflation or sibling changes", async () => {
-    const f = await seedExecution(pg); const r = await terminal(f); const before = await executionSnapshot(pg, f);
-    expect((await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f))).record).toEqual(r); expect(await executionSnapshot(pg, f)).toEqual(before);
+    const f = await seedExecution(pg); const r = await terminal(f);
+    // The first replay closes the run's empty consumption set; media stays as committed.
+    const closed = (await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f))).record; expect(closed).toEqual({ ...r, billingState: "waiting" });
+    const before = await executionSnapshot(pg, f);
+    expect((await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f))).record).toEqual(closed); expect(await executionSnapshot(pg, f)).toEqual(before);
   });
   it.each(["missing", "extra", "node", "recipe", "plan"])("M04 rejects %s in the complete stable index", async (bad) => {
     const f = await seedExecution(pg, "running"); const c = completion(f);
