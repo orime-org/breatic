@@ -657,6 +657,54 @@ export type NodeHistorySnapshotInput = z.infer<
   typeof nodeHistorySnapshotSchema
 >;
 
+/** The longest name a document snapshot may carry (inner#1129). */
+export const DOCUMENT_VERSION_NAME_MAX_CHARS = 100;
+
+/** A snapshot name as typed; blank reads as no name. */
+const documentVersionNameSchema = z
+  .string()
+  .max(DOCUMENT_VERSION_NAME_MAX_CHARS)
+  .transform((name) => name.trim());
+
+/**
+ * The body a snapshot keeps: the editor's ProseMirror JSON, comment marks and
+ * all, since those are where the comments stood when it was taken.
+ */
+const documentVersionContentSchema = z.object({ type: z.literal("doc") }).passthrough();
+
+/** The project and document a snapshot belongs to. */
+const documentVersionScope = {
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+};
+
+/** `POST /documents/versions`. */
+export const documentVersionSaveSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.optional().transform((name) => (name ? name : undefined)),
+  content: documentVersionContentSchema,
+  schema_version: z.string().min(1).max(200),
+});
+export type DocumentVersionSaveInput = z.infer<typeof documentVersionSaveSchema>;
+
+/** `PATCH /documents/versions/:id`; null or blank clears the name. */
+export const documentVersionRenameSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.nullable().transform((name) => (name ? name : null)),
+});
+export type DocumentVersionRenameInput = z.infer<typeof documentVersionRenameSchema>;
+
+/** `GET /documents/versions`, one page at a time. */
+export const documentVersionListQuerySchema = z.object({
+  ...documentVersionScope,
+  cursor: z.string().max(512).optional(),
+});
+export type DocumentVersionListQuery = z.infer<typeof documentVersionListQuerySchema>;
+
+/** The scope every read, rename and delete of one snapshot names. */
+export const documentVersionScopeSchema = z.object(documentVersionScope);
+export type DocumentVersionScope = z.infer<typeof documentVersionScopeSchema>;
+
 /** A storage address a paste names: a stored object's public URL. */
 const pasteAddressSchema = z.string().url().max(2048);
 
