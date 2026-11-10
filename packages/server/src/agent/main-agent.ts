@@ -535,7 +535,7 @@ export class MainAgent {
       //
       // A resumed segment is the exception: the turn it resumes is its
       // history, the paused reply with the answer appended to it included.
-      const { memoryContext, history, watermark } = await buildTurnContext(
+      const { memoryContext, history, watermark, projectInstructions } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
@@ -553,6 +553,8 @@ export class MainAgent {
       // The history above the watermark is added each time it is read.
       pageLinks ??= makePageLinks();
       for (const row of history) pageLinks.addRow(row);
+      // The instructions are text the Project's members wrote (#1400).
+      if (projectInstructions !== undefined) pageLinks.addUserMessage({ role: "user", content: projectInstructions });
 
       if (preparePictures === undefined) {
         turnStudioId = await assetService.resolveOwnerStudioId(projectId);
@@ -563,7 +565,7 @@ export class MainAgent {
       // domain/agent/agent-config.ts for why nothing else may assemble them.
       const firstAssembly = fixedAgentConfig === undefined;
       fixedAgentConfig ??= await buildAgentConfig({
-        basePrompt: buildSystemPrompt(), memoryContext,
+        basePrompt: buildSystemPrompt(), memoryContext, projectInstructions,
         ...(requestedModel === undefined ? {} : { modelId: requestedModel }),
         ...(signal === undefined ? {} : { signal }),
         toolContext: {
@@ -585,7 +587,7 @@ export class MainAgent {
       });
       const agentConfig: ResolvedAgentConfig = firstAssembly ? fixedAgentConfig : {
         ...fixedAgentConfig,
-        instructions: instructionsForAgentMemory(fixedAgentConfig.instructions.base, memoryContext),
+        instructions: instructionsForAgentMemory(fixedAgentConfig.instructions.base, memoryContext, projectInstructions),
       };
       if (opening.kind === "message" && preparedTurn === undefined) {
         const prepared = agentConfig.seesPictures
