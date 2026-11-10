@@ -9,13 +9,16 @@
  * lands carries that character into both videos, whether through a template
  * or a setup of its own. The same for the pet selfie vlog (inner#1816): asked
  * outright for a pet video it builds on that template; given only a pet photo
- * and a request for a video, what lands carries the pet.
+ * and a request for a video, what lands carries the pet. And sound (inner#1825):
+ * given a video and asked outright for background music, it builds on a music
+ * template; given the video and asked only to finish it, what lands offers an
+ * audio generation.
  *
  * Real model turns:
  *
  *   pnpm --filter @breatic/web test:smoke tests/smoke/agent-template-offers.spec.ts
  */
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, feedsOf, type CanvasProposal } from '@breatic/shared';
@@ -27,6 +30,21 @@ import { createSpace, deleteSpace } from '../helpers/space';
 
 /** The ids of the templates that serve the character goal. */
 const CHARACTER_TEMPLATES = new Set(GENERATION_TEMPLATES.filter((template) => template.goal === 'character').map((template) => template.id));
+
+/** The music templates a video's background music is built on. */
+const MUSIC_FOR_VIDEO = ['underscore-bgm', 'score-for-my-video'];
+
+/** The sound templates that give a video music, ambience or foley. */
+const SOUND_FOR_VIDEO = new Set([...MUSIC_FOR_VIDEO, 'clip-ambience-foley', 'ambience-sfx-bed']);
+
+/**
+ * How many audio generations the landed proposals offer.
+ * @param turn - The turn.
+ * @returns The count.
+ */
+function audioGenerations(turn: Turn): number {
+  return turn.landed.reduce((count, proposal) => count + proposal.nodes.filter((node) => node.type === 'audio' && node.role === 'generate').length, 0);
+}
 
 let page: Page;
 let spaceId = '';
@@ -130,7 +148,7 @@ async function ask(message: string, attach?: string): Promise<void> {
     // Files chosen before the composer can take them are dropped without a word.
     await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
     await page.getByTestId('chat-composer-file-input').setInputFiles(join(__dirname, '../fixtures', attach));
-    await expect(page.getByTestId('chat-composer-chips')).toContainText(attach, { timeout: 30_000 });
+    await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(attach), { timeout: 30_000 });
   }
   await composer.fill(message);
   // Attachments still uploading hold the send back; a press before then is
@@ -192,4 +210,25 @@ test('given a character photo and asked for two videos of her, it lands both vid
   // whether through a template or a setup of the agent's own.
   const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
   expect(carrying, `videos drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
+});
+
+test('given a video and asked outright for background music, it reads a music template and lands an audio generation built on it @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Add background music to this video. Do not ask me anything, just propose it.', 'mini-tools/driving.mp4');
+  const turn = await settledTurn(page);
+  const proposed = turn.templates.filter((id) => MUSIC_FOR_VIDEO.includes(id));
+  expect(proposed, `a landed proposal named a music template. Named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
+  expect(turn.read, `read: ${turn.read.join(', ')}`).toEqual(expect.arrayContaining(proposed));
+  expect(audioGenerations(turn), `audio generations landed; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
+test('given a video with no sound and asked only to finish it, what lands offers music or foley for it @needs-model', async () => {
+  test.setTimeout(240_000);
+  // The clip has no audio stream at all, so the missing sound is what is left to finish.
+  await ask('Help me finish this. Do not ask me anything, just propose it.', 'mini-tools/driving-silent.mp4');
+  const turn = await settledTurn(page);
+  // Solved when the user is offered sound for the video, whether through a sound template or a setup of the agent's own.
+  const offered = audioGenerations(turn) > 0 || turn.read.some((id) => SOUND_FOR_VIDEO.has(id));
+  expect(offered, `audio generations: ${String(audioGenerations(turn))}; read: ${turn.read.join(', ')}; templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
 });

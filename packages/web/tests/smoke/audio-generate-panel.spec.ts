@@ -17,13 +17,20 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect } from 'playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openGenerate, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
 import { visibleSpace } from '../helpers/space';
 
 registerCanvasStage();
+
+/** A one-pixel PNG, so a picture node holds something without a fetch. */
+const PIXEL_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 // One node, one panel, one continuous session — which is also how a person
 // uses it: open it, look at it, adjust it, submit. Splitting these into a test
@@ -406,6 +413,65 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('Fill in the speakers', {
     timeout: 10_000,
   });
+});
+
+/**
+ * Drag a connection from one node's out handle onto another's in handle, the
+ * way a hand does.
+ * @param page - The page.
+ * @param from - The node the edge leaves.
+ * @param to - The node it enters.
+ * @throws {Error} When either handle is not on screen.
+ */
+async function dragEdge(page: Page, from: string, to: string): Promise<void> {
+  const node = (id: string): Locator => visibleSpace(page).locator(`.react-flow__node[data-id="${id}"]`);
+  const [out, into] = await Promise.all([
+    node(from).locator('.react-flow__handle.source').first().boundingBox(),
+    node(to).locator('.react-flow__handle.target').first().boundingBox(),
+  ]);
+  if (out === null || into === null) throw new Error(`no handle to drag from ${from} to ${to}`);
+  await page.mouse.move(out.x + out.width / 2, out.y + out.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(into.x + into.width / 2, into.y + into.height / 2, { steps: 12 });
+  await page.mouse.up();
+}
+
+test('a video and a picture connect into an audio node, and its reference rail shows both as unusable', async ({ page }) => {
+  // Design §12, web row (inner#1825): the canvas takes these edges now, and no
+  // audio model reads a video or a picture from its reference pool, so the
+  // rail lists them dimmed and refuses to insert them.
+  await page.route('https://smoke-media.test/**', (route) =>
+    route.fulfill({
+      status: 200,
+      body: readFileSync(join(__dirname, '../fixtures/mini-tools/driving.mp4')),
+      headers: { 'access-control-allow-origin': '*', 'content-type': 'video/mp4' },
+    }),
+  );
+  const videoId = crypto.randomUUID();
+  const imageId = crypto.randomUUID();
+  const audioId = crypto.randomUUID();
+  await seedNode(videoId, 'video', 'https://smoke-media.test/clip.mp4', -700, -300);
+  await seedNode(imageId, 'image', PIXEL_PNG, -700, 0);
+  await seedNode(audioId, 'audio', undefined, -200, -150);
+  await page.getByTestId('viewport-toolbar').getByRole('button', { name: 'Fit to viewport', exact: true }).click();
+  await page.waitForTimeout(600);
+
+  await dragEdge(page, videoId, audioId);
+  await dragEdge(page, imageId, audioId);
+  const edges = visibleSpace(page).locator('.react-flow__edge');
+  await expect(edges).toHaveCount(2, { timeout: 10_000 });
+
+  await openGenerate(audioId);
+  const rows = page.locator('[data-testid^="generate-ref-insert-"]');
+  await expect(rows).toHaveCount(2, { timeout: 15_000 });
+  for (const row of await rows.all()) {
+    await expect(row).toHaveAttribute('aria-disabled', 'true');
+    await expect(row).toHaveCSS('opacity', '0.5');
+  }
+  await rows.first().click();
+  await expect(page.locator('[data-sonner-toast][data-type="warning"]').first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('generate-prompt-editor').locator('[data-reference-mention]')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('audio-picture-references.png') });
 });
 
 test('every voice of the default model plays its sample from the list', async ({ page }) => {
