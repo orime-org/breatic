@@ -599,6 +599,19 @@
       "needScene": "Open a 3D Space first.",
       "credits": "About {credits} credits",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project instructions",
+      "title": "Project instructions",
+      "description": "Sent to the Agent in every conversation in this Project. Shared by all members.",
+      "placeholder": "For example: reply in English; use only blue and white.",
+      "atLimit": "10,000-character limit reached",
+      "lastEdited": "Last edited by {name} on {time}",
+      "save": "Save",
+      "saved": "Saved",
+      "cleared": "Project instructions cleared",
+      "readFailed": "Couldn't load the Project instructions",
+      "saveFailed": "Couldn't save the Project instructions"
     }
   },
   "canvas": {

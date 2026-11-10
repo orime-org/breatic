@@ -599,6 +599,19 @@
       "needScene": "先開啟一個 3D Space。",
       "credits": "約 {credits} 積分",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project 指令",
+      "title": "Project 指令",
+      "description": "這裡寫的內容會在這個 Project 的每次對話中傳給 Agent，所有成員共用。",
+      "placeholder": "例如：回答用英文；配色只用藍和白。",
+      "atLimit": "已達到 10000 字上限",
+      "lastEdited": "最後由 {name} 修改於 {time}",
+      "save": "儲存",
+      "saved": "已儲存",
+      "cleared": "已清空 Project 指令",
+      "readFailed": "Project 指令讀取失敗",
+      "saveFailed": "Project 指令儲存失敗"
     }
   },
   "canvas": {

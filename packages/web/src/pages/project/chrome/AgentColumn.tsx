@@ -131,6 +131,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
           above the scrim, fully usable. */}
       <div className='contents' inert={unreachable}>
         <AgentColHeader
+          projectId={projectId}
           conversationName={currentTitle ?? ''}
           // The stand-in says "this one has no name", and that is something
           // only a conversation in hand can be said about. Until one arrives

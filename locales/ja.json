@@ -599,6 +599,19 @@
       "needScene": "先に 3D Space を開いてください。",
       "credits": "約 {credits} クレジット",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project の指示",
+      "title": "Project の指示",
+      "description": "この Project のすべての会話で Agent に送られます。メンバー全員で共有します。",
+      "placeholder": "例：英語で回答する。配色は青と白だけにする。",
+      "atLimit": "10,000 文字の上限に達しました",
+      "lastEdited": "{name} が {time} に最終更新",
+      "save": "保存",
+      "saved": "保存しました",
+      "cleared": "Project の指示をクリアしました",
+      "readFailed": "Project の指示を読み込めませんでした",
+      "saveFailed": "Project の指示を保存できませんでした"
     }
   },
   "canvas": {
