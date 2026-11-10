@@ -148,6 +148,23 @@ export function speakersShort(
 }
 
 /**
+ * The speakers a record names, in order, each by its name as written.
+ * @param model - The model, or undefined when unknown.
+ * @param params - Its param record.
+ * @returns The speakers; none when the model has no stand-in or the record names none.
+ * @throws {never} Never.
+ */
+export function dialogueSpeakers(model: StandInModel | undefined, params: Readonly<Record<string, unknown>>): { speaker: string }[] {
+  const standIn = standInOf(model);
+  const entries = standIn === null ? undefined : params[standIn.name];
+  if (!Array.isArray(entries)) return [];
+  return entries.map((entry: unknown) => {
+    const name = typeof entry === "object" && entry !== null ? (entry as { speaker?: unknown }).speaker : undefined;
+    return { speaker: typeof name === "string" ? name : "" };
+  });
+}
+
+/**
  * Each line's speaker as it is read: its own when it names one of the
  * speakers, else the previous line's, the first such speaker 1.
  * @param lines - The lines.

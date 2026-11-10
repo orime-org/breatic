@@ -7,7 +7,7 @@
  * voice, the decision the panel and the landing make with the same shared
  * function, and the script its lines send.
  */
-import { dialogueSideOf, dialogueText, STAND_IN_ON, standInOf, type ModelEntry, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { dialogueSideOf, dialogueSpeakers, dialogueText, STAND_IN_ON, type ModelEntry, type PromptSegment, type ProposalNode } from "@breatic/shared";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
@@ -43,13 +43,7 @@ export function onDialogueSide(node: Pick<ProposalNode, "model" | "params">): bo
  * @throws {never} Never.
  */
 export function proposalSpeakers(node: Pick<ProposalNode, "model" | "params">): { speaker: string }[] {
-  const standIn = standInOf(proposalModelEntry(node));
-  const entries = standIn === null ? undefined : node.params?.[standIn.name];
-  if (!Array.isArray(entries)) return [];
-  return entries.map((entry: unknown) => {
-    const name = typeof entry === "object" && entry !== null ? (entry as { speaker?: unknown }).speaker : undefined;
-    return { speaker: typeof name === "string" ? name : "" };
-  });
+  return dialogueSpeakers(proposalModelEntry(node), node.params ?? {});
 }
 
 /**

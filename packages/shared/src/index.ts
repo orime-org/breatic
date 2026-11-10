@@ -909,6 +909,7 @@ export {
 export {
   STAND_IN_ON,
   dialogueSideOf,
+  dialogueSpeakers,
   dialogueText,
   isStandInOn,
   lineSpeakers,
