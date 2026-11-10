@@ -41,6 +41,7 @@ import {
 } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-overlay-test-driver";
 
@@ -242,7 +243,7 @@ describe("money spent in a deleted studio stays on the account (plan §4.2)", ()
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);
     // Spend some of it while the studio is still there.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 120,
@@ -274,7 +275,7 @@ describe("whether a studio is gone is read, not inferred", () => {
     // Spend the purchase to exactly zero: `planCharge` takes
     // min(remaining, owed), so `applyCharge`'s CASE marks it depleted. That
     // is where every purchase ends up.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,
@@ -299,7 +300,7 @@ describe("whether a studio is gone is read, not inferred", () => {
   it("leaves the first studio alive after a purchase is repointed", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx.userId, 300, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 50,
@@ -324,7 +325,7 @@ describe("the ledger is read by payer", () => {
   it("shows a debt paid off as a repayment, not as a generation", async () => {
     const fx = await seedFixture();
     // Run up the debt first: with no purchase to draw on, all of it is owed.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
@@ -364,7 +365,7 @@ describe("a deleted studio says so on its row", () => {
   it("reads deleted as true with the name still reachable", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 120,
@@ -387,7 +388,7 @@ describe("a deleted studio says so on its row", () => {
   it("carries the studio name on every ledger row", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
@@ -422,7 +423,7 @@ describe("a studio's debt is the studio's, not the user's", () => {
     // does not reach — this row is manufactured to isolate the debt.
     const fx = await seedFixture();
     await seedLot(fx.userId, 10, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -673,13 +674,13 @@ describe("one generation is one ledger row (plan §4.8)", () => {
     await seedLot(fx.userId, 100, 1000, fx.studioId);
     await seedLot(fx.userId, 100, 1000, fx.studioId);
     await seedLot(fx.userId, 100, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 250,
       // Every real charge carries one: the canvas path passes the task id
       // (`dispatch.ts:807`) and the agent and text tools go through
-      // `chargeOnceForGeneration`, which passes its idempotency key. It is
+      // `chargeOnce`, which passes its idempotency key. It is
       // what ties the rows of one generation together.
       referenceId: `overlay-charge-${Date.now()}`,
       model: "kling-v2.1",
@@ -733,7 +734,7 @@ describe("a debt is the studio's and names nobody", () => {
 
     // He runs something dearer than the balance: 30 comes off the purchase
     // and 70 is recorded as the studio's debt.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: guest!.id,
       amount: 100,
@@ -751,7 +752,7 @@ describe("a debt is the studio's and names nobody", () => {
   it("shows the funder what he paid, with the debt off his account", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 30, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,
@@ -779,7 +780,7 @@ describe("a debt is the studio's and names nobody", () => {
     const fx = await seedFixture();
     // No purchase at all: the whole charge is owed and no `spend` row is
     // written.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
@@ -806,7 +807,7 @@ describe("usage that drew on no purchase is listed and says so", () => {
     await seedLot(fx.userId, 500, 1000, fx.studioId);
     // No studio means no pool to draw on: the text tools' path carries no
     // project id at all.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: null,
       actorUserId: fx.userId,
       amount: 42,
@@ -838,7 +839,7 @@ describe("usage that drew on no purchase is listed and says so", () => {
 describe("every studio row can say why it is there", () => {
   it("drops a studio from the list once its debt is paid", async () => {
     const fx = await seedFixture();
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 40,
@@ -883,7 +884,7 @@ describe("every studio row can say why it is there", () => {
     const guestCookie = await loginAs(guest!.id);
 
     // He generates here and runs up 40 owed, holding no purchase.
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: guest!.id,
       amount: 40,
@@ -910,7 +911,7 @@ describe("every studio row can say why it is there", () => {
   it("still counts a spent purchase among those pointed at the studio", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 100, 1000, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 100,

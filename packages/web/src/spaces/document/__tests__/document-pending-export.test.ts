@@ -59,6 +59,16 @@ describe.each(['image', 'video', 'audio'] as const)('a pending %s block', (type)
     expect(externalHTML).not.toMatch(/<(img|video|audio)\b/);
   });
 
+  // The canvas counts such a line as one medium not pasted (inner#1537 §5.5).
+  it('marks that line as a block still uploading', () => {
+    const editor = open(type);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const body = new DOMParser().parseFromString(selectedFragmentToHTML(view, editor).externalHTML, 'text/html').body;
+    const marked = [...body.querySelectorAll('[data-upload-pending]')];
+    expect(marked.map((element) => element.textContent)).toEqual([LINE()]);
+  });
+
   it('goes to the Agent as that line, from a selection and from the block itself', () => {
     const editor = open(type);
     const view = editor.prosemirrorView!;

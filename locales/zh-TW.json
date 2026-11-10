@@ -2250,7 +2250,8 @@
         },
         "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
         "notWrittenYet": "已上傳，還沒寫進正文",
-        "notPasted": "{count} 項沒有貼上。"
+        "notPasted": "{count} 項沒有貼上。",
+        "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
       }
     },
     "readOnlyReconnect": "重新連線",

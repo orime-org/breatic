@@ -1117,6 +1117,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.document.media.stillUploading": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.uploadFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.failure.storageFull": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.failure.rateLimited": { excluded: REASONS.SAYS_WHAT_HAPPENED },

@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a finished run does with its credits (inner#1611).
+ * What a finished run does with its credits (inner#1611, inner#1617).
  *
- * The run was admitted by holding its estimate under the task id. The run
- * that marked the task completed charges what it actually cost and releases
- * that hold in the same commit; any other ending of this step releases the
- * hold on its own, so the credits are not held for a run that is over.
+ * The run was admitted by holding its estimate under the task id. The attempt
+ * that marked the task completed also wrote a pending charge request in that
+ * same commit; this step settles that request, which charges what the run
+ * actually cost and releases the hold in the settle's own commit. A run with
+ * no request (it cost nothing, or another attempt completed the task) only
+ * releases the hold. A settle that fails leaves the request pending for the
+ * sweep (the credit engine counts the failure on the row), keeps the hold,
+ * and never throws: the result is already delivered. Every log line carries
+ * the run's context and the request id.
  */
 
 import type * as SharedModule from "@breatic/shared";
@@ -15,7 +20,8 @@ import type * as SharedModule from "@breatic/shared";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const h = vi.hoisted(() => ({
-  chargeForGeneration: vi.fn(),
+  pendingChargeRequestId: vi.fn(),
+  settleCharge: vi.fn(),
   releaseHold: vi.fn(),
   error: vi.fn(),
 }));
@@ -41,7 +47,10 @@ vi.mock("@breatic/domain", () => ({
   taskService: {},
   upstreamStepRepo: {},
   assetService: {},
-  creditLotService: { chargeForGeneration: h.chargeForGeneration },
+  creditLotService: {
+    pendingChargeRequestId: h.pendingChargeRequestId,
+    settleCharge: h.settleCharge,
+  },
   creditHoldService: { releaseHold: h.releaseHold },
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: {},
@@ -67,84 +76,113 @@ const RUN = {
   provider: "p",
 };
 
+const REQUEST = "req-1";
+
+/** What every log line for a first, paid run carries. */
+const CONTEXT = { taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 7, wasFirst: true, requestId: REQUEST };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+  h.pendingChargeRequestId.mockResolvedValue(REQUEST);
+  h.settleCharge.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
   h.releaseHold.mockResolvedValue(undefined);
 });
 
 describe("settleRunCharge", () => {
-  it("charges the actual cost and releases the run's hold in the same charge", async () => {
+  it("settles the task's pending request, which releases the hold in its own commit", async () => {
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.chargeForGeneration).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 7, referenceId: "task-1", releaseHold: "task-1", projectId: "proj-1" }),
-    );
+    expect(h.pendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
+    expect(h.settleCharge).toHaveBeenCalledExactlyOnceWith(REQUEST);
     expect(h.releaseHold).not.toHaveBeenCalled();
   });
 
   it("releases the hold of a run that cost nothing", async () => {
+    h.pendingChargeRequestId.mockResolvedValue(null);
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 0 });
-    expect(h.chargeForGeneration).not.toHaveBeenCalled();
-    expect(h.releaseHold).toHaveBeenCalledWith("task-1");
+    expect(h.settleCharge).not.toHaveBeenCalled();
+    expect(h.releaseHold).toHaveBeenCalledExactlyOnceWith("task-1");
   });
 
   it("releases the hold when another attempt already completed the task", async () => {
+    h.pendingChargeRequestId.mockResolvedValue(null);
     await settleRunCharge({ ...RUN, wasFirst: false, creditsUsed: 7 });
-    expect(h.chargeForGeneration).not.toHaveBeenCalled();
-    expect(h.releaseHold).toHaveBeenCalledWith("task-1");
+    expect(h.settleCharge).not.toHaveBeenCalled();
+    expect(h.releaseHold).toHaveBeenCalledExactlyOnceWith("task-1");
   });
 
   it("logs a charge that could not be covered", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "2.000000", shortfall: "5.000000", studioId: "s", lotIds: [] });
+    h.settleCharge.mockResolvedValue({ billed: true, charged: "2.000000", shortfall: "5.000000", studioId: "s", lotIds: [] });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.error).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "task-1", shortfall: "5.000000" }),
-      expect.stringContaining("CREDIT_SHORTFALL_AFTER_COMPLETION"),
+    expect(h.error).toHaveBeenCalledExactlyOnceWith(
+      { ...CONTEXT, studioId: "s", charged: "2.000000", shortfall: "5.000000" },
+      "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
     );
   });
 
   it("logs a charge whose readers could not be told", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down") });
+    const redis = new Error("redis down");
+    h.settleCharge.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: redis });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.error).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "task-1", projectId: "proj-1" }),
-      "credits_signal_failed",
-    );
+    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: redis }, "credits_signal_failed");
   });
 
-  it("logs a charge that failed and leaves the hold to its expiry", async () => {
-    h.chargeForGeneration.mockRejectedValue(new Error("db down"));
-    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.error).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: "task-1" }),
-      expect.stringContaining("DEDUCT_FAILED_AFTER_COMPLETION"),
-    );
+  it("does nothing more when the request was already settled by the sweep", async () => {
+    h.settleCharge.mockResolvedValue(null);
+    await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
+    expect(h.error).not.toHaveBeenCalled();
     expect(h.releaseHold).not.toHaveBeenCalled();
   });
 
+  it("logs a settle that failed with the run and the request, keeps the hold and does not throw", async () => {
+    const down = new Error("db down");
+    h.settleCharge.mockRejectedValue(down);
+    await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
+    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: down }, "credit_charge_settle_failed");
+    expect(h.releaseHold).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when the settle and its failure record both failed", async () => {
+    const both = new AggregateError([new Error("db down"), new Error("still down")], "charge settlement and its failure record both failed");
+    h.settleCharge.mockRejectedValue(both);
+    await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
+    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: both }, "credit_charge_settle_failed");
+    expect(h.releaseHold).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when looking the request up fails, and keeps the hold for the sweep's settle or its expiry", async () => {
+    const down = new Error("db down");
+    h.pendingChargeRequestId.mockRejectedValue(down);
+    await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
+    expect(h.settleCharge).not.toHaveBeenCalled();
+    expect(h.releaseHold).not.toHaveBeenCalled();
+    expect(h.error).toHaveBeenCalledExactlyOnceWith(
+      { err: down, taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 7 },
+      "credit_charge_request_lookup_failed",
+    );
+  });
+
   it("logs a release that failed without throwing", async () => {
+    h.pendingChargeRequestId.mockResolvedValue(null);
     h.releaseHold.mockRejectedValue(new Error("db down"));
     await expect(settleRunCharge({ ...RUN, wasFirst: false, creditsUsed: 0 })).resolves.toBeUndefined();
     expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task-1" }), "credit_hold_release_failed");
   });
 });
 
-
 describe("decimal charge outcomes", () => {
   it("M20 keeps a zero decimal shortfall silent", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
     expect(h.error).toHaveBeenCalledTimes(0);
-    expect(h.chargeForGeneration).toHaveBeenCalledTimes(1);
+    expect(h.settleCharge).toHaveBeenCalledTimes(1);
     expect(h.releaseHold).toHaveBeenCalledTimes(0);
   });
 
   it("M20 logs an exact one-micro-credit shortfall", async () => {
-    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    h.settleCharge.mockResolvedValue({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
     expect(h.error).toHaveBeenCalledTimes(1);
     expect(h.error).toHaveBeenCalledWith(
-      { taskId: "task-1", userId: "user-1", studioId: "s", charged: "6.999999", shortfall: "0.000001" },
+      { ...CONTEXT, studioId: "s", charged: "6.999999", shortfall: "0.000001" },
       "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
     );
     expect(h.releaseHold).toHaveBeenCalledTimes(0);

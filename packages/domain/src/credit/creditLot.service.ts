@@ -25,6 +25,8 @@ import { randomUUID } from "node:crypto";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import * as creditChargeRepo from "@domain/credit/creditCharge.repo.js";
+import type { ChargeRequestKind, NewChargeRequest, SweepableChargeRequest } from "@domain/credit/creditCharge.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
@@ -38,7 +40,6 @@ import {
 import {
   db,
   env,
-  getRedis,
   publishCreditsChanged,
   AppError,
   NotFoundError,
@@ -68,13 +69,10 @@ import type {
 
 /**
  * The shape a caller-supplied idempotency key must take: ASCII alphanumerics
- * plus `_`, `:`, `.` and `-`, 1 to 255 long. Checked at entry so a malformed
- * key cannot collide with another by collapsing to the same lock key.
+ * plus `_`, `:`, `.` and `-`, 1 to 255 long. Checked at entry, so a malformed
+ * key is refused before anything is written.
  */
 export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
-
-/** How long a billed key stays claimed. */
-const BILL_LOCK_TTL_SECONDS = 86_400;
 
 /**
  * The answer a refused ask is given, built when the ask is made.
@@ -261,11 +259,9 @@ export async function grantTrialCredits(
 }
 
 /**
- * Charge one generation to the studio that owns its project.
- *
- * Runs after the work was delivered, so it never fails the caller and never
- * rolls anything back. What it cannot cover it reports; what it can cover it
- * takes, lot by lot, oldest first.
+ * Apply one charge to the studio that owns its project, inside the settlement
+ * transaction of its charge request. What it cannot cover becomes the studio's
+ * debt; what it can cover it takes, lot by lot, oldest first.
  *
  * Locking is the part worth reading twice. Candidates are chosen without
  * locks, then locked one at a time in that same order — a fixed order, so two
@@ -283,11 +279,12 @@ export async function grantTrialCredits(
  *
  * Only as many lots are locked as the charge needs.
  * @param input - What to charge and on whose behalf.
+ * @param tx - The settlement's transaction, which already holds the request row.
  * @returns What was taken, what was not, and from where.
+ * @throws {Error} When resolving the studio fails for any reason other than a
+ *   missing project, or a write fails; the settlement then rolls back.
  */
-export async function chargeForGeneration(
-  input: ChargeInput,
-): Promise<ChargeOutcome> {
+async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome> {
   const amountMicro = toChargeMicro(input.amount);
   // A project that vanished while the task ran leaves nothing to charge, and
   // the usage still has to be recorded: the work was delivered. That is the one
@@ -325,7 +322,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
-    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     return { billed: false, charged: fromMicroCredits(0n), shortfall: fromMicroCredits(0n), studioId, lotIds: [] };
   }
 
@@ -339,7 +336,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
-    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     return {
       billed: false,
       charged: fromMicroCredits(0n),
@@ -349,91 +346,159 @@ export async function chargeForGeneration(
     };
   }
 
-  const outcome = await db.transaction(async (tx): Promise<ChargeOutcome> => {
-    // The debt row first, and before any lot. Both writers take it in this
-    // order, so two charges on one studio — or a charge and a designation —
-    // queue up rather than each holding half of what the other needs. The
-    // whole order is `studios` → `studio_members` → `studio_credit_debts` →
-    // `credit_holds` → `credit_lots`; a charge joins it at the debt, a
-    // designation one table earlier, and accepting a transfer at the
-    // membership. An admission that holds credits takes the same debt lock, so
-    // it sees this charge and the hold it releases together.
-    await creditLotRepo.lockDebt(studioId, tx);
-    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
-    const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
+  // The debt row first, and before any lot. Both writers take it in this
+  // order, so two charges on one studio — or a charge and a designation —
+  // queue up rather than each holding half of what the other needs. The
+  // whole order is `credit_charge_requests` → `studios` → `studio_members` →
+  // `studio_credit_debts` → `credit_holds` → `credit_lots`; a charge holds its
+  // request row and joins the rest at the debt, a
+  // designation one table earlier, and accepting a transfer at the
+  // membership. An admission that holds credits takes the same debt lock, so
+  // it sees this charge and the hold it releases together.
+  await creditLotRepo.lockDebt(studioId, tx);
+  if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
+  const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
-    const locked: { id: string; remaining: CreditMicro }[] = [];
-    let available = toMicroCredits("0");
-    for (const candidate of candidates) {
-      if (available >= amountMicro) break;
-      const row = await creditLotRepo.lockLot(candidate.id, tx);
-      if (!row) continue;
-      if (row.lifecycle !== "active") continue;
-      if (row.designatedStudioId !== studioId) continue;
-      const remaining = toMicroCredits(row.remainingCredits);
-      if (remaining <= 0n) continue;
-      locked.push({ id: row.id, remaining });
-      available = addCreditMicro(available, remaining);
-    }
+  const locked: { id: string; remaining: CreditMicro }[] = [];
+  let available = toMicroCredits("0");
+  for (const candidate of candidates) {
+    if (available >= amountMicro) break;
+    const row = await creditLotRepo.lockLot(candidate.id, tx);
+    if (!row) continue;
+    if (row.lifecycle !== "active") continue;
+    if (row.designatedStudioId !== studioId) continue;
+    const remaining = toMicroCredits(row.remainingCredits);
+    if (remaining <= 0n) continue;
+    locked.push({ id: row.id, remaining });
+    available = addCreditMicro(available, remaining);
+  }
 
-    const plan = planCharge(locked, amountMicro);
+  const plan = planCharge(locked, amountMicro);
 
-    for (const allocation of plan.allocations) {
-      await creditLotRepo.applyCharge(
-        allocation.lotId,
-        fromMicroCredits(allocation.amount),
-        tx,
-      );
-      await creditLotRepo.appendLedgerEntry(
-        {
-          ...usageEntry,
-          payerUserId: candidates.find((lot) => lot.id === allocation.lotId)!.userId,
-          amount: fromMicroCredits(-allocation.amount),
-          lotId: allocation.lotId,
-        },
-        tx,
-      );
-    }
+  for (const allocation of plan.allocations) {
+    await creditLotRepo.applyCharge(
+      allocation.lotId,
+      fromMicroCredits(allocation.amount),
+      tx,
+    );
+    await creditLotRepo.appendLedgerEntry(
+      {
+        ...usageEntry,
+        payerUserId: candidates.find((lot) => lot.id === allocation.lotId)!.userId,
+        amount: fromMicroCredits(-allocation.amount),
+        lotId: allocation.lotId,
+      },
+      tx,
+    );
+  }
 
-    // What the lots could not cover becomes what this studio owes. One row,
-    // whether the charge took part of the bill or none of it: both are the
-    // same event seen from the pool, and it carries the full context because
-    // a charge that took nothing wrote no `spend` row to carry it — the
-    // project and the model on the credits page come from here.
-    if (plan.shortfall > 0n) {
-      await creditLotRepo.adjustDebt(
-        studioId,
-        fromMicroCredits(plan.shortfall),
-        tx,
-      );
-      await creditLotRepo.appendLedgerEntry(
-        {
-          ...usageEntry,
-          // The studio owes this, and nobody has paid it. Whoever assigns a
-          // purchase to the studio pays it off, and that is the row that
-          // names them.
-          payerUserId: null,
-          entryType: "debt_incurred",
-          amount: fromMicroCredits(-plan.shortfall),
-          lotId: null,
-        },
-        tx,
-      );
-    }
-
-    const charged = subtractCreditMicro(amountMicro, plan.shortfall);
-    return {
-      billed: charged > 0n,
-      charged: fromMicroCredits(charged),
-      shortfall: fromMicroCredits(plan.shortfall),
+  // What the lots could not cover becomes what this studio owes. One row,
+  // whether the charge took part of the bill or none of it: both are the
+  // same event seen from the pool, and it carries the full context because
+  // a charge that took nothing wrote no `spend` row to carry it — the
+  // project and the model on the credits page come from here.
+  if (plan.shortfall > 0n) {
+    await creditLotRepo.adjustDebt(
       studioId,
-      lotIds: plan.allocations.map((allocation) => allocation.lotId),
-    };
-  });
-  // After the commit, so a user who reads again sees this charge.
-  if (input.projectId === null) return outcome;
+      fromMicroCredits(plan.shortfall),
+      tx,
+    );
+    await creditLotRepo.appendLedgerEntry(
+      {
+        ...usageEntry,
+        // The studio owes this, and nobody has paid it. Whoever assigns a
+        // purchase to the studio pays it off, and that is the row that
+        // names them.
+        payerUserId: null,
+        entryType: "debt_incurred",
+        amount: fromMicroCredits(-plan.shortfall),
+        lotId: null,
+      },
+      tx,
+    );
+  }
+
+  const charged = subtractCreditMicro(amountMicro, plan.shortfall);
+  return {
+    billed: charged > 0n,
+    charged: fromMicroCredits(charged),
+    shortfall: fromMicroCredits(plan.shortfall),
+    studioId,
+    lotIds: plan.allocations.map((allocation) => allocation.lotId),
+  };
+}
+
+export type { ChargeRequestKind, SweepableChargeRequest };
+
+/** The input a charge request is recorded with. */
+export type ChargeRequestInput = NewChargeRequest;
+
+/**
+ * Record a charge for delivered work, in the transaction that records the
+ * delivery (inner#1617). Nothing is charged yet: the request is settled by
+ * {@link settleCharge}, right after the commit or later by the worker sweep.
+ * @param input - The charge and the key it is filed under.
+ * @param tx - The delivery's transaction.
+ * @returns The request's id, or null when its kind, actor and reference already have one.
+ */
+export async function requestCharge(input: ChargeRequestInput, tx: DbTx): Promise<string | null> {
+  return creditChargeRepo.insertPending(input, tx);
+}
+
+/**
+ * Settle a charge request: lock it, apply its charge and mark it settled in
+ * one commit, then tell the project's users. A request already settled is
+ * left alone, so every path that may settle one can call this. A settlement
+ * that fails is counted on the request, keeping what the database said, and
+ * the sweep tries it again, least recently tried first.
+ * @param requestId - The request.
+ * @returns What was charged, or null when the request is settled or gone.
+ * @throws {Error} When the charge cannot be applied; the request stays pending.
+ */
+export async function settleCharge(requestId: string): Promise<ChargeOutcome | null> {
   try {
-    await publishCreditsChanged(input.projectId);
+    return await settleOnce(requestId);
+  } catch (err) {
+    await creditChargeRepo.recordFailure(requestId, errorChainText(err)).catch((recordErr: unknown) => {
+      throw new AggregateError([err, recordErr], "charge settlement and its failure record both failed");
+    });
+    throw err;
+  }
+}
+
+/**
+ * One settlement attempt; see {@link settleCharge}.
+ * @param requestId - The request.
+ * @returns What was charged, or null when the request is settled or gone.
+ * @throws {Error} When the charge cannot be applied.
+ */
+async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
+  const settled = await db.transaction(async (tx): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> => {
+    const request = await creditChargeRepo.lockById(requestId, tx);
+    if (request === null || request.status === "settled") return null;
+    const outcome = await applyCharge(
+      {
+        projectId: request.projectId,
+        actorUserId: request.actorUserId,
+        amount: Number(request.amount),
+        description: request.description ?? undefined,
+        referenceId: request.referenceId,
+        tokensUsed: request.tokensUsed ?? undefined,
+        model: request.model ?? undefined,
+        provider: request.provider ?? undefined,
+        releaseHold: request.releaseHold ?? undefined,
+      },
+      tx,
+    );
+    await creditChargeRepo.markSettled(request.id, tx);
+    return { outcome, projectId: request.projectId };
+  });
+  if (settled === null) return null;
+  const { outcome, projectId } = settled;
+  // Only a charge against a studio's pool changes what its users see.
+  if (projectId === null || outcome.studioId === null || !env.PAYMENT_ENABLED) return outcome;
+  try {
+    await publishCreditsChanged(projectId);
     return outcome;
   } catch (err) {
     return { ...outcome, signalFailure: err };
@@ -441,44 +506,74 @@ export async function chargeForGeneration(
 }
 
 /**
- * Charge a generation at most once for a given key.
- *
- * A chat turn and a text-tool run can both arrive twice — a reconnect, a
- * replayed stream — and the caller-supplied key is what makes the second
- * arrival free. The lock sits outside the cross-lot logic, so a key that has
- * already been billed never reaches it.
+ * An error and the causes under it, as one line. Drizzle wraps a failed query
+ * in an error that names only the statement; what the database refused is in
+ * its `cause`, and that is what someone reading the row needs.
+ * @param err - What was thrown.
+ * @returns Each message, outermost first, joined with " <- ".
+ */
+function errorChainText(err: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = err;
+  while (current !== undefined && current !== null && messages.length < 5) {
+    messages.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return messages.join(" <- ");
+}
+
+/**
+ * Record and settle a charge that has no delivery transaction to join: a chat
+ * turn, a consolidation, a text-tool run, a looked-up model call. Callers
+ * record the request as soon as the amount is known, so a process that dies
+ * after that leaves it pending for the sweep.
  *
  * The key is scoped by the acting user, matching how Stripe, Square, AWS and
  * PayPal scope idempotency keys: two accounts whose keys collide never
- * interfere, so nobody can skip their own charge by reusing somebody else's
- * key. On failure the lock is released, leaving a retry able to charge.
+ * interfere.
+ * @param kind - What kind of delivery this is.
  * @param refKey - The caller's idempotency key.
  * @param input - What to charge and on whose behalf.
- * @returns The outcome on the first call, or null when this key was already billed.
- * @throws {Error} If `refKey` does not match {@link REFKEY_PATTERN} — a caller
- *   of ours built it, so this reaches the handler's 500 branch and is logged.
+ * @returns The outcome, or null when this key was already charged or requested.
+ * @throws {Error} If `refKey` does not match {@link REFKEY_PATTERN}, or the
+ *   settlement fails; a failed settlement stays pending for the sweep.
  */
-export async function chargeOnceForGeneration(
+export async function chargeOnce(
+  kind: ChargeRequestKind,
   refKey: string,
-  input: ChargeInput,
+  input: Omit<ChargeInput, "referenceId" | "releaseHold">,
 ): Promise<ChargeOutcome | null> {
   if (!REFKEY_PATTERN.test(refKey)) {
-    throw new Error(
-      `chargeOnceForGeneration: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`,
-    );
+    throw new Error(`chargeOnce: refKey must match ${REFKEY_PATTERN} (got ${JSON.stringify(refKey)})`);
   }
+  const requestId = await db.transaction((tx) => requestCharge({ ...input, kind, referenceId: refKey }, tx));
+  if (requestId === null) return null;
+  return settleCharge(requestId);
+}
 
-  const redis = getRedis();
-  const lockKey = `${env.ENV}:bill:${input.actorUserId}:${refKey}`;
-  const acquired = await redis.set(lockKey, "1", "EX", BILL_LOCK_TTL_SECONDS, "NX");
-  if (acquired !== "OK") return null;
+/**
+ * The pending request filed under a key.
+ * @param kind - Its kind.
+ * @param actorUserId - Its actor.
+ * @param referenceId - Its reference.
+ * @returns Its id, or null when there is none or it is settled.
+ */
+export async function pendingChargeRequestId(
+  kind: ChargeRequestKind,
+  actorUserId: string,
+  referenceId: string,
+): Promise<string | null> {
+  return creditChargeRepo.findPendingId(kind, actorUserId, referenceId);
+}
 
-  try {
-    return await chargeForGeneration({ ...input, referenceId: refKey });
-  } catch (err) {
-    await redis.del(lockKey);
-    throw err;
-  }
+/**
+ * Pending requests the sweep may settle now.
+ * @param minAgeMs - How long a request must have been left alone.
+ * @param limit - How many to take.
+ * @returns The requests, least recently tried first.
+ */
+export async function listSweepableChargeRequests(minAgeMs: number, limit: number): Promise<SweepableChargeRequest[]> {
+  return creditChargeRepo.listSweepable(minAgeMs, limit);
 }
 
 /**

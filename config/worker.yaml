@@ -29,6 +29,8 @@ concurrency:
     audio-peaks: 2
     # One durable SQL outbox scan runs at a time; its jobs only enqueue stable operation wakes.
     long-media-dispatch: 1
+    # One charge sweep round runs at a time; settlements lock their own rows.
+    credit-charge-sweep: 1
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
@@ -59,3 +61,17 @@ lock_duration_ms: 600000
 # an attempt, until the task's two-hour budget (config/node-tasks.yaml).
 poll_interval: 3000
 
+
+# ── Credit charge sweep (inner#1617) ──────────────
+# A delivered result's charge is recorded as a pending request and settled
+# right away; the sweep settles the ones that failed or whose process died
+# first. A row that keeps failing stays pending, is logged each round and moves
+# to the back of the queue.
+credit_charge_sweep:
+  # How often the sweep runs.
+  interval_ms: 60000
+  # A request created or last tried less than this ago is left alone: a new one
+  # to the process that recorded it, a failed one until the next round.
+  min_age_ms: 30000
+  # Requests one round settles at most.
+  batch_size: 100

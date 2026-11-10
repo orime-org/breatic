@@ -130,7 +130,7 @@ describe('useNodeCreation', () => {
 
   it('pastePayload clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', async () => {
     // The text's history is registered with the server first.
-    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const ids = await result.current.pastePayload(
@@ -154,6 +154,33 @@ describe('useNodeCreation', () => {
     paste.mockRestore();
   });
 
+  // A document block holds only an address (inner#1537 §5.4): the numbers and
+  // the cover come from the target studio's ledger, as the server answers them.
+  it('pastePayload fills the media fields a copy lacks from the answer, keeping what it carries', async () => {
+    const stored = 'https://resource.example/video/2026-11-09/1_a.mp4';
+    const filed = 'https://resource.example/video/2026-11-09/2_b.mp4';
+    const cover = 'https://resource.example/video/2026-11-09/2_b_cover.png';
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({
+      map: { [stored]: filed },
+      media: { [filed]: { coverUrl: cover, width: 640, height: 360, duration: 4.5, mimeType: 'video/mp4', size: 4096 } },
+    });
+    const { result } = renderHook(() => useNodeCreation('p1', 's1'));
+
+    const ids = await result.current.pastePayload(
+      payloadOf([
+        { id: 'a', type: 'video', position: { x: 0, y: 0 }, data: { name: 'clip', content: stored }, original: true },
+        { id: 'b', type: 'video', position: { x: 400, y: 0 }, data: { name: 'kept', content: stored, mediaWidth: 100 }, original: true },
+      ]),
+      { dx: 0, dy: 0 },
+    );
+
+    const doc = getDoc(docName.canvasSpace('p1', 's1'));
+    const [first, second] = (ids ?? []).map((id) => canvasSpace.nodeDataMap(doc, id)?.toJSON() as Record<string, unknown>);
+    expect(first).toMatchObject({ content: filed, coverUrl: cover, mediaWidth: 640, mediaHeight: 360, duration: 4.5, mimeType: 'video/mp4', size: 4096 });
+    expect(second).toMatchObject({ content: filed, mediaWidth: 100, mediaHeight: 360 });
+    paste.mockRestore();
+  });
+
   // The Space's tab hidden while the server answers: the document is still
   // open, so the copies land in it (React runs effect cleanups on a hidden
   // Activity). A closed Space's document is gone and nothing is written.
@@ -170,7 +197,7 @@ describe('useNodeCreation', () => {
       let release = (): void => undefined;
       vi.spyOn(canvasApi, 'paste').mockReturnValue(
         new Promise((resolve) => {
-          release = () => resolve({ map: {} });
+          release = () => resolve({ map: {}, media: {} });
         }),
       );
       const { result, unmount } = renderHook(() => useNodeCreation('p1', 's1'));
@@ -202,7 +229,7 @@ describe('useNodeCreation', () => {
       let release = (): void => undefined;
       vi.spyOn(canvasApi, 'paste').mockReturnValue(
         new Promise((resolve) => {
-          release = () => resolve({ map: {} });
+          release = () => resolve({ map: {}, media: {} });
         }),
       );
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
@@ -233,7 +260,7 @@ describe('useNodeCreation', () => {
       let release = (): void => undefined;
       vi.spyOn(canvasApi, 'paste').mockReturnValue(
         new Promise((resolve) => {
-          release = () => resolve({ map: {} });
+          release = () => resolve({ map: {}, media: {} });
         }),
       );
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
@@ -271,7 +298,7 @@ describe('useNodeCreation', () => {
       let release = (): void => undefined;
       vi.spyOn(canvasApi, 'paste').mockReturnValue(
         new Promise((resolve) => {
-          release = () => resolve({ map: {} });
+          release = () => resolve({ map: {}, media: {} });
         }),
       );
       const { result } = renderHook(() => useNodeCreation('p1', 's1'));
