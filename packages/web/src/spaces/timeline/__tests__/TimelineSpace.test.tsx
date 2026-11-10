@@ -742,10 +742,14 @@ describe('TimelineSpace local uploads in the background', () => {
     const file = await confirmLocal();
     const { id } = onlyClip();
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
+    // The preview draws nothing for the placeholder at the playhead and notes it by track (design §4.3).
+    const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state });
+    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('failed'));
     fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
     fireEvent.click(await screen.findByTestId('timeline-upload-retry'));
     await waitFor(() => expect(vi.mocked(uploadMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'uploading'));
+    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('uploading'));
   });
 
   it('offers no retry when sending the same file again cannot help', async () => {
