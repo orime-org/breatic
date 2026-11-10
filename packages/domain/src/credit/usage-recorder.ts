@@ -126,6 +126,12 @@ export interface UsageRecorder {
   awaitingLookup(): readonly string[];
   /** Wait for every row, then answer what to charge: their credits rounded up to whole cents. Each row keeps its exact figure. */
   settle(): Promise<number>;
+  /**
+   * Wait for every row, then answer what to charge and which row writes failed.
+   * The credits are counted before a row is written, so a failed write leaves
+   * the figure whole: the caller charges it and logs the failures.
+   */
+  settleForCharge(): Promise<{ credits: number; writeFailures: readonly unknown[] }>;
 }
 
 /** What a recorder is opened with. */
@@ -275,6 +281,10 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
       await Promise.all(pending);
       if (failures.length > 0) throw failures[0];
       return toChargeCredits(credits);
+    },
+    async settleForCharge() {
+      await Promise.all(pending);
+      return { credits: toChargeCredits(credits), writeFailures: [...failures] };
     },
   };
 }

@@ -61,8 +61,11 @@ export interface TurnStepFailure {
   error: unknown;
 }
 
-/** Fixed order: save first, since billing can be redone from what was saved. */
-const STEP_ORDER: ReadonlyArray<keyof TurnSteps> = ["persist", "bill"];
+/**
+ * Fixed order: bill first. The charge request is the turn's earliest durable
+ * record of what it spent (inner#1617); the reply is saved after it either way.
+ */
+const STEP_ORDER: ReadonlyArray<keyof TurnSteps> = ["bill", "persist"];
 
 /**
  * Run a turn's obligations, whatever happened to the turn.
