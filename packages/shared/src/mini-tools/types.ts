@@ -73,6 +73,7 @@ export type MiniToolIcon =
   | "Wand2"
   | "PersonStanding"
   | "Clapperboard"
+  | "Combine"
   | "Gauge"
   | "Scissors"
   | "SlidersHorizontal"

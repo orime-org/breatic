@@ -238,9 +238,11 @@ import {
 import {
   activeMiniToolSlot,
   heldSlotUrls,
+  joinOfSelection,
   miniToolSlotCandidate,
   miniToolSlotValue,
 } from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
+import { isJoinSlot, isJoinTool, joinFirstClipOf } from '@web/spaces/canvas/mini-tool/join';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -1957,7 +1959,10 @@ function CanvasSpaceInner({
         if (!miniToolSlotCandidate(node, target, slot, held)) return;
         const value = miniToolSlotValue(node);
         if (value === null) return;
-        fillMiniToolSlot(slot.key, value, slot.many);
+        // Only a join's list is ordered and wired by node (inner#1825 §6.5);
+        // any other slot keeps the copy it always held.
+        const { nodeId: _nodeId, name: _name, ...copy } = value;
+        fillMiniToolSlot(slot.key, isJoinSlot(slot) ? value : copy, slot.many);
         if (!slot.many || (session.capacity !== undefined && held.size + 1 >= session.capacity)) endPick();
         return;
       }
@@ -3452,6 +3457,21 @@ function CanvasSpaceInner({
     [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
   );
 
+  // Join is offered over two or more clips of one medium (inner#1825 §6.5);
+  // the clips are read fresh when it is picked.
+  const openJoinPanel = useCanvasSession((s) => s.openJoinPanel);
+  const joinOffer = React.useMemo(
+    () => (readOnly ? undefined : joinOfSelection(flowNodes)?.tool.source),
+    [readOnly, flowNodes],
+  );
+  const joinSelection = React.useCallback((): void => {
+    const join = joinOfSelection(buffer.settled());
+    const first = join?.clips[0]?.nodeId;
+    if (join === null || first === undefined) return;
+    openJoinPanel(join.tool.id, join.clips);
+    selectOnlyNode(first);
+  }, [buffer, openJoinPanel, selectOnlyNode]);
+
   const copySelection = React.useCallback((): void => {
     writeNodesToClipboard(collectSelectedClipboard());
   }, [writeNodesToClipboard, collectSelectedClipboard]);
@@ -4007,16 +4027,21 @@ function CanvasSpaceInner({
       const spec = miniToolById(toolId);
       if (spec === undefined || menuDownloadUrl === null) return;
       const nodeId = nodeMenu.nodeId;
-      openMiniTool(nodeId, toolId, {
-        sourceContent: menuDownloadUrl,
-        params: defaultParamsOf(spec),
-      });
+      // A join's list starts with the node it opened on (inner#1825 §6.5).
+      const clip = isJoinTool(spec) ? miniToolSlotValue(buffer.settled().find((n) => n.id === nodeId) ?? { id: nodeId }) : null;
+      if (clip !== null) openJoinPanel(toolId, [clip]);
+      else {
+        openMiniTool(nodeId, toolId, {
+          sourceContent: menuDownloadUrl,
+          params: defaultParamsOf(spec),
+        });
+      }
       selectOnlyNode(nodeId);
       if (spec.source === 'image' && !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust')) {
         inspectNode(nodeId);
       }
     },
-    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, openJoinPanel, buffer, selectOnlyNode],
   );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
@@ -4136,6 +4161,16 @@ function CanvasSpaceInner({
           height: ('height' in view ? view.height : undefined) ?? sourceSize?.height,
         },
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
+        // A join's list is the draft at the press: its first clip is the
+        // source, and every clip still on the canvas is wired (inner#1825 §6.5).
+        sourceNodeId: isJoinTool(spec) ? joinFirstClipOf(sessionStore.getState().miniTool) : undefined,
+        placementOf: (id) => {
+          const settled = buffer.settled();
+          const at = settled.find((n) => n.id === id);
+          if (at === undefined) return undefined;
+          const parent = at.parentId === undefined ? undefined : settled.find((n) => n.id === at.parentId);
+          return { position: at.position, groupOrigin: parent?.position ?? null };
+        },
         exportFile: exportMiniToolFile,
         fillUpload,
         fillUploads,
@@ -5155,6 +5190,8 @@ function CanvasSpaceInner({
             // Group is offered only for an all-loose 2+ selection (same rule as
             // the floating toolbar + Cmd/Ctrl+G).
             onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
+            join={joinOffer === 'video' || joinOffer === 'audio' ? joinOffer : undefined}
+            onJoin={joinSelection}
             onCopy={copySelection}
             onDuplicate={duplicateSelection}
             onDelete={deleteSelection}

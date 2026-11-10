@@ -75,11 +75,14 @@ export function useApplyTemplate(
       const nodes = new Map<string, TemplateGraphNode>(
         graph.nodes.map((n): [string, TemplateGraphNode] => {
           const tag = templateTagOf(n);
+          // The anchor id a tag records finds a standalone node or an input
+          // the agent placed with fills again (inner#1825 §4.1, §4.2).
+          const anchor = tag?.anchor === undefined ? {} : { anchor: tag.anchor };
           const marks = tag === undefined || tag.key === TEMPLATE_GUIDE_KEY
             ? {}
             : tag.input
-              ? { inputTag: { template: tag.template, input: tag.key } }
-              : { tag: { template: tag.template, key: tag.key } };
+              ? { inputTag: { template: tag.template, input: tag.key, ...anchor } }
+              : { tag: { template: tag.template, key: tag.key, ...anchor } };
           // Every node keeps the template's settings here: applying writes
           // each one it reuses back to them (inner#1345 6.5 step 3).
           return [n.id, { id: n.id, type: n.type as TemplateGraphNode['type'], ...marks, keeps: true }];
@@ -156,7 +159,9 @@ export function useApplyTemplate(
           ...(paramsByModel === undefined ? {} : { paramsByModel }),
           ...(instance.has(index) ? { instance: true } : {}),
         });
-        return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view) };
+        // A node holding material carries it, so a fill naming it writes it
+        // into its slot as a placed proposal's material does (inner#1825 §4.1).
+        return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view), ...materialOf(view) };
       });
       const proposal: CanvasProposal = {
         nodes: [...proposalNodes, ...expansion.appended],
@@ -217,6 +222,35 @@ function writable(view: CanvasNodeView): boolean {
  */
 function templateTagOf(view: CanvasNodeView | undefined): NonNullable<CanvasNodeFields['data']['templateNode']> | undefined {
   return view === undefined || view.type === 'group' || view.type === 'annotation' ? undefined : view.data.templateNode;
+}
+
+/**
+ * The material a node already on the canvas holds, as a proposal carries it.
+ * @param view - The node.
+ * @returns Its address and media numbers, or nothing when it holds none.
+ */
+function materialOf(view: CanvasNodeView): Pick<ProposalNode, 'material' | 'materialMedia'> {
+  const data = view.data as {
+    content?: unknown;
+    coverUrl?: string;
+    mediaWidth?: number;
+    mediaHeight?: number;
+    duration?: number;
+    mimeType?: string;
+    size?: number;
+  };
+  if (typeof data.content !== 'string' || data.content.length === 0) return {};
+  return {
+    material: data.content,
+    materialMedia: {
+      coverUrl: data.coverUrl ?? null,
+      width: data.mediaWidth ?? null,
+      height: data.mediaHeight ?? null,
+      duration: data.duration ?? null,
+      mimeType: data.mimeType ?? null,
+      size: data.size ?? null,
+    },
+  };
 }
 
 /**

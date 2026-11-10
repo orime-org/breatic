@@ -583,7 +583,9 @@ export function useNodeCreation(
               if (!id) return;
               // A node already there that does not generate keeps what it holds.
               if (!fresh[i] && node.role !== 'generate') return;
-              if (fresh[i]) writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
+              // A reused generation takes its fills too: a template input already
+              // holding material lands in its slot this way (inner#1825 §4.1).
+              writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
               if (node.role === 'written') {
                 // A written node's words are its body, not a prompt: nothing
                 // generates there, and the body is what the user reads and edits.
