@@ -2379,6 +2379,7 @@
       "proposalBusy": "別の生成を送信中です。",
       "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
       "force": {
+        "low_poly_skips_parts": "スマートローポリではパーツ分割できません。",
         "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
         "pbr_needs_texture": "PBR にはテクスチャが必要です。",
         "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"

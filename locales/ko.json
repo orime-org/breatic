@@ -2379,6 +2379,7 @@
       "proposalBusy": "다른 생성을 제출하는 중입니다.",
       "readOnlyCreate": "Viewer는 모델을 추가, 가져오기, 생성할 수 없습니다.",
       "force": {
+        "low_poly_skips_parts": "스마트 로우폴리에서는 파트를 분리하지 않습니다.",
         "parts_geometry_only": "파트 분리는 지오메트리만 생성합니다.",
         "pbr_needs_texture": "PBR에는 텍스처가 필요합니다.",
         "fast_uses_v35": "Fast 텍스처는 v3.5만 지원합니다."

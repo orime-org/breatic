@@ -2379,6 +2379,7 @@
       "proposalBusy": "正在提交另一次生成。",
       "readOnlyCreate": "Viewer 不能添加、导入或生成模型。",
       "force": {
+        "low_poly_skips_parts": "智能低面数不拆分部件。",
         "parts_geometry_only": "拆分部件只生成几何。",
         "pbr_needs_texture": "PBR 需要贴图。",
         "fast_uses_v35": "Fast 贴图只有 v3.5。"
