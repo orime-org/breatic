@@ -80,7 +80,7 @@ export class SceneMiniMapRuntime {
    * @param previewed - Objects drawn from a drag still in progress.
    * @throws {never} Load failures release the overview lease.
    */
-  update(objects: readonly SceneObject[], ready: ReadonlySet<string>, target: Vector3, previewed: ReadonlySet<string> = new Set()): void {
+  update(objects: readonly SceneObject[], ready: ReadonlySet<string>, target: Vector3, previewed: ReadonlySet<string>): void {
     if (this.disposed) return;
     this.objects = objects;
     this.previewed = previewed;
