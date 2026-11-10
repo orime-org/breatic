@@ -174,6 +174,12 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
 
   const meshes: SkinnedMesh[] = [];
   instance.traverse((node) => { if (node instanceof SkinnedMesh) meshes.push(node); });
+  // Both skinned bounds at rest, so the rest pose's signature below describes them; three would otherwise fill a
+  // missing sphere from whatever pose the first frame shows.
+  for (const mesh of meshes) {
+    mesh.computeBoundingBox();
+    mesh.computeBoundingSphere();
+  }
 
   // Facing: the turn about Y from VRM's left (+X) to this rig's left, read from the legs.
   const facing = new Quaternion();
@@ -271,8 +277,8 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   };
 
   let applied: string | null = null;
-  // The pose the skinned bounds describe: bounds follow the pose, not the bones moved by hand. Measuring the rest
-  // floor and size above computed them at rest, which is the empty pose's signature.
+  // The pose the skinned bounds describe: bounds follow the pose, not the bones moved by hand. Both were computed
+  // at rest above, which is the empty pose's signature.
   let bounded: string | null = '[]';
 
   return {
@@ -310,14 +316,13 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
 /**
  * The lowest point of the instance at rest, in instance space.
  * @param toModel - Instance space from world space.
- * @param meshes - Its skinned meshes.
+ * @param meshes - Its skinned meshes, their boxes already computed at rest.
  * @param rig - Its bones, for an instance with no skinned mesh.
  * @returns The floor height.
  */
 function restFloor(toModel: Matrix4, meshes: readonly SkinnedMesh[], rig: readonly RigBone[]): number {
   const box = new Box3();
   for (const mesh of meshes) {
-    mesh.computeBoundingBox();
     if (mesh.boundingBox) box.union(mesh.boundingBox.clone().applyMatrix4(new Matrix4().multiplyMatrices(toModel, mesh.matrixWorld)));
   }
   if (!box.isEmpty()) return box.min.y;

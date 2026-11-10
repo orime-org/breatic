@@ -729,10 +729,25 @@ describe('PoseRig.apply: skinned bounds (inner#1692)', () => {
     const figure = buildFigure();
     const rig = rigOf(figure.root);
     const box = vi.spyOn(figure.mesh, 'computeBoundingBox');
+    const sphere = vi.spyOn(figure.mesh, 'computeBoundingSphere');
     rig.apply({});
     expect(box).not.toHaveBeenCalled();
+    expect(sphere).not.toHaveBeenCalled();
     rig.apply(POSE_PRESETS.sit);
     expect(box).toHaveBeenCalledTimes(1);
+    expect(sphere).toHaveBeenCalledTimes(1);
+  });
+
+  it('measures both bounds at rest, so a collaborator\'s drag seen first and then cancelled leaves the rest bounds', () => {
+    const figure = buildFigure();
+    const rig = rigOf(figure.root);
+    const rest = figure.mesh.boundingSphere?.clone();
+    expect(rest).toBeDefined();
+    rig.apply(POSE_PRESETS.lie, false);
+    // three fills a missing sphere lazily from the bones as they are on the next frame.
+    if (figure.mesh.boundingSphere === null) figure.mesh.computeBoundingSphere();
+    rig.apply({});
+    expect(figure.mesh.boundingSphere?.equals(rest!)).toBe(true);
   });
 
   it('leaves the bounds alone while a pose is still being dragged and recomputes them once it settles', () => {
