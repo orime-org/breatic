@@ -5,8 +5,9 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createPgClient, db, initCore, loadLocales, rawPg } from "@breatic/core";
 import {
-  completeMiniToolConsumptionSet, confirmMiniToolConsumption, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
+  completeMiniToolConsumptionSet, confirmMiniToolConsumption, creditHoldService, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
 } from "@domain/index.js";
+import { seedDesignatedLot } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { seedExecution } from "./execution-lifecycle-fixtures.js";
 import { claimExecutionSettlement, executionCompletion, executionIdentity, terminalExecution } from "./execution-step-fixtures.js";
 
@@ -15,9 +16,10 @@ import { claimExecutionSettlement, executionCompletion, executionIdentity, termi
 // fails on its deadline instead of passing.
 const DEADLINE_MS = 15_000;
 let pg: ReturnType<typeof createPgClient>;
+const ONE_CONNECTION = { ...process.env, CREDIT_MULTIPLIER: "1", DB_POOL_SIZE: "1" };
 
 beforeAll(() => {
-  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", DB_POOL_SIZE: "1" }); loadLocales();
+  initCore({ ...ONE_CONNECTION, PAYMENT_ENABLED: "false" }); loadLocales();
   pg = createPgClient(inject("DATABASE_URL"), { name: "single-connection-fixtures", max: 4 });
 });
 afterAll(async () => { await pg.end(); initCore(process.env); });
@@ -75,5 +77,28 @@ describe("mini-tool transactions on a one-connection pool", () => {
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
     await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });
+  });
+});
+
+describe("the paid charge on a one-connection pool", () => {
+  beforeAll(() => {
+    initCore({ ...ONE_CONNECTION, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_single_connection", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_single_connection" });
+  });
+  afterAll(() => { initCore({ ...ONE_CONNECTION, PAYMENT_ENABLED: "false" }); });
+
+  it("settling a recorded charge against a designated lot finishes and spends that lot", async () => {
+    const f = await seedExecution(pg, "running"); const lotId = await seedDesignatedLot(pg, f, 1000);
+    expect((await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: f.taskId, amount: 30, ttlMs: 7_200_000 })).ok).toBe(true);
+    const i = await executionIdentity(f); const c = await claimExecutionSettlement(pg, f);
+    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
+    await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
+    await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });
+    const ledger = await pg<{ entry_type: string; amount: number; lot_id: string | null }[]>`SELECT entry_type,amount::float8 AS amount,lot_id FROM credit_ledger WHERE reference_id=${f.taskId}`;
+    expect([...ledger]).toEqual([{ entry_type: "spend", amount: -30, lot_id: lotId }]);
+    const [lot] = await pg<{ remaining: number }[]>`SELECT remaining_credits::float8 AS remaining FROM credit_lots WHERE id=${lotId}`;
+    expect(lot?.remaining).toBe(970);
+    const [hold] = await pg<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`;
+    expect(hold?.status).toBe("released");
   });
 });
