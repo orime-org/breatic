@@ -237,7 +237,7 @@ const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideo
  * @param doc - The content document.
  * @param uploadId - The registered upload.
  * @param asset - The registered video asset.
- * @throws {RangeError} When neither duration can be counted in frames.
+ * @throws {RangeError} When the duration it measures by (the registered one, or the browser's when the server has none) cannot be counted in frames.
  */
 export function convertTimelineUpload(doc: Y.Doc, uploadId: string, asset: ProjectRegisteredAsset): void {
   const current = readTimelineDocument(doc);

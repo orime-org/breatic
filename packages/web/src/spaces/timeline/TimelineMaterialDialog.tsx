@@ -68,7 +68,7 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
  * @param props.document - The current Timeline, for target tracks and the main-track insertion hint.
  * @param props.placement - The editing user's magnet and linkage switches.
  * @param props.onClose - The explicit cancel and overlay-release action.
- * @returns The Project picker, local uploader and placement confirmation.
+ * @returns The Project picker, local file picker and placement confirmation.
  * @throws {never} Never.
  */
 export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, document, placement, onClose }: TimelineMaterialDialogProps): React.JSX.Element {

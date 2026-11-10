@@ -248,7 +248,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
-  // Activity suspends effects while hidden; uploads read the current rendered role.
+  // Activity suspends effects while hidden; the material draft and the edit session read the current rendered role.
   material.setCanWrite(!readOnly);
   session.setCanWrite(!readOnly);
   React.useEffect(() => {

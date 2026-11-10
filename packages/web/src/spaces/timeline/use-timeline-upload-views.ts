@@ -45,7 +45,7 @@ export function timelineUploadView(entry: TimelineUploadEntry | undefined, acces
 }
 
 /**
- * The second line a placeholder shows on its track and in its properties.
+ * The status line a placeholder shows in its properties, and on its track unless it failed (the track then reads the short failure).
  * @param t - The translator.
  * @param view - What it shows.
  * @param name - The placeholder's file name, which a failure reason names.
