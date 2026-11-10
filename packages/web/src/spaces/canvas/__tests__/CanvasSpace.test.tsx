@@ -285,7 +285,7 @@ function clip(
 
 // A paste registers what it names with the server before it writes.
 beforeEach(() => {
-  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
 });
 
 /**
@@ -294,12 +294,12 @@ beforeEach(() => {
  * minimal `getData` stub the canvas handler reads.
  * @param text - The `text/plain` payload the paste handler should see.
  */
-function dispatchPaste(text: string): void {
+function dispatchPaste(text: string, html = ''): void {
   const event = new Event('paste', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'clipboardData', {
     configurable: true,
     value: {
-      getData: (type: string): string => (type === 'text/plain' ? text : ''),
+      getData: (type: string): string => (type === 'text/plain' ? text : type === 'text/html' ? html : ''),
     },
   });
   act(() => {
@@ -2544,6 +2544,78 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(node.type).toBe('text');
     expect(node.data.content).toBe('hello from clipboard');
     addNode.mockRestore();
+  });
+
+  // Media copied in the document body (inner#1537).
+  describe('media copied in the document body', () => {
+    const stored = 'https://resource.example/image/2026-11-09/1794210905555_00437bfa-c5ba-4459-b2cc-29b7ce08db28.png';
+    const picture = `<img src="${stored}" alt="probe.png" data-name="probe.png">`;
+    const pending = '<p data-upload-pending="">clip.mp4 (upload not finished)</p>';
+
+    it('says how many media are still uploading and were left out, and makes no node for them', () => {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => ({ ok: true }));
+      const written = vi.spyOn(canvasSpace, 'writeSnapshotNodes').mockImplementation(() => undefined);
+      const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+      renderSpace();
+
+      dispatchPaste('clip.mp4 (upload not finished)', pending);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        '1 image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.',
+        expect.anything(),
+      );
+      expect(addNode).not.toHaveBeenCalled();
+      expect(written).not.toHaveBeenCalled();
+      addNode.mockRestore();
+      written.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('pastes a picture as a picture node, not as words', async () => {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => ({ ok: true }));
+      const written = vi.spyOn(canvasSpace, 'writeSnapshotNodes').mockImplementation(() => undefined);
+      renderSpace();
+
+      // The Space's document is open, as it is when its canvas is on screen.
+      getDoc(docName.canvasSpace('p', 's'));
+      dispatchPaste(`![probe.png](${stored})`, picture);
+
+      await waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+      expect(written.mock.calls[0][1].map((node) => [node.type, node.data.name, node.data.content])).toEqual([
+        ['image', 'probe.png', stored],
+      ]);
+      expect(addNode).not.toHaveBeenCalled();
+      addNode.mockRestore();
+      written.mockRestore();
+    });
+
+    it('pastes a picture from the pane menu with the HTML the clipboard read hands over', async () => {
+      mockUseCanvasSpace.mockReturnValue(mockSpace());
+      const written = vi.spyOn(canvasSpace, 'writeSnapshotNodes').mockImplementation(() => undefined);
+      const read = vi.fn(async () => [
+        {
+          types: ['text/html', 'text/plain'],
+          getType: async (type: string): Promise<Blob> => new Blob([type === 'text/html' ? picture : 'x'], { type }),
+        },
+      ]);
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read } });
+      renderSpace();
+      getDoc(docName.canvasSpace('p', 's'));
+      const pane = document.querySelector('.react-flow__pane');
+      act(() => {
+        pane?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      });
+
+      fireEvent.click(screen.getByTestId('canvas-menu-paste'));
+
+      await waitFor(() => expect(written).toHaveBeenCalledTimes(1));
+      expect(read).toHaveBeenCalledWith({ unsanitized: ['text/html'] });
+      expect(written.mock.calls[0][1].map((node) => node.type)).toEqual(['image']);
+      written.mockRestore();
+      Reflect.deleteProperty(navigator, 'clipboard');
+    });
   });
 
   it('paste a marked node payload clones the node (offset +24), not a text node', async () => {

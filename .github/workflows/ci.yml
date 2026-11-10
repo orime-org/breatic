@@ -340,6 +340,7 @@ jobs:
           - {image: web, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile.web, suffix: '-web'}
           - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
           - {image: ingestWebReader, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-reader/Dockerfile, suffix: '-ingest-web-reader'}
+          - {image: ingestWebAnimation, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-animation.Dockerfile, suffix: '-ingest-web-animation'}
     permissions:
       contents: read
       packages: write

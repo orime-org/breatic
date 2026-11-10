@@ -160,7 +160,7 @@ beforeEach(() => {
   useCurrentUserStore.getState().setUser({ id: 'u-1', name: 'Ada', email: 'ada@example.com', personalStudio: null, membershipTier: 'base' });
   vi.mocked(toast.warning).mockClear();
   vi.mocked(toast.error).mockClear();
-  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+  vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
   vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
     maxUploadBytes: 2147483648,
     clientMaxAttempts: 1,

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Elastic-2.0
 set -euo pipefail
 : "${TAG:?}" "${REVISION:?}" "${REPOSITORY:?}"
-for name in backend-amd64 backend-arm64 web-amd64 web-arm64 ingestMedia-amd64 ingestWebReader-amd64; do
+for name in backend-amd64 backend-arm64 web-amd64 web-arm64 ingestMedia-amd64 ingestWebReader-amd64 ingestWebAnimation-amd64; do
   [[ "$(cat "digests/$name")" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
 done
 for kind in backend web; do
@@ -17,7 +17,7 @@ for kind in backend web; do
   node scripts/release.mjs check-index "$kind-index.json" "$amd" "$arm"
   printf '%s' "$image@$digest" > "$kind-ref"
 done
-# The two container images keep their single-platform manifests unchanged;
+# The three container images keep their single-platform manifests unchanged;
 # Cloudflare requires amd64.
 media="ghcr.io/$REPOSITORY-ingest-media"
 media_digest=$(cat digests/ingestMedia-amd64)
@@ -27,6 +27,10 @@ webreader="ghcr.io/$REPOSITORY-ingest-web-reader"
 webreader_digest=$(cat digests/ingestWebReader-amd64)
 docker buildx imagetools create --prefer-index=false --tag "$webreader:$TAG" "$webreader@$webreader_digest"
 [[ "$(docker buildx imagetools inspect "$webreader:$TAG" --format '{{.Manifest.Digest}}')" == "$webreader_digest" ]] || exit 1
-node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$(cat backend-ref)" "$(cat web-ref)" "$media@$media_digest" "$webreader@$webreader_digest" release.json
+animation="ghcr.io/$REPOSITORY-ingest-web-animation"
+animation_digest=$(cat digests/ingestWebAnimation-amd64)
+docker buildx imagetools create --prefer-index=false --tag "$animation:$TAG" "$animation@$animation_digest"
+[[ "$(docker buildx imagetools inspect "$animation:$TAG" --format '{{.Manifest.Digest}}')" == "$animation_digest" ]] || exit 1
+node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$(cat backend-ref)" "$(cat web-ref)" "$media@$media_digest" "$webreader@$webreader_digest" "$animation@$animation_digest" release.json
 gh release upload "$TAG" release.json
 gh release edit "$TAG" --draft=false --latest=false

@@ -82,6 +82,12 @@ export interface ClipboardNode {
    * into storage, which then writes the stored address onto the node.
    */
   external?: boolean;
+  /**
+   * Not a copy of a canvas node (media copied in the document body), so its
+   * paste takes no COPY- prefix; unlike `external`, `data.content` is already
+   * a stored address and stays on the node.
+   */
+  original?: boolean;
 }
 
 /** An edge on the clipboard: the edge as the canvas stores it. */
@@ -366,7 +372,7 @@ export function cloneForPaste(
       data: {
         attachments: [],
         ...data,
-        name: following || node.external === true ? name : COPY_PREFIX + name,
+        name: following || node.external === true || node.original === true ? name : COPY_PREFIX + name,
         createdAt: now,
         createdBy,
         locked: false,

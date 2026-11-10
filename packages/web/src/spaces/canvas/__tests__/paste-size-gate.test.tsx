@@ -114,7 +114,7 @@ describe('RQ-01 a paste into a Space that cannot take an add asks the server not
     ['Z', null],
   ] as const)('RQ-01 [%s] returns null, calls neither paste nor ingest, writes nothing', async (code, sentence) => {
     const { doc, paste } = openAt(code);
-    const spy = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+    const spy = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
     const before = Y.encodeStateAsUpdate(doc);
     expect(await paste(PAYLOAD, { dx: 0, dy: 0 })).toBeNull();
     expect(spy).not.toHaveBeenCalled();
@@ -127,7 +127,7 @@ describe('RQ-01 a paste into a Space that cannot take an add asks the server not
 
   it('RQ-01 [W] a paste with room asks the server once and lands both nodes (control)', async () => {
     const { doc, paste } = openAt('W');
-    const spy = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+    const spy = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
     const ids = await paste(PAYLOAD, { dx: 0, dy: 0 });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(ids).toHaveLength(2);
@@ -147,7 +147,7 @@ describe('RQ-02 the Space fills up while the paste request is pending', () => {
     await Promise.resolve();
     expect(canvasApi.paste).toHaveBeenCalledTimes(1);
     pushSize(NAME, P_FULL);
-    answer.resolve({ map: {} });
+    answer.resolve({ map: {}, media: {} });
     expect(await done).toBeNull();
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(nodeIds(doc)).toEqual([]);

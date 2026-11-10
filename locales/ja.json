@@ -2249,7 +2249,8 @@
         },
         "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
         "notWrittenYet": "アップロード済み。まだ追加されていません",
-        "notPasted": "{count} 件を貼り付けられませんでした。"
+        "notPasted": "{count} 件を貼り付けられませんでした。",
+        "stillUploading": "{count} 件の画像・動画・音声はアップロード中のため貼り付けられませんでした。アップロードが完了したらもう一度コピーしてください。"
       }
     },
     "readOnlyReconnect": "再接続",
