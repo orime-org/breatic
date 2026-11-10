@@ -914,23 +914,55 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
   });
 
   // A person's result is opened at the window by its own packet times: an MP4 with B-frames and no edit list starts at a
-  // non-zero time, which an input seek must not add on top (the `-seek_timestamp` the window graph also uses).
-  it('LM06 a person result whose start time is not 0 still shows its result frame k on result frame k', async () => {
-    await make('person-1-bframes.mp4', ['-f', 'lavfi', '-i', `color=c=black:s=64x64:r=${FPS}:d=0.72,format=yuv420p,geq=lum='50+7*N':cb=150:cr=128`,
-      '-c:v', 'libx264', '-crf', '4', '-bf', '2', '-x264-params', 'b-adapt=0', '-g', '5', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS), '-use_editlist', '0']);
-    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', join(dir, 'person-1-bframes.mp4')]);
-    expect(Number(stdout), 'the fixture starts about two frames late').toBeGreaterThan(0.05);
-    const timeline: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'cut_off' };
-    const window = { start: 3, end: 9 };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(3, 25), displayStart: r(3, 25), displayEnd: r(9, 25), rate: r(1) }];
-    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, 'person-1-bframes.mp4') }, { ...recipe(OPAQUE), timeline, window, entries });
+  // non-zero time, which an input seek must not add on top (the `-seek_timestamp` the window graph also uses), and its
+  // demuxer searches the seek time on the decode clock, which runs behind the presentation clock, so a plain seek lands on a
+  // later keyframe. The fixture is lossless enough and tagged BT.709, so the face's luma measures the frame shown and nothing
+  // else.
+  const BFRAMES = 'person-1-bframes.mp4';
+  const BFRAMES_TIMELINE: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'cut_off' };
+
+  /**
+   * Write the B-frame person result: frame n has luma 50 + 7n, two B-frames per keyframe interval of five, no edit list.
+   * @returns Nothing.
+   */
+  async function makeBframes(): Promise<void> {
+    await make(BFRAMES, ['-f', 'lavfi', '-i', `color=c=black:s=64x64:r=${FPS}:d=0.72,format=yuv420p,geq=lum='50+7*N':cb=150:cr=128`,
+      '-c:v', 'libx264', '-qp', '1', '-bf', '2', '-x264-params', 'b-adapt=0:colorprim=bt709:transfer=bt709:colormatrix=bt709', '-g', '5', '-pix_fmt', 'yuv420p', '-video_track_timescale', String(FPS), '-use_editlist', '0']);
+  }
+
+  /**
+   * Produce one cut_off chunk over the B-frame person result and read person 1's face luma on every frame.
+   * @param window - The chunk's result frames, inside the original's frames.
+   * @returns For each frame with a face, the result frame it shows (by luma) against the one it should.
+   */
+  async function bframesShown(window: { start: number; end: number }): Promise<{ k: number; shown: number }[]> {
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(window.start, 25), displayStart: r(window.start, 25), displayEnd: r(window.end, 25), rate: r(1) }];
+    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, BFRAMES) }, { ...recipe(OPAQUE), timeline: BFRAMES_TIMELINE, window, entries });
     const y = await planeFrames(file, 'y');
     expect(y.frames).toHaveLength(window.end - window.start);
-    y.frames.forEach((frame, j) => {
+    return y.frames.flatMap((frame, j) => {
       const k = window.start + j;
-      const rect = face1(lipsyncSourceFrameAt(timeline, TABLE, k));
-      if (rect !== null) expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${j} person 1 shows result frame ${k}`).toBeLessThan(3.5);
+      const rect = face1(lipsyncSourceFrameAt(BFRAMES_TIMELINE, TABLE, k));
+      return rect === null ? [] : [{ k, shown: (mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - 50) / 7 }];
     });
+  }
+
+  it('LM06 a person result whose start time is not 0 still shows its result frame k on result frame k', async () => {
+    await makeBframes();
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=start_time', '-of', 'csv=p=0', join(dir, BFRAMES)]);
+    expect(Number(stdout), 'the fixture starts about two frames late').toBeGreaterThan(0.05);
+    for (const { k, shown } of await bframesShown({ start: 3, end: 9 })) expect(Math.abs(shown - k) * 7, `person 1 shows result frame ${k}`).toBeLessThan(3.5);
+  });
+
+  // The same result opened at every start point a chunk can take inside it: a seek that lands late does so only where the
+  // decode clock reaches the next keyframe, so one window can pass by luck.
+  it('LM06 a person result with B-frames and no edit list shows result frame k on result frame k from every window start', async () => {
+    await makeBframes();
+    const wrong: string[] = [];
+    for (let start = 1; start <= 8; start += 1) {
+      for (const { k, shown } of await bframesShown({ start, end: start + 2 })) if (Math.abs(shown - k) * 7 >= 3.5) wrong.push(`start ${start}: frame ${k} shows ${shown.toFixed(2)}`);
+    }
+    expect(wrong).toEqual([]);
   });
 
   // DD §7.2 step 6 and row R4: a person's result is mapped onto the result grid by its presentation time, never by its frame

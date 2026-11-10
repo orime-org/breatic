@@ -612,16 +612,19 @@ function layFace(frame: Picture, rect: MiniToolPlanPixelRect, mask: Uint8Array, 
  * @returns The tick and the frames' times in ticks.
  * @throws {Error} When ffprobe fails or the stream has no time base.
  */
-async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigint]; starts: bigint[]; end: bigint }> {
+async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigint]; starts: bigint[]; end: bigint; lead: bigint }> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries",
-    "stream=time_base:packet=pts,duration", "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[]; packets?: { pts?: number; duration?: number }[] };
+    "stream=time_base:packet=pts,dts,duration", "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[]; packets?: { pts?: number; dts?: number; duration?: number }[] };
   const [numerator, denominator] = (answer.streams?.[0]?.time_base ?? "").split("/").map(Number);
   if (!Number.isSafeInteger(numerator) || !Number.isSafeInteger(denominator) || numerator! <= 0 || denominator! <= 0) throw new Error("The lip-sync result has no time base");
   const packets = (answer.packets ?? []).filter((packet) => Number.isSafeInteger(packet.pts)).sort((a, b) => a.pts! - b.pts!);
   const starts = packets.map((packet) => BigInt(packet.pts!));
   const last = packets.at(-1);
   const duration = last?.duration !== undefined && last.duration > 0 ? BigInt(last.duration) : starts.length > 1 ? starts.at(-1)! - starts.at(-2)! : 0n;
-  return { tick: [BigInt(numerator!), BigInt(denominator!)], starts, end: (starts.at(-1) ?? 0n) + duration };
+  // How far a packet is presented after it is decoded: a demuxer that searches a seek time on the decode clock (the mov
+  // demuxer of an MP4 without an edit list) lands on a keyframe up to this much later in presentation time.
+  const lead = packets.reduce((most, packet) => Number.isSafeInteger(packet.dts) && packet.pts! - packet.dts! > most ? packet.pts! - packet.dts! : most, 0);
+  return { tick: [BigInt(numerator!), BigInt(denominator!)], starts, end: (starts.at(-1) ?? 0n) + duration, lead: BigInt(lead) };
 }
 
 /**
@@ -721,12 +724,16 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       let decode: PlanPipe | null = null;
       if (used.length > 0) {
         const [from, to] = [used[0]!, used.at(-1)!];
-        // Opened midway between the first frame shown and the one before, on the file's own packet clock (`-seek_timestamp
-        // 1`), so an accurate seek keeps that frame and drops the earlier ones.
+        // The first frame shown is the first at or after the midpoint between it and the one before, on the file's own packet
+        // clock (`-seek_timestamp 1`, `-copyts`). The demuxer seek opens `lead` earlier, so the keyframe it lands on, searched
+        // on the decode clock, is never past that frame; `select` then drops the frames before the midpoint.
         const seconds = (ticks: bigint): number => Number(ticks * times.tick[0]) / Number(times.tick[1]);
         const at = from === 0 ? 0 : (seconds(times.starts[from - 1]!) + seconds(times.starts[from]!)) / 2;
-        decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", String(at), "-i", result,
-          "-map", "0:v:0", "-frames:v", String(to - from + 1), "-vf", `scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
+        // Floored to whole microseconds: a float residue near 0 would print as "1e-17", which `-ss` does not parse.
+        const seek = (Math.floor(Math.max(0, at - seconds(times.lead)) * 1e6) / 1e6).toFixed(6);
+        decode = startDecode(["-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file", "-copyts", "-noaccurate_seek", "-seek_timestamp", "1",
+          "-ss", seek, "-i", result, "-map", "0:v:0", "-frames:v", String(to - from + 1),
+          "-vf", `select=gte(t\\,${at}),scale=${person.cropSize}:${person.cropSize}:out_color_matrix=bt709:out_range=tv`], false, run);
       }
       persons.push({ faces, track, shows, decode, results: decode === null ? null : frameStream(decode, person.cropSize, person.cropSize, false),
         position: (used[0] ?? 0) - 1, current: null, cropSize: person.cropSize });
