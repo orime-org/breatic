@@ -14,6 +14,7 @@ import * as readerOwner from "../served-object-read.js";
 let dir: string;
 let bigMp4: string;
 let opusWebm: string;
+let jpeg: string;
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "served-object-read-"));
@@ -23,6 +24,8 @@ beforeAll(() => {
     "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000:d=4", "-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", bigMp4]);
   opusWebm = join(dir, "opus.webm");
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000:d=3", "-c:a", "libopus", opusWebm]);
+  jpeg = join(dir, "picture.jpg");
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "testsrc2=s=1280x720:d=1", "-frames:v", "1", "-q:v", "2", jpeg]);
 }, 120_000);
 
 afterAll(() => {
@@ -139,3 +142,33 @@ describe("reading a served object through the loopback reader", () => {
   }, 60_000);
 });
 
+describe("probing a served object whose connection drops inside its header", () => {
+  /**
+   * Probe a served JPEG, whose first answer may stop 512 bytes in, where FFprobe's own read reports it 0 by 0.
+   * @param ranges - Whether the server offers byte ranges.
+   * @param dropAt - Where the first answer stops, or null for none.
+   * @returns FFprobe's JSON, or null.
+   */
+  async function probeDropped(ranges: boolean, dropAt: number | null = 512): Promise<string | null> {
+    const { server, url } = await serve(jpeg, { ranges, dropAt });
+    try {
+      const probe: unknown = Reflect.get(readerOwner, "probeServedObject");
+      expect(probe, "probeServedObject is exported").toBeTypeOf("function");
+      const probed = await (probe as typeof readerOwner.probeServedObject)(url, AbortSignal.timeout(60_000));
+      return probed?.toString("utf8") ?? null;
+    } finally {
+      await stop(server);
+    }
+  }
+
+  it("resumes the read and answers what the whole picture holds", async () => {
+    // A served picture is read as a JPEG stream, which declares no duration, so the whole served read is the reference.
+    const whole = await probeDropped(true, null);
+    expect(whole).toContain('"width": 1280');
+    expect(await probeDropped(true)).toBe(whole);
+  }, 60_000);
+
+  it("answers no probe rather than the part read before a drop it cannot resume", async () => {
+    expect(await probeDropped(false)).toBeNull();
+  }, 60_000);
+});

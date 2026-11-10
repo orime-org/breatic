@@ -15,6 +15,8 @@
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { PROBE_MAX_BYTES, probeArgs } from "@ingest/probe-command.js";
+import { runTool } from "@ingest/container/run-tool.js";
 
 /** What a served read returned, and how many bytes the loopback server served it. */
 export interface ServedRead<T> { value: T; servedBytes: number }
@@ -158,3 +160,19 @@ export async function readServedObject<T>(url: string, signal: AbortSignal, read
   return { value, servedBytes };
 }
 
+/**
+ * Run the one probe of a served object (`probeArgs`), which the media read and the long-media probe both run first,
+ * through the loopback reader: FFprobe's own read answers the part before a dropped connection (a JPEG 0 by 0 with no
+ * frame, a moov-at-end MP4 without its audio stream) and exits 0.
+ * @param objectUrl - Where the Worker serves the object.
+ * @param signal - The probe's lifetime.
+ * @returns FFprobe's JSON, or null when it failed or its read did not complete.
+ */
+export async function probeServedObject(objectUrl: string, signal: AbortSignal): Promise<Buffer | null> {
+  try {
+    return (await readServedObject(objectUrl, signal, (local) => runTool("ffprobe", probeArgs(local), { maxBytes: PROBE_MAX_BYTES, signal }))).value;
+  } catch (err) {
+    console.error("media_source_read_failed", { err: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}

@@ -35,6 +35,7 @@
     "./presentation-run.ts",
     "./stream-window.ts",
     "./served-object-read.ts",
+    "./run-tool.ts",
     "./presentation-recipes.ts",
     "./plan-command.ts",
     "./plan-run.ts",

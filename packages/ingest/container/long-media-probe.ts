@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { PROBE_MAX_BYTES, probeArgs, readProbeOutput, type ReadFrom } from "@ingest/probe-command.js";
+import { readProbeOutput, type ReadFrom } from "@ingest/probe-command.js";
 import { realVideoStream } from "@ingest/media-metadata.js";
 import type { MeasuredStreamWindow } from "@ingest/long-media-measured-window.js";
 import { readStreamWindow } from "@ingest/container/stream-window.js";
-import { readServedObject } from "@ingest/container/served-object-read.js";
-import { runTool } from "./run-tool.js";
+import { probeServedObject } from "@ingest/container/served-object-read.js";
 
 /** The stderr tail kept for a failed measuring read's error. */
 const MEASURE_STDERR_TAIL_BYTES = 65536;
@@ -91,11 +90,8 @@ export async function measureLongMediaStreams(objectUrl: string, stdout: string,
 
 const LONG_MEDIA_PROBE_DEPS: LongMediaProbeRunDeps = {
   execute: async (objectUrl, signal) => {
-    // Through the loopback reader, as the measuring read is: FFprobe's own HTTP read exits 0 with a partial answer (a
-    // moov-at-end MP4 without its audio stream) when the connection drops inside the header, where this read resumes
-    // the drop or fails.
-    const { value } = await readServedObject(objectUrl, signal, (local) => runTool("ffprobe", probeArgs(local), { maxBytes: PROBE_MAX_BYTES, signal }));
-    return value?.toString("utf8") ?? null;
+    const probed = await probeServedObject(objectUrl, signal);
+    return probed?.toString("utf8") ?? null;
   },
   measure: (objectUrl, stdout, signal) => measureLongMediaStreams(objectUrl, stdout, signal),
   report: async (reportUrl, result) => {

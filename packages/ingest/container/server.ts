@@ -42,9 +42,7 @@ import {
 } from "@ingest/probe-answer.js";
 import {
   PREVIEW_MAX_BYTES,
-  PROBE_MAX_BYTES,
   peaksArgs,
-  probeArgs,
   coverArgs,
   previewArgs,
   agentPictureArgs,
@@ -62,6 +60,7 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
+import { probeServedObject } from "@ingest/container/served-object-read.js";
 import { ALPHA_RUN_PATH, handleAlphaPresentation } from "@ingest/container/alpha-presentation.js";
 import { handlePresentationRun, PRESENTATION_RUN_PATH } from "@ingest/container/presentation-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
@@ -92,10 +91,7 @@ async function probe(
   wantCover: boolean,
   signal: AbortSignal,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
-  const probed = await runTool("ffprobe", probeArgs(objectUrl), {
-    maxBytes: PROBE_MAX_BYTES,
-    signal,
-  });
+  const probed = await probeServedObject(objectUrl, signal);
   const report =
     probed === null
       ? NOTHING_FOUND
