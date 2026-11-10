@@ -472,6 +472,19 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(statuses(completion)).toEqual(["registered"]);
   });
 
+  it("TW03e a stitch failing on every frozen attempt fails the output with its reason, each attempt retiring the chunks it binds once done", async () => {
+    serve(plan(fade()));
+    h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
+      const job = await advance(input);
+      return { ...job, report: { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } }, assets: [] };
+    });
+    const completion = await drive();
+    expect(sent().filter((request) => request.jobId.includes(":stitch:")).map((request) => request.jobId)).toEqual([1, 2, 3].map((attempt) => `${TASK}:out:0:stitch:a${attempt}`));
+    const keys = requestOf(STITCH).inputs.filter((input) => input.inputId.includes("-8001-")).map((input) => input.storageKey);
+    expect(h.advance.mock.calls.map((call) => new Set((call[1] as { retire: string[] }).retire))).toEqual([1, 2, 3].map(() => new Set(keys)));
+    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "mini_tool_failed", message: "tool_failed" } });
+  });
+
   // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so a run that fails after
   // it still hands it to reclaim at the terminal release; the stitch's retire leaves it to that release.
   it("TW03b every done encode and window chunk is pinned with the run when its result is recorded", async () => {

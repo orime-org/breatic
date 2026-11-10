@@ -606,6 +606,20 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId)).not.toContain(chunkId(0, 2));
   });
 
+  // The stitch of a segment that is not output 0 declares and registers its own output index; a stitch whose attempts are
+  // exhausted fails only its segment with the last attempt's reason, and the batched output is delivered.
+  it("VC08 a stitch keeps its segment's output index and, once its attempts are exhausted, fails only that segment with its reason", async () => {
+    serve(plan("video.split", { batches: [[0]], encodes: [{ outputIndex: 1, chunks: CHUNKS }] }, 1, [RECIPES["video.split"][0]!, WHOLE]));
+    const stitchOf = (attempt: number): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output: 1, attempt });
+    scripted.set(stitchOf(1), { written: [], state: "failed" }); scripted.set(stitchOf(2), { written: [], state: "failed" });
+    const completion = await drive();
+    const stitches = submitted().filter((request) => request.jobId.includes(":stitch:"));
+    expect(stitches.map((request) => request.jobId)).toEqual([stitchOf(1), stitchOf(2)]);
+    expect(stitches.map((request) => request.outputs.map((output) => output.outputIndex))).toEqual([[1], [1]]);
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "mini_tool_failed", message: "tool_failed" } });
+  });
+
   // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so the stitch's retire
   // leaves it to the run's pin release and a segment that fails after it still hands it to reclaim at the terminal release.
   it("VC04 every done chunk is pinned with the run when its result is recorded", async () => {

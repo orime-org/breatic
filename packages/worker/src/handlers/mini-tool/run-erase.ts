@@ -109,7 +109,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
-    if (written === null) return fail("stitch", "failed");
+    if ("failed" in written) return fail("stitch", "failed");
     pickup.results.set(0, written);
     return pickup;
   } catch (error) {

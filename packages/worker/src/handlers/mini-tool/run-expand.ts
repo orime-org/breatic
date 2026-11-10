@@ -158,7 +158,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
-    if (written === null) return fail({ step: "stitch", category: "failed" });
+    if ("failed" in written) return fail({ step: "stitch", category: "failed" });
     pickup.results.set(0, written);
     return pickup;
   } catch (error) {

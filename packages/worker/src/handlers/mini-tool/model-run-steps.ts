@@ -401,15 +401,12 @@ export async function advanceGenerate(run: ModelStepRun, planned: GenerateStep, 
   return { key };
 }
 
-/** One container step's identity and request. */
-export interface ContainerStep {
-  stepKey: string;
+/** One container step's request, whatever names it. */
+interface ContainerStepRequest {
   contentType: string;
   build: () => Promise<{ recipe: MiniToolPlanRecipe; inputs: { inputId: string; storageKey: string }[] }>;
   /** The failed line of a job that failed for good. */
   failed: (reason: string) => StepEnded;
-  /** The job id of an attempt, `${taskId}:${stepKey}:a${attempt}` when absent. */
-  jobId?: (attempt: number) => string;
   /** The class the job runs on, the run's when absent. */
   containerClass?: string;
   /** The limits the job runs under, the run's when absent. */
@@ -421,6 +418,12 @@ export interface ContainerStep {
   /** The pins a done output is recorded with, pinned with the run when absent. */
   done?: (output: string) => NonNullable<RecordMiniToolStepResultInput["presentation"]>;
 }
+
+/**
+ * One container step: a step key, whose attempt's job id is `${taskId}:${stepKey}:a${attempt}` unless `jobId` names it and
+ * whose done output an earlier run of the chain may hand over; or only `jobId`, a step no other run reuses.
+ */
+export type ContainerStep = ContainerStepRequest & ({ stepKey: string; jobId?: (attempt: number) => string } | { stepKey?: undefined; jobId: (attempt: number) => string });
 
 /**
  * Advance a container step: reuse its done output, or run its attempts up to the frozen retries, a done output recorded with
@@ -438,10 +441,10 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
   let reason = "tool_failed";
   const containerClass = planned.containerClass ?? run.container.containerClass;
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
-    const jobId = planned.jobId?.(attempt) ?? `${run.taskId}:${planned.stepKey}:a${attempt}`;
+    const jobId = planned.stepKey === undefined ? planned.jobId(attempt) : planned.jobId?.(attempt) ?? `${run.taskId}:${planned.stepKey}:a${attempt}`;
     const steps = await upstreamStepRepo.listSteps(run.taskId);
     const existing = steps.find((step) => storedRequest(step)?.jobId === jobId);
-    if (existing === undefined && attempt === 1) {
+    if (existing === undefined && attempt === 1 && planned.stepKey !== undefined) {
       const original = await reused(run, planned.stepKey);
       if (original !== null) return { key: original };
     }
@@ -581,20 +584,26 @@ export interface RegisteredStep {
   /** The output's upload name prefix. */
   namePrefix: string;
   container: "mp4" | "webm";
+  /** The output's index in the run, 0 when absent. */
+  outputIndex?: number;
+  /** The intermediate keys it consumes (a stitch's chunks), retired with a done result, never before (§7.15, §93 D5-10). */
+  retire?: readonly string[];
   build: () => Promise<{ recipe: MiniToolPlanRecipe; inputs: { inputId: string; storageKey: string }[] }>;
 }
 
 /**
- * Advance the job that writes the run's one registered output, up to the frozen retries.
+ * Advance the job that writes one registered output of the run, up to the frozen retries.
  * @param run - The run.
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
- * @returns The registered output, or null when every attempt failed.
+ * @returns The registered output, or the last attempt's reason once every attempt failed.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence, grants or registration fail.
  */
-export async function advanceRegistered(run: ModelStepRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | null> {
+export async function advanceRegistered(run: ModelStepRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | { failed: string }> {
+  const outputIndex = planned.outputIndex ?? 0;
+  let reason = "tool_failed";
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
     const jobId = `${run.taskId}:${planned.stepKey}:a${attempt}`;
     const steps = await upstreamStepRepo.listSteps(run.taskId);
@@ -606,14 +615,16 @@ export async function advanceRegistered(run: ModelStepRun, planned: RegisteredSt
         outputs: [{ modality: "video", namePrefix: planned.namePrefix, ...(planned.container === "webm" ? { container: "webm" as const } : {}) }] });
       if (grant === undefined) throw new Error(`The ${run.log} output requires its upload grant`);
       request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: run.container.containerClass, deadlineAt, limits: run.container.limits,
-        inputs: built.inputs, outputs: [{ ...grant, outputIndex: 0, recipe: built.recipe }] });
+        inputs: built.inputs, outputs: [{ ...grant, outputIndex, recipe: built.recipe }] });
       step = await appendStep(run.taskId, { kind: "container_job", endpoint: run.container.containerClass, itemIndex: steps.length });
     }
-    const job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request });
-    const written = job.assets.find((entry) => entry.outputIndex === 0);
+    const job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
+      planned.retire === undefined ? {} : { retire: planned.retire });
+    const written = job.assets.find((entry) => entry.outputIndex === outputIndex);
     if (job.report.state === "done" && written !== undefined) return await registered(written.asset) as MiniToolExecutionRegistered;
+    reason = job.report.state === "failed" ? job.report.reason : "tool_failed";
   }
-  return null;
+  return { failed: reason };
 }
 
 /**

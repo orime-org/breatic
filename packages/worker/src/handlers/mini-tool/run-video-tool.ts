@@ -16,7 +16,7 @@ import { logger } from "@breatic/core";
 import { assetRepo, openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
-import { advanceChunks, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, FullLedgerInvalid, rangeWindow, readJobLedger, segmentRecipesOf, SOURCE_INPUT_ID } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -168,7 +168,7 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
   let chunks: Awaited<ReturnType<typeof advanceChunks>>;
   try {
     chunks = await advanceChunks({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
-      encode.chunks.map((_window, chunk) => ({ stepKey: `out:${outputIndex}:enc:${chunk}`, contentType: webm(recipes[chunk]!) ? "video/webm" : "video/mp4",
+      encode.chunks.map((_window, chunk) => ({ contentType: webm(recipes[chunk]!) ? "video/webm" : "video/mp4",
         jobId: (attempt) => videoContainerJobId({ kind: "run-chunk", taskId: execution.taskId, output: outputIndex, chunk, attempt }),
         outputKey: (jobId) => videoPresentationWorkKeyFor(execution.sourceKey, jobId), failed: (reason) => ({ failed: reason }),
         build: () => Promise.resolve({ recipe: recipes[chunk]!, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }] }) })), deadlineAt);
@@ -180,30 +180,18 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
   if (!("keys" in chunks)) { pickup.results.set(outputIndex, failedResult(chunks.failed)); return; }
   const { keys } = chunks;
   const stitch = recipes.at(-1)!;
-  for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
-    const jobId = videoContainerJobId({ kind: "run-stitch", taskId: execution.taskId, output: outputIndex, attempt });
-    const { step, request: stored } = await jobStep(execution.taskId, jobId, execution.container.containerClass);
-    let request = stored;
-    if (request === null) {
-      const grants = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,
-        outputs: [grantOf(stitch)] });
-      if (grants.length !== 1) throw new Error("The stitched segment requires its upload grant");
-      request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
-        inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))],
-        outputs: [{ ...grants[0], outputIndex, recipe: stitch }] });
-    }
-    let job: Awaited<ReturnType<typeof advanceRegisteredMiniToolPlanJob>>;
-    try {
-      job = await advanceRegisteredMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request }, { retire: keys });
-    } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      pickup.waiting = true;
-      return;
-    }
-    const written = job.assets.find((entry) => entry.outputIndex === outputIndex);
-    if (job.report.state === "done" && written !== undefined) { pickup.results.set(outputIndex, await registered(written.asset)); return; }
-    if (attempt === execution.container.chunkRetries + 1) pickup.results.set(outputIndex, failedResult(job.report.state === "failed" ? job.report.reason : "tool_failed"));
+  let written: Awaited<ReturnType<typeof advanceRegistered>>;
+  try {
+    written = await advanceRegistered({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
+      { stepKey: `out:${outputIndex}:stitch`, namePrefix: grantOf(stitch).namePrefix, container: webm(stitch) ? "webm" : "mp4", outputIndex, retire: keys,
+        build: () => Promise.resolve({ recipe: stitch, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) },
+      userId, deadlineAt);
+  } catch (error) {
+    if (!(error instanceof StillRunning)) throw error;
+    pickup.waiting = true;
+    return;
   }
+  pickup.results.set(outputIndex, "failed" in written ? failedResult(written.failed) : written);
 }
 
 /**

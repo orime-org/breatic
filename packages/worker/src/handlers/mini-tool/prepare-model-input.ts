@@ -120,7 +120,7 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
    * @throws {never} Never.
    */
   const unit = (spec: (attempt: number) => VideoContainerJobSpec, chunkIndex: number, recipe: MiniToolPlanRecipe, bound: { inputId: string; storageKey: string }[] = []): ContainerStep => ({
-    stepKey: videoContainerJobId(spec(1)).replace(/:a1$/, ""), contentType: "video/mp4", jobId: (attempt) => videoContainerJobId(spec(attempt)), chunkIndex,
+    contentType: "video/mp4", jobId: (attempt) => videoContainerJobId(spec(attempt)), chunkIndex,
     failed: () => ({ failed: PREPARATION_FAILED }), build: () => Promise.resolve({ recipe, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...bound] }) });
   /**
    * The pins of the done prepared input: the run keeps it, and the chunks it consumed are retired (§7.15).

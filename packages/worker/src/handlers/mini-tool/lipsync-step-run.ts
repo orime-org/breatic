@@ -389,7 +389,7 @@ async function stitch(execution: LipSync, userId: string, deadlineAt: number): P
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
         ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))] };
     } }, userId, deadlineAt);
-  return done === null ? { state: "failed", step: "stitch", category: "failed" } : { state: "done", result: done };
+  return "failed" in done ? { state: "failed", step: "stitch", category: "failed" } : { state: "done", result: done };
 }
 
 /**

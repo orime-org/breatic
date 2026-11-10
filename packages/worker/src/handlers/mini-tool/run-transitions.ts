@@ -10,12 +10,11 @@
  * both clips' audio and the crossfade window (none for a Cut). Every job carries the frozen profile.
  */
 import { logger } from "@breatic/core";
-import { openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
-import { miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
+import type { AcceptedMiniToolExecution } from "@breatic/domain";
+import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
 import { planVideoTimeline, presentationCoveringFrame, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
-import { advanceChunks, jobStep, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { registered, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
+import type { VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -73,7 +72,7 @@ function workChunk(execution: Transitions, spec: (attempt: number) => VideoConta
    * @throws {never} Never.
    */
   const jobId = (attempt: number): string => videoContainerJobId(spec(attempt));
-  return { stepKey: jobId(1).replace(/:a1$/, ""), contentType: execution.profile.alpha ? "video/webm" : "video/mp4", jobId, containerClass,
+  return { contentType: execution.profile.alpha ? "video/webm" : "video/mp4", jobId, containerClass,
     limits: containerClass === execution.windowContainer.containerClass ? execution.windowContainer.limits : execution.container.limits,
     outputKey: (id) => videoPresentationWorkKeyFor(execution.sourceKey, id), failed: (reason) => ({ failed: reason }), build: () => Promise.resolve(build()) };
 }
@@ -163,37 +162,23 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
   const { keys } = ended;
   const chunks = planned.map((chunk, at) => ({ ...chunk.window, key: keys[at]! })).sort((left, right) => left.start - right.start);
   const [fpsNumerator, fpsDenominator] = [BigInt(profile.fps.numerator), BigInt(profile.fps.denominator)];
-  for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
-    const jobId = videoContainerJobId({ kind: "run-stitch", taskId: execution.taskId, output: 0, attempt });
-    const { step, request: stored } = await jobStep(execution.taskId, jobId, execution.container.containerClass);
-    let request = stored;
-    if (request === null) {
-      const [grant] = await openContainerOutputs({ projectId: execution.projectId, actingUserId: userId, taskId: execution.taskId, deadlineAt,
-        outputs: [{ modality: "video", namePrefix: "TRANSITION", ...(profile.alpha ? { container: "webm" as const } : {}) }] });
-      if (grant === undefined) throw new Error("The transition output requires its upload grant");
-      // Each clip's audio over the frames it plays; a source with no audio track is played as silence by the stitch (D16-1).
-      const audio = clips.map((clip) => audioOf(clip.ledger, windowInterval(clip.ledger, sourceWindow(clip, { start: clip.startFrame, end: clip.startFrame + clip.frameCount }, profile.fps))));
-      request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId, containerClass: execution.container.containerClass, deadlineAt, limits: execution.container.limits,
-        inputs: [...clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })), ...chunks.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))],
-        outputs: [{ ...grant, outputIndex: 0, recipe: { kind: "stitch", profile,
-          chunks: chunks.map((chunk, at) => ({ inputId: chunkInputId(at), duration: exact(BigInt(chunk.end - chunk.start) * fpsDenominator, fpsNumerator) })),
-          clips: clips.map((_clip, at) => ({ inputId: clipInputId(at), audio: audio[at]! })),
-          crossfade: timeline.window === null ? null : { startFrame: timeline.window.startFrame, frameCount: timeline.window.frameCount } } }] });
-    }
-    let job: Awaited<ReturnType<typeof advanceRegisteredMiniToolPlanJob>>;
-    try {
-      job = await advanceRegisteredMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request },
-        { retire: chunks.map((chunk) => chunk.key) });
-    } catch (error) {
-      if (!(error instanceof StillRunning)) throw error;
-      pickup.waiting = true;
-      return pickup;
-    }
-    const written = job.assets.find((entry) => entry.outputIndex === 0);
-    if (job.report.state === "done" && written !== undefined) { pickup.results.set(0, await registered(written.asset)); return pickup; }
-    if (attempt === execution.container.chunkRetries + 1) {
-      pickup.results.set(0, { status: "failed", error: { code: "mini_tool_failed", message: job.report.state === "failed" ? job.report.reason : "tool_failed" } });
-    }
+  let written: Awaited<ReturnType<typeof advanceRegistered>>;
+  try {
+    written = await advanceRegistered({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "transitions" },
+      { stepKey: "out:0:stitch", namePrefix: "TRANSITION", container: profile.alpha ? "webm" : "mp4", retire: chunks.map((chunk) => chunk.key), build: () => {
+        // Each clip's audio over the frames it plays; a source with no audio track is played as silence by the stitch (D16-1).
+        const audio = clips.map((clip) => audioOf(clip.ledger, windowInterval(clip.ledger, sourceWindow(clip, { start: clip.startFrame, end: clip.startFrame + clip.frameCount }, profile.fps))));
+        return Promise.resolve({ inputs: [...clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })), ...chunks.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))],
+          recipe: { kind: "stitch", profile,
+            chunks: chunks.map((chunk, at) => ({ inputId: chunkInputId(at), duration: exact(BigInt(chunk.end - chunk.start) * fpsDenominator, fpsNumerator) })),
+            clips: clips.map((_clip, at) => ({ inputId: clipInputId(at), audio: audio[at]! })) as [never, never],
+            crossfade: timeline.window === null ? null : { startFrame: timeline.window.startFrame, frameCount: timeline.window.frameCount } } });
+      } }, userId, deadlineAt);
+  } catch (error) {
+    if (!(error instanceof StillRunning)) throw error;
+    pickup.waiting = true;
+    return pickup;
   }
+  pickup.results.set(0, "failed" in written ? { status: "failed", error: { code: "mini_tool_failed", message: written.failed } } : written);
   return pickup;
 }
