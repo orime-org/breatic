@@ -7,6 +7,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pipeline, Readable } from "node:stream";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { probeArgs } from "@ingest/probe-command.js";
 import * as readerOwner from "../served-object-read.js";
@@ -51,11 +52,24 @@ function reader(): typeof readerOwner.readServedObject {
  * @param options.dropAt - Where the first answer's body stops, or null for no drop.
  * @param options.misplacedRanges - Whether a Range request is answered from byte 0, as a server that ignores the asked
  * start would, while saying so in its Content-Range.
- * @returns The server and the file's URL.
+ * @returns The server, the file's URL and the body bytes it has written so far.
  */
-async function serve(path: string, options: { ranges: boolean; dropAt: number | null; misplacedRanges?: boolean }): Promise<{ server: Server; url: string }> {
+async function serve(path: string, options: { ranges: boolean; dropAt: number | null; misplacedRanges?: boolean }): Promise<{ server: Server; url: string; written: () => number }> {
   const bytes = readFileSync(path);
   let dropping = options.dropAt !== null;
+  let written = 0;
+  /**
+   * A body in 64 KiB parts, counted as each one is written, so a reader that closes early leaves the rest unwritten.
+   * @param body - The body.
+   * @yields Its parts.
+   */
+  function* parts(body: Buffer): Generator<Buffer> {
+    for (let at = 0; at < body.length; at += 1 << 16) {
+      const part = body.subarray(at, at + (1 << 16));
+      written += part.length;
+      yield part;
+    }
+  }
   const server = createServer((request, response) => {
     const range = options.ranges ? /^bytes=(\d+)-/.exec(request.headers.range ?? "") : null;
     const from = range === null || options.misplacedRanges === true ? 0 : Number(range[1]);
@@ -68,10 +82,10 @@ async function serve(path: string, options: { ranges: boolean; dropAt: number | 
       response.write(bytes.subarray(from, options.dropAt!), () => request.socket.destroy());
       return;
     }
-    response.end(bytes.subarray(from));
+    pipeline(Readable.from(parts(bytes.subarray(from))), response, () => undefined);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/studio/source%20file.${path.split(".").pop()!}` };
+  return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/studio/source%20file.${path.split(".").pop()!}`, written: () => written };
 }
 
 /**
@@ -100,15 +114,17 @@ function ffprobe(args: string[]): Promise<{ code: number; stdout: string }> {
 describe("reading a served object through the loopback reader", () => {
   it("serves FFprobe's seeks as ranges, so a moov-at-end MP4 is not read whole", async () => {
     const size = readFileSync(bigMp4).length;
-    const { server, url } = await serve(bigMp4, { ranges: true, dropAt: null });
+    const { server, url, written } = await serve(bigMp4, { ranges: true, dropAt: null });
     try {
       let opened = "";
       const read = await reader()(url, AbortSignal.timeout(60_000), (local) => { opened = local; return ffprobe(probeArgs(local)); });
-      expect(read.value.code).toBe(0);
+      expect(read.code).toBe(0);
       // The path, and with it the extension FFmpeg's format probe weighs, is the served object's own.
       expect(new URL(opened).pathname).toBe(new URL(url).pathname);
-      expect(read.value.stdout).toBe(execFileSync("ffprobe", probeArgs(bigMp4, "own-file")).toString("utf8"));
-      expect(read.servedBytes).toBeLessThan(size / 4);
+      expect(read.stdout).toBe(execFileSync("ffprobe", probeArgs(bigMp4, "own-file")).toString("utf8"));
+      // What the upstream wrote includes what the socket buffers of both hops took ahead of FFprobe's seeks, several MB
+      // per answer in Linux, while a read that does not seek writes the whole object.
+      expect(written()).toBeLessThan(size / 2);
     } finally {
       await stop(server);
     }

@@ -162,11 +162,10 @@ const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
     // The seek probes and the encode both read through the loopback reader: FFmpeg's own read exits 0 after a dropped
     // connection with the part it read (a seek probe with no packet, an MP3 segment of its ID3 header alone), where this
     // read resumes the drop or fails the segment.
-    const encoded = await readServedObject(objectUrl, signal, async (local) => {
+    return readServedObject(objectUrl, signal, async (local) => {
       const seekUs = mediaKind === "video" ? await seekNotPastLanding(local, BigInt(interval.startUs), signal) : BigInt(interval.startUs);
       return runToolBounded("ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seekUs), { maxBytes: maxOutputBytes, signal });
     });
-    return encoded.value;
   },
   write: async (outputUrl, bytes, signal) => {
     const response = await fetch(outputUrl, { method: "PUT", body: bytes, signal });

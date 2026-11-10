@@ -143,7 +143,7 @@ export function videoPacketAccumulator(stream: Record<string, unknown>): WindowA
  */
 export async function readStreamWindow(input: string, stream: Record<string, unknown>, from: ReadFrom,
   run: { signal: AbortSignal; stderrTailBytes: number }): Promise<StreamWindow | null> {
-  if (from === 'object') return (await readServedObject(input, run.signal, (local) => probeStreamWindow(local, stream, from, run))).value;
+  if (from === 'object') return readServedObject(input, run.signal, (local) => probeStreamWindow(local, stream, from, run));
   return probeStreamWindow(input, stream, from, run);
 }
 

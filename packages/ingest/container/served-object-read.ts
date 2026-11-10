@@ -8,8 +8,8 @@
  * audio stream, a segment encodes short. Handing it the bytes on a pipe instead takes away its seeks, and that changes
  * its answers (an MP3's LAME end padding is no longer trimmed). So the program reads a loopback server of this process,
  * which serves exactly the one object with its length and byte ranges, fetches each asked range from the Worker,
- * resumes a dropped upstream answer with a Range request (the object is immutable), and counts what it serves: an answer
- * it cannot complete is cut off and fails the whole read, whatever the program's exit says.
+ * resumes a dropped upstream answer with a Range request (the object is immutable), and counts each answer to its end: an
+ * answer it cannot complete is cut off and fails the whole read, whatever the program's exit says.
  */
 
 import { once } from "node:events";
@@ -18,25 +18,21 @@ import type { AddressInfo } from "node:net";
 import { PROBE_MAX_BYTES, probeArgs } from "@ingest/probe-command.js";
 import { runTool } from "@ingest/container/run-tool.js";
 
-/** What a served read returned, and how many bytes the loopback server served it. */
-export interface ServedRead<T> { value: T; servedBytes: number }
-
 /**
  * Run one read of a served object through a loopback server that keeps the reader's seeks and fails the read when any
  * of its answers cannot be completed.
  * @param url - Where the Worker serves the object.
  * @param signal - The read's lifetime; aborting it ends every upstream read.
  * @param read - The read, given the loopback URL to open with the `http,tcp` protocols.
- * @returns What the read returned and the bytes served to it.
+ * @returns What the read returned.
  * @throws {Error} `The stream read failed: ...` when an answer could not be completed (an upstream answer that is not
  * the object or the asked range, or bytes that stop short and cannot resume), whatever the read returned.
  * @throws {unknown} What the read throws, otherwise.
  */
-export async function readServedObject<T>(url: string, signal: AbortSignal, read: (localUrl: string) => Promise<T>): Promise<ServedRead<T>> {
+export async function readServedObject<T>(url: string, signal: AbortSignal, read: (localUrl: string) => Promise<T>): Promise<T> {
   let size = -1;
   let resumable = false;
   let failure: Error | null = null;
-  let servedBytes = 0;
   const ended = new AbortController();
   const lifetime = AbortSignal.any([signal, ended.signal]);
   // The object keeps its path, whose extension (the upload's filename) FFmpeg's format probe weighs.
@@ -113,7 +109,6 @@ export async function readServedObject<T>(url: string, signal: AbortSignal, read
             for await (const chunk of upstream.body) {
               const part = chunk.byteLength > stop - at ? chunk.subarray(0, stop - at) : chunk;
               at += part.byteLength;
-              servedBytes += part.byteLength;
               if (!response.write(part)) await once(response, "drain", { signal: gone.signal });
               if (at === stop) break;
             }
@@ -157,7 +152,7 @@ export async function readServedObject<T>(url: string, signal: AbortSignal, read
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   if (failure !== null) throw failure;
-  return { value, servedBytes };
+  return value;
 }
 
 /**
@@ -170,7 +165,7 @@ export async function readServedObject<T>(url: string, signal: AbortSignal, read
  */
 export async function probeServedObject(objectUrl: string, signal: AbortSignal): Promise<Buffer | null> {
   try {
-    return (await readServedObject(objectUrl, signal, (local) => runTool("ffprobe", probeArgs(local), { maxBytes: PROBE_MAX_BYTES, signal }))).value;
+    return await readServedObject(objectUrl, signal, (local) => runTool("ffprobe", probeArgs(local), { maxBytes: PROBE_MAX_BYTES, signal }));
   } catch (err) {
     console.error("media_source_read_failed", { err: err instanceof Error ? err.message : String(err) });
     return null;
