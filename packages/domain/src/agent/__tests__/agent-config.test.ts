@@ -108,6 +108,13 @@ describe("buildAgentConfig", () => {
     expect((await buildAgentConfig({ basePrompt: "base" })).instructions).toEqual({ base: "base" });
   });
 
+  it("ends the instructions with the Project Instructions the caller hands it (#1400)", async () => {
+    const { instructions } = await buildAgentConfig({ basePrompt: "base", projectInstructions: "Reply in English." });
+
+    expect(instructions.projectInstructions).toMatch(/^## Project Instructions\n\n/);
+    expect(instructions.projectInstructions).toContain("<project_instructions>\nReply in English.\n</project_instructions>");
+  });
+
   it("carries the main model's window, and the configured fallback when the directory cannot say (inner#1567)", async () => {
     const { resolveModelContextWindow } = await import("@domain/agent/model-context-window.js");
     vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(200_000);

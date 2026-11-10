@@ -144,6 +144,16 @@ describe("what the prompt says about the Agent's memory (#1363)", () => {
   it("says turns that left the context are read with read_conversation", () => {
     expect(wording()).toMatch(/left your context are read with read_conversation/);
   });
+
+  it("says the Project Instructions section is written by the user and outranks the memory entries (#1400)", () => {
+    const memory = buildSystemPrompt().split("\n## ").find((part) => part.startsWith("Memory\n"));
+    expect(memory).toBeDefined();
+    const sentences = (memory ?? "").replace(/\s+/g, " ").split(/(?<=\.)\s/).filter((one) => one.includes("Project Instructions"));
+    expect(sentences.length).toBeGreaterThan(0);
+    expect(sentences.join(" ")).toMatch(/## Project Instructions/);
+    expect(sentences.join(" ")).toMatch(/\buser/i);
+    expect(sentences.join(" ")).toMatch(/\b(win|wins|outrank|outranks|override|overrides|precedence|over|above)\b/i);
+  });
 });
 
 describe("what the prompt says the model can do", () => {
@@ -247,9 +257,9 @@ describe("how the prompt says to write a reply", () => {
     expect(wording()).toMatch(/every piece of text you hand a tool that ends up on the user's screen, such as a prompt/);
   });
 
-  it("names the two exceptions to the user's language", () => {
+  it("names the two exceptions to the user's language, a language the Project Instructions ask for among them (#1400)", () => {
     expect(wording()).toMatch(/text whose language the work itself sets/);
-    expect(wording()).toMatch(/a language the user asks for/);
+    expect(wording()).toMatch(/a language the user or the Project Instructions ask for/);
   });
 
   it("leaves the language of the model's own working to the model", () => {

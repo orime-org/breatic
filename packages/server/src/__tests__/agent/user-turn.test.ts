@@ -336,9 +336,15 @@ describe("userMessageForModel", () => {
     expect(userMessageForModel("The user's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
       "The user's clock reads 09:00.\n\n画一只猫\n\n" +
         "(Reply and write every text the user will read or edit in the language this message is written in, " +
-        "unless the user has asked for a specific language or the work itself sets one. " +
+        "unless the user or the Project Instructions ask for a specific language or the work itself sets one. " +
         "Keep the product terms the system prompt lists in English, even where this message translates them.)",
     );
+  });
+
+  it("names a language the Project Instructions ask for as an exception, so the reminder does not override them (#1400)", () => {
+    const reminder = userMessageForModel("clock", { chips: [], message: "hi" }).split("\n\n").at(-1) ?? "";
+    expect(reminder).toMatch(/^\(Reply and write every text/);
+    expect(reminder).toMatch(/unless[^.]*Project Instructions[^.]*ask for a specific language/);
   });
 
   it("keeps the message body between the clock and the reminder", () => {
