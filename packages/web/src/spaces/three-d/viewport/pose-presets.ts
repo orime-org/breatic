@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { Quaternion } from 'three';
 import { SCENE_POSE_HIPS_KEY, type ScenePose } from '@breatic/shared';
 
 /**
@@ -35,14 +36,7 @@ function turn(axis: 'x' | 'y' | 'z', degrees: number): readonly number[] {
  * @returns The `[x, y, z, w]` product `after * first`.
  */
 function then(after: readonly number[], first: readonly number[]): readonly number[] {
-  const [ax = 0, ay = 0, az = 0, aw = 1] = after;
-  const [bx = 0, by = 0, bz = 0, bw = 1] = first;
-  return [
-    aw * bx + ax * bw + ay * bz - az * by,
-    aw * by - ax * bz + ay * bw + az * bx,
-    aw * bz + ax * by - ay * bx + az * bw,
-    aw * bw - ax * bx - ay * by - az * bz,
-  ];
+  return new Quaternion().fromArray(after).multiply(new Quaternion().fromArray(first)).toArray();
 }
 
 /** Both arms hanging at the sides, the elbows slightly bent. */
@@ -82,7 +76,8 @@ export const POSE_PRESETS: Readonly<Record<(typeof POSE_PRESET_NAMES)[number], S
     // The thighs stretch back 5 degrees: at the standing hip angle the seat lifts the heels off the ground.
     'h:leftUpperLeg': turn('x', 5), 'h:rightUpperLeg': turn('x', 5),
     // The arms swing back 12 degrees: hanging at the sides they start above the back, lifting the hands.
-    'h:leftUpperArm': then(turn('x', 12), turn('z', -75)), 'h:rightUpperArm': then(turn('x', 12), turn('z', 75)),
+    'h:leftUpperArm': then(turn('x', 12), ARMS_DOWN['h:leftUpperArm'] ?? IDENTITY),
+    'h:rightUpperArm': then(turn('x', 12), ARMS_DOWN['h:rightUpperArm'] ?? IDENTITY),
     [SCENE_POSE_HIPS_KEY]: [0, -0.863, 0],
   },
   walk: {

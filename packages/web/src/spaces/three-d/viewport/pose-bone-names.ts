@@ -76,13 +76,13 @@ function fingerNames(): Record<string, Sided> {
   const fingers = [['thumb', ['thumb'], 'Thumb'], ['index', ['index'], 'Index'], ['middle', ['middle', 'mid'], 'Middle'],
     ['ring', ['ring'], 'Ring'], ['pinky', ['little', 'pinky'], 'Little']] as const;
   const names: Record<string, Sided> = {};
-  fingers.forEach(([mixamo, numbered, vrm], finger) => {
+  fingers.forEach(([word, numbered, vrm], finger) => {
     const joints = vrm === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
     joints.forEach((joint, index) => {
       const bone = `${vrm}${joint}` as Sided;
-      names[`hand${mixamo}${index + 1}`] = bone;
+      names[`hand${word}${index + 1}`] = bone;
       for (const word of numbered) names[`${word}${index + 1}`] = bone;
-      names[`${mixamo}0${index + 1}`] = bone;
+      names[`${word}0${index + 1}`] = bone;
       names[`finger${finger}${index === 0 ? '' : index}`] = bone;
     });
   });
