@@ -331,7 +331,7 @@ type EdgeRoute =
  * @returns The refusal.
  * @throws {never} Never.
  */
-export function hiddenPlaceRefusal(from: ProposalNode, into: string, generation: ProposalNode, chosen: ModelInfo, gate: ParamGate): Refusal {
+function hiddenPlaceRefusal(from: ProposalNode, into: string, generation: ProposalNode, chosen: ModelInfo, gate: ParamGate): Refusal {
   const drawn = into === "pool" ? `its prompt box, where the pool is @'d,` : `"${into}"`;
   return refuse("slot-gated-off", `"${from.name}" goes into "${into}" of "${generation.name}", and "${chosen.name}" draws ${drawn} only while ${gateWords(gate)}.`);
 }
@@ -351,9 +351,10 @@ function edgeRoute(chosen: ModelInfo, from: ProposalNode, into: string | undefin
   // the edge itself is refused with the rest of the wiring.
   const wired = canConnect(from.type, chosen.nodeType);
   const options = wired ? (waysIn(chosen, params).get(from.type) ?? []) : [];
-  // Named outright, a place the settings hide is said as such.
+  // Named outright, a place the settings hide is said as such, once the node
+  // could go there by an edge at all.
   const gate = into === undefined ? undefined : placeGate(chosen, into);
-  if (into !== undefined && gate !== undefined && wired && !options.some((way) => way.into === into) && (waysIn(chosen).get(from.type) ?? []).some((way) => way.into === into)) {
+  if (into !== undefined && gate !== undefined && !options.some((way) => way.into === into) && entriesFor(chosen, from.type, holdingOf(from)).some((e) => e.by === "edge" && e.way.into === into)) {
     return { kind: "hidden", into, gate };
   }
   // An edge the model takes nothing from still carries the creative link
@@ -467,6 +468,7 @@ export function fillsOf(
 ): { filled: Arriving[] } | Refusal {
   const params = node.params ?? {};
   const slots = slotsOf(chosen);
+  const drawn = slotsOf(chosen, params);
   const filled: Arriving[] = [];
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
     const off = fixOn(at, `take fills "${param}" off.`);
@@ -487,11 +489,6 @@ export function fillsOf(
         ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen, params)}.`, off)
         : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen, params)}.`, off);
     }
-    const gate = placeGate(chosen, param);
-    const first = proposal.nodes[indices[0] ?? -1];
-    if (gate !== undefined && first !== undefined && !slotsOf(chosen, params).some(({ way }) => way.into === param)) {
-      return hiddenPlaceRefusal(first, param, node, chosen, gate);
-    }
     const seen = new Map<string, ProposalNode>();
     for (const index of indices) {
       const from = proposal.nodes[index] as ProposalNode;
@@ -511,6 +508,12 @@ export function fillsOf(
       }
       seen.set(from.material, from);
       filled.push({ node: from, entry: { way: slot.way, by: "fills", ref: false, note: false } });
+    }
+    // Each node could fill the slot; whether the settings draw it comes after.
+    const gate = placeGate(chosen, param);
+    const first = proposal.nodes[indices[0] ?? -1];
+    if (gate !== undefined && first !== undefined && !drawn.some(({ way }) => way.into === param)) {
+      return hiddenPlaceRefusal(first, param, node, chosen, gate);
     }
   }
   return { filled };

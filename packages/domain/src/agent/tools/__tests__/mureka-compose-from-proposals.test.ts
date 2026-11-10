@@ -11,6 +11,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadLocales } from "@breatic/core";
 import type { CanvasProposal, ProposalNode } from "@breatic/shared";
+import type { MaterialTable } from "../propose-canvas-action.js";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -114,6 +115,52 @@ describe("a Mureka V9.5 Song proposal composing from style and references", () =
 
   it("stands on a style, the lyrics and a song", () => {
     expect(checkProposal(song("song", { prompt: [{ text: "warm indie folk " }, NOTE] }))).toEqual({ ok: true });
+  });
+});
+
+const TUNE_HELD: ProposalNode = { ...TUNE, material: "https://resource.example/audio/2026-10-08/1_tune.mp3" };
+const HELD: MaterialTable = new Map([
+  [TUNE_HELD.material ?? "", { kind: "audio", media: { coverUrl: null, width: null, height: null, duration: 4, mimeType: "audio/mpeg", size: 2000 } }],
+]);
+
+/**
+ * A song generation wired to the lyrics, filling a slot straight from a recording.
+ * @param fills - What the generation fills.
+ * @param song - What else differs on the generation.
+ * @param tune - The recording.
+ * @returns The proposal.
+ */
+function filling(fills: Record<string, number[]>, song: Partial<ProposalNode>, tune = TUNE_HELD): CanvasProposal {
+  return {
+    nodes: [LYRICS, tune, { role: "generate", type: "audio", name: "Song", mode: "a2m", model: MUREKA, fills, ...song }],
+    edges: [{ fromIndex: 0, toIndex: 2, into: "lyrics" }],
+    rationale: "r",
+    groupName: "Group",
+  };
+}
+
+describe("a Mureka V9.5 Song proposal sending a recording somewhere the settings hide", () => {
+  it("is refused a melody filled from material while composing from style and references", () => {
+    const verdict = checkProposal(filling({ melody: [1] }, { prompt: [{ text: "warm indie folk" }] }), HELD);
+    expect(verdict).toMatchObject({ ok: false, refusal: "slot-gated-off" });
+    expect(verdict.ok ? "" : verdict.reason).toContain(`draws "melody" only while "compose_from" is "melody"`);
+  });
+
+  it("is refused a song filled from material while composing from a melody", () => {
+    const verdict = checkProposal(filling({ song: [1] }, { params: { compose_from: "melody" } }), HELD);
+    expect(verdict).toMatchObject({ ok: false, refusal: "slot-gated-off" });
+    expect(verdict.ok ? "" : verdict.reason).toContain(`draws "song" only while "compose_from" is "references"`);
+  });
+
+  it("is told first that material reaches a slot through fills, not by an edge", () => {
+    const proposal = song("melody", { prompt: [{ text: "warm indie folk" }] });
+    proposal.nodes[1] = TUNE_HELD;
+    expect(checkProposal(proposal, HELD)).toMatchObject({ ok: false, refusal: "edge-not-an-entry" });
+  });
+
+  it("is told first that fills takes only nodes holding material", () => {
+    const verdict = checkProposal(filling({ melody: [1] }, { prompt: [{ text: "warm indie folk" }] }, TUNE));
+    expect(verdict).toMatchObject({ ok: false, refusal: "fill-no-material" });
   });
 });
 
