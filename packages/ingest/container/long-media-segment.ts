@@ -4,6 +4,7 @@
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 import { longMediaSegmentArgs, PROBE_MAX_BYTES, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 import { runToolBounded } from "./run-tool.js";
+import { readServedObject } from "@ingest/container/served-object-read.js";
 
 /** The Container's request to encode and write one source-time segment. */
 export interface LongMediaSegmentRunRequest {
@@ -157,12 +158,14 @@ async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: Ab
 /** The production encoder and intercepted Worker calls. */
 const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
   now: () => Date.now(),
-  encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => runToolBounded(
-    "ffmpeg",
-    longMediaSegmentArgs(objectUrl, mediaKind, interval, profile,
-      mediaKind === "video" ? await seekNotPastLanding(objectUrl, BigInt(interval.startUs), signal) : BigInt(interval.startUs)),
-    { maxBytes: maxOutputBytes, signal },
-  ),
+  encode: async (objectUrl, mediaKind, interval, profile, maxOutputBytes, signal) => {
+    const seekUs = mediaKind === "video" ? await seekNotPastLanding(objectUrl, BigInt(interval.startUs), signal) : BigInt(interval.startUs);
+    // Through the loopback reader: FFmpeg's own read exits 0 after a dropped connection with the part it encoded (an MP3
+    // segment of its ID3 header alone), where this read resumes the drop or fails the segment.
+    const encoded = await readServedObject(objectUrl, signal, (local) => runToolBounded(
+      "ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seekUs), { maxBytes: maxOutputBytes, signal }));
+    return encoded.value;
+  },
   write: async (outputUrl, bytes, signal) => {
     const response = await fetch(outputUrl, { method: "PUT", body: bytes, signal });
     await response.body?.cancel();

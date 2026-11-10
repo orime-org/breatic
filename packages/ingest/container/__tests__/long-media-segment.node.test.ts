@@ -125,6 +125,7 @@ describe("runLongMediaSegment", () => {
 // behind the presentation clock here, so a seek to a time just before a keyframe lands on that keyframe. Every frame n of
 // the fixture has luma 20 + 4n and is presented at 0.08 + n / 25 s; keyframes every 10 frames.
 describe("a video segment of a B-frame MP4 without an edit list, encoded by the container's own encoder", () => {
+  const realFetch = globalThis.fetch;
   let dir: string;
   let server: Server;
   let objectUrl: string;
@@ -161,8 +162,10 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
    */
   async function segmentFrames(n: number): Promise<number[]> {
     let written: Uint8Array | null = null;
-    vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      if (init?.method === "PUT") written = new Uint8Array(await new Response(init.body).arrayBuffer());
+    // The source is read for real (the container's loopback reader fetches it); the output write and report are caught.
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === undefined || init.method === "GET") return realFetch(input, init);
+      if (init.method === "PUT") written = new Uint8Array(await new Response(init.body).arrayBuffer());
       return new Response(null, { status: 200 });
     }));
     const startUs = 80_000 + 40_000 * n;
@@ -185,6 +188,77 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
       if (JSON.stringify(frames) !== JSON.stringify(expected)) wrong.push(`from ${n}: ${frames.join(",")}`);
     }
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("a segment whose source connection drops mid-read, encoded by the container's own encoder", () => {
+  let dir: string;
+  let source: Buffer;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "long-media-segment-drop-"));
+    const path = join(dir, "source.mp3");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000:d=3", "-c:a", "libmp3lame", path]);
+    source = await readFile(path);
+  });
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * Encode the audio segment from 0.5 s to 2.5 s off a source served as the Worker serves it, whose first answer may
+   * close its connection after `dropAt` body bytes while declaring the full length.
+   * @param dropAt - Where the first answer stops, or null for none.
+   * @param ranges - Whether the server offers byte ranges.
+   * @returns The segment written, or null, and what was reported.
+   */
+  async function encodeServed(dropAt: number | null, ranges: boolean): Promise<{ written: Buffer | null; reported: unknown }> {
+    let dropping = dropAt !== null;
+    let written: Buffer | null = null;
+    let reported: unknown = null;
+    const server = createServer((incoming, response) => {
+      if (incoming.method === "PUT" || incoming.method === "POST") {
+        const chunks: Buffer[] = [];
+        incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+        incoming.on("end", () => {
+          if (incoming.method === "PUT") written = Buffer.concat(chunks);
+          else reported = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+          response.writeHead(200).end();
+        });
+        return;
+      }
+      const range = ranges ? /^bytes=(\d+)-/.exec(incoming.headers.range ?? "") : null;
+      const from = range === null ? 0 : Number(range[1]);
+      response.writeHead(range === null ? 200 : 206, { "content-length": source.length - from, ...(ranges && { "accept-ranges": "bytes" }),
+        ...(range !== null && { "content-range": `bytes ${from}-${source.length - 1}/${source.length}` }) });
+      if (dropping) {
+        dropping = false;
+        response.write(source.subarray(from, dropAt!), () => incoming.socket.destroy());
+        return;
+      }
+      response.end(source.subarray(from));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      await runLongMediaSegment({ ...request, objectUrl: `${origin}/source.mp3`, outputUrl: `${origin}/segment.mp3`, reportUrl: `${origin}/report`,
+        mediaKind: "audio", interval: { startUs: "500000", endUs: "2500000" }, deadlineAt: Date.now() + 600_000 });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    return { written, reported };
+  }
+
+  it("resumes the read and writes the segment the whole source gives", async () => {
+    const whole = await encodeServed(null, true);
+    expect(whole.written?.length).toBeGreaterThan(30_000);
+    const dropped = await encodeServed(2048, true);
+    expect(dropped).toEqual(whole);
+  });
+
+  it("reports a failed segment rather than write the part encoded before a drop it cannot resume", async () => {
+    expect(await encodeServed(2048, false)).toEqual({ written: null, reported: { outcome: "failed" } });
   });
 });
 
