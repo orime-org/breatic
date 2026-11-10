@@ -63,7 +63,7 @@ export function sentWords(mode: string | undefined): SentWords {
  * @returns They, quoted and joined.
  * @throws {never} Never.
  */
-function quoted(names: readonly string[]): string {
+export function quoted(names: readonly string[]): string {
   return names.map((name) => `"${name}"`).join(", ");
 }
 

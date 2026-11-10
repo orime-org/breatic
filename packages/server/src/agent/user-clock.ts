@@ -70,6 +70,6 @@ export function userClockNote(now: Date, timeZone: string | undefined): string {
   const p = readClock(now, known ? timeZone : "UTC");
   const when = `${p.weekday}, ${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
   return known
-    ? `[The user's local time when they sent this message: ${when} (${timeZone}, ${offsetOf(now, p)}).]`
+    ? `[The user's local time when they sent this message: ${when} (${timeZone}, ${offsetOf(now, p)}). The time zone tells the time only, never which language to reply in.]`
     : `[The time when the user sent this message: ${when} UTC. Their time zone is unknown.]`;
 }

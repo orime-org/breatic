@@ -36,6 +36,8 @@ export const INGEST_FAILURE_CODES = [
    * orientation could not be read (inner#1367).
    */
   "upright_failed",
+  /** The page reader's container would not start (inner#1664). */
+  "reader_not_started",
 ] as const;
 
 /**

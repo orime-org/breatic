@@ -10,7 +10,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Queries bind to the open transaction
 
-**While a transaction is open, a query issued through `db` or `yjsDb` in the same async flow runs on that transaction, and a transaction opened inside it is a savepoint (`bindToOpenTransaction` in `src/db/client.ts`).** A transaction that waits for a second pool connection deadlocks the service once every connection is held by such a transaction. A query built inside the transaction keeps the session it was built on, as one built on `tx` does, so await it before the callback returns. Passing `tx` explicitly stays correct; a test that needs a separate session while holding a transaction starts it from an `AsyncLocalStorage.snapshot()` taken before the transaction began.
+**While a transaction is open, a query issued through `db` or `yjsDb` in the same async flow runs on that transaction, and a transaction opened inside it is a savepoint (`bindToOpenTransaction` in `src/db/client.ts`).** A transaction that waits for a second pool connection holds the service's whole pool once every connection is held by such a transaction, until the queue timeouts fail the waiting requests. A query built inside the transaction keeps the session it was built on, as one built on `tx` does, so await it before the callback returns. Passing `tx` explicitly stays correct; a test that needs a separate session while holding a transaction starts it from an `AsyncLocalStorage.snapshot()` taken before the transaction began.
 
 ### Two Postgres databases
 
@@ -98,6 +98,8 @@ Check: is this really separated by DB number or port? Channels and cookie names 
 ### Connection lifetimes are explicit
 
 **Every Postgres, Redis and queue client sets its idle timeout, lifetime, keepalive and reconnect behaviour explicitly (`idle_timeout` / `max_lifetime` in `db/client.ts`, `keepAlive` / `reconnectOnError` in `infra/redis.ts`).** Client defaults do not recycle idle connections, so a long-running process ends up holding stale ones its pool still thinks are alive.
+
+**Every Postgres pool bounds how long a query may wait for a connection and how long opening one may take (`queue_timeout_s` / `connect_timeout_s` in `config/database.yaml`, applied by `createPgClient`); each timeout is reported once through `onDatabaseWaitTimeout` (`db/wait-timeouts.ts`) and logged by the service entry as `db_wait_timeout`.** postgres.js waits for a free connection without limit by default, so one exhausted pool hangs every request behind it.
 
 ### Startup checks infrastructure
 

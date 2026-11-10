@@ -135,7 +135,7 @@ async function seedMessage(
   await sql`
     INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, created_at, deleted_at)
     VALUES (${conversationId}, ${userId}, ${m.role}, ${m.turn}, ${m.seq ?? (m.role === "user" ? 0 : 1)},
-            ${sql.json(m.parts as never)}, ${m.at ?? new Date().toISOString()},
+            ${sql.json(m.parts)}, ${m.at ?? new Date().toISOString()},
             ${m.deleted === true ? new Date().toISOString() : null})
   `;
 }
@@ -457,11 +457,11 @@ describe("searching the user's messages", () => {
     });
     const records = recordsFor(turn);
     const read = TOOL_MAP.read_conversation!();
-    const shown = (await read.execute!({ conversation_id: other }, {
+    const shown = ((await read.execute!({ conversation_id: other }, {
       toolCallId: "t1",
       messages: [],
       context: { records },
-    } as never)) as string;
+    } as never)) as { text: string }).text;
     const words = ["HEADER-ONLY-WORD", "NESTED-QUESTION-WORD", "PAST-CUT-WORD"];
     const found: string[] = [];
     for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);
@@ -491,11 +491,11 @@ describe("searching the user's messages", () => {
       parts: [{ type: "tool", toolCallId: "ask-err", toolName: "ask_user", input, status: "error" }],
     });
     const records = recordsFor(turn);
-    const shown = (await TOOL_MAP.read_conversation!().execute!({ conversation_id: other }, {
+    const shown = ((await TOOL_MAP.read_conversation!().execute!({ conversation_id: other }, {
       toolCallId: "t1",
       messages: [],
       context: { records },
-    } as never)) as string;
+    } as never)) as { text: string }).text;
     const words = ["EARLYHEAD", "LATE-QUESTION-WORD"];
     const found: string[] = [];
     for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);
@@ -686,7 +686,7 @@ async function seedVersion(
   await sql`
     INSERT INTO node_history (project_id, node_id, user_id, entry_type, status, content, metadata, created_at)
     VALUES (${projectId}, ${nodeId}, ${userId}, 'generation', 'success', ${`https://cdn.example/${crypto.randomUUID()}.png`},
-            ${sql.json((opts.metadata ?? {}) as never)}, ${opts.at})
+            ${sql.json((opts.metadata ?? {}))}, ${opts.at})
   `;
 }
 

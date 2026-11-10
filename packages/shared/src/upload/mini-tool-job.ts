@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import type { UntilDeadline } from "@shared/http/deadline.js";
+import { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 
 import { CONTAINER_FAILURES, CONTAINER_OPS, type ContainerFailure, type ContainerOp } from "@shared/mini-tools/types.js";
 import {
@@ -40,14 +41,6 @@ export interface MiniToolJobRequest {
   params: Record<string, unknown>;
   input: { storageKey: string };
   outputs: MiniToolJobOutput[];
-}
-
-/** What the container measured about its own run. */
-export interface ContainerUsage {
-  /** From just before the container started to its destroy, cold start included. */
-  wallMs: number;
-  /** cgroup `cpu.stat` `usage_usec`; null when the container could not read it. */
-  cpuUsec: number | null;
 }
 
 /** What a job answers. */
@@ -83,10 +76,6 @@ export const miniToolJobRequestSchema = z.object({
     .max(MINI_TOOL_JOB_MAX_OUTPUTS),
 });
 
-const usage = z.object({
-  wallMs: z.number().nonnegative(),
-  cpuUsec: z.number().nonnegative().nullable(),
-});
 
 const report = z.discriminatedUnion("state", [
   z.object({ state: z.literal("starting") }),
@@ -94,9 +83,9 @@ const report = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("done"),
     outputs: z.array(ingestMeasurements.extend({ storageKey: z.string().min(1).max(500) })),
-    usage,
+    usage: containerUsageSchema,
   }),
-  z.object({ state: z.literal("failed"), reason: z.enum(CONTAINER_FAILURES), usage: usage.nullable() }),
+  z.object({ state: z.literal("failed"), reason: z.enum(CONTAINER_FAILURES), usage: containerUsageSchema.nullable() }),
 ]);
 
 /**

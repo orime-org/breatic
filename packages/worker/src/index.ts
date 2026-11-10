@@ -47,6 +47,7 @@ import {
   adsConversionConfig,
   type AdsConversionJob,
 } from "@breatic/core";
+import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
   modelCatalog,
@@ -67,6 +68,7 @@ import {
 const monitoring = initSentry();
 
 initLogger("worker");
+onDatabaseWaitTimeout((event) => logger.error(event, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,
