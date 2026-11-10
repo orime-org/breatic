@@ -19,7 +19,7 @@ import type { MiniToolPlanExact, MiniToolPlanTarget } from "@breatic/shared";
 import { presentationCoveringFrame, presentationFrameAt, presentationFramesIn, type ExpandFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelStepCategory, providerModel, runLedger,
+  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
   type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
@@ -94,6 +94,15 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     pickup.results.set(0, { status: "failed", error: expandFailureReason(windows, shared) });
     return pickup;
   };
+  /**
+   * End the output as the run's expiry: a step whose next attempt was due after the deadline, where the walk stands.
+   * @returns The pickup.
+   * @throws {never} Never.
+   */
+  const expire = (): LipSyncPickup => {
+    pickup.results.set(0, { status: "failed", error: modelRunFailure("video.expand", position, true) });
+    return pickup;
+  };
   try {
     const ledger = await runLedger(run, plan.ledgerReceipts.source, deadlineAt);
     const table = ledger.plan.presentation;
@@ -121,6 +130,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       ]);
       for (const ended of [input, mask, condition]) {
         if (ended !== undefined && !("key" in ended)) {
+          if (ended.expired === true) { position.current = { window: k, step: ended.step as WindowStep }; return expire(); }
           windows[k]!.failure = { step: ended.step as WindowStep, category: "failed" };
           return fail(null);
         }
@@ -152,13 +162,13 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
           backgrounds: shown.map((k) => ({ inputId: backgroundOf(k), window: spans[k]!, crop: plan.targetRoi })) },
         inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
     }), deadlineAt);
-    if (!("keys" in chunks)) return fail({ step: "composite", category: "failed" });
+    if (!("keys" in chunks)) return chunks.expired === true ? expire() : fail({ step: "composite", category: "failed" });
     position.current = { shared: "stitch" };
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "EXPAND", container: output.format === "webm-vp9" ? "webm" : "mp4",
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
-    if ("failed" in written) return fail({ step: "stitch", category: "failed" });
+    if ("failed" in written) return written.expired === true ? expire() : fail({ step: "stitch", category: "failed" });
     pickup.results.set(0, written);
     return pickup;
   } catch (error) {

@@ -14,7 +14,7 @@ import type { AcceptedMiniToolExecution } from "@breatic/domain";
 import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
 import { planVideoTimeline, presentationCoveringFrame, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
-import type { VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -159,7 +159,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     pickup.waiting = true;
     return pickup;
   }
-  if (!("keys" in ended)) { pickup.results.set(0, { status: "failed", error: { code: "mini_tool_failed", message: ended.failed } }); return pickup; }
+  if (!("keys" in ended)) { pickup.results.set(0, failedResult(ended.failed)); return pickup; }
   const { keys } = ended;
   const chunks = planned.map((chunk, at) => ({ ...chunk.window, key: keys[at]! })).sort((left, right) => left.start - right.start);
   const [fpsNumerator, fpsDenominator] = [BigInt(profile.fps.numerator), BigInt(profile.fps.denominator)];
@@ -180,6 +180,6 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     pickup.waiting = true;
     return pickup;
   }
-  pickup.results.set(0, "failed" in written ? { status: "failed", error: { code: "mini_tool_failed", message: written.failed } } : written);
+  pickup.results.set(0, "failed" in written ? failedResult(written.failed) : written);
   return pickup;
 }

@@ -542,6 +542,47 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(h.advance).not.toHaveBeenCalled();
   });
 
+  // A step whose next attempt is due after the deadline expires the output as the run's own expiry does (code "expired").
+  it("TW05 a chunk ingest expired at the deadline, its next attempt due after it, ends the output expired", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(DEADLINE - 60_000);
+      serve(plan(fade()));
+      let expired = false;
+      h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+        if (request.jobId !== encId(0)) return advancePlan(request);
+        if (!expired) throw new StillRunning(Date.now() + 5000);
+        // Ingest ends a job it expires at its deadline as failed with its default reason.
+        return { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+      });
+      const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+      await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+      expired = true;
+      vi.setSystemTime(DEADLINE + 1);
+      const completion = await drive();
+      expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+      expect(completion!.error).toEqual({ code: "expired" });
+      expect(sent().map((request) => request.jobId)).not.toContain(encId(0).replace(/:a1$/, ":a2"));
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("TW06 a stitch whose next attempt is due after the deadline ends the output expired and opens no next stitch", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(DEADLINE - 60_000);
+      serve(plan(fade()));
+      h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
+        const job = await advance(input);
+        // The stitch's first attempt ends at the deadline.
+        vi.setSystemTime(DEADLINE + 1);
+        return { ...job, report: { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } }, assets: [] };
+      });
+      const completion = await drive();
+      expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+      expect(h.advance).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("TW04 sends in each stage exactly the frozen stageJobs distinct jobs and no other job", async () => {
     const value = fade();
     serve(plan(value));

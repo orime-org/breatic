@@ -18,7 +18,7 @@ import type { AcceptedMiniToolExecution, MiniToolStepJson } from "@breatic/domai
 import type { EraseFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelStepCategory, providerModel, runLedger, type ModelRunAt,
+  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelRunFailure, modelStepCategory, providerModel, runLedger, type ModelRunAt,
   type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, modelInputTarget, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
@@ -64,14 +64,15 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
   const position: Extract<ModelRunPosition, { tool: "video.erase" }> = { tool: "video.erase", step: "prepare" };
   at.position = position;
   /**
-   * End the output with its reason.
+   * End the output with its reason; a step whose next attempt was due after the deadline ends it as the run's expiry.
    * @param failedStep - The step that failed.
    * @param category - Why.
+   * @param expired - Whether the step expired.
    * @returns The pickup.
    * @throws {never} Never.
    */
-  const fail = (failedStep: Step, category: EraseFailureReason["category"]): LipSyncPickup => {
-    pickup.results.set(0, { status: "failed", error: { kind: "erase", step: failedStep, category } });
+  const fail = (failedStep: Step, category: EraseFailureReason["category"], expired = false): LipSyncPickup => {
+    pickup.results.set(0, { status: "failed", error: expired ? modelRunFailure("video.erase", position, true) : { kind: "erase", step: failedStep, category } });
     return pickup;
   };
   try {
@@ -82,12 +83,12 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     const prepared = await advanceContainer(run, { stepKey: keyOf(plan, "prepare"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
       build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window: plan.range, timescale: table.timescale,
         entries: windowEntries(ledger, plan.range), target, audio: null, grid: plan.grid }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt);
-    if (!("key" in prepared)) return fail("prepare", prepared.failed as EraseFailureReason["category"]);
+    if (!("key" in prepared)) return fail("prepare", prepared.failed as EraseFailureReason["category"], prepared.expired);
     position.step = "mask";
     const mask = await advanceContainer(run, { stepKey: keyOf(plan, "mask"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
       build: () => Promise.resolve({ recipe: { kind: "bria_mask", inputId: RLE, table, range, grid: plan.grid, target: { width: target.width, height: target.height } },
         inputs: [{ inputId: RLE, storageKey: plan.tracking.rleKey }] }) }, deadlineAt);
-    if (!("key" in mask)) return fail("mask", mask.failed as EraseFailureReason["category"]);
+    if (!("key" in mask)) return fail("mask", mask.failed as EraseFailureReason["category"], mask.expired);
     position.step = "generate";
     const storage = await getStorageAdapter();
     const result = await advanceGenerate(run, { endpoint: providerModel(plan.model), itemIndex: 0, stepKey: keyOf(plan, "generate"), contentType: "video/mp4",
@@ -103,13 +104,13 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
       build: () => Promise.resolve({ recipe: { kind: "model_composite", mode: "erase", inputId: SOURCE_INPUT_ID, window, timescale: table.timescale, entries: windowEntries(ledger, window),
         target: { ...output, format: undefined }, result: RESULT, rle: RLE, table, range, grid: plan.grid, matte: plan.matte, rleSize: { width: target.width, height: target.height } },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, { inputId: RESULT, storageKey: result.key }, { inputId: RLE, storageKey: plan.tracking.rleKey }] }) })), deadlineAt);
-    if (!("keys" in chunks)) return fail("composite", chunks.failed as EraseFailureReason["category"]);
+    if (!("keys" in chunks)) return fail("composite", chunks.failed as EraseFailureReason["category"], chunks.expired);
     position.step = "stitch";
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "ERASE", container: output.format === "webm-vp9" ? "webm" : "mp4",
       build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
         chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
-    if ("failed" in written) return fail("stitch", "failed");
+    if ("failed" in written) return fail("stitch", "failed", written.expired);
     pickup.results.set(0, written);
     return pickup;
   } catch (error) {

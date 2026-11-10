@@ -40,7 +40,7 @@ import type * as coreModule from "@breatic/core";
 import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, miniToolStepStateSchema, presentationPinService, taskRepo, upstreamStepRepo } from "@breatic/domain";
 import type * as sharedModule from "@breatic/shared";
 import type * as domainModule from "@breatic/domain";
-import { isUploadableMediaType, miniToolPlanJobRequestSchema, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
+import { DeadlinePassed, isUploadableMediaType, miniToolPlanJobRequestSchema, sniffMimeType, UploadHttpError, verifyUploadTicket, videoPresentationWorkKeyFor } from "@breatic/shared";
 import { lipsyncFailureReasonSchema, plannedStageJobs, trackingClips } from "@breatic/shared/mini-tools";
 import type * as wavespeedModule from "@worker/providers/wavespeed.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -813,5 +813,49 @@ describe("lip-sync request bodies follow the model yaml's upstream names (§97 D
     const actual = await vi.importActual<typeof domainModule>("@breatic/domain");
     const model = actual.getFullModelConfig("video").models.find((candidate) => candidate.name === "sync-lipsync-3");
     expect(model?.params?.sync_mode, "sync-lipsync-3 declares sync_mode").toBeDefined();
+  });
+});
+
+// Execution design §9.4: a container step whose next attempt is due after the run's deadline is never opened, and the run
+// ends with the expiry line, as a run whose budget ended does (run-execution-task's DeadlinePassed reason).
+describe("a lip-sync step whose next attempt is due after the deadline ends the run with the expiry line (execution design §9.4)", () => {
+  /**
+   * Drive the real runner with the first job of a recipe kind running until the deadline passes, when ingest expires it
+   * (a failed report with its default reason); every pickup from then on runs past the deadline.
+   * @param kind - The recipe kind.
+   * @returns The output's result.
+   * @throws {Error} When a step throws or the run never ends.
+   */
+  async function expireAtDeadline(kind: string): Promise<Record<string, unknown>> {
+    const f = await seed();
+    let held: string | null = null;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (held === null && job?.outputs[0]?.recipe.kind === kind) { held = job.jobId; scripted.set(held, { schemaVersion: 2, state: "running" }); }
+      return original(input, init);
+    });
+    const lipSync = await runner();
+    let deadlineAt = f.deadlineAt;
+    for (let pickup = 0; pickup < 30; pickup += 1) {
+      if (held !== null && deadlineAt === f.deadlineAt) { scripted.set(held, failedReport()); deadlineAt = Date.now() - 1; }
+      try {
+        const result = (await lipSync(f.execution, f.userId, deadlineAt)).results.get(0);
+        if (result !== undefined) return result;
+      } catch (error) { if (!(error instanceof StillRunning)) throw error; }
+    }
+    throw new Error("The lip-sync run never ended");
+  }
+
+  it.each([
+    ["LX01 a person's faces job", "lipsync_faces"],
+    ["LX02 a composite chunk", "lipsync_composite"],
+    ["LX03 the stitch", "stitch"],
+  ])("%s expired at the deadline ends as the expiry line", async (_name, kind) => {
+    expect(await expireAtDeadline(kind)).toEqual({ status: "failed", error: { kind: "lipsync", persons: [], shared: { step: "expired", category: "timeout" } } });
+  });
+
+  it("LX04 the preparation expired at the deadline ends the run as expired, which the entry commits as the expiry line", async () => {
+    await expect(expireAtDeadline("prepare_model_input")).rejects.toBeInstanceOf(DeadlinePassed);
   });
 });

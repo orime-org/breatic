@@ -230,10 +230,12 @@ async function seedExpand(): Promise<Fixture> {
  * @param module - The runner's module.
  * @param name - The runner's export.
  * @param at - The holder the runner keeps its position in.
+ * @param deadlineOf - The deadline each pickup runs under, from the task's; the task's own when absent.
  * @returns The frozen plan and the output's result.
  * @throws {Error} When admission refuses, a step throws or the run never ends.
  */
-async function admitAndDrive(f: Fixture, module: string, name: string, at: { position: unknown } = { position: null }): Promise<{ plan: Record<string, unknown>; result: Record<string, unknown> }> {
+async function admitAndDrive(f: Fixture, module: string, name: string, at: { position: unknown } = { position: null },
+  deadlineOf: (deadlineAt: number) => number = (deadlineAt) => deadlineAt): Promise<{ plan: Record<string, unknown>; result: Record<string, unknown> }> {
   const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(f.body) });
   expect(response.status, await response.clone().text()).toBe(201);
@@ -243,7 +245,7 @@ async function admitAndDrive(f: Fixture, module: string, name: string, at: { pos
   const run = await runnerOf(module, name);
   for (let pickup = 0; pickup < 60; pickup += 1) {
     try {
-      const answer = await run(execution, task.userId, deadlineAt, at);
+      const answer = await run(execution, task.userId, deadlineOf(deadlineAt), at);
       const result = answer.results.get(0);
       if (result !== undefined) return { plan: execution as unknown as Record<string, unknown>, result };
     } catch (error) { if (!(error instanceof StillRunning)) throw error; }
@@ -542,5 +544,64 @@ describe("an erase the queue cleanup ends closes its consumption set once every 
     expect(await money(f.body.run_id)).toMatchObject({ status: "failed", complete: false, billed: null, hold: "held", spent: [] });
     const { settleMiniToolCharge } = await import("@breatic/domain");
     expect(await settleMiniToolCharge(f.body.run_id)).toEqual({ state: "pending" });
+  });
+});
+
+// Execution design §10.4, §10.5: a container step whose next attempt is due after the run's deadline is never opened, and
+// the run ends with its tool's timeout reason, as a run whose budget ended does; any other step failure keeps its reason.
+describe("a step whose next attempt is due after the deadline ends the run with its timeout reason (execution design §10.4, §10.5)", () => {
+  /**
+   * Make the first job of a recipe kind run until the deadline passes, when ingest expires it (a failed report with its
+   * default reason); every pickup from then on runs past the deadline.
+   * @param kind - The recipe kind.
+   * @returns The deadline each pickup runs under.
+   */
+  function expireAtDeadline(kind: string): (deadlineAt: number) => number {
+    let held: string | null = null;
+    let passed = false;
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (held === null && job?.outputs[0]?.recipe.kind === kind) { held = job.jobId; scripted.set(held, { schemaVersion: 2, state: "running" }); }
+      return original(input, init);
+    });
+    return (deadlineAt) => {
+      if (held !== null && !passed) {
+        passed = true;
+        scripted.set(held, { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });
+      }
+      return passed ? Date.now() - 1 : deadlineAt;
+    };
+  }
+
+  it.each([
+    ["EX01 an erase whose composite chunk", "model_composite"],
+    ["EX02 an erase whose stitch", "stitch"],
+  ])("%s is expired at the deadline ends as erase / expired / timeout", async (_name, kind) => {
+    const deadlineOf = expireAtDeadline(kind);
+    const { result } = await admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", { position: null }, deadlineOf);
+    expect(result).toEqual({ status: "failed", error: { kind: "erase", step: "expired", category: "timeout" } });
+  });
+
+  it.each([
+    ["EX03 an expand whose window job", "model_window"],
+    ["EX04 an expand whose composite chunk", "model_composite"],
+    ["EX05 an expand whose stitch", "stitch"],
+  ])("%s is expired at the deadline ends with the expiry line and every unfinished window stopped", async (_name, kind) => {
+    const deadlineOf = expireAtDeadline(kind);
+    const { result } = await admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand", { position: null }, deadlineOf);
+    const windows = kind === "model_window" ? [{ windowIndex: 0, step: "window", category: "timeout" }] : [];
+    expect(result).toEqual({ status: "failed", error: { kind: "expand", windows, shared: { step: "expired", category: "timeout" } } });
+  });
+
+  it("EX06 an expand whose composite fails on every attempt before the deadline keeps composite / failed", async () => {
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const job = init?.method === "POST" && String(input).endsWith("/jobs") ? JSON.parse(String(init.body)) as Job : null;
+      if (job?.outputs[0]?.recipe.kind === "model_composite") scripted.set(job.jobId, { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });
+      return original(input, init);
+    });
+    const { result } = await admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand");
+    expect(result).toEqual({ status: "failed", error: { kind: "expand", windows: [], shared: { step: "composite", category: "failed" } } });
   });
 });

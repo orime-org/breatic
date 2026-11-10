@@ -13,8 +13,9 @@
 
 import { logger } from "@breatic/core";
 import { miniToolStepStateSchema, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
-import { videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
+import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
 import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared/mini-tools";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceChunks, advanceContainer, storedRequest, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
@@ -85,6 +86,7 @@ export async function preparedRequest(owner: string, single: boolean): Promise<M
  * @returns The prepared object's storage key.
  * @throws {StillRunning} While a preparation job runs.
  * @throws {UpstreamTaskFailed} When the preparation failed for good.
+ * @throws {DeadlinePassed} When a preparation job's next attempt is due after the deadline.
  * @throws {Error} When the original preparation is missing, or persistence or the job boundary fails.
  */
 export async function prepareModelInput(execution: PreparingRun, deadlineAt: number, owner: string = execution.taskId): Promise<string> {
@@ -97,7 +99,8 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
   // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
   // new run freezes the repaired ledger). A transport failure keeps the normal retry.
-  const ledger = await readJobLedger(execution.ledgerReceipts.source, deadlineAt).catch((error: unknown) => {
+  // Read until the reporting window ends, so a pickup after the deadline still reads the jobs submitted before it.
+  const ledger = await readJobLedger(execution.ledgerReceipts.source, planReportingEnd(deadlineAt)).catch((error: unknown) => {
     if (error instanceof FullLedgerInvalid) {
       logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_prepare_ledger_invalid");
       throw new UpstreamTaskFailed("container", "source_ledger_invalid");
@@ -134,10 +137,11 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
    * @param planned - The final unit.
    * @returns The key.
    * @throws {UpstreamTaskFailed} When the unit failed for good.
+   * @throws {DeadlinePassed} When its next attempt is due after the deadline.
    */
   const prepared = async (planned: ContainerStep): Promise<string> => {
     const ended = await advanceContainer(run, planned, deadlineAt);
-    if (!("key" in ended)) throw new UpstreamTaskFailed("container", PREPARATION_FAILED);
+    if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new UpstreamTaskFailed("container", PREPARATION_FAILED);
     return ended.key;
   };
   if (single) {
@@ -148,7 +152,7 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   // Every chunk advances in each pickup and the preparation settles once none still runs, each done chunk pinned with the run.
   const outputs = await advanceChunks(run, chunks.map((window, chunk) => unit((attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunk,
     { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale, entries: windowEntries(ledger, window), target })), deadlineAt);
-  if (!("keys" in outputs)) throw new UpstreamTaskFailed("container", PREPARATION_FAILED);
+  if (!("keys" in outputs)) throw outputs.expired === true ? new DeadlinePassed() : new UpstreamTaskFailed("container", PREPARATION_FAILED);
   return prepared({ ...unit((attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunks.length, { kind: "stitch", inputId: SOURCE_INPUT_ID,
     chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
     audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },

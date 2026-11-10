@@ -47,13 +47,27 @@ export type LipSyncLineStep = "prepare" | "track" | "faces" | "clip" | "stem" | 
 export type LipSyncStepOutcome =
   | { state: "done"; result?: MiniToolExecutionRegistered }
   | { state: "running" }
-  /** A failed step names the step its line is written under: a tracking clip, its join, or a faces job that found no tracked foreground name track (§97 D21-5). */
-  | { state: "failed"; step: LipSyncLineStep; category: "no_face" | "model_rejected" | "timeout" | "failed" };
+  /**
+   * A failed step names the step its line is written under: a tracking clip, its join, or a faces job that found no tracked
+   * foreground name track (§97 D21-5); `expired` marks a step whose next attempt was due after the deadline (§9.4).
+   */
+  | { state: "failed"; step: LipSyncLineStep; category: "no_face" | "model_rejected" | "timeout" | "failed"; expired?: true };
 
 type LipSync = Extract<AcceptedMiniToolExecution, { tool: "video.lip-sync" }>;
 type Category = Extract<LipSyncStepOutcome, { state: "failed" }>["category"];
-/** A step that ended: its object key, or why it failed and under which line step. */
-type Ended = { key: string } | { failed: Category; step?: LipSyncLineStep };
+/** A step that ended: its object key, or why it failed, under which line step and whether it expired. */
+type Ended = { key: string } | { failed: Category; step?: LipSyncLineStep; expired?: true };
+
+/**
+ * The expiry mark of a failed step, carried to its outcome.
+ * @param ended - The failed step.
+ * @param ended.expired - Whether its next attempt was due after the deadline.
+ * @returns The mark, or nothing.
+ * @throws {never} Never.
+ */
+function expiryOf(ended: { expired?: true }): { expired?: true } {
+  return ended.expired === true ? { expired: true } : {};
+}
 
 /** The input ids a recipe binds its objects under, fixed per role and index so a rebuilt request is the same request. */
 const PREPARED = "00000000-0000-4000-8000-000000000002";
@@ -342,7 +356,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
  * @throws {StillRunning} While a chunk runs.
  * @throws {Error} When persistence or IO fails.
  */
-async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category }> {
+async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category; expired?: true }> {
   // A transparent original's chunks are VP9 WebM with alpha, as its stitch is (§7.17 lipsync_composite row, §4.3).
   const ledger = await ledgerOf(execution, deadlineAt);
   const target = segmentTarget(ledger, execution.container.encode);
@@ -363,7 +377,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
         .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
     } })), deadlineAt);
-  return "keys" in ended ? ended : { failed: ended.failed as Category };
+  return "keys" in ended ? ended : { failed: ended.failed as Category, ...expiryOf(ended) };
 }
 
 /**
@@ -377,7 +391,7 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
  */
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
-  if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed };
+  if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed, ...expiryOf(chunks) };
   const ledger = await ledgerOf(execution, deadlineAt);
   const target = segmentTarget(ledger, execution.container.encode);
   const done = await advanceRegistered(stepRun(execution), { stepKey: sharedKeyOf(execution, "stitch"), namePrefix: "LIPSYNC", container: target.format === "webm-vp9" ? "webm" : "mp4",
@@ -391,7 +405,7 @@ async function stitch(execution: LipSync, userId: string, deadlineAt: number): P
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
         ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))] };
     } }, userId, deadlineAt);
-  return "failed" in done ? { state: "failed", step: "stitch", category: "failed" } : { state: "done", result: done };
+  return "failed" in done ? { state: "failed", step: "stitch", category: "failed", ...expiryOf(done) } : { state: "done", result: done };
 }
 
 /**
@@ -418,11 +432,11 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
       const clips = clipsOf(run);
       if ((step.kind === "prepare:fwd" ? clips.forward : clips.reverse) === null) return { state: "done" };
       const ended = await clipVideo(run, step.kind === "prepare:fwd" ? "forward" : "reverse", deadlineAt);
-      return "key" in ended ? { state: "done" } : { state: "failed", step: "prepare", category: ended.failed };
+      return "key" in ended ? { state: "done" } : { state: "failed", step: "prepare", category: ended.failed, ...expiryOf(ended) };
     }
     if (step.kind === "composite") {
       const chunks = await composite(run, userId, deadlineAt);
-      return "keys" in chunks ? { state: "done" } : { state: "failed", step: "composite", category: chunks.failed };
+      return "keys" in chunks ? { state: "done" } : { state: "failed", step: "composite", category: chunks.failed, ...expiryOf(chunks) };
     }
     if (step.kind === "stitch") return await stitch(run, userId, deadlineAt);
     if (step.personId === null) throw new Error(`The lip-sync ${step.kind} step belongs to a person`);
@@ -431,7 +445,7 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
       if ((step.kind === "track:fwd" ? clips.forward : clips.reverse) === null) return { state: "done" };
     }
     const ended = await personStep(run, step.kind, step.personId, userId, deadlineAt);
-    return "key" in ended ? { state: "done" } : { state: "failed", step: ended.step ?? (step.kind as LipSyncLineStep), category: ended.failed };
+    return "key" in ended ? { state: "done" } : { state: "failed", step: ended.step ?? (step.kind as LipSyncLineStep), category: ended.failed, ...expiryOf(ended) };
   } catch (error) {
     if (error instanceof StillRunning) return { state: "running" };
     // Only the preparation and the ledger read throw this here; a provider's failure is caught where it is called.

@@ -55,7 +55,7 @@ export async function registered(asset: StudioAssetEntity): Promise<NonNullable<
  * @returns The result.
  * @throws {never} Never.
  */
-function failedResult(reason: string): NonNullable<VideoToolResult> {
+export function failedResult(reason: string): NonNullable<VideoToolResult> {
   // A step that ended at the run's deadline expired, as the run itself does (run-execution-task's DeadlinePassed failure).
   if (reason === "expired") return { status: "failed", error: { code: "expired" } };
   return { status: "failed", error: { code: "mini_tool_failed", message: reason } };

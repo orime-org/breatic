@@ -188,8 +188,11 @@ export interface ModelStepRun {
   log: string;
 }
 type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
-/** A step that ended: its object key, or why it failed. */
-export type StepEnded = { key: string } | { failed: string; step?: string };
+/**
+ * A step that ended: its object key, or why it failed; `expired` marks a step whose next attempt was due after the run's
+ * deadline, which ends a model run with its tool's timeout reason (execution design §9.4, §10.4, §10.5).
+ */
+export type StepEnded = { key: string } | { failed: string; step?: string; expired?: true };
 
 const objectResult = z.strictObject({ stepKey: z.string().min(1), object: z.string().min(1), providerURL: z.url() });
 const retryOf = z.object({ miniToolExecution: z.object({ retry: z.object({ runId: z.uuid() }).optional() }) });
@@ -453,7 +456,7 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
     if (existing === undefined && !open) return null;
     // An attempt opened after the deadline is never submitted, so it is never opened: the step ends expired, and the other
     // steps and outputs of the pickup settle as they stand.
-    if (existing === undefined && Date.now() >= deadlineAt) return planned.failed("expired");
+    if (existing === undefined && Date.now() >= deadlineAt) return { ...planned.failed("expired"), expired: true };
     const state = existing === undefined ? null : stateOf(existing);
     if (existing !== undefined && state?.result?.outcome === "failed") {
       const failed = readMiniToolPlanJobReport(storedRequest(existing)!, state.result.result);
@@ -606,7 +609,7 @@ export interface RegisteredStep {
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence, grants or registration fail.
  */
-export async function advanceRegistered(run: ModelStepRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | { failed: string }> {
+export async function advanceRegistered(run: ModelStepRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | { failed: string; expired?: true }> {
   const outputIndex = planned.outputIndex ?? 0;
   let reason = "tool_failed";
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
@@ -616,7 +619,7 @@ export async function advanceRegistered(run: ModelStepRun, planned: RegisteredSt
     let request = step === undefined ? null : storedRequest(step);
     if (request === null) {
       // An attempt opened after the deadline is never submitted, so no grant, step or job is opened for it.
-      if (Date.now() >= deadlineAt) return { failed: "expired" };
+      if (Date.now() >= deadlineAt) return { failed: "expired", expired: true };
       const built = await planned.build();
       const [grant] = await openContainerOutputs({ projectId: run.projectId, actingUserId: userId, taskId: run.taskId, deadlineAt,
         outputs: [{ modality: "video", namePrefix: planned.namePrefix, ...(planned.container === "webm" ? { container: "webm" as const } : {}) }] });

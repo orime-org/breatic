@@ -11,7 +11,7 @@
 import type { MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, lipsyncStoppedLines, type LipsyncPersonState, type LipsyncSharedLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { runLipSyncStep, type LipSyncStepKind } from "@worker/handlers/mini-tool/lipsync-step-run.js";
-import type { ModelRunAt, ModelRunPosition } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { modelRunFailure, type ModelRunAt, type ModelRunPosition } from "@worker/handlers/mini-tool/model-run-steps.js";
 
 /** The parts of a frozen lip-sync run the runner reads. */
 export interface LipSyncExecution { taskId: string; persons: readonly { personId: string; detectionNumber: number }[] }
@@ -48,6 +48,15 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
     return pickup;
   };
   /**
+   * End the output as the run's expiry: a step whose next attempt was due after the deadline (§9.4).
+   * @returns The pickup.
+   * @throws {never} Never.
+   */
+  const expire = (): LipSyncPickup => {
+    pickup.results.set(0, { status: "failed", error: { ...modelRunFailure("video.lip-sync", position, true) } });
+    return pickup;
+  };
+  /**
    * Run a shared step.
    * @param kind - The step.
    * @returns False when it still runs or failed (the pickup is then settled).
@@ -57,6 +66,7 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
     position.current = { shared: kind.startsWith("prepare") ? "prepare" : kind as "composite" | "stitch" };
     const outcome = await runLipSyncStep(execution, { kind, personId: null }, userId, deadlineAt);
     if (outcome.state === "running") { pickup.waiting = true; return false; }
+    if (outcome.state === "failed" && outcome.expired === true) { expire(); return false; }
     if (outcome.state === "failed") { fail({ step: kind.startsWith("prepare") ? "prepare" : kind as "composite" | "stitch", category: outcome.category === "timeout" ? "timeout" : "failed" }); return false; }
     if (kind === "stitch") {
       if (outcome.result === undefined) throw new Error("The lip-sync stitch ended without a registered output");
@@ -82,6 +92,8 @@ export async function runMiniToolLipSync(execution: LipSyncExecution, userId: st
         if (outcome.state === "running") {
           pickup.waiting = true;
           if (paid !== null) person[paid] = "submitted";
+        } else if (outcome.state === "failed" && outcome.expired === true) {
+          return expire();
         } else if (outcome.state === "failed") {
           person.failure = { step: outcome.step as "track" | "faces" | "clip" | "stem" | "gen", category: outcome.category };
         } else if (kind === "track_join" || kind === "gen") person[paid!] = "done";
