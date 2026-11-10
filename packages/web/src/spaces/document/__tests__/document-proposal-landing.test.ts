@@ -24,6 +24,8 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { landedAt, landProposal, sourceAt, sourceSpot } from '@web/spaces/document/document-proposal-landing';
+import { setTableFullscreen, tableFullscreenIn } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -594,5 +596,22 @@ describe('where a proposal points in the document, before anything lands (inner#
     expect(handle.editor.prosemirrorState.doc.toJSON()).toEqual(before);
     expect(threads(handle)).toHaveLength(0);
     expect(handle.undoManager.undoStack).toHaveLength(0);
+  });
+});
+
+describe('a table opened full screen while a proposal lands (breatic#1427)', () => {
+  it('ends full screen again and writes, when the table went full screen during the wait', async () => {
+    const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
+    const { editor } = handle;
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const proposal = proposalOn(handle, 2, { kind: 'rewrite', body: 'Light on the table.' });
+
+    const landing = landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+    await landing;
+
+    expect(blocks(handle).map((b) => b.text)).toContain('Light on the table.');
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
 });

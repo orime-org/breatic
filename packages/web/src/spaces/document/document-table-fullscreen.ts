@@ -46,8 +46,8 @@ export type FullscreenReturn =
   | { readonly kind: 'table'; readonly id: string; readonly offset: number }
   | { readonly kind: 'scrollTop'; readonly value: number }
   | { readonly kind: 'selection' }
-  // Where a write that ended full screen starts, once it has been made.
-  | { readonly kind: 'write'; readonly at: number | null };
+  // Where a write that ended full screen starts.
+  | { readonly kind: 'write'; readonly at: number };
 
 /** Full screen as the plugin keeps it. */
 export type TableFullscreen =
@@ -68,7 +68,7 @@ export interface FullscreenEntry {
 type FullscreenCommand =
   | { readonly kind: 'enter'; readonly entry: FullscreenEntry }
   | { readonly kind: 'exit' }
-  | { readonly kind: 'exitForWrite' }
+  | { readonly kind: 'exitForWrite'; readonly at: number }
   | { readonly kind: 'cleared' };
 
 /** The editor these functions are handed: anything holding a view. */
@@ -223,8 +223,9 @@ export function setTableFullscreen(editor: FullscreenEditor, entry: FullscreenEn
  * @param target - The span the write replaces or follows.
  * @param target.from - Where it starts.
  * @param target.to - Where it ends.
+ * @param at - Where the write starts, to be brought into view.
  */
-export function leaveFullscreenForWrite(editor: FullscreenEditor, target: { from: number; to: number }): void {
+export function leaveFullscreenForWrite(editor: FullscreenEditor, target: { from: number; to: number }, at: number): void {
   const view = editor.prosemirrorView;
   if (view === null || view === undefined) return;
   const now = tableFullscreenIn(view.state);
@@ -235,7 +236,7 @@ export function leaveFullscreenForWrite(editor: FullscreenEditor, target: { from
   const cell = cellDepthOf($from);
   const sameCell = table !== null && inCellOf(doc, target.from, table) && inCellOf(doc, target.to, table)
     && $from.sharedDepth(target.to) >= cell;
-  if (!sameCell) view.dispatch(view.state.tr.setMeta(DOCUMENT_TABLE_FULLSCREEN, { kind: 'exitForWrite' } satisfies FullscreenCommand));
+  if (!sameCell) view.dispatch(view.state.tr.setMeta(DOCUMENT_TABLE_FULLSCREEN, { kind: 'exitForWrite', at } satisfies FullscreenCommand));
 }
 
 /**
@@ -282,17 +283,11 @@ function next(tr: Transaction, current: TableFullscreen, before: EditorState): T
   const asked = tr.getMeta(DOCUMENT_TABLE_FULLSCREEN) as FullscreenCommand | undefined;
   if (asked?.kind === 'enter') return { ...asked.entry };
   if (asked?.kind === 'cleared') return BODY;
-  if (current.table === null) {
-    // The first change after an exit for a write is that write.
-    if (current.returnTo?.kind === 'write' && current.returnTo.at === null && tr.docChanged) {
-      return { table: null, returnTo: { kind: 'write', at: before.doc.content.findDiffStart(tr.doc.content) ?? 0 } };
-    }
-    return current;
-  }
+  if (current.table === null) return current;
   if (asked?.kind === 'exit') {
     return { table: null, returnTo: { kind: 'table', id: current.table, offset: current.offset } };
   }
-  if (asked?.kind === 'exitForWrite') return { table: null, returnTo: { kind: 'write', at: null } };
+  if (asked?.kind === 'exitForWrite') return { table: null, returnTo: { kind: 'write', at: asked.at } };
   if (!tr.docChanged) return current;
   if (tableById(tr.doc, current.table) === null) {
     return { table: null, returnTo: { kind: 'scrollTop', value: current.scrollTop } };

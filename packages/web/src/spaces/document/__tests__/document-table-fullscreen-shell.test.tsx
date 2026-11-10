@@ -390,16 +390,19 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     boxAt(viewport, 100, 600);
     const id = enter(editor);
     const view = editor.prosemirrorView!;
-    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 2000, bottom: 2020, left: 0, right: 0 });
+    let span = { from: 0, to: 0 };
+    view.state.doc.descendants((node, pos) => {
+      if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
+      return true;
+    });
+    // Only where the write starts stands far down; the caret, still in the table, does not.
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) => (pos === span.from
+      ? { top: 2000, bottom: 2020, left: 0, right: 0 }
+      : { top: 150, bottom: 170, left: 0, right: 0 }));
     const scrolled = vi.spyOn(viewport, 'scrollTo');
 
     act(() => {
-      let span = { from: 0, to: 0 };
-      view.state.doc.descendants((node, pos) => {
-        if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
-        return true;
-      });
-      leaveFullscreenForWrite(editor, span);
+      leaveFullscreenForWrite(editor, span, span.from);
       editor.replaceBlocks([id], [{ type: 'paragraph', content: 'Rewritten' }] as never);
     });
 
@@ -414,16 +417,19 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     boxAt(viewport, 100, 600);
     const id = enter(editor);
     const view = editor.prosemirrorView!;
-    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 2000, bottom: 2020, left: 0, right: 0 });
+    let span = { from: 0, to: 0 };
+    view.state.doc.descendants((node, pos) => {
+      if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
+      return true;
+    });
+    // Only where the write starts stands far down; the caret, still in the table, does not.
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) => (pos === span.to
+      ? { top: 2000, bottom: 2020, left: 0, right: 0 }
+      : { top: 150, bottom: 170, left: 0, right: 0 }));
     const scrolled = vi.spyOn(viewport, 'scrollTo');
 
     act(() => {
-      let span = { from: 0, to: 0 };
-      view.state.doc.descendants((node, pos) => {
-        if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
-        return true;
-      });
-      leaveFullscreenForWrite(editor, span);
+      leaveFullscreenForWrite(editor, span, span.to);
       editor.insertBlocks([{ type: 'paragraph', content: 'Written' }] as never, id, 'after');
     });
 

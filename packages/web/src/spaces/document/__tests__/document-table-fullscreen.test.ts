@@ -635,7 +635,7 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
     const id = enter(editor);
     const a1 = wordsAt(editor.prosemirrorState.doc, 'a1');
 
-    leaveFullscreenForWrite(editor, { from: a1, to: a1 + 2 });
+    leaveFullscreenForWrite(editor, { from: a1, to: a1 + 2 }, a1);
 
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
@@ -645,7 +645,7 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
     enter(editor);
     const { pos, node } = tableIn(editor.prosemirrorState.doc);
 
-    leaveFullscreenForWrite(editor, { from: pos, to: pos + node.nodeSize });
+    leaveFullscreenForWrite(editor, { from: pos, to: pos + node.nodeSize }, pos);
 
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
@@ -655,7 +655,7 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
     enter(editor);
     const after = wordsAt(editor.prosemirrorState.doc, 'After');
 
-    leaveFullscreenForWrite(editor, { from: after, to: after + 5 });
+    leaveFullscreenForWrite(editor, { from: after, to: after + 5 }, after);
 
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
@@ -664,7 +664,7 @@ describe('a write aimed from outside the editor, such as the AI dialog\'s', () =
     const { editor } = open(BETWEEN);
     const after = wordsAt(editor.prosemirrorState.doc, 'After');
 
-    leaveFullscreenForWrite(editor, { from: after, to: after + 5 });
+    leaveFullscreenForWrite(editor, { from: after, to: after + 5 }, after);
 
     expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: null });
   });
@@ -813,5 +813,27 @@ describe('a press in full screen (breatic#1427)', () => {
     Object.defineProperty(event, 'target', { value: words });
 
     expect(pressTargetOf(view, event).kind).not.toBe('edge');
+  });
+});
+
+describe('a write that ends full screen (breatic#1427)', () => {
+  it('records where the write starts, to be brought into view', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const { pos, node } = tableIn(editor.prosemirrorState.doc);
+
+    leaveFullscreenForWrite(editor, { from: pos, to: pos + node.nodeSize }, pos + node.nodeSize);
+
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'write', at: pos + node.nodeSize } });
+  });
+
+  it('keeps full screen for a write inside one cell', () => {
+    const { editor } = open(BETWEEN);
+    const id = enter(editor);
+    const at = wordsAt(editor.prosemirrorState.doc, 'a1');
+
+    leaveFullscreenForWrite(editor, { from: at, to: at + 2 }, at);
+
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 });

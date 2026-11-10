@@ -45,7 +45,7 @@ function scrollBack(editor: HandleEditor, viewport: HTMLElement, to: FullscreenR
   }
   // A write that ended full screen is shown where it starts; undo puts the
   // caret by what it took back.
-  const caret = view.coordsAtPos(to.kind === 'write' && to.at !== null ? Math.min(to.at, view.state.doc.content.size) : view.state.selection.head);
+  const caret = view.coordsAtPos(to.kind === 'write' ? Math.min(to.at, view.state.doc.content.size) : view.state.selection.head);
   if (caret.top >= box.top && caret.bottom <= box.bottom) return;
   viewport.scrollTo({ top: viewport.scrollTop + caret.top - box.top - box.height / 2 });
 }
