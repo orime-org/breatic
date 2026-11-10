@@ -314,6 +314,22 @@ describe("SandBase runs", () => {
     });
   });
 
+  describe("a submit answered 2xx that names no run", () => {
+    it.each([
+      ["an empty id and no outputs", { status: 202, body: { id: "", status: "pending" } }],
+      ["a body that is not JSON", { status: 200, raw: "<html>ok</html>", contentType: "text/html" }],
+    ] as const)("throws NoAnswer carrying one missing cost on %s, without a second submit", async (_label, reply) => {
+      const { run } = runner();
+      sb.answer(({ method, path }) => (method === "POST" && path === "/v1/run" ? reply : undefined));
+      const planned = expectState(await run.plan("flux", { prompt: "a fox", params: { aspect_ratio: "16:9" } }, { mode: "default" }, options), "send");
+      const error = await run.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NoAnswer);
+      expect(String((error as NoAnswer).cause)).toContain("answered no run id it could read");
+      expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
+      expect(submits(sb.seen)).toHaveLength(1);
+    });
+  });
+
   it("names the endpoint as the model whatever field the body carries", async () => {
     const binding = { upstream: "sandbase", weight: 1, model_id: "bfl/flux-2/flash", prompt_field: "prompt", fixed: { mode: "async", model: "someone/else" }, pricing };
     const { run } = runner(undefined, { "model-field": { upstreams: [binding] } });
