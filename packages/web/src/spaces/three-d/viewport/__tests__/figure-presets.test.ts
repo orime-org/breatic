@@ -134,6 +134,16 @@ beforeAll(async () => {
 });
 
 describe('presets on the built-in figure (inner#1692)', () => {
+  it('maps every finger joint of the built-in figure, so joint mode can bend them', () => {
+    const keys = rig.joints.map((joint) => joint.key);
+    for (const side of SIDES) {
+      for (const finger of ['Thumb', 'Index', 'Middle', 'Ring']) {
+        const joints = finger === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
+        for (const joint of joints) expect(keys, `${side}${finger}${joint}`).toContain(`h:${side}${finger}${joint}`);
+      }
+    }
+  });
+
   it('stands on the ground at rest', () => {
     expect(Math.abs(restFloor)).toBeLessThan(GROUND_TOLERANCE);
   });
@@ -162,12 +172,14 @@ describe('presets on the built-in figure (inner#1692)', () => {
     expect(seat - restFloor).toBeLessThan(GROUND_TOLERANCE * 2);
   });
 
-  it('lie rests the heels on the ground with the head', () => {
+  it('lie rests the head, both heels and both hands on the ground', () => {
     rig.apply(POSE_PRESETS.lie);
     root.updateMatrixWorld(true);
+    const lowest = (keys: string[]): number => Math.min(...skinOf(keys).map((point) => point.y)) - restFloor;
+    expect(Math.abs(lowest(['h:head'])), 'head').toBeLessThan(GROUND_TOLERANCE);
     for (const side of SIDES) {
-      const heel = Math.min(...skinOf([`h:${side}Foot`]).map((point) => point.y));
-      expect(Math.abs(heel - restFloor), side).toBeLessThan(GROUND_TOLERANCE);
+      expect(Math.abs(lowest([`h:${side}Foot`])), `${side} heel`).toBeLessThan(GROUND_TOLERANCE);
+      expect(Math.abs(lowest([`h:${side}Hand`])), `${side} hand`).toBeLessThan(GROUND_TOLERANCE);
     }
   });
 

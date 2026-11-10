@@ -40,6 +40,8 @@ const UNREAL: readonly Case[] = [
   ['clavicle_r', 'rightShoulder'], ['upperarm_r', 'rightUpperArm'], ['lowerarm_r', 'rightLowerArm'], ['hand_r', 'rightHand'],
   ['thigh_l', 'leftUpperLeg'], ['calf_l', 'leftLowerLeg'], ['foot_l', 'leftFoot'], ['ball_l', 'leftToes'],
   ['thigh_r', 'rightUpperLeg'], ['calf_r', 'rightLowerLeg'], ['foot_r', 'rightFoot'], ['ball_r', 'rightToes'],
+  ['thumb_01_l', 'leftThumbMetacarpal'], ['thumb_03_r', 'rightThumbDistal'], ['index_01_l', 'leftIndexProximal'],
+  ['middle_02_r', 'rightMiddleIntermediate'], ['ring_03_l', 'leftRingDistal'], ['pinky_01_r', 'rightLittleProximal'],
 ];
 
 /**
@@ -63,6 +65,8 @@ const CHARACTER_CREATOR: readonly Case[] = [
   ['CC_Base_L_Thigh', 'leftUpperLeg'], ['CC_Base_L_Calf', 'leftLowerLeg'], ['CC_Base_L_Foot', 'leftFoot'],
   ['CC_Base_R_Thigh', 'rightUpperLeg'], ['CC_Base_R_Calf', 'rightLowerLeg'], ['CC_Base_R_Foot', 'rightFoot'],
   ['CC_Base_Head', 'head'],
+  ['CC_Base_L_Thumb1', 'leftThumbMetacarpal'], ['CC_Base_L_Index2', 'leftIndexIntermediate'], ['CC_Base_R_Mid1', 'rightMiddleProximal'],
+  ['CC_Base_L_Ring3', 'leftRingDistal'], ['CC_Base_R_Pinky2', 'rightLittleIntermediate'],
 ];
 
 /** 3ds Max Biped; GLTFLoader turns spaces into `_`, and the raw spaced form must match too. */
@@ -73,6 +77,10 @@ const BIPED: readonly Case[] = [
   ['Bip001_L_Thigh', 'leftUpperLeg'], ['Bip001_L_Calf', 'leftLowerLeg'], ['Bip001_L_Foot', 'leftFoot'],
   ['Bip001_R_Thigh', 'rightUpperLeg'], ['Bip001_R_Calf', 'rightLowerLeg'], ['Bip001_R_Foot', 'rightFoot'],
   ['Bip001 L UpperArm', 'leftUpperArm'],
+  // Finger<n><joint>: n counts thumb to little finger, the joint digit is absent for the first joint.
+  ['Bip001_L_Finger0', 'leftThumbMetacarpal'], ['Bip001_L_Finger02', 'leftThumbDistal'], ['Bip001_L_Finger1', 'leftIndexProximal'],
+  ['Bip001_L_Finger11', 'leftIndexIntermediate'], ['Bip001 L Finger21', 'leftMiddleIntermediate'], ['Bip001_R_Finger3', 'rightRingProximal'],
+  ['Bip001_R_Finger42', 'rightLittleDistal'],
 ];
 
 /** GDQuest Mannequiny; GLTFLoader turns `upperarm.l` into `upperarml`. */
@@ -82,6 +90,8 @@ const MANNEQUINY: readonly Case[] = [
   ['clavicler', 'rightShoulder'], ['upperarmr', 'rightUpperArm'], ['lowerarmr', 'rightLowerArm'], ['handr', 'rightHand'],
   ['thighl', 'leftUpperLeg'], ['calfl', 'leftLowerLeg'], ['footl', 'leftFoot'], ['balll', 'leftToes'],
   ['thighr', 'rightUpperLeg'], ['calfr', 'rightLowerLeg'], ['footr', 'rightFoot'], ['ballr', 'rightToes'],
+  ['thumb_01l', 'leftThumbMetacarpal'], ['thumb_02r', 'rightThumbProximal'], ['index_01l', 'leftIndexProximal'],
+  ['middle_03r', 'rightMiddleDistal'], ['ring_02l', 'leftRingIntermediate'],
 ];
 
 /** VRoid joints, as WaveSpeed `tripo3d/rig` with `spec=vrm` names them; fingers are numbered 1..3. */

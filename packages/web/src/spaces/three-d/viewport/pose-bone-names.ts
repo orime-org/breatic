@@ -67,21 +67,25 @@ const SIDED_NAMES: Readonly<Record<string, Sided>> = {
 };
 
 /**
- * Numbered finger names under their VRM names: Mixamo's `HandThumb1` and
- * VRoid's `Thumb1`, the first thumb joint being VRM 1.0's metacarpal.
+ * Numbered finger names under their VRM names, the first thumb joint being VRM 1.0's metacarpal:
+ * Mixamo's `HandThumb1`, VRoid's `Thumb1`, Character Creator's `Mid1` and `Pinky1`, Unreal's and
+ * Mannequiny's `thumb_01`, and 3ds Max Biped's `Finger0`, `Finger01`, `Finger02` from thumb to little finger.
  * @returns Cleaned names to sided suffixes.
  */
 function fingerNames(): Record<string, Sided> {
-  const fingers = [['thumb', 'thumb', 'Thumb'], ['index', 'index', 'Index'], ['middle', 'middle', 'Middle'],
-    ['ring', 'ring', 'Ring'], ['pinky', 'little', 'Little']] as const;
+  const fingers = [['thumb', ['thumb'], 'Thumb'], ['index', ['index'], 'Index'], ['middle', ['middle', 'mid'], 'Middle'],
+    ['ring', ['ring'], 'Ring'], ['pinky', ['little', 'pinky'], 'Little']] as const;
   const names: Record<string, Sided> = {};
-  for (const [mixamo, vroid, vrm] of fingers) {
+  fingers.forEach(([mixamo, numbered, vrm], finger) => {
     const joints = vrm === 'Thumb' ? ['Metacarpal', 'Proximal', 'Distal'] : ['Proximal', 'Intermediate', 'Distal'];
     joints.forEach((joint, index) => {
-      names[`hand${mixamo}${index + 1}`] = `${vrm}${joint}` as Sided;
-      names[`${vroid}${index + 1}`] = `${vrm}${joint}` as Sided;
+      const bone = `${vrm}${joint}` as Sided;
+      names[`hand${mixamo}${index + 1}`] = bone;
+      for (const word of numbered) names[`${word}${index + 1}`] = bone;
+      names[`${mixamo}0${index + 1}`] = bone;
+      names[`finger${finger}${index === 0 ? '' : index}`] = bone;
     });
-  }
+  });
   return names;
 }
 
