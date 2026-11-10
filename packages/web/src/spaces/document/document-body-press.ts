@@ -27,6 +27,7 @@ import { extendFromPress, followFromPoint } from '@web/spaces/document/document-
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { MEDIA_CONTROLS } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
 
@@ -269,8 +270,10 @@ export function attachBodyScroller(
     event.preventDefault();
     blankPresses.add(event);
     // A press that is not on a comment closes the one that was open, the same
-    // as a press on plain text (`document-comment-selection.ts`).
-    if (selectedThreadsIn(view.state).length > 0) {
+    // as a press on plain text (`document-comment-selection.ts`). Under a
+    // full-screen table the comments are put away and a press leaves them, as
+    // a press in a cell does.
+    if (selectedThreadsIn(view.state).length > 0 && !inTableFullscreen(view.state)) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_SELECTION, []).setMeta('addToHistory', false));
     }
     if (contextPress(event)) {

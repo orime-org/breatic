@@ -23,6 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
@@ -30,7 +31,7 @@ import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { TABLE_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor, PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
-import { setTableFullscreen, tableFullscreenIn } from '@web/spaces/document/document-table-fullscreen';
+import { leaveFullscreenForWrite, setTableFullscreen, tableFullscreenIn } from '@web/spaces/document/document-table-fullscreen';
 import { waitForBar } from '@web/spaces/document/__tests__/bubble-bar-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -360,6 +361,50 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
 
     // The table's top stood 60 below the scroller's top: 1000 + (400 - 100) - 60.
     await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1240 }));
+  });
+
+  it('leaves full screen alone for the Escape that closes a floating panel over a cell, such as a video\'s', async () => {
+    const { editor, surface } = open();
+    render(
+      <>
+        {area(editor, surface, false)}
+        <Popover defaultOpen>
+          <PopoverTrigger>media</PopoverTrigger>
+          <PopoverContent data-testid='floating-panel'>controls</PopoverContent>
+        </Popover>
+      </>,
+    );
+    const id = enter(editor);
+    await screen.findByTestId('floating-panel');
+
+    fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByTestId('floating-panel')).toBeNull());
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+
+  it('brings the caret into view when a write leaving full screen replaces the whole table', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const viewport = surface.closest('[data-radix-scroll-area-viewport]')!;
+    boxAt(viewport, 100, 600);
+    const id = enter(editor);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 2000, bottom: 2020, left: 0, right: 0 });
+    const scrolled = vi.spyOn(viewport, 'scrollTo');
+
+    act(() => {
+      let span = { from: 0, to: 0 };
+      view.state.doc.descendants((node, pos) => {
+        if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
+        return true;
+      });
+      leaveFullscreenForWrite(editor, span);
+      editor.replaceBlocks([id], [{ type: 'paragraph', content: 'Rewritten' }] as never);
+    });
+
+    // The caret stands 2000 down a 600 tall scroller whose top is at 100: 0 + 2000 - 100 - 300.
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1600 }));
   });
 
   it('scrolls back to where the body was when the table went away', async () => {

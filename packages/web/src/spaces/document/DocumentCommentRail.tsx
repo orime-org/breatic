@@ -342,7 +342,11 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Each card's box, for measuring it at the moment it is needed.
   const boxes = React.useRef(new Map<string, HTMLDivElement>());
   // What a card takes as it arrives and gives back as it goes: a place in the
-  // observer, a height in the table above, and its box.
+  // observer and its box. Its height stays in the table above: a panel put
+  // away (a hidden Space, a full-screen table) gives every card back and
+  // takes it again, and a card laid out at the guess first would slide from
+  // there to its height. Layout reads heights of the cards shown, which take
+  // theirs again before paint.
   const take = React.useCallback((node: HTMLDivElement, id: string): void => {
     node.dataset.thread = id;
     boxes.current.set(id, node);
@@ -357,12 +361,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     (node: HTMLDivElement, id: string): void => {
       sizes.current?.unobserve(node);
       if (boxes.current.get(id) === node) boxes.current.delete(id);
-      setHeights((have) => {
-        if (!have.has(id)) return have;
-        const next = new Map(have);
-        next.delete(id);
-        return next;
-      });
     },
     [],
   );

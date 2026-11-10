@@ -39,9 +39,12 @@ function scrollBack(editor: HandleEditor, viewport: HTMLElement, to: FullscreenR
   }
   if (to.kind === 'table') {
     const element = editor.domElement?.querySelector(`[data-node-type="${DOC_TABLE}"][data-id="${to.id}"]`);
-    if (!(element instanceof HTMLElement)) return;
-    viewport.scrollTo({ top: viewport.scrollTop + element.getBoundingClientRect().top - box.top - to.offset });
-    return;
+    if (element instanceof HTMLElement) {
+      viewport.scrollTo({ top: viewport.scrollTop + element.getBoundingClientRect().top - box.top - to.offset });
+      return;
+    }
+    // A write that ended full screen has replaced the table; the caret stands
+    // by what it wrote.
   }
   const caret = view.coordsAtPos(view.state.selection.head);
   if (caret.top >= box.top && caret.bottom <= box.bottom) return;
