@@ -129,10 +129,10 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
-  const detail = upload !== null && clip.kind === 'upload' ? timelineUploadText(t, upload, clip.upload.name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+  const detail = upload !== null ? timelineUploadText(t, upload, name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
     : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
   const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
-  const waiting = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
+  const dashed = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
   // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
   // attributes would mark a read-only clip aria-disabled although it stays selectable.
   const { listeners, setNodeRef } = useDraggable({ id: `move:${clip.id}`, data: { mode: 'move', clipId: clip.id }, disabled: readOnly });
@@ -142,7 +142,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
       data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : upload?.state} aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-clip rounded-chrome border px-2 text-left text-xs',
-        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, waiting && 'border-dashed',
+        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, dashed && 'border-dashed',
         selected && 'border-active-border', selected && !conflict && !failedCopy && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>

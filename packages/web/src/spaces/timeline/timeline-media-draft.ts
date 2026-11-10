@@ -228,48 +228,51 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       const target = captured.trackId === 'new' ? { trackId: TIMELINE_MAIN_TRACK_ID, newTrackId: newId() } : { trackId: captured.trackId };
       let failure = 'source_unavailable';
       try {
+        // What the confirmed material is: a local file with the duration its metadata reports, or a Project video.
+        let material: { kind: 'local'; file: File; durationSeconds: number } | { kind: 'project'; asset: ProjectRegisteredAsset; decodedDurationSeconds: number | undefined };
         if (captured.mode === 'local' && captured.file !== null) {
-          // A local video is placed at once and uploads in the background (#1434 design §3.2).
           const file = captured.file;
           failure = 'metadata_unavailable';
           const url = URL.createObjectURL(file);
-          let durationSeconds: number;
           try {
-            durationSeconds = await decodeDuration(url, controller.signal);
+            material = { kind: 'local', file, durationSeconds: await decodeDuration(url, controller.signal) };
           } finally {
             URL.revokeObjectURL(url);
           }
-          if (active !== attempt || controller.signal.aborted) return;
-          if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
-          failure = 'target_missing';
-          if (doc.isDestroyed) { publish({ errorKey: failure }); return; }
-          failure = 'invalid_range';
-          const uploadId = newId();
-          const clip: TimelineUploadClip = {
-            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
-            startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
-            ...TIMELINE_DEFAULT_PLACEMENT,
-          };
-          const applied = inputs.edit({ operation: 'add_upload', parameters: { clip, ...(target.newTrackId === undefined ? {} : { newTrackId: target.newTrackId }) }, placement });
-          if (!applied.ok) { publish({ errorKey: applied.reason }); return; }
-          inputs.startUpload(uploadId, file);
-          close();
-          return;
+        } else {
+          const assetId = captured.selected?.assetId;
+          if (assetId === undefined) { publish({ errorKey: 'source_unavailable' }); return; }
+          const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
+          if (active !== attempt) return;
+          failure = 'metadata_unavailable';
+          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined };
         }
-        const assetId = captured.selected?.assetId;
-        if (assetId === undefined) { publish({ errorKey: 'source_unavailable' }); return; }
-        const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
-        if (active !== attempt) return;
-        failure = 'metadata_unavailable';
-        const decodedDurationSeconds = asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined;
         if (active !== attempt || controller.signal.aborted) return;
         if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
         failure = 'target_missing';
         if (doc.isDestroyed) { publish({ errorKey: failure }); return; }
-        const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId: newId(), canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
-        if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
-        const applied = inputs.edit(prepared.command);
+        let command: TimelineEditCommand;
+        let upload: { uploadId: string; file: File } | null = null;
+        if (material.kind === 'local') {
+          // A local video is placed at once and uploads in the background (#1434 design §3.2).
+          failure = 'invalid_range';
+          const { file, durationSeconds } = material;
+          upload = { uploadId: newId(), file };
+          const clip: TimelineUploadClip = {
+            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
+            startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
+            ...TIMELINE_DEFAULT_PLACEMENT,
+          };
+          command = { operation: 'add_upload', parameters: { clip, ...(target.newTrackId === undefined ? {} : { newTrackId: target.newTrackId }) }, placement };
+        } else {
+          const { asset, decodedDurationSeconds } = material;
+          const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId: newId(), canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
+          if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
+          command = prepared.command;
+        }
+        const applied = inputs.edit(command);
         if (!applied.ok) { publish({ errorKey: applied.reason }); return; }
+        if (upload !== null) inputs.startUpload(upload.uploadId, upload.file);
         close();
       } catch {
         if (active === attempt && !controller.signal.aborted) publish({ errorKey: failure });
