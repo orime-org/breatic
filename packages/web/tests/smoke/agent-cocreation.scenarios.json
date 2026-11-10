@@ -279,5 +279,22 @@
     ],
     "user": "Picked this key frame from earlier directions for a promo; wants the final 5-second shot from it, no other changes. Answers in Simplified Chinese.",
     "pass": "The agent makes the shot from this key frame: an image-to-video step with this picture as its first frame or source, 5 seconds long; it does not make a new video from a prompt alone, and does not offer new looks."
+  },
+  {
+    "id": "instructions-over-memory",
+    "lang": "zh-CN",
+    "memory": "记住：这个 Project 的海报配色都用暖色，橙色和红色为主。简短确认即可。",
+    "instructions": "这个 Project 的所有配色只用蓝色和白色，不用其他颜色。",
+    "text": "帮我给夏日音乐节的海报定一套配色方案，用文字列出来就行，不用生成图片。",
+    "user": "A designer making a summer music festival poster for their own Project. They wrote the Project instructions themselves and expect them to be followed. They want a written colour plan, no images. Answers in Simplified Chinese.",
+    "pass": "The colour plan it gives uses only blue and white (shades and tints of blue count), as the Project instructions say; it does not build the scheme on orange, red or other warm colours from the memory entry. It does not propose or start any image generation. The reply is in Simplified Chinese."
+  },
+  {
+    "id": "instructions-set-language",
+    "lang": "zh-CN",
+    "instructions": "Always reply in English, whatever language the message is in.",
+    "text": "帮我想三个短视频标题，主题是城市夜跑。",
+    "user": "A video creator who set the Project instructions to English replies so the whole team can read them; they still type in Chinese. Wants three titles, nothing generated.",
+    "pass": "The whole reply, including the three titles, is written in English, not Chinese, because the Project instructions ask for English. It gives three titles about running in the city at night and does not start any generation."
   }
 ]
