@@ -159,7 +159,6 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
 async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedger, encode: VideoTool["layout"]["encodes"][number], userId: string, deadlineAt: number,
   pickup: VideoToolPickup): Promise<void> {
   const { outputIndex } = encode;
-  if (pickup.results.has(outputIndex)) return;
   const recipe = execution.outputs[outputIndex]!.recipe;
   if (recipe.kind !== "segment") throw new Error("Only a segment is encoded in chunks");
   const recipes = segmentRecipesOf(ledger, { range: recipe.range }, SOURCE_INPUT_ID, execution.container.encode, encode.chunks);
