@@ -169,32 +169,46 @@ test('a collaborator sees the upload running, then unfinished once the uploader 
   }
 });
 
-test('the Timeline tab spins while one of its executions runs, with another Space in front', async ({ page }) => {
+test('a member sees the Timeline tab spin for a run another member starts while that Timeline was never entered, and stop when it is cancelled @needs-model', async ({ page, browser }) => {
   await openSmokeProject(page);
-  let status = 'running';
-  // The tab bar reads the list as soon as the Timeline tab exists, so the answer is shaped before the Space is made.
-  await page.route('**/api/v1/timeline/executions?*', async (route) => {
-    const url = new URL(route.request().url());
-    const response = await route.fetch();
-    const now = new Date().toISOString();
-    const row = {
-      id: '90000000-0000-4000-8000-000000000001', projectId: url.searchParams.get('projectId'), spaceId: url.searchParams.get('spaceId'),
-      actorUserId: 'someone', kind: 'web_animation_create', actionId: 'a0000000-0000-4000-8000-000000000001', input: {}, inputHash: 'sha256:smoke',
-      engine: 'deepseek', status, phase: null, steps: [], attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
-      resultSourceVersionId: null, failureReason: null, billedCredits: null, billedAt: null, createdAt: now, updatedAt: now, usageCredits: 0,
-    };
-    await route.fulfill({ response, json: { data: [row] } });
-  });
-  const spaceId = await createSpace(page, 'timeline', `Timeline execution spinner ${crypto.randomUUID()}`);
+  const projectId = smokeProjectId();
+  const projectUrl = page.url();
+  const spaceId = await createSpace(page, 'timeline', `Timeline peer spinner ${crypto.randomUUID()}`);
   const spaces = [spaceId];
   try {
-    spaces.push(await createSpace(page, 'canvas', `Canvas in front ${crypto.randomUUID()}`));
-    await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toBeVisible();
-    status = 'succeeded';
-    // The tab bar reads the list again at the configured interval while a row is unfinished.
-    await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0, { timeout: 30_000 });
+    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
+      await peer.goto(projectUrl);
+      await openTimeline(peer, spaceId);
+      spaces.push(await createSpace(peer, 'canvas', `Canvas in front ${crypto.randomUUID()}`));
+      // After a reload the Timeline tab is restored but its body has never been shown.
+      await peer.reload();
+      await expect(peer.getByTestId(`space-tab-name-${spaceId}`)).toBeVisible();
+      await expect(peer.locator(`[data-testid="timeline-space"][data-space-id="${spaceId}"]`)).toHaveCount(0);
+      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0);
+
+      const outlet = visibleSpace(page);
+      await outlet.getByTestId('timeline-create-web-animation').click();
+      const dialog = page.getByRole('dialog', { name: 'Create web animation', exact: true });
+      const add = dialog.getByTestId('web-animation-add-at-playhead');
+      await add.click();
+      await expect(add).toHaveAttribute('aria-checked', 'false');
+      await dialog.getByTestId('web-animation-prompt').fill('A blue square fades in on a white background.');
+      await dialog.getByTestId('web-animation-execute').click();
+      await expect(dialog).toHaveCount(0);
+      const row = outlet.getByTestId('timeline-executions').locator('li[data-status][data-testid^="timeline-execution-"]');
+      await expect(row).toHaveCount(1);
+      const executionId = ((await row.getAttribute('data-testid')) ?? '').replace('timeline-execution-', '');
+
+      // The run reaches the other member's tab bar through the Space signal, without a reload.
+      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toBeVisible({ timeout: 60_000 });
+      await outlet.getByTestId(`timeline-execution-cancel-${executionId}`).click();
+      // A cancelled run leaves In progress, and both members' tabs stop.
+      await expect(row).toHaveCount(0, { timeout: 60_000 });
+      await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0);
+      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0, { timeout: 60_000 });
+      await expect(peer.locator(`[data-testid="timeline-space"][data-space-id="${spaceId}"]`)).toHaveCount(0);
+    });
   } finally {
-    await page.unroute('**/api/v1/timeline/executions?*');
     for (const id of spaces.reverse()) await deleteSpace(page, id);
   }
 });
