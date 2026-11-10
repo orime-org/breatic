@@ -299,3 +299,66 @@ describe('a piece of the canvas handed to the agent', () => {
     expect(nodes[1]).toMatchObject({ id: 'i3', position: { x: 1030, y: 1050 } });
   });
 });
+
+describe('a dialogue handed over (inner#1825)', () => {
+  const GEMINI = {
+    ...SPEECH_MODEL,
+    name: 'gemini',
+    params: {
+      speakers: {
+        description: '',
+        default: null,
+        type: 'items',
+        min_items: 2,
+        max_items: 2,
+        replaces: 'voice_id',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+      voice_id: { description: '', default: null, remote_source: 'voices' },
+    },
+  } as unknown as ModelEntry;
+  const PAIR = [{ speaker: 'Ava', voice: 'Kore' }, { speaker: 'Leo', voice: 'Puck' }];
+
+  /**
+   * A line of the dialogue, as the prompt editor stores one.
+   * @param speaker - Who says it, from 1.
+   * @param text - Its words.
+   * @returns The block.
+   */
+  function line(speaker: number, text: string): Y.XmlElement {
+    const block = paragraph(text);
+    block.setAttribute('speaker', speaker as unknown as string);
+    return block;
+  }
+
+  /**
+   * The snapshot of a Gemini node with the given record.
+   * @param record - Its params for the model.
+   * @returns What the agent is handed for it.
+   */
+  function handed(record: Record<string, unknown>): Record<string, unknown> | undefined {
+    const doc = new Y.Doc();
+    const root = doc.getMap<Y.Map<unknown>>('data');
+    root.set('d1', ymap({
+      mode: 'tts',
+      model: 'gemini',
+      paramsByModel: ymap({ gemini: ymap(record) }),
+      prompts: ymap({ tts: fragment(line(1, 'Hi.'), line(2, 'Hello.'), line(1, 'Bye.')) }),
+    }));
+    const dialogue = node('d1', 'audio', { name: 'Dialogue', mode: 'tts', model: 'gemini', paramsByModel: { gemini: record } });
+    const item = itemForPick({ nodes: [dialogue], edges: [] }, ['d1'], {
+      dataOf: (id) => root.get(id) ?? null,
+      catalog: { image: [], video: [], audio: [GEMINI], tts: [], three_d: [], total: 1, credit_multiplier: 1 } as unknown as ModelCatalog,
+      firstVoiceOf: () => undefined,
+    });
+    return (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> } | undefined)?.nodes[0];
+  }
+
+  it('gives each line with the name of who says it, on the dialogue side', () => {
+    expect(handed({ speakers: PAIR, _stand_in_on: true })?.data).toMatchObject({ prompts: { tts: 'Ava: Hi.\nLeo: Hello.\nAva: Bye.' } });
+  });
+
+  it('gives the words as written when the node reads in one voice', () => {
+    expect(handed({ speakers: PAIR, _stand_in_on: false })?.data).toMatchObject({ prompts: { tts: 'Hi.\nHello.\nBye.' } });
+  });
+});

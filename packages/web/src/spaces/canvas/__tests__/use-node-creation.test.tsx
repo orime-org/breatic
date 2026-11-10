@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import type { CanvasProposal, ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import type { ContentNodeView } from '@web/data/yjs/node-view';
@@ -529,6 +529,27 @@ describe('useNodeCreation', () => {
         const sent = wireParams(GEMINI_TTS, record);
         expect(sent).toHaveProperty('speakers', SPEAKERS);
         expect(sent).not.toHaveProperty('voice_id');
+      });
+
+      it('lands proposed lines as one paragraph each, carrying its speaker, with no name in the words (inner#1825)', () => {
+        const catalog = {
+          image: [], video: [], audio: [], tts: [GEMINI_TTS], three_d: [], total: 1, credit_multiplier: 1,
+        } as unknown as ModelCatalog;
+        const { prompt: _prompt, ...anchor } = DIALOGUE.nodes[0]!;
+        const lines: CanvasProposal = {
+          ...DIALOGUE,
+          nodes: [{ ...anchor, lines: [{ speaker: 1, prompt: [{ text: 'hi' }] }, { speaker: 2, prompt: [{ text: 'hello' }] }] }],
+        } as unknown as CanvasProposal;
+        const { result } = renderHook(() => useNodeCreation('p-lines', 's-lines', catalog));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(lines, { x: 0, y: 0 }, []);
+
+        const fragment = canvasSpace.getPromptFragment('p-lines', 's-lines', ids[0]!, 'tts')!;
+        const paragraphs = fragment.toArray().filter((block): block is Y.XmlElement => block instanceof Y.XmlElement && block.nodeName === 'paragraph');
+        expect(paragraphs.map((p) => [Number(p.getAttribute('speaker')), p.toArray().map((c) => (c instanceof Y.XmlText ? c.toString() : '')).join('')])).toEqual([
+          [1, 'hi'],
+          [2, 'hello'],
+        ]);
       });
     });
 

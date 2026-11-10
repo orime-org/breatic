@@ -314,4 +314,15 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     expect(vm.voiceRequired).toBe(false);
     expect(vm.speakersShort).toBe(true);
   });
+
+  it('names the speakers the prompt editor offers per line on the dialogue side, and none reading alone (inner#1825)', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo', voice: 'Puck' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueNames).toEqual(['Ada', 'Bo']);
+    // A template or a proposal lands speakers with no switch: that is the dialogue too.
+    const landed = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
+    expect(landed.dialogueNames).toEqual(['Ada', 'Bo']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueNames).toBeNull();
+  });
 });
