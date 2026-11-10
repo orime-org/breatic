@@ -418,7 +418,7 @@ export function renderProductGuide(): string {
       "reply in, a style to keep or how prompts are written. The Owner and every Editor can change them. The " +
       "scroll icon opens them full screen; the counter at the top shows how many of the " +
       `${AGENT_INSTRUCTIONS_MAX_CHARS.toLocaleString("en")} characters are used, and at the limit no more can be typed. ` +
-      `${quoted(t("chat.instructions.save"))} saves them and Cancel or Esc leaves without saving; when two members ` +
+      `${quoted(t("chat.instructions.save"))} saves them and ${quoted(t("common.cancel"))} or Esc leaves without saving; when two members ` +
       "save, the later save is kept, and the line at the bottom names who saved last. Saving an empty text " +
       "removes them. While the Project has instructions the scroll icon carries a small dot. They apply from " +
       "the next message on, in every conversation, new or old.",
