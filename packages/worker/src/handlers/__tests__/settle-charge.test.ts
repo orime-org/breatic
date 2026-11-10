@@ -32,7 +32,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
-const CONTEXT = { executionId: "exec-1", amount: 3 };
+const CONTEXT = { executionId: "exec-1", userId: "user-1", amount: 3 };
 const OUTCOME = { billed: true, charged: "3.000000", shortfall: "0.000000", studioId: "studio-1", lotIds: ["lot-1"] };
 
 beforeEach(() => {
@@ -58,7 +58,7 @@ describe("settleChargeLogged", () => {
     h.settleCharge.mockResolvedValue({ ...OUTCOME, charged: "1.000000", shortfall: "2.000000" });
     await settleChargeLogged("req-1", CONTEXT);
     expect(h.error).toHaveBeenCalledExactlyOnceWith(
-      { executionId: "exec-1", amount: 3, requestId: "req-1", studioId: "studio-1", charged: "1.000000", shortfall: "2.000000" },
+      { executionId: "exec-1", userId: "user-1", amount: 3, requestId: "req-1", studioId: "studio-1", charged: "1.000000", shortfall: "2.000000" },
       "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
     );
   });
@@ -77,7 +77,7 @@ describe("settleChargeLogged", () => {
     const redis = new Error("redis down");
     h.settleCharge.mockResolvedValue({ ...OUTCOME, signalFailure: redis });
     await settleChargeLogged("req-1", CONTEXT);
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ executionId: "exec-1", amount: 3, err: redis, requestId: "req-1" }, "credits_signal_failed");
+    expect(h.error).toHaveBeenCalledExactlyOnceWith({ executionId: "exec-1", userId: "user-1", amount: 3, err: redis, requestId: "req-1" }, "credits_signal_failed");
   });
 
   it("logs both a shortfall and a failed signal from one settlement", async () => {
@@ -94,13 +94,16 @@ describe("settleChargeLogged", () => {
     const down = new Error("deadlock detected");
     h.settleCharge.mockRejectedValue(down);
     await expect(settleChargeLogged("req-1", CONTEXT)).resolves.toBeUndefined();
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ executionId: "exec-1", amount: 3, err: down, requestId: "req-1" }, "credit_charge_settle_failed");
+    expect(h.error).toHaveBeenCalledExactlyOnceWith({ executionId: "exec-1", userId: "user-1", amount: 3, err: down, requestId: "req-1" }, "credit_charge_settle_failed");
   });
 
   it("does not let the context overwrite the request id or the error", async () => {
     const down = new Error("deadlock detected");
     h.settleCharge.mockRejectedValue(down);
-    await settleChargeLogged("req-1", { requestId: "stale", err: "stale", taskId: "task-1" });
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ taskId: "task-1", err: down, requestId: "req-1" }, "credit_charge_settle_failed");
+    await settleChargeLogged("req-1", { requestId: "stale", err: "stale", taskId: "task-1", userId: "user-1", amount: "3.000000" });
+    expect(h.error).toHaveBeenCalledExactlyOnceWith(
+      { taskId: "task-1", userId: "user-1", amount: "3.000000", err: down, requestId: "req-1" },
+      "credit_charge_settle_failed",
+    );
   });
 });

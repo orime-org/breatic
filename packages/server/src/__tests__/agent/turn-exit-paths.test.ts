@@ -442,7 +442,7 @@ describe("a turn's charge comes before its reply is saved (inner#1617)", () => {
     expect(chargeOnce.mock.invocationCallOrder[0]).toBeLessThan(replyOrder[0]!);
   });
 
-  it("still saves the reply when the charge throws, and logs the failed step", async () => {
+  it("still saves the reply when the charge throws, and logs the failed charge", async () => {
     const { logger } = await import("@breatic/core");
     vi.mocked(logger.error).mockClear();
     const down = new Error("the database is down");
@@ -455,8 +455,8 @@ describe("a turn's charge comes before its reply is saved (inner#1617)", () => {
     const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
     expect(refKey).toMatch(/^turn:/);
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err: down, step: "bill", refKey, amount: charged.amount }),
-      "turn_finalizer_step_failed",
+      { err: down, userId: "u1", conversationId: "c1", refKey, amount: charged.amount },
+      "credit_charge_settle_failed",
     );
   });
 

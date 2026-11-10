@@ -18,7 +18,6 @@ const h = vi.hoisted(() => ({
   getWorkerConfig: vi.fn(),
   listSweepableChargeRequests: vi.fn<(minAgeMs: number, limit: number) => Promise<SweepRow[]>>(),
   settleCharge: vi.fn<(requestId: string) => Promise<unknown>>(),
-  recordSettleFailure: vi.fn<(requestId: string, err: unknown) => Promise<void>>(),
   error: vi.fn(),
 }));
 
@@ -49,9 +48,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       ...actual.creditLotService,
       listSweepableChargeRequests: h.listSweepableChargeRequests,
       settleCharge: h.settleCharge,
-      // Not part of the engine any more: a stand-in so a caller that still
-      // reached for it would be seen doing so.
-      recordSettleFailure: h.recordSettleFailure,
     },
   };
 });
@@ -72,7 +68,7 @@ const ROWS: SweepRow[] = [
  * @returns The fields, by name.
  */
 function contextOf(row: SweepRow): Record<string, unknown> {
-  return { kind: row.kind, referenceId: row.referenceId, actorUserId: row.actorUserId, amount: row.amount, attempts: row.attempts, requestId: row.id };
+  return { kind: row.kind, referenceId: row.referenceId, userId: row.actorUserId, amount: row.amount, attempts: row.attempts, requestId: row.id };
 }
 
 beforeEach(() => {
@@ -93,7 +89,7 @@ describe("sweepCreditCharges", () => {
     expect(h.error).not.toHaveBeenCalled();
   });
 
-  it("logs a failing request with what finds it, leaves the counting to the engine, and still settles the ones after it", async () => {
+  it("logs a failing request with what finds it, and still settles the ones after it", async () => {
     const down = new Error("deadlock detected");
     h.settleCharge.mockImplementation(async (id) => {
       if (id === "req-2") throw down;
@@ -103,7 +99,6 @@ describe("sweepCreditCharges", () => {
     await expect(sweepCreditCharges()).resolves.toBeUndefined();
 
     expect(h.settleCharge.mock.calls.map(([id]) => id)).toEqual(["req-1", "req-2", "req-3"]);
-    expect(h.recordSettleFailure).not.toHaveBeenCalled();
     expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...contextOf(ROWS[1]!), err: down }, "credit_charge_settle_failed");
   });
 

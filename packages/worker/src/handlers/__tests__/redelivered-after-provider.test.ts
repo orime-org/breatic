@@ -28,7 +28,6 @@ const mockReleaseHold = vi.hoisted(() => vi.fn(async () => undefined));
 const mockError = vi.hoisted(() => vi.fn());
 const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<string | null> => null));
 const mockSettleCharge = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<unknown> => null));
-const mockRecordSettleFailure = vi.hoisted(() => vi.fn(async (_requestId: string, _err: unknown): Promise<void> => undefined));
 
 vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
@@ -67,7 +66,6 @@ vi.mock("@breatic/domain", () => ({
   creditLotService: {
     pendingChargeRequestId: mockPendingChargeRequestId,
     settleCharge: mockSettleCharge,
-    recordSettleFailure: mockRecordSettleFailure,
   },
   creditHoldService: { releaseHold: mockReleaseHold },
   resolveActiveProvider: vi.fn(),
@@ -196,18 +194,16 @@ describe("a job redelivered with its charge still pending", () => {
     expect(mockPendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
     expect(mockSettleCharge).toHaveBeenCalledExactlyOnceWith("req-1");
     expect(mockReleaseHold).not.toHaveBeenCalled();
-    expect(mockRecordSettleFailure).not.toHaveBeenCalled();
   });
 
-  it("keeps the hold, logs the failure, leaves the counting to the engine, and still returns the stored outcome when the settle fails", async () => {
+  it("keeps the hold, logs the failure, and still returns the stored outcome when the settle fails", async () => {
     const down = new Error("db down");
     mockSettleCharge.mockRejectedValueOnce(down);
 
     await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
 
-    expect(mockRecordSettleFailure).not.toHaveBeenCalled();
     expect(mockError).toHaveBeenCalledWith(
-      { taskId: "task-1", userId: "user-1", projectId: "proj-1", creditsUsed: 5, wasFirst: false, err: down, requestId: "req-1" },
+      { taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 5, wasFirst: false, err: down, requestId: "req-1" },
       "credit_charge_settle_failed",
     );
     expect(mockReleaseHold).not.toHaveBeenCalled();

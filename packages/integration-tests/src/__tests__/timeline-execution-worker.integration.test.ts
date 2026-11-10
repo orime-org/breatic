@@ -497,7 +497,13 @@ describe("settling a terminal report", () => {
     expect(requests[0]).toMatchObject({ status: "pending", attempts: 1 });
     expect(requests[0]!.lastError).toContain("timeline_ledger_block");
     expect(errorLogs()).toContainEqual(
-      expect.objectContaining({ msg: "credit_charge_settle_failed", executionId: fx.execution.id, requestId: requests[0]!.id }),
+      expect.objectContaining({
+        msg: "credit_charge_settle_failed",
+        executionId: fx.execution.id,
+        userId: fx.userId,
+        projectId: fx.projectId,
+        requestId: requests[0]!.id,
+      }),
     );
   });
 

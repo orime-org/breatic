@@ -22,7 +22,6 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({
   pendingChargeRequestId: vi.fn(),
   settleCharge: vi.fn(),
-  recordSettleFailure: vi.fn(),
   releaseHold: vi.fn(),
   error: vi.fn(),
 }));
@@ -51,7 +50,6 @@ vi.mock("@breatic/domain", () => ({
   creditLotService: {
     pendingChargeRequestId: h.pendingChargeRequestId,
     settleCharge: h.settleCharge,
-    recordSettleFailure: h.recordSettleFailure,
   },
   creditHoldService: { releaseHold: h.releaseHold },
   resolveActiveProvider: vi.fn(),
@@ -81,7 +79,7 @@ const RUN = {
 const REQUEST = "req-1";
 
 /** What every log line for a first, paid run carries. */
-const CONTEXT = { taskId: "task-1", userId: "user-1", projectId: "proj-1", creditsUsed: 7, wasFirst: true, requestId: REQUEST };
+const CONTEXT = { taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 7, wasFirst: true, requestId: REQUEST };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -96,7 +94,6 @@ describe("settleRunCharge", () => {
     expect(h.pendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
     expect(h.settleCharge).toHaveBeenCalledExactlyOnceWith(REQUEST);
     expect(h.releaseHold).not.toHaveBeenCalled();
-    expect(h.recordSettleFailure).not.toHaveBeenCalled();
   });
 
   it("releases the hold of a run that cost nothing", async () => {
@@ -127,7 +124,6 @@ describe("settleRunCharge", () => {
     h.settleCharge.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: redis });
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
     expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: redis }, "credits_signal_failed");
-    expect(h.recordSettleFailure).not.toHaveBeenCalled();
   });
 
   it("does nothing more when the request was already settled by the sweep", async () => {
@@ -137,11 +133,10 @@ describe("settleRunCharge", () => {
     expect(h.releaseHold).not.toHaveBeenCalled();
   });
 
-  it("logs a settle that failed with the run and the request, leaves the counting to the engine, keeps the hold and does not throw", async () => {
+  it("logs a settle that failed with the run and the request, keeps the hold and does not throw", async () => {
     const down = new Error("db down");
     h.settleCharge.mockRejectedValue(down);
     await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
-    expect(h.recordSettleFailure).not.toHaveBeenCalled();
     expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: down }, "credit_charge_settle_failed");
     expect(h.releaseHold).not.toHaveBeenCalled();
   });
@@ -155,11 +150,15 @@ describe("settleRunCharge", () => {
   });
 
   it("does not throw when looking the request up fails, and keeps the hold for the sweep's settle or its expiry", async () => {
-    h.pendingChargeRequestId.mockRejectedValue(new Error("db down"));
+    const down = new Error("db down");
+    h.pendingChargeRequestId.mockRejectedValue(down);
     await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();
     expect(h.settleCharge).not.toHaveBeenCalled();
     expect(h.releaseHold).not.toHaveBeenCalled();
-    expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ taskId: "task-1" }), expect.any(String));
+    expect(h.error).toHaveBeenCalledExactlyOnceWith(
+      { err: down, taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 7 },
+      "credit_charge_request_lookup_failed",
+    );
   });
 
   it("logs a release that failed without throwing", async () => {
