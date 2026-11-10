@@ -3414,8 +3414,6 @@
       "more": "加载更多",
       "chooseFile": "选择视频",
       "fileEmpty": "选择本地视频文件。",
-      "preparing": "正在准备视频…",
-      "progress": "正在上传 {progress}%",
       "confirm": "添加到 Timeline",
       "insertAfter": "将插在 {name} 之后",
       "insertFirst": "将插在主轨最前面"
@@ -3429,7 +3427,6 @@
       "invalid_range": "请输入视频范围内的帧。",
       "target_missing": "目标已变化。请检查位置后重试。",
       "clip_removed": "该片段已被其他成员移除。",
-      "upload": "上传失败。可以使用已选文件重试。",
       "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
       "track_missing": "目标轨道已被移除，请选择其他轨道。",
       "id_taken": "该项已存在，请重试。",
@@ -3528,6 +3525,14 @@
         "unavailable": "{track}：网页动画不可用",
         "loading": "{track}：网页动画加载中…"
       }
+    },
+    "upload": {
+      "uploading": "上传中",
+      "progress": "上传中 {progress}%",
+      "failed": "上传失败",
+      "waiting": "已上传，等待编辑权限",
+      "unfinished": "未完成",
+      "preview": "{track}：{state, select, failed {视频上传失败，不显示} unfinished {视频未完成，不显示} other {视频上传中…}}"
     }
   }
 }

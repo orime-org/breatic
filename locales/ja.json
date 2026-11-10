@@ -3414,8 +3414,6 @@
       "more": "さらに読み込む",
       "chooseFile": "動画を選択",
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
-      "preparing": "動画を準備中…",
-      "progress": "アップロード中 {progress}%",
       "confirm": "Timeline に追加",
       "insertAfter": "{name} の後に挿入",
       "insertFirst": "メイントラックの先頭に挿入"
@@ -3429,7 +3427,6 @@
       "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
-      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
@@ -3528,6 +3525,14 @@
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
       }
+    },
+    "upload": {
+      "uploading": "アップロード中",
+      "progress": "アップロード中 {progress}%",
+      "failed": "アップロードに失敗しました",
+      "waiting": "アップロード済み、編集権限を待っています",
+      "unfinished": "未完了",
+      "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
     }
   }
 }

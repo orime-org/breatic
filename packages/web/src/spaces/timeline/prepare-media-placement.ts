@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
 import { durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
-import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {
@@ -54,8 +54,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
       clip: {
         id: input.clipId, kind: 'video', trackId: input.trackId, sourceId: input.sourceId,
         startFrame: input.startFrame, sourceInFrame: 0, durationFrames: extentFrames,
-        rate: { num: 1, den: 1 }, gain: 1, mute: false,
-        transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+        ...TIMELINE_DEFAULT_PLACEMENT,
       },
       ...(input.newTrackId === undefined ? {} : { newTrackId: input.newTrackId }),
     },
