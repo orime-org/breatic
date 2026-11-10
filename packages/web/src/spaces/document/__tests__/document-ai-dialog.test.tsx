@@ -35,6 +35,7 @@ import {
   hoverOpenSlot,
   mountDocumentEditor,
   openSharedBody,
+  selectEverything,
   selectTextRange,
   sharedBodyMarkup,
   waitForBar,
@@ -1248,6 +1249,37 @@ describe('pressing replace and insert (A6)', () => {
       expect(editor.prosemirrorState.doc.textContent).toContain('Hi world');
     });
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+  });
+
+  it('hangs a panel opened over the whole body inside a table that goes full screen (breatic#1427)', async () => {
+    const editor = openSharedBody('<p>hello world</p>');
+    mountDocumentEditor(editor, false, 'project-1');
+    act(() => {
+      editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as unknown as { id: string }[])[0]!.id, 'after');
+    });
+    // A select-all puts the bar at the pointer, which has to be over the body.
+    const scroller = document.querySelector<HTMLElement>('.doc-body-scroller [data-radix-scroll-area-viewport]')!;
+    scroller.getBoundingClientRect = () => new DOMRect(0, 100, 800, 400);
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }));
+    });
+    act(() => {
+      focusBody(editor);
+      selectEverything(editor);
+    });
+    await waitForBar();
+    await press('refine');
+    const inViewport = (): boolean => screen.getByTestId('doc-ai-dialog').closest('[data-radix-scroll-area-viewport]') !== null;
+    expect(inViewport()).toBe(false);
+    const tableId = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+
+    act(() => {
+      setTableFullscreen(editor, { table: tableId, scrollTop: 0, offset: 0 });
+    });
+
+    await waitFor(() => {
+      expect(inViewport()).toBe(true);
+    });
   });
 
   it('replace writes the answer over the selected words', async () => {

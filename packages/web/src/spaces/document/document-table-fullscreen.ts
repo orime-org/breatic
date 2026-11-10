@@ -218,7 +218,7 @@ export function setTableFullscreen(editor: FullscreenEditor, entry: FullscreenEn
 /**
  * Ends full screen before a write that lands outside one of the open table's
  * cells, so the user sees what it writes (design §5.3): an AI result aimed at
- * the whole table or past it, a proposal from the Agent.
+ * the whole table or past it.
  * @param editor - The editor.
  * @param target - The span the write replaces or follows.
  * @param target.from - Where it starts.

@@ -851,3 +851,23 @@ describe('an AI answer that writes nothing (breatic#1427)', () => {
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
   });
 });
+
+describe('an AI answer written below a full-screen table (breatic#1427)', () => {
+  it('ends full screen, recording where the answer starts', () => {
+    const { editor } = open(BETWEEN);
+    const tableId = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    enter(editor);
+
+    insertAiAnswer({ editor } as never, tableId, { preview: [{ type: 'paragraph', content: [{ type: 'text', text: 'Written', styles: {} }] }], leftOut: 0 } as never, () => ({ available: true, writeAccess: 'granted' }));
+
+    const doc = editor.prosemirrorState.doc;
+    let written = -1;
+    doc.descendants((child, at) => {
+      if (written === -1 && child.type.isInGroup('bnBlock') && child.textContent === 'Written') written = at;
+      return written === -1;
+    });
+    expect(written).toBeGreaterThan(-1);
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'write', at: written } });
+  });
+});
+

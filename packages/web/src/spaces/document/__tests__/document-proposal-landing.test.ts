@@ -614,4 +614,19 @@ describe('a table opened full screen while a proposal lands (breatic#1427)', () 
     expect(blocks(handle).map((b) => b.text)).toContain('Light on the table.');
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
+
+  it('ends full screen again and hangs the comment, when the table went full screen during the wait', async () => {
+    const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
+    const { editor } = handle;
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const proposal = proposalOn(handle, 2, { kind: 'rewrite', body: 'Light on the table.' });
+
+    const landing = landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+    await landing;
+
+    expect(marked(handle).length).toBeGreaterThan(0);
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+  });
 });
