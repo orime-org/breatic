@@ -46,7 +46,7 @@ import type {
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
-import { fitsSomeMode } from "@breatic/shared";
+import { extractPromptText, fitsSomeMode, promptTaken } from "@breatic/shared";
 import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 
 /** Root directory for model YAML configs. */
@@ -518,6 +518,23 @@ export function violatesSourceRequirementForModel(
   if (!entry) return false;
   const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
   return !fitsSomeMode(entry, modes, params);
+}
+
+/**
+ * Server gate beside the source check (breatic#1393): whether a submitted run
+ * carries a prompt its model does not take with these settings, as Mureka V9.5
+ * Song composing from a melody. The panel neither shows nor sends the style box
+ * then, so a request carrying one came from elsewhere (the Agent, or crafted).
+ * The client narrows params to the run's mode before submitting, so they are
+ * read as they come. An unknown or absent model passes.
+ * @param model - The task's model name from the request body, if any.
+ * @param params - The task params, the prompt under `prompt`.
+ * @returns True when a non-empty prompt goes to a run that takes none.
+ */
+export function sendsUntakenPrompt(model: string | undefined, params: Record<string, unknown>): boolean {
+  const entry = model ? findCatalogEntry(model) : undefined;
+  if (!entry || typeof params.prompt !== "string" || extractPromptText(params.prompt) === "") return false;
+  return !promptTaken(entry, undefined, params);
 }
 
 /**

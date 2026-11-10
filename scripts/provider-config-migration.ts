@@ -59,6 +59,7 @@ const ROOT = resolve(import.meta.dirname, "..");
  * from the families in `packages/worker/src/providers/families/`.
  */
 const APP_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  "mureka-v9.5-generate-song": ["compose_from"],
   "nano-banana-2": ["enable_camera", "camera", "lens", "focal_length", "aperture"],
   "nano-banana-2-relight": [
     "light_azimuth",

@@ -5,6 +5,7 @@
   "runs": [
     {
       "params": {
+        "compose_from": "references",
         "lyrics": "sample text",
         "song": "https://example.com/song.mp3"
       },
@@ -17,6 +18,7 @@
     },
     {
       "params": {
+        "compose_from": "references",
         "lyrics": "sample text",
         "song": "https://example.com/song.mp3",
         "vocal": "https://example.com/vocal.mp3"

@@ -206,7 +206,10 @@ models:
             field: generate_audio
           resolution:
             field: resolution
-            supported: ["480p", "720p", "1080p"]
+            supported:
+              - 480p
+              - 720p
+              - 1080p
         drops:
           audios: []
           images: []
@@ -233,7 +236,10 @@ models:
             field: generate_audio
           resolution:
             field: resolution
-            supported: ["480p", "720p", "1080p"]
+            supported:
+              - 480p
+              - 720p
+              - 1080p
         drops:
           audios: []
           images: []
@@ -618,7 +624,10 @@ models:
             field: end_image_url
           resolution:
             field: resolution
-            supported: ["480p", "720p", "1080p"]
+            supported:
+              - 480p
+              - 720p
+              - 1080p
         drops:
           shots: "*"
         pricing:
@@ -641,7 +650,10 @@ models:
             field: end_image
           resolution:
             field: resolution
-            supported: ["480p", "720p", "1080p"]
+            supported:
+              - 480p
+              - 720p
+              - 1080p
         drops:
           shots: "*"
         fixed:

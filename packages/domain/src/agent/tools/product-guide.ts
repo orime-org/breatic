@@ -984,7 +984,11 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. A melody does not mix with the other references: for a model that ` +
+      `takes one, the sound panel's settings hold ${quoted(t("canvas.generatePanel.param.compose_from"))}, where Style & ` +
+      `references shows ${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicVocal"))} and ` +
+      `the ${quoted(t("canvas.generatePanel.musicStyleLabel"))} box, and Melody shows only ` +
+      `${quoted(t("canvas.generatePanel.musicMelody"))} and the lyrics. The picture panel's only one is its style area, which ` +
       "holds up to three pictures and works its own way (see the picture panel above), and the video panel shows " +
       "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +

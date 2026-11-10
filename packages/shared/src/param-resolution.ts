@@ -174,8 +174,9 @@ export function resolveParams(
  * @param model - The model.
  * @param model.takes_prompt - Whether it takes a prompt at all.
  * @param model.prompt_when - The condition its prompt is taken under.
- * @param mode - The mode the run is in.
- * @param params - The params stored for the model.
+ * @param mode - The mode the run is in; undefined for params already narrowed
+ *   to it, as a submitted run's are.
+ * @param params - The params stored for the model, or the run's own.
  * @returns True when the run sends the prompt.
  */
 export function promptTaken(
@@ -184,12 +185,13 @@ export function promptTaken(
     readonly prompt_when?: ParamGate;
     readonly params?: Readonly<Record<string, ResolvableParam & Pick<ParamDescriptor, "modes">>>;
   },
-  mode: string,
+  mode: string | undefined,
   params: Readonly<Record<string, unknown>>,
 ): boolean {
   if (!model.takes_prompt) return false;
   if (model.prompt_when === undefined) return true;
-  return gateHolds(model.prompt_when, resolveParams(model, paramsForMode(params, model.params ?? {}, mode)));
+  const own = mode === undefined ? params : paramsForMode(params, model.params ?? {}, mode);
+  return gateHolds(model.prompt_when, resolveParams(model, own));
 }
 
 /**

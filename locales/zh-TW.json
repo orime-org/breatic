@@ -127,6 +127,7 @@
       "attachment_limit_reached": "這個對話的附件已達上限 {limit} 個，請先刪除一些再上傳。"
     },
     "canvas": {
+      "prompt_not_taken": "這個模型在目前設定下不接受風格。移除風格後再生成。",
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
       "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
       "history_entry_not_found": "找不到這筆歷史記錄",

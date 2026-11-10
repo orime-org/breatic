@@ -127,6 +127,7 @@
       "attachment_limit_reached": "这个会话的附件已达上限 {limit} 个，请先删除一些再上传。"
     },
     "canvas": {
+      "prompt_not_taken": "这个模型在当前设置下不接受风格。去掉风格后再生成。",
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "history_entry_not_found": "找不到这条历史记录",

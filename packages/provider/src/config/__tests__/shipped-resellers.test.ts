@@ -502,7 +502,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [29.9] } }, { prompt: "a song", params: { lyrics: "la", song: URL_A }, durations: { song: [30] } }, "[30,30]"],
     ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [14] } }, { prompt: "a song", params: { lyrics: "la", vocal: URL_A }, durations: { vocal: [15] } }, "[15,30]"],
     // Measured on WaveSpeed (2026-11-07): lyrics, prompt and melody failed; lyrics and melody completed.
-    ["mureka-v9.5-generate-song", { prompt: "a song", params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
+    ["mureka-v9.5-generate-song", { prompt: "a song", params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [10] } }, "combination"],
     ["mureka-v9.5-generate-bgm", { prompt: "x".repeat(1025) }, { prompt: "x".repeat(1024) }, "1024"],
     ["elevenlabs-voice-changer", { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [301] } }, { params: { audio: URL_A, voice_id: "Aria" }, durations: { audio: [300] } }, "300 seconds"],
     ["dreamactor-v2", { params: { image: URL_A, video: URL_A }, durations: { video: [31] } }, { params: { image: URL_A, video: URL_A }, durations: { video: [30] } }, "30 seconds"],
@@ -531,7 +531,7 @@ describe("the limits a reseller states beyond its schema", () => {
     ["minimax-speech-2.8-hd", { prompt: "x".repeat(10001), params: { voice_id: "Wise_Woman" } }, { prompt: "x".repeat(10000), params: { voice_id: "Wise_Woman" } }, "10,000"],
     ["mureka-v9.5-generate-song", { prompt: "x".repeat(1025), params: { lyrics: "la" } }, { prompt: "x".repeat(1024), params: { lyrics: "la" } }, "maximum 1024"],
     ["mureka-v9.5-generate-song", { prompt: "x".repeat(2001) }, { prompt: "x".repeat(2000) }, "maximum 2000"],
-    ["mureka-v9.5-generate-song", { params: { lyrics: "la", melody: URL_A }, durations: { melody: [4] } }, { params: { lyrics: "la", melody: URL_A }, durations: { melody: [5] } }, "[5,60]"],
+    ["mureka-v9.5-generate-song", { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [4] } }, { params: { compose_from: "melody", lyrics: "la", melody: URL_A }, durations: { melody: [5] } }, "[5,60]"],
     ["minimax-music-cover", { prompt: "x".repeat(9), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(10), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
     ["minimax-music-cover", { prompt: "x".repeat(301), params: { audio: URL_A }, durations: { audio: [30] } }, { prompt: "x".repeat(300), params: { audio: URL_A }, durations: { audio: [30] } }, "10-300 characters"],
     ["minimax-music-cover", { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [5.9] } }, { prompt: "a jazz cover", params: { audio: URL_A }, durations: { audio: [6] } }, "6 seconds to 6 minutes"],

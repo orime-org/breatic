@@ -127,6 +127,7 @@
       "attachment_limit_reached": "This conversation has reached its limit of {limit} attachments. Delete some before uploading more."
     },
     "canvas": {
+      "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
       "history_entry_not_found": "History entry not found",

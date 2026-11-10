@@ -870,6 +870,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.auth.token_expired": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.history_entry_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.model_requires_source": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.canvas.prompt_not_taken": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.too_many_inputs": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.voices_model_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.voices_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },

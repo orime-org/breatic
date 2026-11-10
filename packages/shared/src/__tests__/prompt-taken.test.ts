@@ -41,6 +41,11 @@ describe("promptTaken", () => {
     expect(promptTaken(MUREKA, "t2m", { compose_from: "melody" })).toBe(true);
   });
 
+  it("reads params already narrowed to the run's mode when no mode is given", () => {
+    expect(promptTaken(MUREKA, undefined, { compose_from: "melody" })).toBe(false);
+    expect(promptTaken(MUREKA, undefined, {})).toBe(true);
+  });
+
   it("follows takes_prompt for a model with no condition", () => {
     expect(promptTaken({ ...MUREKA, prompt_when: undefined } as ModelEntry, "a2m", { compose_from: "melody" })).toBe(true);
     expect(promptTaken({ ...MUREKA, takes_prompt: false, prompt_when: undefined } as ModelEntry, "a2m", {})).toBe(false);

@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { promptTaken, resolveParams, sanitizeModelCatalog, type ModelEntry } from "@breatic/shared";
 
-import { getFullModelConfig, getModelCatalog } from "../model-catalog.js";
+import { getFullModelConfig, getModelCatalog, sendsUntakenPrompt } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 const NAME = "mureka-v9.5-generate-song";
@@ -53,5 +53,14 @@ describe("Mureka V9.5 Song's compose-from setting", () => {
     expect(promptTaken(model, "a2m", { compose_from: "references" })).toBe(true);
     expect(promptTaken(model, "a2m", { compose_from: "melody" })).toBe(false);
     expect(promptTaken(model, "t2m", { compose_from: "melody" })).toBe(true);
+  });
+
+  it("refuses a submitted run that carries a style prompt while composing from a melody", () => {
+    expect(sendsUntakenPrompt(NAME, { compose_from: "melody", prompt: "lo-fi piano", lyrics: "la" })).toBe(true);
+    expect(sendsUntakenPrompt(NAME, { compose_from: "melody", prompt: "", lyrics: "la" })).toBe(false);
+    expect(sendsUntakenPrompt(NAME, { compose_from: "references", prompt: "lo-fi piano", lyrics: "la" })).toBe(false);
+    // Text to Music sends no compose_from: the default holds.
+    expect(sendsUntakenPrompt(NAME, { prompt: "lo-fi piano", lyrics: "la" })).toBe(false);
+    expect(sendsUntakenPrompt(undefined, { prompt: "x" })).toBe(false);
   });
 });
