@@ -111,7 +111,7 @@ function joinBody(op: "join" | "audio_join", clips: number): Parameters<typeof r
     extra: Array.from({ length: clips }, (_, i) => `${OBJECTS}/media/clip-${i + 1}.${ext}`),
     outputs: [{ url: `${OBJECTS}/media/out.${ext}`, key: `media/out.${ext}` }],
     reportUrl: REPORT,
-  } as unknown as Parameters<typeof runJob>[0];
+  };
 }
 
 /**

@@ -71,7 +71,7 @@ describe("a dialogue sent as lines", () => {
   });
 
   it("refuses a line holding only characters the model never receives, as the panel would", () => {
-    const verdict = verdictFor(dialogue([{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "​" }] }]), NO_MATERIAL);
+    const verdict = verdictFor(dialogue([{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "\u200B" }] }]), NO_MATERIAL);
     expect(verdict.ok ? "ok" : verdict.refusal).toBe("line-empty");
   });
 

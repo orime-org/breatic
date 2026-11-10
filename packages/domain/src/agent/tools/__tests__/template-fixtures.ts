@@ -410,7 +410,7 @@ export function agentShape(
         ...(nodes[at_] as SentNode),
         ...filled,
         lines: node.lines.map((line, n) => ({ speaker: line.speaker, prompt: [...(n === 0 ? notes : []), ...sent(t(`${head}.line.${String(n + 1)}`))] })),
-      } as SentNode;
+      };
       continue;
     }
     // A node with shots sends them in place of the prompt, the notes on top of the first shot.

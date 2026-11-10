@@ -116,7 +116,7 @@ const DIALOGUE = gen("audio", "tts", DUO, {
   prompt: undefined,
   params: { speakers: PAIR },
   lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }],
-} as Partial<Sent["nodes"][number]>);
+});
 
 /** A text-to-image generation standing on its own. */
 const DRAW = gen("image", "t2i", T2I);
@@ -488,7 +488,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }, {
     // A blank left in a line of the dialogue, as the two-voice template's lines carry one.
-    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "Ava's first line" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "Ava's first line" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] }]),
     states: ['"Gen" still holds the blanks "Ava\'s first line".'],
     fix: group([DIALOGUE]),
   }],
@@ -553,16 +553,16 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([DIALOGUE]),
   }],
   "lines-without-stand-in": [{
-    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] } as Partial<Sent["nodes"][number]>)]),
+    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] })]),
     states: [`"${TTS}" reads in one voice`, 'On node 0 ("Gen"), leave lines out.'],
     fix: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }] })]),
   }],
   "line-speaker-out-of-range": [{
-    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 3, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 3, prompt: [{ text: "Hello." }] }] }]),
     states: ["Line 2 names speaker 3", "2 speakers"],
   }],
   "line-empty": [{
-    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "   " }] }] } as Sent["nodes"][number]]),
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "   " }] }] }]),
     states: ["Line 2 writes nothing."],
   }],
   "speakers-missing": [{
@@ -793,7 +793,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...WORDS, params: { duration: 5 } }, DRAW]),
     states: ["it carries params."],
   }, {
-    meets: group([{ ...WORDS, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] } as Sent["nodes"][number], DRAW]),
+    meets: group([{ ...WORDS, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] }, DRAW]),
     states: ["it carries lines."],
   }],
   "written-empty": [{
@@ -809,7 +809,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['"Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]".', '{"ref": <index>} for a node'],
     absent: ["meant by"],
   }, {
-    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi {✏️ mood}." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] } as Sent["nodes"][number]]),
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi {✏️ mood}." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] }]),
     states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}".'],
   }],
   "param-undeclared": [{

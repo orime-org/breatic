@@ -1101,7 +1101,7 @@ describe('expandTemplate on registered templates with shots and slots (inner#181
 
   it('writes the two-voice dialogue anchor as three lines, Ava, Leo, Ava, each its line\'s words and no prompt (inner#1825)', () => {
     const result = expandTemplate(registered('two-voice-dialogue'), FRESH);
-    const anchor = result.rewritten.get(0) as (ProposalNode & { lines?: Array<{ speaker: number; prompt: PromptSegment[] }> }) | undefined;
+    const anchor = result.rewritten.get(0);
     expect(anchor).not.toHaveProperty('prompt');
     const lines = anchor?.lines ?? [];
     expect(lines.map((line) => line.speaker)).toEqual([1, 2, 1]);

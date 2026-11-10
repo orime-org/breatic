@@ -73,7 +73,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 
 import { logger } from "@breatic/core";
 import { UploadHttpError } from "@breatic/shared";
-import { miniToolById, type ContainerOp, type MiniToolSpec } from "@breatic/shared/mini-tools";
+import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { DeadlinePassed } from "@breatic/shared";
@@ -198,11 +198,11 @@ describe("runContainerJob", () => {
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
     await expect(
-      runContainerJob(JOIN, "join" as ContainerOp, {
+      runContainerJob(JOIN, "join", {
         ...INPUT,
         params: { crossfade: 0 },
         extraKeys: ["v/b.mp4", "v/c.mp4"],
-      } as Parameters<typeof runContainerJob>[2]),
+      }),
     ).rejects.toBeInstanceOf(StillRunning);
 
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({

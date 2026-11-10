@@ -46,7 +46,7 @@ function video(width: number, height: number, fps: number, duration: number, sou
       ...(sound ? [{ index: 1, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false, sampleRate: 48000, channels: 2 }] : []),
     ],
     durationSeconds: duration,
-  } as ProbeReport;
+  };
 }
 
 /**
@@ -83,7 +83,7 @@ function joinSteps(op: "join" | "audio_join", crossfade: number, first: ProbeRep
     source: ProbeReport,
     extra: ExtraInput[],
   ) => RunStep[];
-  return steps(op as ContainerOp, { crossfade }, IN, output, WORK, first, extra);
+  return steps(op, { crossfade }, IN, output, WORK, first, extra);
 }
 
 /**
@@ -133,8 +133,8 @@ function usesOf(graph: string, name: string): Record<string, string>[] {
 
 describe("join", () => {
   it("writes video into an .mp4", () => {
-    expect(mediumOf("join" as ContainerOp)).toBe("video");
-    expect(outputFileName("join" as ContainerOp)).toBe("out.mp4");
+    expect(mediumOf("join")).toBe("video");
+    expect(outputFileName("join")).toBe("out.mp4");
   });
 
   it("reads every clip, in joining order, the source first", () => {
@@ -189,8 +189,8 @@ describe("join", () => {
 
 describe("audio_join", () => {
   it("writes audio into an .m4a", () => {
-    expect(mediumOf("audio_join" as ContainerOp)).toBe("audio");
-    expect(outputFileName("audio_join" as ContainerOp)).toBe("out.m4a");
+    expect(mediumOf("audio_join")).toBe("audio");
+    expect(outputFileName("audio_join")).toBe("out.m4a");
   });
 
   it("reads every clip in joining order and concatenates them when the crossfade is 0", () => {
