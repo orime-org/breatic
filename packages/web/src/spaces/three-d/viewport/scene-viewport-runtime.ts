@@ -51,6 +51,8 @@ interface JointMarker {
   key: string;
   bone: Bone;
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
+  /** The dot's radius per unit of the character's world scale, measured once as the dots are made. */
+  unit: number;
 }
 /**
  * The largest axis of an object's world scale.
@@ -168,8 +170,6 @@ export class SceneViewportRuntime {
   private readonly markerGeometry = new SphereGeometry(1, 16, 12);
   private markerOwner: Group | null = null;
   private markerItems: JointMarker[] = [];
-  /** A joint dot's radius per unit of the character's world scale, measured once as the dots are made. */
-  private markerUnit = 0;
   private changed = false;
   private down: PointerOrigin | null = null;
   private suppressClick = false;
@@ -480,24 +480,28 @@ export class SceneViewportRuntime {
       this.markerOwner = target?.root ?? null;
       if (target) {
         const size = new Box3().setFromObject(target.root).getSize(new Vector3());
-        this.markerUnit = (Math.max(size.x, size.y, size.z) * 0.012) / largestScale(target.root);
-        for (const { key, bone } of target.rig.joints) {
+        const scale = largestScale(target.root);
+        const full = Math.max(size.x, size.y, size.z) * 0.012;
+        const centres = target.rig.joints.map(({ bone }) => bone.getWorldPosition(new Vector3()));
+        target.rig.joints.forEach(({ key, bone }, index) => {
+          // Close joints such as finger knuckles get dots under half their spacing, so neighbouring dots never touch.
+          const nearest = Math.min(...centres.filter((_, other) => other !== index).map((centre) => centre.distanceTo(centres[index] ?? centre)));
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;
-          this.markerItems.push({ key, bone, mesh });
+          this.markerItems.push({ key, bone, mesh, unit: Math.min(full, nearest * 0.45) / scale });
           this.markers.add(mesh);
-        }
+        });
       }
     }
     // Sized from the current scale on every sync, so a character scaled in joint mode keeps dots that fit it.
-    const radius = target ? this.markerUnit * largestScale(target.root) : 0;
+    const scale = target ? largestScale(target.root) : 0;
     const normal = this.token('--color-status-selected');
     const selected = this.token('--color-foreground');
-    for (const { key, mesh } of this.markerItems) {
+    for (const { key, mesh, unit } of this.markerItems) {
       const chosen = key === this.props.selectedJoint;
       mesh.material.color.setStyle(chosen ? selected : normal);
       mesh.material.opacity = chosen ? 1 : 0.85;
-      mesh.scale.setScalar(radius * (chosen ? 1.5 : 1));
+      mesh.scale.setScalar(unit * scale * (chosen ? 1.5 : 1));
     }
     this.placeMarkers();
   }
@@ -707,8 +711,10 @@ export class SceneViewportRuntime {
     const ray = new Raycaster();
     ray.setFromCamera(point, this.camera);
     this.scene.updateMatrixWorld(true);
-    // Joint dots are drawn over everything, so they are picked first.
-    const dot = ray.intersectObjects(this.markerItems.map((marker) => marker.mesh), false)[0];
+    // Joint dots are drawn over everything, so they are picked first; of the dots the ray crosses, the one whose
+    // centre is nearest the ray wins, so a click on a dot's centre picks it through a larger dot in front.
+    const dot = ray.intersectObjects(this.markerItems.map((marker) => marker.mesh), false)
+      .sort((a, b) => ray.ray.distanceSqToPoint(a.object.position) - ray.ray.distanceSqToPoint(b.object.position))[0];
     const dotKey = dot && this.markerItems.find((marker) => marker.mesh === dot.object)?.key;
     if (dotKey) {
       this.props.onJointSelect(dotKey);

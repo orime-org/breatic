@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import type { Object3D } from 'three';
+import { Vector3, type Object3D, type PerspectiveCamera } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
@@ -124,5 +124,56 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     expect(radius()).toBeCloseTo(full * 0.2, 5);
     runtime.update({ ...joints, objects: [{ ...FIGURE, scale: [0.2, 0.2, 0.2], pose: WAVING }] });
     expect(radius()).toBeCloseTo(full * 0.2, 5);
+  });
+
+  it('keeps every joint dot clear of its neighbours, the body dots at full size', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+    const onSkeletonState = vi.fn();
+    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
+    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
+    runtime.update(joints);
+    const dots = (): Array<{ key: string; mesh: { position: Vector3; scale: { x: number } } }> =>
+      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { position: Vector3; scale: { x: number } } }> }).markerItems;
+    await vi.waitFor(() => expect(dots().length).toBeGreaterThan(40));
+    const radiusOf = (key: string): number => dots().find((dot) => dot.key === key)?.mesh.scale.x ?? 0;
+    for (const [index, a] of dots().entries()) {
+      for (const b of dots().slice(index + 1)) {
+        expect(a.mesh.position.distanceTo(b.mesh.position), `${a.key} and ${b.key}`).toBeGreaterThan(a.mesh.scale.x + b.mesh.scale.x);
+      }
+    }
+    expect(radiusOf('h:leftThumbMetacarpal')).toBeLessThan(radiusOf('h:hips') / 2);
+    expect(radiusOf('h:hips')).toBeCloseTo(radiusOf('h:head'), 6);
+  });
+
+  it('selects the dot whose centre a click lands on, even through the larger selected dot in front of it', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+    const onSkeletonState = vi.fn();
+    const onJointSelect = vi.fn();
+    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: 'h:leftThumbMetacarpal', onSkeletonState, onJointSelect };
+    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
+    runtime.update(joints);
+    const inner = runtime as unknown as { camera: PerspectiveCamera; renderer: { domElement: HTMLCanvasElement }; markerItems: Array<{ key: string; mesh: { position: Vector3 } }> };
+    await vi.waitFor(() => expect(inner.markerItems.length).toBeGreaterThan(40));
+    const at = (key: string): Vector3 => inner.markerItems.find((dot) => dot.key === key)?.mesh.position.clone() ?? new Vector3();
+    const selected = at('h:leftThumbMetacarpal');
+    const target = at('h:leftThumbProximal');
+    // Look past the selected joint at the next one, slightly off their line, so the selected dot is in front.
+    const along = selected.clone().sub(target);
+    const across = new Vector3(0, 1, 0).cross(along).normalize().multiplyScalar(along.length() * 0.5);
+    const eye = target.clone().add(along.clone().add(across).normalize().multiplyScalar(0.4));
+    runtime.update({ ...joints, view: { position: eye.toArray(), target: target.toArray() } });
+    inner.camera.updateMatrixWorld(true);
+    const ndc = target.clone().project(inner.camera);
+    const canvas = inner.renderer.domElement;
+    canvas.getBoundingClientRect = (): DOMRect => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) });
+    const point = { clientX: (ndc.x + 1) / 2 * 400, clientY: (1 - ndc.y) / 2 * 300, button: 0 };
+    const pointer = (type: string): Event => Object.assign(new MouseEvent(type, { ...point, bubbles: true }), { pointerId: 1 });
+    canvas.dispatchEvent(pointer('pointerdown'));
+    canvas.dispatchEvent(pointer('pointerup'));
+    expect(onJointSelect).toHaveBeenLastCalledWith('h:leftThumbProximal');
   });
 });
