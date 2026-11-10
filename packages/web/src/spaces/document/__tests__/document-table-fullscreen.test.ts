@@ -24,9 +24,10 @@ import { postComment } from '@web/spaces/document/document-comment-post';
 import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { pressTargetOf } from '@web/spaces/document/document-body-press';
-import { insertAiAnswer } from '@web/spaces/document/document-ai-text';
+import { insertAiAnswer, replaceAiAnswer } from '@web/spaces/document/document-ai-text';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
+import { aiCapture } from '@web/spaces/document/document-ai-launch';
 import { setLinkToolbarUp } from '@web/spaces/document/document-bars';
 import {
   clearFullscreenReturn,
@@ -849,6 +850,31 @@ describe('an AI answer that writes nothing (breatic#1427)', () => {
 
     expect(result.outcome).toBe('nothingWritten');
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+});
+
+describe('an AI answer written over words outside a full-screen table (breatic#1427)', () => {
+  it('ends full screen, recording where the answer starts', () => {
+    const { editor } = open(BETWEEN);
+    const view = editor.prosemirrorView!;
+    let before = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (before === -1 && node.isText && node.text === 'Before') before = pos;
+      return before === -1;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, before, before + 6)));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_AI_RANGE, aiCapture(view.state)));
+    enter(editor);
+
+    replaceAiAnswer({ editor } as never, { preview: [{ type: 'paragraph', content: [{ type: 'text', text: 'Written', styles: {} }] }], leftOut: 0 } as never, () => ({ available: true, writeAccess: 'granted' }));
+
+    let written = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (written === -1 && node.isText && node.text?.startsWith('Written') === true) written = pos;
+      return written === -1;
+    });
+    expect(written).toBeGreaterThan(-1);
+    expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'write', at: written } });
   });
 });
 
