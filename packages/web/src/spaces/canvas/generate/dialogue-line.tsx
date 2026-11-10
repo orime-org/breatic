@@ -31,7 +31,7 @@ import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { useTranslation } from '@web/i18n/use-translation';
 import { dispatchMachineEdit, MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
-import { planDialogueLines } from '@web/spaces/canvas/generate/dialogue-lines';
+import { planDialogueLines, type PlanOptions } from '@web/spaces/canvas/generate/dialogue-lines';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The paragraph attribute holding a line's speaker, from 1. */
@@ -89,14 +89,15 @@ function leadingText(node: PmNode): string {
  * The steps that put every line true: its speaker, and its typed name taken off.
  * @param state - The editor state.
  * @param names - The speakers' names, from speaker 1.
+ * @param options - How a typed prefix is read.
  * @returns The transaction holding them, or null when every line is already true.
  */
-export function dialogueNormalisation(state: EditorState, names: readonly string[]): Transaction | null {
+export function dialogueNormalisation(state: EditorState, names: readonly string[], options: PlanOptions = {}): Transaction | null {
   const lines: Array<{ pos: number; node: PmNode }> = [];
   state.doc.forEach((node, pos) => {
     if (node.type.name === 'paragraph') lines.push({ pos, node });
   });
-  const plans = planDialogueLines(lines.map(({ node }) => ({ speaker: speakerOf(node), text: leadingText(node) })), names);
+  const plans = planDialogueLines(lines.map(({ node }) => ({ speaker: speakerOf(node), text: leadingText(node) })), names, options);
   const tr = state.tr;
   // From the last line up, so a deletion leaves the earlier positions valid.
   for (let at = lines.length - 1; at >= 0; at--) {
@@ -299,8 +300,14 @@ export const DialogueLines = Extension.create<DialogueNames>({
     const { names } = this.options;
     const ended = compositionEnd();
     return [
-      new Plugin({
+      new Plugin<boolean>({
         key: NORMALISE,
+        // Whether the last change to the words came in from Yjs (opening, a
+        // collaborator, an undo): those are put right by a machine pass.
+        state: {
+          init: () => true,
+          apply: (tr, fromYjs) => (tr.docChanged ? tr.getMeta(ySyncPluginKey) !== undefined : fromYjs),
+        },
         props: {
           handleDOMEvents: {
             compositionend: () => {
@@ -311,8 +318,12 @@ export const DialogueLines = Extension.create<DialogueNames>({
           // The key that accepts an input method's candidate is not a new line.
           handleKeyDown: (_view, event) => event.key === 'Enter' && keyBelongsToInputMethod(event, ended),
         },
+        // A user's typing waits for the words after a typed name; a paste
+        // lands whole, so it is put right at once.
         appendTransaction: (transactions, _old, state) =>
-          transactions.some((tr) => tr.docChanged) && transactions.every(isUserEdit) ? dialogueNormalisation(state, names()) : null,
+          transactions.some((tr) => tr.docChanged) && transactions.every(isUserEdit)
+            ? dialogueNormalisation(state, names(), { waitForWords: !transactions.some((tr) => tr.getMeta('uiEvent') === 'paste') })
+            : null,
         view: (view) => {
           let pending: ReturnType<typeof setTimeout> | undefined;
           /** Puts the lines right after a change Yjs brought in, once the dispatch it came in is done. */
@@ -327,7 +338,7 @@ export const DialogueLines = Extension.create<DialogueNames>({
           settle();
           return {
             update: (_view, previous) => {
-              if (!view.state.doc.eq(previous.doc)) settle();
+              if (!view.state.doc.eq(previous.doc) && NORMALISE.getState(view.state) === true) settle();
             },
             destroy: () => clearTimeout(pending),
           };
