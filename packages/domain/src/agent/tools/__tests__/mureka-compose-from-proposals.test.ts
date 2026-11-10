@@ -39,11 +39,11 @@ const TUNE: ProposalNode = { role: "source", type: "audio", name: "Tune" };
  * @param song - What differs on the generation.
  * @returns The proposal.
  */
-function song(into: string, song: Partial<ProposalNode>): CanvasProposal {
+function song(into: string | undefined, song: Partial<ProposalNode>, lyricsInto = "lyrics"): CanvasProposal {
   const generation: ProposalNode = { role: "generate", type: "audio", name: "Song", mode: "a2m", model: MUREKA, ...song };
   return {
     nodes: [LYRICS, TUNE, generation],
-    edges: [{ fromIndex: 0, toIndex: 2, into: "lyrics" }, { fromIndex: 1, toIndex: 2, into }],
+    edges: [{ fromIndex: 0, toIndex: 2, into: lyricsInto }, { fromIndex: 1, toIndex: 2, ...(into === undefined ? {} : { into }) }],
     rationale: "r",
     groupName: "Group",
   };
@@ -74,6 +74,16 @@ describe("a Mureka V9.5 Song proposal composing from a melody", () => {
     expect(verdict.ok ? "" : verdict.reason).toContain("hold 1 at a time");
   });
 
+  it("sends a recording wired with no into to the melody, the one audio place drawn", () => {
+    expect(checkProposal(song(undefined, { params: { compose_from: "melody" }, prompt: [NOTE] }))).toEqual({ ok: true });
+  });
+
+  it("is refused words wired into the pool, which lives in the style box the panel does not draw", () => {
+    const verdict = checkProposal(song("melody", { params: { compose_from: "melody" }, prompt: [NOTE] }, "pool"));
+    expect(verdict).toMatchObject({ ok: false, refusal: "slot-gated-off" });
+    expect(verdict.ok ? "" : verdict.reason).toContain(`"compose_from" is "references"`);
+  });
+
   it("is refused a song the panel does not draw", () => {
     const verdict = checkProposal(song("song", { params: { compose_from: "melody" }, prompt: [NOTE] }));
     expect(verdict).toMatchObject({ ok: false, refusal: "slot-gated-off" });
@@ -91,6 +101,15 @@ describe("a Mureka V9.5 Song proposal composing from style and references", () =
   it("lands as a node that takes its prompt", () => {
     const answer = answerFor(inputSchema.parse(song("song", { prompt: [{ text: "warm indie folk " }, NOTE] })));
     expect(answer.placed === false ? answer.reason : answer.nodes[2]?.takesPrompt).toBe(true);
+  });
+
+  it("names only song and vocals for a recording wired with no into", () => {
+    const verdict = checkProposal(song(undefined, { prompt: [{ text: "warm indie folk " }, NOTE] }));
+    expect(verdict).toMatchObject({ ok: false, refusal: "edge-into-ambiguous" });
+    const reason = verdict.ok ? "" : verdict.reason;
+    expect(reason).toContain('into: "song"');
+    expect(reason).toContain('into: "vocal"');
+    expect(reason).not.toContain('"melody"');
   });
 
   it("stands on a style, the lyrics and a song", () => {

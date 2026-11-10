@@ -24,8 +24,8 @@ import {
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
-import { checkParams, drawnWaysIn, gateWords, isDrawn, placeDrawn } from "@domain/agent/tools/proposal-params-check.js";
+import { fixOn, gateWords, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import {
   aNode,
   entriesFor,
@@ -169,8 +169,9 @@ function strayRefReason(
   }
   const ways = waysOrNone(named, node, chosen);
   const byRefs = count > 1 ? `${String(count)} refs` : "a ref";
-  const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
-  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
+  const params = node.params ?? {};
+  const pool = (waysIn(chosen, params).get(named.type) ?? []).find((way) => way.mark === "ref");
+  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named), params).some((entry) => entry.ref)) {
     return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, takeOut);
   }
   const held = goingWay(arriving, named.type, pool.into);
@@ -220,18 +221,11 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   const filling = fillsOf(proposal, node, chosen, at);
   if ("refusal" in filling) return filling;
   const arriving = [...routing.routed, ...filling.filled];
-  // A slot another setting hides is one the user never sees, so what goes
-  // into it is not sent.
-  for (const { node: from, entry } of arriving) {
-    const info = chosen.params[entry.way.into];
-    if (info?.gate === undefined || isDrawn(chosen, node.params ?? {}, info)) continue;
-    return refuse("slot-gated-off", `"${from.name}" goes into "${entry.way.into}" of "${node.name}", and "${chosen.name}" draws "${entry.way.into}" only while ${gateWords(info.gate)}.`);
-  }
   // Over a way's room is said first: every count below would otherwise ask
   // for a mark or note for a node that may not stay. Only the places drawn for
   // the node's settings are room.
   const params = node.params ?? {};
-  for (const [kind, list] of drawnWaysIn(chosen, params)) {
+  for (const [kind, list] of waysIn(chosen, params)) {
     for (const option of list) {
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
@@ -239,7 +233,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       // The rule for each kind of node going this way, and the room and
       // holders of every other way the kind has.
       const holdings = [...new Set(going.map(holdingOf))];
-      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding).filter((entry) => placeDrawn(chosen, params, entry.way.into))));
+      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding, params)));
       const others = list.filter((way) => way !== option).map((way) => `"${way.into}" takes ${roomOf(way.room)} ${kind} node(s) and holds ${namesOrNone(goingWay(arriving, kind, way.into))}.`);
       return refuse("way-over-room", [over, ...rules, ...others].join(" "));
     }
@@ -364,7 +358,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
     : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
-  const lyricsRequired = waysIn(chosen).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
+  const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
   const lyricsText = arriving
     .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
     .map(({ node: n }) => promptPlainText(n.prompt ?? []))
