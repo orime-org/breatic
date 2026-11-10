@@ -946,19 +946,21 @@ describe('sound, music and voice templates (inner#1825)', () => {
   /** A generate node's settings as the design's table gives them; `params` lists only the ones it fixes. */
   type Settings = { type: string; mode: string; model: string; params?: Record<string, unknown> };
   const LYRIA = 'lyria-3-pro-music';
+  /** Returns a full track of a few minutes whatever length is asked, which the user trims. */
+  const MUREKA_BGM = 'mureka-v9.5-generate-bgm';
   /** Each template's anchor, as the design's section 9 gives it. */
   const ANCHORS: Record<string, Settings> = {
     'ambience-sfx-bed': { type: 'audio', mode: 'sfx', model: 'sfx-1.6-text-to-audio', params: { loop: true, duration: 30 } },
     'voice-line': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd' },
     'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.1-flash-text-to-speech' },
-    'underscore-bgm': { type: 'audio', mode: 't2m', model: LYRIA },
+    'underscore-bgm': { type: 'audio', mode: 't2m', model: MUREKA_BGM },
     'voice-from-descriptor': { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design' },
     'song-cover': { type: 'audio', mode: 'a2m', model: 'minimax-music-cover' },
     'voice-clone-line': { type: 'audio', mode: 'voice_clone', model: 'minimax-voice-clone' },
     'score-for-my-video': { type: 'audio', mode: 'a2m', model: 'sonilo-video-to-music' },
     'music-mood-from-image': { type: 'audio', mode: 't2m', model: LYRIA },
     'clip-ambience-foley': { type: 'video', mode: 't2v', model: 'kling-v3.0-4k-text-to-video', params: { generate_audio: false } },
-    'section-mapped-score': { type: 'audio', mode: 't2m', model: LYRIA },
+    'section-mapped-score': { type: 'audio', mode: 't2m', model: MUREKA_BGM },
   };
   /** Each template's inputs, as the design's section 9 gives them. */
   const INPUTS: Record<string, Array<{ key: string; type: string; into: string }>> = {
@@ -1043,12 +1045,21 @@ describe('sound, music and voice templates (inner#1825)', () => {
     const template = sound('section-mapped-score');
     const others = template.nodes.filter((node) => node.key !== template.anchor);
     expect(others).toHaveLength(3);
-    for (const node of others) {
-      expect(node.role, node.key).toBe('generate');
-      if (node.role === 'generate') expect(settingsOf(node), node.key).toEqual({ type: 'audio', mode: 't2m', model: LYRIA });
-    }
+    for (const node of others) expect(node.role, node.key).toBe('generate');
+    const sections = generateNodes(template);
+    expect(sections).toHaveLength(4);
+    for (const node of sections) expect(settingsOf(node), node.key).toEqual({ type: 'audio', mode: 't2m', model: MUREKA_BGM });
     expect(template.edges).toEqual([]);
     expect(template.inputs).toEqual([]);
+  });
+
+  it('tells the agent the music comes back at full length for the user to trim, not at the length asked', () => {
+    for (const id of WITH_STEPS) {
+      const note = sound(id).agentNote;
+      expect.soft(note, id).toContain('whatever length is asked');
+      expect.soft(note, id).not.toContain("asked for at the video's length");
+      expect.soft(note, id).toMatch(/\btrim/);
+    }
   });
 
   it('lists follow-up steps only on the two templates that trim and join by hand', () => {

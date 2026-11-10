@@ -8,13 +8,13 @@ export const UNDERSCORE_BGM: GenerationTemplate = {
   id: "underscore-bgm",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "audio", mode: "t2m", model: "lyria-3-pro-music", params: {} },
+    { key: "result", role: "generate", type: "audio", mode: "t2m", model: "mureka-v9.5-generate-bgm", params: {} },
   ],
   edges: [],
   inputs: [],
   steps: ["trim"],
   agentNote:
-    "instrumental background music to sit under a voice-over or a picture: genre, tempo, key, two or three instruments and the energy over time, asked for at the video's length; the user trims it to the video's length afterwards",
+    "instrumental background music to sit under a voice-over or a picture: genre, tempo, key, two or three instruments and the energy over time, with the video's length written in the prompt as the length to trim to; the model returns a track of a few minutes whatever length is asked, and the user trims it to the video's length afterwards",
   goal: "sound",
   triggers: {
     asks: ["background music", "BGM", "music under a video"],

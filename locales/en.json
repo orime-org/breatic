@@ -1747,7 +1747,7 @@
         "description": "Instrumental music under a voice-over or picture",
         "prompt": "Instrumental background music for {✏️ what the video is, e.g. a calm product walkthrough}, {✏️ length, e.g. 40 seconds} long. Genre: {✏️ genre}. Tempo around {✏️ tempo, e.g. 90 BPM}, in {✏️ key, e.g. D major}. Two or three instruments: {✏️ instruments, e.g. soft piano, warm pads and light percussion}. Energy: {✏️ how it moves, e.g. sparse at the start, building gently in the middle, settling at the end}. It sits under a voice-over: no vocals, no lead melody competing with speech, no sudden hits.",
         "step": {
-          "trim": "Once it has generated, use Tools → Cut on it to trim it to the video's length."
+          "trim": "It usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the video's length."
         }
       },
       "voice-from-descriptor": {
@@ -1829,7 +1829,7 @@
           }
         },
         "step": {
-          "trim": "Once each section has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
+          "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
           "join": "Select the four sections, right-click and choose Join; check that the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
         }
       }
