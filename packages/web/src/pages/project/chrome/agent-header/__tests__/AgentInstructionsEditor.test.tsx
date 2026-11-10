@@ -37,7 +37,7 @@ vi.mock('@web/lib/use-autosize-textarea', async (importOriginal) => {
   return { ...real, useAutosizeTextarea: vi.fn(real.useAutosizeTextarea) };
 });
 
-import { t, type AgentInstructionsView } from '@breatic/shared';
+import { getLocale, t, type AgentInstructionsView } from '@breatic/shared';
 import en from '@locales/en.json';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { agentInstructionsKey } from '@web/data/api/agent-instructions';
@@ -229,6 +229,20 @@ describe('opening the Project instructions editor (#1400)', () => {
     expect(screen.queryByTestId('agent-instructions-skeleton')).toBeNull();
   });
 
+  it('shows no character count until the read is back, then the count of the loaded text', async () => {
+    const m = await mount(WRITTEN);
+    await m.user.click(screen.getByTestId('agent-instructions-open'));
+
+    await waitFor(() => expect(reads).toHaveLength(2));
+    expect(screen.getByTestId('agent-instructions-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-instructions-count')).toBeNull();
+
+    await answerRead(1, WRITTEN);
+
+    await screen.findByTestId('agent-instructions-input');
+    expect(counterText()).toContain(`${WRITTEN.text.length}/${MAX}`);
+  });
+
   it('opens empty when nothing has been written', async () => {
     const m = await mount(EMPTY);
     const input = await open(m, EMPTY);
@@ -406,6 +420,19 @@ describe('the editor body (#1400)', () => {
     expect(words.length).toBeGreaterThan(0);
     expect(editor).toHaveTextContent(words);
     expect(within(editor).getByText(/Mei Tan/)).toHaveTextContent(words);
+  });
+
+  it('writes the last-edited time as a short date and time, without seconds', async () => {
+    const m = await mount(WRITTEN);
+    await open(m, WRITTEN);
+    const footer = within(screen.getByTestId('agent-instructions-editor')).getByText(/Mei Tan/);
+    const at = new Date(WRITTEN.updatedAt!);
+    const short = at.toLocaleString(getLocale(), { dateStyle: 'short', timeStyle: 'short' });
+    const withSeconds = at.toLocaleString(getLocale());
+    expect(short).not.toBe(withSeconds);
+
+    expect(footer.textContent).toContain(short);
+    expect(footer.textContent).not.toContain(withSeconds);
   });
 
   it('shows no last-edited line when nobody has written yet', async () => {
