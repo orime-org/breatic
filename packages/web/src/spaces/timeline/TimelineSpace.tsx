@@ -43,6 +43,8 @@ import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
 import { getTimelineEditSession, type TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { timelineKeyAction } from '@web/spaces/timeline/timeline-keyboard';
 import { getTimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
+import { getTimelineUploads } from '@web/spaces/timeline/timeline-uploads';
+import { timelineUploadText, useTimelineUploadViews } from '@web/spaces/timeline/use-timeline-upload-views';
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
@@ -52,7 +54,7 @@ import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationDialog } from '@web/spaces/timeline/TimelineWebAnimationDialog';
-import { TimelineWebPreview, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
+import { TimelineWebPreview, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
@@ -68,8 +70,8 @@ interface TimelineConflictRowProps {
   projectId: string;
   clip: TimelineClip;
   assetId: string;
-  /** A web copy's name; a video is named by its asset. */
-  webName: string | null;
+  /** A web copy's or upload placeholder's name; null names a video by its asset. */
+  name: string | null;
   track: string;
   reason: TimelineArrangementReason['code'] | null;
   selected: boolean;
@@ -109,7 +111,7 @@ const ZOOM_STEP = 0.1;
  * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
  * @param props.assetId - Its registered asset.
- * @param props.webName - A web copy's name.
+ * @param props.name - A web copy's or upload placeholder's name, or null to use its video's name.
  * @param props.track - Its track's name.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
@@ -117,10 +119,10 @@ const ZOOM_STEP = 0.1;
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, webName, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ projectId, clip, assetId, name: label, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
   const asset = useTimelineAsset(projectId, assetId);
-  const name = webName ?? (asset.data?.displayName || t('timeline.video'));
+  const name = label ?? (asset.data?.displayName || t('timeline.video'));
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
@@ -240,10 +242,14 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     if (plan.ok && plan.bumped.length > 0) toast.info(t('timeline.edit.bumped', { count: plan.bumped.length }));
     return plan;
   }, [session, t]);
-  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice }), [doc, name, projectId, spaceId, queryClient, editWithNotice]);
+  // Background uploads live with the document, so a hidden tab keeps uploading and writing results.
+  const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
+    projectId, spaceId, onRegistered: () => { void queryClient.invalidateQueries({ queryKey: ['timeline-videos', projectId] }); },
+  }), [doc, name, projectId, spaceId, queryClient]);
+  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
-  // Activity suspends effects while hidden; uploads read the current rendered role.
+  // Activity suspends effects while hidden; the material draft and the edit session read the current rendered role.
   material.setCanWrite(!readOnly);
   session.setCanWrite(!readOnly);
   React.useEffect(() => {
@@ -254,7 +260,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
   const webLimits = useTimelineLimits(projectId)?.webAnimation;
   const refreshMs = webLimits?.sourceRefreshIntervalMs;
-  const executions = useTimelineExecutions(projectId, spaceId, refreshMs);
+  // The tab bar polls this list while it has unfinished rows (useSpaceTaskStatus); this view shares its cache.
+  const executions = useTimelineExecutions(projectId, spaceId);
   const rows = executions.data;
   const web = useTimelineWebResolution(projectId, spaceId, document, refreshMs);
   // Edits of web copies plan against the extents this resolution gives.
@@ -280,6 +287,19 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return { bySource, byId };
   }, [rows]);
   const webClips = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'web-animation' ? [[clip.id, webClipView(clip, web, rowsBy)] as const] : [])), [clips, web, rowsBy]);
+  const uploadViews = useTimelineUploadViews(name, uploads, clips);
+  // A visible placeholder draws no picture and hides nothing below it; the preview notes it by track.
+  const uploadNotes = React.useMemo(() => visible.flatMap((clip, index): TimelineUploadNote[] => {
+    const view = clip.kind === 'upload' ? uploadViews.get(clip.id) : undefined;
+    return view === undefined ? [] : [{ clipId: clip.id, z: index + 1, text: t('timeline.upload.preview', { track: labels.nameOf(clip.trackId) ?? clip.trackId, state: view.state }) }];
+  }), [visible, uploadViews, labels, t]);
+  const selectedUploadView = selected?.kind === 'upload' ? uploadViews.get(selected.id) : undefined;
+  const selectedUploadId = selected?.kind === 'upload' ? selected.upload.uploadId : null;
+  const selectedUploadName = selected?.kind === 'upload' ? selected.upload.name : '';
+  const retryUpload = React.useCallback((): void => { if (selectedUploadId !== null) uploads.retry(selectedUploadId); }, [uploads, selectedUploadId]);
+  const selectedUpload = React.useMemo(() => selectedUploadView === undefined ? null
+    : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', progress: selectedUploadView.progress, onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
+  [selectedUploadView, selectedUploadName, readOnly, retryUpload, t]);
   // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
   // loaded pages no copy uses. It is allocated again whenever the frame, the document or the resolution changes, and
   // without the Timeline limits it premounts and keeps nothing.
@@ -686,7 +706,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             // eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands.
             <video key={`${source.id}:${assetId}:${resource.data.fileUrl}`} ref={setMedia} src={resource.data.fileUrl} poster={resource.data.coverUrl ?? undefined} preload='auto' playsInline className='absolute inset-0 h-full w-full object-contain' />
           )}
-          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} />
+          <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} />
           {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
           {inConflict && active === null && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
           {source !== null && resource.isPending && <p className='p-6 text-sm text-muted-foreground'>{t('timeline.loadingMedia')}</p>}
@@ -724,7 +744,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         </div>
       </div>
       <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={trackViewport}
-        pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
+        pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
       <ScrollArea className='min-h-0 flex-1' viewportClassName='p-3'>
@@ -733,15 +753,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           <section className={PANEL}>
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
               : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
-                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
-                request={selected.kind === 'web-animation' ? webClips.get(selected.id)?.prompt ?? null : null} />}
+                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selected.kind === 'upload' ? selected.upload.name : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
+                request={selected.kind === 'web-animation' ? webClips.get(selected.id)?.prompt ?? null : null} upload={selectedUpload} />}
           </section>
           <section data-testid='timeline-conflicts' className={PANEL}>
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
               <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
               {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                webName={clip.kind === 'web-animation' ? webClips.get(clip.id)?.prompt || t('timeline.webAnimation.copy') : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+                name={clip.kind === 'web-animation' ? webClips.get(clip.id)?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

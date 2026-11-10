@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import type { TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
+import { TimelineVideoClipSchema, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -46,6 +46,9 @@ export interface TimelineEditSession {
 
 /** Clip and track records by id, as JSON, for the records one undo step touched. */
 interface RecordSnapshot { clips: Record<string, Record<string, unknown>>; tracks: Record<string, Record<string, unknown>> }
+
+// The fields every clip kind shares; the only ones a repair writes into a clip whose kind is not the snapshot's.
+const PLACEMENT_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape).filter((key) => key !== 'kind' && key !== 'sourceId'));
 
 // Writes that complete revived records and their sources; untracked, so they never become an undo step of their own.
 const REPAIR_ORIGIN = Symbol('timeline-record-repair');
@@ -93,7 +96,7 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
 
 /**
  * Repair the document after an undo or redo: give every present record of the step's snapshot the fields it
- * lacks, write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
+ * lacks (only the placement fields when a clip's kind is no longer the snapshot's), write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
  * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
  * fields or without its source, or a source without a clip. While the Space's size holds writes back nothing is
  * repaired: a pop allowed then only deletes. Once the Space is below the limit, the next transaction writes back
@@ -116,7 +119,9 @@ function repairAfterPop(doc: Y.Doc, name: string, records: RecordSnapshot | unde
       for (const [id, record] of Object.entries(records?.[kind] ?? {})) {
         const target = collection.get(id);
         if (!(target instanceof Y.Map)) continue;
-        for (const [key, value] of Object.entries(record)) if (!target.has(key)) target.set(key, value);
+        // A clip whose kind changed outside this session (an upload's conversion) takes back only its placement.
+        const sameKind = kind === 'tracks' || !target.has('kind') || target.get('kind') === record.kind;
+        for (const [key, value] of Object.entries(record)) if (!target.has(key) && (sameKind || PLACEMENT_FIELDS.has(key))) target.set(key, value);
         const sourceId = kind === 'clips' && !clipsBefore.has(id) ? timelineClipSourceId(record) : undefined;
         if (sourceId !== undefined) revived.push(sourceId);
       }

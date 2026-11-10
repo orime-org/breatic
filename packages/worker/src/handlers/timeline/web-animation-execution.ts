@@ -18,6 +18,7 @@
 
 import { DelayedError, type Job } from "bullmq";
 import {
+  db,
   getMiniToolsConfig,
   getStorageAdapter,
   getTimelineConfig,
@@ -51,6 +52,7 @@ import {
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import {
   cancelWebAnimationJob,
@@ -290,30 +292,42 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
 }
 
 /**
- * Charge what the execution's rows add up to, once: only the writer whose `billed_at` update lands charges, and a run
- * that spent nothing charges nothing. As with an Agent chat turn nothing was held, and the charge may take the balance
- * below zero.
+ * Charge what the execution's rows add up to, once (inner#1617): the `billed_at` update and the charge request commit
+ * together, so only the writer whose update lands records a charge, and a run that spent nothing records none. The
+ * request is then settled; a settlement that fails stays pending for the worker sweep and does not stop the run from
+ * ending. As with an Agent chat turn nothing was held, and the charge may take the balance below zero.
  * @param pickup - The pickup.
  * @returns Nothing.
- * @throws {Error} When a write fails.
+ * @throws {Error} When the `billed_at` update or the request cannot be written; neither then commits.
  */
 async function bill(pickup: Pickup): Promise<void> {
   const { row, step } = pickup;
   const sums = await sumCreditsByOperationKeys([timelineOperationKey(row.id)]);
   const amount = toChargeCredits(Number(sums.get(timelineOperationKey(row.id)) ?? 0));
-  if (amount <= 0 || !(await timelineExecutionRepo.markBilled(row.id, String(amount)))) return;
-  const outcome = await creditLotService.chargeForGeneration({
-    projectId: row.projectId,
-    actorUserId: row.actorUserId,
-    amount,
-    description: "timeline_web_animation",
-    referenceId: row.id,
-    model: step.request.model,
-    provider: "openrouter",
+  if (amount <= 0) return;
+  const requestId = await db.transaction(async (tx) => {
+    if (!(await timelineExecutionRepo.markBilled(row.id, String(amount), tx))) return null;
+    return creditLotService.requestCharge(
+      {
+        kind: "timeline_execution",
+        referenceId: row.id,
+        actorUserId: row.actorUserId,
+        projectId: row.projectId,
+        amount,
+        description: "timeline_web_animation",
+        model: step.request.model,
+        provider: "openrouter",
+      },
+      tx,
+    );
   });
-  if (Number(outcome.shortfall) > 0) {
-    logger.warn({ executionId: row.id, amount, shortfall: outcome.shortfall }, "timeline_charge_shortfall");
-  }
+  if (requestId === null) return;
+  await settleChargeLogged(requestId, {
+    executionId: row.id,
+    userId: row.actorUserId,
+    projectId: row.projectId,
+    amount,
+  });
 }
 
 /**

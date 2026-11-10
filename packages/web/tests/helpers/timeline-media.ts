@@ -227,6 +227,8 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   expect(asset.assetId).toMatch(/^[0-9a-f-]{36}$/);
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
   await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(1);
+  // The placeholder becomes the registered video in place once its background upload writes the result.
+  await expect(outlet.locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveAttribute('data-kind', 'video', { timeout: 60_000 });
   const [clipId] = await timelineClipIds(page);
   await selectTimelineClip(page, clipId);
   await expect(outlet.getByTestId('timeline-clip-start')).toHaveText('0');

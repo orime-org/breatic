@@ -28,6 +28,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { subscribeDocSize } from '@web/data/yjs/doc-size';
 import { writeSpaceDoc } from '@web/data/yjs/space-write';
+import { CLAIMS_FIELD, type UploadClaim } from '@web/lib/upload-claims';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 
 /** Where a pending block's bytes come from. */
@@ -159,12 +160,6 @@ interface Watched {
   /** This page's claims on the pending blocks in this body. */
   claims: Readonly<Record<string, UploadClaim>>;
 }
-
-/** The awareness field claims are published in. */
-export const CLAIMS_FIELD = 'uploads';
-
-/** What a client says about an upload in {@link CLAIMS_FIELD}: running it, or it failed. */
-export type UploadClaim = 'uploading' | 'failed';
 
 /**
  * Whether a body holds a pending block this page claims.

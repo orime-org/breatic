@@ -18,10 +18,10 @@ import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
-import { uploadMedia, type StoredUpload } from '@web/data/upload/media-upload';
+import { UploadFailedError, uploadMedia, type StoredUpload } from '@web/data/upload/media-upload';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
-import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SIZE_COPY_EN, enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { toast } from '@web/lib/toast';
@@ -652,216 +652,160 @@ describe('TimelineSpace browser metadata boundary', () => {
   });
 });
 
-describe('TimelineSpace local uploads and captured targets', () => {
-  // Magnet off: the main track keeps the captured frame, which is what these lifecycle cases observe.
-  beforeEach(() => magnet(false));
-  it('requires explicit confirmation after a Viewer role arrives while the Space is hidden', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    const doc = seedContent();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
-    clients.push(client);
-    const observedRole = vi.fn();
-    /**
-     * Confirm that React rendered the updated role inside the hidden Activity.
-     * @param props - The current Project role's editing restriction.
-     * @returns The same real Timeline body under its existing contexts.
-     * @throws {never} Never.
-     */
-    function RoleFrame({ readOnly }: { readOnly: boolean }): React.JSX.Element {
-      observedRole(readOnly);
-      return surface(client, readOnly ? { ...CONNECTED, writeAccess: 'denied' } : CONNECTED, readOnly);
-    }
-    const view = render(<React.Activity mode='visible'><RoleFrame readOnly={false} /></React.Activity>);
-    const file = await confirmLocal(72);
-    view.rerender(<React.Activity mode='hidden'><RoleFrame readOnly={false} /></React.Activity>);
-    await act(async () => {
-      view.rerender(<React.Activity mode='hidden'><RoleFrame readOnly /></React.Activity>);
+describe('TimelineSpace local uploads in the background', () => {
+  /**
+   * Answer the duration read of a local file's object URL as the browser would.
+   * @param seconds - The duration its metadata reports, or null when the browser cannot read it.
+   */
+  function localMetadata(seconds: number | null): void {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:local-video'), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(function load(this: HTMLMediaElement) {
+      if (this.getAttribute('src') !== 'blob:local-video') return;
+      if (seconds !== null) Object.defineProperty(this, 'duration', { configurable: true, value: seconds });
+      queueMicrotask(() => this.dispatchEvent(new Event(seconds === null ? 'error' : 'loadedmetadata')));
     });
-    await waitFor(() => expect(observedRole).toHaveBeenLastCalledWith(true));
-    const before = Y.encodeStateAsUpdate(doc);
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(currentDoc()).toBe(doc);
-    expect(doc.isDestroyed).toBe(false);
-    view.rerender(<React.Activity mode='visible'><RoleFrame readOnly={false} /></React.Activity>);
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(72);
-    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    expect(Object.values(layout().clips)[0]?.startFrame).toBe(72);
-    expect(Object.values(layout().sources)[0]?.assetId).toBe(LOCAL_ASSET.assetId);
-    expect(vi.mocked(uploadMedia).mock.calls.map(([sentFile]) => sentFile)).toEqual([file]);
-    expect(screen.queryByRole('dialog')).toBe(null);
+  }
+
+  /**
+   * The one clip of the layout.
+   * @returns It.
+   * @throws {Error} When the layout does not hold exactly one clip.
+   */
+  function onlyClip(): TimelineDocumentV1['clips'][string] {
+    const clips = Object.values(layout().clips);
+    if (clips.length !== 1) throw new Error(`Expected one clip, got ${clips.length}`);
+    return clips[0]!;
+  }
+
+  beforeEach(() => {
+    magnet(false);
+    localMetadata(2);
   });
 
-  it('releases its operation on document destruction and discards the late upload result', async () => {
+  it('places a confirmed local video at once as a placeholder, closes the dialog and uploads it to this Space', async () => {
     const answer = deferred<StoredUpload>();
     vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
+    seedContent();
+    showTimeline();
+    const file = await confirmLocal(72);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBe(null));
+    expect(onlyClip()).toMatchObject({ kind: 'upload', trackId: MAIN, startFrame: 72, durationFrames: 48, upload: { name: 'Local video.mp4', durationSeconds: 2 } });
+    expect(vi.mocked(uploadMedia).mock.calls[0]?.slice(0, 2)).toEqual([file, { projectId: PROJECT, spaceId: SPACE }]);
+    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(true));
+    expect(screen.getByTestId(`timeline-clip-${onlyClip().id}`)).toHaveAttribute('data-state', 'uploading');
+  });
+
+  it('turns the placeholder into the registered video while the Space is hidden, without an undo step', async () => {
+    const answer = deferred<StoredUpload>();
+    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
+    seedContent();
+    const { view, client } = showTimeline(CONNECTED, false, 'visible');
+    await confirmLocal(72);
+    const { id } = onlyClip();
+    view.rerender(<React.Activity mode='hidden'>{surface(client)}</React.Activity>);
+    await act(async () => answer.resolve(stored()));
+    await waitFor(() => expect(onlyClip().kind).toBe('video'));
+    expect(onlyClip()).toMatchObject({ id, trackId: MAIN, startFrame: 72, durationFrames: 48 });
+    expect(layout().sources[sourceIdOf(onlyClip()) ?? '']?.assetId).toBe(LOCAL_ASSET.assetId);
+    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false));
+    view.rerender(<React.Activity mode='visible'>{surface(client)}</React.Activity>);
+    expect(await screen.findByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-kind', 'video');
+  });
+
+  it('lands a main-track placeholder at its insertion point with the magnet on', async () => {
+    magnet(true);
     const doc = seedContent();
+    act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON }); });
+    vi.mocked(uploadMedia).mockReturnValueOnce(deferred<StoredUpload>().promise);
     showTimeline();
     await confirmLocal(72);
-    expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(true);
-    const before = Y.encodeStateAsUpdate(doc);
-    try {
-      act(() => destroyDoc(docName.timelineSpace(PROJECT, SPACE)));
-      expect(doc.isDestroyed).toBe(true);
-      expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false);
-    } finally {
-      await act(async () => answer.resolve(stored()));
-    }
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false);
+    const placeholder = Object.values(layout().clips).find((clip) => clip.kind === 'upload');
+    expect(placeholder).toMatchObject({ trackId: MAIN, startFrame: 48, durationFrames: 48 });
+    expect(layout().clips[CLIP.id]?.startFrame).toBe(0);
   });
 
-  it('requires a new confirmation after a Viewer interval and reuses its registered upload', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    const doc = seedContent();
-    const { view, client } = showTimeline();
-    const file = await confirmLocal(72);
-    view.rerender(surface(client, { ...CONNECTED, writeAccess: 'denied' }, true));
-    view.rerender(surface(client, CONNECTED, false));
-    const before = Y.encodeStateAsUpdate(doc);
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations(SPACE)).toBe(false));
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(72);
-    expect(screen.getByTestId('timeline-confirm-material')).toBeEnabled();
+  it('stays in the dialog with the duration error when the browser cannot read the file', async () => {
+    localMetadata(null);
+    seedContent();
+    showTimeline();
+    await openMaterial();
+    fireEvent.click(screen.getByTestId('timeline-material-local'));
+    fireEvent.change(screen.getByTestId('timeline-file-input'), { target: { files: [new File(['x'], 'broken.mp4', { type: 'video/mp4' })] } });
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    expect(Object.values(layout().clips)[0]?.startFrame).toBe(72);
-    expect(Object.values(layout().sources)[0]?.assetId).toBe(LOCAL_ASSET.assetId);
-    expect(vi.mocked(uploadMedia).mock.calls.map(([sentFile]) => sentFile)).toEqual([file]);
-    expect(screen.queryByRole('dialog')).toBe(null);
+    expect(await screen.findByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.metadata_unavailable'));
+    expect(Object.keys(layout().clips)).toEqual([]);
+    expect(uploadMedia).not.toHaveBeenCalled();
   });
 
-  it('preserves a pending upload and its captured frame across a Space hide and show', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    const doc = seedContent();
-    const { view, client } = showTimeline(CONNECTED, false, 'visible');
-    const file = await confirmLocal(72);
-    view.rerender(<React.Activity mode='hidden'>{surface(client)}</React.Activity>);
-    expect(currentDoc()).toBe(doc);
-    expect(doc.isDestroyed).toBe(false);
-    view.rerender(<React.Activity mode='visible'>{surface(client)}</React.Activity>);
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(72);
-    const confirm = screen.getByTestId('timeline-confirm-material');
-    expect(confirm).toHaveAttribute('aria-busy', 'true');
-    expect(confirm).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(confirm);
-    expect(vi.mocked(uploadMedia).mock.calls.map(([sentFile]) => sentFile)).toEqual([file]);
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    expect(Object.values(layout().clips)[0]?.startFrame).toBe(72);
-    expect(Object.values(layout().sources)[0]?.assetId).toBe(LOCAL_ASSET.assetId);
-    expect(screen.queryByRole('dialog')).toBe(null);
-    expect(vi.mocked(uploadMedia).mock.calls).toHaveLength(1);
-  });
-
-  it('accepts the fixed upload placement while its Space is hidden and shows it on return', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    const doc = seedContent();
-    const { view, client } = showTimeline(CONNECTED, false, 'visible');
-    const file = await confirmLocal(72);
-    view.rerender(<React.Activity mode='hidden'>{surface(client)}</React.Activity>);
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    const clip = Object.values(layout().clips)[0];
-    expect(clip?.startFrame).toBe(72);
-    expect(clip?.durationFrames).toBe(48);
-    expect(Object.values(layout().sources)[0]?.assetId).toBe(LOCAL_ASSET.assetId);
-    expect(currentDoc()).toBe(doc);
-    expect(doc.isDestroyed).toBe(false);
-    view.rerender(<React.Activity mode='visible'>{surface(client)}</React.Activity>);
-    expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).toBe(null);
-    expect(screen.getByTestId('timeline-add-media')).toBeEnabled();
-    expect(vi.mocked(uploadMedia).mock.calls.map(([sentFile]) => sentFile)).toEqual([file]);
-  });
-
-  it('uploads a confirmed local video through the shared Project uploader', async () => {
+  it('keeps a failed placeholder and lets its uploader retry the same file', async () => {
+    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('transfer')).mockReturnValueOnce(deferred<StoredUpload>().promise);
     seedContent();
     showTimeline();
     const file = await confirmLocal();
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    expect(vi.mocked(uploadMedia).mock.calls).toHaveLength(1);
-    expect(vi.mocked(uploadMedia).mock.calls[0]?.[0]).toBe(file);
-    expect(vi.mocked(uploadMedia).mock.calls[0]?.[1]).toMatchObject({ projectId: PROJECT });
-    expect(vi.mocked(uploadMedia).mock.calls[0]?.[1].nodeId).toBe(undefined);
-    expect(Object.values(layout().sources)[0]?.assetId).toBe(LOCAL_ASSET.assetId);
+    const { id } = onlyClip();
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
+    // The preview draws nothing for the placeholder at the playhead and notes it by track (design §4.3).
+    const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state });
+    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('failed'));
+    fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
+    fireEvent.click(await screen.findByTestId('timeline-upload-retry'));
+    await waitFor(() => expect(vi.mocked(uploadMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'uploading'));
+    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('uploading'));
   });
-  it('keeps the captured sub-track upload frame when collaborative content changes meanwhile', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    const doc = seedLayout([clipAt('30000000-0000-4000-8000-000000000009', 'v2', 0, 10)]);
+
+  it('offers no retry when sending the same file again cannot help', async () => {
+    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
+    seedContent();
     showTimeline();
-    fireEvent.click(await screen.findByTestId('timeline-clip-30000000-0000-4000-8000-000000000009'));
-    await confirmLocal(72);
-    act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, trackId: 'v2', startFrame: 20 } }, placement: OFF }); });
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(3));
-    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[sourceIdOf(clip) ?? '']?.assetId === LOCAL_ASSET.assetId);
-    expect(uploaded).toMatchObject({ trackId: 'v2', startFrame: 72, durationFrames: 48 });
+    await confirmLocal();
+    const { id } = onlyClip();
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
+    fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
+    expect(await screen.findByTestId('timeline-clip-upload')).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-upload-retry')).toBe(null);
   });
-  it('lands a captured main-track upload at its insertion point after a peer adds a clip meanwhile', async () => {
-    magnet(true);
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
+
+  it('draws an uploading placeholder as a dashed card slot and its uploader\'s progress as a bar (visual #2, #3)', async () => {
+    let report: ((share: number) => void) | undefined;
+    vi.mocked(uploadMedia).mockImplementationOnce((_file, _context, onProgress) => { report = onProgress; return deferred<StoredUpload>().promise; });
+    seedContent();
+    showTimeline();
+    await confirmLocal();
+    const { id } = onlyClip();
+    const clip = screen.getByTestId(`timeline-clip-${id}`);
+    expect(clip).toHaveClass('bg-card', 'border-dashed');
+    expect(clip.className).not.toContain('palette-blue');
+    fireEvent.click(clip);
+    expect(clip.className).not.toContain('palette-blue');
+    expect(screen.queryByTestId('timeline-upload-progress')).toBe(null);
+    act(() => report?.(0.42));
+    expect(await screen.findByTestId('timeline-upload-progress')).toHaveAttribute('aria-valuenow', '42');
+  });
+
+  it('draws a placeholder nobody uploads any more as a dashed muted slot (visual #1)', () => {
     const doc = seedContent();
+    const { sourceId: _sourceId, ...placement } = CLIP;
+    act(() => { write(doc, { operation: 'add_upload', parameters: { clip: { ...placement, kind: 'upload', upload: { uploadId: '40000000-0000-4000-8000-000000000001', name: 'left.mp4', durationSeconds: 2 } } }, placement: OFF }); });
     showTimeline();
-    await confirmLocal(72);
-    act(() => { write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON }); });
-    await act(async () => answer.resolve(stored()));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
-    const uploaded = Object.values(layout().clips).find((clip) => layout().sources[sourceIdOf(clip) ?? '']?.assetId === LOCAL_ASSET.assetId);
-    expect(uploaded).toMatchObject({ trackId: MAIN, startFrame: 48, durationFrames: 48 });
-    expect(layout().clips[CLIP.id]?.startFrame).toBe(0);
+    const clip = screen.getByTestId(`timeline-clip-${CLIP.id}`);
+    expect(clip).toHaveAttribute('data-state', 'unfinished');
+    expect(clip).toHaveClass('bg-muted', 'border-dashed');
+    expect(clip.className).not.toContain('palette-blue');
   });
-  it('retains the local file and selected frame after an upload failure', async () => {
-    vi.mocked(uploadMedia).mockRejectedValueOnce(new Error('Upload temporarily unavailable'));
-    seedContent();
-    showTimeline();
-    const file = await confirmLocal(72);
-    expect(await screen.findByTestId('timeline-material-error')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(72);
-    expect(Object.keys(layout().clips)).toEqual([]);
-    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(1));
-    expect(vi.mocked(uploadMedia).mock.calls.map(([sentFile]) => sentFile)).toEqual([file, file]);
-    expect(Object.values(layout().clips)[0]?.startFrame).toBe(72);
-  });
-  it('keeps a canceled upload result from replacing a newly confirmed selection', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
+
+  it('keeps a failed placeholder\'s track line short and names the reason in its properties (visual #4)', async () => {
+    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
     seedContent();
     showTimeline();
     await confirmLocal();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBe(null));
-    await addProjectVideo();
-    const before = Y.encodeStateAsUpdate(currentDoc());
-    await act(async () => answer.resolve(stored()));
-    expect(Y.encodeStateAsUpdate(currentDoc())).toEqual(before);
-    expect(Object.values(layout().sources).map((source) => source.assetId)).toEqual([ASSET.assetId]);
-    expect(Object.values(layout().clips)).toHaveLength(1);
-  });
-  it('preserves the layout when an upload completes after the user becomes Viewer', async () => {
-    const answer = deferred<StoredUpload>();
-    vi.mocked(uploadMedia).mockReturnValueOnce(answer.promise);
-    seedContent();
-    const { view, client } = showTimeline();
-    await confirmLocal();
-    view.rerender(surface(client, { ...CONNECTED, writeAccess: 'denied' }, true));
-    const before = Y.encodeStateAsUpdate(currentDoc());
-    await act(async () => answer.resolve(stored()));
-    expect(Y.encodeStateAsUpdate(currentDoc())).toEqual(before);
-    expect(Object.keys(layout().clips)).toEqual([]);
+    const { id } = onlyClip();
+    const clip = screen.getByTestId(`timeline-clip-${id}`);
+    await waitFor(() => expect(clip).toHaveAttribute('data-state', 'failed'));
+    expect(clip).toHaveTextContent(t('timeline.upload.failed'));
+    expect(clip).not.toHaveTextContent('exceeds');
+    fireEvent.click(clip);
+    expect(await screen.findByTestId('timeline-clip-upload')).toHaveTextContent('Local video.mp4');
   });
 });
 

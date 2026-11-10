@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TimelineClip, TimelineDocumentV1, TimelineVideoSource, TimelineWebResolution } from '@breatic/shared';
+import {
+  durationToFrames, type TimelineClip, type TimelineDocumentV1, type TimelineRate, type TimelineUploadClip, type TimelineVideoSource,
+  type TimelineWebResolution,
+} from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, validateTimelineRange, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
@@ -25,8 +28,26 @@ export function timelineWebSourceOf(web: TimelineWebResolution, clip: Extract<Ti
 }
 
 /**
- * The extent a clip's frames are measured against (design §3.2): a video's registered source; a web copy's bound
- * source version; a placeholder's result once its execution succeeded, otherwise the length its execution accepted.
+ * The extent an upload placeholder is measured against: the file the browser read, conformed like a registered video.
+ * @param fps - The document frame rate.
+ * @param clip - The placeholder.
+ * @returns The extent, or undefined when the duration is too long to count in frames.
+ * @throws {never} Never.
+ */
+export function timelineUploadExtent(fps: TimelineRate, clip: TimelineUploadClip): TimelineSourceExtent | undefined {
+  try {
+    const { durationSeconds } = clip.upload;
+    return { timebase: fps, extentFrames: durationToFrames(durationSeconds, fps), durationSeconds: String(durationSeconds) };
+  } catch {
+    // A duration whose frame count is not a safe integer cannot be measured, like a missing source.
+    return undefined;
+  }
+}
+
+/**
+ * The extent a clip's frames are measured against (design §3.2): a video's registered source; an upload placeholder's
+ * local file; a web copy's bound source version; a placeholder's result once its execution succeeded, otherwise the
+ * length its execution accepted.
  * @param document - The document, for video sources.
  * @param web - The resolution of web references.
  * @param clip - The clip.
@@ -35,6 +56,7 @@ export function timelineWebSourceOf(web: TimelineWebResolution, clip: Extract<Ti
  */
 export function resolveTimelineClipExtent(document: TimelineDocumentV1, web: TimelineWebResolution, clip: TimelineClip): TimelineSourceExtent | undefined {
   if (clip.kind === 'video') return document.sources[clip.sourceId];
+  if (clip.kind === 'upload') return timelineUploadExtent(document.settings.fps, clip);
   const sourceId = timelineWebSourceOf(web, clip);
   const source = sourceId === null ? undefined : web.sources[sourceId];
   if (source !== undefined) return { timebase: source.fps, extentFrames: source.durationFrames };
@@ -58,7 +80,7 @@ export interface TimelinePlacement { clipId: string; status: 'ready' | 'conflict
 export interface TimelineArrangement { placements: TimelinePlacement[]; conflicts: TimelinePlacement[]; readyClipIds: string[]; hasConflicts: boolean }
 
 /**
- * The registered video a clip shows, for reading its asset; a web-animation clip has none.
+ * The registered video a clip shows, for reading its asset; web-animation and upload clips have none.
  * @param sources - The document's sources.
  * @param clip - The placement.
  * @returns Its source, or undefined when it has none.
@@ -86,7 +108,7 @@ export function resolveTimelineArrangement(document: TimelineDocumentV1, web: Ti
     if (!track) reasons.push({ code: 'missing_track', ...detail });
     else if (track.kind !== 'visual') reasons.push({ code: 'incompatible_track', ...detail });
     const source = resolveTimelineClipExtent(document, web, clip);
-    if (source === undefined) reasons.push({ code: clip.kind === 'video' ? 'missing_source' : 'source_unresolved', ...detail });
+    if (source === undefined) reasons.push({ code: clip.kind === 'web-animation' ? 'source_unresolved' : 'missing_source', ...detail });
     if (!timelineClipIntervalValid(clip) || outsideSource(clip, source, document)) reasons.push({ code: 'invalid_range', ...detail });
     return { clip, endFrame, reasons };
   });

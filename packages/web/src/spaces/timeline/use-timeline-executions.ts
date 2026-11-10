@@ -30,16 +30,18 @@ export function timelineExecutionsQueryKey(projectId: string, spaceId: string): 
  * @param projectId - The Project.
  * @param spaceId - The Timeline Space.
  * @param refreshMs - The polling interval while an execution is unfinished; none polls nothing.
+ * @param options - Query options.
+ * @param options.enabled - Whether to read the list at all; false reads nothing.
  * @returns The query.
  * @throws {never} Never.
  */
-export function useTimelineExecutions(projectId: string, spaceId: string, refreshMs?: number): UseQueryResult<TimelineExecutionRow[]> {
+export function useTimelineExecutions(projectId: string, spaceId: string, refreshMs?: number, { enabled = true }: { enabled?: boolean } = {}): UseQueryResult<TimelineExecutionRow[]> {
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(() => timelineExecutionsQueryKey(projectId, spaceId), [projectId, spaceId]);
   const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.listExecutions(projectId, spaceId, signal), [projectId, spaceId]);
   const refetchInterval = React.useCallback((query: Query<TimelineExecutionRow[]>): number | false =>
     refreshMs !== undefined && query.state.data?.some((row) => !timelineExecutionEnded(row.status)) === true ? refreshMs : false, [refreshMs]);
-  const list = useQuery({ queryKey, queryFn, refetchInterval });
+  const list = useQuery({ queryKey, queryFn, refetchInterval, enabled });
   // Deadlines already read once; a row the server has not yet marked expired is not read again for the same deadline.
   const passed = React.useRef(new Set<string>());
   const deadline = React.useMemo(() => {

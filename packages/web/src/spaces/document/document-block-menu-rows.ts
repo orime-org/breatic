@@ -19,6 +19,7 @@ import {
   Copy,
   IndentDecrease,
   IndentIncrease,
+  Maximize2,
   MessageSquarePlus,
   MessageSquareText,
   Palette,
@@ -45,7 +46,8 @@ export interface BlockMenuRow {
     | 'unindent'
     | 'comment'
     | 'addToAgent'
-    | 'delete';
+    | 'delete'
+    | 'fullscreen';
   /** i18n key for the row's name. */
   readonly labelKey: string;
   /** The icon the demo draws for it. */
@@ -130,6 +132,8 @@ function rowOf(id: BlockMenuRow['id']): BlockMenuRow {
  * Copy and cut put the whole table on the clipboard (inner#1239).
  */
 export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
+  // Opens the table over the whole window for editing (#1427).
+  { id: 'fullscreen', labelKey: 'spaces.document.table.fullscreen', Icon: Maximize2 },
   rowOf('insertBelow'),
   rowOf('duplicate'),
   { id: 'copy', labelKey: 'canvas.contextMenu.copy', Icon: ClipboardCopy },

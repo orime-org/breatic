@@ -31,6 +31,7 @@ import { threadRangesByThread } from '@web/spaces/document/document-comment-rang
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
 import { proposalBlocks, writtenBlockId } from '@web/spaces/document/document-proposal-blocks';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import type { LandingAction } from '@web/stores/document-proposals';
 
@@ -456,6 +457,9 @@ export async function landProposal(
     if (ready !== null) return ready;
     const blockId = proposal.blockId!;
     const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
+    // A table opened full screen during the wait shows only its cells
+    // (#1427 §5.3).
+    setTableFullscreen(handle.editor, null);
     const posted = await commentOn(handle.editor as never, body, (state) =>
       currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
       thread: { proposalId: proposal.proposalId },
@@ -469,6 +473,7 @@ export async function landProposal(
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;
+  setTableFullscreen(handle.editor, null);
   const refused = landBlocks(handle, proposal, prepared.blocks);
   if (refused !== null) return refused;
   const landed = landedAt(handle, proposal);

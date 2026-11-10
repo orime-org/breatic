@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { cn } from '@web/lib/utils';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
@@ -10,6 +11,9 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
+import { DocumentTableFullscreenExit } from '@web/spaces/document/DocumentTableFullscreenExit';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
+import { useTableFullscreenShell } from '@web/spaces/document/use-table-fullscreen-shell';
 import { DocumentOutline } from '@web/spaces/document/DocumentOutline';
 import { BODY_ROW_VARS } from '@web/spaces/document/document-columns';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
@@ -206,6 +210,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+  // A table open full screen (#1427): this area covers the window and
+  // shows that table alone; what it leaves out is listed in design §5.1.
+  const fullscreen = useTableFullscreen(handle.editor);
+  const inFullscreen = fullscreen.table !== null;
+  useTableFullscreenShell(handle.editor, fullscreen, viewport, readOnly);
 
   // The link toolbar stands aside while the selection holds anything: that is
   // what puts the bubble bar on screen, and the link panel only ever opens
@@ -360,7 +369,15 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // the body and the bubble bar over the entry, and neither of those two
     // relationships is anyone else's business. Without it both numbers would
     // be compared against every other layer on the page.
-    <div className='relative isolate flex min-h-0 flex-1 flex-col'>
+    // Full screen covers the window with `fixed`, which holds while no ancestor
+    // up to <html> has a transform, filter, contain or will-change (each would
+    // become the containing block) and while z-30 sits above the project chrome
+    // (z-10) and below the workspace mask (z-40) and connection banner (z-50).
+    // Should either change, the area has to move into a portal on the body.
+    <div
+      className={cn(inFullscreen ? 'fixed inset-0 z-30 bg-background' : 'relative', 'isolate flex min-h-0 flex-1 flex-col')}
+      data-table-fullscreen={inFullscreen ? '' : undefined}
+    >
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The side gutters live on the viewport — they are the
           margin OUTSIDE the page, and a click there is outside the document.
@@ -376,7 +393,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
       <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
-        <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
+        {/* Under a full-screen table the outline steps aside the way a
+          hidden Space does, folds and tuck kept. */}
+        <React.Activity mode={inFullscreen ? 'hidden' : 'visible'}>
+          <DocumentOutline
+            editor={handle.editor}
+            viewport={viewport}
+            readOnly={readOnly}
+            commentsOpen={railOpen}
+          />
+        </React.Activity>
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}
@@ -406,31 +432,38 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
               style={GUTTER_START}
             >
-              <DocumentMenuEntry
-                commentsOpen={railOpen}
-                onOpenComments={openRail}
-                unresolvedComments={rail.unresolved.length}
-              />
+              {inFullscreen ? null : (
+                <DocumentMenuEntry
+                  commentsOpen={railOpen}
+                  onOpenComments={openRail}
+                  unresolvedComments={rail.unresolved.length}
+                />
+              )}
               <div
                 ref={body}
                 data-testid='document-editor-content'
                 // The body and the row handles that stand beside it: the
                 // focus on a handle has not left the body.
                 {...bodyPartMark(handle.editor)}
-                className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+                className={cn('doc-body-editor mx-auto [&_.ProseMirror]:outline-none', !inFullscreen && 'max-w-3xl')}
               />
             </div>
             {/* Beside the body rather than over it, so opening it narrows the
               text column and closing it widens the column again (A18). */}
-            {railOpen && (
-              <DocumentCommentRail
-                editor={handle.editor}
-                rail={rail}
-                myRole={myRole}
-                onClose={closeRail}
-                scroller={viewport}
-              />
-            )}
+            {/* Under a full-screen table the panel steps aside the way a
+              hidden Space does: what it was reading, its filter and a draft
+              stay, and it measures again on coming back. */}
+            <React.Activity mode={inFullscreen ? 'hidden' : 'visible'}>
+              {railOpen && (
+                <DocumentCommentRail
+                  editor={handle.editor}
+                  rail={rail}
+                  myRole={myRole}
+                  onClose={closeRail}
+                  scroller={viewport}
+                />
+              )}
+            </React.Activity>
           </div>
         </ScrollArea>
       </div>
@@ -458,6 +491,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      {inFullscreen ? <DocumentTableFullscreenExit editor={handle.editor} /> : null}
       {/* The button on the cell the caret is in; a viewer gets none of it
           either (inner#1126 A18). */}
       {viewport !== null && !readOnly && (

@@ -8,12 +8,8 @@
  */
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
-import {
-  CLAIMS_FIELD,
-  type UploadClaim,
-  type UploadEntry,
-  type UploadFailure,
-} from '@web/spaces/document/document-upload-controller';
+import type { UploadClaim } from '@web/lib/upload-claims';
+import type { UploadEntry, UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 /** What a pending block shows. */
 export type PendingStatus =
@@ -66,23 +62,4 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
   if (facts.claim === 'uploading') return { kind: 'peerUploading' };
   if (facts.claim === 'failed') return { kind: 'peerFailed' };
   return { kind: 'notFinished' };
-}
-
-/**
- * What the clients in awareness claim about an upload. A client running it
- * outweighs one that saw it fail: the upload is still going somewhere.
- * @param states - Awareness states by client id.
- * @param uploadId - The upload.
- * @returns The claim, or null when nobody claims it.
- */
-export function claimIn(states: ReadonlyMap<number, Record<string, unknown>>, uploadId: string): UploadClaim | null {
-  let claim: UploadClaim | null = null;
-  for (const state of states.values()) {
-    const uploads = state[CLAIMS_FIELD];
-    if (typeof uploads !== 'object' || uploads === null) continue;
-    const said: unknown = (uploads as Record<string, unknown>)[uploadId];
-    if (said === 'uploading') return 'uploading';
-    if (said === 'failed') claim = 'failed';
-  }
-  return claim;
 }

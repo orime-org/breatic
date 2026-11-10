@@ -242,8 +242,13 @@ function consolidationKey(conversationId: string, watermarkBefore: number, foldI
 async function bill(input: ConsolidationBill): Promise<void> {
   const { userId, conversationId, projectId, watermarkBefore, usage, model } = input;
 
+  let chargedAmount = 0;
   try {
-    const amount = await usage.settle();
+    const { credits: amount, writeFailures } = await usage.settleForCharge();
+    chargedAmount = amount;
+    for (const err of writeFailures) {
+      logger.error({ err, userId, conversationId, watermarkBefore }, "agent_usage_record_failed");
+    }
     // An OpenRouter call whose cost is not in hand is looked up and charged
     // later, under a key of its own.
     await handOffLookups(usage.awaitingLookup(), usage.operation, {
@@ -254,7 +259,8 @@ async function bill(input: ConsolidationBill): Promise<void> {
       logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
     );
     if (amount === 0) return;
-    const outcome = await creditLotService.chargeOnceForGeneration(
+    const outcome = await creditLotService.chargeOnce(
+      "operation",
       usage.operation.operationKey,
       {
         projectId,
@@ -287,7 +293,11 @@ async function bill(input: ConsolidationBill): Promise<void> {
       logger.error({ err: outcome.signalFailure, userId, conversationId, projectId }, "credits_signal_failed");
     }
   } catch (err) {
-    logger.error({ err, userId, conversationId, watermarkBefore }, "consolidation_charge_failed");
+    // A recorded request that failed to settle waits pending for the sweep.
+    logger.error(
+      { err, userId, conversationId, watermarkBefore, refKey: usage.operation.operationKey, amount: chargedAmount },
+      "credit_charge_settle_failed",
+    );
   }
 }
 

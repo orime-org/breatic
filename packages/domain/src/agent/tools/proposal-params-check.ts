@@ -4,12 +4,12 @@
 /**
  * Whether the values a proposal sets on a generation are ones the panel offers.
  */
-import { PANEL_EDITOR_PARAM, gateHolds, type ParamGate, type ProposalNode } from "@breatic/shared";
+import { PANEL_EDITOR_PARAM, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, gateWords, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { boxReason, slotSentence, spaced } from "@domain/agent/tools/proposal-routing.js";
-import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
+import { gateHoldsOn, type ModelInfo, type ParamInfo } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 /**
@@ -26,50 +26,6 @@ import { onStep } from "@domain/model-catalog/param-declaration.js";
  */
 export function theirsToFill(name: string, info: ParamInfo): boolean {
   return info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM;
-}
-
-/**
- * Whether the panel will draw this control for the proposal as it stands.
- *
- * A control can hang on a switch of the same model: the camera wheels appear
- * once the camera is enabled and their values are thrown away until it is, and
- * the lyrics box goes away the moment the track is marked instrumental. The
- * switch is part of the proposal, so whether the user will see the control is
- * answered here rather than by asking whether the model declares it. A gate on
- * a source is already settled by the projection, which reports a control with
- * no slot behind it as having no control at all.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @param params - What the proposal fills in.
- * @param info - What the catalog says about the parameter.
- * @returns True when the user will have that control in front of them.
- * @throws {never} Never.
- */
-function isDrawn(
-  chosen: ModelInfo,
-  params: Record<string, unknown>,
-  info: ParamInfo,
-): boolean {
-  if (info.gate === undefined) return true;
-  const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, declared]) => [name, declared.default]));
-  const given = Object.entries(params).filter(([, value]) => value !== null && value !== undefined);
-  return gateHolds(info.gate, { ...defaults, ...Object.fromEntries(given) });
-}
-
-/**
- * The condition a gate states, in words.
- * @param gate - The gate.
- * @param quoted - Whether each param name is quoted.
- * @returns The condition.
- */
-export function gateWords(gate: ParamGate, quoted = true): string {
-  /**
-   * One param name as written.
-   * @param name - The name.
-   * @returns It, quoted when asked.
-   */
-  const named = (name: string): string => (quoted ? `"${name}"` : name);
-  const equals = Object.entries(gate.equals ?? {}).map(([name, value]) => `${named(name)} is ${JSON.stringify(value)}`);
-  return [...(gate.flag_on !== undefined ? [`${named(gate.flag_on)} is on`] : []), ...equals].join(" and ");
 }
 
 /** How many values a refusal lists before it falls back to the range and step. */
@@ -159,7 +115,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel
     }
     const elsewhere = placedElsewhere(chosen, node, key, info, at);
     if (elsewhere !== undefined) return elsewhere;
-    if (!isDrawn(chosen, node.params ?? {}, info)) {
+    if (info.gate !== undefined && !gateHoldsOn(chosen, node.params ?? {}, info.gate)) {
       return refuse("param-gated-off", `"${key}" only counts while ${gateWords(info.gate ?? {})}, and this proposal leaves it off.`);
     }
     const options = info.options ?? [];

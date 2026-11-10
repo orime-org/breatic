@@ -240,7 +240,7 @@ function promptOf(call: Record<string, unknown> | undefined): string {
 
 /** Operation keys every charge in this test was made under. */
 function chargedKeys(): string[] {
-  return mocks.creditLotService.chargeOnceForGeneration.mock.calls.map((call: unknown[]) => call[0] as string);
+  return mocks.creditLotService.chargeOnce.mock.calls.map((call: unknown[]) => call[1] as string);
 }
 
 /** The pattern the shipped same-language instruction is written in. */
@@ -381,7 +381,7 @@ describe("who may call it", () => {
 
     expect(res.status).toBe(404);
     expect(model.calls).toHaveLength(0);
-    expect(mocks.creditLotService.chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(mocks.creditLotService.chargeOnce).not.toHaveBeenCalled();
     expect(logged("text_tool_forbidden")).toEqual([
       expect.objectContaining({ userId: "user-1", projectId: PID }),
     ]);
@@ -394,7 +394,7 @@ describe("who may call it", () => {
 
     expect(res.status).toBe(403);
     expect(model.calls).toHaveLength(0);
-    expect(mocks.creditLotService.chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(mocks.creditLotService.chargeOnce).not.toHaveBeenCalled();
     expect(logged("text_tool_forbidden")).toEqual([
       expect.objectContaining({ userId: "user-1", projectId: PID }),
     ]);
@@ -590,10 +590,11 @@ describe("billing", () => {
   it("charges the project under an operation key the server minted, not the client's Idempotency-Key", async () => {
     await run(bodyFor("polish"), { "Idempotency-Key": "client-key-1" });
 
-    const charge = vi.mocked(mocks.creditLotService.chargeOnceForGeneration).mock.calls[0];
-    expect(charge?.[0]).toMatch(/^texttool:/);
-    expect(charge?.[0]).not.toContain("client-key-1");
-    expect(charge?.[1]).toMatchObject({ projectId: PID, actorUserId: "user-1" });
+    const charge = vi.mocked(mocks.creditLotService.chargeOnce).mock.calls[0];
+    expect(charge?.[0]).toBe("operation");
+    expect(charge?.[1]).toMatch(/^texttool:/);
+    expect(charge?.[1]).not.toContain("client-key-1");
+    expect(charge?.[2]).toMatchObject({ projectId: PID, actorUserId: "user-1" });
   });
 
   it("records usage against the project under the key it charges under", async () => {
@@ -663,8 +664,8 @@ describe("billing", () => {
           // Every request runs to the end.
           expect(runs.map((events) => events.at(-1)?.event)).toEqual(keys.map(() => "done"));
           // Every run is charged exactly once, under a key of its own.
-          const charges = vi.mocked(mocks.creditLotService.chargeOnceForGeneration).mock.calls;
-          const charged = charges.map((call: unknown[]) => call[0] as string);
+          const charges = vi.mocked(mocks.creditLotService.chargeOnce).mock.calls;
+          const charged = charges.map((call: unknown[]) => call[1] as string);
           expect(charged).toHaveLength(keys.length);
           expect(new Set(charged).size).toBe(keys.length);
           // No client key reaches a charge.
@@ -672,7 +673,7 @@ describe("billing", () => {
             if (key !== undefined) expect(charged.some((k) => k === `texttool:${key}`)).toBe(false);
           }
           // Every charge is to this project.
-          for (const call of charges) expect(call[1]).toMatchObject({ projectId: PID });
+          for (const call of charges) expect(call[2]).toMatchObject({ projectId: PID });
         },
       ),
       { numRuns: 15 },

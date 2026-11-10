@@ -9,8 +9,9 @@
  */
 
 import * as taskRepo from "@domain/task/task.repo.js";
+import * as creditLotService from "@domain/credit/creditLot.service.js";
 import { t } from "@breatic/shared";
-import { NotFoundError, ForbiddenError, type DbTx } from "@breatic/core";
+import { db, NotFoundError, ForbiddenError, type DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
 
 /**
@@ -182,23 +183,32 @@ export async function recordProviderTaskId(
 }
 
 /**
- * Atomic "mark completed AND reserve billing" transition.
+ * Mark a task completed and record its charge, in one commit (inner#1617).
  *
- * Returns `true` if this call performed the transition (i.e. we should
- * actually deduct credits now). Returns `false` if another Worker has
- * already completed + billed this task, in which case the caller must
- * skip the deduct step entirely.
+ * The `billed_at` CAS decides which attempt completes the task; only that one
+ * records the charge request, so the completion and the charge it owes commit
+ * together or not at all. The charge itself is settled afterwards by
+ * `creditLotService.settleCharge`.
  * @param taskId - UUID of the task to mark completed.
  * @param result - Provider/tool result payload to persist on the task.
  * @param creditsUsed - Credits consumed; recorded as the billing guard amount.
  * @param durationMs - Wall-clock duration of the task in milliseconds.
- * @returns `true` if this call won the transition (caller should deduct now), `false` if already completed + billed.
+ * @param charge - The charge to record when this call wins, or null when the run owes nothing.
+ * @returns `true` if this call won the transition, `false` if the task was already completed.
+ * @throws {Error} When either write fails; neither then commits.
  */
 export async function markCompletedAndBill(
   taskId: string,
   result: Record<string, unknown>,
   creditsUsed: number,
   durationMs: number,
+  charge: Omit<creditLotService.ChargeRequestInput, "kind" | "referenceId"> | null,
 ): Promise<boolean> {
-  return taskRepo.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
+  return db.transaction(async (tx) => {
+    const won = await taskRepo.markCompletedAndBill(taskId, result, creditsUsed, durationMs, tx);
+    if (won && charge !== null && charge.amount > 0) {
+      await creditLotService.requestCharge({ ...charge, kind: "task", referenceId: taskId }, tx);
+    }
+    return won;
+  });
 }

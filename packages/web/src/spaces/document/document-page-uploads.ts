@@ -15,6 +15,7 @@ import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import { canAdd } from '@web/data/yjs/space-write';
@@ -103,24 +104,6 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
     runners.set(key, run);
   }
   return run;
-}
-
-/**
- * Ticks on a Worker's timer, which a hidden tab does not slow.
- * @param tick - Called on each tick.
- * @returns What stops the timer.
- */
-function renewOnWorker(tick: () => void): () => void {
-  let worker: Worker;
-  try {
-    worker = new Worker(new URL('./document-claim-renewal-worker.ts', import.meta.url), { type: 'module' });
-  } catch {
-    // ponytail: main-thread fallback, throttled to once in 30 s+ when hidden.
-    const id = setInterval(tick, 15_000);
-    return () => clearInterval(id);
-  }
-  worker.onmessage = tick;
-  return () => worker.terminate();
 }
 
 let controller: UploadController | null = null;

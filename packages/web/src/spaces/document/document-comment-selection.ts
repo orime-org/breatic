@@ -52,6 +52,7 @@ import {
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /** The editor surface this plugin needs, past the view. */
 interface CommentSelectionHost {
@@ -440,6 +441,10 @@ function buildSelectionPlugin(
       handleClick: (view, pos, event): boolean => {
         if (event.button !== 0) return false;
         const hits = threadsAtPosition(view.state.doc, pos);
+        // A table open full screen has no comment panel (#1427 §5.1):
+        // a press on a highlight there only places the caret, and is
+        // answered so the library's own handler does not open it either.
+        if (inTableFullscreen(view.state)) return hits.length > 0;
         const before = selectedThreadsIn(view.state);
         // A press on plain text clears the selection and is left unanswered,
         // so that whoever else cares about it still sees it — the link

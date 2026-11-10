@@ -18,6 +18,7 @@ import type { FullModelEntry } from "@breatic/domain";
 
 import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
+import murekaSong from "@worker/providers/families/mureka-song.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 import nanoBananaRelight from "@worker/providers/families/nano-banana-relight.js";
 
@@ -35,7 +36,7 @@ export interface GenerationResult {
 
 /** Model name -> family, for the models that have one. */
 export const FAMILIES = new Map<string, ModelFamily>(
-  [minimaxSpeech, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
+  [minimaxSpeech, murekaSong, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
 /**

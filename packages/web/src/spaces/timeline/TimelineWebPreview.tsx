@@ -202,7 +202,14 @@ interface TimelineWebPreviewProps {
   onPlayer: (key: string, player: WebAnimationPlayerElement | null) => void;
   onRetry: (key: string) => void;
   onUnavailable?: (key: string, unavailable: boolean) => void;
+  /** Notes for the visible upload placeholders, which draw no picture. */
+  uploadNotes?: readonly TimelineUploadNote[];
 }
+
+/** A visible upload placeholder's note. */
+export interface TimelineUploadNote { clipId: string; z: number; text: string }
+
+const NO_UPLOAD_NOTES: readonly TimelineUploadNote[] = [];
 
 /**
  * The web layers of the preview (inner#1711 design §7.3, §7.4): one player per instance, visible, premounted or idle,
@@ -216,16 +223,17 @@ interface TimelineWebPreviewProps {
  * @param props.onPlayer - Hands a player element to the playback.
  * @param props.onRetry - Loads an instance again.
  * @param props.onUnavailable - Says which instances can register no player until a retry.
+ * @param props.uploadNotes - Notes for the visible upload placeholders, stacked with the copies' notes.
  * @returns The layers.
  * @throws {never} Never.
  */
-export function TimelineWebPreview({ projectId, entries, states, sharing, onPlayer, onRetry, onUnavailable }: TimelineWebPreviewProps): React.JSX.Element {
+export function TimelineWebPreview({ projectId, entries, states, sharing, onPlayer, onRetry, onUnavailable, uploadNotes = NO_UPLOAD_NOTES }: TimelineWebPreviewProps): React.JSX.Element {
   const t = useTranslation();
   const instances = React.useMemo(() => entries.flatMap((entry) => entry.instance === null ? [] : [{ ...entry, instance: entry.instance }])
     .sort((a, b) => (a.instance.key < b.instance.key ? -1 : a.instance.key > b.instance.key ? 1 : 0)), [entries]);
   const player = usePlayerDefined(instances.length > 0);
   const [notes, setNotes] = React.useState<HTMLDivElement | null>(null);
-  const notesStyle = React.useMemo(() => ({ zIndex: entries.length + 1 }), [entries.length]);
+  const notesStyle = React.useMemo(() => ({ zIndex: entries.length + uploadNotes.length + 1 }), [entries.length, uploadNotes.length]);
   return <>
     {instances.map((entry) => <WebInstance key={entry.instance.key} projectId={projectId} entry={entry} state={states.get(entry.instance.key)} defined={player.defined}
       playerFailed={player.failed} notes={notes} sharing={sharing} onPlayer={onPlayer} onRetry={onRetry} onPlayerRetry={player.retry} onUnavailable={onUnavailable} />)}
@@ -236,6 +244,7 @@ export function TimelineWebPreview({ projectId, entries, states, sharing, onPlay
         return <WebNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
           text={t(ended ? 'timeline.webAnimation.preview.failed' : 'timeline.webAnimation.preview.pending', { track: entry.track, status })} />;
       })}
+      {uploadNotes.map((note) => <WebNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text} />)}
     </div>
   </>;
 }

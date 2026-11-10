@@ -1051,7 +1051,11 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. A melody does not mix with the other references: for a model that ` +
+      `takes one, the sound panel's settings hold ${quoted(t("canvas.generatePanel.param.compose_from"))}, where Style & ` +
+      `references shows ${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicVocal"))} and ` +
+      `the ${quoted(t("canvas.generatePanel.musicStyleLabel"))} box, and Melody shows only ` +
+      `${quoted(t("canvas.generatePanel.musicMelody"))} and the lyrics. The picture panel's only one is its style area, which ` +
       "holds up to three pictures and works its own way (see the picture panel in the Inside the generation panel section), and the video panel shows " +
       "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
@@ -1440,10 +1444,16 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
       `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
       `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time; on the main track with the magnet on, the form names the clip it will follow and the clip is inserted there, keeping the main track end to end. ` +
-      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A local file is placed at once at that captured position as a clip named after the file, the form closes and the file uploads in the background; ` +
+      `the Space tab shows a spinner while it uploads, and the clip becomes the uploaded video when it finishes. Until then the clip is a plain card with a dashed border and reads ` +
+      `${quoted(t("timeline.upload.progress", { progress: 42 }))} or ${quoted(t("timeline.upload.uploading"))}, and the uploader's properties panel shows a progress bar; it can be moved, trimmed, split, duplicated or deleted like a video, ` +
+      `and the preview shows nothing for it, only a note at the top right with its track. A failed upload turns the clip red and reads ${quoted(t("timeline.upload.failed"))}, and the uploader's properties panel says why; ` +
+      `when sending the same file again can help, that panel offers ${quoted(t("timeline.retry"))}. ` +
+      `An upload that finished while its uploader may not edit reads ${quoted(t("timeline.upload.waiting"))}, and if the uploader leaves before it finishes the clip turns grey and reads ` +
+      `${quoted(t("timeline.upload.unfinished"))}; anyone who can edit can delete it. Undoing the placement removes the clip while the upload continues. ` +
       `A permission change requires another confirmation after editing is available. ` +
-      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
-      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      `${quoted(t("timeline.cancel"))} ends the current material selection. ` +
+      "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
       `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
@@ -1491,7 +1501,7 @@ export function renderProductGuide(): string {
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share, in two columns with each setting's name at the left of its row: switches, choices that show the value set and list every value when clicked, and number boxes. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
-      `${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
+      `${quoted(t("spaces.threeD.force.low_poly_skips_parts"))} ${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
       "A value a setting does not accept shows the rule it breaks under that setting. " +
       "The middle part holds the mode's own content and, below it, its own settings laid out the same way. " +
       `For Text to 3D that is the ${quoted(t("spaces.threeD.generateDialog.prompt"))} box with a character count. ` +
@@ -1788,7 +1798,8 @@ export function renderProductGuide(): string {
       "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
-      `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
+      `whole table; click it for a menu with ${quoted(t("spaces.document.table.fullscreen"))}, ` +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("canvas.contextMenu.copy"))}, ` +
       `${quoted(t("spaces.document.table.cut"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
       `${quoted(t("spaces.document.blockHandle.unindent"))}, ${quoted(t("spaces.document.commands.comment"))}, ` +
@@ -1799,7 +1810,12 @@ export function renderProductGuide(): string {
       `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
-      "when no cell has words.",
+      "when no cell has words. " +
+      `${quoted(t("spaces.document.table.fullscreen"))} lays that table alone over the whole window, for editing ` +
+      "it with room to see every column: type in its cells and format the words, use the AI menu on selected " +
+      "words, add, delete and move rows and columns, drag column widths, and merge or split cells. Escape, or " +
+      `the button at the top right named ${quoted(t("spaces.document.table.exitFullscreen"))}, goes back to the ` +
+      "document where the table stands.",
     "- Hovering a cell, with no text selected, shows a small handle of dots at the left of its row and one above " +
       "its column; dragging either moves the row or column, with a line showing where it will land. Clicking the " +
       `row's handle opens ${quoted(t("spaces.document.table.insertRowAbove"))}, ` +

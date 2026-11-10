@@ -45,6 +45,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "credits reserved for running work (0099, inner#1611): a hold ends by being released, and `status` records that; soft-deleting a row would release a hold without saying so, and the admission it was counted in could no longer be reconstructed",
   ],
   [
+    "creditChargeRequests",
+    "internal charge outbox (0121, inner#1617): appended in the delivery transaction and settled by the credit engine, kept as the record that the charge was asked for; soft-deleting a pending row would drop a charge without saying so",
+  ],
+  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],
