@@ -297,6 +297,8 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
         if (canonicalMiniToolValue(record.reported) !== canonicalMiniToolValue(body)) throw new Error("Conflicting immutable container report");
         return;
       }
+      // A job already answered as ended with unknown usage keeps that answer: a late report never turns it measured.
+      if (record.state.phase === "done" || record.state.phase === "failed") return;
     } else {
       if ("schemaVersion" in body) throw new Error("Unexpected versioned report for a legacy job");
       media = body.media;

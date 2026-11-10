@@ -176,6 +176,19 @@ describe("planned DO state with a mocked container base, not an image", () => {
       expect(storage.get("job")).toEqual(held);
     }
   });
+
+  it("keeps an ended job's unknown usage when its container's report lands after the end", async () => {
+    const { object, storage } = owner();
+    await object.submit(PLAN);
+    const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
+    await object.expireJob({ attemptId });
+    const ended = await object.report();
+    expect(ended).toMatchObject({ schemaVersion: 2, state: "failed", usage: null });
+    const held = structuredClone(storage.get("job"));
+    await object.noteReported({ schemaVersion: 2, attemptId, ok: false, cpuUsec: 123, outputs: [], reason: "tool_failed" });
+    expect(storage.get("job")).toEqual(held);
+    expect(await object.report()).toEqual(ended);
+  });
 });
 
 
