@@ -425,6 +425,13 @@
         "noPermission": "この Project の編集権限がありません",
         "notMember": "この Project のメンバーではなくなりました",
         "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
+        "pageNeedsLogin": "ログインが必要です",
+        "pageRefused": "サイトに読み込みを拒否されました",
+        "pageTooSlow": "ページの表示に時間がかかりすぎ、読み込めませんでした",
+        "pageEmpty": "ページに読める文字がありません",
+        "pageUnreachable": "開けませんでした",
+        "pageUnsupportedType": "読み取れる形式ではありません",
+        "pagesUnreadable": "どのページも読み込めませんでした",
         "declined": "サービスがこの内容の処理を拒否しました",
         "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
       },
@@ -432,6 +439,7 @@
       "failedStep": "{step}が完了しませんでした",
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
+      "readingPages": "{count, plural, =0 {ウェブページを読み込み中} =1 {{host} を読み込み中} other {# 件のウェブページを読み込み中}}",
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "Canvas でできることを確認中",
       "proposingNodes": "提案をまとめています",
@@ -452,6 +460,7 @@
       "running": "{tool} を実行中",
       "step": {
         "webSearch": "「{query}」の検索",
+        "webFetch": "ウェブページの読み込み",
         "searchImages": "「{query}」の画像検索",
         "understandMedia": "メディアの確認",
         "saveImage": "画像の保存",
@@ -2243,7 +2252,8 @@
         },
         "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
         "notWrittenYet": "アップロード済み。まだ追加されていません",
-        "notPasted": "{count} 件を貼り付けられませんでした。"
+        "notPasted": "{count} 件を貼り付けられませんでした。",
+        "stillUploading": "{count} 件の画像・動画・音声はアップロード中のため貼り付けられませんでした。アップロードが完了したらもう一度コピーしてください。"
       }
     },
     "readOnlyReconnect": "再接続",

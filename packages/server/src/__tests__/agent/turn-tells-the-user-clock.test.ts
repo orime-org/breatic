@@ -66,6 +66,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
@@ -76,7 +77,7 @@ const { runWithContext } = await import("@breatic/core");
 
 const NOW = "2026-10-01T09:27:00Z";
 const SHANGHAI_NOTE =
-  "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]";
+  "[The user's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00). The time zone tells the time only, never which language to reply in.]";
 const UNKNOWN_ZONE_NOTE =
   "[The time when the user sent this message: Thursday, 2026-10-01 09:27 UTC. Their time zone is unknown.]";
 
@@ -179,7 +180,7 @@ describe("a turn tells the model the user's local time", () => {
     await runOneTurn("second", [], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      `[The user's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond\n\n${USER_LANGUAGE_REMINDER}`,
+      `[The user's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00). The time zone tells the time only, never which language to reply in.]\n\nsecond\n\n${USER_LANGUAGE_REMINDER}`,
     );
   });
 

@@ -40,6 +40,7 @@ export type UsageSource =
   | "model"
   | "tool:understand_media"
   | "tool:web_search"
+  | "tool:web_fetch"
   | "tool:search_images"
   | "tool:judge_likelihood"
   | "container";

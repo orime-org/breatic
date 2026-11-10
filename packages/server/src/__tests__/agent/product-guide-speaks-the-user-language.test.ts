@@ -47,7 +47,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { productGuide } = await import("../../../../domain/src/agent/tools/product-guide.js");
 
   const firstCall = [
-    { type: "tool-call", toolCallId: "g1", toolName: "get_product_guide", input: "{}" },
+    { type: "tool-call", toolCallId: "g1", toolName: "get_product_guide", input: JSON.stringify({ sections: ["Node menus"] }) },
     FINISHED_ASKING_FOR_A_TOOL,
   ];
 
@@ -85,6 +85,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 }));
 
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 

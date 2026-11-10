@@ -425,6 +425,13 @@
         "noPermission": "you don't have edit access in this Project",
         "notMember": "you're no longer a member of this Project",
         "tooFrequent": "too many links were fetched just now, wait a minute and try again",
+        "pageNeedsLogin": "needs a login",
+        "pageRefused": "the site refused to be read",
+        "pageTooSlow": "took too long to open",
+        "pageEmpty": "no text to read",
+        "pageUnreachable": "couldn't be reached",
+        "pageUnsupportedType": "not in a format that can be read",
+        "pagesUnreadable": "none of these pages could be read",
         "declined": "the service declined to handle this content",
         "ourFault": "the server ran into a problem, try again"
       },
@@ -432,6 +439,7 @@
       "failedStep": "{step} didn't finish",
       "failureTimes": "{line} ×{count}",
       "searching": "Searching for “{query}”",
+      "readingPages": "{count, plural, =0 {Reading web pages} =1 {Reading {host}} other {Reading # web pages}}",
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",
       "proposingNodes": "Drafting a proposal",
@@ -452,6 +460,7 @@
       "running": "Calling {tool}",
       "step": {
         "webSearch": "Search for “{query}”",
+        "webFetch": "Read web pages",
         "searchImages": "Picture search for “{query}”",
         "understandMedia": "Looking at the media",
         "saveImage": "Saving the picture",
@@ -2243,7 +2252,8 @@
         },
         "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
         "notWrittenYet": "Uploaded, not added yet",
-        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"
+        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
+        "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
       }
     },
     "readOnlyReconnect": "Reconnect",

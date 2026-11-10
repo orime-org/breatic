@@ -425,6 +425,13 @@
         "noPermission": "你在这个 Project 里没有编辑权限",
         "notMember": "你已经不是这个 Project 的成员",
         "tooFrequent": "刚才取的链接太多，等一分钟再试",
+        "pageNeedsLogin": "需要登录",
+        "pageRefused": "网站拒绝了读取",
+        "pageTooSlow": "网页打开太慢，没能读完",
+        "pageEmpty": "网页上没有能读的文字",
+        "pageUnreachable": "无法打开",
+        "pageUnsupportedType": "不是能读取的格式",
+        "pagesUnreadable": "这些网页都没能读到",
         "declined": "服务拒绝处理这项内容",
         "ourFault": "服务器出了问题，可以再试一次"
       },
@@ -432,6 +439,7 @@
       "failedStep": "{step}没有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
+      "readingPages": "{count, plural, =0 {正在读网页} =1 {正在读 {host}} other {正在读 # 个网页}}",
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查 Canvas 能做什么",
       "proposingNodes": "正在拟一份提议",
@@ -452,6 +460,7 @@
       "running": "正在调用 {tool}",
       "step": {
         "webSearch": "搜索「{query}」",
+        "webFetch": "读网页",
         "searchImages": "找「{query}」的图片",
         "understandMedia": "查看媒体",
         "saveImage": "保存图片",
@@ -2243,7 +2252,8 @@
         },
         "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
         "notWrittenYet": "已上传，还没写进正文",
-        "notPasted": "{count} 项没有粘贴进来。"
+        "notPasted": "{count} 项没有粘贴进来。",
+        "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
       }
     },
     "readOnlyReconnect": "重新连接",

@@ -26,6 +26,7 @@ import {
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, gateWords, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
+import { quoted } from "@domain/agent/tools/template-expansion.js";
 import {
   aNode,
   entriesFor,
@@ -376,6 +377,40 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
       : {}),
   });
   return (verdict === null ? null : gateReason(verdict, node, chosen, sent, scripts, at)) ?? { ok: true };
+}
+
+/**
+ * The labels of the tweak blanks a node's words hold, once each, from its
+ * prompt and every shot.
+ * @param node - The node.
+ * @returns The labels, in the order they first appear.
+ */
+function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
+  const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
+}
+
+/** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */
+export const FILL_BLANKS = "write each one from what the user said, or ask them, make takes first, or choose it, as your working rules say, and send the words in its place.";
+
+/**
+ * Whether the agent's proposal sends every generation with its words filled.
+ * A blank left in them is something the result is made without, whoever
+ * wrote it (#1361), a template's own blanks among them. The panel applies a template with its blanks for the user to
+ * fill, so only the agent's entry asks this.
+ * @param proposal - The proposal, templates expanded.
+ * @returns The verdict.
+ * @throws {never} Never.
+ */
+export function checkBlanks(proposal: CanvasProposal): ProposalVerdict {
+  for (const [index, node] of proposal.nodes.entries()) {
+    if (node.role !== "generate") continue;
+    const blanks = tweakLabels(node);
+    if (blanks.length > 0) {
+      return refuse("template-tweak-unfilled", `"${node.name}" still holds the blanks ${quoted(blanks)}.`, fixOn(nodeLabel(proposal.nodes, index), FILL_BLANKS));
+    }
+  }
+  return { ok: true };
 }
 
 /**

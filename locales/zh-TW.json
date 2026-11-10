@@ -425,6 +425,13 @@
         "noPermission": "你在這個 Project 裡沒有編輯權限",
         "notMember": "你已經不是這個 Project 的成員",
         "tooFrequent": "剛才取的連結太多，等一分鐘再試",
+        "pageNeedsLogin": "需要登入",
+        "pageRefused": "網站拒絕了讀取",
+        "pageTooSlow": "網頁開啟太慢，沒能讀完",
+        "pageEmpty": "網頁上沒有能讀的文字",
+        "pageUnreachable": "無法開啟",
+        "pageUnsupportedType": "不是能讀取的格式",
+        "pagesUnreadable": "這些網頁都沒能讀到",
         "declined": "服務拒絕處理這項內容",
         "ourFault": "伺服器出了問題，可以再試一次"
       },
@@ -432,6 +439,7 @@
       "failedStep": "{step}沒有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
+      "readingPages": "{count, plural, =0 {正在讀網頁} =1 {正在讀 {host}} other {正在讀 # 個網頁}}",
       "searchingImages": "正在找「{query}」的圖片",
       "checkingCanvas": "正在查 Canvas 能做什麼",
       "proposingNodes": "正在擬一份提議",
@@ -452,6 +460,7 @@
       "running": "正在呼叫 {tool}",
       "step": {
         "webSearch": "搜尋「{query}」",
+        "webFetch": "讀網頁",
         "searchImages": "找「{query}」的圖片",
         "understandMedia": "檢視媒體",
         "saveImage": "儲存圖片",
@@ -2243,7 +2252,8 @@
         },
         "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
         "notWrittenYet": "已上傳，還沒寫進正文",
-        "notPasted": "{count} 項沒有貼上。"
+        "notPasted": "{count} 項沒有貼上。",
+        "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
       }
     },
     "readOnlyReconnect": "重新連線",

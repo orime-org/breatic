@@ -379,6 +379,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -677,6 +678,25 @@ export {
   TURNED_AWAY,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
+// The key two spellings of a page share, and the pages the Agent reads (inner#1664).
+export { pageLinkKey } from "@shared/agent/page-links.js";
+export {
+  READ_PAGE_STATUSES,
+  READ_PAGE_MAX_URL_CHARS,
+  READ_PAGE_MAX_TITLE_CHARS,
+  READER_UNREACHABLE_HEADER,
+  webPageUrlSchema,
+  readPagesRequestSchema,
+  readPageResultSchema,
+  readPagesAnswerSchema,
+  readerServiceAnswerSchema,
+  READER_SERVICE_PORT,
+  type ReaderServiceAnswer,
+  type ReadPageStatus,
+  type ReadPagesRequest,
+  type ReadPageResult,
+  type ReadPagesAnswer,
+} from "@shared/agent/read-pages.js";
 export type {
   FailureLine,
   LegacyFailureLine,
@@ -863,6 +883,7 @@ export {
 // when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
+  nodeMediaEntries,
   writeNodeMedia,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";
@@ -919,6 +940,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readPagesAtIngest,
   readStoredMediaAtIngest,
   IngestAnswerError,
   UploadHttpError,
@@ -942,11 +964,11 @@ export {
   readMiniToolJobReport,
   submitMiniToolJob,
   MINI_TOOL_JOB_MAX_OUTPUTS,
-  type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
   type MiniToolJobRequest,
 } from "@shared/upload/mini-tool-job.js";
+export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
