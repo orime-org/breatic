@@ -94,7 +94,8 @@ export function transition(state: JobState | null, event: JobEvent, now: number)
       // A stop that reaches a starting job is one the start already answers for.
       return live === "running" ? end(state, "failed", now) : STAY(state);
     case "expired":
-      return event.attemptId === state.attemptId ? end(state, "failed", now) : STAY(state);
+      // Named so the worker tells a job ended at its deadline from one its tool broke on.
+      return event.attemptId === state.attemptId ? end(state, "failed", now, "expired") : STAY(state);
     case "startFailed":
       return live === "starting" ? { state: null, effects: ["destroy", "clearOverrides", "cancelSchedule"] } : STAY(state);
   }

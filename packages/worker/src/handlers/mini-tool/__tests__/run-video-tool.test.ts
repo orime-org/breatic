@@ -91,7 +91,7 @@ type GrantInput = Parameters<typeof domainModule.openContainerOutputs>[0];
 let steps: Steps;
 let grantSequence: number;
 // Scripted batch outcomes by job id: which declared outputs the attempt wrote, and whether it failed or still runs.
-let scripted: Map<string, { written: number[]; state: "done" | "failed" } | "running" | "throws">;
+let scripted: Map<string, { written: number[]; state: "done" | "failed"; reason?: "expired" } | "running" | "throws">;
 // The public record the SQL lifecycle holds; the progress and terminal mocks advance it as the domain owner would.
 let staleProgress = 0;
 let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[] };
@@ -181,7 +181,7 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniT
     sha256: asset(output.storageKey, video).contentHash, sizeBytes: 100, contentType: output.contentType, width: 320, height: 180,
     durationSeconds: video ? 1.92 : null, cover: null, upright: null }));
   const report = state === "done" ? { schemaVersion: 2 as const, state, outputs, usage: { wallMs: 1000, cpuUsec: 2000000 } }
-    : { schemaVersion: 2 as const, state, reason: "tool_failed" as const, outputs, usage: { wallMs: 1000, cpuUsec: 2000000 } };
+    : { schemaVersion: 2 as const, state, reason: script?.reason ?? "tool_failed" as const, outputs, usage: { wallMs: 1000, cpuUsec: 2000000 } };
   // The stored step result, as recordMiniToolStepResult leaves it.
   step.output = { ...step.output, miniToolStep: { schemaVersion: 1, scope: { taskId: TASK, stepId: step.id, kind: "container_job", endpoint: step.endpoint, itemIndex: step.itemIndex },
     deadlineAt: request.deadlineAt, requestBody: null, requestFingerprint: null, chargeTo: input.chargeTo, creditMultiplier: 1, attempts: [],
@@ -710,8 +710,8 @@ describe("an attempt due after the deadline and an output registered before a th
   // Jobs whose answer moves the clock past the deadline: a chunk's report (or a read failing past the reporting window,
   // "throws"); a registered job named here reports failed.
   let atDeadline: Map<string, Record<string, unknown> | "throws">;
-  // Ingest ends a job it expires at its deadline as failed with its default reason (transition.ts "expired" event).
-  const failedReport = { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+  // Ingest ends a job it expires at its deadline as failed with reason expired (transition.ts "expired" event).
+  const failedReport = { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
   /**
    * As the real boundary: a held job still running once its reporting window (two polls past the deadline) has closed throws
    * DeadlinePassed instead of waiting.
@@ -806,6 +806,15 @@ describe("an attempt due after the deadline and an output registered before a th
     expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
     expect(since(counts)).toMatchObject({ ensure: 0, grants: 0 });
     expect(submitted().map((request) => request.jobId)).not.toContain(batchId(1, 2));
+  });
+
+  it("DL08 a batch attempt ingest expired at the deadline expires its unwritten outputs and opens no next attempt", async () => {
+    serve(plan("video.split", { batches: [[0, 1]], encodes: [] }, 1));
+    scripted.set(batchId(0, 1), { written: [0], state: "failed", reason: "expired" });
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
   });
 
   it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {

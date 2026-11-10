@@ -175,7 +175,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
       reason: null,
     };
     if (now >= request.deadlineAt) {
-      const ended: JobRecord = { state: { ...state, phase: "failed", endedAt: now, reason: "tool_failed" }, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) };
+      const ended: JobRecord = { state: { ...state, phase: "failed", endedAt: now, reason: "expired" }, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) };
       await this.save(ended);
       return reportOf(ended);
     }

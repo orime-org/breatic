@@ -70,6 +70,11 @@ describe("job transition", () => {
     expect(transition(at("running"), { type: "expired", attemptId: "att-1" }, 7_000).state?.phase).toBe("failed");
   });
 
+  it("names a job ended at its deadline expired, so the worker shows the tool's timeout reason", () => {
+    expect(transition(at("starting"), { type: "expired", attemptId: "att-1" }, 7_000).state).toMatchObject({ phase: "failed", reason: "expired" });
+    expect(transition(at("running"), { type: "expired", attemptId: "att-1" }, 7_000).state).toMatchObject({ phase: "failed", reason: "expired" });
+  });
+
   it("clears the job when the start fails, so a resubmission starts afresh", () => {
     const next = transition(at("starting"), { type: "startFailed" }, 3_000);
     expect(next.state).toBeNull();

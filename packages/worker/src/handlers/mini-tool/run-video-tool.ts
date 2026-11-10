@@ -145,8 +145,10 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
     }
     for (const entry of job.assets) pickup.results.set(entry.outputIndex, await registered(entry.asset));
     if (job.report.state === "done") continue;
-    if (attempt === execution.container.chunkRetries + 1) {
+    // An attempt ingest ended at the deadline has no next one: its unwritten outputs expire.
+    if (attempt === execution.container.chunkRetries + 1 || job.report.reason === "expired") {
       for (const index of outputs) if (!pickup.results.has(index)) pickup.results.set(index, failedResult(job.report.reason));
+      return;
     }
   }
 }

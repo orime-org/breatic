@@ -19,21 +19,23 @@ import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
-import { advanceChunks, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceRegistered, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { DeadlinePassed } from "@breatic/shared";
 
-const h = vi.hoisted(() => ({ list: vi.fn(), ensure: vi.fn(), open: vi.fn(), record: vi.fn(), advance: vi.fn() }));
+const h = vi.hoisted(() => ({ list: vi.fn(), ensure: vi.fn(), open: vi.fn(), record: vi.fn(), advance: vi.fn(), registered: vi.fn(), grants: vi.fn() }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
   return { ...actual, getMiniToolsConfig: (): ReturnType<typeof actual.getMiniToolsConfig> => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }) };
 });
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
-  return { ...actual, openMiniToolPlanJob: h.open, recordMiniToolStepResult: h.record,
+  return { ...actual, openMiniToolPlanJob: h.open, recordMiniToolStepResult: h.record, openContainerOutputs: h.grants,
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure } };
 });
-vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advance }));
+// Partial, so the reporting window end stays the real one.
+vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advance }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.registered }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const INPUT = "00000000-0000-4000-8000-000000000001";
@@ -44,8 +46,8 @@ const RUN: ModelStepRun = { taskId: TASK, projectId: "10000000-0000-4000-8000-00
 type Steps = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>;
 type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
 let steps: Steps;
-// What each job answers this pickup by its id; a job not named is done.
-let jobs: Map<string, "running" | "failed">;
+// What each job answers this pickup by its id; a job not named is done; "expired" is ingest ending it at its deadline.
+let jobs: Map<string, "running" | "failed" | "expired">;
 // The jobs ingest holds; as the real boundary, a job not yet submitted is never submitted after its deadline.
 let submitted: Set<string>;
 
@@ -111,8 +113,8 @@ beforeEach(() => {
     const state = jobs.get(request.jobId);
     if (state === "running") throw new StillRunning(Date.now() + 5000);
     const output = request.outputs[0]!;
-    return state === "failed"
-      ? { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } }
+    return state === "failed" || state === "expired"
+      ? { schemaVersion: 2, state: "failed", reason: state === "expired" ? "expired" : "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } }
       : { schemaVersion: 2, state: "done", outputs: [{ outputIndex: 0, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }],
         usage: { wallMs: 1000, cpuUsec: 2000000 } };
   });
@@ -170,5 +172,35 @@ describe("the shared chunk list (frames-split §5.4 parallel stage; execution de
     const passed = Date.now() - 1;
     expect(await advanceChunks(RUN, [0, 1, 2].map(chunk), passed)).toEqual({ failed: "chunk 0: expired", expired: true });
     expect(new Set(opened())).toEqual(new Set([jobOf(0, 1), jobOf(1, 1), jobOf(2, 1)]));
+  });
+});
+
+// The job ingest ends at its deadline reports `expired` (ingest transition.ts): a step whose attempt ended so ends expired,
+// as one whose next attempt is due after the deadline does, so its run shows its tool's timeout reason (§9.4, §10.4, §10.5).
+describe("a container step ingest ended at its deadline ends expired (execution design §9.4, §10.4, §10.5)", () => {
+  it("CL05 a chunk whose last attempt ingest expired ends the list with the expiry mark", async () => {
+    jobs.set(jobOf(0, 1), "failed");
+    jobs.set(jobOf(0, 2), "running");
+    expect(await pickup()).toBeInstanceOf(StillRunning);
+    jobs.set(jobOf(0, 2), "expired");
+    expect(await pickup()).toEqual({ failed: "chunk 0: expired", expired: true });
+  });
+
+  it("CL06 a chunk ingest expired before the worker's clock reaches the deadline opens no next attempt", async () => {
+    jobs.set(jobOf(0, 1), "expired");
+    expect(await pickup()).toEqual({ failed: "chunk 0: expired", expired: true });
+    expect(opened()).not.toContain(jobOf(0, 2));
+  });
+
+  it("CL07 a registered stitch whose last attempt ingest expired ends with the expiry mark", async () => {
+    h.grants.mockImplementation(async () => [{ storageKey: "derived/out.mp4", contentType: "video/mp4", coverKey: "derived/out.cover.jpg" }]);
+    h.registered.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
+      const step = steps.find((item) => item.id === input.stepId)!;
+      step.output = { ...step.output, miniToolPlanJob: structuredClone(input.request) };
+      const reason = input.request.jobId.endsWith(":a2") ? "expired" : "tool_failed";
+      return { request: input.request, report: { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null }, assets: [] };
+    });
+    const planned = { stepKey: "stitch", namePrefix: "ERASE", container: "mp4" as const, build: chunk(0).build };
+    expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
 });

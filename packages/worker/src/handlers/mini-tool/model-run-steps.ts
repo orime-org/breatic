@@ -437,8 +437,8 @@ export type ContainerStep = ContainerStepRequest & ({ stepKey: string; jobId?: (
  * @param planned - The step.
  * @param deadlineAt - The task deadline.
  * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
- * @returns The output, the failure (`expired` when a next attempt is due after the deadline), or null when the next attempt
- * is not opened.
+ * @returns The output, the failure (`expired` when a next attempt is due after the deadline or ingest ended an attempt at
+ * it), or null when the next attempt is not opened.
  * @throws {StillRunning} While a job runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
@@ -461,6 +461,8 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
     if (existing !== undefined && state?.result?.outcome === "failed") {
       const failed = readMiniToolPlanJobReport(storedRequest(existing)!, state.result.result);
       if (failed.state === "failed") reason = failed.reason;
+      // Ingest ended this attempt at the deadline, so the step expired: no next attempt can be submitted.
+      if (reason === "expired") return { ...planned.failed(reason), expired: true };
       continue;
     }
     if (existing !== undefined && state?.result?.outcome === "done") return { key: storedRequest(existing)!.outputs[0]!.storageKey };
@@ -479,6 +481,7 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
     { kind: "container_job", parse: (value) => readMiniToolPlanJobReport(request, value) });
     if (report.state === "done") return { key: output };
     reason = report.reason;
+    if (reason === "expired") return { ...planned.failed(reason), expired: true };
   }
   return planned.failed(reason);
 }
@@ -605,7 +608,7 @@ export interface RegisteredStep {
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
  * @returns The registered output, the last attempt's reason once every attempt failed, or `expired` when a next attempt is
- * due after the deadline.
+ * due after the deadline or ingest ended an attempt at it.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence, grants or registration fail.
  */
@@ -633,6 +636,8 @@ export async function advanceRegistered(run: ModelStepRun, planned: RegisteredSt
     const written = job.assets.find((entry) => entry.outputIndex === outputIndex);
     if (job.report.state === "done" && written !== undefined) return await registered(written.asset) as MiniToolExecutionRegistered;
     reason = job.report.state === "failed" ? job.report.reason : "tool_failed";
+    // Ingest ended this attempt at the deadline, so no next attempt can be submitted.
+    if (reason === "expired") return { failed: reason, expired: true };
   }
   return { failed: reason };
 }

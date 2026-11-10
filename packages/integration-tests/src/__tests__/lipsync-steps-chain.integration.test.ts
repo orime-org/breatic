@@ -821,7 +821,7 @@ describe("lip-sync request bodies follow the model yaml's upstream names (§97 D
 describe("a lip-sync step whose next attempt is due after the deadline ends the run with the expiry line (execution design §9.4)", () => {
   /**
    * Drive the real runner with the first job of a recipe kind running until the deadline passes, when ingest expires it
-   * (a failed report with its default reason); every pickup from then on runs past the deadline.
+   * (a failed report with reason expired, transition.ts); every pickup from then on runs past the deadline.
    * @param kind - The recipe kind.
    * @returns The output's result.
    * @throws {Error} When a step throws or the run never ends.
@@ -838,7 +838,7 @@ describe("a lip-sync step whose next attempt is due after the deadline ends the 
     const lipSync = await runner();
     let deadlineAt = f.deadlineAt;
     for (let pickup = 0; pickup < 30; pickup += 1) {
-      if (held !== null && deadlineAt === f.deadlineAt) { scripted.set(held, failedReport()); deadlineAt = Date.now() - 1; }
+      if (held !== null && deadlineAt === f.deadlineAt) { scripted.set(held, { ...failedReport(), reason: "expired" }); deadlineAt = Date.now() - 1; }
       try {
         const result = (await lipSync(f.execution, f.userId, deadlineAt)).results.get(0);
         if (result !== undefined) return result;

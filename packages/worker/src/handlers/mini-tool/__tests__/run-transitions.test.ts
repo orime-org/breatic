@@ -552,8 +552,8 @@ describe("a transitions pickup runs its frozen chunks on their container classes
       h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
         if (request.jobId !== encId(0)) return advancePlan(request);
         if (!expired) throw new StillRunning(Date.now() + 5000);
-        // Ingest ends a job it expires at its deadline as failed with its default reason.
-        return { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+        // Ingest ends a job it expires at its deadline as failed with reason expired.
+        return { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
       });
       const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
       await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);

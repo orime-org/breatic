@@ -4,7 +4,7 @@
 import { getMiniToolsConfig, logger } from "@breatic/core";
 import { miniToolPeopleAnalysis, miniToolSceneAnalysis, openContainerOutputs, upstreamStepRepo,
   type miniToolAnalysisService } from "@breatic/domain";
-import { assertBeforeDeadline, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
+import { assertBeforeDeadline, DeadlinePassed, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
   type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
 import { chunkVideoOutputs, miniToolAnalysisRecordSchema, presentationFrameCount, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -35,6 +35,7 @@ const SCENE_PLACEMENT = "miniToolScenePlacement";
  * @param inputs - The job's inputs, built only when the step has no stored request; the source when absent.
  * @returns The original owning step and registered terminal job.
  * @throws {ContainerJobFailed} When the job failed for good.
+ * @throws {DeadlinePassed} When the deadline passed before a new job could open, or ingest ended the job at it.
  * @throws {Error} When preparation, persistence, progress or registration fails.
  */
 export async function advanceAnalysisJob(
@@ -79,7 +80,8 @@ export async function advanceAnalysisJob(
     taskId: context.taskId, stepId: step.id, chunkIndex: position,
     chargeTo: record.kind === "people" ? "platform" : "user", request,
   });
-  if (job.report.state === "failed") throw new ContainerJobFailed(job.report.reason);
+  // A job ingest ended at the deadline is the analysis running out of time, as a deadline passed here is.
+  if (job.report.state === "failed") throw job.report.reason === "expired" ? new DeadlinePassed() : new ContainerJobFailed(job.report.reason);
   return { step, job };
 }
 

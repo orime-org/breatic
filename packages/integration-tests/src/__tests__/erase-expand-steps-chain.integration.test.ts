@@ -551,12 +551,13 @@ describe("an erase the queue cleanup ends closes its consumption set once every 
 // the run ends with its tool's timeout reason, as a run whose budget ended does; any other step failure keeps its reason.
 describe("a step whose next attempt is due after the deadline ends the run with its timeout reason (execution design §10.4, §10.5)", () => {
   /**
-   * Make the first job of a recipe kind run until the deadline passes, when ingest expires it (a failed report with its
-   * default reason); every pickup from then on runs past the deadline.
+   * Make the first job of a recipe kind run until the deadline passes, when ingest expires it (a failed report with reason
+   * expired, transition.ts); every pickup from then on runs past the deadline, unless the worker's clock is to stay before it.
    * @param kind - The recipe kind.
+   * @param movePast - Whether the pickups after the expiry run past the deadline.
    * @returns The deadline each pickup runs under.
    */
-  function expireAtDeadline(kind: string): (deadlineAt: number) => number {
+  function expireAtDeadline(kind: string, movePast = true): (deadlineAt: number) => number {
     let held: string | null = null;
     let passed = false;
     const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
@@ -568,9 +569,9 @@ describe("a step whose next attempt is due after the deadline ends the run with 
     return (deadlineAt) => {
       if (held !== null && !passed) {
         passed = true;
-        scripted.set(held, { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });
+        scripted.set(held, { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });
       }
-      return passed ? Date.now() - 1 : deadlineAt;
+      return passed && movePast ? Date.now() - 1 : deadlineAt;
     };
   }
 
@@ -592,6 +593,15 @@ describe("a step whose next attempt is due after the deadline ends the run with 
     const { result } = await admitAndDrive(await seedExpand(), "@worker/handlers/mini-tool/run-expand.js", "runMiniToolExpand", { position: null }, deadlineOf);
     const windows = kind === "model_window" ? [{ windowIndex: 0, step: "window", category: "timeout" }] : [];
     expect(result).toEqual({ status: "failed", error: { kind: "expand", windows, shared: { step: "expired", category: "timeout" } } });
+  });
+
+  it.each([
+    ["EX07 an erase whose composite chunk", "model_composite"],
+    ["EX08 an erase whose stitch", "stitch"],
+  ])("%s ingest expired while the worker's clock is still before the deadline ends as erase / expired / timeout", async (_name, kind) => {
+    const deadlineOf = expireAtDeadline(kind, false);
+    const { result } = await admitAndDrive(await seedErase(), "@worker/handlers/mini-tool/run-erase.js", "runMiniToolErase", { position: null }, deadlineOf);
+    expect(result).toEqual({ status: "failed", error: { kind: "erase", step: "expired", category: "timeout" } });
   });
 
   it("EX06 an expand whose composite fails on every attempt before the deadline keeps composite / failed", async () => {

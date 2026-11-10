@@ -201,6 +201,13 @@ describe("planned media job output reports", () => {
     expect(readMiniToolPlanJobReport(request, partial)).toEqual(partial);
   });
 
+  it("reads a job ingest expired at its deadline as failed with reason expired, and still reads every older reason", () => {
+    for (const reason of ["expired", "tool_failed", "no_audio_track", "internal", "empty_foreground", "no_face", "tracking_output_mismatch", "model_output_mismatch"]) {
+      const failed = { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null };
+      expect(readMiniToolPlanJobReport(request, failed)).toEqual(failed);
+    }
+  });
+
   it.each([
     { ...report, outputs: report.outputs.slice(1) },
     { ...report, outputs: [...report.outputs.slice(1), report.outputs[1]] },

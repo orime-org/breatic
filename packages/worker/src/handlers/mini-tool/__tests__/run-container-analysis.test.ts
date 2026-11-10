@@ -584,6 +584,13 @@ describe("registered content and failure propagation", () => {
     expect(failed).toEqual(before); expect(h.advance).toHaveBeenCalledTimes(1); expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
   });
 
+  it("AR07 a scene job ingest ended at its deadline (reason expired) ends the analysis as expired, not as a job failure", async () => {
+    const original = execution("scene_cuts"); const request = initialRequest(original); storedStep(request, 0);
+    const ended = registered(request);
+    h.advance.mockResolvedValue({ ...ended, report: { ...ended.report, state: "failed", reason: "expired", outputs: [] }, assets: [] });
+    await expect(runMiniToolContainerAnalysis(original, DEADLINE)).rejects.toBeInstanceOf(DeadlinePassed);
+  });
+
   it("resumes the last of nine people without reopening the first eight original thumbnail grants", async () => {
     const original = execution(); const observations = { ...people, candidates: Array.from({ length: 9 }, (_, index) => ({ ...people.candidates[0]!, detectionIndex: index * 2 })) };
     payload = observations; const normal = h.advance.getMockImplementation()!; const waiting = new StillRunning(DEADLINE - 1000);
