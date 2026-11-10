@@ -267,9 +267,12 @@ function AudioGeneratePanelBody({
   // Both off the model: which places it collects material in, and whether it
   // keeps the words to sing in a box of its own. A mode two models serve
   // differently is drawn differently for each.
+  // Read off the content-stable params: the view model rebuilds on every
+  // canvas mutation, and the slots flow into the memoised panel.
+  const params = useContentStable(vm.params);
   const slots = React.useMemo(
-    () => audioSlotsForModel(vm.modelEntry, mode, vm.params),
-    [vm.modelEntry, mode, vm.params],
+    () => audioSlotsForModel(vm.modelEntry, mode, params),
+    [vm.modelEntry, mode, params],
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
@@ -310,11 +313,10 @@ function AudioGeneratePanelBody({
   );
   useEndPickWhenSlotGone(nodeId, slots, getLastWriteWasLocal);
 
-  // Both rebuild with the view model, which rebuilds on every canvas mutation
-  // — every frame of any node drag — and both flow into React.memo components
-  // (the panel, and the rail and params picker under it).
+  // It rebuilds with the view model, which rebuilds on every canvas mutation
+  // — every frame of any node drag — and flows into React.memo components
+  // (the panel, and the rail under it).
   const references = useContentStable(derivedReferences);
-  const params = useContentStable(vm.params);
   // The picked slot URLs and what to paint for them are two more fresh objects
   // per view-model build. One unstable prop is enough to make the panel's memo
   // — and every memoised child under it — re-render on every frame of a drag.
