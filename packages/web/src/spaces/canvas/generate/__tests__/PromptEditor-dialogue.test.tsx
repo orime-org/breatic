@@ -329,3 +329,53 @@ describe('a speaker with no name yet', () => {
     await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: ': hi' }]));
   });
 });
+
+/**
+ * Types text into the editor one character at a time, each its own user
+ * transaction, the way a keyboard sends it.
+ * @param editor - The live editor.
+ * @param text - What to type.
+ */
+function typeKeys(editor: LiveEditor, text: string): void {
+  const view = editor.view as unknown as { state: { selection: { from: number; to: number }; tr: { insertText: (t: string, from: number, to: number) => unknown } }; dispatch: (tr: unknown) => void };
+  for (const char of text) {
+    act(() => {
+      const { from, to } = view.state.selection;
+      view.dispatch(view.state.tr.insertText(char, from, to));
+    });
+  }
+}
+
+describe('a name typed in front of a line, key by key', () => {
+  it('waits for the words before taking the name and its space off, so the line starts with its words', async () => {
+    const editor = await mount(legacyPrompt(['Leo: ']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: '' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    typeKeys(editor, 'Ava: Hello');
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'Hello' }]));
+  });
+
+  it('does the same after a full-width colon', async () => {
+    const editor = await mount(legacyPrompt(['Ava: ']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: '' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    typeKeys(editor, 'Leo：你好');
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: '你好' }]));
+  });
+
+  it('leaves a line holding only the name and colon as typed', async () => {
+    const editor = await mount(legacyPrompt(['Leo: ']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: '' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    typeKeys(editor, 'Ava:');
+    // Settle past the machine pass a remote change would get.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(linesOf(editor)).toEqual([{ speaker: 2, text: 'Ava:' }]);
+  });
+});
