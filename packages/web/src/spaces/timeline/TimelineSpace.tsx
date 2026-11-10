@@ -297,7 +297,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const selectedUploadName = selected?.kind === 'upload' ? selected.upload.name : '';
   const retryUpload = React.useCallback((): void => { if (selectedUploadId !== null) uploads.retry(selectedUploadId); }, [uploads, selectedUploadId]);
   const selectedUpload = React.useMemo(() => selectedUploadView === undefined ? null
-    : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
+    : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', progress: selectedUploadView.progress, onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
   [selectedUploadView, selectedUploadName, readOnly, retryUpload, t]);
   // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
   // loaded pages no copy uses. It is allocated again whenever the frame, the document or the resolution changes, and

@@ -26,7 +26,7 @@ interface TimelineClipPropertiesProps {
   /** The request a web-animation copy came from. */
   request?: string | null;
   /** An upload placeholder's status line, and the retry this page can offer for it. */
-  upload?: { text: string; failed: boolean; onRetry: (() => void) | null } | null;
+  upload?: { text: string; failed: boolean; progress: number | null; onRetry: (() => void) | null } | null;
   conflict: boolean;
   reason?: TimelineArrangementReason['code'] | null;
   labels: TimelineTrackLabels;
@@ -161,6 +161,10 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
       {upload !== null && <span className='flex min-w-0 items-center gap-2'>
         <span data-testid='timeline-clip-upload' className={cn('min-w-0 break-words text-xs', upload.failed ? 'text-status-error-foreground' : 'text-muted-foreground')}>{upload.text}</span>
         {upload.onRetry !== null && <Button data-testid='timeline-upload-retry' variant='outline' size='compact' onClick={upload.onRetry}>{t('timeline.retry')}</Button>}
+      </span>}
+      {upload !== null && upload.progress !== null && <span data-testid='timeline-upload-progress' role='progressbar' aria-valuenow={Math.round(upload.progress * 100)}
+        aria-valuemin={0} aria-valuemax={100} className='h-1 w-full overflow-hidden rounded-full bg-muted'>
+        <span className='block h-full bg-primary' style={{ width: `${Math.round(upload.progress * 100)}%` }} />
       </span>}
       {conflict && <span className='flex min-w-0 gap-1 text-status-error-foreground'>
         <span className='shrink-0'>{t('timeline.conflict')}</span>

@@ -30,6 +30,8 @@ const CLIP_FILL = {
   ready: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
   web: 'border-[color:var(--color-palette-violet-border)] bg-[color:var(--color-palette-violet-bg)] hover-enabled:bg-[color:var(--color-palette-violet-highlight)]',
   conflict: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
+  slot: 'border-border bg-card',
+  unfinished: 'border-border bg-muted',
 };
 const SELECTED_FILL = { video: 'bg-[color:var(--color-palette-blue-highlight)]', web: 'bg-[color:var(--color-palette-violet-highlight)]' };
 
@@ -129,7 +131,8 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
-  const detail = upload !== null ? timelineUploadText(t, upload, name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+  // A failure's reason, which names the file, is read in the properties; the track keeps the short status.
+  const detail = upload !== null ? upload.state === 'failed' ? t('timeline.upload.failed') : timelineUploadText(t, upload, name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
     : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
   const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
   const dashed = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
@@ -142,8 +145,9 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
       data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : upload?.state} aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-clip rounded-chrome border px-2 text-left text-xs',
-        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, dashed && 'border-dashed',
-        selected && 'border-active-border', selected && !conflict && !failedCopy && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
+        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : upload !== null ? CLIP_FILL[upload.state === 'unfinished' ? 'unfinished' : 'slot']
+          : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, dashed && 'border-dashed',
+        selected && 'border-active-border', selected && !conflict && !failedCopy && upload === null && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>
         <span className='flex min-w-0 items-center gap-2'>

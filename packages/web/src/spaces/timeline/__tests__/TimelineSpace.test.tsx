@@ -763,6 +763,48 @@ describe('TimelineSpace local uploads in the background', () => {
     expect(await screen.findByTestId('timeline-clip-upload')).toBeInTheDocument();
     expect(screen.queryByTestId('timeline-upload-retry')).toBe(null);
   });
+
+  it('draws an uploading placeholder as a dashed card slot and its uploader\'s progress as a bar (visual #2, #3)', async () => {
+    let report: ((share: number) => void) | undefined;
+    vi.mocked(uploadMedia).mockImplementationOnce((_file, _context, onProgress) => { report = onProgress; return deferred<StoredUpload>().promise; });
+    seedContent();
+    showTimeline();
+    await confirmLocal();
+    const { id } = onlyClip();
+    const clip = screen.getByTestId(`timeline-clip-${id}`);
+    expect(clip).toHaveClass('bg-card', 'border-dashed');
+    expect(clip.className).not.toContain('palette-blue');
+    fireEvent.click(clip);
+    expect(clip.className).not.toContain('palette-blue');
+    expect(screen.queryByTestId('timeline-upload-progress')).toBe(null);
+    act(() => report?.(0.42));
+    expect(await screen.findByTestId('timeline-upload-progress')).toHaveAttribute('aria-valuenow', '42');
+  });
+
+  it('draws a placeholder nobody uploads any more as a dashed muted slot (visual #1)', () => {
+    const doc = seedContent();
+    const { sourceId: _sourceId, ...placement } = CLIP;
+    act(() => { write(doc, { operation: 'add_upload', parameters: { clip: { ...placement, kind: 'upload', upload: { uploadId: '40000000-0000-4000-8000-000000000001', name: 'left.mp4', durationSeconds: 2 } } }, placement: OFF }); });
+    showTimeline();
+    const clip = screen.getByTestId(`timeline-clip-${CLIP.id}`);
+    expect(clip).toHaveAttribute('data-state', 'unfinished');
+    expect(clip).toHaveClass('bg-muted', 'border-dashed');
+    expect(clip.className).not.toContain('palette-blue');
+  });
+
+  it('keeps a failed placeholder\'s track line short and names the reason in its properties (visual #4)', async () => {
+    vi.mocked(uploadMedia).mockRejectedValueOnce(new UploadFailedError('tooLarge'));
+    seedContent();
+    showTimeline();
+    await confirmLocal();
+    const { id } = onlyClip();
+    const clip = screen.getByTestId(`timeline-clip-${id}`);
+    await waitFor(() => expect(clip).toHaveAttribute('data-state', 'failed'));
+    expect(clip).toHaveTextContent(t('timeline.upload.failed'));
+    expect(clip).not.toHaveTextContent('exceeds');
+    fireEvent.click(clip);
+    expect(await screen.findByTestId('timeline-clip-upload')).toHaveTextContent('Local video.mp4');
+  });
 });
 
 describe('TimelineSpace collaborative overlap correction', () => {
