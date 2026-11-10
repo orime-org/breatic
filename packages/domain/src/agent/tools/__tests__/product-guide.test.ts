@@ -498,9 +498,12 @@ describe("what the guide says", () => {
     );
   });
 
-  it("says the user is an editor, since people who can only view get no chat", () => {
+  it("says the user is an editor, since people who can only view get no chat, in the tool's description every call carries", () => {
     expect(webSource("pages/project/ProjectPage.tsx")).toContain("collapsed || isViewer ? null");
-    expect(renderProductGuide()).toMatch(/^You are talking to someone who can edit this project/);
+    const description: unknown = productGuide.description;
+    expect(typeof description === "string" ? description.replace(/\s+/g, " ") : "").toContain(
+      "You are talking to someone who can edit this project: people who can only view it do not get this chat.",
+    );
   });
 
   it("says only a list's own shortcut turns it back to plain text", () => {
@@ -958,7 +961,7 @@ describe("mini-tools and the task rows", () => {
   // tools, so only the mark says which tools are billed by run time.
   it("marks exactly the tools run in the media container as billed by run time", () => {
     const tools = section("Mini-tools");
-    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in the list above are billed that way/);
+    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in this section's list are billed that way/);
     for (const tool of MINI_TOOLS) {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
       expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");

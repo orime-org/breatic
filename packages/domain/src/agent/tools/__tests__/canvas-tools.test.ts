@@ -28,6 +28,7 @@ import {
   restoreProcessEnv,
   useEnvWithKeys,
 } from "@domain/model-catalog/__tests__/catalog-env.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 beforeEach(() => {
   restoreProcessEnv();
@@ -164,6 +165,26 @@ describe("what get_canvas_capabilities says about text nodes", () => {
   });
 });
 
+// A user who names a look ("3D like the donghua X") was told Breatic has no
+// modelling or rigging (breatic#1361): the look or sound comes from the prompt.
+describe("what get_canvas_capabilities says about the look or sound a mode makes", () => {
+  const LOOK =
+    "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or watercolour, " +
+    "audio in the voice, music or sound described.";
+
+  it("says a look or sound comes from the prompt when something can generate", async () => {
+    const text = renderCapabilitiesForModel(await run<CanvasCapabilityAnswer>(canvasCapabilities, {}));
+    expect(text).toContain(LOOK);
+    expect(text).not.toMatch(/modelling|rigging/);
+  });
+
+  it("says nothing about looks when nothing can generate", () => {
+    const text = renderCapabilitiesForModel({ nodes: [] });
+    expect(text).not.toContain("Every mode makes the look or sound its prompt names");
+    expect(text).not.toMatch(/modelling|rigging/);
+  });
+});
+
 describe("list_generation_models", () => {
   it("answers with the models behind one mode", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, {
@@ -205,6 +226,217 @@ describe("list_generation_models", () => {
       }
     ).safeParse({ nodeType: "image", mode: "t2i", model: "sneaked-in" });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("list_generation_models priced at the params a step will use (breatic#1361)", () => {
+  /** Settings a later step of a plan would send, which the t2i models price differently from their defaults. */
+  const PARAMS = { resolution: "4k" };
+
+  it("takes the params to price at", () => {
+    const parsed = (
+      canvasToolInput(generationModels) as {
+        safeParse: (input: unknown) => { success: boolean };
+      }
+    ).safeParse({ nodeType: "image", mode: "t2i", params: PARAMS });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("prices each model at the params given", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    let differs = 0;
+    for (const model of answer.models) {
+      const atParams = await estimateModelCredits(model.name, { params: PARAMS });
+      const atDefaults = await estimateModelCredits(model.name, { params: {} });
+      if (atParams?.credits !== atDefaults?.credits) differs += 1;
+      expect(model.price, model.name).toEqual(atParams);
+    }
+    // Guards the case itself: a price at the defaults would otherwise pass.
+    expect(differs).toBeGreaterThan(0);
+  });
+
+  it("prices each model at its defaults when no params are given, as before", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    for (const model of answer.models) expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
+  });
+});
+
+/**
+ * The lines one model's entry carries before its parameter list, which is
+ * where the listing says what it priced the model at.
+ * @param rendered - The rendered answer.
+ * @param name - The model's catalog name.
+ * @returns The entry's head, or the empty string when the model is not listed.
+ */
+function entryHead(rendered: string, name: string): string {
+  const entry = rendered.split(/\n(?=- )/).find((one) => one.includes(`(${name})`)) ?? "";
+  return entry.split("\n  parameters:")[0] ?? "";
+}
+
+describe("list_generation_models with params a model does not take (breatic#1361)", () => {
+  it("prices every model at its defaults and names the param when the value is of the wrong type", async () => {
+    const PARAMS = { duration: "5" };
+    const plain = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    if (!plain.available) throw new Error("t2v has models");
+    // Guards the case itself: no entry at its defaults says anything of duration.
+    for (const model of plain.models) expect(entryHead(renderGenerationModelsForModel(plain), model.name), model.name).not.toContain("duration");
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v", params: PARAMS });
+    if (!answer.available) throw new Error("t2v has models");
+    expect(answer.models.map((model) => model.name)).toEqual(plain.models.map((model) => model.name));
+    const rendered = renderGenerationModelsForModel(answer);
+    for (const model of answer.models) {
+      expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
+      const head = entryHead(rendered, model.name);
+      expect(head, model.name).toContain("duration");
+      expect(head, model.name).not.toContain("at the params given");
+    }
+  });
+
+  it("drops a param a model does not declare, prices it at its defaults and names the param", async () => {
+    const PARAMS = { not_a_setting: 1 };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    for (const model of answer.models) {
+      expect(model.price, model.name).toEqual(await estimateModelCredits(model.name, { params: {} }));
+      const head = entryHead(rendered, model.name);
+      expect(head, model.name).toContain("not_a_setting");
+      expect(head, model.name).not.toContain("at the params given");
+    }
+  });
+
+  it("prices a model that takes every param given at those params, and says so", async () => {
+    const PARAMS = { resolution: "0.5k" };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const model = answer.models.find((one) => one.name === "nano-banana-2");
+    expect(model?.price).toEqual(await estimateModelCredits("nano-banana-2", { params: PARAMS }));
+    // Guards the case itself: the params given price differently from the defaults.
+    expect(model?.price).not.toEqual(await estimateModelCredits("nano-banana-2", { params: {} }));
+    expect(entryHead(renderGenerationModelsForModel(answer), "nano-banana-2")).toContain("at the params given");
+  });
+});
+
+/**
+ * One parameter's line in one model's entry.
+ * @param rendered - The rendered answer.
+ * @param model - The model's catalog name.
+ * @param param - The parameter's name.
+ * @returns The line, or the empty string when the entry has none.
+ */
+function paramLine(rendered: string, model: string, param: string): string {
+  const entry = rendered.split(/\n(?=- )/).find((one) => one.includes(`(${model})`)) ?? "";
+  return entry.split("\n").find((line) => line.startsWith(`    ${param}:`)) ?? "";
+}
+
+/**
+ * What a model costs with one setting at each value it offers, others at their defaults.
+ * @param model - The model's catalog name.
+ * @param param - The setting.
+ * @param options - The values it offers.
+ * @returns The credits at each value, in the order offered.
+ */
+async function creditsAcross(model: string, param: string, options: readonly unknown[]): Promise<(number | undefined)[]> {
+  return Promise.all(options.map(async (value) => (await estimateModelCredits(model, { params: { [param]: value } }))?.credits));
+}
+
+describe("list_generation_models says which settings set the price (breatic#1361)", () => {
+  // Takes go out at the lowest value of every setting that sets the price, and
+  // the Agent can only do that when the listing says which settings those are
+  // and which value is the cheapest.
+  it("marks a setting whose value changes the price with its cheapest value, right before its default", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const options = answer.models.find((one) => one.name === "nano-banana-2")?.params["resolution"]?.options ?? [];
+    const credits = await creditsAcross("nano-banana-2", "resolution", options);
+    const lowest = Math.min(...credits.filter((one): one is number => one !== undefined));
+    const cheapest = options[credits.indexOf(lowest)];
+    // Guards the case itself: resolution changes nano-banana-2's price.
+    expect(new Set(credits).size).toBeGreaterThan(1);
+    expect(paramLine(renderGenerationModelsForModel(answer), "nano-banana-2", "resolution")).toContain(
+      `sets the price, lowest at ${JSON.stringify(cheapest)}; defaults to "1k".`,
+    );
+  });
+
+  it("marks a setting given as a range whose value changes the price with its cheaper end, right before its default", async () => {
+    // Mirelo SFX 1.6: duration is a 0.1 s slider from 0.1 to 60 s, priced per second.
+    const MODEL = "sfx-1.6-text-to-audio";
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
+    if (!answer.available) throw new Error("sfx has models");
+    const spec = answer.models.find((one) => one.name === MODEL)?.params["duration"];
+    // Guards the case itself: duration is a range, not a list, on this model.
+    expect(spec?.options).toBeUndefined();
+    const ends = [spec?.min, spec?.max];
+    expect(ends).toEqual([0.1, 60]);
+    const credits = await creditsAcross(MODEL, "duration", ends);
+    // Guards the case itself: duration changes this model's price.
+    expect(credits.every((one) => one !== undefined)).toBe(true);
+    expect(new Set(credits).size).toBe(2);
+    expect(paramLine(renderGenerationModelsForModel(answer), MODEL, "duration")).toContain(
+      `sets the price, lowest at 0.1; defaults to ${JSON.stringify(spec?.default)}.`,
+    );
+  });
+
+  it("says nothing of the price on a setting whose value does not change it", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    const flat = "grok-imagine-image-v2.0-text-to-image";
+    for (const [model, param] of [["nano-banana-2", "aspect_ratio"], [flat, "aspect_ratio"], [flat, "resolution"]] as const) {
+      const options = answer.models.find((one) => one.name === model)?.params[param]?.options ?? [];
+      // Guards the case itself: every value prices the same.
+      expect(new Set(await creditsAcross(model, param, options)).size, `${model} ${param}`).toBe(1);
+      const line = paramLine(rendered, model, param);
+      expect(line, `${model} ${param}`).not.toBe("");
+      expect(line, `${model} ${param}`).not.toContain("sets the price");
+    }
+  });
+
+  it("marks exactly the settable settings that change each model's price, each with a value priced lowest", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    if (!answer.available) throw new Error("t2i has models");
+    const rendered = renderGenerationModelsForModel(answer);
+    let marked = 0;
+    for (const model of answer.models) {
+      for (const [name, spec] of Object.entries(model.params)) {
+        if (spec.options === undefined || spec.filledBySource === true || spec.noControl === true) continue;
+        const credits = await creditsAcross(model.name, name, spec.options);
+        const known = credits.filter((one): one is number => one !== undefined);
+        const line = paramLine(rendered, model.name, name);
+        if (new Set(known).size <= 1) {
+          expect(line, `${model.name} ${name}`).not.toContain("sets the price");
+          continue;
+        }
+        const lowest = Math.min(...known);
+        const said = spec.options.filter((_, i) => credits[i] === lowest).map((value) => `sets the price, lowest at ${JSON.stringify(value)}; defaults to`);
+        expect(said.some((words) => line.includes(words)), `${model.name} ${name}: ${line}`).toBe(true);
+        marked += 1;
+      }
+    }
+    // Guards the case itself: some t2i setting changes its model's price.
+    expect(marked).toBeGreaterThan(0);
+  });
+
+  it("keeps a gated setting named before the switch that gates it, and prices the model at both", async () => {
+    const PARAMS = { camera: "Sony Venice", enable_camera: true };
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i", params: PARAMS });
+    if (!answer.available) throw new Error("t2i has models");
+    const model = answer.models.find((one) => one.name === "nano-banana-2");
+    // Guards the case itself: camera waits on enable_camera, which comes after it.
+    expect(model?.params["camera"]?.gate).toEqual({ flag_on: "enable_camera" });
+    expect(model?.price).toEqual(await estimateModelCredits("nano-banana-2", { params: PARAMS }));
+    const head = entryHead(renderGenerationModelsForModel(answer), "nano-banana-2");
+    expect(head).toContain("at the params given");
+    expect(head).not.toContain("not priced");
+  });
+
+  it("says in its description that a model is good only at what its line names", () => {
+    const description: unknown = generationModels.description;
+    expect(typeof description === "string" ? description : "").toContain(
+      "What a model is good at is what its line here says; a strength its line does not name, such as lettering, is not one of its strengths.",
+    );
   });
 });
 

@@ -1,0 +1,283 @@
+[
+  {
+    "id": "character-1",
+    "lang": "zh-CN",
+    "text": "我要一个国风游戏的女主角：会用剑的药师，白衣青纱。先出角色设定，再出正面、侧面、背面的定妆照。",
+    "compare": true,
+    "user": "An indie game maker. The heroine is 19, a wandering apothecary who joins the hero's party. There is no existing art style or reference art; the look is open. Answers in Simplified Chinese.",
+    "pass": "Before anything is proposed, the agent asks in one questionnaire whether there is existing art or an art style, and her age (her role, the heroine and an apothecary, is given; her gender is given and is not asked). No proposal assumes her age before the user has answered. Once the user answers with no existing style, it proposes 2-3 clearly different looks at the lowest price settings, with prompts written in full and no unfilled blanks, and states the estimated credits; it does not jump to a high-resolution final or a full character-sheet before a look is picked. Its reply does not end with an offer of more work."
+  },
+  {
+    "id": "character-2",
+    "lang": "ja",
+    "text": "ロボットの相棒キャラを作りたい。かわいいけど頼れる感じで、三面図と表情差分がほしい。",
+    "compare": true,
+    "user": "Making a sci-fi manga. The robot is a boyish, about-ten-year-old-feeling partner to the heroine. No original design exists. Answers in Japanese.",
+    "pass": "The agent asks whether an original design exists and who the robot is (for example its gender leaning, age feel or role), and no proposal assumes these before the user has answered. The body shape and styling are offered as 2-3 different directions at the lowest price settings, never asked as a list of shapes or styles to pick from in words; a question whose options list body shapes or types counts as such a list."
+  },
+  {
+    "id": "character-3",
+    "lang": "en",
+    "text": "Design the villain for my fantasy comic: an elegant ice queen, then give me a full-body turnaround so I can keep her consistent.",
+    "compare": true,
+    "user": "A webcomic artist. The comic already has pages but the user shares none and says there are no sample pages to show. The queen is in her forties, the exiled ruler of the north. Answers in English.",
+    "pass": "Before proposing, the agent asks whether the comic has existing art or sample pages, and her age (her role, the villain queen, is given). No proposal assumes her age before the user has answered, and it does not ask the comic's drawing style as a list of styles to pick from. With no samples, it offers 2-3 looks at the lowest price settings, with prompts written in full and the estimated credits. The turnaround is made only from a picked look, never proposed alongside the first looks. If the user says pages will be sent, waiting for them is right."
+  },
+  {
+    "id": "zhanshen-3d",
+    "lang": "zh-CN",
+    "text": "我想要《斩神》那种 3D 画风，给我的男主角做一张海报。",
+    "user": "A fan making a poster of their own original hero (a 20-year-old swordsman). They mean the rendered 3D animation look, a picture, not a 3D model. Answers in Simplified Chinese.",
+    "pass": "The agent treats this as a picture with a 3D-rendered look and moves forward (asking about the hero if needed, or offering looks); it never says the look cannot be done, and does not bring up modelling, rigging or 3D model files."
+  },
+  {
+    "id": "3d-model",
+    "lang": "zh-CN",
+    "text": "给我的 3D Space 做一个角色模型，一个穿机甲的小女孩。",
+    "space": "3d",
+    "user": "Wants a model to place in the 3D Space. Has no model file and no pictures of her. The girl is about 8, the pilot of the mech. Answers in Simplified Chinese.",
+    "pass": "Before making anything, the agent settles what only the user knows: no proposal assumes the girl's age before the user has answered. It treats the request as a 3D model to make in the 3D Space and never says Breatic cannot make 3D models. With no pictures of her, the model's look is offered first as two or three clearly different pictures at the lowest price settings, and the model is made in the 3D Space from the picture the user picks; once a look is picked, or when the user leaves it to the agent, it proposes that model generation."
+  },
+  {
+    "id": "ask-style",
+    "lang": "zh-CN",
+    "text": "这个是什么风格",
+    "chips": [
+      {
+        "id": "still-1",
+        "name": "参考剧照",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+      }
+    ],
+    "compare": true,
+    "user": "Just curious about the style of the picture. Answers in Simplified Chinese.",
+    "pass": "The agent only answers what the style is, at a length that fits the question; words to describe the style are part of the answer. It makes no proposal, sends no questionnaire, does not review earlier choices, and does not end with an offer to make something (such as 'if you like, I can make one in this style')."
+  },
+  {
+    "id": "doc-rewrite",
+    "lang": "zh-CN",
+    "text": "把第二段改得更紧张",
+    "space": "document",
+    "doc": [
+      [
+        "heading",
+        "第一章 夜行"
+      ],
+      [
+        "paragraph",
+        "林川走进废弃的地铁站。灯光昏暗，墙上的瓷砖掉了一半。他听见远处有水滴的声音。"
+      ],
+      [
+        "paragraph",
+        "他沿着站台往前走，看见尽头有一扇铁门。门没有锁，他推开了它，里面是一条向下的楼梯。"
+      ],
+      [
+        "paragraph",
+        "楼梯很长，他数到第一百级的时候，听见身后的门关上了。"
+      ]
+    ],
+    "user": "The author of the chapter. Answers in Simplified Chinese.",
+    "pass": "The agent proposes a document edit that rewrites one paragraph, the second paragraph by either count (with or without the heading), or first asks which one is meant; it is a change for the user to accept, and every other paragraph is untouched. Any other problem it notices takes at most one sentence."
+  },
+  {
+    "id": "doc-chapter",
+    "lang": "zh-CN",
+    "text": "写一篇 3000 字的第一章，讲一个少年在废弃地铁站发现一扇门。",
+    "space": "document",
+    "doc": [],
+    "user": "Writing a YA mystery novel; readers are teenagers. Has no fixed tone in mind and will pick between options shown. Answers in Simplified Chinese.",
+    "pass": "Before writing the full chapter, the agent gives an outline for the user to approve, or two or three short openings in different tones for the user to pick; the tone is settled by those openings, not asked as a questionnaire question. It does not write the full 3000-character chapter in this turn before the user picks."
+  },
+  {
+    "id": "bgm",
+    "lang": "zh-CN",
+    "text": "给第一集配一段背景音乐，用在片头，30 秒。",
+    "spaceContent": "(the canvas is empty)",
+    "user": "Making a warm short drama about a seaside town. Answers in Simplified Chinese.",
+    "fixed": [
+      "一部关于海边小镇的温情短剧"
+    ],
+    "pass": "The agent does not ask again about use or length, which were given. It offers two or three short music takes in clearly different moods for the user to pick, at the lowest price settings."
+  },
+  {
+    "id": "promo-video",
+    "lang": "zh-CN",
+    "text": "做一段 15 秒的产品宣传视频，产品是一款白色保温杯。",
+    "user": "A small brand owner. No product photo to share; no brand guidelines. It will be posted on Douyin (vertical). Answers in Simplified Chinese.",
+    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots run at the lowest settings on a fast, cheap model, keeping the length the user named. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
+  },
+  {
+    "id": "timeline-cut",
+    "lang": "zh-CN",
+    "text": "把这三段视频剪成一个 30 秒的片子。",
+    "space": "timeline",
+    "user": "Has three clips named 海边-01 (12 s), 海边-02 (9 s) and 海边-03 (15 s) on the Timeline's main track, in that order. Answers in Simplified Chinese.",
+    "pass": "The agent cannot read a Timeline Space (it comes as unreadable), so it never says what is or is not on it as if it had seen it; it may ask the user what the clips are. It tells the user how to place and trim the clips in the Timeline to reach 30 seconds and does not claim it can cut the video itself. Any missing clip is suggested as a video made on the Canvas."
+  },
+  {
+    "id": "howto",
+    "lang": "zh-CN",
+    "text": "生成面板里的参考图槽怎么用？",
+    "user": "A new user. Answers in Simplified Chinese.",
+    "pass": "The agent reads the relevant product guide section and answers how to use the reference-image slot from it. It proposes nothing and does not end with an offer to make something."
+  },
+  {
+    "id": "kyoto",
+    "lang": "zh-CN",
+    "text": "我下周去京都。",
+    "compare": true,
+    "user": "Just sharing news. Answers in Simplified Chinese.",
+    "pass": "The agent replies briefly, as a person would, and stops. It does not ask what to make, sends no questionnaire, proposes no template or content, does not offer to make anything, and does not say which kind of message it took this for."
+  },
+  {
+    "id": "pet",
+    "lang": "zh-CN",
+    "text": "这是什么品种？",
+    "chips": [
+      {
+        "id": "pet-1",
+        "name": "我家的猫",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg"
+      }
+    ],
+    "user": "Curious about their cat. Answers in Simplified Chinese.",
+    "pass": "The agent only answers the question about the breed. It sends no questionnaire, proposes nothing and does not offer to make anything."
+  },
+  {
+    "id": "final-4k",
+    "lang": "zh-CN",
+    "text": "直接给我出一张 4K 的赛博朋克城市夜景定稿。",
+    "user": "Wants the final straight away. Answers in Simplified Chinese.",
+    "pass": "The agent proposes the picture at 4K as asked, without lowering it to a trial setting, on a model that offers 4K."
+  },
+  {
+    "id": "garbled",
+    "lang": "zh-CN",
+    "text": "我用 nano-banana-2 出的海报，上面的中文字全是乱码，是不是你们这个做不了中文字？",
+    "user": "Frustrated user. Answers in Simplified Chinese.",
+    "pass": "The agent says this is the limit of that model's lettering, not something Breatic cannot do, and names at least one model whose own description in the model list says it is good at lettering or text as a way to make it again; it may add that Chinese lettering is not certain on any model and give other ways (such as making the picture without text and adding the text afterwards). It does not claim nano-banana-2 is the best at Chinese text. A reply that is empty fails."
+  },
+  {
+    "id": "pick-full",
+    "lang": "zh-CN",
+    "text": "就这张了，出高清版。",
+    "chips": [
+      {
+        "id": "take-1",
+        "name": "方向二",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Sintel_poster.jpg"
+      }
+    ],
+    "user": "Picked this exact picture from earlier directions and wants this same picture at full quality, unchanged: not a new picture in its style. Answers in Simplified Chinese.",
+    "pass": "The agent makes the full-quality version from the picked picture itself (using it as the source, or pointing to Upscale), so the result stays that same picture; it does not make a new picture from a prompt alone."
+  },
+  {
+    "id": "canvas-edit",
+    "lang": "zh-CN",
+    "text": "把这张图的背景换成夜晚。",
+    "chips": [
+      {
+        "id": "still-2",
+        "name": "插画初稿",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/6/69/Big_Buck_Bunny_-_forest.jpg"
+      }
+    ],
+    "user": "Happy with everything in the picture except the daytime background. Answers in Simplified Chinese.",
+    "pass": "The agent treats this as a change to an existing picture: it uses this picture as the source of an edit that changes only the background to night and keeps the rest. It may offer two or three different nights at the lowest price settings, and asks no style question."
+  },
+  {
+    "id": "own-material",
+    "lang": "zh-TW",
+    "text": "用這張我家貓的照片做三張社群貼文圖。",
+    "chips": [
+      {
+        "id": "pet-2",
+        "name": "我家的貓",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg"
+      }
+    ],
+    "user": "Posting on Instagram (square or portrait is fine). Wants cute, playful posts. Answers in Traditional Chinese.",
+    "pass": "The agent uses the attached photo (the chip's URL is the user's own photo of their cat; saving it from that URL is using it) as the source or reference for all three pictures; if the photo cannot be read, it says so plainly and leaves a place for the user to put it, without inventing the cat's look. It asks only what changes the result and cannot be seen in the photo (such as the platform, when that decides the ratio). Its replies are in Traditional Chinese unless the user switched language."
+  },
+  {
+    "id": "brand",
+    "lang": "ko",
+    "text": "우리 카페 오픈 포스터 하나 만들어 줘.",
+    "user": "Owns a small cafe called 'Moon Bean', opening on 1 December. Has a logo but no fixed brand colours. Answers in Korean.",
+    "pass": "Before proposing, the agent asks what only the user knows: at least the cafe's name and the opening date, and whether there is a logo or other brand material; other questions that change the result are fine. When the user says brand material will be sent, it waits for it before proposing looks. The look is offered as 2-3 directions at the lowest price settings, never as a list of styles to pick from in words. A model chosen for its lettering is right for a poster with text."
+  },
+  {
+    "id": "usage-unknown",
+    "lang": "zh-CN",
+    "text": "给我的新视频做一张封面，主题是露营。",
+    "user": "The video goes on Bilibili (horizontal 16:9). Answers in Simplified Chinese.",
+    "pass": "Because where the cover is posted decides its ratio, the agent asks where it will be used and says why it asks, and no proposal picks a ratio before the user has answered. The look is offered as directions at the lowest price settings."
+  },
+  {
+    "id": "voice",
+    "lang": "zh-CN",
+    "text": "给这句台词配一个温柔的女声：“别怕，我一直都在。”",
+    "user": "For a short drama. Any gentle female voice works. Answers in Simplified Chinese.",
+    "pass": "The agent does not ask again for the line or the voice leaning, which were given. It offers two or three short voice takes for the user to pick, at low cost."
+  },
+  {
+    "id": "sfx",
+    "lang": "zh-CN",
+    "text": "做一个老木门慢慢吱呀打开的音效。",
+    "user": "For a scene in a horror short film. Has no reference sound. Answers in Simplified Chinese.",
+    "pass": "The agent offers two or three sound-effect takes in clearly different characters for the user to pick, at the lowest price settings except length: each take is long enough to hear the whole creak, at least one second, never a fraction of a second. It does not ask about anything that would not change the sound."
+  },
+  {
+    "id": "trial-2k",
+    "lang": "zh-CN",
+    "compare": true,
+    "text": "画一只橘猫在窗台上晒太阳，给我三个画风方向，三张都直接出 2K 的。",
+    "user": "Wants the three directions at 2K. Answers in Simplified Chinese.",
+    "pass": "The agent proposes three clearly different style directions at 2K as the user asked; it does not lower the resolution, and every setting the user did not name (such as quality) stays at its cheapest value."
+  },
+  {
+    "id": "you-decide",
+    "lang": "en",
+    "text": "Make a mascot for my bakery.",
+    "user": "A bakery owner who does not want to decide details: answers every question with 'You decide.' Answers in English.",
+    "fixed": [
+      "You decide."
+    ],
+    "pass": "After the user says 'You decide.', the agent settles the open points of taste itself (what the mascot is, its look), says what it chose, and goes on to offer 2-3 mascot directions at the lowest price settings without asking the same questions again. Facts only the user can know, such as the bakery's real name, may stay open as a placeholder for the user to fill."
+  },
+  {
+    "id": "video-hands",
+    "lang": "zh-CN",
+    "text": "我用 wan-3.0 生成的视频里，人物的手总是变形，是不是你们这个产品不行？",
+    "user": "Frustrated user. Answers in Simplified Chinese.",
+    "pass": "The agent says this is a limit of that model, not something Breatic cannot do. It recommends another model only if that model's own description in the model list says it handles this; with none, it says so plainly. It gives ways that can reduce the problem (such as shorter motion or framing that hides the hands)."
+  },
+  {
+    "id": "pick-sheet",
+    "lang": "zh-CN",
+    "text": "就用这张，出正面、侧面、背面的三视图。",
+    "chips": [
+      {
+        "id": "take-2",
+        "name": "方向二",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Character_Sintel-portrait-young.png"
+      }
+    ],
+    "user": "Picked this direction from earlier takes for their game heroine; wants the same character in front, side and back views. Answers in Simplified Chinese.",
+    "pass": "The agent builds the three views on this picked picture: the picture goes in as the source or character reference of the turnaround (a character-sheet template or an image-to-image step), so the character stays the one in it; it does not design a new character from a prompt alone. It does not ask again for a look."
+  },
+  {
+    "id": "pick-keyframe",
+    "lang": "zh-CN",
+    "text": "用这张关键帧出 5 秒的正式镜头。",
+    "chips": [
+      {
+        "id": "frame-1",
+        "name": "关键帧 B",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/9/94/SpringOpenMovie-aplha.jpg"
+      }
+    ],
+    "user": "Picked this key frame from earlier directions for a promo; wants the final 5-second shot from it, no other changes. Answers in Simplified Chinese.",
+    "pass": "The agent makes the shot from this key frame: an image-to-video step with this picture as its first frame or source, 5 seconds long; it does not make a new video from a prompt alone, and does not offer new looks."
+  }
+]

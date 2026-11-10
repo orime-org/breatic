@@ -118,6 +118,11 @@ attachment_max_chars: 200000
 # and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending.
 attachment_max_items: 10
 
+# How long one read of the Agent's product guide may be, in characters: the
+# sections a call names, joined. A call past it is refused with the size it
+# asked for, and the Agent asks for fewer sections.
+product_guide_max_chars_per_call: 48000
+
 # How long the open Space's content one message carries may be, in characters.
 # The browser cuts it to this before sending and tells the model how long it
 # was.

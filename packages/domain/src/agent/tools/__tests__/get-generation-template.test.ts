@@ -101,6 +101,24 @@ describe("get_generation_template", () => {
     expect(said).toContain("{ id } in template on the anchor, { id, key } on each other node");
   });
 
+  it("says to fill every tweak segment before sending, from the user's words or by asking, making takes first or choosing as the working rules say, and never to send one as it is (breatic#1361)", async () => {
+    const said = await read("character-design-from-text");
+    expect(said).toContain(
+      "fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say.",
+    );
+    expect(said).toContain("A template's tweak segment is never sent as it is.");
+    expect(said).not.toContain("your own choice");
+    expect(said).not.toContain("keep it for them");
+  });
+
+  it("asks for a character described in words alone, and leaves an unnamed style to the working rules rather than choosing one itself (breatic#1361)", async () => {
+    const said = await read("character-design-from-text");
+    expect(said).toContain("from the user's description as one full-body picture");
+    expect(said).not.toContain("the user's description and style");
+    expect(said).toContain(TEMPLATE_CRAFT.character);
+    expect(TEMPLATE_CRAFT.character).not.toContain("When the user names no style");
+  });
+
   it("adds the craft that fits the template: video craft for a video, character craft for a character goal", async () => {
     const scene = await read("single-view-refs-scene");
     expect(scene).toContain(TEMPLATE_CRAFT.all);
@@ -142,6 +160,25 @@ describe("a multi-node template's full text", () => {
     expect(said).toContain('{"ref": <index of the node wired in for node "design">}');
     expect(said).toContain('"kind":"note"');
     expect(said).toContain('"design": generate image, t2i, gpt-image-2.5-sunburst-text-to-image');
+  });
+});
+
+describe("the settings each generate node of a template runs at (breatic#1361)", () => {
+  it("writes each generate node's params, so the agent sees the tier a template runs at", () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const said = describeTemplate(template);
+      for (const node of template.nodes) {
+        if (node.role !== "generate") continue;
+        for (const [name, value] of Object.entries(node.params ?? {})) {
+          const written = new RegExp(`"?${name}"?\\s*[:=]\\s*${JSON.stringify(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+          expect(said, `${template.id} "${node.key}" ${name}`).toMatch(written);
+        }
+      }
+    }
+  });
+
+  it("says a value written in a node's params wins over the template's", async () => {
+    expect(await read("character-bible")).toMatch(/params[^.]*(?:wins?|overrides?|in place of)[^.]*template/i);
   });
 });
 
