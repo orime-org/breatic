@@ -19,7 +19,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, markedSegments } from '@breatic/shared';
+import { GENERATION_TEMPLATES, markedSegments, templateAnchor } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
 
@@ -277,6 +277,23 @@ async function generate(nodeId: string, kind: Kind): Promise<string> {
  */
 async function promptText(editorId = 'generate-prompt-editor'): Promise<string> {
   return (await page.getByTestId(editorId).innerText()).trim();
+}
+
+/**
+ * The dialogue lines the prompt editor shows, each its speaker as the picker
+ * names it and its words (inner#1825 design 8.5).
+ * @returns One entry per line.
+ */
+async function dialogueLines(): Promise<{ speaker: string; text: string }[]> {
+  const lines = page.getByTestId('generate-prompt-editor').locator('.dialogue-line');
+  const shown: { speaker: string; text: string }[] = [];
+  for (const line of await lines.all()) {
+    shown.push({
+      speaker: (await line.getByTestId('dialogue-line-speaker').innerText()).trim(),
+      text: (await line.locator('p').innerText()).trim(),
+    });
+  }
+  return shown;
 }
 
 /**
@@ -711,7 +728,18 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     await openPanel(anchor);
     for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as 'first-frame' | 'end-frame', await keyed(key));
     let prompt = '';
-    if (run.shots === undefined) {
+    const registered = GENERATION_TEMPLATES.find((template) => template.id === id);
+    if (registered === undefined) throw new Error(`no template "${id}" in the registry`);
+    const anchorNode = templateAnchor(registered);
+    if (anchorNode.lines !== undefined) {
+      // A dialogue: one line per turn, each for the template's speaker, its blank filled in order.
+      await fillBraces(run.fills.anchor ?? []);
+      const names = ((anchorNode.params.speakers ?? []) as { speaker: string }[]).map((one) => one.speaker);
+      const shown = await dialogueLines();
+      expect(shown.map((line) => line.speaker)).toEqual(anchorNode.lines.map((line) => names[line.speaker - 1]));
+      for (const [i, line] of shown.entries()) assertDraftSent(`canvas.template.${id}.line.${String(i + 1)}`, line.text);
+      prompt = shown.map((line) => `${line.speaker}: ${line.text}`).join('\n');
+    } else if (run.shots === undefined) {
       await fillBraces(run.fills.anchor ?? []);
       prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.prompt`, prompt);
