@@ -52,7 +52,7 @@ import { VERTICAL_15S_QUICK_TIP } from "@shared/canvas/templates/vertical-15s-qu
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "social-hooks"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "social-hooks", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -104,6 +104,13 @@ export interface TemplateInput {
   type: GenerationNodeType;
   /** The generate nodes whose pool it is wired into; the anchor when left out. */
   feeds?: readonly TemplateNodeKey[];
+  /**
+   * The slot param of the one node it feeds that it is wired into in place of
+   * the pool (inner#1825): a slot that node's model declares in its mode for
+   * the input's type, filled from the canvas. Not in the pool, so no prompt
+   * marks it.
+   */
+  into?: string;
 }
 
 /** Wiring between two template nodes, `into` as in a proposal edge. */
@@ -117,7 +124,14 @@ export interface TemplateEdge {
 export interface GenerationTemplate {
   /** Stable id: the panel, the agent and the locale keys name it by this. */
   id: string;
-  /** The generate node the panel applies the template to; every other node is upstream of it. */
+  /**
+   * The generate node the panel applies the template to. The template is a
+   * graph with no circle around it, and every other node is one of three
+   * (inner#1825): upstream of it, reaching it along template edges;
+   * downstream of it, reached from it along template edges; or standalone,
+   * touched by no template edge and tied to its instance by the anchor its
+   * tag names.
+   */
   anchor: TemplateNodeKey;
   nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
   edges: readonly TemplateEdge[];

@@ -1229,6 +1229,12 @@
         "cut": {
           "label": "컷"
         },
+        "join": {
+          "label": "이어 붙이기",
+          "slot": {
+            "clips": "이어 붙일 동영상을 선택하세요"
+          }
+        },
         "adjust": {
           "label": "색 보정"
         },
@@ -1258,6 +1264,12 @@
         },
         "cut": {
           "label": "자르기"
+        },
+        "join": {
+          "label": "이어 붙이기",
+          "slot": {
+            "clips": "이어 붙일 오디오를 선택하세요"
+          }
         },
         "eq": {
           "label": "이퀄라이저"
@@ -1347,6 +1359,9 @@
         },
         "cents": {
           "label": "센트"
+        },
+        "crossfade": {
+          "label": "크로스페이드"
         }
       },
       "panel": {
@@ -1446,7 +1461,8 @@
       "goal": {
         "character": "캐릭터 설정과 일관성",
         "comics-storyboards": "만화와 스토리보드",
-        "social-hooks": "SNS 후킹"
+        "social-hooks": "SNS 후킹",
+        "sound": "음악·효과음·보이스"
       },
       "storyboard-grid-25": {
         "name": "25칸 스토리보드",

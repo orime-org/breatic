@@ -961,6 +961,7 @@ export {
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,
+  MINI_TOOL_JOB_MAX_EXTRA_INPUTS,
   MINI_TOOL_JOB_MAX_OUTPUTS,
   type MiniToolJobOutput,
   type MiniToolJobReport,

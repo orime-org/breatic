@@ -1229,6 +1229,12 @@
         "cut": {
           "label": "Cut"
         },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick videos to join"
+          }
+        },
         "adjust": {
           "label": "Adjust"
         },
@@ -1258,6 +1264,12 @@
         },
         "cut": {
           "label": "Cut"
+        },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick audio to join"
+          }
         },
         "eq": {
           "label": "Equalizer"
@@ -1347,6 +1359,9 @@
         },
         "cents": {
           "label": "Cents"
+        },
+        "crossfade": {
+          "label": "Crossfade"
         }
       },
       "panel": {
@@ -1446,7 +1461,8 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
-        "social-hooks": "Social hooks"
+        "social-hooks": "Social hooks",
+        "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",

@@ -1229,6 +1229,12 @@
         "cut": {
           "label": "剪切"
         },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "選要拼接的影片"
+          }
+        },
         "adjust": {
           "label": "調色"
         },
@@ -1258,6 +1264,12 @@
         },
         "cut": {
           "label": "剪切"
+        },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "選要拼接的音訊"
+          }
         },
         "eq": {
           "label": "等化"
@@ -1347,6 +1359,9 @@
         },
         "cents": {
           "label": "音分"
+        },
+        "crossfade": {
+          "label": "交叉淡化"
         }
       },
       "panel": {
@@ -1446,7 +1461,8 @@
       "goal": {
         "character": "角色設定與一致性",
         "comics-storyboards": "漫畫與分鏡",
-        "social-hooks": "社群鉤子"
+        "social-hooks": "社群鉤子",
+        "sound": "配樂、音效與配音"
       },
       "storyboard-grid-25": {
         "name": "25 宮格時序圖",

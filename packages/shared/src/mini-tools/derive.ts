@@ -22,6 +22,12 @@ export interface MiniToolSlotValue {
   readonly cover?: string;
   /** Seconds, when the medium has a length. */
   readonly duration?: number;
+  /**
+   * The canvas node it was picked from and that node's name (inner#1825):
+   * the browser's draft wires and orders by them, and the request leaves them out.
+   */
+  readonly nodeId?: string;
+  readonly name?: string;
 }
 
 /** What a run was started with: the panel's draft at the moment Execute was pressed. */
