@@ -57,6 +57,7 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "gemini-3.1-flash-text-to-speech": { fal: "fal-ai/gemini-3.1-flash-tts", sandbase: "google/gemini-3.1-flash-tts" },
   "minimax-speech-2.8-hd": { fal: "fal-ai/minimax/speech-2.8-hd", sandbase: "minimax/speech/2.8/hd" },
   "elevenlabs-v3": { fal: "fal-ai/elevenlabs/tts/eleven-v3", sandbase: "elevenlabs/v3" },
+  "qwen3-tts-voice-design": {},
   "minimax-voice-clone": { fal: "fal-ai/minimax/voice-clone", sandbase: "minimax/voice-clone" },
   "omnivoice-voice-clone": {},
   "elevenlabs-voice-changer": { fal: "fal-ai/elevenlabs/voice-changer" },
