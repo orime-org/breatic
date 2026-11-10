@@ -71,6 +71,9 @@ const CLICK_SLOP = 4;
  * @returns True on that strip.
  */
 function onEdgeStrip(view: EditorView, x: number, y: number): boolean {
+  // Under a full-screen table the blocks around it are hidden and measure
+  // nothing; the table is the whole body on screen.
+  if (inTableFullscreen(view.state)) return false;
   const box = view.dom.getBoundingClientRect();
   if (x < box.left || x > box.right) return false;
   const group = view.dom.querySelector('.bn-block-group');

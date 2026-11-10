@@ -407,6 +407,30 @@ describe('round 2 of the implementation review (breatic#1427)', () => {
     await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1600 }));
   });
 
+  it('brings into view what a write leaving full screen inserts below the table', async () => {
+    const { editor, surface } = open();
+    render(area(editor, surface, false));
+    const viewport = surface.closest('[data-radix-scroll-area-viewport]')!;
+    boxAt(viewport, 100, 600);
+    const id = enter(editor);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({ top: 2000, bottom: 2020, left: 0, right: 0 });
+    const scrolled = vi.spyOn(viewport, 'scrollTo');
+
+    act(() => {
+      let span = { from: 0, to: 0 };
+      view.state.doc.descendants((node, pos) => {
+        if (node.attrs.id === id && node.type.name === 'docTable') span = { from: pos, to: pos + node.nodeSize };
+        return true;
+      });
+      leaveFullscreenForWrite(editor, span);
+      editor.insertBlocks([{ type: 'paragraph', content: 'Written' }] as never, id, 'after');
+    });
+
+    // What was written stands 2000 down a 600 tall scroller whose top is at 100: 0 + 2000 - 100 - 300.
+    await waitFor(() => expect(scrolled).toHaveBeenCalledWith({ top: 1600 }));
+  });
+
   it('scrolls back to where the body was when the table went away', async () => {
     const { editor, surface } = open();
     render(area(editor, surface, false));

@@ -23,6 +23,7 @@ import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comm
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
+import { pressTargetOf } from '@web/spaces/document/document-body-press';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { DOCUMENT_AI_RANGE } from '@web/spaces/document/document-ai-range';
 import { setLinkToolbarUp } from '@web/spaces/document/document-bars';
@@ -409,6 +410,23 @@ describe('drops in full screen', () => {
     expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
   });
 
+  it('takes a block dragged from the body onto a cell and writes nothing', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(view, 'posAtCoords').mockReturnValue({ pos: wordsAt(view.state.doc, 'a1') + 1, inside: -1 });
+    const after = wordsAt(view.state.doc, 'After');
+    view.dragging = { slice: view.state.doc.slice(after - 1, after + 'After'.length + 1), move: true } as never;
+    const before = view.state.doc;
+    const event = dragOf('drop', { 'text/html': '<p>After</p>', 'text/plain': 'After' });
+
+    view.dom.firstElementChild!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
+    view.dragging = null;
+  });
+
   it('takes outside content dropped on a cell and writes nothing', () => {
     const { editor } = open(BETWEEN);
     enter(editor);
@@ -429,8 +447,10 @@ describe('Escape in a cell', () => {
     const { editor } = open(BETWEEN);
     const id = enter(editor);
     caretAt(editor, wordsAt(editor.prosemirrorState.doc, 'a1') + 1);
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
 
-    const event = press(editor, { key: 'Escape' });
+    // Through the view, which marks a key its handlers take.
+    editor.prosemirrorView!.dom.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
     expect(tableFullscreenIn(editor.prosemirrorState)).toEqual({ table: null, returnTo: { kind: 'table', id, offset: 40 } });
@@ -780,5 +800,18 @@ describe('cases design section 6 names (breatic#1427)', () => {
     expect(selection).toBeInstanceOf(CellSelection);
     expect([(selection as CellSelection).$anchorCell.pos, (selection as CellSelection).$headCell.pos]).toEqual([cells[0], cells[3]]);
     expect(tableFullscreenIn(editor.prosemirrorState).table).toBe(id);
+  });
+});
+
+describe('a press in full screen (breatic#1427)', () => {
+  it('reads a press on a cell as on its words, with the blocks around the table hidden and measuring nothing', () => {
+    const { editor } = open(BETWEEN);
+    enter(editor);
+    const view = editor.prosemirrorView!;
+    const words = view.dom.querySelector('td p, td [data-content-type]') ?? view.dom.querySelector('td')!;
+    const event = new MouseEvent('mousedown', { bubbles: true, clientX: 0, clientY: 10 });
+    Object.defineProperty(event, 'target', { value: words });
+
+    expect(pressTargetOf(view, event).kind).not.toBe('edge');
   });
 });

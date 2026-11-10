@@ -342,11 +342,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Each card's box, for measuring it at the moment it is needed.
   const boxes = React.useRef(new Map<string, HTMLDivElement>());
   // What a card takes as it arrives and gives back as it goes: a place in the
-  // observer and its box. Its height stays in the table above: a panel put
-  // away (a hidden Space, a full-screen table) gives every card back and
-  // takes it again, and a card laid out at the guess first would slide from
-  // there to its height. Layout reads heights of the cards shown, which take
-  // theirs again before paint.
+  // observer, a height in the table above, and its box.
   const take = React.useCallback((node: HTMLDivElement, id: string): void => {
     node.dataset.thread = id;
     boxes.current.set(id, node);
@@ -361,6 +357,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     (node: HTMLDivElement, id: string): void => {
       sizes.current?.unobserve(node);
       if (boxes.current.get(id) === node) boxes.current.delete(id);
+      setHeights((have) => {
+        if (!have.has(id)) return have;
+        const next = new Map(have);
+        next.delete(id);
+        return next;
+      });
     },
     [],
   );
@@ -798,10 +800,15 @@ const MOVES = 'transition-[top] duration-200 ease-out motion-reduce:transition-n
  * them makes the browser compute its style at the place it was first put —
  * with the transition on, it then slides from the top of the column to its
  * words. It arrives where it belongs instead, and moves smoothly after that.
+ * A box put away with its panel (a hidden Space, a full-screen table) arrives
+ * again when the panel comes back: what moved meanwhile is measured anew.
  * @returns False until the frame after the box first appears.
  */
 function useArrived(): boolean {
   const [arrived, setArrived] = React.useState(false);
+  React.useLayoutEffect(() => () => {
+    setArrived(false);
+  }, []);
   React.useEffect(() => {
     const frame = requestAnimationFrame(() => {
       setArrived(true);

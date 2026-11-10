@@ -45,7 +45,9 @@ import { fromYjs, undoRedo } from '@web/spaces/document/document-yjs-origin';
 export type FullscreenReturn =
   | { readonly kind: 'table'; readonly id: string; readonly offset: number }
   | { readonly kind: 'scrollTop'; readonly value: number }
-  | { readonly kind: 'selection' };
+  | { readonly kind: 'selection' }
+  // Where a write that ended full screen starts, once it has been made.
+  | { readonly kind: 'write'; readonly at: number | null };
 
 /** Full screen as the plugin keeps it. */
 export type TableFullscreen =
@@ -66,6 +68,7 @@ export interface FullscreenEntry {
 type FullscreenCommand =
   | { readonly kind: 'enter'; readonly entry: FullscreenEntry }
   | { readonly kind: 'exit' }
+  | { readonly kind: 'exitForWrite' }
   | { readonly kind: 'cleared' };
 
 /** The editor these functions are handed: anything holding a view. */
@@ -232,7 +235,7 @@ export function leaveFullscreenForWrite(editor: FullscreenEditor, target: { from
   const cell = cellDepthOf($from);
   const sameCell = table !== null && inCellOf(doc, target.from, table) && inCellOf(doc, target.to, table)
     && $from.sharedDepth(target.to) >= cell;
-  if (!sameCell) setTableFullscreen(editor, null);
+  if (!sameCell) view.dispatch(view.state.tr.setMeta(DOCUMENT_TABLE_FULLSCREEN, { kind: 'exitForWrite' } satisfies FullscreenCommand));
 }
 
 /**
@@ -279,10 +282,17 @@ function next(tr: Transaction, current: TableFullscreen, before: EditorState): T
   const asked = tr.getMeta(DOCUMENT_TABLE_FULLSCREEN) as FullscreenCommand | undefined;
   if (asked?.kind === 'enter') return { ...asked.entry };
   if (asked?.kind === 'cleared') return BODY;
-  if (current.table === null) return current;
+  if (current.table === null) {
+    // The first change after an exit for a write is that write.
+    if (current.returnTo?.kind === 'write' && current.returnTo.at === null && tr.docChanged) {
+      return { table: null, returnTo: { kind: 'write', at: before.doc.content.findDiffStart(tr.doc.content) ?? 0 } };
+    }
+    return current;
+  }
   if (asked?.kind === 'exit') {
     return { table: null, returnTo: { kind: 'table', id: current.table, offset: current.offset } };
   }
+  if (asked?.kind === 'exitForWrite') return { table: null, returnTo: { kind: 'write', at: null } };
   if (!tr.docChanged) return current;
   if (tableById(tr.doc, current.table) === null) {
     return { table: null, returnTo: { kind: 'scrollTop', value: current.scrollTop } };
@@ -364,7 +374,6 @@ function escapeOut(editor: ExtensionEditor, ended: CompositionEnd, view: EditorV
   if (aiRangeIn(view.state) !== null) return false;
   if ((editor.getExtension(SuggestionMenu) as { shown?: () => boolean } | undefined)?.shown?.() === true) return false;
   if (documentBarsOf(editor).linkToolbarUp) return false;
-  event.preventDefault();
   view.dispatch(view.state.tr.setMeta(DOCUMENT_TABLE_FULLSCREEN, { kind: 'exit' } satisfies FullscreenCommand));
   return true;
 }

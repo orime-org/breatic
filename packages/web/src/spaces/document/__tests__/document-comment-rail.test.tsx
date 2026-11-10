@@ -3100,6 +3100,25 @@ describe('the comment panel', () => {
       expect(screen.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
     });
 
+    it('brings the cards back in place, moving none of them on the way', async () => {
+      show();
+      await comment(0, 5, 'about alpha');
+      await pressCommentsRow();
+      const box = (await screen.findByTestId('doc-comment-card')).closest<HTMLElement>('.absolute.inset-x-0')!;
+      await waitFor(() => expect(box.className).toContain('transition-[top]'));
+      const classes: string[] = [];
+      const watch = new MutationObserver(() => classes.push(box.className));
+      watch.observe(box, { attributes: true, attributeFilter: ['class'] });
+
+      openTableFullscreen();
+      fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+      await waitFor(() => expect(box.className).toContain('transition-[top]'));
+      watch.disconnect();
+
+      // Back on screen without the transition first; it returns a frame later.
+      expect(classes.some((name) => !name.includes('transition-[top]'))).toBe(true);
+    });
+
     it('hands the keyboard back to the body over a draft being written', async () => {
       show();
       aimDraft(0, 5);
