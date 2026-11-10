@@ -415,6 +415,87 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   });
 });
 
+test('a Gemini dialogue is written one line per turn, the speaker picked, and sent as the script', async ({ page }) => {
+  // inner#1825 design 8.5: lines carry their speaker; names and colons are ours to add.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio', undefined, -350);
+  await openGenerate(nodeId);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  await expect(pill).toBeVisible({ timeout: 15_000 });
+  await pill.click();
+  await page.getByTestId('generate-audio-reading-dialogue').click();
+  const first = page.getByTestId('generate-audio-row-speakers-0');
+  const secondSpeaker = page.getByTestId('generate-audio-row-speakers-1');
+  const name = page.getByTestId('generate-audio-speaker-name');
+  const voices = page.locator('[data-testid^="generate-voice-option-"]');
+  // A name is kept by moving to the other row; Escape drops what is typed.
+  await first.click();
+  await name.fill('Ava');
+  await secondSpeaker.click();
+  await name.fill('Leo');
+  await first.click();
+  await expect(first).toContainText('Ava');
+  await expect(secondSpeaker).toContainText('Leo');
+  await expect(voices.first()).toBeVisible({ timeout: 15_000 });
+  await voices.nth(0).click();
+  await secondSpeaker.click();
+  await voices.nth(1).click();
+  await expect(first).toContainText('Ava ·');
+  await expect(secondSpeaker).toContainText('Leo ·');
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(pill).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+
+  const prompt = page.getByTestId('generate-prompt-editor');
+  const speakers = prompt.getByTestId('dialogue-line-speaker');
+  const lines = prompt.locator('.dialogue-line');
+  await expect(speakers).toHaveText(['Ava']);
+  await lines.first().locator('p').click();
+  await page.keyboard.type('Hello there.');
+  await page.keyboard.press('Enter');
+  await expect(speakers).toHaveText(['Ava', 'Leo']);
+  await page.keyboard.type('Hi.');
+
+  // Add line goes to the other speaker, and an empty line says whose it is.
+  await page.getByTestId('dialogue-add-line').click();
+  await expect(speakers).toHaveText(['Ava', 'Leo', 'Ava']);
+  await expect(lines.nth(2).locator('p.is-empty')).toHaveAttribute('data-placeholder', 'Ava\'s line');
+  await lines.nth(2).hover();
+  await lines.nth(2).getByTestId('dialogue-line-remove').click();
+  await expect(speakers).toHaveText(['Ava', 'Leo']);
+
+  // A pasted script lands one line per turn, its typed names taken off.
+  await page.getByTestId('dialogue-add-line').click();
+  await expect(speakers).toHaveText(['Ava', 'Leo', 'Ava']);
+  await prompt.locator('.ProseMirror').evaluate((editor) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', 'Ava: Go.\nLeo\uFF1ANow.');
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(speakers).toHaveText(['Ava', 'Leo', 'Ava', 'Leo']);
+
+  let sent: { params?: Record<string, unknown> } | null = null;
+  await page.route('**/canvas/tasks', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    sent = route.request().postDataJSON() as { params?: Record<string, unknown> };
+    // A final answer, so the press does not send it again (inner#1490).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }),
+    });
+  });
+  await page.getByTestId('generate-audio-execute').click();
+  await expect.poll(() => sent, { timeout: 15_000 }).not.toBeNull();
+  const params = (sent as { params?: Record<string, unknown> } | null)?.params ?? {};
+  expect(params.prompt).toBe('Ava: Hello there.\nLeo: Hi.\nAva: Go.\nLeo: Now.');
+  expect(params).not.toHaveProperty('voice_id');
+});
+
 /**
  * Drag a connection from one node's out handle onto another's in handle, the
  * way a hand does.

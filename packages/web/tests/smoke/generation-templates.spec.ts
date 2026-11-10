@@ -606,10 +606,16 @@ test('picking the two-voice dialogue reads it on Gemini with Ava and Leo, and a 
     await expect(pill).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
   }).toPass({ timeout: 5_000 });
 
+  // The script is three lines, each picked for its speaker (inner#1825 design 8.5).
   const prompt = page.getByTestId('generate-prompt-editor');
-  await prompt.click();
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo', 'Ava']);
+  // Written over the way a user does: a typed name and colon picks the speaker.
+  await prompt.locator('.dialogue-line p').first().click();
   await page.keyboard.press('ControlOrMeta+A');
-  await page.keyboard.type('Ava: You are early today. Leo: I wanted the first loaf.');
+  await page.keyboard.type('Ava: You are early today.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Leo: I wanted the first loaf.');
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo']);
   let sent: { params?: Record<string, unknown> } | null = null;
   await page.route('**/canvas/tasks', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
@@ -626,6 +632,7 @@ test('picking the two-voice dialogue reads it on Gemini with Ava and Leo, and a 
   const params = (sent as { params?: Record<string, unknown> } | null)?.params ?? {};
   expect((params.speakers as { speaker: string; voice: string }[] | undefined)?.map((s) => `${s.speaker}:${s.voice}`)).toEqual(['Ava:Kore', 'Leo:Puck']);
   expect(params).not.toHaveProperty('voice_id');
+  expect(params.prompt).toBe('Ava: You are early today.\nLeo: I wanted the first loaf.');
 });
 
 test('a note at the top of a prompt shows in orange, and generation does not get it', async () => {
