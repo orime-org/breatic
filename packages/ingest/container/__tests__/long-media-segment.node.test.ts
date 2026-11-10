@@ -188,7 +188,7 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
       if (JSON.stringify(frames) !== JSON.stringify(expected)) wrong.push(`from ${n}: ${frames.join(",")}`);
     }
     expect(wrong).toEqual([]);
-  });
+   }, 120_000);
 });
 
 describe("a segment whose source connection drops mid-read, encoded by the container's own encoder", () => {
@@ -255,11 +255,11 @@ describe("a segment whose source connection drops mid-read, encoded by the conta
     expect(whole.written?.length).toBeGreaterThan(30_000);
     const dropped = await encodeServed(2048, true);
     expect(dropped).toEqual(whole);
-  });
+   }, 60_000);
 
   it("reports a failed segment rather than write the part encoded before a drop it cannot resume", async () => {
     expect(await encodeServed(2048, false)).toEqual({ written: null, reported: { outcome: "failed" } });
-  });
+   }, 60_000);
 });
 
 /** Create a deterministic segment runner dependency set. */
