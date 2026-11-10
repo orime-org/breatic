@@ -108,4 +108,21 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     expect(colourOf('h:head')).toBe('333333');
     document.documentElement.classList.remove('dark');
   });
+
+  it('sizes the joint dots to the character as it is scaled in joint mode, and keeps them as it is posed', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+    const onSkeletonState = vi.fn();
+    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
+    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
+    runtime.update(joints);
+    const radius = (): number | undefined => (runtime as unknown as { markerItems: Array<{ mesh: { scale: { x: number } } }> }).markerItems[0]?.mesh.scale.x;
+    await vi.waitFor(() => expect(radius()).toBeGreaterThan(0));
+    const full = radius() ?? 0;
+    runtime.update({ ...joints, objects: [{ ...FIGURE, scale: [0.2, 0.2, 0.2] }] });
+    expect(radius()).toBeCloseTo(full * 0.2, 5);
+    runtime.update({ ...joints, objects: [{ ...FIGURE, scale: [0.2, 0.2, 0.2], pose: WAVING }] });
+    expect(radius()).toBeCloseTo(full * 0.2, 5);
+  });
 });

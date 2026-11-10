@@ -51,7 +51,16 @@ interface JointMarker {
   key: string;
   bone: Bone;
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
-  radius: number;
+}
+/**
+ * The largest axis of an object's world scale.
+ * @param object - The object, its world matrix current.
+ * @returns The largest scale factor.
+ */
+function largestScale(object: Object3D): number {
+  object.updateWorldMatrix(true, false);
+  const scale = object.getWorldScale(new Vector3());
+  return Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
 }
 interface PointerOrigin {
   x: number;
@@ -159,6 +168,8 @@ export class SceneViewportRuntime {
   private readonly markerGeometry = new SphereGeometry(1, 16, 12);
   private markerOwner: Group | null = null;
   private markerItems: JointMarker[] = [];
+  /** A joint dot's radius per unit of the character's world scale, measured once as the dots are made. */
+  private markerUnit = 0;
   private changed = false;
   private down: PointerOrigin | null = null;
   private suppressClick = false;
@@ -469,19 +480,20 @@ export class SceneViewportRuntime {
       this.markerOwner = target?.root ?? null;
       if (target) {
         const size = new Box3().setFromObject(target.root).getSize(new Vector3());
-        const radius = Math.max(size.x, size.y, size.z) * 0.012;
+        this.markerUnit = (Math.max(size.x, size.y, size.z) * 0.012) / largestScale(target.root);
         for (const { key, bone } of target.rig.joints) {
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;
-          mesh.scale.setScalar(radius);
-          this.markerItems.push({ key, bone, mesh, radius });
+          this.markerItems.push({ key, bone, mesh });
           this.markers.add(mesh);
         }
       }
     }
+    // Sized from the current scale on every sync, so a character scaled in joint mode keeps dots that fit it.
+    const radius = target ? this.markerUnit * largestScale(target.root) : 0;
     const normal = this.token('--color-status-selected');
     const selected = this.token('--color-foreground');
-    for (const { key, mesh, radius } of this.markerItems) {
+    for (const { key, mesh } of this.markerItems) {
       const chosen = key === this.props.selectedJoint;
       mesh.material.color.setStyle(chosen ? selected : normal);
       mesh.material.opacity = chosen ? 1 : 0.85;
