@@ -3,8 +3,9 @@
 
 /**
  * Settle a charge request and log what on-call needs from it (inner#1617).
- * Every worker path that settles one goes through here: a completed task, a
- * Timeline execution and the sweep.
+ * Every worker path that settles a recorded request by id goes through here:
+ * a completed task, a Timeline execution and the sweep. A looked-up model call
+ * settles through `chargeOnce` and logs on its own.
  */
 
 import { logger } from "@breatic/core";

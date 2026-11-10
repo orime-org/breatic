@@ -524,9 +524,9 @@ function errorChainText(err: unknown): string {
 
 /**
  * Record and settle a charge that has no delivery transaction to join: a chat
- * turn, a consolidation, a text-tool run, a looked-up model call. The request
- * is the earliest durable record of the call, so callers make it as soon as the
- * amount is known.
+ * turn, a consolidation, a text-tool run, a looked-up model call. Callers
+ * record the request as soon as the amount is known, so a process that dies
+ * after that leaves it pending for the sweep.
  *
  * The key is scoped by the acting user, matching how Stripe, Square, AWS and
  * PayPal scope idempotency keys: two accounts whose keys collide never

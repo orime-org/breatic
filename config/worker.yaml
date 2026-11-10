@@ -70,7 +70,8 @@ poll_interval: 3000
 credit_charge_sweep:
   # How often the sweep runs.
   interval_ms: 60000
-  # A request younger than this is left to the process that recorded it.
+  # A request created or last tried less than this ago is left alone: a new one
+  # to the process that recorded it, a failed one until the next round.
   min_age_ms: 30000
   # Requests one round settles at most.
   batch_size: 100

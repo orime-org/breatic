@@ -62,8 +62,9 @@ export interface TurnStepFailure {
 }
 
 /**
- * Fixed order: bill first. The charge request is the turn's earliest durable
- * record of what it spent (inner#1617); the reply is saved after it either way.
+ * Fixed order: bill first, so the turn's charge request is recorded as soon as
+ * its usage rows are in, before the reply is saved (inner#1617); the reply is
+ * saved after it either way.
  */
 const STEP_ORDER: ReadonlyArray<keyof TurnSteps> = ["bill", "persist"];
 

@@ -1277,8 +1277,9 @@ export class MainAgent {
                 replyForModel,
               );
             },
-            // Runs before `persist` (inner#1617): the charge request is the
-            // turn's earliest durable record of what it spent.
+            // Runs before `persist` (inner#1617): the charge request is
+            // recorded as soon as the turn's usage rows are in, before the
+            // reply is saved.
             bill: async () => {
               // An OpenRouter call whose cost is not in hand is looked up and
               // charged later, under a key of its own.
