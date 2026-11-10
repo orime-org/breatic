@@ -642,13 +642,13 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
   // A mark names its target in the user's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
-   * A generate node's words: its prompt, or its shots when it has them, each
-   * reference mark bound by name and the notes of its new inputs on top of
-   * the prompt or of the first shot.
+   * A generate node's words: its prompt, or its shots or dialogue lines when
+   * it has them, each reference mark bound by name and the notes of its new
+   * inputs on top of the prompt or of the first shot or line.
    * @param key - The node's key.
-   * @returns The prompt or the shots.
+   * @returns The prompt, the shots or the lines.
    */
-  const wordsOf = (key: TemplateNodeKey): Pick<ProposalNode, "prompt" | "shots"> => {
+  const wordsOf = (key: TemplateNodeKey): Pick<ProposalNode, "prompt" | "shots" | "lines"> => {
     const targets = templateMarkTargets(template, key);
     const notes = skeleton.inputs
       .filter((one) => one.feeds.includes(key) && heldAt(one, key) === undefined)
@@ -666,6 +666,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       });
     const words = templateNodeWords(template, key);
     if ("prompt" in words) return { prompt: [...notes, ...bound(words.prompt)] };
+    if ("lines" in words) return { lines: words.lines.map((line, i) => ({ speaker: line.speaker, prompt: [...(i === 0 ? notes : []), ...bound(line.key)] })) };
     return { shots: words.shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(shot.key)] })) };
   };
 

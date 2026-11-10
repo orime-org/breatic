@@ -8,7 +8,7 @@
  * mode, model and params. Its prompt is interface text in the locale files,
  * `canvas.template.<id>.prompt` for the anchor and
  * `canvas.template.<id>.node.<key>.prompt` for the others (a node with shots
- * has `shot.<n>` in place of `prompt`), with the places the
+ * has `shot.<n>` in place of `prompt`, a node with dialogue lines `line.<n>`), with the places the
  * user acts on written as the proposal marks: `[📎 …]` for material to @,
  * `{✏️ …}` for words to fill in. What to put in an input is its
  * `canvas.template.<id>.input.<key>.note`.
@@ -82,6 +82,11 @@ export interface TemplateShot {
   seconds: number;
 }
 
+/** One line of a dialogue node: who says it, numbered from 1 among the node's speakers. */
+export interface TemplateLine {
+  speaker: number;
+}
+
 /** A template node's key: names its locale strings and lets marks point at it. */
 export type TemplateNodeKey = string;
 
@@ -98,6 +103,12 @@ export interface TemplateGenerateNode {
   params: Readonly<Record<string, unknown>>;
   /** The shots it generates, in order: given in the multi_shot mode only, where they stand in for the prompt. */
   shots?: readonly TemplateShot[];
+  /**
+   * The lines of a dialogue, in order: given on a model whose speakers stand
+   * in for its voice, where they stand in for the prompt (inner#1825 design
+   * 8.5). Each line's words are `line.<n>`, words only, no name in front.
+   */
+  lines?: readonly TemplateLine[];
 }
 
 /** A node of the template that holds a file we host. */
@@ -207,11 +218,15 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
 }
 
 /** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
-export type TemplateNodeWords = { prompt: string } | { shots: ReadonlyArray<{ seconds: number; key: string }> };
+export type TemplateNodeWords =
+  | { prompt: string }
+  | { shots: ReadonlyArray<{ seconds: number; key: string }> }
+  | { lines: ReadonlyArray<{ speaker: number; key: string }> };
 
 /**
  * Where one of a template's generate nodes keeps its words: its prompt, or,
- * for a node with a shot list, one key per shot in place of a prompt.
+ * for a node with a shot list or dialogue lines, one key per shot or line in
+ * place of a prompt.
  * @param template - The template.
  * @param key - The node's key.
  * @returns The keys under the template's locale entry.
@@ -220,6 +235,8 @@ export type TemplateNodeWords = { prompt: string } | { shots: ReadonlyArray<{ se
 export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
+  const lines = node?.role === "generate" ? node.lines : undefined;
+  if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;
   if (shots === undefined) return { prompt: `${own}prompt` };
   return { shots: shots.map((shot, i) => ({ seconds: shot.seconds, key: `${own}shot.${String(i + 1)}` })) };

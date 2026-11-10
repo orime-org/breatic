@@ -216,6 +216,7 @@ export type {
   ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
@@ -900,9 +901,23 @@ export {
   type TemplateNodeKey,
   type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateLine,
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export {
+  STAND_IN_ON,
+  dialogueSideOf,
+  dialogueText,
+  isStandInOn,
+  lineSpeakers,
+  speakersShort,
+  standInOf,
+  withStandInOn,
+  type DialogueLine,
+  type StandIn,
+  type StandInModel,
+} from "@shared/canvas/dialogue.js";
 export {
   expandTemplate,
   matchTemplateInstance,

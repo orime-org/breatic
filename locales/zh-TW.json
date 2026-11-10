@@ -1740,7 +1740,11 @@
       "two-voice-dialogue": {
         "name": "雙人對白",
         "description": "兩個具名的人對話，一次生成",
-        "prompt": "Ava：{✏️ Ava 的第一句}\nLeo：{✏️ Leo 的回答}\nAva：{✏️ Ava 的下一句}"
+        "line": {
+          "1": "{✏️ Ava 的第一句}",
+          "2": "{✏️ Leo 的回答}",
+          "3": "{✏️ Ava 的下一句}"
+        }
       },
       "underscore-bgm": {
         "name": "背景音樂",

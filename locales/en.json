@@ -1740,7 +1740,11 @@
       "two-voice-dialogue": {
         "name": "Two-voice dialogue",
         "description": "Two named people talking, in one pass",
-        "prompt": "Ava: {✏️ Ava's first line}\nLeo: {✏️ Leo's answer}\nAva: {✏️ Ava's next line}"
+        "line": {
+          "1": "{✏️ Ava's first line}",
+          "2": "{✏️ Leo's answer}",
+          "3": "{✏️ Ava's next line}"
+        }
       },
       "underscore-bgm": {
         "name": "Background music",

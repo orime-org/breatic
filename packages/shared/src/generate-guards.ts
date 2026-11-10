@@ -114,6 +114,12 @@ export interface ExecuteGateInput {
    */
   speakersShort?: boolean;
   /**
+   * Whether a dialogue has no line with words (inner#1825 design 8.5). On the
+   * dialogue side the prompt is the lines written out, so this is asked in
+   * place of the prompt and named as lines, the box the user sees.
+   */
+  linesEmpty?: boolean;
+  /**
    * The shots of a run in the multi-shot mode, present only there. The main
    * prompt is not sent then, so the empty-prompt check gives way to these:
    * every shot written, no more shots than the model takes, none longer than
@@ -148,6 +154,7 @@ export type ExecuteRefusal =
   | 'prompt-too-long'
   | 'voice-missing'
   | 'speakers-missing'
+  | 'lines-empty'
   | 'source-missing'
   | 'sources-missing'
   | 'too-many-references'
@@ -224,6 +231,8 @@ export function evaluateExecute(
   if (input.storyboard !== undefined) {
     const verdict = storyboardRefusal(input.storyboard);
     if (verdict) return verdict;
+  } else if (input.linesEmpty) {
+    return { refusal: 'lines-empty' };
   } else if (input.promptRequired && extractPromptText(input.promptText).length === 0) {
     return { refusal: input.lyricsRequired ? 'style-missing' : 'prompt-missing' };
   }
@@ -383,6 +392,7 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
   'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
   'speakers-missing': 'canvas.generatePanel.refuseExecuteNoSpeakers',
+  'lines-empty': 'canvas.generatePanel.refuseExecuteNoLines',
   // The two a panel may word for itself, by naming the place it draws. The
   // sentences here are what it falls back to when it has none of its own.
   'source-missing': 'canvas.generatePanel.errorNoRefAudio',

@@ -1740,7 +1740,11 @@
       "two-voice-dialogue": {
         "name": "두 사람의 대화",
         "description": "이름 있는 두 사람의 대화를 한 번에",
-        "prompt": "Ava: {✏️ Ava의 첫 대사}\nLeo: {✏️ Leo의 대답}\nAva: {✏️ Ava의 다음 대사}"
+        "line": {
+          "1": "{✏️ Ava의 첫 대사}",
+          "2": "{✏️ Leo의 대답}",
+          "3": "{✏️ Ava의 다음 대사}"
+        }
       },
       "underscore-bgm": {
         "name": "배경 음악",

@@ -1740,7 +1740,11 @@
       "two-voice-dialogue": {
         "name": "二人の会話",
         "description": "名前のある二人の会話を一度で生成",
-        "prompt": "Ava：{✏️ Ava の最初のせりふ}\nLeo：{✏️ Leo の返事}\nAva：{✏️ Ava の次のせりふ}"
+        "line": {
+          "1": "{✏️ Ava の最初のせりふ}",
+          "2": "{✏️ Leo の返事}",
+          "3": "{✏️ Ava の次のせりふ}"
+        }
       },
       "underscore-bgm": {
         "name": "BGM",

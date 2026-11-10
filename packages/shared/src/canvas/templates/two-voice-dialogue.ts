@@ -15,13 +15,14 @@ export const TWO_VOICE_DIALOGUE: GenerationTemplate = {
       mode: "tts",
       model: "gemini-3.1-flash-text-to-speech",
       params: { speakers: [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }] },
+      lines: [{ speaker: 1 }, { speaker: 2 }, { speaker: 1 }],
     },
   ],
   edges: [],
   inputs: [],
   steps: [],
   agentNote:
-    "a dialogue between two named speakers, Ava and Leo, rendered in one pass with a voice each; the script is one line per turn, each starting with the speaker's name and a colon",
+    "a dialogue between two named speakers, Ava and Leo, rendered in one pass with a voice each; the script is sent as lines, one per turn, each naming its speaker by number and holding only the words said",
   goal: "sound",
   triggers: {
     asks: ["a dialogue between two people as audio", "two voices talking"],

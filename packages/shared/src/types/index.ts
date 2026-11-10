@@ -131,6 +131,7 @@ export type { ParamOptionValue } from "@shared/types/param-values.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,

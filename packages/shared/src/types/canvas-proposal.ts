@@ -261,6 +261,15 @@ const proposalShotSchema = z.object({
 /** One shot, as {@link proposalShotSchema} describes it. */
 export type ProposalShot = z.infer<typeof proposalShotSchema>;
 
+/** One line of a proposed dialogue: who says it, from 1, and its words. */
+const proposalLineSchema = z.object({
+  speaker: z.number(),
+  prompt: z.array(promptSegmentSchema),
+});
+
+/** One line, as {@link proposalLineSchema} describes it. */
+export type ProposalLine = z.infer<typeof proposalLineSchema>;
+
 /** One node of a proposal, before anything is placed. */
 const proposalNodeSchema = z.object({
   role: proposalRoleSchema,
@@ -293,6 +302,13 @@ const proposalNodeSchema = z.object({
    * main prompt.
    */
   shots: z.array(proposalShotSchema).optional(),
+  /**
+   * The lines of a dialogue, each naming its speaker by number and holding
+   * its words with no name in front; given on the dialogue side of a model
+   * whose speakers stand in for its voice, where they stand in for the main
+   * prompt (inner#1825 design 8.5).
+   */
+  lines: z.array(proposalLineSchema).optional(),
   /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
@@ -357,13 +373,13 @@ export type CanvasProposal = z.infer<typeof canvasProposalSchema>;
 
 /**
  * Every segment of a node that can carry a mark: the main prompt, then each
- * shot in turn (#2218).
+ * shot in turn (#2218), then each dialogue line.
  * @param node - The proposed node.
  * @returns The segments, prompt first.
  * @throws {never} Never.
  */
 export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
-  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt), ...(node.lines ?? []).flatMap((line) => line.prompt)];
 }
 
 /**
