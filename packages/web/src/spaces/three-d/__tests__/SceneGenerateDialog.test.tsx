@@ -291,6 +291,15 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     await user.click(pbr);
     expect(pbr).toHaveAttribute('aria-checked', 'false');
     expect(shown(toast.warning)).toEqual([t('spaces.threeD.force.pbr_needs_texture'), t('spaces.threeD.force.parts_geometry_only')]);
+
+    // Smart low-poly comes first and holds the parts off, whatever was asked before.
+    await user.click(screen.getByTestId('generate-param-smart_low_poly-toggle'));
+    const parts = screen.getByTestId('generate-param-generate_parts-toggle');
+    expect(parts).toHaveAttribute('aria-checked', 'false');
+    expect(parts).toHaveAttribute('aria-disabled', 'true');
+    await user.click(parts);
+    expect(parts).toHaveAttribute('aria-checked', 'false');
+    expect(shown(toast.warning).at(-1)).toBe(t('spaces.threeD.force.low_poly_skips_parts'));
   });
 
   it('holds the texture version at v3.5 under Fast, its menu saying why when pressed', async () => {

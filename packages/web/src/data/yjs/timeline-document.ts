@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as Y from 'yjs';
-import { newId as createId, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
+import {
+  durationToFrames, newId as createId, TimelineVideoClipSchema, type ProjectRegisteredAsset, type TimelineVideoSource, type TimelineWebResolution,
+} from '@breatic/shared';
 import {
   attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
 } from '@breatic/shared/space-content';
 
-import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
+import { EMPTY_TIMELINE_WEB_RESOLUTION, timelineUploadExtent } from '@web/data/yjs/timeline-arrangement';
+import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
+import { timelineSourceRoom } from '@web/data/yjs/timeline-time';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
 export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords } from '@breatic/shared/space-content';
@@ -216,4 +220,57 @@ function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, ob
       if (JSON.stringify((was as Record<string, unknown>)[key]) !== JSON.stringify(item)) target.set(key, item);
     }
   }
+}
+
+/** Origin of an upload's conversion into video clips; no undo manager tracks it, so no user's history holds it. */
+export const TIMELINE_UPLOAD_ORIGIN = Symbol('timeline-upload');
+
+// The fields a video clip keeps when a placeholder becomes one; anything else on the record is dropped.
+const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape));
+
+/**
+ * Turn every placeholder of one registered upload into a video clip of its asset, in one untracked transaction
+ * (#1434 design §3.1): one source is written for the asset, measured by the registered duration or, when the server
+ * has none, by the duration the browser read. An untrimmed placeholder takes the asset's whole length up to the start
+ * of the next clip on its track; any other piece is cut to what the asset holds, and a piece left empty is deleted.
+ * Tracks and starts never change. A document holding no placeholder of the upload is not written.
+ * @param doc - The content document.
+ * @param uploadId - The registered upload.
+ * @param asset - The registered video asset.
+ * @throws {RangeError} When the duration it measures by (the registered one, or the browser's when the server has none) cannot be counted in frames.
+ */
+export function convertTimelineUpload(doc: Y.Doc, uploadId: string, asset: ProjectRegisteredAsset): void {
+  const current = readTimelineDocument(doc);
+  const placeholders = Object.values(current.clips).flatMap((clip) => (clip.kind === 'upload' && clip.upload.uploadId === uploadId ? [clip] : []));
+  const first = placeholders[0];
+  if (first === undefined) return;
+  const fps = current.settings.fps;
+  const duration = asset.durationSeconds ?? first.upload.durationSeconds;
+  const source: TimelineVideoSource = {
+    id: createId(), kind: 'video', assetId: asset.assetId, timebase: fps, extentFrames: durationToFrames(duration, fps),
+    durationSeconds: String(duration), durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
+  };
+  const clips = doc.getMap<unknown>('clips');
+  doc.transact(() => {
+    for (const placeholder of placeholders) {
+      const untrimmed = placeholder.sourceInFrame === 0 && placeholder.durationFrames === timelineUploadExtent(fps, placeholder)?.extentFrames;
+      const room = timelineSourceRoom(placeholder, source, fps);
+      const next = orderedTimelineClips(current.clips, placeholder.trackId).find((other) => other.startFrame > placeholder.startFrame);
+      const durationFrames = untrimmed
+        ? Math.min(room, next === undefined ? room : next.startFrame - placeholder.startFrame)
+        : Math.min(room, placeholder.durationFrames);
+      if (durationFrames <= 0) {
+        clips.delete(placeholder.id);
+        continue;
+      }
+      // A peer may have stored the placeholder as a plain value; it becomes a map so each field is written alone.
+      const stored = clips.get(placeholder.id);
+      const target: Y.Map<unknown> = stored instanceof Y.Map ? stored as Y.Map<unknown> : attachRecord(clips, placeholder.id, placeholder);
+      for (const key of [...target.keys()]) if (!VIDEO_CLIP_FIELDS.has(key)) target.delete(key);
+      target.set('kind', 'video');
+      target.set('sourceId', source.id);
+      if (durationFrames !== placeholder.durationFrames) target.set('durationFrames', durationFrames);
+    }
+    reconcileTimelineSources(doc, { [source.id]: source }, [source.id]);
+  }, TIMELINE_UPLOAD_ORIGIN);
 }

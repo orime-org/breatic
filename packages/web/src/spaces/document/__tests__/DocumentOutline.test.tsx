@@ -26,6 +26,8 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { readUserPreferences } from '@web/lib/user-preferences-storage';
 import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { useDocumentViewStore } from '@web/stores/document-view';
@@ -857,6 +859,22 @@ describe('DocumentOutline', () => {
 
       expect(rowTexts()).toEqual(['One', 'Two']);
       expect(useDocumentViewStore.getState().outlineVisible).toBe(true);
+    });
+
+    it('keeps the tuck through a table opened full screen at a width that tiles (#1427)', () => {
+      renderWith([h('a', 1, 'One'), tableBlock({ rows: [{ cells: ['a1'] }] }), h('b', 2, 'Two')]);
+      resizeTo(639);
+      fireEvent.click(row('Two'));
+      expect(rowTexts()).toEqual([]);
+      const { editor } = opened.handle;
+      const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+
+      act(() => setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 }));
+      // Full screen, the row is the window's width.
+      resizeTo(1440);
+      act(() => setTableFullscreen(editor, null));
+
+      expect(rowTexts()).toEqual([]);
     });
 
     it('keeps a tiled jump from tucking the outline away', () => {

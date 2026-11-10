@@ -127,6 +127,7 @@
       "attachment_limit_reached": "この会話の添付ファイルは上限の {limit} 件に達しています。いくつか削除してからアップロードしてください。"
     },
     "canvas": {
+      "prompt_not_taken": "このモデルは現在の設定ではスタイルを受け付けません。スタイルを外してから生成してください。",
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "history_entry_not_found": "履歴が見つかりません",
@@ -838,6 +839,7 @@
       "coverSongTip": "音声ノードを選び、その曲をカバーします",
       "selectCoverSongFromCanvas": "カバーする曲を選ぶ",
       "errorNoMusicSong": "先に楽曲を選んでください",
+      "errorNoMusicMelody": "先にメロディを選んでください",
       "moodImage": "参考画像",
       "moodImageTip": "画像を選び、雰囲気を決めます",
       "removeMoodImage": "参考画像を外す",
@@ -849,7 +851,7 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
+      "refuseExecuteNoReference": "先に楽曲かボーカルを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
       "itemsRemove": "削除",
@@ -865,6 +867,7 @@
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
+        "compose_from": "生成のもと",
         "language": "言語",
         "speakers": "話者",
         "emotion": "感情",
@@ -2208,6 +2211,8 @@
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）",
+        "fullscreen": "全画面",
+        "exitFullscreen": "全画面を終了",
         "cut": "切り取り",
         "pasteAbove": "上に貼り付け",
         "pasteBelow": "下に貼り付け",
@@ -2405,6 +2410,7 @@
       "proposalBusy": "別の生成を送信中です。",
       "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
       "force": {
+        "low_poly_skips_parts": "スマートローポリではパーツ分割できません。",
         "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
         "pbr_needs_texture": "PBR にはテクスチャが必要です。",
         "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"
@@ -3428,8 +3434,6 @@
       "more": "さらに読み込む",
       "chooseFile": "動画を選択",
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
-      "preparing": "動画を準備中…",
-      "progress": "アップロード中 {progress}%",
       "confirm": "Timeline に追加",
       "insertAfter": "{name} の後に挿入",
       "insertFirst": "メイントラックの先頭に挿入"
@@ -3443,7 +3447,6 @@
       "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
-      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
@@ -3542,6 +3545,14 @@
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
       }
+    },
+    "upload": {
+      "uploading": "アップロード中",
+      "progress": "アップロード中 {progress}%",
+      "failed": "アップロードに失敗しました",
+      "waiting": "アップロード済み、編集権限を待っています",
+      "unfinished": "未完了",
+      "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
     }
   }
 }

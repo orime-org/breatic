@@ -39,6 +39,7 @@ import {
   creditHoldService,
   taskService,
   estimateTaskCredits,
+  sendsUntakenPrompt,
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
 } from "@breatic/domain";
@@ -253,6 +254,17 @@ canvas.post(
         throw new ValidationError(
           t("server.canvas.model_requires_source"),
         );
+      }
+
+      // A prompt the model takes none of with these settings (Mureka V9.5 Song
+      // composing from a melody) fails at the vendor after submission; the panel
+      // never sends one, so this is the Agent or a crafted request.
+      if (sendsUntakenPrompt(body.model, body.params)) {
+        logger.warn(
+          { userId: user.id, projectId, model: body.model, reason: "prompt_not_taken" },
+          "execute_gate_rejected",
+        );
+        throw new ValidationError(t("server.canvas.prompt_not_taken"));
       }
 
       // #1735 reference-count gate: a submission that over-fills a capped list

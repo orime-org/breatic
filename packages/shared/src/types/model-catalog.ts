@@ -300,6 +300,12 @@ export interface ModelEntry {
    * would let a forgotten line silently unmount the editor.
    */
   takes_prompt: boolean;
+  /**
+   * The condition the prompt is taken under, when a choice of the model's own
+   * turns it off (breatic#1393: Mureka V9.5 Song composing from a melody).
+   * Read through `promptTaken`, never directly.
+   */
+  prompt_when?: ParamGate;
   /** Values the model forces while their conditions hold, in order (inner#1691). */
   forces?: readonly ParamForce[];
   /** The most characters the prompt takes, counted on the cleaned text (inner#1691). */
@@ -660,6 +666,9 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
+  // A malformed condition degrades to absent: the prompt is then taken, which
+  // at worst sends text the model was not to get, the side takes_prompt errs on.
+  prompt_when: paramGateSchema.optional().catch(undefined),
   // A malformed list degrades to absent, as a malformed contract does: half
   // the forced values would lock half a rule (inner#1691).
   forces: z.array(paramForceSchema).optional().catch(undefined),

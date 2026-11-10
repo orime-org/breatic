@@ -127,6 +127,7 @@
       "attachment_limit_reached": "This conversation has reached its limit of {limit} attachments. Delete some before uploading more."
     },
     "canvas": {
+      "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
       "history_entry_not_found": "History entry not found",
@@ -851,6 +852,7 @@
       "coverSongTip": "Pick an audio node to cover",
       "selectCoverSongFromCanvas": "Pick a song to cover",
       "errorNoMusicSong": "Pick a song first",
+      "errorNoMusicMelody": "Pick a melody first",
       "moodImage": "Reference image",
       "moodImageTip": "Pick an image to set the mood",
       "removeMoodImage": "Remove reference image",
@@ -862,7 +864,7 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, melody or vocals",
+      "refuseExecuteNoReference": "Pick a song or vocals first",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
       "itemsRemove": "Remove",
@@ -878,6 +880,7 @@
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
+        "compose_from": "Compose from",
         "language": "Language",
         "speakers": "Speakers",
         "emotion": "Emotion",
@@ -2208,6 +2211,8 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight",
+        "fullscreen": "Full screen",
+        "exitFullscreen": "Exit full screen",
         "cut": "Cut",
         "pasteAbove": "Paste above",
         "pasteBelow": "Paste below",
@@ -2405,6 +2410,7 @@
       "proposalBusy": "Another generation is being submitted.",
       "readOnlyCreate": "Viewers can’t add, import or generate models.",
       "force": {
+        "low_poly_skips_parts": "Smart low-poly doesn't separate parts.",
         "parts_geometry_only": "Separate parts generates geometry only.",
         "pbr_needs_texture": "PBR needs texture.",
         "fast_uses_v35": "Fast texture uses v3.5 only."
@@ -3428,8 +3434,6 @@
       "more": "Load more",
       "chooseFile": "Choose video",
       "fileEmpty": "Choose a local video file.",
-      "preparing": "Preparing video…",
-      "progress": "Uploading {progress}%",
       "confirm": "Add to Timeline",
       "insertAfter": "Inserts after {name}",
       "insertFirst": "Inserts at the start of the main track"
@@ -3443,7 +3447,6 @@
       "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
-      "upload": "Upload failed. Retry with the selected file.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
@@ -3542,6 +3545,14 @@
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
       }
+    },
+    "upload": {
+      "uploading": "Uploading",
+      "progress": "Uploading {progress}%",
+      "failed": "Upload failed",
+      "waiting": "Uploaded, waiting for edit access",
+      "unfinished": "Unfinished",
+      "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
     }
   }
 }

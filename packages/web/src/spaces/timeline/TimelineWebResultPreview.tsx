@@ -14,6 +14,7 @@ import { UNDRAWN_PLAYER, usePlayerDefined, useWebInstanceDrawn } from '@web/spac
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { createWebAnimationHost, type WebAnimationPlayerElement, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
+import { TIMELINE_DEFAULT_PLACEMENT } from '@web/data/yjs/timeline-edit';
 
 /** One succeeded execution's result. */
 interface TimelineWebResultPreviewProps { projectId: string; executionId: string; sourceVersionId: string; input: TimelineExecutionInput }
@@ -45,7 +46,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   const { fps } = input;
   const clip = React.useMemo((): TimelineWebAnimationClip => ({
     id: executionId, trackId: '', kind: 'web-animation', contentBinding: { baseSourceResultId: sourceVersionId, operationId: null },
-    startFrame: 0, sourceInFrame: 0, durationFrames, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    startFrame: 0, sourceInFrame: 0, durationFrames, ...TIMELINE_DEFAULT_PLACEMENT,
   }), [executionId, sourceVersionId, durationFrames]);
   const [state, setState] = React.useState<WebInstanceState | undefined>(undefined);
   const [host] = React.useState(() => {

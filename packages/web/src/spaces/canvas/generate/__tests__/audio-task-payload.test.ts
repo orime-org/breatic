@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { AUDIO_SLOTS, audioSlotsForModel } from '@web/spaces/canvas/generate/audio-slots';
 
 /**
  * A model in the given bucket.
@@ -276,6 +276,28 @@ describe('audioEstimateInput — the run the price is quoted for', () => {
       prompt: 'a ballad',
       durations: { [AUDIO_SLOTS.musicSong.param]: [42] },
     });
+  });
+});
+
+describe('audioEstimateInput — a song composing from a melody (breatic#1393)', () => {
+  it('prices the melody and not a vocal picked under style and references', () => {
+    const composer: ModelEntry = {
+      ...model('mureka-v9.5-generate-song', 'audio'),
+      mode: ['t2m', 'a2m'],
+      params: {
+        compose_from: { description: '', default: 'references', values: ['references', 'melody'], fill: 'panel', modes: ['a2m'] },
+        vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
+        melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+      },
+    };
+    const params = { compose_from: 'melody' };
+    const input = audioEstimateInput(
+      { modelEntry: composer, params, slotUrls: { musicVocal: 'https://cdn/vocal.mp3', musicMelody: 'https://cdn/melody.mp3' }, slotDurations: {} },
+      audioSlotsForModel(composer, 'a2m', params),
+      '',
+    );
+    expect(input.params.melody).toBe('https://cdn/melody.mp3');
+    expect(input.params).not.toHaveProperty('vocal');
   });
 });
 

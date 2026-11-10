@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import {
-  TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
   type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
   type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
@@ -26,6 +26,11 @@ const webExtent = z.union([
 const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
 const webCopySchema = z.object(webCopy).strict();
 
+/** The rate, gain, mute and transform every newly placed clip starts with. */
+export const TIMELINE_DEFAULT_PLACEMENT = {
+  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+} as const;
+
 /** The editing user's local placement switches, carried with each command. */
 export type TimelineEditPlacement = z.infer<typeof placement>;
 
@@ -34,6 +39,11 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({
     operation: z.literal('add_video'),
     parameters: z.object({ source: TimelineVideoSourceSchema, clip: TimelineVideoClipSchema, newTrackId: trackIdentity.optional() }).strict(),
+    placement,
+  }).strict(),
+  z.object({
+    operation: z.literal('add_upload'),
+    parameters: z.object({ clip: TimelineUploadClipSchema, newTrackId: trackIdentity.optional() }).strict(),
     placement,
   }).strict(),
   z.object({
@@ -188,8 +198,8 @@ function attachments(document: TimelineDocumentV1): Map<string, string> {
 }
 
 /**
- * The visual track a new web-animation copy goes on (design §3.3): the first track above the highest video over its
- * span (above the main track when there is none) that holds no clip over the span. It never moves or trims a clip.
+ * The visual track a new web-animation copy goes on (design §3.3): the first track above the highest video or upload
+ * placeholder over its span (above the main track when there is none) that holds no clip over the span. It never moves or trims a clip.
  * @param tracks - The tracks.
  * @param clips - The clips.
  * @param span - The copy's frames.
@@ -202,7 +212,7 @@ function placeWebAnimationClip(tracks: Record<string, TimelineTrack>, clips: Rec
   const visual = orderedTimelineTracks(tracks).filter((track) => track.kind === 'visual');
   const rank = new Map(visual.map((track, index) => [track.id, index]));
   const over = Object.values(clips).filter((clip) => clip.startFrame < span.end && span.start < endOf(clip));
-  const floor = Math.max(rank.get(TIMELINE_MAIN_TRACK_ID) ?? -1, ...over.filter((clip) => clip.kind === 'video').map((clip) => rank.get(clip.trackId) ?? -1));
+  const floor = Math.max(rank.get(TIMELINE_MAIN_TRACK_ID) ?? -1, ...over.filter((clip) => clip.kind !== 'web-animation').map((clip) => rank.get(clip.trackId) ?? -1));
   return visual.find((track, index) => index > floor && track.id !== TIMELINE_MAIN_TRACK_ID && !over.some((clip) => clip.trackId === track.id))?.id ?? null;
 }
 
@@ -294,7 +304,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     const source = { timebase: extent.fps, extentFrames: 'durationFrames' in extent ? extent.durationFrames : extent.acceptedDurationFrames };
     const draft: TimelineWebAnimationClip = {
       id: clipId, trackId: '', kind: 'web-animation', contentBinding: binding, startFrame, sourceInFrame: 0, durationFrames: 1,
-      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      ...TIMELINE_DEFAULT_PLACEMENT,
     };
     const durationFrames = timelineSourceRoom(draft, source, current.settings.fps);
     let trackId = placeWebAnimationClip(tracks, clips, { start: startFrame, end: startFrame + durationFrames });
@@ -326,18 +336,21 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   for (const id of [parameters.newClipId, parameters.newTrackId]) {
     if (id !== undefined && (current.clips[id] !== undefined || current.tracks[id] !== undefined)) throw new Refused('id_taken');
   }
-  const subjectId = command.operation === 'add_video' ? command.parameters.clip.id : command.parameters.clipId;
+  const adds = command.operation === 'add_video' || command.operation === 'add_upload';
+  const subjectId = adds ? command.parameters.clip.id : command.parameters.clipId;
   const original = current.clips[subjectId];
-  if (command.operation === 'add_video') {
+  if (adds) {
     if (original !== undefined) throw new Refused('id_taken');
-    const { source, clip } = command.parameters;
-    if (sources[source.id] === undefined && clip.sourceId === source.id) sources[source.id] = source;
+    if (command.operation === 'add_video') {
+      const { source, clip } = command.parameters;
+      if (sources[source.id] === undefined && clip.sourceId === source.id) sources[source.id] = source;
+    }
   } else if (original === undefined) {
     throw new Refused('target_missing');
   }
 
-  const places = command.operation === 'add_video' || command.operation === 'move' || command.operation === 'duplicate';
-  let targetTrackId = command.operation === 'add_video' ? command.parameters.clip.trackId : original?.trackId ?? '';
+  const places = adds || command.operation === 'move' || command.operation === 'duplicate';
+  let targetTrackId = adds ? command.parameters.clip.trackId : original?.trackId ?? '';
   if (parameters.newTrackId !== undefined) {
     tracks[parameters.newTrackId] = { id: parameters.newTrackId, kind: 'visual', order: nextOrder() };
     targetTrackId = parameters.newTrackId;
@@ -345,11 +358,10 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     targetTrackId = command.parameters.trackId;
   }
   if (places && tracks[targetTrackId]?.kind !== 'visual') throw new Refused('track_missing');
-  const subjectSource = command.operation === 'add_video'
-    ? sources[command.parameters.clip.sourceId]
-    : original === undefined ? undefined : extentIn(sources, original);
+  const added = adds ? command.parameters.clip : original;
+  const subjectSource = added === undefined ? undefined : extentIn(sources, added);
   if (command.operation !== 'delete' && subjectSource === undefined) {
-    throw new Refused(original === undefined ? 'source_unavailable' : original.kind === 'video' ? 'missing_source' : 'source_unresolved');
+    throw new Refused(original === undefined ? 'source_unavailable' : original.kind === 'web-animation' ? 'source_unresolved' : 'missing_source');
   }
 
   const attached = linkage ? attachments(current) : new Map<string, string>();
@@ -363,7 +375,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    */
   const offset = (clip: TimelineClip, frames: number): number => {
     const source = extentIn(sources, clip);
-    if (source === undefined) throw new Refused(clip.kind === 'video' ? 'covers_missing_source' : 'source_unresolved');
+    if (source === undefined) throw new Refused(clip.kind === 'web-animation' ? 'source_unresolved' : 'covers_missing_source');
     const value = timelineSourceOffset(clip, source, fps, frames);
     if (value === null) throw new Refused('invalid_range');
     return value;
@@ -387,7 +399,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     if (original.trackId === TIMELINE_MAIN_TRACK_ID && magnet) pack(clips, orderedTimelineClips(clips, TIMELINE_MAIN_TRACK_ID));
   } else {
     let subject: TimelineClip;
-    if (command.operation === 'add_video') {
+    if (adds) {
       subject = { ...command.parameters.clip, trackId: targetTrackId };
       created.push(subject.id);
       explicitId = subject.id;

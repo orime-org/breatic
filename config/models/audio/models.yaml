@@ -58,6 +58,9 @@ models:
     variant: "Song"
     mode: ["t2m", "a2m"]
     takes_prompt: true
+    # Mureka's melody_id "cannot be combined with prompt, reference_id, or vocal_id"; the
+    # other three combine freely, so a run composes from one side or the other (breatic#1393).
+    prompt_when: { equals: { compose_from: "references" } }
     tier: "recommended"
     description: "Top-ranked; sings lyrics you write"
     guide: "The full song when you have written the lyrics yourself."
@@ -67,6 +70,14 @@ models:
       - mode: "a2m"
         any_of: ["song", "vocal", "melody"]
     params:
+      compose_from:
+        description: "Compose from style and references, or from a melody"
+        label: "Compose from"
+        default: "references"
+        values: ["references", "melody"]
+        value_labels: {"references": "Style & references", "melody": "Melody"}
+        modes: ["a2m"]
+        fill: "panel"
       lyrics:
         description: "Lyrics to sing"
         default: null
@@ -78,6 +89,7 @@ models:
         accepts: "audio"
         optional: true
         modes: ["a2m"]
+        when: { equals: { compose_from: "melody" } }
         fill: "canvas"
       song:
         upstream: "reference_id"
@@ -86,6 +98,7 @@ models:
         accepts: "audio"
         optional: true
         modes: ["a2m"]
+        when: { equals: { compose_from: "references" } }
         fill: "canvas"
       vocal:
         upstream: "vocal_id"
@@ -94,6 +107,7 @@ models:
         accepts: "audio"
         optional: true
         modes: ["a2m"]
+        when: { equals: { compose_from: "references" } }
         fill: "canvas"
     extra_steps:
       - endpoint: "mureka-ai/create-upload-id"

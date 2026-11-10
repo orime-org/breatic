@@ -49,6 +49,7 @@ import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-bo
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
@@ -108,6 +109,9 @@ function edgeLine(view: EditorView, edge: BodyEdge): Element | null {
  */
 function zoneAt(view: EditorView, y: number): PointerZone {
   const { doc } = view.state;
+  // A table open full screen is the whole body on screen; the blocks around
+  // it are hidden and measure nothing.
+  if (inTableFullscreen(view.state)) return 'body';
   if (bodyEdgeNeedsTakeover(doc, 'end')) {
     const last = edgeLine(view, 'end');
     if (last) {

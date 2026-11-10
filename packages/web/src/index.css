@@ -1264,6 +1264,29 @@ body {
     height: auto;
   }
 
+  /* A table open full screen (#1427): the body shows that table alone.
+     Every block not holding it goes, the trailing widget with them; a block it
+     is nested under keeps only the path down to it. The table's own cells hold
+     block groups too, which the first rule leaves alone. */
+  [data-table-fullscreen] .doc-body .bn-block-group:not([data-fullscreen-table] *) > :not([data-fullscreen-table]):not(:has([data-fullscreen-table])) {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .bn-block-outer:has([data-fullscreen-table]) > .bn-block > .bn-block-content {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .bn-block-outer:has([data-fullscreen-table]) > .bn-block > .bn-block-group {
+    margin-left: 0;
+  }
+
+  /* The exit button takes the top-right corner the way the whole-document
+     entry takes the right gutter, so the table starts one gutter down and its
+     header never shares a line with the button. */
+  [data-table-fullscreen] .doc-body {
+    padding-top: var(--doc-body-gutter);
+  }
+
   /* While the last block is one a drag has to reach past (a divider, a fallback
      block or an empty line), presses go through the widget to the surface, so a
      press below the last block can start a drag that reaches it; a click there

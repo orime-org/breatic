@@ -60,6 +60,8 @@ interface AudioGeneratePanelProps {
   creditText: string | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
+  /** Whether this run takes the prompt (`promptTaken`); beside a lyrics box, the style box is drawn only then. */
+  promptShown: boolean;
   /** The selected mode. */
   mode: string;
   /** The modes this panel offers, filtered by what the catalog serves. */
@@ -168,6 +170,7 @@ interface AudioGeneratePanelProps {
  * @param root0.currentModel - That model's catalog entry.
  * @param root0.creditText - The run's estimate as printed beside the star.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
+ * @param root0.promptShown - Whether this run takes the prompt; beside a lyrics box, the style box is drawn only then.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
  * @param root0.voiceList - Where the voice list is.
@@ -213,6 +216,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   currentModel,
   creditText,
   modelTakesPrompt,
+  promptShown,
   mode,
   modeOptions,
   voiceList,
@@ -288,7 +292,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
     };
     if (lyricsSlot === null) return [style];
     return [
-      style,
+      // A run composing from a melody takes no style (breatic#1393); keyed by id, the lyrics box stays mounted.
+      ...(promptShown ? [style] : []),
       {
         id: 'lyrics',
         name: lyricsLabel,
@@ -303,6 +308,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
     promptFragment,
     promptPlaceholder,
     promptSlot,
+    promptShown,
     lyricsSlot,
     lyricsLabel,
     lyricsFragment,

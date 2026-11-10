@@ -30,7 +30,7 @@ export function appliesInMode(spec: Pick<ParamDescriptor, "modes">, mode: string
  */
 export function paramsForMode(
   params: Readonly<Record<string, unknown>>,
-  declared: Readonly<Record<string, ParamDescriptor>>,
+  declared: Readonly<Record<string, Pick<ParamDescriptor, "modes">>>,
   mode: string,
 ): Record<string, unknown> {
   return Object.fromEntries(
