@@ -18,6 +18,18 @@
     },
     {
       "params": {
+        "compose_from": "melody",
+        "lyrics": "sample text",
+        "melody": "https://example.com/melody.mp3"
+      },
+      "prompt": "",
+      "body": {
+        "lyrics": "sample text",
+        "melody_id": "upload_melody-id"
+      }
+    },
+    {
+      "params": {
         "compose_from": "references",
         "lyrics": "sample text",
         "song": "https://example.com/song.mp3",
@@ -32,12 +44,6 @@
       }
     }
   ],
-  "untaken": [
-    {
-      "param": "melody",
-      "value": "https://example.com/melody.mp3"
-    }
-  ],
   "steps": [
     {
       "kind": "upload_reference",
@@ -49,12 +55,21 @@
       "run": 0
     },
     {
+      "kind": "upload_melody",
+      "endpoint": "mureka/api/files/upload",
+      "body": {
+        "file_url": "https://example.com/melody.mp3",
+        "purpose": "melody"
+      },
+      "run": 1
+    },
+    {
       "kind": "vocal",
       "endpoint": "mureka/api/voice/clone",
       "body": {
         "audio_url": "https://example.com/vocal.mp3"
       },
-      "run": 1
+      "run": 2
     }
   ]
 }
