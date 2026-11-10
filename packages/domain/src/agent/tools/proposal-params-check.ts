@@ -28,31 +28,6 @@ export function theirsToFill(name: string, info: ParamInfo): boolean {
   return info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM;
 }
 
-/**
- * Whether the panel will draw this control for the proposal as it stands.
- *
- * A control can hang on a switch of the same model: the camera wheels appear
- * once the camera is enabled and their values are thrown away until it is, and
- * the lyrics box goes away the moment the track is marked instrumental. The
- * switch is part of the proposal, so whether the user will see the control is
- * answered here rather than by asking whether the model declares it. A gate on
- * a source is settled where the node is routed, by the places `waysIn` gives
- * for the generation's params.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @param params - What the proposal fills in.
- * @param info - What the catalog says about the parameter.
- * @returns True when the user will have that control in front of them.
- * @throws {never} Never.
- */
-function isDrawn(
-  chosen: ModelInfo,
-  params: Record<string, unknown>,
-  info: ParamInfo,
-): boolean {
-  return info.gate === undefined || gateHoldsOn(chosen, params, info.gate);
-}
-
-
 /** How many values a refusal lists before it falls back to the range and step. */
 const LISTED_STEPS = 12;
 
@@ -140,7 +115,7 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel
     }
     const elsewhere = placedElsewhere(chosen, node, key, info, at);
     if (elsewhere !== undefined) return elsewhere;
-    if (!isDrawn(chosen, node.params ?? {}, info)) {
+    if (info.gate !== undefined && !gateHoldsOn(chosen, node.params ?? {}, info.gate)) {
       return refuse("param-gated-off", `"${key}" only counts while ${gateWords(info.gate ?? {})}, and this proposal leaves it off.`);
     }
     const options = info.options ?? [];
