@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
@@ -112,6 +112,18 @@ describe('editor-owned pose state (inner#1692)', () => {
     act(() => viewport().onSkeletonState(ID, 'humanoid'));
     expect(await screen.findByTestId('scene-pose-preset-sit')).toBeVisible();
     expect(screen.queryByTestId('scene-pose-no-skeleton')).toBeNull();
+  });
+
+  it('shows no transform tool as current while joint mode is on, and the current tool again once it is off', async () => {
+    await setup();
+    const move = (): HTMLElement => within(screen.getByTestId('scene-object-menu')).getByRole('button', { name: t('spaces.threeD.move') });
+    expect(move().className).toContain('bg-foreground');
+    await enterJointMode();
+    for (const name of ['move', 'rotate', 'scale'] as const) {
+      expect(within(screen.getByTestId('scene-object-menu')).getByRole('button', { name: t(`spaces.threeD.${name}`) }).className).not.toContain('bg-foreground');
+    }
+    fireEvent.click(screen.getByTestId('scene-pose-joint-mode'));
+    expect(move().className).toContain('bg-foreground');
   });
 
   it('passes joint mode and the selected joint to the viewport, and clears the joint when the switch turns off', async () => {

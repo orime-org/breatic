@@ -545,7 +545,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
       onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} onMinimap={toggleMinimap} />
-    {selected.length > 0 ? <SceneObjectToolbar mode={mode} mutable={mutable} canDuplicate={snapshot.canEdit}
+    {selected.length > 0 ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
       onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });
