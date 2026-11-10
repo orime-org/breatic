@@ -40,7 +40,10 @@ interface RigBone {
 
 export interface PoseRig {
   readonly kind: 'humanoid' | 'other';
-  readonly joints: readonly { key: string; bone: Bone }[];
+  /** Each joint, with its bone's rest position in the instance's own space. */
+  readonly joints: readonly { key: string; bone: Bone; rest: Vector3 }[];
+  /** The largest side of the instance's rest bounding box, in its own space. */
+  readonly restSize: number;
   /**
    * Set every bone from a pose; a missing key leaves its bone at rest. A pose
    * still being dragged (`settled` false) leaves the skinned bounds as they
@@ -197,9 +200,11 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   }
 
   const joints = humanoid
-    ? rig.filter((entry) => entry.human !== null).map((entry) => ({ key: `h:${entry.human}`, bone: entry.bone }))
+    ? rig.filter((entry) => entry.human !== null).map((entry) => ({ key: `h:${entry.human}`, bone: entry.bone, rest: entry.restModelPosition }))
     : rig.filter((entry) => entry.bone.name !== '' && entry.bone.name.length + 2 <= SCENE_POSE_KEY_MAX_LENGTH)
-      .map((entry) => ({ key: `n:${entry.bone.name}`, bone: entry.bone }));
+      .map((entry) => ({ key: `n:${entry.bone.name}`, bone: entry.bone, rest: entry.restModelPosition }));
+  const restBox = new Box3().setFromObject(instance).applyMatrix4(toModel).getSize(new Vector3());
+  const restSize = Math.max(restBox.x, restBox.y, restBox.z);
   const byKey = new Map(joints.map((joint) => [joint.key, byBone.get(joint.bone)!]));
   const hips = human.get('hips');
   // Instance space to the hips' parent at rest, where the hips position is written. The
@@ -272,6 +277,7 @@ export function createPoseRig(instance: Object3D): PoseRig | null {
   return {
     kind: humanoid ? 'humanoid' : 'other',
     joints,
+    restSize,
     apply(pose, settled = true) {
       const signature = JSON.stringify(Object.entries(pose).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
       if (signature !== applied) {

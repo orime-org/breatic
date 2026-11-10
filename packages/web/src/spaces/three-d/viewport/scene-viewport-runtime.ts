@@ -51,7 +51,7 @@ interface JointMarker {
   key: string;
   bone: Bone;
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
-  /** The dot's radius per unit of the character's world scale, measured once as the dots are made. */
+  /** The dot's radius in the character's own space at rest, scaled by its world scale when drawn. */
   unit: number;
 }
 /**
@@ -479,16 +479,16 @@ export class SceneViewportRuntime {
       this.markerItems = [];
       this.markerOwner = target?.root ?? null;
       if (target) {
-        const size = new Box3().setFromObject(target.root).getSize(new Vector3());
-        const scale = largestScale(target.root);
-        const full = Math.max(size.x, size.y, size.z) * 0.012;
-        const centres = target.rig.joints.map(({ bone }) => bone.getWorldPosition(new Vector3()));
-        target.rig.joints.forEach(({ key, bone }, index) => {
-          // Close joints such as finger knuckles get dots under half their spacing, so neighbouring dots never touch.
-          const nearest = Math.min(...centres.filter((_, other) => other !== index).map((centre) => centre.distanceTo(centres[index] ?? centre)));
+        // Measured on the rig at rest, so the dots do not depend on the pose joint mode opens in.
+        const { joints, restSize } = target.rig;
+        const full = restSize * 0.012;
+        joints.forEach(({ key, bone, rest }, index) => {
+          // Close joints such as finger knuckles get dots under half their spacing, so neighbouring dots never
+          // touch; joints at one point keep a visible dot and the click picks among them by centre.
+          const nearest = Math.min(...joints.filter((_, other) => other !== index).map((joint) => joint.rest.distanceTo(rest)));
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;
-          this.markerItems.push({ key, bone, mesh, unit: Math.min(full, nearest * 0.45) / scale });
+          this.markerItems.push({ key, bone, mesh, unit: Math.max(full * 0.3, Math.min(full, nearest * 0.45)) });
           this.markers.add(mesh);
         });
       }

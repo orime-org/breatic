@@ -3,11 +3,13 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { Vector3, type Object3D, type PerspectiveCamera } from 'three';
+import { Bone, BoxGeometry, Group, Mesh, Vector3, type Object3D, type PerspectiveCamera } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
+import { POSE_PRESETS } from '@web/spaces/three-d/viewport/pose-presets';
+import { loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneRemotePeer, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
@@ -145,6 +147,49 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     }
     expect(radiusOf('h:leftThumbMetacarpal')).toBeLessThan(radiusOf('h:hips') / 2);
     expect(radiusOf('h:hips')).toBeCloseTo(radiusOf('h:head'), 6);
+  });
+
+  it('sizes the joint dots from the character at rest, whatever pose it holds when joint mode opens', async () => {
+    /**
+     * The hips dot's radius when joint mode opens on the figure in a pose.
+     * @param pose - The figure's document pose.
+     * @returns The radius.
+     */
+    const hipsDot = async (pose: SceneObject['pose']): Promise<number> => {
+      const host = document.createElement('div'); document.body.append(host);
+      Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+      const onSkeletonState = vi.fn();
+      const joints = { ...props(), objects: [{ ...FIGURE, pose }], selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
+      const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+      await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'humanoid'));
+      runtime.update(joints);
+      const dots = (): Array<{ key: string; mesh: { scale: { x: number } } }> =>
+        (runtime as unknown as { markerItems: Array<{ key: string; mesh: { scale: { x: number } } }> }).markerItems;
+      await vi.waitFor(() => expect(dots().length).toBeGreaterThan(40));
+      return dots().find((dot) => dot.key === 'h:hips')?.mesh.scale.x ?? 0;
+    };
+    expect(await hipsDot(POSE_PRESETS.sit)).toBeCloseTo(await hipsDot({}), 6);
+  });
+
+  it('shows a dot for each of two joints that sit at the same point', async () => {
+    const model = new Group();
+    model.add(new Mesh(new BoxGeometry(0.5, 1.75, 0.3)));
+    const root = new Bone(); root.name = 'Root';
+    const left = new Bone(); left.name = 'PelvisL'; left.position.set(0, 1, 0);
+    const right = new Bone(); right.name = 'PelvisR'; right.position.set(0, 1, 0);
+    root.add(left, right); model.add(root);
+    vi.mocked(loadSceneModel).mockResolvedValueOnce(model);
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });
+    const onSkeletonState = vi.fn();
+    const joints = { ...props(), selectedIds: ['one'], jointMode: true, selectedJoint: null, onSkeletonState };
+    const runtime = new SceneViewportRuntime(host, joints); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(onSkeletonState).toHaveBeenCalledWith('one', 'other'));
+    runtime.update(joints);
+    const dots = (): Array<{ key: string; mesh: { scale: { x: number } } }> =>
+      (runtime as unknown as { markerItems: Array<{ key: string; mesh: { scale: { x: number } } }> }).markerItems;
+    await vi.waitFor(() => expect(dots().length).toBe(3));
+    for (const dot of dots()) expect(dot.mesh.scale.x, dot.key).toBeGreaterThan(0.005);
   });
 
   it('selects the dot whose centre a click lands on, even through the larger selected dot in front of it', async () => {
