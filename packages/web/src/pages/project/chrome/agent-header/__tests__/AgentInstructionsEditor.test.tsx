@@ -20,7 +20,7 @@
 
 import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -447,23 +447,17 @@ describe('cancelling (#1400)', () => {
  * @param init - The input method fields of the keydown.
  * @param init.keyCode - The legacy key code the browser reports.
  * @param init.isComposing - Whether a composition is still running.
- * @returns The keydown that was dispatched.
  */
 function pressEscape(
   input: HTMLTextAreaElement,
   init: { keyCode: number; isComposing: boolean },
-): KeyboardEvent {
-  const seen: KeyboardEvent[] = [];
-  const record = (e: KeyboardEvent): void => {
-    seen.push(e);
-  };
-  document.addEventListener('keydown', record, { capture: true });
+): void {
+  const event = createEvent.keyDown(input, { key: 'Escape', code: 'Escape', ...init });
+  // The keydown really carries the fields the guard reads.
+  expect(event).toMatchObject(init);
   act(() => {
-    fireEvent.keyDown(input, { key: 'Escape', code: 'Escape', ...init });
+    fireEvent(input, event);
   });
-  document.removeEventListener('keydown', record, { capture: true });
-  expect(seen).toHaveLength(1);
-  return seen[0]!;
 }
 
 describe('an Escape that belongs to the input method (#1400)', () => {
@@ -472,10 +466,7 @@ describe('an Escape that belongs to the input method (#1400)', () => {
     const input = await open(m, WRITTEN);
     await m.user.type(input, ' Draft.');
 
-    const event = pressEscape(input, { keyCode: 27, isComposing: true });
-    // The keydown really carries the fields the guard reads.
-    expect(event.isComposing).toBe(true);
-    expect(event.keyCode).toBe(27);
+    pressEscape(input, { keyCode: 27, isComposing: true });
 
     expect(screen.getByTestId('agent-instructions-editor')).toBeInTheDocument();
     expect(input.value).toBe('Answer in English. Draft.');
@@ -486,9 +477,7 @@ describe('an Escape that belongs to the input method (#1400)', () => {
     const input = await open(m, WRITTEN);
     await m.user.type(input, ' Draft.');
 
-    const event = pressEscape(input, { keyCode: 229, isComposing: false });
-    expect(event.isComposing).toBe(false);
-    expect(event.keyCode).toBe(229);
+    pressEscape(input, { keyCode: 229, isComposing: false });
 
     expect(screen.getByTestId('agent-instructions-editor')).toBeInTheDocument();
     expect(input.value).toBe('Answer in English. Draft.');
@@ -504,9 +493,7 @@ describe('an Escape that belongs to the input method (#1400)', () => {
       fireEvent.compositionEnd(input);
     });
     // Same task as the composition end: the mark has not been released yet.
-    const event = pressEscape(input, { keyCode: 27, isComposing: false });
-    expect(event.isComposing).toBe(false);
-    expect(event.keyCode).toBe(27);
+    pressEscape(input, { keyCode: 27, isComposing: false });
 
     expect(screen.getByTestId('agent-instructions-editor')).toBeInTheDocument();
     expect(input.value).toBe('Answer in English. Draft.');
@@ -533,9 +520,7 @@ describe('an Escape that belongs to the input method (#1400)', () => {
     const m = await mount(WRITTEN);
     const input = await open(m, WRITTEN);
 
-    const event = pressEscape(input, { keyCode: 27, isComposing: false });
-    expect(event.isComposing).toBe(false);
-    expect(event.keyCode).toBe(27);
+    pressEscape(input, { keyCode: 27, isComposing: false });
 
     await waitFor(() => expect(screen.queryByTestId('agent-instructions-editor')).toBeNull());
     expect(mockPut).not.toHaveBeenCalled();
