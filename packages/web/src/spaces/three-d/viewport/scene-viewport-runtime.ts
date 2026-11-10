@@ -51,6 +51,8 @@ interface JointMarker {
   key: string;
   bone: Bone;
   mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
+  /** A slightly larger sphere drawn just under the dot in the background colour, so the dot keeps an edge on any surface. */
+  rim: Mesh<SphereGeometry, MeshBasicMaterial>;
   /** The dot's radius in the character's own space at rest, scaled by its world scale when drawn. */
   unit: number;
 }
@@ -474,7 +476,7 @@ export class SceneViewportRuntime {
    */
   private syncMarkers(target: JointTarget | null): void {
     if (target?.root !== this.markerOwner) {
-      for (const marker of this.markerItems) marker.mesh.material.dispose();
+      for (const marker of this.markerItems) { marker.mesh.material.dispose(); marker.rim.material.dispose(); }
       this.markers.clear();
       this.markerItems = [];
       this.markerOwner = target?.root ?? null;
@@ -488,7 +490,11 @@ export class SceneViewportRuntime {
           const nearest = Math.min(...joints.filter((_, other) => other !== index).map((joint) => joint.rest.distanceTo(rest)));
           const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
           mesh.renderOrder = 1000;
-          this.markerItems.push({ key, bone, mesh, unit: Math.max(full * 0.3, Math.min(full, nearest * 0.45)) });
+          const rim = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false }));
+          rim.renderOrder = 999;
+          rim.scale.setScalar(1.3);
+          mesh.add(rim);
+          this.markerItems.push({ key, bone, mesh, rim, unit: Math.max(full * 0.3, Math.min(full, nearest * 0.45)) });
           this.markers.add(mesh);
         });
       }
@@ -497,7 +503,9 @@ export class SceneViewportRuntime {
     const scale = target ? largestScale(target.root) : 0;
     const normal = this.token('--color-status-selected');
     const selected = this.token('--color-foreground');
-    for (const { key, mesh, unit } of this.markerItems) {
+    const edge = this.token('--color-background');
+    for (const { key, mesh, rim, unit } of this.markerItems) {
+      rim.material.color.setStyle(edge);
       const chosen = key === this.props.selectedJoint;
       mesh.material.color.setStyle(chosen ? selected : normal);
       mesh.material.opacity = chosen ? 1 : 0.85;
@@ -682,8 +690,43 @@ export class SceneViewportRuntime {
     this.suppressClick = false;
     this.releasingPointer = null;
     this.down = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    // A press on another joint's dot belongs to that dot, as it is drawn over the rings: the rings and the orbit
+    // never see it, and the release selects the joint.
+    const dot = this.props.jointMode ? this.dotAt(event) : null;
+    if (dot !== null && dot !== this.props.selectedJoint) event.stopImmediatePropagation();
     this.renderer.domElement.focus({ preventScroll: true });
   };
+
+  /**
+   * The ray under a pointer event.
+   * @param event - A pointer event on the canvas.
+   * @returns The ray, or null while the canvas has no size.
+   * @throws {never} Never.
+   */
+  private rayAt(event: PointerEvent): Raycaster | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const point = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+    const ray = new Raycaster();
+    ray.setFromCamera(point, this.camera);
+    this.scene.updateMatrixWorld(true);
+    return ray;
+  }
+
+  /**
+   * The joint whose dot is under a pointer event: of the dots the ray crosses, the one whose centre is nearest
+   * the ray, so a press on a dot's centre finds it through a larger dot in front.
+   * @param event - A pointer event on the canvas.
+   * @returns The joint's key, or null when no dot is under it.
+   * @throws {never} Never.
+   */
+  private dotAt(event: PointerEvent): string | null {
+    const ray = this.rayAt(event);
+    if (!ray || this.markerItems.length === 0) return null;
+    const dot = ray.intersectObjects(this.markerItems.map((marker) => marker.mesh), false)
+      .sort((a, b) => ray.ray.distanceSqToPoint(a.object.position) - ray.ray.distanceSqToPoint(b.object.position))[0];
+    return (dot && this.markerItems.find((marker) => marker.mesh === dot.object)?.key) ?? null;
+  }
 
   /**
    * Mark a normal release before native controls release pointer capture.
@@ -705,18 +748,11 @@ export class SceneViewportRuntime {
     const suppressed = this.suppressClick;
     this.suppressClick = false;
     if (!down || suppressed || down.id !== event.pointerId || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const point = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
-    const ray = new Raycaster();
-    ray.setFromCamera(point, this.camera);
-    this.scene.updateMatrixWorld(true);
-    // Joint dots are drawn over everything, so they are picked first; of the dots the ray crosses, the one whose
-    // centre is nearest the ray wins, so a click on a dot's centre picks it through a larger dot in front.
-    const dot = ray.intersectObjects(this.markerItems.map((marker) => marker.mesh), false)
-      .sort((a, b) => ray.ray.distanceSqToPoint(a.object.position) - ray.ray.distanceSqToPoint(b.object.position))[0];
-    const dotKey = dot && this.markerItems.find((marker) => marker.mesh === dot.object)?.key;
-    if (dotKey) {
+    const ray = this.rayAt(event);
+    if (!ray) return;
+    // Joint dots are drawn over everything, so they are picked first.
+    const dotKey = this.dotAt(event);
+    if (dotKey !== null) {
       this.props.onJointSelect(dotKey);
       return;
     }
@@ -980,7 +1016,7 @@ export class SceneViewportRuntime {
       outline.material.dispose();
     }
     this.outlines = [];
-    for (const marker of this.markerItems) marker.mesh.material.dispose();
+    for (const marker of this.markerItems) { marker.mesh.material.dispose(); marker.rim.material.dispose(); }
     this.markerItems = [];
     this.markerGeometry.dispose();
     this.grid.geometry.dispose();

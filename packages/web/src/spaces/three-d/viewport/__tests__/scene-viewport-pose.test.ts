@@ -180,6 +180,49 @@ describe('the viewport poses the real figure and settles its bounds (inner#1692 
     for (const dot of dots()) expect(dot.mesh.scale.x, dot.key).toBeGreaterThan(0.005);
   });
 
+  it('rims every joint dot in the background colour, drawn just under the dot', async () => {
+    const { dots } = await openJoints({}, 'humanoid', { '--color-background': '#123456' });
+    for (const dot of dots()) {
+      const rim = dot.mesh.children[0] as Mesh<SphereGeometry, MeshBasicMaterial> | undefined;
+      expect(rim?.material.color.getHexString(), dot.key).toBe('123456');
+      expect(rim!.scale.x).toBeGreaterThan(1);
+      expect(rim!.renderOrder).toBeLessThan(dot.mesh.renderOrder);
+    }
+  });
+
+  it('selects a joint whose dot lies under the selected joint\'s rotation ring, without turning the selected joint', async () => {
+    const onJointSelect = vi.fn();
+    const onGestureStart = vi.fn(() => true);
+    const { runtime, joints, dots } = await openJoints({ selectedJoint: 'h:leftLowerArm', onJointSelect, onGestureStart });
+    const inner = runtime as unknown as { camera: PerspectiveCamera; renderer: { domElement: HTMLCanvasElement }; controls: { axis: string | null; pointerHover: (pointer: { x: number; y: number; button: number }) => void } };
+    const canvas = inner.renderer.domElement;
+    canvas.getBoundingClientRect = (): DOMRect => ({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) });
+    canvas.setPointerCapture = (): void => {};
+    canvas.releasePointerCapture = (): void => {};
+    const elbow = dots().find((dot) => dot.key === 'h:leftLowerArm')!.mesh.position.clone();
+    // Frame the elbow closer and closer until another joint's dot falls on one of its rings.
+    let found: { key: string; ndc: Vector3 } | null = null;
+    for (const distance of [2, 1.5, 1.2, 1, 0.8, 0.6, 0.45, 0.35]) {
+      runtime.update({ ...joints, view: { position: elbow.clone().add(new Vector3(0, 0.2, 1).normalize().multiplyScalar(distance)).toArray(), target: elbow.toArray() } });
+      inner.camera.updateMatrixWorld(true);
+      for (const dot of dots()) {
+        if (dot.key === 'h:leftLowerArm') continue;
+        const ndc = dot.mesh.position.clone().project(inner.camera);
+        if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
+        inner.controls.pointerHover({ x: ndc.x, y: ndc.y, button: 0 });
+        if (inner.controls.axis !== null) { found = { key: dot.key, ndc }; break; }
+      }
+      if (found) break;
+    }
+    expect(found).not.toBeNull();
+    const point = { clientX: (found!.ndc.x + 1) / 2 * 400, clientY: (1 - found!.ndc.y) / 2 * 300, button: 0 };
+    const pointer = (type: string): Event => Object.assign(new MouseEvent(type, { ...point, bubbles: true }), { pointerId: 1, pointerType: 'mouse' });
+    canvas.dispatchEvent(pointer('pointerdown'));
+    canvas.dispatchEvent(pointer('pointerup'));
+    expect(onGestureStart).not.toHaveBeenCalled();
+    expect(onJointSelect).toHaveBeenLastCalledWith(found!.key);
+  });
+
   it('selects the dot whose centre a click lands on, even through the larger selected dot in front of it', async () => {
     const onJointSelect = vi.fn();
     const { runtime, joints, dots } = await openJoints({ selectedJoint: 'h:leftThumbMetacarpal', onJointSelect });
