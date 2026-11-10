@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Escape, as the canvas answers it.
+ * Escape, as a Space answers it.
  *
- * Two modes on this canvas end on Escape — a pick session with no overlay of
- * its own, and the armed annotation tool — and the press each has to accept is
- * the same press, down to six conditions nobody would think to re-derive. Two
+ * Several modes end on Escape — on the canvas a pick session with no overlay
+ * of its own, the armed annotation tool and the open tool panels; in a
+ * document a table open full screen — and the press each has to accept is the
+ * same press, down to six conditions nobody would think to re-derive. Two
  * copies is two chances for the next mode to inherit five of the six.
  */
 
@@ -28,11 +29,11 @@ export function isFreeEscape(e: KeyboardEvent): boolean {
 }
 
 /**
- * Call `onEscape` when Escape is pressed and this canvas is the one it means.
+ * Call `onEscape` when Escape is pressed and this Space is the one it means.
  *
  * `defaultPrevented` is what makes Escape peel one layer at a time: whoever
  * prevented the default owns the press, so an open tooltip dismisses on the
- * first press and the mode ends on the next. The four IME conditions keep a
+ * first press and the mode ends on the next. The three IME conditions keep a
  * press that is dismissing a candidate window from ending the mode behind it —
  * `isComposing` says so on the keystroke, `keyCode === 229` is the same
  * answer from engines that report the composition without it, and the Escape
@@ -45,10 +46,6 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
   React.useEffect(() => {
     if (!active) return;
     const ended = compositionEnd();
-    /** Marks a composition that has just ended anywhere on the page. */
-    const mark = (): void => {
-      ended.mark();
-    };
     /**
      * Keydown listener ending the mode on a press that belongs to it.
      * @param e - The keyboard event.
@@ -62,10 +59,10 @@ export function useEscapeInSpace(active: boolean, onEscape: () => void): void {
       e.preventDefault();
       onEscape();
     };
-    window.addEventListener('compositionend', mark, true);
+    window.addEventListener('compositionend', ended.mark, true);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('compositionend', mark, true);
+      window.removeEventListener('compositionend', ended.mark, true);
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [active, onEscape]);
