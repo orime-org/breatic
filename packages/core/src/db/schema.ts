@@ -2218,6 +2218,23 @@ export const agentMemories = pgTable(
 );
 
 /**
+ * A Project's instructions for the Agent (0121, #1400): one row per Project,
+ * sent at the end of the system prompt on every request there. Clearing sets
+ * `deleted_at`; a later save brings the same row back.
+ */
+export const projectAgentInstructions = pgTable("project_agent_instructions", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  content: text("content").notNull(),
+  updatedByUserId: uuid("updated_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/**
  * One Timeline execution the user accepted (0119, inner#1711).
  *
  * `status` moves only through `timelineExecutionRepo.transition`; `fence`

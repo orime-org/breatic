@@ -42,6 +42,7 @@ export type {
   ProjectRegisteredAsset,
   ProjectAssetPage,
   ConversationAttachmentEntity,
+  ProjectAgentInstructionsEntity,
   AssetKind,
   PaymentEntity,
   CreditLotEntity,
