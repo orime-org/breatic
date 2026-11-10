@@ -222,6 +222,16 @@ describe("the tracked mask analysis executor (execution design §10.2, §10.3)",
     expect(failure).toBeInstanceOf(TrackedMaskFailed);
     expect(failure).toMatchObject({ failure: { code: "empty_foreground", step: "join" } });
   });
+
+  // Execution design §10.3: a step ingest ended at the deadline (reason expired) ends the analysis as its budget ending
+  // does, which the analysis task stores as the panel's timeout code; it is never a step failure.
+  it.each([["TA04 a clip preparation", "prepare_model_input"], ["TA05 the join", "rle_join"]])("%s ingest expired at the deadline ends the analysis as expired", async (_name, kind) => {
+    const f = await seed();
+    scripted.set(kind, { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } });
+    const { DeadlinePassed } = await vi.importActual<typeof sharedModule>("@breatic/shared");
+    const failure = await drive(f).then(() => null, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(DeadlinePassed);
+  });
 });
 
 // C15 for an analysis (planned-terminal-closure.integration.test.ts): an analysis the queue cleanup ends closes its

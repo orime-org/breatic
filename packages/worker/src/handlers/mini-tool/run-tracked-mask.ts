@@ -10,6 +10,7 @@
  * `TrackedMaskFailed`, whose code and step the pickup stores.
  */
 import { getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
+import { DeadlinePassed } from "@breatic/shared";
 import { lipsyncStepKey, upstreamStepRepo, type miniToolAnalysisService, type MiniToolStepJson } from "@breatic/domain";
 import {
   hashMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, presentationFrameAt, presentationFramesIn, trackingClips, clipJobWindows,
@@ -35,6 +36,7 @@ const TRACKS = { forward: "00000000-0000-4000-8002-000000000000", reverse: "0000
  * @param deadlineAt - The task deadline.
  * @returns The complete result.
  * @throws {TrackedMaskFailed} When a step failed for good.
+ * @throws {DeadlinePassed} When a step expired: its next attempt was due after the deadline, or ingest ended it there.
  * @throws {StillRunning} While a step runs.
  * @throws {Error} When the frozen inputs are not a tracked mask, or persistence or IO fails.
  */
@@ -67,7 +69,8 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
   const prepared = await eachSubmitted(sides.map((side) => async (): Promise<string> => {
     const windows = clipJobWindows(side.clip, side.order, target, config.encoding.reverse_buffer_bytes);
     const ended = await advanceClip(run, { stepKey: keyOf(`prepare:${side.suffix}`), windows, order: side.order, ledger, target, failed: (reason) => ({ failed: reason }) }, deadlineAt);
-    if (!("key" in ended)) throw new TrackedMaskFailed(trackedMaskFailure("prepare", { reason: ended.failed }));
+    // An expired step is the analysis's budget ending, stored as its timeout code (§10.3), never a step failure.
+    if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new TrackedMaskFailed(trackedMaskFailure("prepare", { reason: ended.failed }));
     return ended.key;
   }));
   const tracks = await eachSubmitted(sides.map((side, at) => async (): Promise<string> => {
@@ -82,7 +85,7 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
         ...(points.length === 0 ? {} : { point_prompts: points.map((point) => ({ frame_index: 0, object_id: 1, x: Math.round(rect.x + point.x * rect.width),
           y: Math.round(rect.y + point.y * rect.height), label: point.label === "positive" ? 1 : 0 })) }),
       }, input.trackingPrompt) as Record<string, MiniToolStepJson>) }, context.userId, deadlineAt);
-    if (!("key" in ended)) throw new TrackedMaskFailed({ code: ended.failed as "model_rejected" | "timeout" | "failed", step: "track" });
+    if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new TrackedMaskFailed({ code: ended.failed as "model_rejected" | "timeout" | "failed", step: "track" });
     return ended.key;
   }));
 
