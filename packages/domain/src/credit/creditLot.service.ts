@@ -26,7 +26,7 @@ import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditChargeRepo from "@domain/credit/creditCharge.repo.js";
-import type { ChargeRequestKind, NewChargeRequest } from "@domain/credit/creditCharge.repo.js";
+import type { ChargeRequestKind, NewChargeRequest, SweepableChargeRequest } from "@domain/credit/creditCharge.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
@@ -69,8 +69,8 @@ import type {
 
 /**
  * The shape a caller-supplied idempotency key must take: ASCII alphanumerics
- * plus `_`, `:`, `.` and `-`, 1 to 255 long. Checked at entry so a malformed
- * key cannot collide with another by collapsing to the same lock key.
+ * plus `_`, `:`, `.` and `-`, 1 to 255 long. Checked at entry, so a malformed
+ * key is refused before anything is written.
  */
 export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 
@@ -428,7 +428,7 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   };
 }
 
-export type { ChargeRequestKind };
+export type { ChargeRequestKind, SweepableChargeRequest };
 
 /** The input a charge request is recorded with. */
 export type ChargeRequestInput = NewChargeRequest;
@@ -448,12 +448,31 @@ export async function requestCharge(input: ChargeRequestInput, tx: DbTx): Promis
 /**
  * Settle a charge request: lock it, apply its charge and mark it settled in
  * one commit, then tell the project's users. A request already settled is
- * left alone, so every path that may settle one can call this.
+ * left alone, so every path that may settle one can call this. A settlement
+ * that fails is counted on the request, keeping what the database said, and
+ * the sweep tries it again, least recently tried first.
  * @param requestId - The request.
  * @returns What was charged, or null when the request is settled or gone.
  * @throws {Error} When the charge cannot be applied; the request stays pending.
  */
 export async function settleCharge(requestId: string): Promise<ChargeOutcome | null> {
+  try {
+    return await settleOnce(requestId);
+  } catch (err) {
+    await creditChargeRepo.recordFailure(requestId, errorChainText(err)).catch((recordErr: unknown) => {
+      throw new AggregateError([err, recordErr], "charge settlement and its failure record both failed");
+    });
+    throw err;
+  }
+}
+
+/**
+ * One settlement attempt; see {@link settleCharge}.
+ * @param requestId - The request.
+ * @returns What was charged, or null when the request is settled or gone.
+ * @throws {Error} When the charge cannot be applied.
+ */
+async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
   const settled = await db.transaction(async (tx): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> => {
     const request = await creditChargeRepo.lockById(requestId, tx);
     if (request === null || request.status === "settled") return null;
@@ -484,16 +503,6 @@ export async function settleCharge(requestId: string): Promise<ChargeOutcome | n
   } catch (err) {
     return { ...outcome, signalFailure: err };
   }
-}
-
-/**
- * Count a failed settlement on a request still pending, keeping what the
- * database said; the sweep tries it again, least recently tried first.
- * @param requestId - The request.
- * @param err - What the settlement threw.
- */
-export async function recordSettleFailure(requestId: string, err: unknown): Promise<void> {
-  await creditChargeRepo.recordFailure(requestId, errorChainText(err));
 }
 
 /**
@@ -539,14 +548,7 @@ export async function chargeOnce(
   }
   const requestId = await db.transaction((tx) => requestCharge({ ...input, kind, referenceId: refKey }, tx));
   if (requestId === null) return null;
-  try {
-    return await settleCharge(requestId);
-  } catch (err) {
-    await recordSettleFailure(requestId, err).catch((recordErr: unknown) => {
-      throw new AggregateError([err, recordErr], "charge settlement and its failure record both failed");
-    });
-    throw err;
-  }
+  return settleCharge(requestId);
 }
 
 /**
@@ -568,9 +570,9 @@ export async function pendingChargeRequestId(
  * Pending requests the sweep may settle now.
  * @param minAgeMs - How long a request must have been left alone.
  * @param limit - How many to take.
- * @returns Their ids, least recently tried first.
+ * @returns The requests, least recently tried first.
  */
-export async function listSweepableChargeRequests(minAgeMs: number, limit: number): Promise<string[]> {
+export async function listSweepableChargeRequests(minAgeMs: number, limit: number): Promise<SweepableChargeRequest[]> {
   return creditChargeRepo.listSweepable(minAgeMs, limit);
 }
 

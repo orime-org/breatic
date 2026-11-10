@@ -6,7 +6,7 @@
  *
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
- * atomic deduction) / tasks / node history / agent (model · tools) /
+ * recording a task's charge request with its completion) / tasks / node history / agent (model · tools) /
  * model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
@@ -58,7 +58,7 @@ export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.j
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
 export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 
-// ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
+// ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";

@@ -240,8 +240,11 @@ async function chargeRecorded(
   await calls?.handOff().catch((err: unknown) =>
     logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
   );
+  let credits = 0;
   try {
-    const { credits, writeFailures } = await usage.settleForCharge();
+    const settled = await usage.settleForCharge();
+    credits = settled.credits;
+    const { writeFailures } = settled;
     for (const err of writeFailures) {
       logger.error({ err, userId, tool }, "agent_usage_record_failed");
     }
@@ -263,7 +266,7 @@ async function chargeRecorded(
     // The text is already generated and already streamed. A request that was
     // recorded waits pending for the sweep, which settles it.
     logger.error(
-      { err, userId, tool, tokens },
+      { err, userId, tool, tokens, refKey: usage.operation.operationKey, amount: credits },
       "credit_charge_settle_failed",
     );
     return serializeCreditMicro(0n);

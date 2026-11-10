@@ -12,7 +12,6 @@
  * Anything else throws.
  */
 
-import { parseCreditDecimal } from "@breatic/shared";
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
@@ -70,6 +69,7 @@ import {
   transcribeQuestion,
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
+import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -1238,38 +1238,13 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
     await releaseRunHold(taskId, userId);
     return;
   }
-  try {
-    const outcome = await creditLotService.settleCharge(requestId);
-    if (outcome === null) return;
-    if (parseCreditDecimal(outcome.shortfall) > 0n) {
-      // The studio's pool ran out mid-flight, or its credits were reassigned
-      // while the task ran. The result is already delivered, so what is left
-      // uncharged goes to reconciliation.
-      logger.error(
-        {
-          taskId,
-          userId,
-          studioId: outcome.studioId,
-          charged: outcome.charged,
-          shortfall: outcome.shortfall,
-        },
-        "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-      );
-    }
-    if (outcome.signalFailure) {
-      logger.error({ err: outcome.signalFailure, taskId, userId, projectId: run.projectId }, "credits_signal_failed");
-    }
-  } catch (err) {
-    // The request stays pending; the sweep settles it and releases the hold
-    // in that commit.
-    await creditLotService.recordSettleFailure(requestId, err).catch((recordErr: unknown) =>
-      logger.error({ err: recordErr, taskId, requestId }, "credit_charge_failure_record_failed"),
-    );
-    logger.error(
-      { err, taskId, userId, requestId, creditsUsed: run.creditsUsed, wasFirst: run.wasFirst },
-      "credit_charge_settle_failed",
-    );
-  }
+  await settleChargeLogged(requestId, {
+    taskId,
+    userId,
+    projectId: run.projectId,
+    creditsUsed: run.creditsUsed,
+    wasFirst: run.wasFirst,
+  });
 }
 
 /**

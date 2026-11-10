@@ -1337,7 +1337,13 @@ export class MainAgent {
         // conversation.
         for (const stepFailure of failures) {
           logger.error(
-            { err: stepFailure.error, userId, conversationId, step: stepFailure.step },
+            {
+              err: stepFailure.error,
+              userId,
+              conversationId,
+              step: stepFailure.step,
+              ...(stepFailure.step === "bill" ? { refKey: usage.operation.operationKey, amount: creditsUsed } : {}),
+            },
             "turn_finalizer_step_failed",
           );
         }

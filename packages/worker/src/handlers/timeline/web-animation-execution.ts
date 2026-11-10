@@ -52,6 +52,7 @@ import {
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import {
   cancelWebAnimationJob,
@@ -321,20 +322,7 @@ async function bill(pickup: Pickup): Promise<void> {
     );
   });
   if (requestId === null) return;
-  try {
-    const outcome = await creditLotService.settleCharge(requestId);
-    if (outcome !== null && Number(outcome.shortfall) > 0) {
-      logger.warn({ executionId: row.id, amount, shortfall: outcome.shortfall }, "timeline_charge_shortfall");
-    }
-    if (outcome?.signalFailure) {
-      logger.error({ err: outcome.signalFailure, executionId: row.id, requestId }, "credits_signal_failed");
-    }
-  } catch (err) {
-    await creditLotService.recordSettleFailure(requestId, err).catch((recordErr: unknown) =>
-      logger.error({ err: recordErr, executionId: row.id, requestId }, "credit_charge_failure_record_failed"),
-    );
-    logger.error({ err, executionId: row.id, requestId, amount }, "credit_charge_settle_failed");
-  }
+  await settleChargeLogged(requestId, { executionId: row.id, amount });
 }
 
 /**

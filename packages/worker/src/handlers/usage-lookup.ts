@@ -65,8 +65,9 @@ export async function runUsageLookup(
 
   // The charge request is recorded before the settlement, so a settlement
   // that fails waits pending for the sweep (inner#1617).
+  const refKey = `${data.operationKey}:gen:${data.generationId}`;
   try {
-    const outcome = await creditLotService.chargeOnce("operation", `${data.operationKey}:gen:${data.generationId}`, {
+    const outcome = await creditLotService.chargeOnce("operation", refKey, {
       projectId: data.projectId,
       actorUserId: data.actorUserId,
       amount,
@@ -81,6 +82,6 @@ export async function runUsageLookup(
       );
     }
   } catch (err) {
-    logger.error({ err, generationId: data.generationId, amount }, "credit_charge_settle_failed");
+    logger.error({ err, generationId: data.generationId, refKey, actorUserId: data.actorUserId, amount }, "credit_charge_settle_failed");
   }
 }

@@ -786,10 +786,10 @@ export const tasks = pgTable(
      */
     providerTaskId: text("provider_task_id"),
     /**
-     * Idempotency guard for credit deduction. Set via CAS when the task
-     * is marked completed AND the file is persisted to storage. If set,
-     * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,
-     * stalled-job redelivery, or duplicate Worker instances.
+     * Set by the CAS that completes the task once its file is persisted.
+     * Only the attempt that sets it records the task's charge request
+     * (`credit_charge_requests`), in the same transaction, so BullMQ retries,
+     * stalled-job redelivery or a duplicate worker cannot record a second.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
     /**

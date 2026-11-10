@@ -10,9 +10,9 @@
  * it to the back of the next round.
  */
 
-import { getWorkerConfig, logger } from "@breatic/core";
+import { getWorkerConfig } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
-import { parseCreditDecimal } from "@breatic/shared";
+import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
 /**
  * One round of the sweep.
@@ -20,25 +20,14 @@ import { parseCreditDecimal } from "@breatic/shared";
  */
 export async function sweepCreditCharges(): Promise<void> {
   const { min_age_ms, batch_size } = getWorkerConfig().credit_charge_sweep;
-  const requestIds = await creditLotService.listSweepableChargeRequests(min_age_ms, batch_size);
-  for (const requestId of requestIds) {
-    try {
-      const outcome = await creditLotService.settleCharge(requestId);
-      if (outcome === null) continue;
-      if (parseCreditDecimal(outcome.shortfall) > 0n) {
-        logger.error(
-          { requestId, studioId: outcome.studioId, charged: outcome.charged, shortfall: outcome.shortfall },
-          "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-        );
-      }
-      if (outcome.signalFailure) {
-        logger.error({ err: outcome.signalFailure, requestId }, "credits_signal_failed");
-      }
-    } catch (err) {
-      await creditLotService.recordSettleFailure(requestId, err).catch((recordErr: unknown) =>
-        logger.error({ err: recordErr, requestId }, "credit_charge_failure_record_failed"),
-      );
-      logger.error({ err, requestId }, "credit_charge_settle_failed");
-    }
+  const requests = await creditLotService.listSweepableChargeRequests(min_age_ms, batch_size);
+  for (const request of requests) {
+    await settleChargeLogged(request.id, {
+      kind: request.kind,
+      referenceId: request.referenceId,
+      actorUserId: request.actorUserId,
+      amount: request.amount,
+      attempts: request.attempts,
+    });
   }
 }

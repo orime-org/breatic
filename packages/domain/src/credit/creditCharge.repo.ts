@@ -68,8 +68,11 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
       projectId: input.projectId,
       amount: String(input.amount),
       description: input.description ?? null,
-      model: input.model ?? null,
-      provider: input.provider ?? null,
+      // Cut to the ledger's widths (`credit_ledger.model` / `provider`): a
+      // vendor-reported name too long for a column must not refuse the
+      // delivery this row commits with.
+      model: input.model?.slice(0, 100) ?? null,
+      provider: input.provider?.slice(0, 50) ?? null,
       tokensUsed: input.tokensUsed ?? null,
       releaseHold: input.releaseHold ?? null,
     })
@@ -166,16 +169,34 @@ export async function findPendingId(
   return rows[0]?.id ?? null;
 }
 
+/** A pending request as the sweep reads it, with what its log needs. */
+export interface SweepableChargeRequest {
+  id: string;
+  kind: ChargeRequestKind;
+  referenceId: string;
+  actorUserId: string;
+  /** Decimal string. */
+  amount: string;
+  attempts: number;
+}
+
 /**
  * Pending requests the sweep may take: untouched for at least `minAgeMs`,
  * least recently tried first, skipping any another transaction holds.
  * @param minAgeMs - How long a row must have been left alone.
  * @param limit - How many to take.
- * @returns Their ids.
+ * @returns The rows.
  */
-export async function listSweepable(minAgeMs: number, limit: number): Promise<string[]> {
-  const rows = await db
-    .select({ id: creditChargeRequests.id })
+export async function listSweepable(minAgeMs: number, limit: number): Promise<SweepableChargeRequest[]> {
+  return db
+    .select({
+      id: creditChargeRequests.id,
+      kind: creditChargeRequests.kind,
+      referenceId: creditChargeRequests.referenceId,
+      actorUserId: creditChargeRequests.actorUserId,
+      amount: creditChargeRequests.amount,
+      attempts: creditChargeRequests.attempts,
+    })
     .from(creditChargeRequests)
     .where(
       and(
@@ -186,5 +207,4 @@ export async function listSweepable(minAgeMs: number, limit: number): Promise<st
     .orderBy(asc(creditChargeRequests.updatedAt))
     .limit(limit)
     .for("update", { skipLocked: true });
-  return rows.map((row) => row.id);
 }
