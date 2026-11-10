@@ -2249,7 +2249,8 @@
         },
         "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
         "notWrittenYet": "업로드됨, 아직 추가되지 않음",
-        "notPasted": "{count}개 항목을 붙여넣지 못했습니다."
+        "notPasted": "{count}개 항목을 붙여넣지 못했습니다.",
+        "stillUploading": "이미지, 동영상, 오디오 {count}개는 업로드 중이라 붙여넣지 않았습니다. 업로드가 완료되면 다시 복사하세요."
       }
     },
     "readOnlyReconnect": "다시 연결",

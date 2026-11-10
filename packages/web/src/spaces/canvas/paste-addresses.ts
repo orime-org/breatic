@@ -13,7 +13,7 @@
  * belongs to.
  */
 
-import { isStoredObjectUrl, type PasteHistoryItem, type PastePair } from '@breatic/shared';
+import { isStoredObjectUrl, nodeMediaEntries, type NodeMediaFields, type PasteHistoryItem, type PastePair } from '@breatic/shared';
 
 import type { SnapshotNode } from '@web/data/yjs/canvas-space';
 
@@ -125,6 +125,29 @@ export function replaceAddresses(
     return out;
   };
   return nodes.map((node) => ({ ...node, data: walk(node.data, false) as Record<string, unknown> }));
+}
+
+/**
+ * Give each copy the media fields it lacks from what the target Studio's
+ * ledger holds for its content (inner#1537): a document block carries only
+ * the address. A field the copy already has is its own and stays.
+ * @param nodes - The copies, their addresses already mapped.
+ * @param media - The target Studio's ledger, by address.
+ * @returns The copies with the missing fields filled.
+ */
+export function fillMissingMedia(
+  nodes: ReadonlyArray<SnapshotNode>,
+  media: Readonly<Record<string, NodeMediaFields>>,
+): SnapshotNode[] {
+  return nodes.map((node) => {
+    const held = typeof node.data.content === 'string' ? media[node.data.content] : undefined;
+    if (held === undefined) return node;
+    const data = { ...node.data };
+    for (const [key, value] of nodeMediaEntries(held)) {
+      if (value !== null && !(key in data)) data[key] = value;
+    }
+    return { ...node, data };
+  });
 }
 
 /**
