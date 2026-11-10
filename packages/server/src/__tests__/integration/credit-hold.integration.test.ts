@@ -327,7 +327,7 @@ describe("settleCharge with a hold", () => {
           referenceId: reference,
           releaseHold: reference,
         }),
-      ).rejects.toThrow(/credit_hold_test_block/);
+      ).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/credit_hold_test_block/) }) });
     } finally {
       await sql`ALTER TABLE credit_ledger DROP CONSTRAINT credit_hold_test_block`;
     }

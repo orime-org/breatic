@@ -403,7 +403,7 @@ describe("settleCharge", () => {
     const id = (await request(taskCharge(fx, reference, 30, { description })))!;
     const unblock = await blockLedger(description);
     try {
-      await expect(creditLotService.settleCharge(id)).rejects.toThrow(/charge_req_block_/);
+      await expect(creditLotService.settleCharge(id)).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/charge_req_block_/) }) });
     } finally {
       await unblock();
     }
@@ -527,7 +527,7 @@ describe("markCompletedAndBill with a charge", () => {
         projectId: fx.projectId,
         amount: 12,
       }),
-    ).rejects.toThrow(/foreign key/);
+    ).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/foreign key/) }) });
     const [task] = await sql<{ status: string; billed: boolean }[]>`SELECT status, (billed_at IS NOT NULL) AS billed FROM tasks WHERE id = ${taskId}`;
     expect(task).toEqual({ status: "processing", billed: false });
     expect(await requestsFor(taskId)).toEqual([]);
@@ -569,7 +569,7 @@ describe("markCompletedAndBill with a charge", () => {
     const id = (await creditLotService.pendingChargeRequestId("task", fx.userId, taskId))!;
     const unblock = await blockLedger(description);
     try {
-      await expect(creditLotService.settleCharge(id)).rejects.toThrow(/charge_req_block_/);
+      await expect(creditLotService.settleCharge(id)).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/charge_req_block_/) }) });
     } finally {
       await unblock();
     }
@@ -613,7 +613,7 @@ describe("chargeOnce", () => {
     const input = { projectId: fx.projectId, actorUserId: fx.userId, amount: 10, description };
     const unblock = await blockLedger(description);
     try {
-      await expect(creditLotService.chargeOnce("operation", key, input)).rejects.toThrow(/charge_req_block_/);
+      await expect(creditLotService.chargeOnce("operation", key, input)).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/charge_req_block_/) }) });
     } finally {
       await unblock();
     }

@@ -187,7 +187,7 @@ async function apply(run: Run, event: Event): Promise<void> {
           await creditLotService.settleCharge(before.id).catch((err: unknown) => {
             failure = err;
           });
-          expect(String(failure)).toContain(name);
+          expect(failure).toMatchObject({ cause: expect.objectContaining({ message: expect.stringContaining(name) }) });
           await creditLotService.recordSettleFailure(before.id, failure);
           const [after] = await rowsOf(run);
           expect(after).toMatchObject({ status: "pending", attempts: before.attempts + 1 });
