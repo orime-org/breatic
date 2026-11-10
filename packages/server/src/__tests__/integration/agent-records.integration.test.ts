@@ -135,7 +135,7 @@ async function seedMessage(
   await sql`
     INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, created_at, deleted_at)
     VALUES (${conversationId}, ${userId}, ${m.role}, ${m.turn}, ${m.seq ?? (m.role === "user" ? 0 : 1)},
-            ${sql.json(m.parts as never)}, ${m.at ?? new Date().toISOString()},
+            ${sql.json(m.parts)}, ${m.at ?? new Date().toISOString()},
             ${m.deleted === true ? new Date().toISOString() : null})
   `;
 }
@@ -686,7 +686,7 @@ async function seedVersion(
   await sql`
     INSERT INTO node_history (project_id, node_id, user_id, entry_type, status, content, metadata, created_at)
     VALUES (${projectId}, ${nodeId}, ${userId}, 'generation', 'success', ${`https://cdn.example/${crypto.randomUUID()}.png`},
-            ${sql.json((opts.metadata ?? {}) as never)}, ${opts.at})
+            ${sql.json((opts.metadata ?? {}))}, ${opts.at})
   `;
 }
 
