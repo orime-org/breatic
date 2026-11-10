@@ -31,6 +31,7 @@ import {
 } from '@shared/canvas/template-expansion.js';
 import { resetLocales, setLocale, setLocaleMessages, t } from '@shared/i18n/index.js';
 import {
+  markedSegments,
   promptPlainText,
   type ProposalNode,
   type ProposalNodeType,
@@ -1097,6 +1098,17 @@ describe('expandTemplate on registered templates with shots and slots (inner#181
    */
   const indexIn = (result: TemplateExpansionResult, key: string, input: boolean): number =>
     1 + result.appended.findIndex((node) => node.templateNode?.key === key && (node.templateNode.input === true) === input);
+
+  it('writes the two-voice dialogue anchor as three lines, Ava, Leo, Ava, each its line\'s words and no prompt (inner#1825)', () => {
+    const result = expandTemplate(registered('two-voice-dialogue'), FRESH);
+    const anchor = result.rewritten.get(0) as (ProposalNode & { lines?: Array<{ speaker: number; prompt: PromptSegment[] }> }) | undefined;
+    expect(anchor).not.toHaveProperty('prompt');
+    const lines = anchor?.lines ?? [];
+    expect(lines.map((line) => line.speaker)).toEqual([1, 2, 1]);
+    for (const [at, line] of lines.entries()) {
+      expect(line.prompt, `line ${String(at + 1)}`).toEqual(markedSegments(t(`canvas.template.two-voice-dialogue.line.${String(at + 1)}`)));
+    }
+  });
 
   it('writes the quick tip anchor as five shots of three seconds and no prompt, each @ing the subject, its note on top of the first shot only', () => {
     const result = expandTemplate(registered('vertical-15s-quick-tip'), FRESH);
