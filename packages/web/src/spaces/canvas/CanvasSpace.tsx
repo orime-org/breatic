@@ -3009,7 +3009,7 @@ function CanvasSpaceInner({
         selectPasted([pasteTextAt(text, point)]);
         return true;
       }
-      if (fromBody.notPasted > 0) toast.warning(t('spaces.document.media.notPasted', { count: fromBody.notPasted }));
+      if (fromBody.notPasted > 0) toast.warning(t('spaces.document.media.stillUploading', { count: fromBody.notPasted }));
       if (fromBody.media.length === 0) return true;
       const media = documentMediaPayload(fromBody.media, point, groupBackgroundFor(Math.random()));
       // Several media arrive as one Group, which is what is selected, as for files.

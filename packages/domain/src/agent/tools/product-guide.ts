@@ -533,7 +533,7 @@ export function renderProductGuide(): string {
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "Pictures, videos and sounds copied in a document's body, with nothing else selected, paste as nodes of " +
       "their kind named after their caption or file name, several at once four to a row inside a new group " +
-      "named like 2 files; one still uploading when it was copied is left out and a message counts it. A copy " +
+      "named like 2 files; one still uploading when it was copied is left out, and a message counts it and says to copy it again once the upload finishes. A copy " +
       "from the body that also holds words pastes as one text node. " +
       "Nodes copied on this canvas land just beside the originals while those are in view; anything else, nodes " +
       "copied on another canvas included, lands in the middle of the view. While another node already starts " +

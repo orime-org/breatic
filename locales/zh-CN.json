@@ -2240,7 +2240,8 @@
         },
         "readOnlyWaiting": "这个标签页现在只读，恢复可写后写入正文",
         "notWrittenYet": "已上传，还没写进正文",
-        "notPasted": "{count} 项没有粘贴进来。"
+        "notPasted": "{count} 项没有粘贴进来。",
+        "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
       }
     },
     "readOnlyReconnect": "重新连接",

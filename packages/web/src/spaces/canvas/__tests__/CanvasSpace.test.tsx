@@ -2549,7 +2549,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const picture = `<img src="${stored}" alt="probe.png" data-name="probe.png">`;
     const pending = '<p data-upload-pending="">clip.mp4 (upload not finished)</p>';
 
-    it('says how many blocks still uploading were left out, and makes no node for them', () => {
+    it('says how many media are still uploading and were left out, and makes no node for them', () => {
       mockUseCanvasSpace.mockReturnValue(mockSpace());
       const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
       const written = vi.spyOn(canvasSpace, 'writeSnapshotNodes').mockImplementation(() => undefined);
@@ -2558,7 +2558,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
       dispatchPaste('clip.mp4 (upload not finished)', pending);
 
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1 item'), expect.anything());
+      expect(warnSpy).toHaveBeenCalledWith(
+        '1 image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.',
+        expect.anything(),
+      );
       expect(addNode).not.toHaveBeenCalled();
       expect(written).not.toHaveBeenCalled();
       addNode.mockRestore();
