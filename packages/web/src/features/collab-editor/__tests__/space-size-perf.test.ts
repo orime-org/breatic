@@ -168,10 +168,12 @@ describe('21.4 timings on a 10 MiB body', () => {
   }, TEN_MINUTES);
 
   it('PF-02: BIG(16000), select all and Backspace: fastest full at most 2 times fastest warning; one update, R, the X-06 result', async () => {
-    const body = openBig(16000);
     const warning: number[] = [];
     const full: number[] = [];
+    // A fresh body each run: undoing a 16 000-block delete writes the blocks
+    // back as new content, so reusing one body grows it run by run.
     for (let run = 0; run < 3; run++) {
+      const body = openBig(16000);
       enterState(DOCUMENT_NAME, 'W');
       warning.push(await timed(() => { selectAllAndDelete(body); }));
       body.editor.undo();
@@ -185,13 +187,9 @@ describe('21.4 timings on a 10 MiB body', () => {
       expect(cap.shape()).toBe('R');
       expect(rows(body.view.state.doc)).toEqual([['paragraph', '']]);
       cap.stop();
-      // Undo writes the blocks back, an add a full Space refuses.
-      enterState(DOCUMENT_NAME, 'W');
-      body.editor.undo();
-      await flush();
-      expect(blockCount(body)).toBe(16000);
+      expectWarnings();
+      resetHarness();
     }
-    expectWarnings();
     expect(fastest(full)).toBeLessThanOrEqual(2 * fastest(warning));
   }, TEN_MINUTES);
 
