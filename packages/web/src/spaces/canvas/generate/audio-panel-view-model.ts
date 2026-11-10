@@ -57,7 +57,7 @@ export interface AudioPanelViewModel {
   params: Record<string, unknown>;
   /** Whether the target node is still on the board — gates execute. */
   nodeExists: boolean;
-  /** Whether this run sends the prompt (`promptTaken`): the style box is drawn, asked for and read only then. */
+  /** Whether this run sends the prompt (`promptTaken`): the style box is asked for and read only then, and, beside a lyrics box, drawn only then. */
   promptRequired: boolean;
   /** Whether the active model takes a prompt at all, which the reference rail reads. */
   takesPrompt: boolean;

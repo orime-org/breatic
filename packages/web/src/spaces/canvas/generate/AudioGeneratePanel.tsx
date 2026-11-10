@@ -60,7 +60,7 @@ interface AudioGeneratePanelProps {
   creditText: string | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
-  /** Whether this run takes the prompt, so the style box is drawn (`promptTaken`). */
+  /** Whether this run takes the prompt (`promptTaken`); beside a lyrics box, the style box is drawn only then. */
   promptShown: boolean;
   /** The selected mode. */
   mode: string;
@@ -170,7 +170,7 @@ interface AudioGeneratePanelProps {
  * @param root0.currentModel - That model's catalog entry.
  * @param root0.creditText - The run's estimate as printed beside the star.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
- * @param root0.promptShown - Whether this run takes the prompt, so the style box is drawn.
+ * @param root0.promptShown - Whether this run takes the prompt; beside a lyrics box, the style box is drawn only then.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
  * @param root0.voiceList - Where the voice list is.

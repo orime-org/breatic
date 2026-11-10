@@ -3,8 +3,9 @@
 
 /**
  * Mureka V9.5 Song (breatic#1393): compose_from is ours alone. It picks
- * whether a run uses the style, song and vocals or the melody (each slot's
- * `when` in the catalog), and no upstream has a field for it.
+ * whether a run uses the style, song and vocals or the melody (the model's
+ * `prompt_when` and each slot's `when` in the catalog), and no upstream has a
+ * field for it.
  */
 
 import type { ModelFamily } from "@worker/providers/shared.js";

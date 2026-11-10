@@ -10,8 +10,9 @@
  * a slot grows a field.
  *
  * Which of them a mode can draw is its row in `AUDIO_MODE_OPTIONS`; which of
- * those a run collects is the model's to say, read off its `fill` and `modes`
- * declarations by {@link audioSlotsForModel} below. One param can be two
+ * those a run collects is the model's to say, read off its `fill`, `modes` and
+ * `when` declarations (the last against the run's stored params) by
+ * {@link audioSlotsForModel} below. One param can be two
  * places: `audio` is the voice sample under Voice Cloning and the song to
  * cover under Reference to Music.
  *
