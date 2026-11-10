@@ -1038,7 +1038,8 @@ export function renderProductGuide(): string {
       "list as the single voice below it; picking a voice sets it and closes the list. In the dialogue the prompt " +
       "box holds one line per turn: each line starts with a small button showing a coloured dot and the name of " +
       "who says it, which opens the speakers to pick another, and the rest of the line is only the words said; " +
-      "the names are put in front when it is sent, so no name or colon is typed. Enter at the end of a line starts " +
+      "the names are put in front when it is sent, so no name or colon is typed. A line with no words yet shows " +
+      "in grey the name of whoever says it, as a hint to write their line. Enter at the end of a line starts " +
       `a new line for the other speaker, and so does ${quoted(t("canvas.generatePanel.dialogueAddLine"))} under the ` +
       "lines; pointing at a line shows an X at its right end that deletes it, except on the only line. Words " +
       "already in the box stay when switching between one voice and the dialogue; a line typed or pasted as a " +
