@@ -288,9 +288,10 @@ beforeAll(async () => {
   await lossless('greys25.mp4', '16+20*N', { fps: '25', frames: 10, timescale: 25 });
   await lossless('greys60.mp4', '16+15*N', { fps: '60', frames: 12, timescale: 60 });
   await lossless('greys2997.mp4', '16+12*N', { fps: '30000/1001', frames: 15, timescale: 1000 });
-  // Nine stored frames so the eighth ends at 332 ms; the table and every recipe use the first eight.
+  // Nine stored frames so the eighth ends at 332 ms; the table and every recipe use the first eight. FFmpeg 8's setpts keeps
+  // the 30 fps rate, so without the explicit encoder time base the timestamps are quantized to 1/30 s.
   await make('vfr.mp4', ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30,format=yuv420p,geq=lum='40+20*N':cb=128:cr=128,settb=1/1000,setpts='floor(N/2)*83+mod(N,2)*50'`,
-    '-frames:v', '9', '-fps_mode', 'passthrough', '-c:v', 'libx264', '-qp', '0', '-g', '4', '-bf', '0', '-pix_fmt', 'yuv420p',
+    '-frames:v', '9', '-fps_mode', 'passthrough', '-enc_time_base:v', '1/1000', '-c:v', 'libx264', '-qp', '0', '-g', '4', '-bf', '0', '-pix_fmt', 'yuv420p',
     '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-video_track_timescale', '1000']);
   await make('greys-tone.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=2,format=yuv420p,geq=lum='16+4*N':cb=128:cr=128", '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
     '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-g', '25', '-video_track_timescale', '25', '-c:a', 'aac', '-shortest']);
