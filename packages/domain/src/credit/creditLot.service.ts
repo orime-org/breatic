@@ -487,13 +487,30 @@ export async function settleCharge(requestId: string): Promise<ChargeOutcome | n
 }
 
 /**
- * Count a failed settlement on a request still pending; the sweep tries it
- * again, least recently tried first.
+ * Count a failed settlement on a request still pending, keeping what the
+ * database said; the sweep tries it again, least recently tried first.
  * @param requestId - The request.
  * @param err - What the settlement threw.
  */
 export async function recordSettleFailure(requestId: string, err: unknown): Promise<void> {
-  await creditChargeRepo.recordFailure(requestId, err instanceof Error ? err.message : String(err));
+  await creditChargeRepo.recordFailure(requestId, errorChainText(err));
+}
+
+/**
+ * An error and the causes under it, as one line. Drizzle wraps a failed query
+ * in an error that names only the statement; what the database refused is in
+ * its `cause`, and that is what someone reading the row needs.
+ * @param err - What was thrown.
+ * @returns Each message, outermost first, joined with " <- ".
+ */
+function errorChainText(err: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = err;
+  while (current !== undefined && current !== null && messages.length < 5) {
+    messages.push(current instanceof Error ? current.message : String(current));
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return messages.join(" <- ");
 }
 
 /**
