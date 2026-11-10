@@ -956,6 +956,32 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     });
   });
 
+  // DD row R4: a model that keeps the frame count but rewrites the timestamps onto its own clock rounds frame starts up by
+  // under one tick. On a 30000/1001 grid, `-r 29.97` stores frame n at 400n / 11988 s and an MP4 timescale of 15360 at
+  // round(512.512n) / 15360 s, each a hair after n · 1001 / 30000; grid frame k still shows the result frame nearest its time,
+  // never repeating one frame and dropping the next. Frame n of the result has luma 50 + 7n.
+  it.each([
+    ['at -r 29.97 on a 1/11988 clock', ['-r', '29.97']], ['on an MP4 timescale of 15360', ['-video_track_timescale', '15360']],
+  ] as const)('LM11 a 29.97 fps person result %s shows result frame k on grid frame k', async (_name, clock) => {
+    const table: VideoPresentationTable = { schemaVersion: 1, timescale: 30000, runs: [{ start: 0, count: 10, step: 1001, duration: 1001 }] };
+    const [source, result] = ['comp-source-2997.mp4', `person-1-2997-${clock[1]}.mp4`];
+    await make(source, ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30000/1001,format=yuv420p,geq=lum='40+18*N':cb=128:cr=128`, '-frames:v', '10',
+      '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-video_track_timescale', '30000']);
+    await make(result, ['-f', 'lavfi', '-i', `color=c=black:s=64x64:r=30000/1001,format=yuv420p,geq=lum='50+7*N':cb=150:cr=128`, '-frames:v', '10',
+      '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', ...clock]);
+    const timeline: LipsyncTimeline = { duration: 10010 / 30000, videoDuration: 10010 / 30000, syncMode: 'cut_off' };
+    const window = { start: 0, end: 10 };
+    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(10010, 30000), rate: r(1) }];
+    const file = await produce({ ...await inputs(source), [ID.result1]: join(dir, result) },
+      { ...recipe(OPAQUE), timescale: 30000, table, timeline, window, entries, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] });
+    const y = await planeFrames(file, 'y');
+    expect(y.frames).toHaveLength(10);
+    y.frames.forEach((frame, k) => {
+      const rect = face1(k);
+      if (rect !== null) expect(Math.abs(mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - (50 + 7 * k)), `frame ${k} shows person 1's result frame ${k}`).toBeLessThan(3.5);
+    });
+  });
+
   // §5.3 model-input row, §4.3 odd-size row: the prepared video pads an odd 161x97 picture to 162x98 and keeps the picture
   // rectangle, so the track and the faces are in its pixels; the output rounds an opaque odd side down to 160x96 and keeps a
   // transparent one at 161x97. Person 1's 48x48 face at (104, 40) of the prepared picture, foreground x >= 100, y >= 32.

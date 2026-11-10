@@ -626,8 +626,9 @@ async function frameTimes(file: string, run: Run): Promise<{ tick: [bigint, bigi
 
 /**
  * The result frame each result-grid frame of a chunk shows (DD §7.2 step 6, row R4: by presentation time, never by frame
- * number): grid frame k at k·step/clock s shows the frame whose span, from the result's first frame, holds that time; null
- * once the time is past the result's end. The indices never decrease, so the result is read forward once.
+ * number): grid frame k at k·step/clock s shows the frame whose start, from the result's first frame, is nearest that time,
+ * ties to the earlier (the fps filter's round=near); null once the time is past the result's end. The indices never
+ * decrease, so the result is read forward once.
  * @param times - The result's frame times.
  * @param times.tick - Its clock's tick in seconds.
  * @param times.starts - Each frame's presentation time in ticks, in order.
@@ -649,7 +650,13 @@ function resultFramesShown(times: { tick: [bigint, bigint]; starts: bigint[]; en
   for (let k = window.start; k < window.end; k += 1) {
     const time = BigInt(k) * BigInt(grid.step) * denominator;
     if (starts.length === 0 || (end - first) * scale <= time) { shows.push(null); continue; }
-    while (at + 1 < starts.length && (starts[at + 1]! - first) * scale <= time) at += 1;
+    // The frame starting nearest the grid time, ties to the earlier (the fps filter's round=near): a result written on its
+    // own clock starts a frame a hair after the grid time and is still that grid frame's.
+    while (at + 1 < starts.length) {
+      const [current, next] = [(starts[at]! - first) * scale, (starts[at + 1]! - first) * scale];
+      if (next > time && next - time >= time - current) break;
+      at += 1;
+    }
     shows.push(at);
   }
   return shows;
@@ -670,7 +677,7 @@ function copyPicture(frame: Picture): Picture {
  * Write one composite chunk (§7.17 lipsync_composite row, §5.4): result frames [window.start, window.end) on the result clock
  * from 0, opening with a keyframe; result frame k shows the original's presentation frame
  * `lipsyncSourceFrameAt(timeline, table, k)` with every person's result frame laid onto that frame's face, the result frame
- * being the one whose presentation time covers k's on the result grid (`resultFramesShown`); a frame without a face, or past
+ * being the one whose presentation time is nearest k's on the result grid (`resultFramesShown`); a frame without a face, or past
  * the person's result, leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
  * only the source frames the chunk shows (`lipsyncChunkSourceWindow`). Frames move through pipes (execution design
  * paragraph before §9.4): each person's result is opened at the window and streamed, and so is the output; the source is
