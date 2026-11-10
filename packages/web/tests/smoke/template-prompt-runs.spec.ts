@@ -484,7 +484,9 @@ function mediaOf(media: string): { file: string; bytes: Buffer } {
  */
 async function generateSong(): Promise<string> {
   const id = crypto.randomUUID();
-  await seedNode(page, { projectId, spaceId }, id, 'audio', -600, { name: 'song-run', state: 'idle' });
+  // Close to the anchor seeded at 600: opening this panel centres the canvas
+  // on the song, and a node seeded outside the viewport is never rendered.
+  await seedNode(page, { projectId, spaceId }, id, 'audio', 250, { name: 'song-run', state: 'idle' });
   await openPanel(id);
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-t2m').click();
