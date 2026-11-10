@@ -132,6 +132,16 @@ function blockCount(body: OpenBody): number {
   return body.view.state.doc.firstChild!.childCount;
 }
 
+/**
+ * Tears down the open body and drops the calls the executor spy recorded:
+ * each call keeps its transaction and sync binding, and with them the whole
+ * body, so a test that opens several bodies would hold every one of them.
+ */
+function closeBody(): void {
+  resetHarness();
+  vi.mocked(planSpaceDelete).mockClear();
+}
+
 beforeEach(() => {
   changeLocale('en');
   clearToasts();
@@ -139,7 +149,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetHarness();
+  closeBody();
 });
 
 describe('21.4 timings on a 10 MiB body', () => {
@@ -170,15 +180,14 @@ describe('21.4 timings on a 10 MiB body', () => {
   it('PF-02: BIG(16000), select all and Backspace: fastest full at most 2 times fastest warning; one update, R, the X-06 result', async () => {
     const warning: number[] = [];
     const full: number[] = [];
-    // A fresh body each run: undoing a 16 000-block delete writes the blocks
-    // back as new content, so reusing one body grows it run by run.
+    // Each measurement deletes a body opened for it, so every run starts from
+    // BIG(16000) and at most one body is open at a time.
     for (let run = 0; run < 3; run++) {
-      const body = openBig(16000);
+      const warned = openBig(16000);
       enterState(DOCUMENT_NAME, 'W');
-      warning.push(await timed(() => { selectAllAndDelete(body); }));
-      body.editor.undo();
-      await flush();
-      expect(blockCount(body)).toBe(16000);
+      warning.push(await timed(() => { selectAllAndDelete(warned); }));
+      closeBody();
+      const body = openBig(16000);
       enterState(DOCUMENT_NAME, 'F');
       select(body.view, charPos(body, 0, 1));
       const cap = capture(body.doc);
@@ -188,7 +197,7 @@ describe('21.4 timings on a 10 MiB body', () => {
       expect(rows(body.view.state.doc)).toEqual([['paragraph', '']]);
       cap.stop();
       expectWarnings();
-      resetHarness();
+      closeBody();
     }
     expect(fastest(full)).toBeLessThanOrEqual(2 * fastest(warning));
   }, TEN_MINUTES);
@@ -245,7 +254,7 @@ describe('21.4 timings on a 10 MiB body', () => {
       expect(cap.updates).toHaveLength(1);
       expect(cap.shape()).toBe('R');
       cap.stop();
-      resetHarness();
+      closeBody();
       return planMs + writeMs;
     };
     const runs = async (n: number): Promise<number[]> => [await measure(n), await measure(n), await measure(n)];
