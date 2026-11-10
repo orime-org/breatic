@@ -2107,6 +2107,44 @@ export const creditHolds = pgTable(
   ],
 );
 
+// ── 8f. Credit charge requests (0121, inner#1617) ─────────────────────
+
+export const creditChargeRequests = pgTable(
+  "credit_charge_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
+    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // What the settlement's ledger rows carry as their reference.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // Above zero. CHECK in 0121.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    description: text("description"),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    // The credit hold the settlement releases, if any.
+    releaseHold: varchar("release_hold", { length: 255 }),
+    // 'pending' | 'settled'. CHECK in 0121.
+    status: varchar("status", { length: 16 }).$type<"pending" | "settled">().default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    // Set exactly when settled. CHECK in 0121.
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_charge_requests_key_idx").on(table.kind, table.actorUserId, table.referenceId),
+    index("credit_charge_requests_pending_idx")
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
