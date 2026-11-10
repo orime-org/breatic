@@ -22,11 +22,8 @@
  * FENCING: each acquire writes a UNIQUE token (`SET key <token> EX ttl
  * NX`) and releases via a check-and-del Lua script, so an instance whose
  * lock expired and was re-acquired elsewhere never DELs the new holder's
- * lock. (Unlike `creditLot.service.chargeOnceForGeneration`, which uses a
- * fixed value —
- * that is an idempotency key, not a mutex, so a wrong DEL there is
- * harmless; here it would let a third Space create, restore or delete
- * interleave.)
+ * lock; a wrong DEL here would let a third Space create, restore or delete
+ * interleave.
  *
  * RESIDUAL (inherent to any TTL lock): if the critical section itself
  * runs longer than the TTL, the lock expires WHILE still in use and a

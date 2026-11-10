@@ -318,3 +318,66 @@ describe("the usage recorder", () => {
     await expect(recorder.settle()).rejects.toThrow("db down");
   });
 });
+
+describe("settleForCharge", () => {
+  it("answers the same credits settle does when every write lands", async () => {
+    const first = recorderWithRows();
+    const second = recorderWithRows();
+    for (const { recorder } of [first, second]) {
+      recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+      recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
+    }
+    const settled = await first.recorder.settle();
+    expect(await second.recorder.settleForCharge()).toEqual({ credits: settled, writeFailures: [] });
+    expect(settled).toBe(1.09);
+  });
+
+  it("still answers what to charge when a row could not be written, and hands back the failure", async () => {
+    // The credits are counted before the row is written, so a lost row does
+    // not lose the charge; the caller logs the row and charges anyway.
+    const boom = new Error("db down");
+    let calls = 0;
+    const { recorder, rows } = recorderWithRows(async (row) => {
+      calls += 1;
+      if (calls === 1) throw boom;
+      rows.push(row);
+    });
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+    recorder.recordServiceCall({ source: "tool:search_images", service: "brave_image_search", provider: "brave", requests: 2 });
+    const outcome = await recorder.settleForCharge();
+    expect(outcome.credits).toBe(3);
+    expect(outcome.writeFailures).toEqual([boom]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("waits for every write before answering", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const landed: UsageRow[] = [];
+    const { recorder } = recorderWithRows(async (row) => {
+      await gate;
+      landed.push(row);
+    });
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+    recorder.recordServiceCall({ source: "tool:search_images", service: "brave_image_search", provider: "brave", requests: 2 });
+    let answered = false;
+    const settled = recorder.settleForCharge().then((outcome) => {
+      answered = true;
+      return outcome;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(answered).toBe(false);
+    release();
+    expect(await settled).toEqual({ credits: 3, writeFailures: [] });
+    expect(landed).toHaveLength(2);
+  });
+
+  it("leaves settle throwing on the same failure", async () => {
+    const { recorder } = recorderWithRows(async () => {
+      throw new Error("db down");
+    });
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+    await expect(recorder.settleForCharge()).resolves.toMatchObject({ credits: 1 });
+    await expect(recorder.settle()).rejects.toThrow("db down");
+  });
+});

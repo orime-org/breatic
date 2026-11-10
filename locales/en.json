@@ -2262,7 +2262,8 @@
         },
         "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
         "notWrittenYet": "Uploaded, not added yet",
-        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"
+        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
+        "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
       }
     },
     "readOnlyReconnect": "Reconnect",

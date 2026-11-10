@@ -53,16 +53,34 @@ describe("finalizeTurn", () => {
     await result;
   });
 
-  it("runs every step it was given", async () => {
+  it("charges before it saves the reply", async () => {
+    // inner#1617: the charge request is the turn's earliest durable record,
+    // so it is written before any other write of the turn.
     const { ran, steps } = recorder();
     await finalizeTurn({ steps });
-    expect(ran).toEqual(["persist", "bill"]);
+    expect(ran).toEqual(["bill", "persist"]);
   });
 
-  it("runs the remaining steps when one of them throws", async () => {
-    // Cleanup is independent obligations, not a transaction. Skipping the
-    // charge because the database was down would trade one missing thing
-    // for a worse one, and the reverse costs the user their reply.
+  it("still saves the reply when billing throws", async () => {
+    // Cleanup is independent obligations, not a transaction. Losing the
+    // reply because the charge failed would trade one missing thing for a
+    // worse one.
+    const { ran, steps } = recorder();
+    const boom = new Error("the database is down");
+    const failures = await finalizeTurn({
+      steps: {
+        ...steps,
+        bill: vi.fn(async () => {
+          await Promise.resolve();
+          throw boom;
+        }),
+      },
+    });
+    expect(ran).toEqual(["persist"]);
+    expect(failures).toEqual([{ step: "bill", error: boom }]);
+  });
+
+  it("still charges when saving the reply throws", async () => {
     const { ran, steps } = recorder();
     const failing = {
       ...steps,
@@ -73,6 +91,21 @@ describe("finalizeTurn", () => {
     };
     await finalizeTurn({ steps: failing });
     expect(ran).toEqual(["bill"]);
+  });
+
+  it("reports both failures in the order it tried them", async () => {
+    const billErr = new Error("charge failed");
+    const persistErr = new Error("save failed");
+    const failures = await finalizeTurn({
+      steps: {
+        persist: vi.fn(async () => { throw persistErr; }),
+        bill: vi.fn(async () => { throw billErr; }),
+      },
+    });
+    expect(failures).toEqual([
+      { step: "bill", error: billErr },
+      { step: "persist", error: persistErr },
+    ]);
   });
 
   it("reports what failed instead of swallowing it", async () => {

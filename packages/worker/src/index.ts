@@ -140,9 +140,13 @@ import {
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
+import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
+
+/** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
+const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -157,6 +161,7 @@ const WORKER_QUEUES: readonly string[] = [
   LONG_MEDIA_DISPATCH_QUEUE,
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
+  CREDIT_CHARGE_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -225,6 +230,20 @@ export function startWorker(): void {
     { name: longMediaSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "long_media_dispatch_sweep_schedule_failed");
+  });
+
+  const creditChargeSweepQueue = createQueue(CREDIT_CHARGE_SWEEP_QUEUE);
+  const creditChargeSweep = createWorker<Record<string, never>>(CREDIT_CHARGE_SWEEP_QUEUE, () => sweepCreditCharges());
+  creditChargeSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "credit_charge_sweep_failed");
+  });
+  const creditChargeSweepJob = "credit-charge-sweep";
+  void creditChargeSweepQueue.upsertJobScheduler(
+    creditChargeSweepJob,
+    { every: getWorkerConfig().credit_charge_sweep.interval_ms },
+    { name: creditChargeSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "credit_charge_sweep_schedule_failed");
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
@@ -535,6 +554,7 @@ export function startWorker(): void {
         () => worker.close(),
         () => timelineWorker.close(),
         () => timelineSweep.close(),
+        () => creditChargeSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

@@ -26,6 +26,7 @@ import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
+import type { NodeMediaFields } from "@shared/canvas/node-media.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -691,6 +692,14 @@ export const canvasPasteSchema = z.object({
   history: z.array(pasteHistoryItemSchema).max(1000),
 });
 export type CanvasPasteInput = z.infer<typeof canvasPasteSchema>;
+
+/** `POST /canvas/paste`'s answer (inner#1349, inner#1537). */
+export interface CanvasPasteAnswer {
+  /** Old address → address in the target Studio; null for a cover that could not be filed. */
+  map: Record<string, string | null>;
+  /** Each mapped address in the target Studio and what its ledger row holds, cover included for a video. */
+  media: Record<string, NodeMediaFields>;
+}
 
 // ── Projects ─────────────────────────────────────────────────────────
 

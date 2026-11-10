@@ -41,7 +41,7 @@ const h = vi.hoisted(() => {
     updateData: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
     insertGenerationFailedIfAbsent: vi.fn(),
-    chargeForGeneration: vi.fn(),
+    settleCharge: vi.fn(),
     settleSceneRowById: vi.fn(),
     publishSpaceTasksChanged: vi.fn(async (_projectId: string, _spaceId: string) => undefined),
   };
@@ -101,7 +101,10 @@ vi.mock("@breatic/domain", async () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
-  creditLotService: { chargeForGeneration: h.chargeForGeneration },
+  creditLotService: {
+    settleCharge: h.settleCharge,
+    pendingChargeRequestId: vi.fn(async () => null),
+  },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
@@ -201,7 +204,7 @@ beforeEach(() => {
     mimeType: "model/gltf-binary",
     sizeBytes: 2048,
   }));
-  h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 0.24, shortfall: 0, studioId: "studio-1", lotIds: [] });
+  h.settleCharge.mockResolvedValue({ billed: true, charged: "0.240000", shortfall: "0.000000", studioId: "studio-1", lotIds: [] });
   h.settleSceneRowById.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
 });
 

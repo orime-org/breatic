@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, initCore, initLogger, logger } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { call, initInternalCore, useInternalApp } from "./internal-api-harness.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 import { GRANT_ADMIN, OTHER_ADMIN, applied, expectGrantTables, expectStoredGrant, fundingState, grantBody, grantKey, grantPath, operationPath, postGrant, profilePath, seedDebt, seedPersonal } from "./operator-credit-grant-fixtures.js";
 import type { GrantBody } from "./operator-credit-grant-fixtures.js";
 
@@ -71,7 +72,7 @@ describe("operator credit grants over signed HTTP", () => {
     await seedDebt(suite.sql, fx, "20.000000");
     const result = applied(await postGrant(suite, fx, grantKey(), grantBody(fx, { credits: "99999999999999.99" })));
     expect(result.remainingCredits).toBe("99999999999979.990000");
-    const charged = await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
+    const charged = await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
     expect(charged).toMatchObject({ charged: "0.010000", shortfall: "0.000000" });
     expect(await fundingState(suite.sql, fx)).toMatchObject({ remaining: "99999999999979.980000", debt: "0.000000" });
     const [row] = await suite.sql<{ balance: string; ledger: string }[]>`

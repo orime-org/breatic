@@ -11,7 +11,7 @@ import * as paymentService from "@server/modules/payment/payment.service.js";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
 import { useInternalApp } from "./internal-api-harness.js";
-import { seedDesignatedLot } from "./studio-credit-fixtures.js";
+import { chargeNow, seedDesignatedLot } from "./studio-credit-fixtures.js";
 import { applied, grantBody, grantKey, postGrant, seedPersonal } from "./operator-credit-grant-fixtures.js";
 import type { PersonalFixture } from "./operator-credit-grant-fixtures.js";
 
@@ -74,7 +74,7 @@ describe("decimal-v1 amount format on the public readers", () => {
   it.each([0, 1, 2, 3, 4, 5])("P21 and P22 parse exact decimal data from reader %i", async (index) => {
     const fx = await seedPersonal(suite.sql);
     const original = applied(await postGrant(suite, fx, grantKey()));
-    if (index === 2) await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
+    if (index === 2) await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
     const cookie = await cookieFor(fx.userId);
     const target = readers(fx)[index]!;
     const data = await read(`${target.path}?amountFormat=decimal-v1&limit=1`, cookie);
@@ -123,7 +123,7 @@ describe("decimal-v1 amount format on the public readers", () => {
     const fx = await seedPersonal(suite.sql);
     applied(await postGrant(suite, fx, grantKey()));
     applied(await postGrant(suite, fx, grantKey(), grantBody(fx, { kind: "gift" })));
-    for (let index = 0; index < 2; index++) await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
+    for (let index = 0; index < 2; index++) await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID() });
     const cookie = await cookieFor(fx.userId);
     for (const index of [1, 2, 5]) {
       const target = readers(fx)[index]!;
@@ -211,7 +211,7 @@ describe("decimal-v1 amount format on the public readers", () => {
       const held = await suite.sql<{ reference_id: string; amount: string }[]>`select reference_id,amount::text from credit_holds where reference_id in ${suite.sql(references)} and status='held'`;
       expect(held).toHaveLength(1);
       expect(held[0]!.amount).toBe("0.010000");
-      const charge = await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID(), releaseHold: held[0]!.reference_id });
+      const charge = await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 0.01, referenceId: randomUUID(), releaseHold: held[0]!.reference_id });
       expect(charge).toMatchObject({ charged: "0.010000", shortfall: "0.000000" });
       expect(await suite.sql`select status from credit_holds where reference_id=${held[0]!.reference_id}`).toEqual([{ status: "released" }]);
       expect(await suite.sql`select remaining_credits::text as remaining from credit_lots where user_id=${fx.userId}`).toEqual([{ remaining: "99999999999999.980000" }]);
@@ -259,7 +259,7 @@ describe("decimal-v1 amount format on the public readers", () => {
   it("retains signed charged, consumed and owed values through the real Studio runtime schema", async () => {
     const fx = await seedPersonal(suite.sql);
     await seedDesignatedLot(suite.sql, fx, 100);
-    const outcome = await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130.01, referenceId: randomUUID() });
+    const outcome = await chargeNow({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130.01, referenceId: randomUUID() });
     expect(outcome).toMatchObject({ charged: "100.000000", shortfall: "30.010000" });
     const view = await read(`/api/v1/studio/${fx.studioSlug}/credits?amountFormat=decimal-v1`, await cookieFor(fx.userId));
     expect(view).toMatchObject({ spendable: "-30.010000", debt: "30.010000", held: "0.000000", available: "-30.010000" });

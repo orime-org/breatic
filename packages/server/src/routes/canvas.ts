@@ -376,9 +376,10 @@ canvas.post(
  * `POST /canvas/paste` — a paste or duplicate counts as an upload (inner#1349).
  *
  * Registers every resource the copy names in the project's Studio, writes each
- * copy's history, and answers which address each old one became.
+ * copy's history, and answers which address each old one became and what the
+ * Studio's ledger holds for each.
  * @param c - Hono context with validated `canvasPasteSchema` body.
- * @returns `200` with `{ data: { map } }`.
+ * @returns `200` with `{ data: { map, media } }`.
  * @throws {AppError} 404 with no role on the project, 403 below editor, 507 with no storage left.
  */
 canvas.post(
@@ -390,14 +391,14 @@ canvas.post(
     const user = c.get("user");
     const body = c.req.valid("json");
     await projectService.assertAccess(body.project_id, user.id, "editor");
-    const map = await pasteAssetsService.pasteAssets({
+    const answer = await pasteAssetsService.pasteAssets({
       projectId: body.project_id,
       userId: user.id,
       urls: body.urls,
       pairs: body.pairs,
       history: body.history,
     });
-    return c.json({ data: { map } }, 200);
+    return c.json({ data: answer }, 200);
   },
 );
 

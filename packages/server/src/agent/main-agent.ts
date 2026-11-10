@@ -159,8 +159,7 @@ export class MainAgent {
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
     // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
-    // retries — see domain/src/credit/creditLot.service.ts
-    // `chargeOnceForGeneration`.
+    // retries — see domain/src/credit/creditLot.service.ts `chargeOnce`.
     //
     // Every card still waiting is closed by this message, in the same
     // transaction: its result says the user wrote a message instead, and is
@@ -1305,18 +1304,26 @@ export class MainAgent {
                 replyForModel,
               );
             },
+            // Runs before `persist` (inner#1617): the charge request is
+            // recorded as soon as the turn's usage rows are in, before the
+            // reply is saved.
             bill: async () => {
               // An OpenRouter call whose cost is not in hand is looked up and
               // charged later, under a key of its own.
               await calls?.handOff().catch((err: unknown) =>
                 logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
               );
-              creditsUsed = await usage.settle();
+              const settled = await usage.settleForCharge();
+              for (const err of settled.writeFailures) {
+                logger.error({ err, userId, conversationId, turnIndex }, "agent_usage_record_failed");
+              }
+              creditsUsed = settled.credits;
               if (creditsUsed === 0) return;
 
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
-              const outcome = await creditLotService.chargeOnceForGeneration(
+              const outcome = await creditLotService.chargeOnce(
+                "operation",
                 usage.operation.operationKey,
                 {
                   projectId,
@@ -1357,6 +1364,13 @@ export class MainAgent {
         // logger. This is the layer that knows the user and the
         // conversation.
         for (const stepFailure of failures) {
+          if (stepFailure.step === "bill") {
+            logger.error(
+              { err: stepFailure.error, userId, conversationId, refKey: usage.operation.operationKey, amount: creditsUsed },
+              "credit_charge_settle_failed",
+            );
+            continue;
+          }
           logger.error(
             { err: stepFailure.error, userId, conversationId, step: stepFailure.step },
             "turn_finalizer_step_failed",

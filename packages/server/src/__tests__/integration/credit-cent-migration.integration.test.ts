@@ -272,7 +272,7 @@ describe("migration 0100 on unrounded balances", () => {
     const lotId = await seedDesignatedLot(sql, fx, 100);
     await spendUnrounded(sql, fx, lotId, "0.000001");
 
-    // chargeForGeneration's order: the studio's debt row, then the lot.
+    // settleCharge's order: the studio's debt row, then the lot.
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     let locked!: () => void;

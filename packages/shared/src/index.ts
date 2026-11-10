@@ -383,6 +383,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -888,6 +889,7 @@ export {
 // when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
+  nodeMediaEntries,
   writeNodeMedia,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";

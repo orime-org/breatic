@@ -57,13 +57,17 @@ export async function runUsageLookup(
       logger.error({ row, generationId: data.generationId }, "agent_usage_cost_missing"),
   });
   usage.recordLookedUpCall({ source: data.source, model: data.model, costUsd, tokens: answer?.tokens });
-  const amount = await usage.settle();
+  const { credits: amount, writeFailures } = await usage.settleForCharge();
+  for (const err of writeFailures) {
+    logger.error({ err, generationId: data.generationId }, "agent_usage_record_failed");
+  }
   if (amount === 0 || !data.charge) return;
 
-  // The row is written; a retry would write a second one. A charge that
-  // fails is logged for reconciliation, the way a turn's own charge is.
+  // The charge request is recorded before the settlement, so a settlement
+  // that fails waits pending for the sweep (inner#1617).
+  const refKey = `${data.operationKey}:gen:${data.generationId}`;
   try {
-    const outcome = await creditLotService.chargeOnceForGeneration(`${data.operationKey}:gen:${data.generationId}`, {
+    const outcome = await creditLotService.chargeOnce("operation", refKey, {
       projectId: data.projectId,
       actorUserId: data.actorUserId,
       amount,
@@ -78,6 +82,6 @@ export async function runUsageLookup(
       );
     }
   } catch (err) {
-    logger.error({ err, generationId: data.generationId, amount }, "agent_usage_lookup_charge_failed");
+    logger.error({ err, generationId: data.generationId, refKey, actorUserId: data.actorUserId, amount }, "credit_charge_settle_failed");
   }
 }

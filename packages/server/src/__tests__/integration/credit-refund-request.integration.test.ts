@@ -43,6 +43,7 @@ import { initCore, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { parseCreditDecimal, t } from "@breatic/shared";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-refund-request-test-driver";
 
@@ -257,7 +258,7 @@ describe("a lot that has been spent from", () => {
   it("refuses the ask with 422", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -281,7 +282,7 @@ describe("a lot that has been spent from", () => {
     // rule reads the ledger; a balance check would let this lot through.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,

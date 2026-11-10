@@ -22,7 +22,7 @@ import type * as DomainModule from "@breatic/domain";
 
 const ATTEMPTS = 3;
 const generateTextRetry = vi.fn();
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const consolidationInput = vi.fn(async () => ({ full: [], titlesOnly: [], progress: "" }));
 
@@ -57,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     memoryTitle: actual.memoryTitle,
     countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
   };
 });
 
@@ -133,7 +133,7 @@ describe("one consolidation under any run of answers", () => {
         if (!passed) expect(outcome).toBe("failed");
         if (passed) expect(outcome).toBe(commit === "throws" ? "failed" : commit);
 
-        const keys = chargeOnceForGeneration.mock.calls.map((call) => call[0]);
+        const keys = chargeOnce.mock.calls.map((call) => call[1]);
         expect(keys).toHaveLength(ran.filter((a) => a !== "throws").length);
         expect(new Set(keys).size).toBe(keys.length);
       }),
@@ -167,7 +167,7 @@ describe("one consolidation under any run of answers", () => {
             came += fold.attempts.slice(0, generateTextRetry.mock.calls.length - before).filter((a) => a !== "throws").length;
           }
 
-          const keys = chargeOnceForGeneration.mock.calls.map((call) => call[0]);
+          const keys = chargeOnce.mock.calls.map((call) => call[1]);
           expect(keys).toHaveLength(came);
           expect(new Set(keys).size).toBe(keys.length);
         },

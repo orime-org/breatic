@@ -70,6 +70,7 @@ import * as paymentService from "@server/modules/payment/payment.service.js";
 import * as authService from "@server/modules/auth/auth.service.js";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-entrypoints-test-driver";
 
@@ -256,7 +257,7 @@ describe("预检", () => {
     const { sessionId } = await seedPendingPayment(fx.userId, 30);
     await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -293,12 +294,12 @@ describe("幂等扣费", () => {
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     const refKey = `turn:${fx.projectId}:0`;
-    const first = await creditLotService.chargeOnceForGeneration(refKey, {
+    const first = await creditLotService.chargeOnce("operation", refKey, {
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
     });
-    const second = await creditLotService.chargeOnceForGeneration(refKey, {
+    const second = await creditLotService.chargeOnce("operation", refKey, {
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
