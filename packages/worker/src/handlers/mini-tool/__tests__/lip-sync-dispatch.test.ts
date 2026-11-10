@@ -175,8 +175,8 @@ describe("a planned model run that throws ends with its tool's own reason (execu
     ["an erase", "video.erase", { kind: "erase", step: "expired", category: "timeout" }],
     ["an expand", "video.expand", { kind: "expand", windows: [], shared: { step: "expired", category: "timeout" } }],
     ["a lip-sync", "video.lip-sync", { kind: "lipsync", persons: [], shared: { step: "expired", category: "timeout" } }],
-  ] as const)("LD06 %s whose budget ended before its runner started commits the expiry in its own reason", async (_name, tool, reason) => {
-    throwing(tool, null, new Error("A runner past its budget must not start"));
+  ] as const)("LD06 %s whose runner throws any error once its deadline has passed commits the expiry in its own reason", async (_name, tool, reason) => {
+    throwing(tool, null, new Error("A step failed after the deadline"));
     h.deadline.mockResolvedValue(Date.now() - 1000);
     const completion = await pickup();
     expect(completion).toMatchObject({ error: reason, outputs: [{ outputIndex: 0, result: { status: "failed", error: reason } }] });
