@@ -163,12 +163,12 @@ describe("the shared chunk list (frames-split §5.4 parallel stage; execution de
     expect(ended).toEqual({ keys });
   });
 
-  it("CL04 once the run's deadline has passed no chunk opens a new attempt: a retry due after it is never opened", async () => {
+  it("CL04 once the run's deadline has passed no chunk opens a new attempt: a retry due after it is never opened, its chunk expires", async () => {
     for (const k of [0, 1, 2]) jobs.set(jobOf(k, 1), "running");
     expect(await pickup()).toBeInstanceOf(StillRunning);
     jobs.set(jobOf(0, 1), "failed"); jobs.delete(jobOf(1, 1)); jobs.delete(jobOf(2, 1));
     const passed = Date.now() - 1;
-    await expect(advanceChunks(RUN, [0, 1, 2].map(chunk), passed)).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(await advanceChunks(RUN, [0, 1, 2].map(chunk), passed)).toEqual({ failed: "chunk 0: expired" });
     expect(new Set(opened())).toEqual(new Set([jobOf(0, 1), jobOf(1, 1), jobOf(2, 1)]));
   });
 });

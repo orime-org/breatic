@@ -55,6 +55,8 @@ export async function registered(asset: StudioAssetEntity): Promise<NonNullable<
  * @throws {never} Never.
  */
 function failedResult(reason: string): NonNullable<VideoToolResult> {
+  // A step that ended at the run's deadline expired, as the run itself does (run-execution-task's DeadlinePassed failure).
+  if (reason === "expired") return { status: "failed", error: { code: "expired" } };
   return { status: "failed", error: { code: "mini_tool_failed", message: reason } };
 }
 
@@ -115,7 +117,13 @@ async function advanceBatch(execution: VideoTool, ledger: VideoPresentationLedge
     const pending = outputs.filter((index) => !pickup.results.has(index));
     if (pending.length === 0) return;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
-    const { step, request: stored } = await jobStep(execution.taskId, jobId, execution.container.containerClass);
+    const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt);
+    // An attempt due after the deadline is never opened: the outputs it would carry expire, the other batches settle.
+    if (found === null) {
+      for (const index of pending) pickup.results.set(index, failedResult("expired"));
+      return;
+    }
+    const { step, request: stored } = found;
     let request = stored;
     if (request === null) {
       const planned = pending.map((index) => plannedOutput(execution, ledger, index));
@@ -199,11 +207,14 @@ async function advanceEncode(execution: VideoTool, ledger: VideoPresentationLedg
  * @param execution - The frozen run.
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
+ * @param pickup - The pickup's results, filled in place as outputs settle, so a caller still holds the outputs registered
+ * before a throw.
  * @returns Every output settled so far, and whether any job still runs.
  * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the frozen ledger fails its receipt.
  * @throws {Error} When the ledger read fails in transport, or persistence, grants or registration fail.
  */
-export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number): Promise<VideoToolPickup> {
+export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number,
+  pickup: VideoToolPickup = { results: new Map(), waiting: false }): Promise<VideoToolPickup> {
   if (execution.tool !== "video.extract-frames" && execution.tool !== "video.split") throw new Error("A frames or split runner requires a frames or split run");
   let ledger: VideoPresentationLedger;
   try {
@@ -214,7 +225,6 @@ export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution,
     logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_video_tool_ledger_invalid");
     throw new UpstreamTaskFailed("container", "source_ledger_invalid");
   }
-  const pickup: VideoToolPickup = { results: new Map(), waiting: false };
   for (const [batch, outputs] of execution.layout.batches.entries()) await advanceBatch(execution, ledger, batch, outputs, userId, deadlineAt, pickup);
   for (const encode of execution.layout.encodes) await advanceEncode(execution, ledger, encode, userId, deadlineAt, pickup);
   return pickup;

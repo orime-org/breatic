@@ -29,7 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob, OpenMiniToolPlanJobInput } from "@breatic/domain";
-import { videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
+import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, segmentRecipesOf } from "@worker/handlers/video-presentation-recipes.js";
@@ -678,5 +678,132 @@ describe("the container of an oversized segment's chunks follows the plan's alph
     expect(chunks.map((output) => ({ contentType: output.contentType, format: (output.recipe as { target: { format: string } }).target.format })))
       .toEqual([0, 1].map(() => ({ contentType, format })));
     expect(submitted().map((request) => request.outputs[0]!.contentType)).toEqual([contentType]);
+  });
+});
+
+// An attempt due after the run's deadline ends its step as expired instead of throwing for the whole pickup, so the other
+// outputs of the same pickup settle; and an output registered in a pickup that then throws stays registered.
+describe("an attempt due after the deadline and an output registered before a throw", () => {
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
+  const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
+  const LAYOUT = { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] };
+  const RECIPES2 = [WHOLE, RECIPES["video.split"][1]!];
+  const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
+  /**
+   * A run-chunk attempt's id.
+   * @param output - The output.
+   * @param chunk - The chunk.
+   * @param attempt - The attempt.
+   * @returns The id.
+   */
+  const chunkOf = (output: number, chunk: number, attempt = 1): string => videoContainerJobId({ kind: "run-chunk", taskId: TASK, output, chunk, attempt });
+  /**
+   * A run-stitch attempt's id.
+   * @param output - The output.
+   * @param attempt - The attempt.
+   * @returns The id.
+   */
+  const stitchOf = (output: number, attempt = 1): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output, attempt });
+  // The jobs ingest holds; as the real boundary, a job not yet submitted is never submitted after its deadline.
+  let held: Set<string>;
+  // Jobs whose answer moves the clock past the deadline: a chunk's report (or a read failing past the reporting window,
+  // "throws"); a registered job named here reports failed.
+  let atDeadline: Map<string, Record<string, unknown> | "throws">;
+  const failedReport = { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DEADLINE - 60_000);
+    held = new Set(); atDeadline = new Map();
+    h.advancePlan.mockImplementation(async (request: MiniToolPlanJobRequest) => {
+      if (!held.has(request.jobId) && Date.now() >= request.deadlineAt) throw new DeadlinePassed();
+      held.add(request.jobId);
+      const answer = atDeadline.get(request.jobId);
+      if (answer === undefined) return advancePlan(request);
+      // A read that fails once the reporting window (two polls past the deadline) has closed throws DeadlinePassed.
+      if (answer === "throws") { vi.setSystemTime(DEADLINE + 10_001); throw new DeadlinePassed(); }
+      vi.setSystemTime(DEADLINE + 1);
+      return answer;
+    });
+    h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
+      const stored = steps.find((item) => item.id === input.stepId)?.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined;
+      const request = stored ?? input.request;
+      if (!held.has(request.jobId) && Date.now() >= request.deadlineAt) throw new DeadlinePassed();
+      held.add(request.jobId);
+      if (atDeadline.has(request.jobId)) {
+        vi.setSystemTime(DEADLINE + 1);
+        scripted.set(request.jobId, { written: [], state: "failed" });
+      }
+      return advance(input);
+    });
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  /**
+   * What was opened once the clock passed the deadline: steps appended, grants, chunk jobs and registered jobs.
+   * @param before - The counts when the clock passed it.
+   * @param before.ensure - Steps appended.
+   * @param before.grants - Grants opened.
+   * @param before.open - Chunk jobs opened.
+   * @param before.advance - Registered jobs advanced.
+   * @returns The calls since.
+   */
+  function since(before: { ensure: number; grants: number; open: number }): { ensure: number; grants: number; open: string[] } {
+    return { ensure: h.ensure.mock.calls.length - before.ensure, grants: h.grants.mock.calls.length - before.grants,
+      open: h.openPlan.mock.calls.slice(before.open).map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId) };
+  }
+
+  it("DL01 a chunk due a new attempt after the deadline expires its segment while the other segment's stitch registered in the same pickup", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    // Output 0's stitch reports done; output 1's chunk was killed at the deadline, so its next attempt is due after it.
+    scripted.delete(stitchOf(0)); scripted.delete(chunkOf(1, 0));
+    atDeadline.set(chunkOf(1, 0), failedReport);
+    const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    expect(since(counts)).toEqual({ ensure: 0, grants: 0, open: [chunkOf(1, 0)] });
+  });
+
+  it("DL02 a stitch due a new attempt after the deadline expires its segment and opens no grant, step or job", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(stitchOf(1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.delete(stitchOf(1));
+    atDeadline.set(stitchOf(1), failedReport);
+    const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    expect(since(counts)).toMatchObject({ ensure: 0, grants: 0 });
+    expect(submitted().map((request) => request.jobId)).not.toContain(stitchOf(1, 2));
+  });
+
+  it("DL03 a batch due a new attempt after the deadline expires its outputs and opens no grant, step or job", async () => {
+    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
+    scripted.set(batchId(1, 1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.delete(batchId(1, 1));
+    atDeadline.set(batchId(1, 1), failedReport);
+    const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    expect(since(counts)).toMatchObject({ ensure: 0, grants: 0 });
+    expect(submitted().map((request) => request.jobId)).not.toContain(batchId(1, 2));
+  });
+
+  it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {
+    serve(plan("video.split", LAYOUT, 1, RECIPES2));
+    scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    // Output 0's stitch registers; output 1's chunk read then fails past its reporting window.
+    scripted.delete(stitchOf(0)); scripted.delete(chunkOf(1, 0));
+    atDeadline.set(chunkOf(1, 0), "throws");
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(completion!.outputs[0]!.result).toMatchObject({ status: "registered" });
   });
 });

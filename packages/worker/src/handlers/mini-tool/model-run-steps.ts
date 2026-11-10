@@ -14,7 +14,7 @@ import {
   recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson, type RecordMiniToolStepResultInput,
 } from "@breatic/domain";
 import {
-  assertBeforeDeadline, DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
+  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
   type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
@@ -247,17 +247,19 @@ export function storedRequest(step: Step): MiniToolPlanJobRequest | null {
 
 /**
  * The step of a registered job's attempt: the one whose stored request names its job id, else a new one appended after the
- * task's steps.
+ * task's steps while the deadline has not passed (an attempt opened after it is never submitted).
  * @param taskId - The task.
  * @param jobId - The job id.
  * @param endpoint - The class the job runs on.
- * @returns The step and its stored request, if it has one.
+ * @param deadlineAt - The task deadline.
+ * @returns The step and its stored request, if it has one; null when no step holds the job and the deadline has passed.
  * @throws {Error} When persistence fails.
  */
-export async function jobStep(taskId: string, jobId: string, endpoint: string): Promise<{ step: Step; request: MiniToolPlanJobRequest | null }> {
+export async function jobStep(taskId: string, jobId: string, endpoint: string, deadlineAt: number): Promise<{ step: Step; request: MiniToolPlanJobRequest | null } | null> {
   const steps = await upstreamStepRepo.listSteps(taskId);
   const found = steps.find((step) => storedRequest(step)?.jobId === jobId);
   if (found !== undefined) return { step: found, request: storedRequest(found) };
+  if (Date.now() >= deadlineAt) return null;
   return { step: await appendStep(taskId, { kind: "container_job", endpoint, itemIndex: steps.length }), request: null };
 }
 
@@ -432,9 +434,9 @@ export type ContainerStep = ContainerStepRequest & ({ stepKey: string; jobId?: (
  * @param planned - The step.
  * @param deadlineAt - The task deadline.
  * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
- * @returns The output, the failure, or null when the next attempt is not opened.
+ * @returns The output, the failure (`expired` when a next attempt is due after the deadline), or null when the next attempt
+ * is not opened.
  * @throws {StillRunning} While a job runs.
- * @throws {DeadlinePassed} When a next attempt is due after the deadline.
  * @throws {Error} When persistence or the job boundary fails.
  */
 async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadlineAt: number, open: boolean): Promise<StepEnded | null> {
@@ -449,8 +451,9 @@ async function advanceAttempts(run: ModelStepRun, planned: ContainerStep, deadli
       if (original !== null) return { key: original };
     }
     if (existing === undefined && !open) return null;
-    // An attempt opened after the deadline is never submitted, so it is never opened.
-    if (existing === undefined) assertBeforeDeadline(deadlineAt);
+    // An attempt opened after the deadline is never submitted, so it is never opened: the step ends expired, and the other
+    // steps and outputs of the pickup settle as they stand.
+    if (existing === undefined && Date.now() >= deadlineAt) return planned.failed("expired");
     const state = existing === undefined ? null : stateOf(existing);
     if (existing !== undefined && state?.result?.outcome === "failed") {
       const failed = readMiniToolPlanJobReport(storedRequest(existing)!, state.result.result);
@@ -597,7 +600,8 @@ export interface RegisteredStep {
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
- * @returns The registered output, or the last attempt's reason once every attempt failed.
+ * @returns The registered output, the last attempt's reason once every attempt failed, or `expired` when a next attempt is
+ * due after the deadline.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence, grants or registration fail.
  */
@@ -610,6 +614,8 @@ export async function advanceRegistered(run: ModelStepRun, planned: RegisteredSt
     let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
     let request = step === undefined ? null : storedRequest(step);
     if (request === null) {
+      // An attempt opened after the deadline is never submitted, so no grant, step or job is opened for it.
+      if (Date.now() >= deadlineAt) return { failed: "expired" };
       const built = await planned.build();
       const [grant] = await openContainerOutputs({ projectId: run.projectId, actingUserId: userId, taskId: run.taskId, deadlineAt,
         outputs: [{ modality: "video", namePrefix: planned.namePrefix, ...(planned.container === "webm" ? { container: "webm" as const } : {}) }] });

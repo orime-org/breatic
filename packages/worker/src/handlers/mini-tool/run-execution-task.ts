@@ -10,7 +10,7 @@ import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@br
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
 import { commitMiniToolExecutionProgress, finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
-import { runMiniToolVideoTool } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { runMiniToolLipSync } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import { runMiniToolTransitions } from "@worker/handlers/mini-tool/run-transitions.js";
 import { runMiniToolErase } from "@worker/handlers/mini-tool/run-erase.js";
@@ -50,6 +50,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
       phase = "computation";
       // Where a model run stands, so a throw still ends it with its tool's own reason (§9.4, §10.4, §10.5).
       const at: ModelRunAt = { position: null };
+      // What this pickup settled so far, kept when a later step throws: an output registered here is never shown failed.
+      const settled: VideoToolPickup = { results: new Map(), waiting: false };
       try {
         assertBeforeDeadline(deadlineAt);
         if (execution.tool !== "video.remove-bg") {
@@ -59,7 +61,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           const pickup = execution.tool === "video.lip-sync" ? await runMiniToolLipSync(execution, task.userId, deadlineAt, at)
             : execution.tool === "video.transitions" ? await runMiniToolTransitions(execution, task.userId, deadlineAt)
               : execution.tool === "video.erase" ? await runMiniToolErase(execution, task.userId, deadlineAt, at)
-                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt, at) : await runMiniToolVideoTool(execution, task.userId, deadlineAt);
+                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt, at) : await runMiniToolVideoTool(execution, task.userId, deadlineAt, settled);
           const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
           // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
           if (pickup.waiting || outputs.some((output) => output.result === null)) {
@@ -103,11 +105,12 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           : error instanceof DeadlinePassed ? { code: "expired" }
             : error instanceof AppError || error instanceof UpstreamTaskFailed ? { code: "mini_tool_failed", message: error.message }
               : { code: "internal" };
-        // Only outputs not yet committed fail; a committed result is never rewritten (design line 622).
+        // Only outputs not yet committed or registered in this pickup fail; a committed result is never rewritten (design line 622).
         completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
           outputs: execution.outputs.map((output, index) => {
             const held = record.outputs[index]?.result;
-            return { ...output, result: held?.status === "registered" ? held : { status: "failed", error: failure }, late: false };
+            const now = settled.results.get(output.outputIndex);
+            return { ...output, result: held?.status === "registered" ? held : now?.status === "registered" ? now : { status: "failed", error: failure }, late: false };
           }),
           error: failure, consumptionSet: "uncertain" };
       }
