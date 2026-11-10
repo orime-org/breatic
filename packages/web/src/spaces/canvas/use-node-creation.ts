@@ -47,6 +47,7 @@ import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
 import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
 import {
   proposalMentionOf,
+  writeDialogueLines,
   writeProposalPrompt,
   type MentionOf,
   type ProposalMention,
@@ -619,6 +620,7 @@ export function useNodeCreation(
               // each shot.
               const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
               if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
+              if (fragment && node.lines) writeDialogueLines(fragment, node.lines, mentionOf);
               if (node.shots) {
                 const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
                 node.shots.forEach((shot, k) => {

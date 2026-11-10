@@ -24,6 +24,7 @@ import { markText, type CanvasProposal, type NodeType, type PromptSegment } from
 
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -170,6 +171,47 @@ export function writeProposalPrompt(
 ): void {
   const { notes, lines } = layOut(segments, mentionOf);
   const blocks = [...notes.map(noteBlock), ...lines.map(lineBlock)];
+  /**
+   * Swap the fragment's whole content for the new blocks.
+   */
+  const replace = (): void => {
+    if (prompt.length > 0) prompt.delete(0, prompt.length);
+    prompt.insert(0, blocks);
+  };
+  if (prompt.doc) prompt.doc.transact(replace);
+  else replace();
+}
+
+/**
+ * Write a dialogue's lines into a generation node's prompt fragment
+ * (inner#1825 design 8.5): each line one paragraph carrying its speaker, the
+ * notes of every line on top. Replacement, as {@link writeProposalPrompt}.
+ * @param prompt - The node's prompt fragment for that mode.
+ * @param lines - Each line's speaker, from 1, and words.
+ * @param mentionOf - What each ref mentions; a template's lines have none.
+ * @throws {never} Never.
+ */
+export function writeDialogueLines(
+  prompt: Y.XmlFragment,
+  lines: ReadonlyArray<{ readonly speaker: number; readonly prompt: readonly PromptSegment[] }>,
+  mentionOf: MentionOf = () => undefined,
+): void {
+  const laid = lines.map((line) => ({ speaker: line.speaker, ...layOut(line.prompt, mentionOf) }));
+  const blocks = [
+    ...laid.flatMap(({ notes }) => notes.map(noteBlock)),
+    ...laid.map(({ speaker, lines: parts }) => {
+      // A line is one paragraph: a break inside it reads as a space.
+      const joined: Part[] = [];
+      for (const part of parts.flatMap((line, at) => (at === 0 ? line : [' ', ...line]))) {
+        const last = joined[joined.length - 1];
+        if (typeof part === 'string' && typeof last === 'string') joined[joined.length - 1] = last + part;
+        else joined.push(part);
+      }
+      const block = lineBlock(joined);
+      block.setAttribute(SPEAKER_ATTR, speaker as unknown as string);
+      return block;
+    }),
+  ];
   /**
    * Swap the fragment's whole content for the new blocks.
    */
