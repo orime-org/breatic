@@ -28,7 +28,7 @@ export function fetchAgentInstructions(projectId: string): Promise<AgentInstruct
 /**
  * Save a Project's instructions for the Agent exactly as typed.
  * @param projectId - The Project.
- * @param text - The text as typed; one with no visible character clears them.
+ * @param text - The text as typed; one that is empty or only whitespace clears them.
  * @returns The instructions now in place.
  * @throws {ApiException} When the server refuses or cannot be reached.
  */

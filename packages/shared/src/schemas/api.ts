@@ -931,7 +931,7 @@ export const agentInstructionsQuerySchema = z.object({
 
 /**
  * Body for saving a Project's instructions for the Agent. The text is kept
- * exactly as typed; one with no visible character clears them.
+ * exactly as typed; one that is empty or only whitespace clears them.
  */
 export const agentInstructionsSaveSchema = z.object({
   project_id: z.string().uuid(),

@@ -45,8 +45,8 @@ export async function read(projectId: string, userId: string): Promise<AgentInst
 }
 
 /**
- * Save the Project's instructions as typed; a text with no visible character
- * clears them.
+ * Save the Project's instructions as typed; a text that is empty or only
+ * whitespace clears them.
  * @param projectId - The Project.
  * @param userId - Who is saving.
  * @param text - The text as typed.

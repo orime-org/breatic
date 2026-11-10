@@ -2256,7 +2256,7 @@ export const agentMemories = pgTable(
 );
 
 /**
- * A Project's instructions for the Agent (0121, #1400): one row per Project,
+ * A Project's instructions for the Agent (0122, #1400): one row per Project,
  * sent at the end of the system prompt on every request there. Clearing sets
  * `deleted_at`; a later save brings the same row back.
  */

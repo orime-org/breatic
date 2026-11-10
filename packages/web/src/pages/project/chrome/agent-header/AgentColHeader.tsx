@@ -68,7 +68,7 @@ interface AgentColHeaderProps {
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.creating - Whether a new conversation is still being made.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
- * @returns The agent column header row with history, editable title, and new-conversation actions.
+ * @returns The agent column header row with history, editable title, Project instructions and new-conversation actions.
  */
 export function AgentColHeader({
   projectId,

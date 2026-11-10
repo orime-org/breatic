@@ -221,8 +221,8 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
       if (!res.ok()) throw new Error(`memory message: ${String(res.status())} ${await res.text()}`);
       if (!/"toolName":"save_memory"/.test(await res.text())) throw new Error(`the memory turn of ${scenario.id} saved no entry`);
     }
-    // After the memory turn: saved first, the instructions make the agent
-    // decline to keep a memory that conflicts with them.
+    // After the memory turn, so its entry is saved before the instructions
+    // exist: the judged run then checks that the instructions win over it.
     if (scenario.instructions !== undefined) {
       await dataOf(await api.put('/api/v1/chat/instructions', { data: { project_id: project.id, text: scenario.instructions } }), 'save instructions');
     }

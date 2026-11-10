@@ -421,7 +421,7 @@ chat.get("/instructions", validate("query", agentInstructionsQuerySchema), async
 
 /**
  * `PUT /chat/instructions` — save the Project's instructions for the Agent as
- * typed; a text with no visible character clears them (#1400).
+ * typed; a text that is empty or only whitespace clears them (#1400).
  * @param c - Hono context with `{ project_id, text }`
  * @returns The instructions now in place
  * @throws {AppError} `404` for a non-member, `403` for a member who may not edit

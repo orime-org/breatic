@@ -11,7 +11,7 @@
  *   caller is asked to sign in (401) — the answers `assertAccess(…, "editor")`
  *   gives every chat endpoint
  * - the stored row: one per project, text kept exactly as typed, the last save
- *   wins, a text with no visible character clears it (soft delete) and a later
+ *   wins, an empty or whitespace-only text clears it (soft delete) and a later
  *   save brings it back
  * - the limit: 10000 characters, refused by the validator
  * - an archived project refuses it as it refuses opening chat there
@@ -334,7 +334,7 @@ describe("GET / PUT /chat/instructions — what is stored", () => {
     expect(rows[0]!.updated_by_user_id).toBe(editor.id);
   });
 
-  it("clears on a text with no visible character, keeping the row soft-deleted", async () => {
+  it("clears on a whitespace-only text, keeping the row soft-deleted", async () => {
     const s = await seedProject();
     await viewOf(await putInstructions(s.projectId, "something", s.owner.cookie));
 
