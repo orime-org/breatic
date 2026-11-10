@@ -15,7 +15,7 @@ import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { waitForUploadEnding } from '@web/data/upload/upload-status';
-import { renewOnWorker } from '@web/lib/claim-renewal';
+import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import {

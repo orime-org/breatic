@@ -397,6 +397,18 @@ describe('failures and retry', () => {
     expect(kindOf(doc, cid(1))).toBe('upload');
   });
 
+  it('retries a failed registration read without sending the file again', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValueOnce(new Error('network')).mockResolvedValue(registeredVideo(5));
+    const { doc, uploads } = open([uploadClip(cid(1), V2, 0)]);
+    uploads.start(UPLOAD_ID, FILE);
+    pending[0]?.resolve(STORED);
+    await vi.waitFor(() => expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'failed', retryable: true }));
+    uploads.retry(UPLOAD_ID);
+    await vi.waitFor(() => expect(kindOf(doc, cid(1))).toBe('video'));
+    expect(uploadMedia).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(timelineApi.resolveAsset).mock.calls.map(([, assetId]) => assetId)).toEqual([ASSET_ID, ASSET_ID]);
+  });
+
   it('fails without retry when the upload registered as something other than a video', async () => {
     const image: ProjectRegisteredAsset = registeredVideo(null, { kind: 'image', mimeType: 'image/png' });
     vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(image);

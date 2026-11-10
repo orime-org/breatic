@@ -13,9 +13,8 @@ import type { TimelineClip } from '@breatic/shared';
 import type { UploadFailureReason } from '@web/data/upload/media-upload';
 import type { useTranslation } from '@web/i18n/use-translation';
 import { useDocProvider, type WriteAccess } from '@web/data/yjs/collab-socket';
+import { claimIn, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
-import { claimIn } from '@web/spaces/document/document-pending-status';
-import type { UploadClaim } from '@web/spaces/document/document-upload-controller';
 import { timelineUploadWriteAccess, type TimelineUploadEntry, type TimelineUploads } from '@web/spaces/timeline/timeline-uploads';
 
 /** What a placeholder shows: its `data-state`, this page's progress and failure, and whether this page can retry it. */
@@ -60,7 +59,8 @@ export function timelineUploadText(t: ReturnType<typeof useTranslation>, view: T
 
 /**
  * What every upload placeholder of an open Timeline shows, by clip id, following this page's uploads, its write access
- * and the claims in awareness.
+ * and the claims in awareness. The snapshot is computed from those facts, so a body shown again after its tab was
+ * hidden reads what changed meanwhile, as the Document's pending blocks do (`document-pending-uploads.tsx`).
  * @param name - The document name.
  * @param uploads - The document's upload controller.
  * @param clips - The readable clips.
@@ -69,28 +69,24 @@ export function timelineUploadText(t: ReturnType<typeof useTranslation>, view: T
  */
 export function useTimelineUploadViews(name: string, uploads: TimelineUploads, clips: readonly TimelineClip[]): ReadonlyMap<string, TimelineUploadView> {
   const provider = useDocProvider(name);
-  const version = React.useRef(0);
   const subscribe = React.useCallback((listener: () => void): (() => void) => {
-    /** Count a change so the next read sees a new version, then tell React. */
-    const changed = (): void => { version.current += 1; listener(); };
-    const stop = uploads.subscribe(changed);
-    provider?.awareness?.on('change', changed);
-    provider?.on('authenticated', changed);
-    provider?.on('authenticationFailed', changed);
+    const stop = uploads.subscribe(listener);
+    provider?.awareness?.on('change', listener);
+    provider?.on('authenticated', listener);
+    provider?.on('authenticationFailed', listener);
     return () => {
       stop();
-      provider?.awareness?.off('change', changed);
-      provider?.off('authenticated', changed);
-      provider?.off('authenticationFailed', changed);
+      provider?.awareness?.off('change', listener);
+      provider?.off('authenticated', listener);
+      provider?.off('authenticationFailed', listener);
     };
   }, [uploads, provider]);
-  const read = React.useCallback((): number => version.current, []);
-  const current = React.useSyncExternalStore(subscribe, read);
-  return React.useMemo(() => {
-    void current;
+  const read = React.useCallback((): string => {
     const access = timelineUploadWriteAccess(name);
     const states = provider?.awareness?.getStates() as ReadonlyMap<number, Record<string, unknown>> | undefined;
-    return new Map(clips.flatMap((clip) => clip.kind !== 'upload' ? [] : [[clip.id, timelineUploadView(uploads.entry(clip.upload.uploadId), access,
-      states === undefined ? null : claimIn(states, clip.upload.uploadId))] as const]));
-  }, [current, name, provider, uploads, clips]);
+    return JSON.stringify(clips.flatMap((clip) => clip.kind !== 'upload' ? [] : [[clip.id, timelineUploadView(uploads.entry(clip.upload.uploadId), access,
+      states === undefined ? null : claimIn(states, clip.upload.uploadId))]]));
+  }, [name, provider, uploads, clips]);
+  const key = React.useSyncExternalStore(subscribe, read);
+  return React.useMemo(() => new Map(JSON.parse(key) as Array<[string, TimelineUploadView]>), [key]);
 }

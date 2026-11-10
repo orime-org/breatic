@@ -9,7 +9,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { claimIn, pendingStatus } from '@web/spaces/document/document-pending-status';
+import { claimIn } from '@web/lib/upload-claims';
+import { pendingStatus } from '@web/spaces/document/document-pending-status';
 import type { UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 const FAILURE: UploadFailure = { reason: 'failed', retryable: true };
