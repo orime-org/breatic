@@ -25,7 +25,7 @@ import {
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
-import { checkParams, gateWords, isDrawn } from "@domain/agent/tools/proposal-params-check.js";
+import { checkParams, drawnWaysIn, gateWords, isDrawn, placeDrawn } from "@domain/agent/tools/proposal-params-check.js";
 import {
   aNode,
   entriesFor,
@@ -93,7 +93,7 @@ function entryOf(node: ProposalNode): ModelEntry | undefined {
  * @returns True when the panel draws the prompt box for this run.
  * @throws {never} Never.
  */
-function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean {
+export function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean {
   const entry = entryOf(node);
   return entry === undefined ? chosen.takesPrompt : promptTaken(entry, node.mode, node.params ?? {});
 }
@@ -228,8 +228,10 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
     return refuse("slot-gated-off", `"${from.name}" goes into "${entry.way.into}" of "${node.name}", and "${chosen.name}" draws "${entry.way.into}" only while ${gateWords(info.gate)}.`);
   }
   // Over a way's room is said first: every count below would otherwise ask
-  // for a mark or note for a node that may not stay.
-  for (const [kind, list] of waysIn(chosen)) {
+  // for a mark or note for a node that may not stay. Only the places drawn for
+  // the node's settings are room.
+  const params = node.params ?? {};
+  for (const [kind, list] of drawnWaysIn(chosen, params)) {
     for (const option of list) {
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
@@ -237,7 +239,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       // The rule for each kind of node going this way, and the room and
       // holders of every other way the kind has.
       const holdings = [...new Set(going.map(holdingOf))];
-      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding)));
+      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding).filter((entry) => placeDrawn(chosen, params, entry.way.into))));
       const others = list.filter((way) => way !== option).map((way) => `"${way.into}" takes ${roomOf(way.room)} ${kind} node(s) and holds ${namesOrNone(goingWay(arriving, kind, way.into))}.`);
       return refuse("way-over-room", [over, ...rules, ...others].join(" "));
     }

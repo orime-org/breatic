@@ -51,7 +51,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
+import { checkGenerateNode, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
@@ -82,7 +82,7 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
     ...proposal,
     nodes: proposal.nodes.map((node) => {
       const chosen = chosenModelOf(node);
-      return chosen === undefined ? node : { ...node, takesPrompt: chosen.takesPrompt };
+      return chosen === undefined ? node : { ...node, takesPrompt: takesPromptHere(node, chosen) };
     }),
   };
 }

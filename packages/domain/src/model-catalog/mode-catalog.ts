@@ -7,6 +7,7 @@
 import {
   appliesInMode,
   canConnect,
+  gateParams,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   missingSources,
@@ -580,7 +581,11 @@ function modelsIn(
         ? { maxInputChars: entry.max_input_chars }
         : {}),
       takesPrompt: entry.takes_prompt,
-      ...(entry.prompt_when !== undefined ? { promptWhen: entry.prompt_when } : {}),
+      // A condition on a setting this mode does not have never holds back the
+      // prompt here (`promptTaken` reads the mode's own params).
+      ...(entry.prompt_when !== undefined && gateParams(entry.prompt_when).every((name) => appliesInMode(entry.params?.[name] ?? {}, mode))
+        ? { promptWhen: entry.prompt_when }
+        : {}),
       ...(entry.camera_commands !== undefined
         ? { cameraCommands: entry.camera_commands.map((command) => command.name) }
         : {}),

@@ -9,7 +9,7 @@ import { PANEL_EDITOR_PARAM, gateHolds, type ParamGate, type ProposalNode } from
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { boxReason, slotSentence, spaced } from "@domain/agent/tools/proposal-routing.js";
-import type { ModelInfo, ParamInfo } from "@domain/model-catalog/mode-catalog.js";
+import { waysIn, type ModelInfo, type ParamInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
 import { onStep } from "@domain/model-catalog/param-declaration.js";
 
 /**
@@ -53,6 +53,37 @@ export function isDrawn(
   const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, declared]) => [name, declared.default]));
   const given = Object.entries(params).filter(([, value]) => value !== null && value !== undefined);
   return gateHolds(info.gate, { ...defaults, ...Object.fromEntries(given) });
+}
+
+/**
+ * Whether the panel draws the place a way goes into for these settings: the
+ * pool and the boxes always, a slot only while its gate holds.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @param params - What the proposal fills in.
+ * @param into - The way's place.
+ * @returns True when the user will have that place in front of them.
+ * @throws {never} Never.
+ */
+export function placeDrawn(chosen: ModelInfo, params: Record<string, unknown>, into: string): boolean {
+  const info = chosen.params[into];
+  return info === undefined || isDrawn(chosen, params, info);
+}
+
+/**
+ * Every way a model takes each kind of node, as its panel draws them for these
+ * settings: Mureka V9.5 Song beside style and references has no melody slot.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @param params - What the proposal fills in.
+ * @returns Per kind, its drawn ways in declaration order.
+ * @throws {never} Never.
+ */
+export function drawnWaysIn(chosen: ModelInfo, params: Record<string, unknown>): Map<WayKind, WayIn[]> {
+  const drawn = new Map<WayKind, WayIn[]>();
+  for (const [kind, list] of waysIn(chosen)) {
+    const kept = list.filter((way) => placeDrawn(chosen, params, way.into));
+    if (kept.length > 0) drawn.set(kind, kept);
+  }
+  return drawn;
 }
 
 /**

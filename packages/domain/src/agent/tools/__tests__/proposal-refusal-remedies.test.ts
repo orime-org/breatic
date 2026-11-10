@@ -580,6 +580,8 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       [{ fromIndex: 3, toIndex: 4, into: "lyrics" }],
     ),
     states: ['by "song", and 3 are going that way ("A", "X", "C")', '"vocal" takes 1 audio node(s) and holds "X".'],
+    // Melody is not drawn beside style and references, so it is no room to name.
+    absent: ['"melody"'],
   }],
   "ref-missing": [{
     meets: group([WORDS, { ...STORY }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

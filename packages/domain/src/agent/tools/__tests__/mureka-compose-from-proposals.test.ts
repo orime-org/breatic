@@ -14,7 +14,8 @@ import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-const { checkProposal } = await import("../propose-canvas-action.js");
+const { answerFor, checkProposal } = await import("../propose-canvas-action.js");
+const { inputSchema } = await import("../proposal-input.js");
 const { renderGenerationModelsForModel } = await import("../generation-models.js");
 const { modelsForMode } = await import("@domain/model-catalog/mode-catalog.js");
 
@@ -59,6 +60,20 @@ describe("a Mureka V9.5 Song proposal composing from a melody", () => {
     expect(verdict.ok ? "" : verdict.reason).toContain(`"${MUREKA}" draws its prompt box only while "compose_from" is "references"`);
   });
 
+  it("lands as a node that takes no prompt, so the card and the canvas write none", () => {
+    const answer = answerFor(inputSchema.parse(song("melody", { params: { compose_from: "melody" }, prompt: [NOTE] })));
+    expect(answer.placed === false ? answer.reason : answer.nodes[2]?.takesPrompt).toBe(false);
+  });
+
+  it("counts the melody slot alone as room for empty audio", () => {
+    const proposal = song("melody", { params: { compose_from: "melody" }, prompt: [NOTE, NOTE] });
+    proposal.nodes.splice(2, 0, { role: "source", type: "audio", name: "Extra" });
+    proposal.edges = [{ fromIndex: 0, toIndex: 3, into: "lyrics" }, { fromIndex: 1, toIndex: 3, into: "melody" }];
+    const verdict = checkProposal(proposal);
+    expect(verdict).toMatchObject({ ok: false, refusal: "sources-over-room" });
+    expect(verdict.ok ? "" : verdict.reason).toContain("hold 1 at a time");
+  });
+
   it("is refused a song the panel does not draw", () => {
     const verdict = checkProposal(song("song", { params: { compose_from: "melody" }, prompt: [NOTE] }));
     expect(verdict).toMatchObject({ ok: false, refusal: "slot-gated-off" });
@@ -73,6 +88,11 @@ describe("a Mureka V9.5 Song proposal composing from style and references", () =
     expect(verdict.ok ? "" : verdict.reason).toContain(`draws "melody" only while "compose_from" is "melody"`);
   });
 
+  it("lands as a node that takes its prompt", () => {
+    const answer = answerFor(inputSchema.parse(song("song", { prompt: [{ text: "warm indie folk " }, NOTE] })));
+    expect(answer.placed === false ? answer.reason : answer.nodes[2]?.takesPrompt).toBe(true);
+  });
+
   it("stands on a style, the lyrics and a song", () => {
     expect(checkProposal(song("song", { prompt: [{ text: "warm indie folk " }, NOTE] }))).toEqual({ ok: true });
   });
@@ -85,5 +105,12 @@ describe("the listing of Mureka V9.5 Song in Reference to Music", () => {
     expect(line("melody")).toContain("it applies only while compose_from is \"melody\"");
     expect(line("song")).toContain("it applies only while compose_from is \"references\"");
     expect(text).toContain("Takes a prompt only while compose_from is \"references\".");
+  });
+
+  it("says no condition on the prompt in Text to Music, where the setting does not exist", () => {
+    const text = renderGenerationModelsForModel(modelsForMode("audio", "t2m"));
+    const line = text.split("\n").find((l) => l.includes(`(${MUREKA})`)) ?? "";
+    expect(line).not.toBe("");
+    expect(line).not.toContain("Takes a prompt only while");
   });
 });
