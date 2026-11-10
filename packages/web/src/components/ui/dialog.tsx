@@ -22,8 +22,12 @@ import { cn } from '@web/lib/utils';
  * Project default (2026-05-25, corrected):
  *   - **Dialog is modal-by-default** — Radix `<Dialog.Root>` ships
  *     `modal=true` (backdrop + body scroll lock + focus trap) and
- *     `DialogContent` below always renders `<DialogOverlay />`. The
+ *     `DialogContent` below renders `<DialogOverlay />`. The
  *     half-transparent backdrop is non-negotiable for modal semantics.
+ *     The one exception is `fullScreen`: the content covers the viewport
+ *     itself, so there is no backdrop and no body scroll lock (Radix keeps
+ *     the lock on the overlay), while the focus trap, Esc and the
+ *     outside-press handling stay.
  *   - **Sheet is non-modal-by-default** — see `components/ui/sheet.tsx`.
  * Use the global `useExclusiveOverlay(id)` hook so only one overlay is
  * visible at a time (independent of modal/non-modal).
@@ -114,6 +118,9 @@ DialogOverlayScroller.displayName = 'DialogOverlayScroller';
 const OVERLAY_CONTENT_CLASS =
   'relative z-50 mx-auto w-full border border-border bg-card shadow duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95';
 
+/** A floating dialog's content: the shared box, at most 520px wide. */
+const BOX_CONTENT_CLASS = cn(OVERLAY_CONTENT_CLASS, 'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none');
+
 /**
  * A full-screen dialog's content: it is the whole viewport, so there is no
  * backdrop, gutter, border or corner, and nothing outside it to press.
@@ -133,16 +140,7 @@ const DialogContent = React.forwardRef<
   const content = (
     <DialogPrimitive.Content
       ref={ref}
-      // `mx-auto` centres horizontally, not `place-items-center`: Radix
-      // wraps the viewport's children in a div carrying an inline
-      // `min-width: 100%`, so that wrapper fills the grid area whatever
-      // the grid says.
-      className={cn(
-        fullScreen
-          ? FULL_SCREEN_CONTENT_CLASS
-          : cn(OVERLAY_CONTENT_CLASS, 'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none'),
-        className,
-      )}
+      className={cn(fullScreen ? FULL_SCREEN_CONTENT_CLASS : BOX_CONTENT_CLASS, className)}
       {...props}
       // Opening puts focus on the dialog itself, which draws no ring. Its
       // first control is the header's close button, and focus handed to it
