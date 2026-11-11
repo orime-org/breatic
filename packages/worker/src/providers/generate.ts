@@ -70,9 +70,22 @@ export function validateModelParams(
   const [name, validated] = validateParams(modality, modelName, params);
   const entry = entryOf(modality, name);
   // Every text setting is something the user typed, cleaned as a prompt is
-  // before its length is judged, so what is judged is what is sent.
+  // before its length is judged, so what is judged is what is sent; so is
+  // each text field of a list's entries (a speaker's name, which the script
+  // names in its cleaned form).
   const cleaned = Object.fromEntries(
-    Object.entries(validated).map(([key, value]) => [key, entry.params?.[key]?.type === "text" && typeof value === "string" ? extractPromptText(value) : value]),
+    Object.entries(validated).map(([key, value]) => {
+      const spec = entry.params?.[key];
+      if (spec?.type === "text" && typeof value === "string") return [key, extractPromptText(value)];
+      if (spec?.type !== "items" || !Array.isArray(value)) return [key, value];
+      const fields = spec.fields ?? {};
+      return [key, value.map((item: unknown) =>
+        typeof item === "object" && item !== null && !Array.isArray(item)
+          ? Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([field, held]) =>
+            [field, fields[field]?.type === "text" && typeof held === "string" ? extractPromptText(held) : held]))
+          : item,
+      )];
+    }),
   );
   const model = entry as unknown as ResolvableModel;
   const found = checkParamCombination(model, cleaned);

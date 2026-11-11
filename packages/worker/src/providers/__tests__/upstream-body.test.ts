@@ -10,7 +10,7 @@
 
 import { beforeAll, describe, it, expect } from "vitest";
 import { initCore } from "@breatic/core";
-import { dialogueText } from "@breatic/shared";
+import { dialogueText, extractPromptText } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -182,6 +182,18 @@ describe("upstreamBody", () => {
     expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "", voice: "Kore" }] }, "hi")).toEqual({
       prompt: "hi",
     });
+  });
+
+  it("cleans each speaker's name as the script is cleaned, so the names the script reads are the names sent (round 3)", () => {
+    const gemini = getFullModelConfig("tts").models.find((m) => m.name === "gemini-3.1-flash-text-to-speech");
+    if (!gemini) throw new Error("gemini-3.1-flash-text-to-speech missing from the tts catalog");
+    const speakers = [{ speaker: "Mary  Ann", voice: "Kore" }, { speaker: "Leo\u200b", voice: "Puck" }];
+    const [, validated] = validateModelParams("tts", gemini.name, { speakers });
+    const script = extractPromptText(dialogueText([{ speaker: 1, text: "hi" }, { speaker: 2, text: "hello" }], speakers));
+    const body = upstreamBody(gemini, validated, script) as { speakers: { speaker: string }[]; text?: string; prompt?: string };
+    const said = (body.text ?? body.prompt ?? "").split("\n").map((line) => line.slice(0, line.indexOf(":")));
+    expect(body.speakers.map((one) => one.speaker)).toEqual(said);
+    expect(body.speakers[1]?.speaker).toBe("Leo");
   });
 
   it("sends a speaker's name without the spaces around it, the name the script reads (inner#1825 design 8.5)", () => {
