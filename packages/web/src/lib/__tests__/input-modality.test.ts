@@ -169,6 +169,18 @@ describe('installInputModality', () => {
     expect(modality()).toBe('pointer');
   });
 
+  it('switches on a Tab that also commits an input method\'s text', () => {
+    const input = mount('input');
+    // Chrome: compositionend, then the Tab with its own key code.
+    input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    press(input, 'keydown', { key: 'Tab' });
+    expect(modality()).toBe('keyboard');
+    // Firefox: the Tab still marked as composing.
+    pointerDown(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Tab', isComposing: true }));
+    expect(modality()).toBe('keyboard');
+  });
+
   it('switches on an Escape pressed after the composition has settled', async () => {
     const input = mount('input');
     input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));

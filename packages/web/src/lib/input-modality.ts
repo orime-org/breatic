@@ -16,7 +16,7 @@
  * - a lone modifier key or a Ctrl / Cmd chord, and Alt off macOS (React Aria's
  *   `isValidKey`; Option+Tab moves focus in Safari);
  * - a key an input method owns, the Escape that closes its candidate list
- *   included (`composition-end.ts`);
+ *   included (`composition-end.ts`), Tab excepted;
  * - key releases (the WICG focus-visible polyfill listens to keydown only);
  * - focus events, scripted focus and window refocus.
  */
@@ -68,7 +68,8 @@ export function installInputModality(doc: Document = document): () => void {
    * @param event - The keydown.
    */
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (!keyBelongsToInputMethod(event, ime) && isKeyboardNavigation(event)) set('keyboard');
+    // Tab never closes a candidate list; when it commits an input method's text it still moves focus.
+    if ((event.key === 'Tab' || !keyBelongsToInputMethod(event, ime)) && isKeyboardNavigation(event)) set('keyboard');
   };
   set('pointer');
   doc.addEventListener('pointerdown', onPointerDown, true);

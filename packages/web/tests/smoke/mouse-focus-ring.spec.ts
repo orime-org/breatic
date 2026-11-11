@@ -168,7 +168,8 @@ test.describe('focus rings follow the input', () => {
     const resting = await border();
     await page.getByTestId('chat-model-picker').click();
     await expect(page.getByTestId('chat-model-menu')).toBeVisible();
-    await page.locator('[data-testid^="chat-model-option-"]').nth(1).click();
+    // The model already chosen: the menu closes and nothing is saved on the shared account.
+    await page.locator('[data-testid^="chat-model-option-"][aria-pressed="true"]').click();
     await expect(page.getByTestId('chat-model-menu')).toBeHidden();
     await expect(page.getByTestId('chat-model-picker')).toBeFocused();
     // The border colour eases (`transition-colors`); give it time to move if it would.

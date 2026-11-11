@@ -94,7 +94,7 @@ describe('NodeHeader', () => {
     const input = screen.getByTestId('node-header-input');
     expect(input.className).toContain('border-0');
     expect(input.className).not.toContain('border-border');
-    expect(input.className).not.toContain('focus-visible:border-active-border');
+    expect(input.className).not.toMatch(/border-active-border/);
     expect(input.className).toContain('bg-muted');
   });
 
