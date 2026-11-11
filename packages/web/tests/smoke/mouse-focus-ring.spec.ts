@@ -43,6 +43,16 @@ async function hasRing(target: Locator): Promise<boolean> {
 }
 
 /**
+ * An overlay's top edge once its opening slide has finished.
+ * @param panel - The overlay content.
+ * @returns The top edge in CSS pixels.
+ */
+async function settledTop(panel: Locator): Promise<number> {
+  await panel.evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
+  return (await panel.boundingBox())!.y;
+}
+
+/**
  * Opens the studio page and waits for the account button.
  * @param page - The page.
  * @returns The account button.
@@ -57,22 +67,29 @@ async function openStudio(page: Page): Promise<Locator> {
 }
 
 test.describe('focus rings follow the input', () => {
-  test('the account button is a 32px circle, and mouse open and close leaves it without a ring', async ({ page }) => {
+  test('the account button is a 26px circle, and mouse open and close leaves it without a ring', async ({ page }) => {
     const account = await openStudio(page);
     const box = (await account.boundingBox())!;
-    expect([Math.round(box.width), Math.round(box.height)]).toEqual([32, 32]);
+    expect([Math.round(box.width), Math.round(box.height)]).toEqual([26, 26]);
     expect(await account.evaluate((el) => getComputedStyle(el).borderRadius)).not.toBe('0px');
     const avatar = (await account.locator(':scope > *').first().boundingBox())!;
-    expect([Math.round(avatar.width), Math.round(avatar.height)]).toEqual([32, 32]);
+    expect([Math.round(avatar.width), Math.round(avatar.height)]).toEqual([26, 26]);
 
     await account.click();
     await expect(page.getByRole('menu')).toBeVisible();
+    const menuTop = await settledTop(page.getByTestId('account-menu'));
     await page.mouse.click(5, 600);
     await expect(page.getByRole('menu')).toBeHidden();
     // Radix handed focus back by script, which the browser counts as visible.
     await expect(account).toBeFocused();
     expect(await account.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
     expect(await hasRing(account)).toBe(false);
+
+    // The menu opens level with the Language popover beside it.
+    await page.getByTestId('lang-trigger').click();
+    const languagePanel = page.getByTestId('lang-popover');
+    await expect(languagePanel).toBeVisible();
+    expect(await settledTop(languagePanel)).toBeCloseTo(menuTop, 0);
   });
 
   test('Escape and Tab still show the ring', async ({ page }) => {
