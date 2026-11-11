@@ -1747,11 +1747,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
-      "Agent's box as an attachment, opening the Agent panel if it is hidden. On a picture, video or audio line it " +
-      "puts the file itself in as a picture, video or audio attachment, named after it (its name, else its caption), " +
-      `followed by the lines nested under it as text, and ${quoted(t("spaces.document.commands.comment"))} writes a ` +
-      "comment on the whole picture, video or audio; on one still uploading both are greyed, and choosing one says " +
-      `${quoted(t("spaces.document.media.notUploaded"))} ` +
+      "Agent's box as an attachment, opening the Agent panel if it is hidden. On a picture, video or audio it hands " +
+      `over the file, then the lines under it as text, and ${quoted(t("spaces.document.commands.comment"))} comments ` +
+      `on the whole item; while it uploads both are greyed and say ${quoted(t("spaces.document.media.notUploaded"))} ` +
       `${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
@@ -1799,13 +1797,10 @@ export function renderProductGuide(): string {
       "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
       "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, ` +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} (a speech bubble with a plus), which puts the file in the Agent's ` +
-      "box as an attachment the way the handle menu does, without the lines under it, " +
-      `${quoted(t("spaces.document.commands.comment"))} (a speech bubble with lines), which opens a comment on the whole ` +
-      "picture, video or audio, and " +
-      `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. In a table open full screen ` +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("spaces.document.commands.comment"))} are not there. ` +
-      "Clicking a picture or video " +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} (a speech bubble with a plus), which hands over the file alone, ` +
+      `${quoted(t("spaces.document.commands.comment"))} (a speech bubble with lines; neither shows in a table open full ` +
+      "screen), and " +
+      `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. Clicking a picture or video ` +
       "also shows a small square at each " +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
@@ -1940,14 +1935,12 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
       "and what they wrote. " +
-      "Clicking highlighted words opens the panel at their comment. A comment on a picture, video or audio is on " +
-      "the whole of it: the item gets a speech bubble with the number of open comments at its top right, for " +
-      "viewers too (not in a table open full screen), and clicking it opens the panel at all of them; the item " +
-      "being read is outlined, and its card quotes a picture's thumbnail, or the video or audio icon, with its name " +
-      "(else its caption, else the kind). If the picture, video or audio is deleted while a comment on it is " +
-      `being written, the box turns into ${quoted(t("spaces.document.comment.mediaGone"))} and comes back with ` +
-      "what was typed when undo brings the item back. Copies of an item carry none of its comments; moving it by " +
-      "dragging keeps them. Clicking a card opens it; a closed card " +
+      "Clicking highlighted words opens the panel at their comment. A comment on a picture, video or audio covers " +
+      "it whole: a speech bubble with the count of open ones sits at its top right (viewers see it too, not in a " +
+      "table open full screen) and opens the panel at them; the item being read is outlined, and its card shows a " +
+      "picture's thumbnail or the kind's icon with its name. If the item is deleted while its comment is written, " +
+      `the box says ${quoted(t("spaces.document.comment.mediaGone"))} and undo brings both back. A copy carries no ` +
+      "comments; dragging keeps them. Clicking a card opens it; a closed card " +
       "with more than two comments shows the first and the latest, with " +
       `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +
       `${quoted(t("spaces.document.comment.reply"))} for an answer, ` +
