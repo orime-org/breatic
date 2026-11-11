@@ -1394,7 +1394,9 @@
         "ratioTooLarge": "拡張できる最大サイズを超えます",
         "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
         "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
-        "joinClips": "クリップ",
+        "joinClips": "クリップ · 順番に結合、ドラッグで並べ替え",
+        "joinCrossfadeCap": "最大 {cap} 秒：最も短いクリップ（{shortest} 秒）の半分",
+        "joinTotal": "≈ {seconds} 秒",
         "joinNeedsClip": "もう1つクリップを追加すると実行できます。",
         "joinTooMany": "最大 {n} 本まで"
       },

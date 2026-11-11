@@ -53,7 +53,7 @@ import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
-import { isJoinTool, joinClipsOf, joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
+import { isJoinTool, joinClipsOf, joinCrossfadeCap, joinShortestClip, joinTotalSeconds } from '@web/spaces/canvas/mini-tool/join';
 import { JoinClipRow } from '@web/spaces/canvas/mini-tool/JoinClipRow';
 import {
   BLOCKING_REFUSALS,
@@ -310,6 +310,16 @@ function clock(seconds: number): string {
 }
 
 /**
+ * Seconds as a join's lines read them: to the tenth, as the crossfade slider
+ * reads its own value.
+ * @param seconds - The time.
+ * @returns The number as text.
+ */
+function joinSeconds(seconds: number): string {
+  return String(Math.round(seconds * 10) / 10);
+}
+
+/**
  * The parameter panel of one mini-tool (inner#888 §7.6): the tool's controls,
  * its slots and prompt, and a footer with the cost and Run.
  * @param props - Component props.
@@ -485,6 +495,11 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       {controlsOf(rightControls, columns ? 'contents' : undefined)}
     </>
   );
+  // A join says how long it comes out once every clip's length is known,
+  // with the crossfade the run would be sent.
+  const crossfadeParam = joinSlot === undefined || isModelTool(spec) ? undefined : spec.params.find((param): param is NumberParam => param.kind === 'number');
+  const crossfade = crossfadeParam === undefined ? 0 : typeof params[crossfadeParam.key] === 'number' ? (params[crossfadeParam.key] as number) : crossfadeParam.default;
+  const joinTotal = joinSlot === undefined ? undefined : joinTotalSeconds(slots, crossfade);
   // The adjust's sliders, whose Reset sits in the footer.
   const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
@@ -570,6 +585,13 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         onRun={onRun}
         creditTestId='mini-tool-credit'
         runTestId='mini-tool-run'
+        beforeCost={
+          joinTotal === undefined ? undefined : (
+            <span data-testid='join-total' className='text-xs font-medium tabular-nums text-muted-foreground'>
+              {t('canvas.miniTool.panel.joinTotal', { seconds: joinSeconds(joinTotal) })}
+            </span>
+          )
+        }
       >
         {/* The adjust's Reset clears every slider; it sits in the footer
             beside the credit, at the other end of the row from Run. */}
@@ -677,13 +699,15 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
   const size =
     source.width !== undefined && source.height !== undefined ? { width: source.width, height: source.height } : null;
   switch (param.kind) {
-    case 'number':
-      return (
+    case 'number': {
+      const cap = joinCrossfadeCap(spec, param, slots);
+      const shortest = joinShortestClip(slots);
+      const slider = (
         <ParamSliderRow
           name={param.key}
           label={label}
           min={param.min}
-          max={joinCrossfadeCap(spec, param, slots) ?? param.max}
+          max={cap ?? param.max}
           step={param.step}
           value={typeof params[param.key] === 'number' ? (params[param.key] as number) : param.default}
           format={(value) => numberReading(value, param)}
@@ -694,6 +718,16 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
           origin={param.format === 'signed' || param.format === 'balance' ? 0 : undefined}
         />
       );
+      // A join's clips holding the crossfade under the tool's own maximum say so under it.
+      return cap === undefined || cap >= param.max || shortest === undefined ? slider : (
+        <div className='flex flex-col gap-1'>
+          {slider}
+          <p data-testid='join-crossfade-cap' className='text-xs text-muted-foreground'>
+            {t('canvas.miniTool.panel.joinCrossfadeCap', { cap: joinSeconds(cap), shortest: joinSeconds(shortest) })}
+          </p>
+        </div>
+      );
+    }
     case 'toggle': {
       const on = typeof params[param.key] === 'boolean' ? (params[param.key] as boolean) : param.default;
       return (

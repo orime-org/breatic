@@ -1394,7 +1394,9 @@
         "ratioTooLarge": "超出外扩能做的最大尺寸",
         "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
         "sourceTooLarge": "这个工具只处理 {size} 以内的文件。",
-        "joinClips": "片段",
+        "joinClips": "片段 · 按顺序拼接，可拖动调整",
+        "joinCrossfadeCap": "最多 {cap} 秒：最短片段（{shortest} 秒）的一半",
+        "joinTotal": "≈ {seconds} 秒",
         "joinNeedsClip": "再加一段才能执行。",
         "joinTooMany": "最多 {n} 段"
       },

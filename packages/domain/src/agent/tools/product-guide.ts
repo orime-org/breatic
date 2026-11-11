@@ -1198,10 +1198,12 @@ export function renderProductGuide(): string {
       "sounds on a sound node. Opened from the menu of several selected clips (see the Node menus section), it lists " +
       "them as they lie on the canvas, left to right and, in one column, top to bottom; opened from one node's " +
       "tools, it starts with that clip alone. The panel stays under the node it was opened on and shows the clips " +
-      `in a numbered row headed ${quoted(t("canvas.miniTool.panel.joinClips"))}, each with its name and length: drag one to change the order, take one out while more ` +
+      `in a numbered row headed ${quoted(t("canvas.miniTool.panel.joinClips"))}, each with its name and length; hovering a clip previews and plays it: drag one to change the order, take one out while more ` +
       "than two are left, or press the add box at the end of the row to pick another from the canvas, until the " +
       `row is full. ${quoted(t("canvas.miniTool.param.crossfade.label"))} blends each clip into the next over that ` +
-      `many seconds, at most half the shorter of the two. With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
+      "many seconds, at most half the shorter of the two; when a short clip holds the slider below its usual top, a line under it says how far it goes and why. " +
+      "Once every clip's length is known, the bottom line starts with how long the joined result runs, which follows the crossfade. " +
+      `With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
       `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: joinCap }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +

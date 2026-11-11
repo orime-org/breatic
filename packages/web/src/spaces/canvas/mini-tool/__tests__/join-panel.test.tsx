@@ -204,6 +204,34 @@ describe('the join panel (inner#1825 §6.5)', () => {
     expect(screen.getByRole('slider')).toHaveAttribute('aria-valuemax', max);
   });
 
+  it('heads the row saying the clips join in order and drag to reorder', () => {
+    session().openJoinPanel('audio.join', [clip('a', 10), clip('b', 4)]);
+    mount();
+    expect(screen.getByTestId('join-panel')).toHaveTextContent(t('canvas.miniTool.panel.joinClips'));
+  });
+
+  it('says under the crossfade how far the shortest clip lets it go, and nothing when no clip holds it back', () => {
+    session().openJoinPanel('audio.join', [clip('a', 10), clip('b', 4), clip('c', 8)]);
+    mount();
+    expect(screen.getByTestId('join-crossfade-cap')).toHaveTextContent(t('canvas.miniTool.panel.joinCrossfadeCap', { cap: '2', shortest: '4' }));
+    act(() => removeTile('b'));
+    expect(screen.queryByTestId('join-crossfade-cap')).toBeNull();
+  });
+
+  it('starts the bottom line with the joined length, following the crossfade, and drops it while a clip has no length', () => {
+    session().openJoinPanel('audio.join', [clip('a', 10), clip('b', 4), clip('c', 8)]);
+    mount();
+    expect(screen.getByTestId('join-total')).toHaveTextContent(t('canvas.miniTool.panel.joinTotal', { seconds: '22' }));
+    const footer = screen.getByTestId('mini-tool-credit').parentElement as HTMLElement;
+    expect(footer.firstElementChild).toBe(screen.getByTestId('join-total'));
+    const slider = screen.getByRole('slider');
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    fireEvent.keyUp(slider, { key: 'ArrowRight' });
+    expect(screen.getByTestId('join-total')).toHaveTextContent(t('canvas.miniTool.panel.joinTotal', { seconds: '21.8' }));
+    act(() => session().fillMiniToolSlot('clips', { url: 'https://cdn/d.mp3', nodeId: 'd', name: 'D' } as MiniToolSlotValue, true));
+    expect(screen.queryByTestId('join-total')).toBeNull();
+  });
+
   it('sends the list’s first clip as the source and the rest as clips, so reordering changes the source', () => {
     const onRun = vi.fn(() => Promise.resolve());
     session().openJoinPanel('audio.join', [clip('a', 10), clip('b', 4), clip('c', 8)]);

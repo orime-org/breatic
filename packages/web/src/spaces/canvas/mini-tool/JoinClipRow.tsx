@@ -10,8 +10,9 @@ import type { MiniToolSlot, MiniToolSlotValue } from '@breatic/shared/mini-tools
 
 import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 
 /** How far the pointer travels before a press becomes a drag (px), as on the Space tab strip. */
@@ -70,7 +71,7 @@ const JoinTile = React.memo(function JoinTile({
 }: JoinTileProps): React.JSX.Element {
   // `attributes` stays unused, as on the Space tab strip: its role and tab
   // stop describe a keyboard reorder the row does not offer.
-  const { setNodeRef, listeners, transform, transition, isDragging } = useSortable({ id: clip.nodeId });
+  const { setNodeRef, listeners, transform, transition, isDragging, active } = useSortable({ id: clip.nodeId });
   const Icon = accepts === 'video' ? Film : Music;
   return (
     <div
@@ -84,22 +85,32 @@ const JoinTile = React.memo(function JoinTile({
         opacity: isDragging ? 0.55 : undefined,
       }}
     >
-      <div {...listeners} className='cursor-grab active:cursor-grabbing'>
-        <div className='relative h-10 w-14 overflow-hidden rounded-chrome-sm border border-border bg-muted'>
-          {clip.cover === undefined ? (
-            <Icon className='absolute inset-0 m-auto h-4 w-4 text-muted-foreground' aria-hidden='true' />
-          ) : (
-            <PreviewImg src={clip.cover} alt='' draggable={false} className='absolute inset-0 h-full w-full object-cover' />
-          )}
-          <span className='absolute bottom-0.5 left-0.5 rounded-chrome-sm bg-background/90 px-1 text-2xs font-semibold tabular-nums text-foreground'>
-            {index + 1}
-          </span>
+      {/* Hovering a clip previews it, playing it, as a generation slot does;
+          no card opens or stays while any tile is being dragged. */}
+      <HoverPreview
+        kind={accepts === 'video' ? 'video' : 'audio'}
+        src={clip.url}
+        poster={accepts === 'video' ? clip.cover : undefined}
+        followCanvas
+        suppressed={active !== null}
+      >
+        <div {...listeners} className='cursor-grab active:cursor-grabbing'>
+          <div className='relative h-10 w-14 overflow-hidden rounded-overlay border border-border bg-muted'>
+            {clip.cover === undefined ? (
+              <Icon className='absolute inset-0 m-auto h-4 w-4 text-muted-foreground' aria-hidden='true' />
+            ) : (
+              <PreviewImg src={clip.cover} alt='' draggable={false} className='absolute inset-0 h-full w-full object-cover' />
+            )}
+            <span className='absolute bottom-0.5 left-0.5 rounded-chrome-sm border border-border bg-popover px-1 text-2xs font-semibold tabular-nums text-foreground'>
+              {index + 1}
+            </span>
+          </div>
+          <p className='mt-0.5 truncate text-2xs text-foreground'>{clip.name ?? ''}</p>
+          <p className='text-2xs tabular-nums text-muted-foreground'>
+            {clip.duration === undefined ? '' : formatSeconds(clip.duration)}
+          </p>
         </div>
-        <p className='mt-0.5 truncate text-2xs text-foreground'>{clip.name ?? ''}</p>
-        <p className='text-2xs tabular-nums text-muted-foreground'>
-          {clip.duration === undefined ? '' : formatSeconds(clip.duration)}
-        </p>
-      </div>
+      </HoverPreview>
       <Button
         type='button'
         variant={null}
@@ -108,7 +119,7 @@ const JoinTile = React.memo(function JoinTile({
         disabled={!removable}
         onClick={() => onRemove(clip.nodeId)}
         // The slot tile's remove badge, which also stands down with too few clips.
-        className='absolute right-0.5 top-0.5 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+        className='absolute right-0.5 top-0.5 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-popover text-muted-foreground shadow-sm transition-colors hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
       >
         <X className='h-2.5 w-2.5' aria-hidden='true' />
       </Button>
@@ -177,27 +188,27 @@ export const JoinClipRow = React.memo(function JoinClipRow({
               />
             ))}
             {cap !== undefined && clips.length >= cap ? null : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type='button'
-                    variant={null}
-                    size={null}
-                    data-testid='join-add'
-                    aria-label={tip}
-                    aria-pressed={picking}
-                    onClick={() => onPick(slotKey)}
-                    className={
-                      'flex h-10 w-14 items-center justify-center rounded-chrome-sm border border-dashed border-border transition-colors ' +
+              // The tip rides the same hover card a clip opens, as an empty generation slot's does.
+              <HoverPreview kind='image' emptyHint={tip} followCanvas>
+                <Button
+                  type='button'
+                  variant={null}
+                  size={null}
+                  data-testid='join-add'
+                  aria-label={tip}
+                  aria-pressed={picking}
+                  // A pick hands focus back to its trigger when it ends; the card is a pointer affordance.
+                  onFocusCapture={suppressTooltipFocusOpen}
+                  onClick={() => onPick(slotKey)}
+                  className={
+                    'flex h-10 w-14 items-center justify-center rounded-overlay border border-dashed border-border transition-colors ' +
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
                       (picking ? 'bg-foreground text-background' : 'text-muted-foreground hover-enabled:bg-accent hover-enabled:text-accent-foreground')
-                    }
-                  >
-                    <Plus className='h-4 w-4' aria-hidden='true' />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side='top'>{tip}</TooltipContent>
-              </Tooltip>
+                  }
+                >
+                  <Plus className='h-4 w-4' aria-hidden='true' />
+                </Button>
+              </HoverPreview>
             )}
           </div>
         </SortableContext>

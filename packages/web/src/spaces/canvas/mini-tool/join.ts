@@ -91,3 +91,26 @@ export function joinCrossfadeCap(
   const steps = Math.floor(Math.min(...lengths) / 2 / param.step + 1e-9);
   return Math.min(param.max, Number((steps * param.step).toFixed(6)));
 }
+
+/**
+ * The shortest clip in a join's list, of those whose length is known.
+ * @param slots - The draft's slots.
+ * @returns Its length in seconds, or undefined when no clip has one.
+ */
+export function joinShortestClip(slots: Readonly<Record<string, unknown>>): number | undefined {
+  const lengths = joinClipsOf(slots).flatMap((clip) => (clip.duration === undefined ? [] : [clip.duration]));
+  return lengths.length === 0 ? undefined : Math.min(...lengths);
+}
+
+/**
+ * How long a join comes out: every clip end to end, less one crossfade per
+ * meeting of two neighbours.
+ * @param slots - The draft's slots.
+ * @param crossfade - The crossfade in seconds.
+ * @returns The length in seconds, or undefined while any clip's length is unknown.
+ */
+export function joinTotalSeconds(slots: Readonly<Record<string, unknown>>, crossfade: number): number | undefined {
+  const clips = joinClipsOf(slots);
+  if (clips.length === 0 || clips.some((clip) => clip.duration === undefined)) return undefined;
+  return clips.reduce((sum, clip) => sum + (clip.duration ?? 0), 0) - crossfade * (clips.length - 1);
+}

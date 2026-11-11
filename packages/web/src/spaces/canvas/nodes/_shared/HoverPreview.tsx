@@ -76,6 +76,11 @@ export interface HoverPreviewProps {
    * the card opens; null means there is nothing to open.
    */
   fullscreen?: MediaFullscreenSource | null | (() => MediaFullscreenSource | null);
+  /**
+   * Holds the card shut, closing one already open: a trigger being dragged
+   * keeps the pointer over itself, so the card would otherwise ride along.
+   */
+  suppressed?: boolean;
   /** The trigger element (the small thumbnail / chip). */
   children: React.ReactNode;
 }
@@ -108,6 +113,7 @@ export interface HoverPreviewProps {
  * @param root0.body - A preview of the caller's own, used in place of the kind's form.
  * @param root0.side - The side the card opens on, in place of the default.
  * @param root0.fullscreen - What full screen shows, when not the preview itself.
+ * @param root0.suppressed - Holds the card shut.
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -123,6 +129,7 @@ export function HoverPreview({
   body,
   side,
   fullscreen,
+  suppressed = false,
   children,
 }: HoverPreviewProps): React.JSX.Element {
   // Live-at-open cache (decision C, the prompt `@` chip's live projection):
@@ -135,6 +142,8 @@ export function HoverPreview({
   // Track open so the canvas-follow nudge is inert while closed and the
   // live-at-open resolvers fire at the right moment.
   const [open, setOpen] = React.useState(false);
+  // Closed the moment it is held shut; a later hover opens it again.
+  if (suppressed && open) setOpen(false);
   useFollowCanvasViewport(followCanvas ? open : false);
   // A `fullscreen` function is read when the card opens, and kept through
   // the close animation; the button only exists in the open card.
@@ -208,7 +217,7 @@ export function HoverPreview({
         // the viewport follower is not armed for a card that will never
         // render. The wrapper still mounts (that is what keeps the trigger
         // stable), but it costs nothing while empty.
-          setOpen(next && hasAnything);
+          setOpen(next && hasAnything && !suppressed);
           if (next) {
             if (resolveOnOpen) setResolved(resolveOnOpen());
             if (typeof fullscreen === 'function') setResolvedFullscreen(fullscreen());

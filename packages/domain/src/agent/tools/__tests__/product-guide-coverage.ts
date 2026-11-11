@@ -419,6 +419,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.param.smoothing.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.transfer.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.grid.picked": { described: /counts the tiles picked out of all of them/ },
+  "canvas.miniTool.panel.joinCrossfadeCap": { described: /a line under it says how far it goes and why/ },
+  "canvas.miniTool.panel.joinTotal": { described: /the bottom line starts with how long the joined result runs/ },
   "canvas.miniTool.panel.exportFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.imageTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceTooLargeToExpand": { excluded: REASONS.SAYS_WHAT_HAPPENED },

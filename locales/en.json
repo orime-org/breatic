@@ -1394,7 +1394,9 @@
         "ratioTooLarge": "Larger than Expand can make this picture",
         "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
         "sourceTooLarge": "This tool takes files up to {size}.",
-        "joinClips": "Clips",
+        "joinClips": "Clips · joined in order, drag to reorder",
+        "joinCrossfadeCap": "Up to {cap} s: half the shortest clip ({shortest} s)",
+        "joinTotal": "≈ {seconds} s",
         "joinNeedsClip": "Add one more clip to run.",
         "joinTooMany": "Up to {n} clips"
       },
