@@ -2889,6 +2889,8 @@ models:
         label: "Language"
         default: "auto"
         values: ["auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"]
+        # One per value, so the panel names each in the user's language; auto has none.
+        value_locales: ["", "zh", "en", "de", "it", "pt", "es", "ja", "ko", "fr", "ru"]
         fill: "panel"
     providers:
       - name: "wavespeed"
