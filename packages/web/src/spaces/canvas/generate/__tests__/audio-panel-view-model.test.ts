@@ -323,6 +323,10 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     // a landing writes the switch, and nothing else counts as one.
     const unswitched = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
     expect(unswitched.dialogueNames).toBeNull();
+    // Switched on before any speaker is written: one blank name per speaker
+    // the settings show, so the lines offer both and alternate between them.
+    const unwritten = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: null, _stand_in_on: true } } }) });
+    expect(unwritten.dialogueNames).toEqual(['', '']);
     const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
     expect(alone.dialogueNames).toBeNull();
   });
