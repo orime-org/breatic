@@ -243,7 +243,9 @@ export function DocumentBlockMenu({
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
-  // A pending frame's Comment and Add to Agent say why they are greyed.
+  // Comment and Add to Agent act on a row with words or on uploaded media;
+  // a pending frame's two rows say why they are greyed.
+  const actsOnRow = faces.canComment || faces.media === 'uploaded';
   const refusedOnPending =
     faces.media === 'pending'
       ? (): void => {
@@ -544,12 +546,11 @@ export function DocumentBlockMenu({
           // of a menu — "Disabled menu items are focusable but cannot be
           // activated" — so an arrow key lands here, and the row's own
           // background is the only thing that says so.
-          const reachable = faces.canComment || faces.media === 'uploaded';
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(reachable, () => {
+              {...itemWithin(actsOnRow, () => {
                 if (faces.media === 'uploaded') {
                   const live = rowNow();
                   if (live !== undefined) openMediaCommentDraft(editor, live.id);
@@ -585,7 +586,7 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.canComment || faces.media === 'uploaded', () => {
+              {...itemWithin(actsOnRow, () => {
                 const live = rowNow();
                 if (live !== undefined) {
                   void attachToChat(projectId, faces.media === 'uploaded' ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);
