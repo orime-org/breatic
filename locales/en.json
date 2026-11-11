@@ -1438,7 +1438,7 @@
         "pause": "Pause",
         "peopleEmpty": "No suitable person found. Re-detect or choose another source video.",
         "peopleIdentificationFailed": "Identification failed. Retry to identify the target person.",
-        "peopleIdle": "Identify people to select a target.",
+        "peopleIdle": "Detect people to select a target.",
         "personNumber": "Person {number}",
         "pickAudio": "Choose an audio node on the Canvas.",
         "pickVideo": "Click video nodes to fill the slot. Press Escape to finish.",

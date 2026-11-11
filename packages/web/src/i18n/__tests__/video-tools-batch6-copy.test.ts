@@ -62,7 +62,16 @@ const BUTTON_IN_SENTENCE: Readonly<Record<string, (label: string) => string>> = 
   ko: (label) => `「${label}」`,
 };
 
+/** The word each locale's lip-sync panel uses for detecting people (its `redetectPeople` button and the anchor refusal). */
+const DETECT_WORD: Readonly<Record<string, string>> = { en: 'detect', 'zh-CN': '识别', 'zh-TW': '辨識', ja: '検出', ko: '감지' };
+
 describe('batch-6 video tool copy in every locale (§97; canvas design §4)', () => {
+  it.each(LOCALE_CATALOGS)('%s lip-sync people empty state names the detect action its button carries', (tag, catalog) => {
+    const word = DETECT_WORD[tag]!;
+    expect(String(readPath(catalog, 'canvas.miniTool.videoUI.redetectPeople')).toLowerCase(), 'redetectPeople').toContain(word);
+    expect(String(readPath(catalog, 'canvas.miniTool.videoUI.peopleIdle')).toLowerCase(), 'peopleIdle').toContain(word);
+  });
+
   it.each(LOCALE_CATALOGS)('%s has every key with its placeholders', (_tag, catalog) => {
     for (const [key, placeholders] of KEYS) {
       const message = readPath(catalog, `canvas.miniTool.videoUI.${key}`);
