@@ -442,12 +442,33 @@ test('transitions: two videos and a crossfade give one video as long as both les
     const overlap = dialog.getByTestId('video-clip-overlap');
     await overlap.fill('1');
     await expect(overlap).toHaveValue('1');
+    // The track redraws with the two clips overlapping by the transition.
+    const [firstClip, secondClip] = [trackClips.first(), trackClips.last()];
+    await expect.poll(async () => ((await firstClip.boundingBox())?.x ?? 0) + ((await firstClip.boundingBox())?.width ?? 0) - ((await secondClip.boundingBox())?.x ?? 0)).toBeGreaterThan(50);
+    // Only the selected clip (the first, selected on open) is outlined on the track.
+    const shadowOf = (target: Locator): Promise<string> => target.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(await shadowOf(firstClip)).not.toBe('none');
+    expect(await shadowOf(secondClip)).toBe('none');
+    // The first clip's right resize handle stays above the second clip where they overlap, and dragging it trims the first clip.
+    const handle = await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox();
+    expect(handle).not.toBeNull();
+    const [x, y] = [handle!.x + handle!.width / 2, handle!.y + handle!.height / 2];
+    expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), [x, y])).toBe(true);
+    const outField = dialog.getByTestId('video-clip-out');
+    const outBefore = Number(await outField.inputValue());
+    await c.page.mouse.move(x, y);
+    await c.page.mouse.down();
+    await c.page.mouse.move(x - 100, y, { steps: 10 });
+    await c.page.mouse.up();
+    await expect.poll(async () => Number(await outField.inputValue())).toBeLessThan(outBefore);
+    // The trim may shorten the transition to fit; the export follows what the fields now hold.
+    const firstLength = Number(await outField.inputValue()) - Number(await dialog.getByTestId('video-clip-in').inputValue());
+    const finalOverlap = Number(await overlap.inputValue());
     const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
-    const a = duration(await contentOf(c, 'clip3a.mp4'));
     const b = duration(await contentOf(c, 'clip3b.mp4'));
-    expect(Math.abs(duration(joined!.content) - (a + b - 1))).toBeLessThanOrEqual(2 * FRAME);
+    expect(Math.abs(duration(joined!.content) - (firstLength + b - finalOverlap))).toBeLessThanOrEqual(2 * FRAME);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
