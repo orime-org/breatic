@@ -67,8 +67,11 @@ vi.mock('@hocuspocus/provider', () => ({
       for (const listener of [...(this.listeners[event] ?? [])]) listener(payload);
     }
 
-    constructor(config: { document: Y.Doc }) {
+    configuration: { document: Y.Doc; flushDelay?: number | false };
+
+    constructor(config: { document: Y.Doc; flushDelay?: number | false }) {
       this.document = config.document;
+      this.configuration = config;
       transport.providers.push(this);
     }
   },

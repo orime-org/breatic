@@ -17,6 +17,8 @@ import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useUIStore } from '@web/stores/ui';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
+const NAME = 'project-p1/3d-s1';
+
 const { viewportInputs } = vi.hoisted(() => ({ viewportInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
@@ -65,8 +67,8 @@ async function setup(): Promise<{ doc: Y.Doc; session: SceneSession }> {
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Second' : 'Figure', model: { kind: 'builtin', id: 'figure' },
     position: [index * 2, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }));
-  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment(EDITABLE);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
   render(<QueryClientProvider client={client}><TooltipProvider><div data-space-outlet='scene'><Bound session={session} /></div></TooltipProvider></QueryClientProvider>);
@@ -98,8 +100,8 @@ describe('editor-owned pose state (inner#1692)', () => {
   it('shows the pose section only once the viewport reports the selected model\'s skeleton', async () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     applySceneCommand(doc, { type: 'create', objects: [{ id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
-      position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }] }, Symbol('fixture'), true);
-    const session = new SceneSession(doc); session.setEnvironment(EDITABLE);
+      position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }] }, Symbol('fixture'), true, NAME);
+    const session = new SceneSession(doc, NAME); session.setEnvironment(EDITABLE);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
     render(<QueryClientProvider client={client}><TooltipProvider><div data-space-outlet='scene'><Bound session={session} /></div></TooltipProvider></QueryClientProvider>);
     await screen.findByTestId('scene-native-boundary');
@@ -191,7 +193,7 @@ describe('leaving joint mode (inner#1692)', () => {
     { change: 'another object is selected', apply: ({ session }: { doc: Y.Doc; session: SceneSession }): void => { session.select(SECOND, false); } },
     { change: 'the selection is cleared', apply: ({ session }: { doc: Y.Doc; session: SceneSession }): void => { session.select(null, false); } },
     { change: 'this user locks the object', apply: ({ session }: { doc: Y.Doc; session: SceneSession }): void => { session.execute({ type: 'lock', ids: [ID], locked: true }); } },
-    { change: 'a collaborator locks the object', apply: ({ doc }: { doc: Y.Doc; session: SceneSession }): void => { applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true); } },
+    { change: 'a collaborator locks the object', apply: ({ doc }: { doc: Y.Doc; session: SceneSession }): void => { applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true, NAME); } },
     { change: 'the member becomes read-only', apply: ({ session }: { doc: Y.Doc; session: SceneSession }): void => { session.setEnvironment({ ...EDITABLE, readOnly: true }); } },
   ])('leaves joint mode when $change', async ({ apply }) => {
     const owner = await setup();

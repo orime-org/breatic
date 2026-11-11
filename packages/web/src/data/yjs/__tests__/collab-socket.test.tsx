@@ -134,7 +134,7 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     acquireDocProvider('project-p1/canvas-s1', getDoc('project-p1/canvas-s1'), '/ws');
     expect(wsInstances).toHaveLength(1);
     expect(wsInstances[0]!.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
-    expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws`);
+    expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws?size_ack=1`);
   });
 
   it('creates ONE shared socket + attaches the provider on first acquire', () => {

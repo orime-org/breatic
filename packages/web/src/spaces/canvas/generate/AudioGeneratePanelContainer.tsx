@@ -29,6 +29,8 @@ import {
   setNodeModel,
   setNodeParams,
 } from '@web/data/yjs/canvas-space';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -533,6 +535,9 @@ function AudioGeneratePanelBody({
     const modelEntry = fresh.modelEntry;
     if (!modelEntry) return;
 
+    // The result is written into this node by the server, past the size
+    // gate, so a Space that cannot take an add sends nothing (design 5.2).
+    if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
     submitGeneration({
       spaceId,
       nodeId,

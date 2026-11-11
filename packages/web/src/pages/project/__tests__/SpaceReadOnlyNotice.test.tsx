@@ -102,6 +102,30 @@ describe('SpaceReadOnlyNotice', () => {
     expect(notice).toHaveAttribute('aria-live', 'polite');
   });
 
+  it('V1-10 an opaque base that takes the pointer, the warning tone on the surface inside, no blur', () => {
+    degrade('project-p1/canvas-s1');
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
+    const notice = screen.getByTestId('space-read-only-notice');
+    expect(notice).toHaveClass('bg-background', 'pointer-events-auto');
+    const surface = notice.firstElementChild as HTMLElement;
+    expect(surface).toHaveClass('bg-status-warning-bg', 'border-status-warning-border', 'text-status-warning-foreground');
+    expect(notice).not.toHaveClass('backdrop-blur-sm');
+    expect(surface).not.toHaveClass('backdrop-blur-sm');
+  });
+
+  it('V1-11 the sentence wraps, and the reconnect control sits after it inside the surface', () => {
+    degrade('project-p1/canvas-s1');
+    render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
+    const notice = screen.getByTestId('space-read-only-notice');
+    const surface = notice.firstElementChild as HTMLElement;
+    const button = screen.getByTestId('space-read-only-notice-reconnect');
+    const sentence = [...surface.children].find((el) => el.tagName.toLowerCase() === 'span') as HTMLElement;
+    expect(sentence).toHaveClass('text-balance');
+    expect(sentence).not.toHaveClass('truncate');
+    expect(button.parentElement).toBe(surface);
+    expect(sentence.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('stays out of the way while this connection may write', () => {
     render(<Notice projectId='p1' spaceId='s1' type='canvas' />);
     expect(

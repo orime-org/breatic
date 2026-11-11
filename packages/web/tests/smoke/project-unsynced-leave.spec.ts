@@ -328,7 +328,7 @@ interface ContentFrames {
 /** Holds selected frames on the live connection until the case releases them. */
 async function controlContentFrames(page: Page): Promise<ContentFrames> {
   const frames: ContentFrames = { name: '', holdResponses: false, holdOutgoing: false, replies: [], outgoing: [], sent: [] };
-  await page.routeWebSocket('**/ws', (route) => {
+  await page.routeWebSocket((url) => url.pathname === '/ws', (route) => {
     const server = route.connectToServer();
     route.onMessage((data) => {
       const frame = frameOf(data);

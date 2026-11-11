@@ -10,6 +10,7 @@ import {
   type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
+import { strongestKind, writeSpaceDoc, type SpaceRefusalReason, type SpaceWriteKind } from '@web/data/yjs/space-write';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
 // A `patch` command writes only the transform fields and the name; a pose is written by `pose` commands.
@@ -25,7 +26,12 @@ export type SceneCommand =
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
   | { type: 'pose'; id: string; set: ScenePose; replace: boolean };
 
-export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate';
+/**
+ * Why a scene command was refused. `full`, `over_ceiling` and `resyncing` come from the Space's size (inner#1790)
+ * and have already been told: `full` and `over_ceiling` by `writeSpaceDoc`'s toast, `resyncing` by the rebuild's
+ * own toast.
+ */
+export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | SpaceRefusalReason;
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 
 export interface SceneDocumentSnapshot {
@@ -36,12 +42,23 @@ export interface SceneDocumentSnapshot {
 }
 
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
+interface SceneUnset { id: string; field: SceneEditableField }
 interface SceneCreation { id: string; values: SceneObjectValues }
 /** One flat pose key on a record: written with a value, deleted without one. */
 interface ScenePoseWrite { id: string; key: string; value?: readonly number[] }
-type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; deletes: string[];
+/** `unsets` delete a key whose absence reads as its default (an unlock deletes `locked`). */
+type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; unsets: SceneUnset[]; deletes: string[];
   poseWrites: ScenePoseWrite[] }
   | { ok: false; reason: SceneCommandFailure };
+
+/**
+ * Whether a refusal is the Space's size, which its own toast reported.
+ * @param reason - The refusal.
+ * @returns True for `full`, `over_ceiling` and `resyncing`.
+ */
+export function isSceneSizeRefusal(reason: SceneCommandFailure): reason is SpaceRefusalReason {
+  return reason === 'full' || reason === 'over_ceiling' || reason === 'resyncing';
+}
 
 /**
  * Values read for an editable key that has no live value. Two members writing
@@ -146,17 +163,18 @@ export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
 /**
  * Plan one command from current committed content and the caller's current permission.
  * @param doc - Live collaborative scene document.
+ * @param _name - Its canonical document name; the size is judged when the plan is written.
  * @param command - User operation to validate against current committed scene data.
  * @param canEdit - Current write permission derived from role and connection facts.
  * @returns Record creations, field overwrites and deletions, or the typed refusal.
  */
-export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boolean): ScenePlan {
+export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneCommand, canEdit: boolean): ScenePlan {
   if (!canEdit) return { ok: false, reason: 'readOnly' };
   const scene = readSceneDocument(doc);
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], deletes: [], poseWrites: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [], poseWrites: [] };
 
   if (command.type === 'create' || command.type === 'duplicate') {
     const requested = command.type === 'create' ? command.objects.map((object) => object.id) : command.copies.map((copy) => copy.id);
@@ -223,31 +241,47 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
   } else plan.deletes.push(...ids);
   plan.ids = ids;
   plan.writes = plan.writes.filter((write) => JSON.stringify(byId.get(write.id)?.[write.field]) !== JSON.stringify(write.value));
+  // Unlocked is the default a missing key reads as, so an unlock deletes the key: a whole map entry (inner#1790).
+  plan.unsets = plan.writes.filter((write) => write.field === 'locked' && write.value === false).map(({ id, field }) => ({ id, field }));
+  plan.writes = plan.writes.filter((write) => !(write.field === 'locked' && write.value === false));
   return plan;
 }
 
 /**
- * Apply a validated command in one local transaction, which is one personal undo item.
+ * What a plan writes in Yjs: new records `add`, field values `edit`, deleted keys and records `remove`.
+ * @param plan - The accepted plan.
+ * @returns The strongest of them.
+ */
+function planKind(plan: Extract<ScenePlan, { ok: true }>): SpaceWriteKind {
+  const edits = plan.writes.length > 0 || plan.poseWrites.some((write) => write.value !== undefined);
+  return strongestKind(...(plan.creates.length > 0 ? ['add' as const] : []), ...(edits ? ['edit' as const] : []));
+}
+
+/**
+ * Apply a validated command in one local transaction, which is one personal undo item, if the Space's size allows
+ * what it writes; a size refusal shows its toast once.
  * @param doc - Live collaborative scene document.
  * @param command - User operation to validate against current committed scene data.
  * @param origin - Origin tracked only by this local command history.
  * @param canEdit - Current write permission derived from role and connection facts.
+ * @param name - Its canonical document name, whose size gates the write.
  * @returns Affected object identities or the command refusal.
  */
-export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean): SceneCommandResult {
-  const plan = planSceneCommand(doc, command, canEdit);
+export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean, name: string): SceneCommandResult {
+  const plan = planSceneCommand(doc, name, command, canEdit);
   if (!plan.ok) return plan;
   // A command that changes nothing leaves no transaction, so no empty undo item.
-  if (plan.creates.length + plan.writes.length + plan.deletes.length + plan.poseWrites.length === 0) {
+  if (plan.creates.length + plan.writes.length + plan.unsets.length + plan.deletes.length + plan.poseWrites.length === 0) {
     return { ok: true, ids: plan.ids };
   }
   const objects = doc.getMap<unknown>('objects');
-  doc.transact(() => {
+  const written = writeSpaceDoc(name, { kind: planKind(plan) }, () => doc.transact(() => {
     for (const creation of plan.creates) {
       const { pose, ...values } = creation.values;
       objects.set(creation.id, new Y.Map<unknown>(Object.entries({ ...values, ...expandScenePose(pose ?? {}) })));
     }
     for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, write.value);
+    for (const unset of plan.unsets) (objects.get(unset.id) as Y.Map<unknown>).delete(unset.field);
     for (const write of plan.poseWrites) {
       const record = objects.get(write.id) as Y.Map<unknown>;
       const key = `${SCENE_POSE_KEY_PREFIX}${write.key}`;
@@ -255,6 +289,6 @@ export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: sym
       else record.set(key, write.value);
     }
     for (const id of plan.deletes) objects.delete(id);
-  }, origin);
-  return { ok: true, ids: plan.ids };
+  }, origin));
+  return written.ok ? { ok: true, ids: plan.ids } : written;
 }

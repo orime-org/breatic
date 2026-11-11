@@ -192,7 +192,7 @@ function tree(stability = 1): React.ReactElement {
             edges={[{ id: 'e1', source: 'src', target: 'target' }]}
             nodes={nodes(stability)}
             getLastWriteWasLocal={returnsTrue}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </CanvasContext.Provider>
       </ReactFlow>

@@ -28,7 +28,7 @@ it('uses the configured WebSocket host', async () => {
   const m = await import('../yjs/collab-socket');
   const Y = await import('yjs');
   m.acquireDocProvider('project-p1/meta', new Y.Doc());
-  expect(transports.socket).toHaveBeenCalledWith(expect.objectContaining({ url: 'wss://backend.example.com/ws' }));
+  expect(transports.socket).toHaveBeenCalledWith(expect.objectContaining({ url: 'wss://backend.example.com/ws?size_ack=1' }));
   m._resetCollabSocketForTests();
 });
 it('keeps the local API default when configuration is empty', async () => {

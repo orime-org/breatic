@@ -9,6 +9,8 @@ import { SceneSession, getSceneSession, evictSceneSession } from '../scene-sessi
 import { getDoc, destroyDoc } from '../manager';
 import { applySceneCommand, readSceneDocument } from '../scene-document';
 
+const NAME = 'project-p1/3d-s1';
+
 const ID = '11111111-1111-4111-8111-111111111111';
 const OBJECT = { id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
@@ -20,7 +22,7 @@ describe('scene session lifecycle', () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     doc.getText('objects').insert(0, 'invalid original objects root');
     const original = Y.encodeStateAsUpdate(doc);
-    const session = new SceneSession(doc);
+    const session = new SceneSession(doc, NAME);
     expect(session.getSnapshot().status).toBe('unsupported');
     expect(session.getSnapshot().canEdit).toBe(false);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(original);
@@ -43,8 +45,8 @@ describe('scene session lifecycle', () => {
   });
   it('keeps gestures local, commits one undo step and cancels without changing committed content', () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
-    const session = new SceneSession(doc);
+    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
+    const session = new SceneSession(doc, NAME);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     session.select(ID, false);
     expect(session.beginGesture()).toBe(true);
@@ -64,9 +66,9 @@ describe('scene session lifecycle', () => {
 
   it('ends the previous gesture synchronously when a command selects newly duplicated objects', () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
     const awareness = new Awareness(doc);
-    const session = new SceneSession(doc);
+    const session = new SceneSession(doc, NAME);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness });
     session.setVisible(true); session.setFocused(true); session.select(ID, false);
     session.beginGesture(); session.previewGesture([{ id: ID, position: [9, 0, 0] }]);
@@ -82,9 +84,9 @@ describe('scene session lifecycle', () => {
   it('withdraws cancelled gestures immediately and republishes selection after focus returns', () => {
     vi.useFakeTimers();
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
     const awareness = new Awareness(doc);
-    const session = new SceneSession(doc);
+    const session = new SceneSession(doc, NAME);
     session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness });
     session.setVisible(true); session.setFocused(true); session.select(ID, false); session.beginGesture();
     session.previewGesture([{ id: ID, position: [3, 0, 0] }]);
@@ -102,11 +104,11 @@ describe('scene session lifecycle', () => {
 
   it('cancels on remote lock and permission loss while viewer selection remains available', () => {
     const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
-    const session = new SceneSession(doc);
+    applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
+    const session = new SceneSession(doc, NAME);
     const env = { readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted' as const, refused: false, awareness: null };
     session.setEnvironment(env); session.select(ID, false); session.beginGesture(); session.previewGesture([{ id: ID, position: [2, 0, 0] }]);
-    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true);
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true, NAME);
     expect(session.getSnapshot().gestureActive).toBe(false);
     expect(session.getSnapshot().objects[0]?.position).toEqual([0, 0, 0]);
     session.setEnvironment({ ...env, readOnly: true });

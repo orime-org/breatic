@@ -176,7 +176,7 @@ export function useDocumentProposalPickup(
             if (at === null) outcome = 'gone';
             else publish(at);
           }
-          report(id, outcome, 'leftOut' in result ? result.leftOut : 0);
+          report(id, outcome, 'leftOut' in result ? result.leftOut : 0, 'refusal' in result ? result.refusal : undefined);
         }
       } finally {
         if (busy.current === owner) busy.current = null;

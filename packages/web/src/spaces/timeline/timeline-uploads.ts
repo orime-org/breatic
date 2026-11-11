@@ -17,6 +17,7 @@ import { timelineApi } from '@web/data/api/timeline';
 import { UploadFailedError, uploadMedia, type UploadFailureReason } from '@web/data/upload/media-upload';
 import { readDocFacts, readDocProvider, readWriteAccess, subscribeDocProvider, type WriteAccess } from '@web/data/yjs/collab-socket';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { subscribeDocSize } from '@web/data/yjs/doc-size';
 import { convertTimelineUpload, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { CLAIMS_FIELD, renewOnWorker, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
@@ -234,6 +235,8 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
   };
   bindProvider();
   const stopRegistry = subscribeDocProvider(name, bindProvider);
+  // A conversion the size held back lands once the Space has room (inner#1790).
+  const stopSize = subscribeDocSize(name, queue);
 
   return {
     start(uploadId, file) {
@@ -262,6 +265,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
       aborts.abort();
       clips.unobserveDeep(queue);
       stopRegistry();
+      stopSize();
       stopProvider();
       const operations = useSpaceOperationsStore.getState();
       for (const uploadId of registered) operations.unregister(spaceId, uploadId);

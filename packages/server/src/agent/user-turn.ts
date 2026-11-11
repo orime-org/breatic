@@ -201,7 +201,7 @@ export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): UserCo
  */
 export const USER_LANGUAGE_REMINDER =
   "(Reply and write every text the user will read or edit in the language this message is written in, " +
-  "unless the user has asked for a specific language or the work itself sets one. " +
+  "unless the user or the Project Instructions ask for a specific language or the work itself sets one. " +
   "Keep the product terms the system prompt lists in English, even where this message translates them.)";
 
 /**

@@ -600,6 +600,19 @@
       "needScene": "先開啟一個 3D Space。",
       "credits": "約 {credits} 積分",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project 指令",
+      "title": "Project 指令",
+      "description": "這裡寫的內容會在這個 Project 的每次對話中傳給 Agent，所有成員共用。",
+      "placeholder": "例如：回答用英文；配色只用藍和白。",
+      "atLimit": "已達到 {max, number} 字上限",
+      "lastEdited": "最後由 {name} 修改於 {time}",
+      "save": "儲存",
+      "saved": "已儲存",
+      "cleared": "已清空 Project 指令",
+      "readFailed": "Project 指令讀取失敗",
+      "saveFailed": "Project 指令儲存失敗"
     }
   },
   "canvas": {
@@ -2457,6 +2470,19 @@
         "formats": "PNG、JPEG 或 WebP",
         "chooseFile": "選擇檔案"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "這個 Space 已用 {used}，超過 {limit} 後將不能再新增內容。",
+      "noticeFull": "這個 Space 已滿（{used} / {limit}），只能刪除內容，降到上限以下後才能繼續編輯。",
+      "noticeOver": "這個 Space 已超出上限（{used} / {limit}），只能整個刪除節點、片段、模型或整段內容。",
+      "add": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "compound": "這個 Space 已滿，這項刪除還要改動其他內容，暫時不能執行。",
+      "over": "這個 Space 已超出上限，請整個刪除節點、片段、模型或整段內容。",
+      "resync": "你剛才的變更超出了這個 Space 的大小上限，沒有儲存。",
+      "proposal": "這個 Space 已滿，提案沒有放進去。",
+      "reason": "這個 Space 已滿。",
+      "text": "文字沒有寫入：這個 Space 已滿。",
+      "wait": "這個 Space 已滿，刪除一些內容後會自動完成。"
     }
   },
   "menu": {
@@ -3452,6 +3478,8 @@
       "id_taken": "此項目已存在，請重試。",
       "main_track": "主軌無法刪除。",
       "track_not_empty": "只能刪除空軌道。",
+      "full": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "over_ceiling": "這個 Space 已超出上限，請刪除整個片段。",
       "source_unresolved": "網頁動畫尚未就緒，請稍後重試。"
     },
     "mainTrack": "主軌",

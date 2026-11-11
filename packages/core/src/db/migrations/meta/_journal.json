@@ -859,8 +859,15 @@
     {
       "idx": 122,
       "version": "7",
-      "when": 1794310835503,
-      "tag": "0122_scene_rig_notice",
+      "when": 1794283958351,
+      "tag": "0122_project_agent_instructions",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1794366738671,
+      "tag": "0123_scene_rig_notice",
       "breakpoints": true
     }
   ]

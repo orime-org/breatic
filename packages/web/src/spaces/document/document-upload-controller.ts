@@ -13,7 +13,10 @@
  *
  * The write is a Yjs transaction under {@link UPLOAD_WRITE_ORIGIN}, which no
  * UndoManager tracks, so it is never undone and never splits the user's
- * undo steps. It runs from a microtask, outside every Yjs transaction and the
+ * undo steps. It is an `edit` for the size cap (inner#1790, design 5.2): while
+ * the Space is full, over its ceiling or being rebuilt it is skipped, the
+ * record stays `done` and the block waits; the body is scanned again whenever
+ * its size changes, so the address lands once the Space has room. It runs from a microtask, outside every Yjs transaction and the
  * sync binding's mutex: a write nested in the transaction that brought the
  * block in reaches Yjs but not the local editor view.
  */
@@ -23,6 +26,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import { subscribeDocSize } from '@web/data/yjs/doc-size';
+import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { CLAIMS_FIELD, type UploadClaim } from '@web/lib/upload-claims';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 
@@ -48,7 +53,9 @@ export type PendingFailureReason =
   | 'unsupportedType'
   | 'tooLarge'
   | 'empty'
-  | 'unreachable';
+  | 'unreachable'
+  /** The Space could not take an add when the upload was asked for (inner#1790). */
+  | 'spaceFull';
 
 /** Why an upload did not finish, and whether running it again can help. */
 export interface UploadFailure {
@@ -79,6 +86,8 @@ export interface ClaimChannel {
 export interface AttachedBody {
   readonly spaceId: string;
   readonly doc: Y.Doc;
+  /** The body's document name, whose size gates the address write; absent for a body not in the document cache. */
+  readonly name?: string | null;
   /** Where this page's claims on the body's uploads are published. */
   readonly awareness?: ClaimChannel;
   /** This page's write access to the body, read now. */
@@ -230,18 +239,22 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     };
     const writable =
       body.writeAccess() === 'granted' ? pending.filter(({ uploadId }) => finished(uploadId) !== null) : [];
-    if (writable.length > 0) {
-      body.doc.transact(() => {
-        for (const { element, uploadId } of writable) {
-          const result = finished(uploadId)!;
-          element.setAttribute('url', result.url);
-          if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
-          if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
-          element.setAttribute('uploadId', '');
-        }
-      }, UPLOAD_WRITE_ORIGIN);
-    }
-    const written = new Set(writable.map(({ element }) => element));
+    // The block reports the wait itself, so the refusal says nothing. A body
+    // outside the document cache has no size facts and is judged as unknown.
+    const landed =
+      writable.length > 0 &&
+      writeSpaceDoc(body.name ?? '', { kind: 'edit', notify: false }, () => {
+        body.doc.transact(() => {
+          for (const { element, uploadId } of writable) {
+            const result = finished(uploadId)!;
+            element.setAttribute('url', result.url);
+            if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
+            if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
+            element.setAttribute('uploadId', '');
+          }
+        }, UPLOAD_WRITE_ORIGIN);
+      }).ok;
+    const written = new Set(landed ? writable.map(({ element }) => element) : []);
     const present = new Set(pending.filter(({ element }) => !written.has(element)).map(({ uploadId }) => uploadId));
     const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.state.phase === 'uploading'));
     publish(entry, present);
@@ -380,12 +393,14 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       };
       fragment.observeDeep(onChange);
       const stopAccess = body.onChange(onChange);
+      const stopSize = body.name == null ? null : subscribeDocSize(body.name, onChange);
       watched.add(entry);
       queue(entry);
       return () => {
         if (!watched.delete(entry)) return;
         fragment.unobserveDeep(onChange);
         stopAccess();
+        stopSize?.();
         for (const uploadId of entry.registered) deps.unregister(body.spaceId, uploadId);
         entry.registered.clear();
         claim(entry, {});

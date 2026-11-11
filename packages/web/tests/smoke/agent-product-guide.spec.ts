@@ -101,6 +101,22 @@ test('asked how to generate, names the menu item the screen shows @needs-model',
   expect(text, `the reply: ${text}`).toContain(label);
 });
 
+test('asked how to make it always answer a certain way, names the Project instructions entry @needs-model', async () => {
+  test.setTimeout(300_000);
+  // The name as this user's screen shows it: the entry's hover tip.
+  const entry = page.getByTestId('agent-instructions-open');
+  await entry.hover();
+  const label = (await page.getByRole('tooltip').innerText()).trim();
+  expect(label.length).toBeGreaterThan(0);
+
+  const reply = await ask(page, '怎么让你在这个 Project 里一直按某种方式回答，不用每次都说？');
+
+  const used = await toolsUsed(page);
+  expect(used, `tools used: ${used.join(', ')}`).toContain('get_product_guide');
+  const text = await reply.innerText();
+  expect(text, `the reply: ${text}`).toContain(label);
+});
+
 test('asked about a document, reads the guide @needs-model', async () => {
   test.setTimeout(300_000);
   spaces.push(await createSpace(page, 'document', `guide-doc-${String(Date.now())}`));

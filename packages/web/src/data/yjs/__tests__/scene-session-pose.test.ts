@@ -10,6 +10,8 @@ import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession, type SceneEnvironment } from '@web/data/yjs/scene-session';
 
+const NAME = 'project-p1/3d-s1';
+
 type Quaternion = [number, number, number, number];
 type Vector = [number, number, number];
 
@@ -45,12 +47,12 @@ interface Fixture {
 function fixture(): Fixture {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
+  applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
   const log: unknown[] = [];
   doc.on('update', () => log.push('doc'));
   const awareness = new Awareness(doc);
   awareness.setLocalState({ user: { id: 'alice' } });
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ ...EDITOR, awareness });
   session.setVisible(true); session.setFocused(true); session.select(ID, false);
   awareness.on('update', () => {
@@ -177,7 +179,7 @@ describe('joint drag release (inner#1692 section 5.2, acceptance 7)', () => {
     deliver(state.doc, peer);
     begin(state);
     state.session.previewGesture([{ id: ID, pose: { ...START_POSE, 'h:leftUpperArm': Q_HALF } }]);
-    applySceneCommand(peer, { type: 'pose', id: ID, set: { 'h:rightUpperArm': Q_Z180, 'h:spine': Q_NEG_HALF }, replace: false }, Symbol(), true);
+    applySceneCommand(peer, { type: 'pose', id: ID, set: { 'h:rightUpperArm': Q_Z180, 'h:spine': Q_NEG_HALF }, replace: false }, Symbol(), true, NAME);
     deliver(peer, state.doc);
     expect(state.session.getSnapshot().gestureActive).toBe(true);
     // The draft still carries the drag-start value of the bone the peer changed.

@@ -40,8 +40,11 @@ import {
 } from '@web/stores/annotation-draft';
 
 interface AnnotationComposerProps {
-  /** Called with the body when the author presses Enter on something worth writing. */
-  onCommit: (content: string) => void;
+  /**
+   * Called with the body when the author presses Enter on something worth
+   * writing; false when the Space had no room for it.
+   */
+  onCommit: (content: string) => boolean;
   /** Called whenever the box closes, whether or not anything was written. */
   onClose: () => void;
 }
@@ -49,7 +52,7 @@ interface AnnotationComposerProps {
 /**
  * Draw the new-note box.
  * @param root0 - The component props.
- * @param root0.onCommit - Receives the body worth writing.
+ * @param root0.onCommit - Receives the body worth writing, and says whether it was written.
  * @param root0.onClose - Runs when the box closes, committed or not.
  * @returns The floating composer.
  */
@@ -88,9 +91,10 @@ export function AnnotationComposer({
     (action: DraftAction): void => {
       const next = reduceDraft(draftRef.current, action);
       if (next === draftRef.current) return;
+      // Refused by the size cap: the box stays as it was, words and all.
+      if (next.commit !== undefined && !onCommit(next.commit)) return;
       draftRef.current = next;
       setDraft(next);
-      if (next.commit !== undefined) onCommit(next.commit);
       if (next.mode === 'closed') onClose();
     },
     [onCommit, onClose],

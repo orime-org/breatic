@@ -14,6 +14,8 @@ import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { POSE_PRESETS } from '@web/spaces/three-d/viewport/pose-presets';
 
+const NAME = 'project-p1/3d-s1';
+
 type SkeletonState = 'none' | 'humanoid' | 'other';
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND = '22222222-2222-4222-8222-222222222222';
@@ -60,9 +62,9 @@ function setup({ states = new Map<string, SkeletonState>([[ID, 'humanoid']]), jo
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Second' : 'Figure', model: { kind: 'builtin', id: 'figure' },
     position: [index, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, ...(index === 0 && { pose: EARLIER_POSE }) }));
-  if (!applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true).ok) throw new Error('fixture create refused');
-  if (locked && !applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('fixture'), true).ok) throw new Error('fixture lock refused');
-  const session = new SceneSession(doc);
+  if (!applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME).ok) throw new Error('fixture create refused');
+  if (locked && !applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('fixture'), true, NAME).ok) throw new Error('fixture lock refused');
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   session.select(ID, false);
   owners.push({ doc, session });

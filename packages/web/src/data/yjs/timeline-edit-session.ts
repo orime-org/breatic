@@ -7,8 +7,10 @@ import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { runHistoryStep } from '@web/data/yjs/history-step';
+import { writeSpaceDoc, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
-  applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId,
+  applyTimelineEdit, missingTimelineSourceIds, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId, timelineSizeHolds,
 } from '@web/data/yjs/timeline-document';
 import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
@@ -18,7 +20,11 @@ import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 export interface TimelineEditSessionSnapshot { canUndo: boolean; canRedo: boolean; selectedClipId: string | null }
 
 /** Whether an edit comes from a held key; it joins the hold's step while that step is the undo top. */
-export interface TimelineEditOptions { hold?: boolean }
+export interface TimelineEditOptions {
+  hold?: boolean;
+  /** Show the size refusal toast (default true); false where the caller shows the reason itself. */
+  notify?: boolean;
+}
 
 /** One user's history and selection for one open Timeline document. */
 export interface TimelineEditSession {
@@ -28,6 +34,8 @@ export interface TimelineEditSession {
   edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
   undo: () => void;
   redo: () => void;
+  /** Undo or redo one step through the Space's size check; a refusal leaves the step on its stack. */
+  historyStep: (direction: 'undo' | 'redo') => SpaceWriteResult;
   select: (clipId: string | null) => void;
   endHold: () => void;
   setCanWrite: (canWrite: boolean) => void;
@@ -90,15 +98,21 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
  * Repair the document after an undo or redo: give every present record of the step's snapshot the fields it
  * lacks (only the placement fields when a clip's kind is no longer the snapshot's), write again the sources of clips the pop revived, and drop sources no clip names. A pop restores or
  * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
- * fields or without its source, or a source without a clip.
+ * fields or without its source, or a source without a clip. While the Space's size holds writes back nothing is
+ * repaired: a pop allowed then only deletes. Once the Space is below the limit, the next transaction writes back
+ * any missing source (`restoreMissingSources`), and the next edit that writes, clip removal or pop drops the
+ * sources no clip names (inner#1790).
  * @param doc - The document.
+ * @param name - Its canonical name.
  * @param records - The snapshot of the step just undone or redone, when the step has one.
  * @param clipsBefore - The clip ids present just before the pop.
  * @param known - Source values this session has seen.
  * @throws {never} Never.
  */
-function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, TimelineVideoSource>>): void {
-  doc.transact(() => {
+function repairAfterPop(doc: Y.Doc, name: string, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, TimelineVideoSource>>): void {
+  if (timelineSizeHolds(name)) return;
+  // It runs inside the pop's own write, which stated the kind.
+  writeSpaceDoc(name, { kind: 'add', notify: false }, () => doc.transact(() => {
     const revived: string[] = [];
     for (const kind of ['clips', 'tracks'] as const) {
       const collection = doc.getMap<unknown>(kind);
@@ -113,16 +127,17 @@ function repairAfterPop(doc: Y.Doc, records: RecordSnapshot | undefined, clipsBe
       }
     }
     reconcileTimelineSources(doc, known, revived);
-  }, REPAIR_ORIGIN);
+  }, REPAIR_ORIGIN));
 }
 
 /**
  * Create the personal session for a Timeline document.
  * @param doc - The live collaborative document.
+ * @param name - Its canonical name, whose size gates the session's writes.
  * @returns The session; its undo manager tracks only this session's edits to tracks, clips and sources.
  * @throws {never} Never.
  */
-function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
+function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSession {
   const origin = Symbol('timeline-local-edit');
   const history = withDestroyListenerCleanup(doc, () => new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips'), doc.getMap('sources')], { trackedOrigins: new Set([origin]), captureTimeout: 0 }));
   const listeners = new Set<() => void>();
@@ -155,7 +170,8 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   /**
    * Remember the current readable sources and, for a session that may write, write back any referenced source a merge
    * removed. Concurrent writes to one key keep only one, so the remover's own write can win and then be swept,
-   * leaving a peer's new or revived clip without its source; every editor that saw the value restores it.
+   * leaving a peer's new or revived clip without its source; every editor that saw the value restores it. Nothing
+   * is written back while the Space's size holds writes back; the first transaction after does it.
    */
   const restoreMissingSources = (): void => {
     if (disposed) return;
@@ -165,31 +181,34 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       const source = readTimelineSource(value, id);
       if (source !== undefined) known[id] = source;
     });
-    if (!canWrite) return;
-    if (missingTimelineSourceIds(doc, known).length > 0) doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN);
+    if (!canWrite || timelineSizeHolds(name) || missingTimelineSourceIds(doc, known).length === 0) return;
+    writeSpaceDoc(name, { kind: 'add', notify: false }, () => doc.transact(() => restoreTimelineSources(doc, known, []), REPAIR_ORIGIN));
   };
   restoreMissingSources();
   doc.on('afterAllTransactions', restoreMissingSources);
   // A peer's edit to a record this step deleted lands in the deleted map, and undo restores only what this
   // session removed, so a revived record can lack fields or its source; repair it from the step's snapshot.
   history.on('stack-item-popped', ({ stackItem, type }: { stackItem: { meta: Map<string, unknown> }; type: 'undo' | 'redo' }) => {
-    repairAfterPop(doc, stackItem.meta.get(type === 'undo' ? 'before' : 'after') as RecordSnapshot | undefined, clipsBeforePop, known);
+    repairAfterPop(doc, name, stackItem.meta.get(type === 'undo' ? 'before' : 'after') as RecordSnapshot | undefined, clipsBeforePop, known);
     if (added !== null && added !== stackItem) for (const [key, value] of stackItem.meta) added.meta.set(key, value);
   });
   doc.on('update', refresh);
   // The step the current key hold made; a repeat joins it only while it is still the top step.
   let holdStep: unknown = null;
   /**
-   * Undo or redo one step: a pop ends any key hold and any step being joined, and records the clips present before it.
-   * @param run - The history call.
+   * Undo or redo one step if the Space's size allows what it writes: a pop ends any key hold and any step being
+   * joined, and records the clips present before it.
+   * @param direction - Which stack pops.
+   * @returns Whether it ran, or why not.
    * @throws {never} Never.
    */
-  const pop = (run: () => void): void => {
+  const pop = (direction: 'undo' | 'redo'): SpaceWriteResult => {
     added = null;
     holdStep = null;
     clipsBeforePop = new Set(doc.getMap('clips').keys());
-    run();
+    const result = runHistoryStep(name, history, direction);
     refresh();
+    return result;
   };
 
   return {
@@ -206,7 +225,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
       if (join) history.captureTimeout = Number.POSITIVE_INFINITY;
       try {
         const before = snapshotRecords(doc);
-        const plan = applyTimelineEdit(doc, command, origin, undefined, web);
+        const plan = applyTimelineEdit(doc, command, origin, undefined, web, options.notify);
         const item = history.undoStack.at(-1);
         if (!join) holdStep = options.hold === true && item !== top ? item : null;
         if (plan.ok && item !== undefined) {
@@ -223,8 +242,9 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
         refresh();
       }
     },
-    undo() { pop(() => history.undo()); },
-    redo() { pop(() => history.redo()); },
+    undo() { pop('undo'); },
+    redo() { pop('redo'); },
+    historyStep: pop,
     select(clipId) {
       const next = clipId !== null && doc.getMap('clips').has(clipId) ? clipId : null;
       // Focus handed back to the held clip selects it again; only a change of selection ends the hold.
@@ -252,7 +272,7 @@ function createTimelineEditSession(doc: Y.Doc): TimelineEditSession {
   };
 }
 
-const sessions = createDocScopedCache<TimelineEditSession>((doc) => createTimelineEditSession(doc), (session) => session.dispose());
+const sessions = createDocScopedCache<TimelineEditSession, string>((doc, name) => createTimelineEditSession(doc, name), (session) => session.dispose());
 
 /**
  * The personal edit session of an open Timeline document, kept across body remounts.
@@ -262,7 +282,7 @@ const sessions = createDocScopedCache<TimelineEditSession>((doc) => createTimeli
  * @throws {never} Never.
  */
 export function getTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSession {
-  return sessions.get(doc, name, undefined);
+  return sessions.get(doc, name, name);
 }
 
 /**

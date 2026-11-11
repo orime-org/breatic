@@ -821,7 +821,7 @@ export const tasks = pgTable(
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind CHECK was last redefined by migration 0122 (0085 added it, 0092
+ * The kind CHECK was last redefined by migration 0123 (0085 added it, 0092
  * extended it); the status CHECK lives in 0085.
  */
 export const taskUpstreamSteps = pgTable(
@@ -1056,7 +1056,7 @@ export const nodeTasks = pgTable(
     origin: varchar("origin", { length: 16 }),
     // What the user is told beside a done 3D generation (inner#1692):
     // 'rig_failed' when the model was delivered without the skeleton it was
-    // asked for. Null on every other row; its CHECK lives in 0122.
+    // asked for. Null on every other row; its CHECK lives in 0123.
     notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
@@ -2258,6 +2258,23 @@ export const agentMemories = pgTable(
       .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
   ],
 );
+
+/**
+ * A Project's instructions for the Agent (0122, #1400): one row per Project,
+ * sent at the end of the system prompt on every request there. Clearing sets
+ * `deleted_at`; a later save brings the same row back.
+ */
+export const projectAgentInstructions = pgTable("project_agent_instructions", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  content: text("content").notNull(),
+  updatedByUserId: uuid("updated_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
 
 /**
  * One Timeline execution the user accepted (0119, inner#1711).

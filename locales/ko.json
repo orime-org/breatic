@@ -600,6 +600,19 @@
       "needScene": "먼저 3D Space를 여세요.",
       "credits": "약 {credits} 크레딧",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project 지침",
+      "title": "Project 지침",
+      "description": "이 Project의 모든 대화에서 Agent에게 전달됩니다. 모든 멤버가 함께 사용합니다.",
+      "placeholder": "예: 영어로 답하기, 색은 파란색과 흰색만 쓰기.",
+      "atLimit": "{max, number}자 제한에 도달했습니다",
+      "lastEdited": "{name}님이 {time}에 마지막으로 수정",
+      "save": "저장",
+      "saved": "저장했습니다",
+      "cleared": "Project 지침을 지웠습니다",
+      "readFailed": "Project 지침을 불러오지 못했습니다",
+      "saveFailed": "Project 지침을 저장하지 못했습니다"
     }
   },
   "canvas": {
@@ -2457,6 +2470,19 @@
         "formats": "PNG, JPEG 또는 WebP",
         "chooseFile": "파일 선택"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "이 Space는 {used}를 사용하고 있습니다. {limit}를 넘으면 더 이상 내용을 추가할 수 없습니다.",
+      "noticeFull": "이 Space가 가득 찼습니다({used} / {limit}). 한도 아래로 내려갈 때까지 내용을 삭제만 할 수 있습니다.",
+      "noticeOver": "이 Space가 한도를 초과했습니다({used} / {limit}). 노드, 클립, 모델, 단락 전체를 통째로만 삭제할 수 있습니다.",
+      "add": "이 Space가 가득 찼습니다. 계속 편집하려면 일부 내용을 삭제하세요.",
+      "compound": "이 Space가 가득 찼습니다. 이 삭제는 다른 내용도 바꾸어야 해서 지금은 실행할 수 없습니다.",
+      "over": "이 Space가 한도를 초과했습니다. 노드, 클립, 모델, 단락 전체를 통째로 삭제하세요.",
+      "resync": "방금 변경한 내용이 이 Space의 크기 한도를 넘어 저장되지 않았습니다.",
+      "proposal": "이 Space가 가득 차서 제안을 배치하지 못했습니다.",
+      "reason": "이 Space가 가득 찼습니다.",
+      "text": "텍스트가 추가되지 않았습니다. 이 Space가 가득 찼습니다.",
+      "wait": "이 Space가 가득 찼습니다. 일부 내용을 삭제하면 완료됩니다."
     }
   },
   "menu": {
@@ -3452,6 +3478,8 @@
       "id_taken": "이미 있는 항목입니다. 다시 시도하세요.",
       "main_track": "메인 트랙은 삭제할 수 없습니다.",
       "track_not_empty": "빈 트랙만 삭제할 수 있습니다.",
+      "full": "이 Space가 가득 찼습니다. 계속 편집하려면 일부 내용을 삭제하세요.",
+      "over_ceiling": "이 Space가 한도를 초과했습니다. 클립 전체를 삭제하세요.",
       "source_unresolved": "웹 애니메이션이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요."
     },
     "mainTrack": "메인 트랙",

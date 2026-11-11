@@ -26,6 +26,8 @@ import {
   chatRenameConversationSchema,
   chatSetModelSchema,
   chatEarlierMessagesQuerySchema,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
   idParamSchema,
   attachmentParamSchema,
 } from "@server/routes/schemas.js";
@@ -34,6 +36,7 @@ import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
+import { agentInstructionsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
 import { SMALLEST_CREDIT } from "@breatic/domain";
@@ -400,6 +403,37 @@ chat.post(
       projectId,
     );
     return c.json({ data: conversation });
+  },
+);
+
+/**
+ * `GET /chat/instructions` — the Project's instructions for the Agent, for
+ * its Owner and Editors (#1400).
+ * @param c - Hono context with `project_id` in the query
+ * @returns The text, who saved it last and when; empty when there are none
+ * @throws {AppError} `404` for a non-member, `403` for a member who may not edit
+ */
+chat.get("/instructions", validate("query", agentInstructionsQuerySchema), async (c) => {
+  const user = c.get("user");
+  const { project_id: projectId } = c.req.valid("query");
+  return c.json({ data: await agentInstructionsService.read(projectId, user.id) });
+});
+
+/**
+ * `PUT /chat/instructions` — save the Project's instructions for the Agent as
+ * typed; a text that is empty or only whitespace clears them (#1400).
+ * @param c - Hono context with `{ project_id, text }`
+ * @returns The instructions now in place
+ * @throws {AppError} `404` for a non-member, `403` for a member who may not edit
+ */
+chat.put(
+  "/instructions",
+  rateLimitFor("agent-instructions", "user"),
+  validate("json", agentInstructionsSaveSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId, text } = c.req.valid("json");
+    return c.json({ data: await agentInstructionsService.save(projectId, user.id, text) });
   },
 );
 

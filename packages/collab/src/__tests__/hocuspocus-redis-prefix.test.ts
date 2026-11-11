@@ -931,6 +931,7 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
       readOnly: false,
       context: { user: { id: "u-1" }, seatCap: args.documentName.endsWith("/meta") ? null : 2, arrivedAtMs: 1000 },
       document: args.document,
+      sendStateless: vi.fn(),
       webSocket: {
         send: vi.fn(),
         on: vi.fn((event: string, listener: () => void) => {

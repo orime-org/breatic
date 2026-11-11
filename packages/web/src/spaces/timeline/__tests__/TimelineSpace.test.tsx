@@ -20,7 +20,9 @@ import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { UploadFailedError, uploadMedia, type StoredUpload } from '@web/data/upload/media-upload';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import { SIZE_COPY_EN, enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { toast } from '@web/lib/toast';
 import { writeUserPreference } from '@web/lib/user-preferences-storage';
@@ -2692,5 +2694,23 @@ describe('TimelineSpace visual round 2 (inner#1708 W13, W17, W19, W20)', () => {
     act(() => { doc.transact(() => doc.getMap('tracks').delete('v2'), 'provider'); });
     const row = await screen.findByTestId('timeline-conflict-' + X);
     expect(within(row).getByText(`${t('timeline.edit.trackRemoved')} · ${t('timeline.clipFrames', { start: 10, duration: 14 })}`, { exact: true })).toBeInTheDocument();
+  });
+});
+
+describe('TimelineSpace size cap (inner#1790)', () => {
+  afterEach(() => { clearAllDocSizes(); });
+
+  it('TL-Q12 a refused edit in a full Space shows one toast, from writeSpaceDoc, and writes nothing', async () => {
+    const doc = seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
+    showTimeline();
+    const clip = await screen.findByTestId('timeline-clip-' + CLIP.id);
+    fireEvent.click(clip);
+    enterSize(docName.timelineSpace(PROJECT, SPACE), 'F');
+    vi.mocked(toast.warning).mockClear();
+    const before = Y.encodeStateAsUpdate(doc);
+    fireEvent.click(screen.getByTestId('timeline-duplicate'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([SIZE_COPY_EN.T_ADD]);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 });

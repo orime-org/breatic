@@ -10,6 +10,8 @@ import {
   applySceneCommand, createSceneHistory, planSceneCommand, readSceneDocument, type SceneCommand,
 } from '@web/data/yjs/scene-document';
 
+const NAME = 'project-p1/3d-s1';
+
 type Quaternion = [number, number, number, number];
 type Vector = [number, number, number];
 
@@ -82,7 +84,7 @@ afterEach(() => {
 describe('scene pose storage (inner#1692 section 2.1)', () => {
   it('projects flat pose keys into one pose object and leaves other fields untouched', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
     doc.transact(() => {
       record(doc).set('pose.h:leftUpperArm', Q_Y90);
       record(doc).set('pose.n:Tail_1', Q_X180);
@@ -95,7 +97,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
 
   it('projects an object without pose keys with no pose property at all', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
     const [object] = readSceneDocument(doc).objects;
     expect(object).toEqual(BASE);
     expect(object).not.toHaveProperty('pose');
@@ -110,7 +112,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
     ['a pose.__proto__ key carrying a bone', 'pose.__proto__', { 'h:hips': 'garbage' }],
   ])('isolates a record holding %s as invalid while other objects stay readable', (_label, key, value) => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [BASE, { ...BASE, id: OTHER }] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [BASE, { ...BASE, id: OTHER }] }, Symbol(), true, NAME);
     record(doc).set(key, value);
     const scene = readSceneDocument(doc);
     expect(scene.objects).toEqual([{ ...BASE, id: OTHER }]);
@@ -119,7 +121,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
 
   it('creates a posed object as one flat key per bone with plain values and no nested pose entry', () => {
     const doc = sceneDoc();
-    expect(applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
     const stored = record(doc);
     expect(stored.has('pose')).toBe(false);
     expect(poseKeys(doc)).toEqual(['pose.h:leftUpperArm', 'pose.n:Tail_1', 'pose.t:hips']);
@@ -132,7 +134,7 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
 
   it('creates an object with an empty pose without writing any pose key', () => {
     const doc = sceneDoc();
-    expect(applySceneCommand(doc, { type: 'create', objects: [{ ...BASE, pose: {} }] }, Symbol(), true).ok).toBe(true);
+    expect(applySceneCommand(doc, { type: 'create', objects: [{ ...BASE, pose: {} }] }, Symbol(), true, NAME).ok).toBe(true);
     expect([...record(doc).keys()].filter((key) => key === 'pose' || key.startsWith('pose.'))).toEqual([]);
     expect(readSceneDocument(doc).objects[0]).not.toHaveProperty('pose');
   });
@@ -141,29 +143,29 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
     const doc = sceneDoc();
     const before = Y.encodeStateAsUpdate(doc);
     const bad = { ...BASE, pose: { 'h:leftUpperArm': [2, 0, 0, 0] as Quaternion } };
-    expect(applySceneCommand(doc, { type: 'create', objects: [bad] }, Symbol(), true)).toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(doc, { type: 'create', objects: [bad] }, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it('duplicates the pose as flat keys and keeps the copy independent of the original', () => {
     const doc = sceneDoc(); const origin = Symbol();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, origin, true);
-    expect(applySceneCommand(doc, { type: 'duplicate', copies: [{ sourceId: ID, id: COPY }] }, origin, true))
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, origin, true, NAME);
+    expect(applySceneCommand(doc, { type: 'duplicate', copies: [{ sourceId: ID, id: COPY }] }, origin, true, NAME))
       .toEqual({ ok: true, ids: [COPY] });
     expect(record(doc, COPY).has('pose')).toBe(false);
     expect(poseKeys(doc, COPY)).toEqual(['pose.h:leftUpperArm', 'pose.n:Tail_1', 'pose.t:hips']);
     expect(poseOf(doc, COPY)).toEqual(POSED.pose);
     const copyPose: SceneCommand = { type: 'pose', id: COPY, set: { 'h:leftUpperArm': Q_Z180, 'n:Tail_1': Q_X180 }, replace: true };
-    expect(applySceneCommand(doc, copyPose, origin, true)).toEqual({ ok: true, ids: [COPY] });
+    expect(applySceneCommand(doc, copyPose, origin, true, NAME)).toEqual({ ok: true, ids: [COPY] });
     expect(poseOf(doc, COPY)).toEqual({ 'h:leftUpperArm': Q_Z180, 'n:Tail_1': Q_X180 });
     expect(poseOf(doc, ID)).toEqual(POSED.pose);
   });
 
   it('never writes pose keys through a patch command', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const patch = { type: 'patch', patches: [{ id: ID, pose: { 'h:leftUpperArm': Q_Z180, 'h:spine': Q_HALF } }] } as unknown as SceneCommand;
-    expect(applySceneCommand(doc, patch, Symbol(), true)).toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(doc, patch, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
     expect(record(doc).has('pose')).toBe(false);
     expect(poseOf(doc)).toEqual(POSED.pose);
   });
@@ -172,10 +174,10 @@ describe('scene pose storage (inner#1692 section 2.1)', () => {
 describe('pose command (inner#1692 section 2.3)', () => {
   it('sets new keys, overwrites changed keys and, replacing, clears the rest in one transaction and one undo item', () => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const origins: unknown[] = [];
     doc.on('afterTransaction', (transaction) => origins.push(transaction.origin));
-    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, 'h:spine': Q_HALF, 't:hips': HIPS }, true), origin, true))
+    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, 'h:spine': Q_HALF, 't:hips': HIPS }, true), origin, true, NAME))
       .toEqual({ ok: true, ids: [ID] });
     expect(origins).toEqual([origin]);
     expect(poseOf(doc)).toEqual({ 'h:leftUpperArm': Q_Z180, 'h:spine': Q_HALF, 't:hips': HIPS });
@@ -190,8 +192,8 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('clears every pose key when replacing with an empty pose and removes the pose projection', () => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
-    expect(applySceneCommand(doc, pose({}, true), origin, true)).toEqual({ ok: true, ids: [ID] });
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
+    expect(applySceneCommand(doc, pose({}, true), origin, true, NAME)).toEqual({ ok: true, ids: [ID] });
     expect(poseKeys(doc)).toEqual([]);
     expect(readSceneDocument(doc).objects).toEqual([BASE]);
     expect(readSceneDocument(doc).objects[0]).not.toHaveProperty('pose');
@@ -203,9 +205,9 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('applies a preset as a replace, keeping the set keys and removing every other key', () => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const preset = { 'h:leftUpperArm': Q_Y90, 'h:rightUpperArm': Q_HALF, 't:hips': [0, -0.5, 0] };
-    expect(applySceneCommand(doc, pose(preset, true), origin, true)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(doc, pose(preset, true), origin, true, NAME)).toEqual({ ok: true, ids: [ID] });
     expect(poseOf(doc)).toEqual(preset);
     expect(history.undoStack).toHaveLength(1);
     history.undo();
@@ -215,17 +217,17 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('keeps every key it does not set when not replacing', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
-    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180 }), Symbol(), true).ok).toBe(true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
+    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180 }), Symbol(), true, NAME).ok).toBe(true);
     expect(poseOf(doc)).toEqual({ ...POSED.pose, 'h:leftUpperArm': Q_Z180 });
   });
 
   it('writes only the keys whose value changes', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const changed: string[] = [];
     record(doc).observe((event) => changed.push(...event.keysChanged));
-    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': [...Q_Y90], 'n:Tail_1': Q_Z180, 'h:spine': Q_HALF }), Symbol(), true).ok).toBe(true);
+    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': [...Q_Y90], 'n:Tail_1': Q_Z180, 'h:spine': Q_HALF }), Symbol(), true, NAME).ok).toBe(true);
     expect(changed.sort()).toEqual(['pose.h:spine', 'pose.n:Tail_1']);
   });
 
@@ -235,11 +237,11 @@ describe('pose command (inner#1692 section 2.3)', () => {
     ['is empty', pose({})],
   ])('creates no transaction and no undo item for a command that %s', (_label, command) => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
     let transactions = 0;
     doc.on('afterTransaction', () => { transactions += 1; });
-    expect(applySceneCommand(doc, command, origin, true)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(doc, command, origin, true, NAME)).toEqual({ ok: true, ids: [ID] });
     expect(transactions).toBe(0);
     expect(history.undoStack).toHaveLength(0);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
@@ -248,10 +250,10 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('creates no transaction for clear all on an object without a pose', () => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
     let transactions = 0;
     doc.on('afterTransaction', () => { transactions += 1; });
-    expect(applySceneCommand(doc, pose({}, true), origin, true)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(doc, pose({}, true), origin, true, NAME)).toEqual({ ok: true, ids: [ID] });
     expect(transactions).toBe(0);
     expect(history.undoStack).toHaveLength(0);
     history.destroy();
@@ -259,11 +261,11 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('applying the same preset twice leaves the pose unchanged and adds no second undo item', () => {
     const doc = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(doc, origin);
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const preset = { 'h:leftUpperArm': Q_HALF, 'h:leftLowerArm': Q_Y90 };
-    applySceneCommand(doc, pose(preset, true), origin, true);
+    applySceneCommand(doc, pose(preset, true), origin, true, NAME);
     const after = Y.encodeStateAsUpdate(doc);
-    applySceneCommand(doc, pose(preset, true), origin, true);
+    applySceneCommand(doc, pose(preset, true), origin, true, NAME);
     expect(poseOf(doc)).toEqual(preset);
     expect(history.undoStack).toHaveLength(1);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(after);
@@ -272,37 +274,37 @@ describe('pose command (inner#1692 section 2.3)', () => {
 
   it('plans without writing', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(planSceneCommand(doc, pose({ 'h:spine': Q_HALF }, true), true).ok).toBe(true);
+    expect(planSceneCommand(doc, NAME, pose({ 'h:spine': Q_HALF }, true), true).ok).toBe(true);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it('refuses a read-only caller', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, pose({ 'h:spine': Q_HALF }), Symbol(), false)).toEqual({ ok: false, reason: 'readOnly' });
+    expect(applySceneCommand(doc, pose({ 'h:spine': Q_HALF }), Symbol(), false, NAME)).toEqual({ ok: false, reason: 'readOnly' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it('refuses a scene in an unsupported format', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION + 1);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, pose({ 'h:spine': Q_HALF }), Symbol(), true)).toEqual({ ok: false, reason: 'unsupported' });
+    expect(applySceneCommand(doc, pose({ 'h:spine': Q_HALF }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'unsupported' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
   it('refuses a missing object and an invalid record', () => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     doc.getMap('objects').set(OTHER, new Y.Map<unknown>([['model', { kind: 'unknown' }]]));
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, { type: 'pose', id: COPY, set: { 'h:spine': Q_HALF }, replace: false }, Symbol(), true))
+    expect(applySceneCommand(doc, { type: 'pose', id: COPY, set: { 'h:spine': Q_HALF }, replace: false }, Symbol(), true, NAME))
       .toEqual({ ok: false, reason: 'missing' });
-    expect(applySceneCommand(doc, { type: 'pose', id: OTHER, set: { 'h:spine': Q_HALF }, replace: false }, Symbol(), true))
+    expect(applySceneCommand(doc, { type: 'pose', id: OTHER, set: { 'h:spine': Q_HALF }, replace: false }, Symbol(), true, NAME))
       .toEqual({ ok: false, reason: 'invalid' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
@@ -312,11 +314,11 @@ describe('pose command (inner#1692 section 2.3)', () => {
     ['a replace', pose({}, true)],
   ])('refuses %s on a locked object', (_label, command) => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     // A record cannot be created locked, so it is locked by its own command.
-    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true);
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, command, Symbol(), true)).toEqual({ ok: false, reason: 'locked' });
+    expect(applySceneCommand(doc, command, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'locked' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
@@ -332,9 +334,9 @@ describe('pose command (inner#1692 section 2.3)', () => {
     ['more than 256 keys', Object.fromEntries(Array.from({ length: 257 }, (_, index) => [`n:Bone_${index}`, Q_HALF]))],
   ])('refuses %s and writes nothing, even beside a valid entry', (_label, set) => {
     const doc = sceneDoc();
-    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, ...set }, true), Symbol(), true))
+    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, ...set }, true), Symbol(), true, NAME))
       .toEqual({ ok: false, reason: 'invalid' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
@@ -343,10 +345,10 @@ describe('pose command (inner#1692 section 2.3)', () => {
 describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 and 12)', () => {
   it('keeps both members\' first writes to different bones of an unposed object', () => {
     const alice = sceneDoc();
-    applySceneCommand(alice, { type: 'create', objects: [BASE] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    expect(applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Y90 }), Symbol(), true).ok).toBe(true);
-    expect(applySceneCommand(bob, pose({ 'h:rightUpperArm': Q_HALF }), Symbol(), true).ok).toBe(true);
+    expect(applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Y90 }), Symbol(), true, NAME).ok).toBe(true);
+    expect(applySceneCommand(bob, pose({ 'h:rightUpperArm': Q_HALF }), Symbol(), true, NAME).ok).toBe(true);
     merge(alice, bob);
     const expected = { 'h:leftUpperArm': Q_Y90, 'h:rightUpperArm': Q_HALF };
     expect(poseOf(alice)).toEqual(expected);
@@ -355,10 +357,10 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
 
   it('keeps concurrent writes to different bones of a posed object on both replicas', () => {
     const alice = sceneDoc();
-    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Z180 }), Symbol(), true);
-    applySceneCommand(bob, pose({ 'n:Tail_1': Q_HALF }), Symbol(), true);
+    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Z180 }), Symbol(), true, NAME);
+    applySceneCommand(bob, pose({ 'n:Tail_1': Q_HALF }), Symbol(), true, NAME);
     merge(alice, bob);
     const expected = { 'h:leftUpperArm': Q_Z180, 'n:Tail_1': Q_HALF, 't:hips': HIPS };
     expect(poseOf(alice)).toEqual(expected);
@@ -367,11 +369,11 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
 
   it('never removes a key another member wrote when undoing my pose command', () => {
     const alice = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(alice, origin);
-    applySceneCommand(alice, { type: 'create', objects: [BASE] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Y90 }), origin, true);
+    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Y90 }), origin, true, NAME);
     merge(alice, bob);
-    applySceneCommand(bob, pose({ 'h:rightUpperArm': Q_HALF }), Symbol(), true);
+    applySceneCommand(bob, pose({ 'h:rightUpperArm': Q_HALF }), Symbol(), true, NAME);
     merge(alice, bob);
     history.undo();
     merge(alice, bob);
@@ -382,11 +384,11 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
 
   it('keeps a key another member wrote after my preset when I undo the preset', () => {
     const alice = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(alice, origin);
-    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_HALF, 'h:leftLowerArm': Q_Y90 }, true), origin, true);
+    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_HALF, 'h:leftLowerArm': Q_Y90 }, true), origin, true, NAME);
     merge(alice, bob);
-    applySceneCommand(bob, pose({ 'h:spine': Q_Z180 }), Symbol(), true);
+    applySceneCommand(bob, pose({ 'h:spine': Q_Z180 }), Symbol(), true, NAME);
     merge(alice, bob);
     history.undo();
     merge(alice, bob);
@@ -398,10 +400,10 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
 
   it('keeps a bone another member wrote concurrently with my clear all', () => {
     const alice = sceneDoc();
-    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    applySceneCommand(alice, pose({}, true), Symbol(), true);
-    applySceneCommand(bob, pose({ 'h:spine': Q_Z180 }), Symbol(), true);
+    applySceneCommand(alice, pose({}, true), Symbol(), true, NAME);
+    applySceneCommand(bob, pose({ 'h:spine': Q_Z180 }), Symbol(), true, NAME);
     merge(alice, bob);
     expect(poseOf(alice)).toEqual({ 'h:spine': Q_Z180 });
     expect(poseOf(bob)).toEqual({ 'h:spine': Q_Z180 });
@@ -409,11 +411,11 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
 
   it('restores my previous value on undo unless the other member wrote that bone afterwards', () => {
     const alice = sceneDoc(); const origin = Symbol(); const history = createSceneHistory(alice, origin);
-    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true);
+    applySceneCommand(alice, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const bob = replica(alice);
-    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Z180, 'n:Tail_1': Q_HALF }), origin, true);
+    applySceneCommand(alice, pose({ 'h:leftUpperArm': Q_Z180, 'n:Tail_1': Q_HALF }), origin, true, NAME);
     merge(alice, bob);
-    applySceneCommand(bob, pose({ 'n:Tail_1': Q_IDENTITY }), Symbol(), true);
+    applySceneCommand(bob, pose({ 'n:Tail_1': Q_IDENTITY }), Symbol(), true, NAME);
     merge(alice, bob);
     history.undo();
     merge(alice, bob);

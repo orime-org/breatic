@@ -118,10 +118,19 @@ const collabConfigSchema = z.object({
   // document's stored tables (inner#1619 design 5.8). It is never released,
   // only expires, and has to outlast the store interval by far.
   doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
+  // Document size limit (inner#1790): where the notice turns to warning, how
+  // far above the limit deletes may still go (the hard ceiling), how many
+  // split endpoints one update may carry, and the fewest milliseconds between
+  // two exact measures of one document.
+  document_size_warn_ratio: z.number().gt(0).lt(1).default(0.9),
+  document_size_delete_headroom_bytes: z.number().int().positive().default(262_144),
+  document_size_max_delete_splits: z.number().int().min(1).default(1024),
+  document_size_measure_interval_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(2000),
 }).superRefine((cfg, ctx) => {
+  // With no limit the remaining checks compare against nothing.
+  if (cfg.max_document_bytes === 0) return;
   // One account may hold one full message; the budget must leave room for
   // another member's full message beside it.
-  if (cfg.max_document_bytes === 0) return;
   const floor = 2 * deriveMaxMessageBytes(cfg);
   if (cfg.reassembly_budget_bytes < floor) {
     ctx.addIssue({

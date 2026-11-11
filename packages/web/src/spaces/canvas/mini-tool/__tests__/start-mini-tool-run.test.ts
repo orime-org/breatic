@@ -12,7 +12,10 @@ import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic
 const canvas = vi.hoisted(() => ({
   addNode: vi.fn(),
   addEdge: vi.fn((_p: string, _s: string, _edge: { source: string; toolId?: string }) => true),
-  runCanvasUndoBatch: vi.fn((_p: string, _s: string, body: () => void) => body()),
+  runCanvasUndoBatch: vi.fn((_p: string, _s: string, _o: unknown, body: () => void) => {
+    body();
+    return { ok: true };
+  }),
   createGroup: vi.fn(),
 }));
 vi.mock('@web/data/yjs/canvas-space', () => canvas);
@@ -336,10 +339,11 @@ describe('startMiniToolRun', () => {
     // inside the one batch.
     let inBatch = false;
     const writtenInBatch: boolean[] = [];
-    canvas.runCanvasUndoBatch.mockImplementationOnce((_p: string, _s: string, body: () => void) => {
+    canvas.runCanvasUndoBatch.mockImplementationOnce((_p: string, _s: string, _o: unknown, body: () => void) => {
       inBatch = true;
       body();
       inBatch = false;
+      return { ok: true };
     });
     for (let i = 0; i < 4; i++) canvas.addNode.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
     canvas.createGroup.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
