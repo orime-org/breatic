@@ -112,15 +112,14 @@ export async function commentOn(
 ): Promise<ThreadData | SpaceRefusal | null> {
   const view = editor.prosemirrorView;
   if (view === null) return null;
-  const media = typeof aim === 'function' ? null : aim.mediaBlockId;
-  if (media === null ? !somewhere((aim as CommentAim)(view.state)) : !canCommentOnMedia(view.state.doc, media)) {
+  if (typeof aim === 'function' ? !somewhere(aim(view.state)) : !canCommentOnMedia(view.state.doc, aim.mediaBlockId)) {
     return null;
   }
 
   const comments = commentsOn(editor);
   if (comments === undefined) return null;
 
-  const threadMetadata = media === null ? metadata.thread : { ...metadata.thread, [MEDIA_BLOCK_ID]: media };
+  const threadMetadata = typeof aim === 'function' ? metadata.thread : { ...metadata.thread, [MEDIA_BLOCK_ID]: aim.mediaBlockId };
   const options = {
     initialComment: { body, ...(metadata.comment === undefined ? {} : { metadata: metadata.comment }) },
     ...(threadMetadata === undefined ? {} : { metadata: threadMetadata }),
@@ -129,9 +128,9 @@ export async function commentOn(
   if (!room.ok) return room;
   // Asked just now in this same task, so the store's own check lets it in.
   const thread = (await comments.threadStore.createThread(options)) as ThreadData;
-  if (media !== null) return thread;
+  if (typeof aim !== 'function') return thread;
 
-  const landing = (aim as CommentAim)(view.state);
+  const landing = aim(view.state);
   if (!somewhere(landing)) return thread;
 
   const mark = view.state.schema.marks[COMMENT_MARK]!.create({

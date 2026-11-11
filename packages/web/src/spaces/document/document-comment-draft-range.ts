@@ -239,28 +239,30 @@ export const onDraftChange: (listener: () => void) => () => void =
  * Carries a media draft across a change: aimed while its block is in the
  * body, dropped while it is not. A draft dropped for any other reason holds no
  * block id and never reaches here.
- * @param media - The draft's block id, opening and entry.
- * @param media.mediaBlockId - The block.
- * @param media.opening - The opening its words are kept against.
- * @param media.entry - The entry it was opened by.
- * @param current - The draft as it stands, handed back when nothing changed.
+ * @param current - The draft, aimed at a block or dropped with its id; handed back when nothing changed.
  * @param doc - The body after a change to it, or null when the body did not change.
  * @returns The draft after it.
  */
-function carryMedia(
-  media: { readonly mediaBlockId: string; readonly opening: DraftOpening; readonly entry?: number },
-  current: Draft,
-  doc: ProseMirrorNode | null,
-): Draft {
+function carryMedia(current: Draft & { readonly mediaBlockId: string }, doc: ProseMirrorNode | null): Draft {
   if (doc === null) return current;
-  const there = mediaRowById(doc, media.mediaBlockId) !== undefined;
-  const entry = media.entry ?? 0;
+  const there = mediaRowById(doc, current.mediaBlockId) !== undefined;
+  const { mediaBlockId, opening } = current;
+  const entry = current.entry ?? 0;
   if (current.kind === 'aimed') {
-    return there
-      ? current
-      : { kind: 'dropped', why: 'targetGone', opening: media.opening, mediaBlockId: media.mediaBlockId, entry };
+    return there ? current : { kind: 'dropped', why: 'targetGone', opening, mediaBlockId, entry };
   }
-  return there ? { kind: 'aimed', mediaBlockId: media.mediaBlockId, opening: media.opening, entry } : current;
+  return there ? { kind: 'aimed', mediaBlockId, opening, entry } : current;
+}
+
+/**
+ * The opening a draft keeps its words against: the open one's, else a new one.
+ * @param current - The draft before this press, if any.
+ * @returns The opening.
+ */
+function openingOf(current: Draft | null): DraftOpening {
+  if (current !== null) return current.opening;
+  openings += 1;
+  return { serial: openings };
 }
 
 /**
@@ -312,13 +314,8 @@ export const documentCommentDraftRange = createExtension(() => {
               if (asked === null) return null;
               if ('mediaBlockId' in asked) {
                 if (!canCommentOnMedia(tr.doc, asked.mediaBlockId)) return current;
-                let opening = current?.opening;
-                if (opening === undefined) {
-                  openings += 1;
-                  opening = { serial: openings };
-                }
                 entries += 1;
-                return { kind: 'aimed', mediaBlockId: asked.mediaBlockId, opening, entry: entries };
+                return { kind: 'aimed', mediaBlockId: asked.mediaBlockId, opening: openingOf(current), entry: entries };
               }
               // A range covering no letters is refused here rather than left
               // for the post to notice: the entries are unavailable over such
@@ -329,16 +326,11 @@ export const documentCommentDraftRange = createExtension(() => {
               if (segments.length === 0) return current;
               // An open draft is moved, not replaced: it ends only on cancel
               // or save, and its words are kept against its opening.
-              let opening = current?.opening;
-              if (opening === undefined) {
-                openings += 1;
-                opening = { serial: openings };
-              }
               entries += 1;
-              return { kind: 'aimed', segments, slots: segments, opening, entry: entries };
+              return { kind: 'aimed', segments, slots: segments, opening: openingOf(current), entry: entries };
             }
             if (current !== null && 'mediaBlockId' in current && current.mediaBlockId !== undefined) {
-              return carryMedia({ ...current, mediaBlockId: current.mediaBlockId }, current, tr.docChanged ? tr.doc : null);
+              return carryMedia(current as Draft & { readonly mediaBlockId: string }, tr.docChanged ? tr.doc : null);
             }
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a user clicking elsewhere before

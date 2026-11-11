@@ -79,7 +79,8 @@ import { openCommentDraft, openMediaCommentDraft } from '@web/spaces/document/do
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockItem, mediaRowItems } from '@web/spaces/document/document-to-agent';
-import { canCommentOnMedia, mediaRowById } from '@web/spaces/document/document-comment-media';
+import { mediaRowById } from '@web/spaces/document/document-comment-media';
+import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
@@ -171,8 +172,9 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
  * @returns What the Comment and Add to Agent rows read.
  */
 function mediaFaceOf(doc: ProseMirrorNode, blockId: string): StyleFaces['media'] {
-  if (mediaRowById(doc, blockId) === undefined) return 'none';
-  return canCommentOnMedia(doc, blockId) ? 'uploaded' : 'pending';
+  const row = mediaRowById(doc, blockId);
+  if (row === undefined) return 'none';
+  return pendingUploadId(row.node.firstChild!.attrs) === null ? 'uploaded' : 'pending';
 }
 
 /**
