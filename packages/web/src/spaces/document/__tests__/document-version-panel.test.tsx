@@ -234,13 +234,121 @@ describe('the snapshot panel', () => {
    * Renders the body inside an Activity the test can hide, as a Space tab is.
    * @returns Switches the Space away or back.
    */
-  function showInSpace(): (mode: 'visible' | 'hidden') => void {
-    const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
-      <React.Activity mode={mode}><DocumentEditor handle={handle} scope={SCOPE} /></React.Activity>
-    );
+  function showInSpace(strict = false): (mode: 'visible' | 'hidden') => void {
+    const at = (mode: 'visible' | 'hidden'): React.JSX.Element => {
+      const space = <React.Activity mode={mode}><DocumentEditor handle={handle} scope={SCOPE} /></React.Activity>;
+      return strict ? <React.StrictMode>{space}</React.StrictMode> : space;
+    };
     const { rerender } = render(at('visible'));
     return (mode) => rerender(at(mode));
   }
+
+  /**
+   * Holds every snapshot read until released; an aborted read ends at once.
+   * @returns Releases the reads.
+   */
+  function holdSnapshotReads(): () => void {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    api.get.mockImplementation(async (_scope, id, signal) => {
+      await new Promise<void>((resolve, reject) => {
+        void gate.then(resolve);
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+      return { version: row(id, null, 0), content: rows.get(id)! };
+    });
+    return () => act(() => release());
+  }
+
+  /**
+   * Shows the snapshot and scrolls the preview down, as the user reads it.
+   * @param user - The user.
+   * @returns The body's scroller.
+   */
+  async function readSnapshot(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    viewport.scrollTo = vi.fn() as typeof viewport.scrollTo;
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    viewport.scrollTop = 700;
+    fireEvent.scroll(viewport);
+    return viewport;
+  }
+
+  it('leaves a display the user picks while a snapshot is taken back up where it lands', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    const viewport = await readSnapshot(user);
+    holdSnapshotReads();
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByTestId('doc-version-row-current'));
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it('scrolls a comparison still loading when the Space was hidden to its first change', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    const viewport = await readSnapshot(user);
+    const release = holdSnapshotReads();
+    await user.click(screen.getByTestId('doc-version-compare-current'));
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    release();
+
+    await waitFor(() => expect(viewport.scrollTo).toHaveBeenCalled());
+    expect(viewport.scrollTop).toBe(0);
+  });
+
+  it('keeps the place in a comparison switched away again while it is taken back up', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    const viewport = await readSnapshot(user);
+    await user.click(screen.getByTestId('doc-version-compare-current'));
+    await waitFor(() => expect(viewport.scrollTo).toHaveBeenCalled());
+    viewport.scrollTop = 700;
+    fireEvent.scroll(viewport);
+    const release = holdSnapshotReads();
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    space('hidden');
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(4));
+    release();
+
+    await waitFor(() => expect(viewport.scrollTop).toBe(700));
+  });
+
+  it('puts the place back when development mode runs the shown Space’s effects twice', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace(true);
+    const viewport = await readSnapshot(user);
+    const release = holdSnapshotReads();
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    release();
+
+    await waitFor(() => expect(viewport.scrollTop).toBe(700));
+  });
 
   /** Writes the body as several paragraphs, closing the undo step. */
   function writeLines(lines: readonly string[]): void {

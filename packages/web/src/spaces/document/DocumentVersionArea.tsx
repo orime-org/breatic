@@ -130,8 +130,8 @@ export default function DocumentVersionArea({
   const outcome = React.useRef<'restored' | 'unchanged'>('restored');
   const [shownNow, setShownNow] = React.useState<{ comparing: boolean } | null>(null);
   // Where the preview goes back to once the display it held before the Space
-  // was hidden is drawn again.
-  const landing = React.useRef<number | null>(null);
+  // was hidden is drawn again; each taking-up owns its own object.
+  const landing = React.useRef<{ top: number } | null>(null);
   // Where the user is in the preview: a hidden Space's scroller has nothing
   // to say by the time the preview is let go.
   const place = React.useRef(0);
@@ -174,7 +174,7 @@ export default function DocumentVersionArea({
     const back = landing.current;
     landing.current = null;
     if (back !== null) {
-      viewport.scrollTop = back;
+      viewport.scrollTop = back.top;
       return;
     }
     if (!shownNow.comparing) return;
@@ -246,6 +246,9 @@ export default function DocumentVersionArea({
   const asked = React.useRef<Display | null>(null);
   const select = React.useCallback((target: VersionSelection, compareTo?: string): Promise<'done' | 'gone' | 'failed' | 'dropped'> => {
     asked.current = { displayed: target, compareTo };
+    // A display the user picks lands where it lands, never at a place left
+    // for one being taken back up.
+    landing.current = null;
     return run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
   }, [controller, run, t]);
 
@@ -253,7 +256,7 @@ export default function DocumentVersionArea({
   // it again if the tab is then closed; so the preview is always let go, and
   // what it showed, or was still loading, is taken back up where the user
   // was when the Space is shown again (§8.2).
-  const resume = React.useRef<(Display & { top: number }) | null>(null);
+  const resume = React.useRef<(Display & { top: number | null }) | null>(null);
   React.useEffect(() => {
     const at = host.current;
     if (at === null) return undefined;
@@ -267,24 +270,31 @@ export default function DocumentVersionArea({
     const back = resume.current;
     resume.current = null;
     if (back !== null && (back.displayed.type === 'snapshot' || back.compareTo !== undefined)) {
-      landing.current = back.top;
-      void select(back.displayed, back.compareTo).then((end) => {
-        if (end !== 'done') landing.current = null;
+      const taking = select(back.displayed, back.compareTo);
+      // Set after `select`, which lets go of any place still waiting; only
+      // this taking-up lets go of its own.
+      const mine = back.top === null ? null : { top: back.top };
+      landing.current = mine;
+      void taking.then((end) => {
+        if (end !== 'done' && landing.current === mine) landing.current = null;
       });
     } else {
       // The current content is drawn by `open()` already, so the scroller
       // stands where the user sees it.
       const scroller = at.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
-      if (back !== null && scroller !== null) scroller.scrollTop = back.top;
+      if (back?.top != null && scroller !== null) scroller.scrollTop = back.top;
       place.current = scroller?.scrollTop ?? 0;
     }
     return () => {
       const now = controller.store.state;
       if (now.mode === 'versions') {
         const held = now.pending !== undefined && asked.current !== null ? asked.current : { displayed: now.displayed, compareTo: now.compareTo };
-        // While a display is still being taken back up, the scroller holds
-        // what the shorter current content left of the user's place.
-        resume.current = { ...held, top: landing.current ?? place.current };
+        // A comparison asked for and never drawn lands on its first change, as
+        // it would have without the switch. While a display is still being
+        // taken back up, the scroller holds what the shorter current content
+        // left of the user's place.
+        const unseen = now.pending !== undefined && landing.current === null && held.compareTo !== undefined;
+        resume.current = { ...held, top: unseen ? null : (landing.current?.top ?? place.current) };
       }
       controller.close();
       preview.unmount();
