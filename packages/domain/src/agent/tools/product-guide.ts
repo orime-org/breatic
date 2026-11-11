@@ -1051,7 +1051,7 @@ export function renderProductGuide(): string {
       "and Run asks for a video while none is picked. Picking a video opens the timeline, and " +
       `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} opens it again; press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
       "their order; the transition stays between them. Select a clip and edit " +
-      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))} to trim it. ` +
+      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}, or drag either end of a clip on the track, to trim it. ` +
       `${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
