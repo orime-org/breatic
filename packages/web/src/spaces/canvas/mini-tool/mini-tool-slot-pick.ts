@@ -17,6 +17,7 @@ import {
   pickedSlotUrl,
   type ClickedNode,
 } from '@web/spaces/canvas/generate/slot-pick';
+import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { isJoinSlot, joinToolFor } from '@web/spaces/canvas/mini-tool/join';
 import type { MiniToolDraft, PickSession } from '@web/stores/canvas-session';
 
@@ -108,8 +109,9 @@ interface SelectedNode {
 /**
  * The join a multi-selection offers (inner#1825 §6.5): with group nodes left
  * out, two or more selected nodes all video or all audio, each holding
- * something; its clips in canvas order, left to right and top to bottom by
- * where each sits, a grouped node at its group's origin plus its own position.
+ * something; its clips in canvas order, column by column left to right and
+ * each column top to bottom by where each sits, a grouped node at its group's
+ * origin plus its own position.
  * @param nodes - Every node on the canvas, the selected ones flagged.
  * @returns The tool and its clips, or null when the selection offers none.
  */
@@ -124,6 +126,15 @@ export function joinOfSelection(nodes: readonly SelectedNode[]): { tool: MiniToo
     return { node, x: node.position.x + (origin?.x ?? 0), y: node.position.y + (origin?.y ?? 0), value: miniToolSlotValue(node) };
   });
   if (placed.some((one) => one.value === null)) return null;
+  // Columns left to right, each top to bottom: a clip within half a node's
+  // width of a column's first clip stands in that column, so a stack placed
+  // by hand a few pixels out of line still reads downwards.
   placed.sort((a, b) => a.x - b.x || a.y - b.y);
-  return { tool, clips: placed.map((one) => one.value as MiniToolSlotValue) };
+  const columns: (typeof placed)[] = [];
+  for (const one of placed) {
+    const column = columns[columns.length - 1];
+    if (column !== undefined && one.x - (column[0]?.x ?? one.x) < EMPTY_NODE_SIZE.width / 2) column.push(one);
+    else columns.push([one]);
+  }
+  return { tool, clips: columns.flatMap((column) => column.sort((a, b) => a.y - b.y)).map((one) => one.value as MiniToolSlotValue) };
 }
