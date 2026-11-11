@@ -499,7 +499,6 @@ if (loaderChunks.length !== 1) {
     PAGE_LAZY_CHILDREN.filter((c) => c.page.test(chunk)).flatMap((c) =>
       files.filter((f) => c.child.test(f) && f.endsWith('.js')).map((child) => [child, chunk])),
   );
-  const childOf = new Set(children.map(([child]) => child));
   const soleReader = [
     [loaderChunks[0], entryChunk],
     ...[...pageChunks].map((chunk) => [chunk, loaderChunks[0]]),
@@ -508,7 +507,7 @@ if (loaderChunks.length !== 1) {
   for (const [renamed, allowed] of soleReader) {
     const naming = [...sources]
       .filter(([file, code]) => file !== renamed && code.includes(renamed))
-      .filter(([file]) => !(pageChunks.has(renamed) && childOf.has(file) && children.some(([c, p]) => c === file && p === renamed)))
+      .filter(([file]) => !children.some(([child, page]) => child === file && page === renamed))
       .map(([file]) => file);
     if (naming.length !== 1 || naming[0] !== allowed) {
       problems.push(

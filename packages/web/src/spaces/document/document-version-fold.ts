@@ -8,8 +8,8 @@
  *
  * Everything here is decoration on the read-only preview editor; the
  * document is never changed. The row's button is drawn by React through a
- * portal into the widget's host element (`DocumentVersionPreview`), since a
- * widget can only hold plain DOM.
+ * portal into the widget's host element (`FoldRows` in `DocumentVersionArea.tsx`),
+ * since a widget can only hold plain DOM.
  */
 
 import { createExtension } from '@blocknote/core';
