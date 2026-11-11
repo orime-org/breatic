@@ -1163,6 +1163,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.versions.renameFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.versions.deleteFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.versions.restoreFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.document.versions.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.captionRetained": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.ai.close": { excluded: REASONS.SCREEN_READER, look: /An X at the top right of the panel/ },
   "spaces.document.ai.customTitle": { described: /titled with the command/ },

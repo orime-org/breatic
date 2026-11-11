@@ -277,19 +277,19 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   const shown = React.useRef<ProposalLocation | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
-    // The body is unseen behind the snapshot panel: close it first, and this
-    // runs again once the body is on screen to be measured. A restore being
-    // written finishes first.
-    if (landed !== null && (panelOpen || restoring)) {
-      if (!restoring) closePanel();
-      return undefined;
-    }
     if (landed === null || landed.how === 'comment' || !isCurrentProposalLocation(landed, handle.editor)) return undefined;
     const spot = landed.how === 'source'
       ? sourceSpot(handle.editor.prosemirrorState.doc, landed)
       : { blockId: landed.blockId, ranges: null };
     const block = spot === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(spot.blockId)}"]`);
     if (viewport === null || spot === null || block === null || block === undefined) return undefined;
+    // There is a block to show and the body is unseen behind the snapshot
+    // panel: close it, and this runs again once the body can be measured. A
+    // restore being written finishes first.
+    if (panelOpen || restoring) {
+      if (!restoring) closePanel();
+      return undefined;
+    }
     shown.current = landed;
     // A landed block's own content leaves its indented children out. A
     // layout table is already its own content frame; descendants belong to
@@ -422,10 +422,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
       <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
-        {/* It lists the body's headings, and the body is behind the snapshot panel. */}
-        {!panelOpen && (
+        {/* It lists the body's headings, and the body is behind the snapshot
+            panel; hidden rather than unmounted, so what the user folded in it
+            stays folded. */}
+        <React.Activity mode={panelOpen ? 'hidden' : 'visible'}>
           <DocumentOutline editor={handle.editor} viewport={viewport} readOnly={readOnly} commentsOpen={railOpen} />
-        )}
+        </React.Activity>
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}

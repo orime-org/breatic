@@ -2294,7 +2294,8 @@
         "saveFailed": "快照沒有儲存。",
         "renameFailed": "沒能重新命名。",
         "deleteFailed": "沒能刪除快照。",
-        "folded": "{count, plural, other {# 個區塊未變動 · 展開}}"
+        "folded": "{count, plural, other {# 個區塊未變動 · 展開}}",
+        "unavailable": "快照載入失敗，重新整理頁面後可用"
       }
     },
     "readOnlyReconnect": "重新連線",

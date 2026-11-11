@@ -38,7 +38,7 @@ export function DocumentVersionAreaUnavailable({ versions }: { versions: Documen
             <X className='h-3.5 w-3.5' />
           </Button>
         </div>
-        <p className='px-5 py-3 text-sm text-muted-foreground'>{t('spaces.document.versions.loadFailed')}</p>
+        <p className='px-5 py-3 text-sm text-muted-foreground'>{t('spaces.document.versions.unavailable')}</p>
       </aside>
     </>
   );

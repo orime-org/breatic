@@ -2294,7 +2294,8 @@
         "saveFailed": "スナップショットを保存できませんでした。",
         "renameFailed": "名前を変更できませんでした。",
         "deleteFailed": "スナップショットを削除できませんでした。",
-        "folded": "{count, plural, other {変更のないブロック # 件 · 表示}}"
+        "folded": "{count, plural, other {変更のないブロック # 件 · 表示}}",
+        "unavailable": "スナップショットを読み込めませんでした。ページを再読み込みすると使えます。"
       }
     },
     "readOnlyReconnect": "再接続",

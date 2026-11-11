@@ -2294,7 +2294,8 @@
         "saveFailed": "The snapshot was not saved.",
         "renameFailed": "The snapshot was not renamed.",
         "deleteFailed": "The snapshot was not deleted.",
-        "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}"
+        "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
+        "unavailable": "Snapshots could not load. Refresh the page to use them."
       }
     },
     "readOnlyReconnect": "Reconnect",

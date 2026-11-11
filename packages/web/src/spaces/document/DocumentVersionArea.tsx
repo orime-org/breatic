@@ -15,7 +15,7 @@ import { captureException } from '@sentry/react';
 import { GitCompare, MoreHorizontal, Pencil, RotateCw, Trash2, Undo2, X } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import type { VersionError, VersionOperationResult, VersionSelection, VersionSnapshot } from '@blocknote/core/extensions';
+import type { VersionOperationResult, VersionSelection, VersionSnapshot } from '@blocknote/core/extensions';
 import { getLocale } from '@breatic/shared';
 
 import {
@@ -91,6 +91,9 @@ function labelOf(snapshot: VersionSnapshot): string {
   return snapshot.name ?? savedAt(snapshot.createdAt);
 }
 
+/** The panel's operations, each marked waiting while it runs. */
+type PanelAction = 'select' | 'rename' | 'delete' | 'restore' | 'page' | 'retry';
+
 /**
  * The controller's state, as React reads it.
  * @param controller - The controller.
@@ -152,18 +155,24 @@ export default function DocumentVersionArea({
   });
 
   React.useEffect(() => {
-    if (host.current === null) return undefined;
-    // The editor takes over the element it mounts on; this one is its own, as
-    // the body's surface is, so the column's element keeps React's classes.
-    const surface = document.createElement('div');
-    host.current.appendChild(surface);
-    preview.mount(surface);
-    controller.open();
-    void controller.list();
+    const at = host.current;
+    if (at === null) return undefined;
+    // Shown again after a Space switch: still mounted and still showing what
+    // it showed (design §8.2).
+    if (at.firstChild === null) {
+      // The editor takes over the element it mounts on; this one is its own,
+      // as the body's surface is, so the column's element keeps React's classes.
+      const surface = document.createElement('div');
+      at.appendChild(surface);
+      preview.mount(surface);
+      controller.open();
+      void controller.list();
+    }
     return () => {
+      // A hidden Space keeps its DOM in the page; only a real unmount ends the preview.
+      if (at.isConnected) return;
       controller.close();
       preview.unmount();
-      surface.remove();
     };
   }, [preview, controller]);
 
@@ -176,7 +185,11 @@ export default function DocumentVersionArea({
     if (compared === 0 || viewport === null) return;
     const mark = preview.prosemirrorView?.dom.querySelector('[data-user-ids]');
     if (!(mark instanceof HTMLElement)) return;
-    const top = mark.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
+    // The library's mark wrappers are `display: contents` and have no box of
+    // their own; what they hold does.
+    const words = document.createRange();
+    words.selectNodeContents(mark);
+    const top = words.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
   }, [compared, preview, viewport]);
 
@@ -186,25 +199,44 @@ export default function DocumentVersionArea({
     if (versions.saved !== savedOnOpen.current) void controller.list();
   }, [versions.saved, controller]);
 
-  const failed = React.useCallback((error: VersionError, otherwise: string): void => {
-    if (error.type === 'not-found') {
-      toast.warning(t('spaces.document.versions.gone'));
-      void controller.list();
-      return;
+  // Every operation of the panel goes through here: it is marked waiting
+  // from the press until its answer, and every way it can end is told to the
+  // user the same way. `failure` null leaves a failed page to the list's own
+  // error row.
+  const [busy, setBusy] = React.useState<ReadonlySet<PanelAction>>(() => new Set());
+  const run = React.useCallback(async (
+    action: PanelAction,
+    operation: () => Promise<VersionOperationResult>,
+    failure: string | null,
+  ): Promise<'done' | 'gone' | 'failed' | 'dropped'> => {
+    setBusy((now) => new Set(now).add(action));
+    try {
+      const result = await operation();
+      if (result.status === 'done') return 'done';
+      if (result.status !== 'error') return 'dropped';
+      if (result.error.type === 'not-found') {
+        toast.warning(t('spaces.document.versions.gone'));
+        void controller.list();
+        return 'gone';
+      }
+      if (failure !== null) toast.error(failure);
+      return 'failed';
+    } catch (err) {
+      captureException(err, { tags: { area: 'document_versions', action } });
+      toast.error(failure ?? t('spaces.document.versions.loadFailed'));
+      return 'failed';
+    } finally {
+      setBusy((now) => {
+        const next = new Set(now);
+        next.delete(action);
+        return next;
+      });
     }
-    toast.error(otherwise);
   }, [controller, t]);
 
   const select = React.useCallback(async (target: VersionSelection, compareTo?: string): Promise<void> => {
-    try {
-      const result = await controller.select(target, compareTo === undefined ? undefined : { compareTo });
-      if (result.status === 'error') failed(result.error, t('spaces.document.versions.contentFailed'));
-    } catch (err) {
-      // The preview could not draw it; the controller kept what was shown.
-      captureException(err, { tags: { area: 'document_version_preview' } });
-      toast.error(t('spaces.document.versions.contentFailed'));
-    }
-  }, [controller, failed, t]);
+    await run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
+  }, [controller, run, t]);
 
   const rows = React.useMemo(() => open?.history.data ?? [], [open]);
   // Every row seen since the panel opened: a refresh goes back to the first
@@ -230,59 +262,40 @@ export default function DocumentVersionArea({
   }, [controller, byId, select]);
 
   const [renaming, setRenaming] = React.useState<VersionSnapshot | null>(null);
-  const [renamePending, setRenamePending] = React.useState(false);
   const rename = React.useCallback(async (name: string): Promise<void> => {
     if (renaming === null) return;
-    setRenamePending(true);
-    const result: VersionOperationResult = await controller.rename(renaming.id, name === '' ? undefined : name);
-    setRenamePending(false);
-    if (result.status === 'done') {
-      setRenaming(null);
-      toast.success(t('spaces.document.versions.renamed'));
-    } else if (result.status === 'error') {
-      if (result.error.type === 'not-found') setRenaming(null);
-      failed(result.error, t('spaces.document.versions.renameFailed'));
-    }
-  }, [controller, failed, renaming, t]);
+    const ended = await run('rename', () => controller.rename(renaming.id, name === '' ? undefined : name), t('spaces.document.versions.renameFailed'));
+    if (ended === 'done') toast.success(t('spaces.document.versions.renamed'));
+    if (ended === 'done' || ended === 'gone') setRenaming(null);
+  }, [controller, renaming, run, t]);
 
   const [deleting, setDeleting] = React.useState<VersionSnapshot | null>(null);
-  const [deletePending, setDeletePending] = React.useState(false);
   const remove = React.useCallback(async (event: React.MouseEvent): Promise<void> => {
     // The dialog stays up until the answer is on screen.
     event.preventDefault();
     if (deleting === null) return;
-    setDeletePending(true);
-    const result = await controller.remove(deleting.id);
-    setDeletePending(false);
-    if (result.status === 'done') {
-      setDeleting(null);
-      toast.success(t('spaces.document.versions.deleted'));
-    } else if (result.status === 'error') {
-      if (result.error.type === 'not-found') setDeleting(null);
-      failed(result.error, t('spaces.document.versions.deleteFailed'));
-    }
-  }, [controller, deleting, failed, t]);
+    const ended = await run('delete', () => controller.remove(deleting.id), t('spaces.document.versions.deleteFailed'));
+    if (ended === 'done') toast.success(t('spaces.document.versions.deleted'));
+    if (ended === 'done' || ended === 'gone') setDeleting(null);
+  }, [controller, deleting, run, t]);
 
   const [confirmingRestore, setConfirmingRestore] = React.useState(false);
   const { setRestoring, closePanel } = versions;
   const restore = React.useCallback(async (event: React.MouseEvent): Promise<void> => {
     event.preventDefault();
     if (open?.displayed.type !== 'snapshot') return;
+    const id = open.displayed.id;
     setRestoring(true);
-    const result = await controller.restore(open.displayed.id);
+    const ended = await run('restore', () => controller.restore(id), t('spaces.document.versions.restoreFailed'));
     setRestoring(false);
-    if (result.status !== 'done') {
-      setConfirmingRestore(false);
-      toast.error(t('spaces.document.versions.restoreFailed'));
-      return;
-    }
+    if (ended !== 'done') return;
     setConfirmingRestore(false);
     closePanel();
     // Back in the body once it is on screen again.
     requestAnimationFrame(() => viewOf(editor)?.focus());
     if (outcome.current === 'unchanged') toast.info(t('spaces.document.versions.unchanged'));
     else toast.success(t('spaces.document.versions.restored'));
-  }, [closePanel, controller, editor, open, setRestoring, t]);
+  }, [closePanel, controller, editor, open, run, setRestoring, t]);
 
   const restoring = versions.restoring;
   const displayed = open?.displayed ?? { type: 'current' as const };
@@ -301,13 +314,14 @@ export default function DocumentVersionArea({
   const showCurrent = React.useCallback(() => void select({ type: 'current' }), [select]);
   const showSnapshot = React.useCallback((id: string) => void select({ type: 'snapshot', id }), [select]);
   const failedPage = open?.history.status === 'error' ? open.history.operation : null;
+  const retrying = busy.has('retry');
   const retryPage = React.useCallback(() => {
-    void (failedPage === 'loadMore' ? controller.loadMore() : controller.list());
-  }, [controller, failedPage]);
+    void run('retry', () => (failedPage === 'loadMore' ? controller.loadMore() : controller.list()), null);
+  }, [controller, failedPage, run]);
   const failedRow = (
     <div data-testid='doc-version-load-failed' className='flex items-center justify-between gap-2 px-2.5 py-3 text-sm'>
       <span className='text-muted-foreground'>{t('spaces.document.versions.loadFailed')}</span>
-      <Button variant='outline' size='sm' icon={<RotateCw />} onClick={retryPage}>
+      <Button variant='outline' size='sm' icon={<RotateCw />} loading={retrying} onClick={retryPage}>
         {t('spaces.document.versions.retry')}
       </Button>
     </div>
@@ -337,7 +351,7 @@ export default function DocumentVersionArea({
               {t('spaces.document.versions.compareWithCurrent')}
             </Button>
             {!readOnly && (
-              <Button size='sm' icon={<Undo2 />} disabled={restoring} data-testid='doc-version-restore' onClick={() => setConfirmingRestore(true)}>
+              <Button size='sm' icon={<Undo2 />} disabled={restoring || open?.pending !== undefined} data-testid='doc-version-restore' onClick={() => setConfirmingRestore(true)}>
                 {t('spaces.document.versions.restore')}
               </Button>
             )}
@@ -375,7 +389,7 @@ export default function DocumentVersionArea({
           />
           {open === null || (open.history.status === 'pending' && rows.length === 0) ? (
             [0, 1, 2].map((i) => <Skeleton key={i} className='my-1 h-11 rounded-content-xs' />)
-          ) : failedPage !== null && rows.length === 0 ? (
+          ) : (failedPage !== null || retrying) && rows.length === 0 ? (
             failedRow
           ) : rows.length === 0 ? (
             <div data-testid='doc-version-empty' className='flex flex-col items-center gap-3 px-4 py-8 text-center text-sm text-muted-foreground'>
@@ -402,14 +416,14 @@ export default function DocumentVersionArea({
                   onDelete={setDeleting}
                 />
               ))}
-              {failedPage !== null ? failedRow : open.nextCursor !== undefined && (
+              {failedPage !== null || retrying ? failedRow : open.nextCursor !== undefined && (
                 <Button
                   variant='ghost'
                   size='sm'
                   className='mt-1 text-muted-foreground'
                   data-testid='doc-version-load-more'
-                  loading={open.history.status === 'pending' && open.history.operation === 'loadMore'}
-                  onClick={() => void controller.loadMore()}
+                  loading={busy.has('page')}
+                  onClick={() => void run('page', () => controller.loadMore(), null)}
                 >
                   {t('spaces.document.versions.loadMore')}
                 </Button>
@@ -421,11 +435,11 @@ export default function DocumentVersionArea({
       <DocumentSnapshotNameDialog
         mode={renaming === null ? null : 'rename'}
         currentName={renaming?.name ?? ''}
-        pending={renamePending}
+        pending={busy.has('rename')}
         onClose={() => setRenaming(null)}
         onSubmit={(name) => void rename(name)}
       />
-      <AlertDialog open={deleting !== null} onOpenChange={(next) => { if (!next && !deletePending) setDeleting(null); }}>
+      <AlertDialog open={deleting !== null} onOpenChange={(next) => { if (!next && !busy.has('delete')) setDeleting(null); }}>
         <AlertDialogContent data-testid='doc-version-delete-dialog'>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('spaces.document.versions.deleteTitle')}</AlertDialogTitle>
@@ -434,8 +448,8 @@ export default function DocumentVersionArea({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletePending}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction variant='destructive' loading={deletePending} data-testid='doc-version-delete-confirm' onClick={(event) => void remove(event)}>
+            <AlertDialogCancel disabled={busy.has('delete')}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant='destructive' loading={busy.has('delete')} data-testid='doc-version-delete-confirm' onClick={(event) => void remove(event)}>
               {t('spaces.document.versions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>

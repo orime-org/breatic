@@ -7,6 +7,7 @@
  * panel, and restores into the body as one undo step.
  */
 
+import * as React from 'react';
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -124,7 +125,8 @@ describe('the snapshot panel', () => {
     expect(pause).toHaveBeenCalled();
     expect(screen.getByTestId('document-body-column').className).toContain('invisible');
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
-    expect(screen.queryByTestId('doc-outline-column')).toBeNull();
+    // Hidden, not unmounted: what the user folded in it is still folded afterwards.
+    expect(screen.getByTestId('doc-outline-column')).not.toBeVisible();
     expect(screen.queryByTestId('doc-doc-menu-trigger')).toBeNull();
     expect(await screen.findByTestId('doc-version-row-v1')).toHaveTextContent('First draft');
     await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
@@ -193,6 +195,99 @@ describe('the snapshot panel', () => {
     await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toBeInTheDocument());
     expect(scrollTo).toHaveBeenCalledTimes(1);
     scrollTo.mockRestore();
+  });
+
+  it('stays open after a comment proposal has landed', async () => {
+    const user = userEvent.setup();
+    const land = show();
+    const comment = Object.freeze({ ...writtenLocation(), how: 'comment' as const, threadId: 't1' }) as unknown as ProposalLocation;
+    land(comment);
+    await openPanel(user);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('doc-version-panel')).toBeInTheDocument();
+  });
+
+  it('keeps what it shows across a Space switch away and back', async () => {
+    const user = userEvent.setup();
+    const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}><DocumentEditor handle={handle} scope={SCOPE} /></React.Activity>
+    );
+    const { rerender } = render(at('visible'));
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+
+    rerender(at('hidden'));
+    rerender(at('visible'));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft');
+    expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('snapshot words');
+  });
+
+  it('offers no restore while another snapshot is still loading', async () => {
+    const user = userEvent.setup();
+    show();
+    rows.set('v2', rows.get('v1')!);
+    let arrive: () => void = () => undefined;
+    api.list.mockResolvedValue({ versions: [row('v1', 'First draft', 1), row('v2', 'Second', 0)], nextCursor: null });
+    api.get.mockImplementation(async (_scope, id) => {
+      if (id === 'v2') await new Promise<void>((resolve) => { arrive = resolve; });
+      return { version: row(id, null, 0), content: rows.get(id)! };
+    });
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-restore')).toBeEnabled());
+
+    await user.click(screen.getByTestId('doc-version-row-v2'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-restore')).toBeDisabled());
+    act(() => arrive());
+    await waitFor(() => expect(screen.getByTestId('doc-version-restore')).toBeEnabled());
+  });
+
+  it('keeps a retry on screen, waiting, while it runs', async () => {
+    const user = userEvent.setup();
+    let refreshes = 0;
+    let answer: () => void = () => undefined;
+    api.list.mockImplementation(async () => {
+      refreshes += 1;
+      if (refreshes === 2) throw new ApiException({ status: 500, message: 'boom', fromServer: true });
+      if (refreshes === 3) await new Promise<void>((resolve) => { answer = resolve; });
+      return { versions: [row('v1', 'First draft', 0)], nextCursor: null };
+    });
+    api.rename.mockResolvedValue(undefined);
+    show();
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-menu-v1'));
+    await user.click(await screen.findByTestId('doc-version-rename'));
+    await user.type(await screen.findByTestId('doc-snapshot-name-input'), ' again');
+    await user.click(screen.getByTestId('doc-snapshot-name-submit'));
+    const failedRow = await screen.findByTestId('doc-version-load-failed');
+
+    await user.click(within(failedRow).getByRole('button'));
+
+    expect(within(screen.getByTestId('doc-version-load-failed')).getByRole('button')).toHaveAttribute('aria-busy', 'true');
+    act(() => answer());
+    await waitFor(() => expect(screen.queryByTestId('doc-version-load-failed')).toBeNull());
+  });
+
+  it('scrolls the preview to the words of the first change', async () => {
+    const user = userEvent.setup();
+    show();
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    const scrollTo = vi.fn();
+    viewport.scrollTo = scrollTo as typeof viewport.scrollTo;
+    const range = vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 900, 10, 10));
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await user.click(await screen.findByTestId('doc-version-compare-current'));
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 900 })));
+    range.mockRestore();
   });
 
   it('does not undo the unseen body from the scroller while open', async () => {

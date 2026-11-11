@@ -49,7 +49,8 @@ describe('a snapshot panel that cannot load', () => {
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await user.click(await screen.findByTestId('doc-doc-menu-restore-snapshot'));
 
-    expect(await screen.findByTestId('doc-version-unavailable')).toBeInTheDocument();
+    // Fetched once per page: only a reload brings it back, and the panel says so.
+    expect(await screen.findByTestId('doc-version-unavailable')).toHaveTextContent('Refresh the page');
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
     await user.click(screen.getByTestId('doc-version-close'));
 
