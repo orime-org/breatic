@@ -24,10 +24,10 @@ export const TEMPLATE_CRAFT = {
     "what stays still; one light source logic; sound in layers, saying where silence falls.",
   audio:
     "Craft for sound: for music, name the genre, the BPM, the key, 2 to 3 instruments and how the energy rises " +
-    "and falls, and say it is instrumental when no one sings; for a voice, give the line to be said exactly as " +
-    "written and nothing more, with its pace, where it pauses and breathes, recorded dry with no music or room " +
-    "under it; for sound effects, one sound per take, saying how near or far it is, how sparse or dense, and the " +
-    "layers it is built from.",
+    "and falls, except what the template takes from a reference picture, video or song, and say it is instrumental " +
+    "when no one sings; for a voice, give the line to be said exactly as written and nothing more, with its pace, " +
+    "where it pauses and breathes, recorded dry with no music or room under it; for sound effects, each sound in its " +
+    "own phrase, saying how near or far it is and how sparse or dense, and how the layers sit together (a bed may hold several).",
   character:
     "Craft for a character: keep the reference's rendering (a 3D render stays 3D, a drawing stays a drawing) unless " +
     "the prompt names another style.",
