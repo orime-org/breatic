@@ -2881,6 +2881,8 @@ models:
         # still speaks when the user or the Agent leaves it, and the panel
         # shows it to change.
         default: "A clear, warm adult narrator with a neutral accent, speaking at a calm, steady pace."
+        # The upstream refuses a body without it, so emptied it is refused first.
+        min_length: 1
         fill: "panel"
       language:
         description: "Language of the speech; auto detects it from the line"

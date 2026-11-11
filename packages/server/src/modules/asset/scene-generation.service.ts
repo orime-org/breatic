@@ -67,6 +67,8 @@ function violationMessage(v: ParamViolation): string {
     case "max_length":
     case "prompt_max_length":
       return t("server.three_d.setting_too_long", { param: v.param, max: v.max, length: v.length });
+    case "min_length":
+      return t("server.canvas.param_too_short", { name: v.param });
   }
 }
 

@@ -1045,7 +1045,8 @@ export function renderProductGuide(): string {
       "already in the box stay when switching between one voice and the dialogue; a line typed or pasted as a " +
       "speaker's name and a colon goes to that speaker with the name taken off. Pressing generate with no line " +
       `written shows ${quoted(t("canvas.generatePanel.refuseExecuteNoLines"))}, and with the speakers not filled in ` +
-      `shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
+      `shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. A setting a model needs written, such as the ` +
+      "voice description of the voice design model, emptied in its box, asks to fill that setting in first when generate is pressed. On other " +
       "models the pill shows only their settings. Picking a model that has just been taken away shows " +
       `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made by an older version of the ` +
       "product shows only " +

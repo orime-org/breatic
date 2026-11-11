@@ -34,7 +34,7 @@ afterAll(() => {
  * @returns What it wrote.
  */
 function run(program: string, args: readonly string[]): string {
-  return execFileSync(join(BIN ?? "", program), args, { stdio: ["ignore", "pipe", "pipe"] }).toString("utf8");
+  return execFileSync(join(BIN ?? "", program), args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 }
 
 /**

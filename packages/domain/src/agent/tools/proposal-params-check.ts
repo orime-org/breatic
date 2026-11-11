@@ -4,7 +4,7 @@
 /**
  * Whether the values a proposal sets on a generation are ones the panel offers.
  */
-import { PANEL_EDITOR_PARAM, gateHolds, type ParamGate, type ProposalNode } from "@breatic/shared";
+import { extractPromptText, PANEL_EDITOR_PARAM, gateHolds, type ParamGate, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
@@ -161,6 +161,9 @@ export function checkParams(chosen: ModelInfo, node: ProposalNode, at: NodeLabel
     if (elsewhere !== undefined) return elsewhere;
     if (!isDrawn(chosen, node.params ?? {}, info)) {
       return refuse("param-gated-off", `"${key}" only counts while ${gateWords(info.gate ?? {})}, and this proposal leaves it off.`);
+    }
+    if (info.minLength !== undefined && typeof value === "string" && [...extractPromptText(value)].length < info.minLength) {
+      return refuse("param-too-short", `"${key}" takes at least ${String(info.minLength)} character${info.minLength === 1 ? "" : "s"} once cleaned, and this one has ${String([...extractPromptText(value)].length)}.`);
     }
     const options = info.options ?? [];
     if (options.length > 0 && !options.some((offered) => offered === value)) {

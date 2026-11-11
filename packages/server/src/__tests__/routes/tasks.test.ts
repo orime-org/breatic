@@ -249,6 +249,8 @@ describe("Tasks routes", () => {
     });
 
     it("rejects a submission with a text setting emptied below its least length BEFORE enqueue (inner#1825)", async () => {
+      // The case above leaves the reference gate refusing; this one is about the text gate.
+      mocks.violatesReferenceCountForModel.mockReturnValue(null);
       mocks.violatesTextLengthForModel.mockReturnValueOnce({ param: "voice_description", min: 1 });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {

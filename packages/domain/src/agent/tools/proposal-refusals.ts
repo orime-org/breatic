@@ -100,6 +100,7 @@ export const REFUSALS = {
   "param-not-number": false,
   "param-out-of-range": false,
   "param-off-step": false,
+  "param-too-short": false,
   "edge-kind-not-taken": false,
   "edge-kind-not-taken-link": false,
   "edge-into-ambiguous": false,

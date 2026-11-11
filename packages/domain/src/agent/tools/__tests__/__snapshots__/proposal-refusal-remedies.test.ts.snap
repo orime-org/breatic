@@ -156,6 +156,8 @@ exports[`every refusal states its fault, its rule and its facts > param-storyboa
 
 exports[`every refusal states its fault, its rule and its facts > param-storyboard-other-mode (0): is met and says what is wrong, and its one fix clears it 1`] = `""multi_prompt" is set by shots, which only the multi_shot mode takes. On node 0 ("Gen"), leave "multi_prompt" out of params."`;
 
+exports[`every refusal states its fault, its rule and its facts > param-too-short (0): is met and says what is wrong 1`] = `""voice_description" takes at least 1 character once cleaned, and this one has 0."`;
+
 exports[`every refusal states its fault, its rule and its facts > param-undeclared (0): is met and says what is wrong, and its one fix clears it 1`] = `""qwen-image-edit-multiple-angles" declares no format. The ones set here: distance, horizontal_angle, vertical_angle. On node 1 ("Gen"), leave "format" out of params."`;
 
 exports[`every refusal states its fault, its rule and its facts > prompt-missing (0): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-2" generates from what the prompt says, and this proposal writes nothing in it. On node 0 ("Gen"), write a prompt."`;

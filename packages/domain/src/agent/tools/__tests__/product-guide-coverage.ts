@@ -919,6 +919,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.canvas.history_entry_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.model_requires_source": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.too_many_inputs": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.canvas.param_too_short": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.generatePanel.refuseExecuteParamEmpty": { described: /asks to fill that setting in first when generate is pressed/ },
   "server.canvas.voices_model_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.voices_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.model_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },

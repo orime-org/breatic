@@ -41,6 +41,7 @@ import {
   estimateTaskCredits,
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
+  violatesTextLengthForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService } from "@breatic/domain";
@@ -279,6 +280,12 @@ canvas.post(
         throw new ValidationError(
           t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
         );
+      }
+      // inner#1825 text-length gate: a setting the model needs written, emptied.
+      const short = violatesTextLengthForModel(body.model, body.params);
+      if (short) {
+        logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
+        throw new ValidationError(t("server.canvas.param_too_short", { name: short.param }));
       }
       return Promise.resolve();
     },

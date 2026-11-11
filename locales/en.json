@@ -129,6 +129,7 @@
     "canvas": {
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
+      "param_too_short": "\"{name}\" is empty; this model needs it written.",
       "history_entry_not_found": "History entry not found",
       "voices_model_not_found": "That model is not available",
       "voices_not_offered": "This model does not offer a voice list"
@@ -870,6 +871,7 @@
       "itemsRemove": "Remove",
       "refuseExecuteNoSpeakers": "Fill in the speakers",
       "refuseExecuteNoLines": "Write at least one line first",
+      "refuseExecuteParamEmpty": "Fill in {name} first",
       "dialogueAddLine": "Add line",
       "dialogueLinePlaceholder": "{name}'s line",
       "audioSettings": "Voice and settings",

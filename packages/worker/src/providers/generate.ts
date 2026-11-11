@@ -69,9 +69,15 @@ export function validateModelParams(
 ): [string, Record<string, unknown>] {
   const [name, cleaned] = validateParams(modality, modelName, params);
   const model = entryOf(modality, name) as unknown as ResolvableModel;
-  const tooLong = checkParamCombination(model, cleaned).find((v) => v.rule === "max_length");
+  const found = checkParamCombination(model, cleaned);
+  const tooLong = found.find((v) => v.rule === "max_length");
   if (tooLong?.rule === "max_length") {
     throw new Error(`${tooLong.param} is ${tooLong.length} characters once cleaned; ${name} takes at most ${tooLong.max}`);
+  }
+  // The server refuses it before queueing; a job that got past is never sent.
+  const tooShort = found.find((v) => v.rule === "min_length");
+  if (tooShort?.rule === "min_length") {
+    throw new Error(`${tooShort.param} is ${tooShort.length} characters once cleaned; ${name} takes at least ${tooShort.min}`);
   }
   return [name, resolveParams(model, cleaned)];
 }

@@ -129,6 +129,7 @@
     "canvas": {
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
       "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
+      "param_too_short": "「{name}」是空的，這個模型需要填寫。",
       "history_entry_not_found": "找不到這筆歷史記錄",
       "voices_model_not_found": "這個模型不可用",
       "voices_not_offered": "這個模型沒有音色列表"
@@ -857,6 +858,7 @@
       "itemsRemove": "移除",
       "refuseExecuteNoSpeakers": "請填好說話人",
       "refuseExecuteNoLines": "至少寫一句台詞",
+      "refuseExecuteParamEmpty": "先填寫{name}",
       "dialogueAddLine": "加一句",
       "dialogueLinePlaceholder": "{name} 說的話",
       "audioSettings": "音色與參數",

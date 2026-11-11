@@ -202,7 +202,7 @@ export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
