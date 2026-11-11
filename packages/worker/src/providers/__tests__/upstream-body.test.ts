@@ -360,6 +360,9 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
   it("refuses a negative prompt over 255 characters and takes one at 255", () => {
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(256) })).toThrow(/negative_prompt.*255|255.*negative_prompt/s);
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(255) })).not.toThrow();
+    // Judged on the cleaned text, the one sent.
+    const [, cleaned] = validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: `<p>${"a".repeat(255)}</p><!-- x -->\u200b` });
+    expect(cleaned.negative_prompt).toBe("a".repeat(255));
   });
 });
 
@@ -385,6 +388,12 @@ describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inn
     const [, validated] = validateModelParams("tts", "qwen3-tts-voice-design", given);
     return upstreamBody(found, validated, prompt);
   }
+
+  it("sends the voice description cleaned of markup and invisible characters, as every text setting is (round 2)", () => {
+    expect(bodyFor({ voice_description: "<b>An old man</b>, slow\u200b", language: "English" }, "Hi.")).toMatchObject({
+      voice_description: "An old man, slow",
+    });
+  });
 
   it("never sends a body with the voice description emptied (inner#1825)", () => {
     expect(() => bodyFor({ voice_description: "", language: "English" }, "The night was long.")).toThrow(/voice_description/);
