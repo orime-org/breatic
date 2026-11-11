@@ -61,7 +61,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
   // the W/H fields highlight the same as every other input in the app.
   const inputClass =
     'w-16 rounded-content-sm border border-border bg-transparent px-2 py-1 text-sm ' +
-    'tabular-nums text-popover-foreground transition-colors focus-visible:border-active-border focus-visible:outline-none';
+    'tabular-nums text-popover-foreground transition-colors focus:border-active-border focus:outline-none';
 
   return (
     <div className='flex w-[min(340px,92vw)] flex-col gap-3 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>

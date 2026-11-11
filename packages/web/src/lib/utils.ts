@@ -31,8 +31,8 @@ const customTwMerge = extendTailwindMerge({
       ],
       color: [
         // Active-state border color used by NewSpaceDialog selected
-        // card + ChatComposer focus-within. See `--color-active-border`
-        // in tokens.css (#388).
+        // card + the ChatComposer box while its text has focus. See
+        // `--color-active-border` in tokens.css (#388).
         'active-border',
       ],
     },

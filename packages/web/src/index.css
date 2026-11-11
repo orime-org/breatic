@@ -38,6 +38,36 @@
   }
 }
 
+/* Focus rings show only for keyboard users (#1452). `lib/input-modality.ts`
+   writes `data-input-modality` on <html>; a menu closed with the mouse hands
+   focus back to its trigger by script, which the browser's own :focus-visible
+   counts as visible. Rewriting the built-in variant carries every
+   `focus-visible:`, `group-`, `peer-` and `has-focus-visible:` class with it.
+   `lib/__tests__/focus-visible-guard.test.ts` keeps arbitrary variants and
+   hand-written rules from going around it. */
+@custom-variant focus-visible (&:focus-visible:where([data-input-modality=keyboard] *));
+
+/* The project card draws its keyboard ring for the open target, its first
+   child, on itself: the card clips with overflow-hidden, so a ring on the
+   child would be cut off. */
+@custom-variant has-first-child-focus-visible (&:has(> :first-child:focus-visible):where([data-input-modality=keyboard] *));
+
+@layer base {
+  /* The browser's default outline, which a rewritten `focus-visible:outline-none`
+     no longer clears outside keyboard modality. */
+  :where(html:not([data-input-modality=keyboard])) :focus-visible {
+    outline: none;
+  }
+}
+
+/* react-colorful injects `.react-colorful__interactive:focus .react-colorful__pointer`
+   (scale 1.1) into <head> after this file, unlayered, and focuses the area on
+   every press. The html ancestor outranks its (0,3,0) whatever the order, so
+   the dot grows only for keyboard users. */
+html:not([data-input-modality=keyboard]) .react-colorful__interactive:focus .react-colorful__pointer {
+  transform: translate(-50%, -50%);
+}
+
 html,
 body,
 #root {
