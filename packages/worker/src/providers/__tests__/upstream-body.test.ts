@@ -10,6 +10,7 @@
 
 import { beforeAll, describe, it, expect } from "vitest";
 import { initCore } from "@breatic/core";
+import { dialogueText } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -180,6 +181,14 @@ describe("upstreamBody", () => {
     });
     expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "", voice: "Kore" }] }, "hi")).toEqual({
       prompt: "hi",
+    });
+  });
+
+  it("sends a speaker's name without the spaces around it, the name the script reads (inner#1825 design 8.5)", () => {
+    const script = dialogueText([{ speaker: 1, text: "Hello." }], [{ speaker: "Ava " }]);
+    expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "Ava ", voice: "Kore" }] }, script)).toEqual({
+      speakers: [{ speaker: "Ava", voice: "Kore" }],
+      prompt: "Ava: Hello.",
     });
   });
 
