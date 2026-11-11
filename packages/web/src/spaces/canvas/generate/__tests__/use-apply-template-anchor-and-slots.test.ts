@@ -60,6 +60,19 @@ const INTO: GenerationTemplate = {
 };
 
 /** An audio anchor with one standalone section node: no template edge touches it (§4.2). */
+/** A cover's shape: the song goes into `audio`, the same param name a voice clone's sample travels as. */
+const COVER: GenerationTemplate = {
+  id: 'fixture-cover',
+  anchor: 'cover',
+  nodes: [{ key: 'cover', role: 'generate', type: 'audio', mode: 'a2m', model: 'model-score', params: {} }],
+  edges: [],
+  inputs: [{ key: 'song', type: 'audio', into: 'audio' }],
+  steps: [],
+  agentNote: 'a fixture covering a song',
+  goal: 'character',
+  triggers: { asks: ['a fixture'], offerWhen: [] },
+};
+
 const SECTIONS: GenerationTemplate = {
   id: 'fixture-sections',
   anchor: 'score',
@@ -87,6 +100,12 @@ const EN_WITH_FIXTURES = {
         description: 'Scores a clip',
         prompt: 'Footsteps on gravel, in time with the clip.',
         input: { video: { name: 'Clip', note: 'Put the clip in, then pick it into the video slot' } },
+      },
+      'fixture-cover': {
+        name: 'Fixture cover',
+        description: 'Covers a song',
+        prompt: 'A slow folk cover.',
+        input: { song: { name: 'Song', note: 'Put your song in, then pick it into the Song slot' } },
       },
       'fixture-sections': {
         name: 'Fixture sections',
@@ -304,5 +323,19 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
     const at = indexOf(existing, 'shared-clip');
     expect(at).toBeGreaterThan(0);
     expect(proposal.nodes[0]?.fills).toEqual({ video: [at] });
+  });
+
+  it('reads the slot the template fills under the template node\'s own mode, so a voice sample does not pass for the song (round 2)', () => {
+    const SAMPLE = 'https://cdn/sample.mp3';
+    seed('target', 'audio', { mode: 'voice_clone', model: 'model-score', refAudio: { url: SAMPLE, cover: null } });
+    seed('sample', 'audio', { name: 'My voice', content: SAMPLE, duration: 8 });
+    const place = vi.fn();
+    apply(COVER, 'target', place);
+
+    const { proposal, existing } = placed(place);
+    expect(indexOf(existing, 'sample')).toBe(-1);
+    const added = proposal.nodes.filter((node, i) => !existing.has(i) && node.templateNode?.input === true);
+    expect(added.map((node) => node.name)).toEqual(['Song']);
+    expect(proposal.nodes[0]?.prompt).toContainEqual({ slot: { kind: 'note', label: 'Put your song in, then pick it into the Song slot' } });
   });
 });
