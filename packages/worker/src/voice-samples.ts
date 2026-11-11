@@ -15,7 +15,7 @@
 import "@worker/bootstrap-config.js";
 
 import { getNodeTaskConfig, getStorageAdapter, logger } from "@breatic/core";
-import { getFullModelConfig, getVoiceSampleConfig, voiceSampleUrl } from "@breatic/domain";
+import { getFullModelConfig, getVoiceSampleConfig, initProvider, voiceSampleUrl } from "@breatic/domain";
 import { httpRequest } from "@breatic/shared";
 
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
@@ -173,6 +173,7 @@ async function syncKind(
  * @returns Nothing; the process exits.
  */
 async function main(): Promise<void> {
+  initProvider();
   const storage = await getStorageAdapter();
   assertUploadsReachSampleAddress((key) => storage.publicUrl(key), voiceSampleUrl);
   const kinds: SampleKind[] = [

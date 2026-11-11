@@ -56,6 +56,7 @@ import {
   AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
+  initProvider,
   type AudioPeaksJob,
   type MailJob,
   type MediaReadJob,
@@ -108,6 +109,16 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
+  await exitProcess(1);
+}
+
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
   await exitProcess(1);
 }
 

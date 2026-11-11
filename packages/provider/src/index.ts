@@ -16,7 +16,7 @@ export { createProvider, type Provider, type ProviderOptions } from "@provider/p
 export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
 export type { MessagesCallEnd, MessagesCandidate, MessagesPlan, MessagesTokens } from "@provider/messages/relay.js";
-export { ProviderConfigError, type CatalogShape } from "@provider/config/schema.js";
+export { ProviderConfigError, type CatalogShape, type ProviderConfigInput } from "@provider/config/schema.js";
 export type {
   CallWants,
   CapabilityPolicy,

@@ -521,6 +521,9 @@ importers:
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -1373,6 +1376,9 @@ importers:
       '@breatic/domain':
         specifier: workspace:*
         version: link:../domain
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared

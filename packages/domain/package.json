@@ -29,6 +29,7 @@
     "@ai-sdk/google": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "@breatic/core": "workspace:*",
+    "@breatic/provider": "workspace:*",
     "@openrouter/ai-sdk-provider": "catalog:",
     "@breatic/shared": "workspace:*",
     "ai": "catalog:",

@@ -318,3 +318,7 @@ export type {
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
+
+// ── Provider (every model call goes through it, inner#1743) ──
+export { initProvider, provider } from "@domain/provider/instance.js";
+export { readProviderConfig } from "@domain/provider/provider-config-loader.js";

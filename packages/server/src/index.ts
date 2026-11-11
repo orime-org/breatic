@@ -37,7 +37,7 @@ import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
-import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { agentModelIds, assertModelsPriced, initProvider, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
@@ -112,6 +112,16 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
+  await exitProcess(1);
+}
+
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
   await exitProcess(1);
 }
 
