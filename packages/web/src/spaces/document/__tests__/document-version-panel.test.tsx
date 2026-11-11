@@ -210,6 +210,88 @@ describe('the snapshot panel', () => {
     expect(text()).toBe('snapshot words');
   });
 
+  it('says so when the preview cannot draw a snapshot', async () => {
+    const user = userEvent.setup();
+    show();
+    rows.set('bad', { type: 'doc', content: [{ type: 'blockGroup', content: [{ type: 'notABlock' }] }] });
+    api.list.mockResolvedValue({ versions: [row('bad', 'Broken', 0)], nextCursor: null });
+    await openPanel(user);
+
+    await user.click(await screen.findByTestId('doc-version-row-bad'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('doc-version-banner')).toBeNull();
+  });
+
+  it('keeps the delete dialog open when the delete fails', async () => {
+    const user = userEvent.setup();
+    api.remove.mockRejectedValueOnce(new ApiException({ status: 500, message: 'boom', fromServer: true }));
+    show();
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-menu-v1'));
+    await user.click(await screen.findByTestId('doc-version-delete'));
+    await user.click(within(await screen.findByTestId('doc-version-delete-dialog')).getByTestId('doc-version-delete-confirm'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('doc-version-delete-dialog')).toBeInTheDocument();
+  });
+
+  it('shows a failed page with a retry that loads that page again', async () => {
+    const user = userEvent.setup();
+    api.list.mockImplementation(async (_scope, cursor) => {
+      if (cursor === undefined) return { versions: [row('v1', 'First draft', 0)], nextCursor: 'c1' };
+      if (api.list.mock.calls.filter(([, c]) => c === 'c1').length === 1) throw new ApiException({ status: 500, message: 'boom', fromServer: true });
+      return { versions: [row('v2', 'Older', 0)], nextCursor: null };
+    });
+    show();
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-load-more'));
+
+    expect(await screen.findByTestId('doc-version-load-failed')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-version-row-v1')).toBeInTheDocument();
+    await user.click(within(screen.getByTestId('doc-version-load-failed')).getByRole('button'));
+
+    expect(await screen.findByTestId('doc-version-row-v2')).toBeInTheDocument();
+    expect(screen.queryByTestId('doc-version-load-failed')).toBeNull();
+  });
+
+  it('keeps naming a snapshot from a later page after the list goes back to the first', async () => {
+    const user = userEvent.setup();
+    show();
+    rows.set('v2', rows.get('v1')!);
+    api.list.mockImplementation(async (_scope, cursor) => (cursor === undefined
+      ? { versions: [row('v1', 'First draft', 1)], nextCursor: 'c1' }
+      : { versions: [row('v2', 'Second page', 0)], nextCursor: null }));
+    api.rename.mockResolvedValue(undefined);
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-load-more'));
+    await user.click(await screen.findByTestId('doc-version-row-v2'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('Second page'));
+
+    await user.click(screen.getByTestId('doc-version-row-menu-v1'));
+    await user.click(await screen.findByTestId('doc-version-rename'));
+    await user.type(await screen.findByTestId('doc-snapshot-name-input'), ' again');
+    await user.click(screen.getByTestId('doc-snapshot-name-submit'));
+    await waitFor(() => expect(screen.queryByTestId('doc-version-row-v2')).toBeNull());
+
+    expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('Second page');
+  });
+
+  it('puts the body back where the user was reading when the panel closes', async () => {
+    const user = userEvent.setup();
+    show();
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    let top = 1500;
+    Object.defineProperty(viewport, 'scrollTop', { configurable: true, get: () => top, set: (value: number) => { top = value; } });
+    await openPanel(user);
+    // The preview in its place is shorter, and the browser pulls the scroller back.
+    top = 0;
+
+    await user.click(screen.getByTestId('doc-version-close'));
+
+    expect(top).toBe(1500);
+  });
+
   it('refreshes the list after a rename or delete that found the snapshot gone', async () => {
     const user = userEvent.setup();
     api.remove.mockRejectedValueOnce(new ApiException({ status: 404, message: 'gone', fromServer: true }));

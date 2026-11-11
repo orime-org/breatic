@@ -15,7 +15,6 @@ import { captureException } from '@sentry/react';
 import { GitCompare, MoreHorizontal, Pencil, RotateCw, Trash2, Undo2, X } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { yUndoPluginKey } from 'y-prosemirror';
 import type { VersionError, VersionOperationResult, VersionSelection, VersionSnapshot } from '@blocknote/core/extensions';
 import { getLocale } from '@breatic/shared';
 
@@ -44,7 +43,7 @@ import { toast } from '@web/lib/toast';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { COMMENT_PANEL_WIDTH } from '@web/spaces/document/document-columns';
 import { viewOf } from '@web/spaces/document/document-editor-view';
-import type { UndoBoundary } from '@web/spaces/document/document-proposal-landing';
+import { undoOf } from '@web/spaces/document/document-proposal-landing';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { DocumentSnapshotNameDialog } from '@web/spaces/document/DocumentSnapshotNameDialog';
 import { openVersionFold, versionFolds, type VersionFold } from '@web/spaces/document/document-version-fold';
@@ -93,23 +92,11 @@ function labelOf(snapshot: VersionSnapshot): string {
 }
 
 /**
- * The body's undo manager, read off its plugin state.
- * @param editor - The body.
- * @returns It, or null.
- */
-function undoOf(editor: Live): UndoBoundary | null {
-  const state = yUndoPluginKey.getState(editor.prosemirrorState) as { undoManager?: UndoBoundary } | undefined;
-  return state?.undoManager ?? null;
-}
-
-type VersionController = VersioningController;
-
-/**
  * The controller's state, as React reads it.
  * @param controller - The controller.
  * @returns Its state.
  */
-function useControllerState(controller: VersionController): VersionController['store']['state'] {
+function useControllerState(controller: VersioningController): VersioningController['store']['state'] {
   return React.useSyncExternalStore(controller.store.subscribe, () => controller.store.state);
 }
 
@@ -137,7 +124,8 @@ export default function DocumentVersionArea({
   const outcome = React.useRef<'restored' | 'unchanged'>('restored');
   const [compared, setCompared] = React.useState(0);
 
-  const { preview, controller } = React.useMemo(() => {
+  // One preview per opening of the panel.
+  const [{ preview, controller }] = React.useState(() => {
     const shown: ShownRef = { current: null };
     const storage = createDocumentVersionStorage({
       scope,
@@ -161,9 +149,7 @@ export default function DocumentVersionArea({
       },
     });
     return { preview: built, controller: versioningOf(built) };
-    // One preview per opening of the panel.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  });
 
   React.useEffect(() => {
     if (host.current === null) return undefined;
@@ -210,17 +196,28 @@ export default function DocumentVersionArea({
   }, [controller, t]);
 
   const select = React.useCallback(async (target: VersionSelection, compareTo?: string): Promise<void> => {
-    const result = await controller.select(target, compareTo === undefined ? undefined : { compareTo });
-    if (result.status === 'error') failed(result.error, t('spaces.document.versions.contentFailed'));
+    try {
+      const result = await controller.select(target, compareTo === undefined ? undefined : { compareTo });
+      if (result.status === 'error') failed(result.error, t('spaces.document.versions.contentFailed'));
+    } catch (err) {
+      // The preview could not draw it; the controller kept what was shown.
+      captureException(err, { tags: { area: 'document_version_preview' } });
+      toast.error(t('spaces.document.versions.contentFailed'));
+    }
   }, [controller, failed, t]);
 
   const rows = React.useMemo(() => open?.history.data ?? [], [open]);
-  const byId = React.useCallback((id: string) => rows.find((row) => row.id === id), [rows]);
+  // Every row seen since the panel opened: a refresh goes back to the first
+  // page, and what is shown or compared may come from a later one.
+  const seen = React.useRef(new Map<string, VersionSnapshot>());
+  for (const row of rows) seen.current.set(row.id, row);
+  const byId = React.useCallback((id: string) => seen.current.get(id), []);
 
   // Comparing with what is shown: the older of the two is the baseline.
   const compareWithShown = React.useCallback((id: string): void => {
-    if (open === null) return;
-    const shown = open.displayed;
+    const now = controller.store.state;
+    if (now.mode !== 'versions') return;
+    const shown = now.displayed;
     if (shown.type === 'current') {
       void select({ type: 'current' }, id);
       return;
@@ -230,7 +227,7 @@ export default function DocumentVersionArea({
     if (other === undefined || row === undefined) return;
     const [older, newer] = row.createdAt <= other.createdAt ? [row, other] : [other, row];
     void select({ type: 'snapshot', id: newer.id }, older.id);
-  }, [open, byId, select]);
+  }, [controller, byId, select]);
 
   const [renaming, setRenaming] = React.useState<VersionSnapshot | null>(null);
   const [renamePending, setRenamePending] = React.useState(false);
@@ -257,9 +254,13 @@ export default function DocumentVersionArea({
     setDeletePending(true);
     const result = await controller.remove(deleting.id);
     setDeletePending(false);
-    setDeleting(null);
-    if (result.status === 'done') toast.success(t('spaces.document.versions.deleted'));
-    else if (result.status === 'error') failed(result.error, t('spaces.document.versions.deleteFailed'));
+    if (result.status === 'done') {
+      setDeleting(null);
+      toast.success(t('spaces.document.versions.deleted'));
+    } else if (result.status === 'error') {
+      if (result.error.type === 'not-found') setDeleting(null);
+      failed(result.error, t('spaces.document.versions.deleteFailed'));
+    }
   }, [controller, deleting, failed, t]);
 
   const [confirmingRestore, setConfirmingRestore] = React.useState(false);
@@ -283,7 +284,7 @@ export default function DocumentVersionArea({
     else toast.success(t('spaces.document.versions.restored'));
   }, [closePanel, controller, editor, open, setRestoring, t]);
 
-  const restoring = open?.restoring === true || versions.restoring;
+  const restoring = versions.restoring;
   const displayed = open?.displayed ?? { type: 'current' as const };
   const comparing = open?.compareTo;
   /**
@@ -296,15 +297,21 @@ export default function DocumentVersionArea({
     const row = id === null ? undefined : byId(id);
     return row === undefined ? t('spaces.document.versions.current') : labelOf(row);
   };
-  /**
-   * Whether a snapshot row is what the preview shows, or part of the comparison.
-   * @param id - The row's snapshot.
-   * @returns True to mark it.
-   */
-  const active = (id: string | null): boolean => {
-    const target = displayed.type === 'snapshot' ? displayed.id : null;
-    return comparing !== undefined ? id === comparing || id === target : id === target;
-  };
+  const shownId = displayed.type === 'snapshot' ? displayed.id : null;
+  const showCurrent = React.useCallback(() => void select({ type: 'current' }), [select]);
+  const showSnapshot = React.useCallback((id: string) => void select({ type: 'snapshot', id }), [select]);
+  const failedPage = open?.history.status === 'error' ? open.history.operation : null;
+  const retryPage = React.useCallback(() => {
+    void (failedPage === 'loadMore' ? controller.loadMore() : controller.list());
+  }, [controller, failedPage]);
+  const failedRow = (
+    <div data-testid='doc-version-load-failed' className='flex items-center justify-between gap-2 px-2.5 py-3 text-sm'>
+      <span className='text-muted-foreground'>{t('spaces.document.versions.loadFailed')}</span>
+      <Button variant='outline' size='sm' icon={<RotateCw />} onClick={retryPage}>
+        {t('spaces.document.versions.retry')}
+      </Button>
+    </div>
+  );
 
   return (
     <>
@@ -359,22 +366,17 @@ export default function DocumentVersionArea({
           </Button>
         </div>
         <div className='flex flex-col gap-1 p-2'>
-          <VersionRow
+          <RowButton
             testId='doc-version-row-current'
             active={displayed.type === 'current'}
             title={t('spaces.document.versions.current')}
-            onPress={() => void select({ type: 'current' })}
+            onPress={showCurrent}
             disabled={restoring}
           />
           {open === null || (open.history.status === 'pending' && rows.length === 0) ? (
             [0, 1, 2].map((i) => <Skeleton key={i} className='my-1 h-11 rounded-content-xs' />)
-          ) : open.history.status === 'error' && rows.length === 0 ? (
-            <div data-testid='doc-version-load-failed' className='flex items-center justify-between gap-2 px-2.5 py-3 text-sm'>
-              <span className='text-muted-foreground'>{t('spaces.document.versions.loadFailed')}</span>
-              <Button variant='outline' size='sm' icon={<RotateCw />} onClick={() => void controller.list()}>
-                {t('spaces.document.versions.retry')}
-              </Button>
-            </div>
+          ) : failedPage !== null && rows.length === 0 ? (
+            failedRow
           ) : rows.length === 0 ? (
             <div data-testid='doc-version-empty' className='flex flex-col items-center gap-3 px-4 py-8 text-center text-sm text-muted-foreground'>
               {t('spaces.document.versions.empty')}
@@ -387,46 +389,20 @@ export default function DocumentVersionArea({
           ) : (
             <>
               {rows.map((row) => (
-                <VersionRow
+                <SnapshotRow
                   key={row.id}
-                  testId={`doc-version-row-${row.id}`}
-                  active={active(row.id)}
-                  title={labelOf(row)}
-                  sub={[(row.metadata as SnapshotMetadata | undefined)?.savedBy, savedAt(row.createdAt)].filter(Boolean).join(' · ')}
-                  onPress={() => void select({ type: 'snapshot', id: row.id })}
+                  row={row}
+                  active={row.id === shownId || row.id === comparing}
+                  shown={row.id === shownId}
+                  readOnly={readOnly}
                   disabled={restoring}
-                  menu={
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant='chrome-ghost' size='icon' className='size-5.5' aria-label={t('spaces.document.versions.more')} data-testid={`doc-version-row-menu-${row.id}`} disabled={restoring}>
-                          <MoreHorizontal className='h-3.5 w-3.5' />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end'>
-                        {!(displayed.type === 'snapshot' && displayed.id === row.id) && (
-                          <DropdownMenuItem data-testid='doc-version-compare-shown' onSelect={() => compareWithShown(row.id)}>
-                            <GitCompare className='h-4 w-4' />
-                            {t('spaces.document.versions.compareWithShown')}
-                          </DropdownMenuItem>
-                        )}
-                        {!readOnly && (
-                          <>
-                            <DropdownMenuItem data-testid='doc-version-rename' onSelect={() => setRenaming(row)}>
-                              <Pencil className='h-4 w-4' />
-                              {t('spaces.document.versions.rename')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem data-testid='doc-version-delete' className='text-status-error' onSelect={() => setDeleting(row)}>
-                              <Trash2 className='h-4 w-4' />
-                              {t('spaces.document.versions.delete')}
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  }
+                  onShow={showSnapshot}
+                  onCompare={compareWithShown}
+                  onRename={setRenaming}
+                  onDelete={setDeleting}
                 />
               ))}
-              {open.nextCursor !== undefined && (
+              {failedPage !== null ? failedRow : open.nextCursor !== undefined && (
                 <Button
                   variant='ghost'
                   size='sm'
@@ -483,18 +459,18 @@ export default function DocumentVersionArea({
   );
 }
 
-interface VersionRowProps {
+interface RowButtonProps {
   testId: string;
   active: boolean;
   title: string;
   sub?: string;
   onPress: () => void;
   disabled: boolean;
-  menu?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 /**
- * One row of the panel: the current content or a snapshot.
+ * The pressable part of a row: the current content or a snapshot.
  * @param props - Row props.
  * @param props.testId - Its test id.
  * @param props.active - Whether it is what the preview shows.
@@ -502,10 +478,10 @@ interface VersionRowProps {
  * @param props.sub - Who saved it and when.
  * @param props.onPress - Shows it.
  * @param props.disabled - Whether pressing is off.
- * @param props.menu - Its `⋯` menu.
+ * @param props.children - Its `⋯` menu.
  * @returns The row.
  */
-const VersionRow = React.memo(function VersionRow({ testId, active, title, sub, onPress, disabled, menu }: VersionRowProps): React.JSX.Element {
+const RowButton = React.memo(function RowButton({ testId, active, title, sub, onPress, disabled, children }: RowButtonProps): React.JSX.Element {
   return (
     <div className='group relative'>
       <Button
@@ -523,10 +499,75 @@ const VersionRow = React.memo(function VersionRow({ testId, active, title, sub, 
         <span className='w-full truncate pr-6 text-sm'>{title}</span>
         {sub ? <span className='w-full truncate text-xs text-muted-foreground'>{sub}</span> : null}
       </Button>
-      {menu ? (
-        <div className='absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 has-[[data-state=open]]:opacity-100'>{menu}</div>
+      {children ? (
+        <div className='absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 has-[[data-state=open]]:opacity-100'>{children}</div>
       ) : null}
     </div>
+  );
+});
+
+interface SnapshotRowProps {
+  row: VersionSnapshot;
+  /** Shown, or one side of the comparison. */
+  active: boolean;
+  /** What the preview shows, so comparing with it is not offered. */
+  shown: boolean;
+  readOnly: boolean;
+  disabled: boolean;
+  onShow: (id: string) => void;
+  onCompare: (id: string) => void;
+  onRename: (row: VersionSnapshot) => void;
+  onDelete: (row: VersionSnapshot) => void;
+}
+
+/**
+ * One snapshot's row and its `⋯` menu.
+ * @param props - Row props.
+ * @param props.row - The snapshot.
+ * @param props.active - Whether it is shown or compared.
+ * @param props.shown - Whether the preview shows it.
+ * @param props.readOnly - Whether the user is a viewer.
+ * @param props.disabled - Whether pressing is off.
+ * @param props.onShow - Shows a snapshot.
+ * @param props.onCompare - Compares a snapshot with what is shown.
+ * @param props.onRename - Opens the rename dialog.
+ * @param props.onDelete - Opens the delete dialog.
+ * @returns The row.
+ */
+const SnapshotRow = React.memo(function SnapshotRow({ row, active, shown, readOnly, disabled, onShow, onCompare, onRename, onDelete }: SnapshotRowProps): React.JSX.Element {
+  const t = useTranslation();
+  const press = React.useCallback(() => onShow(row.id), [onShow, row.id]);
+  const sub = [(row.metadata as SnapshotMetadata | undefined)?.savedBy, savedAt(row.createdAt)].filter(Boolean).join(' · ');
+  return (
+    <RowButton testId={`doc-version-row-${row.id}`} active={active} title={labelOf(row)} sub={sub} onPress={press} disabled={disabled}>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button variant='chrome-ghost' size='icon' className='size-5.5' aria-label={t('spaces.document.versions.more')} data-testid={`doc-version-row-menu-${row.id}`} disabled={disabled}>
+            <MoreHorizontal className='h-3.5 w-3.5' />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end'>
+          {!shown && (
+            <DropdownMenuItem data-testid='doc-version-compare-shown' onSelect={() => onCompare(row.id)}>
+              <GitCompare className='h-4 w-4' />
+              {t('spaces.document.versions.compareWithShown')}
+            </DropdownMenuItem>
+          )}
+          {!readOnly && (
+            <>
+              <DropdownMenuItem data-testid='doc-version-rename' onSelect={() => onRename(row)}>
+                <Pencil className='h-4 w-4' />
+                {t('spaces.document.versions.rename')}
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid='doc-version-delete' className='text-status-error' onSelect={() => onDelete(row)}>
+                <Trash2 className='h-4 w-4' />
+                {t('spaces.document.versions.delete')}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </RowButton>
   );
 });
 

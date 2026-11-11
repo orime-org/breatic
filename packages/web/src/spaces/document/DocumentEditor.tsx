@@ -48,10 +48,14 @@ import { revealInTable, tableViewportOf } from '@web/spaces/document/document-ta
 import type { DocumentScope } from '@web/data/api/documents';
 import { DocumentSnapshotNameDialog } from '@web/spaces/document/DocumentSnapshotNameDialog';
 import { useDocumentVersions } from '@web/spaces/document/use-document-versions';
+import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
 
 // The snapshot panel, its preview editor and the diff renderer load when the
-// panel first opens (inner#1129 design §7.1).
-const DocumentVersionArea = React.lazy(() => import('@web/spaces/document/DocumentVersionArea'));
+// panel first opens (inner#1129 design §7.1); a chunk that cannot be fetched
+// says so in the panel's place.
+const DocumentVersionArea = React.lazy(() =>
+  import('@web/spaces/document/DocumentVersionArea').catch(() => ({ default: DocumentVersionAreaUnavailable })),
+);
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -225,6 +229,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+  // The snapshot preview takes the body's place in this scroller, which pulls
+  // the scroll back; the body's place is noted on the way in and given back
+  // on the way out, before the effects below scroll to anything of their own.
+  const bodyTop = React.useRef<number | null>(null);
+  const { openPanel } = versions;
+  const openVersions = React.useCallback(() => {
+    bodyTop.current = viewport?.scrollTop ?? null;
+    openPanel();
+  }, [openPanel, viewport]);
+  React.useLayoutEffect(() => {
+    if (panelOpen || viewport === null || bodyTop.current === null) return;
+    viewport.scrollTop = bodyTop.current;
+    bodyTop.current = null;
+  }, [panelOpen, viewport]);
 
   // The link toolbar stands aside while the selection holds anything: that is
   // what puts the bubble bar on screen, and the link panel only ever opens
@@ -449,7 +467,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 unresolvedComments={rail.unresolved.length}
                 versionsOpen={panelOpen}
                 onSaveSnapshot={scope === null || readOnly ? null : versions.requestSave}
-                onRestoreSnapshot={scope === null ? null : versions.openPanel}
+                onRestoreSnapshot={scope === null ? null : openVersions}
               />
               <div
                 ref={body}
