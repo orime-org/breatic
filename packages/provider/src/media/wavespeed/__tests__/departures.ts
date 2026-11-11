@@ -24,6 +24,8 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
   "wan-3.0-reference-to-video": { rename: { enable_audio: "generate_audio" } },
   "elevenlabs-v3": { omit: ["similarity"] },
   "sfx-1.6-text-to-audio": { omit: ["ambience", "double_output"] },
+  // compose_from is the panel's choice between references and a melody, not a WaveSpeed field; today's worker forwards it under its own name.
+  "mureka-v9.5-generate-song": { omit: ["compose_from"] },
 };
 
 /**
