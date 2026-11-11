@@ -3,7 +3,6 @@
 
 import type * as React from 'react';
 
-import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useCurrentUserStore } from '@web/stores';
@@ -73,10 +72,8 @@ export function ChatEmpty({
       className='flex h-full flex-col items-center justify-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      {/* index.html declares English whatever the locale, so the line names
-          its own language: browsers break Japanese and Korean between phrases
-          only when they know which language the text is in. */}
-      <p lang={getLocale()} className='text-balance leading-relaxed [word-break:auto-phrase]'>
+      {/* Japanese breaks between phrases in the language the page declares. */}
+      <p className='text-balance leading-relaxed [word-break:auto-phrase]'>
         {t('chat.empty.capabilities')}
       </p>
       <div className='mt-4 flex flex-wrap items-center justify-center gap-2'>
