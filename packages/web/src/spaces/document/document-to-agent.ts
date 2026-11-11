@@ -193,7 +193,7 @@ export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   const media = mediaItem(editor, blockId);
   // The editor is typed without its schema, so its blocks read as `never`;
   // `mediaItem` has found the block.
-  const { children } = editor.getBlock(blockId) as { readonly children: readonly { readonly id: string }[] };
+  const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
   // Rows that hold nothing, empty lines left under the media, hand nothing.
   const markdown = children.length === 0 ? '' : blocksMarkdown(editor, children as never).trimEnd();
   if (markdown === '') return [media];
