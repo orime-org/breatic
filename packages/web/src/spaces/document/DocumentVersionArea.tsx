@@ -91,6 +91,9 @@ function labelOf(snapshot: VersionSnapshot): string {
   return snapshot.name ?? savedAt(snapshot.createdAt);
 }
 
+/** What the preview shows: one item, or one compared with another. */
+type Display = { displayed: VersionSelection; compareTo: string | undefined };
+
 /** The panel's operations, each marked waiting while it runs. */
 type PanelAction = 'select' | 'rename' | 'delete' | 'restore' | 'page' | 'retry';
 
@@ -125,7 +128,10 @@ export default function DocumentVersionArea({
   const t = useTranslation();
   const host = React.useRef<HTMLDivElement>(null);
   const outcome = React.useRef<'restored' | 'unchanged'>('restored');
-  const [compared, setCompared] = React.useState(0);
+  const [shownNow, setShownNow] = React.useState<{ comparing: boolean } | null>(null);
+  // Where the preview goes back to once the display it held before the Space
+  // was hidden is drawn again.
+  const landing = React.useRef<number | null>(null);
 
   // One preview per opening of the panel.
   const [{ preview, controller }] = React.useState(() => {
@@ -147,9 +153,7 @@ export default function DocumentVersionArea({
       live: () => editor.prosemirrorState.doc,
       storage,
       shown,
-      onShow: (comparing) => {
-        if (comparing) setCompared((n) => n + 1);
-      },
+      onShow: (comparing) => setShownNow({ comparing }),
     });
     return { preview: built, controller: versioningOf(built) };
   });
@@ -159,9 +163,20 @@ export default function DocumentVersionArea({
 
   // A comparison scrolls its own viewport to the first change; the library's
   // scroll would move every scrolling ancestor.
+  // Once per display: a Space shown again runs this effect anew.
+  const handled = React.useRef<{ comparing: boolean } | null>(null);
   React.useEffect(() => {
-    if (compared === 0 || viewport === null) return;
-    const mark = preview.prosemirrorView?.dom.querySelector('[data-user-ids]');
+    if (shownNow === null || shownNow === handled.current || viewport === null) return;
+    handled.current = shownNow;
+    const back = landing.current;
+    landing.current = null;
+    if (back !== null) {
+      viewport.scrollTop = back;
+      return;
+    }
+    if (!shownNow.comparing) return;
+    // Looked up in our own element: the preview's view throws once unmounted.
+    const mark = host.current?.querySelector('[data-user-ids]');
     if (!(mark instanceof HTMLElement)) return;
     // The library's mark wrappers are `display: contents` and have no box of
     // their own; what they hold does.
@@ -169,7 +184,20 @@ export default function DocumentVersionArea({
     words.selectNodeContents(mark);
     const top = words.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
-  }, [compared, preview, viewport]);
+  }, [shownNow, viewport]);
+
+  // Where the user is in the preview, kept as they scroll: a hidden Space's
+  // scroller has nothing to say by the time the preview is let go.
+  const place = React.useRef(0);
+  React.useEffect(() => {
+    if (viewport === null) return undefined;
+    /** Notes the position the scroller has come to. */
+    const note = (): void => {
+      place.current = viewport.scrollTop;
+    };
+    viewport.addEventListener('scroll', note);
+    return () => viewport.removeEventListener('scroll', note);
+  }, [viewport]);
 
   // Refreshes the list after a save from the menu while the panel is open.
   const savedOnOpen = React.useRef(versions.saved);
@@ -213,14 +241,18 @@ export default function DocumentVersionArea({
     }
   }, [controller, t]);
 
-  const select = React.useCallback(async (target: VersionSelection, compareTo?: string): Promise<void> => {
-    await run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
+  // The selection last asked for: the controller's pending one has no baseline.
+  const asked = React.useRef<Display | null>(null);
+  const select = React.useCallback((target: VersionSelection, compareTo?: string): Promise<'done' | 'gone' | 'failed' | 'dropped'> => {
+    asked.current = { displayed: target, compareTo };
+    return run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
   }, [controller, run, t]);
 
   // A hidden Space runs this cleanup like an unmount, and React never calls
   // it again if the tab is then closed; so the preview is always let go, and
-  // what it showed is taken back up when the Space is shown again (§8.2).
-  const resume = React.useRef<{ displayed: VersionSelection; compareTo: string | undefined } | null>(null);
+  // what it showed, or was still loading, is taken back up where the user
+  // was when the Space is shown again (§8.2).
+  const resume = React.useRef<(Display & { top: number }) | null>(null);
   React.useEffect(() => {
     const at = host.current;
     if (at === null) return undefined;
@@ -233,10 +265,22 @@ export default function DocumentVersionArea({
     void controller.list();
     const back = resume.current;
     resume.current = null;
-    if (back !== null && (back.displayed.type === 'snapshot' || back.compareTo !== undefined)) void select(back.displayed, back.compareTo);
+    if (back !== null && (back.displayed.type === 'snapshot' || back.compareTo !== undefined)) {
+      landing.current = back.top;
+      void select(back.displayed, back.compareTo).then((end) => {
+        if (end !== 'done') landing.current = null;
+      });
+    } else if (back !== null) {
+      // The current content is drawn by `open()` already.
+      const scroller = at.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+      if (scroller !== null) scroller.scrollTop = back.top;
+    }
     return () => {
       const now = controller.store.state;
-      if (now.mode === 'versions') resume.current = { displayed: now.displayed, compareTo: now.compareTo };
+      if (now.mode === 'versions') {
+        const held = now.pending !== undefined && asked.current !== null ? asked.current : { displayed: now.displayed, compareTo: now.compareTo };
+        resume.current = { ...held, top: place.current };
+      }
       controller.close();
       preview.unmount();
       surface.remove();
@@ -366,7 +410,7 @@ export default function DocumentVersionArea({
           </div>
         ) : null}
         <div ref={host} data-testid='doc-version-preview-body' className='doc-body-editor mx-auto w-full max-w-3xl [&_.ProseMirror]:outline-none' />
-        <FoldRows preview={preview} />
+        <FoldRows preview={preview} host={host} />
         <DocumentMediaViews editor={preview} readOnly viewport={viewport} />
       </div>
       <aside data-testid='doc-version-panel' className='flex flex-none flex-col border-l border-border' style={PANEL_WIDTH}>
@@ -595,9 +639,11 @@ const SnapshotRow = React.memo(function SnapshotRow({ row, active, shown, readOn
  * fold plugin leaves in the preview.
  * @param props - Fold props.
  * @param props.preview - The preview editor.
+ * @param props.host - The element the preview is mounted in; the preview's
+ * view throws once it is unmounted, while this one is then empty.
  * @returns The portals.
  */
-function FoldRows({ preview }: { preview: Preview }): React.JSX.Element {
+function FoldRows({ preview, host }: { preview: Preview; host: React.RefObject<HTMLDivElement | null> }): React.JSX.Element {
   const t = useTranslation();
   const folds = React.useSyncExternalStore(
     React.useCallback((notify: () => void) => preview.onChange(notify), [preview]),
@@ -606,7 +652,7 @@ function FoldRows({ preview }: { preview: Preview }): React.JSX.Element {
   return (
     <>
       {folds.map((fold: VersionFold) => {
-        const target = preview.prosemirrorView?.dom.querySelector(`[data-version-fold="${CSS.escape(fold.key)}"]`);
+        const target = host.current?.querySelector(`[data-version-fold="${CSS.escape(fold.key)}"]`);
         if (!(target instanceof HTMLElement)) return null;
         return createPortal(
           <Button

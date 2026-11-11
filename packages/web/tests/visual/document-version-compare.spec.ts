@@ -95,6 +95,15 @@ test('marks a comparison in the palette colours, selects both rows and folds wha
   await expect(page.getByTestId('doc-version-row-current')).toHaveAttribute('data-active', 'true');
   await expect(row).toHaveAttribute('data-active', 'true');
 
+  // Switching to another Space and back keeps the comparison as it was.
+  const home = (await page.locator('[role="tab"][aria-selected="true"]').getAttribute('data-testid'))!;
+  created.push(await createSpace(page, 'document', `compare-other-${Date.now()}`));
+  await page.getByTestId(home).click();
+  await expect(page.getByTestId('doc-version-fold')).toHaveCount(1, { timeout: 15_000 });
+  await expect(preview.locator('.doc-version-folded')).toHaveCount(7);
+  await expect(preview.locator('.doc-version-insert')).toHaveText('O');
+  await expect(row).toHaveAttribute('data-active', 'true');
+
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(page, theme);
     const green = await token(page, 'color-palette-green', 'color');

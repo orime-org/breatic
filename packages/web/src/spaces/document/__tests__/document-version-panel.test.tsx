@@ -230,6 +230,143 @@ describe('the snapshot panel', () => {
     expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('snapshot words');
   });
 
+  /**
+   * Renders the body inside an Activity the test can hide, as a Space tab is.
+   * @returns Switches the Space away or back.
+   */
+  function showInSpace(): (mode: 'visible' | 'hidden') => void {
+    const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}><DocumentEditor handle={handle} scope={SCOPE} /></React.Activity>
+    );
+    const { rerender } = render(at('visible'));
+    return (mode) => rerender(at(mode));
+  }
+
+  /** Writes the body as several paragraphs, closing the undo step. */
+  function writeLines(lines: readonly string[]): void {
+    act(() => {
+      handle.editor.replaceBlocks(handle.editor.document, lines.map((words) => ({ type: 'paragraph', content: words })) as never);
+    });
+    handle.undoManager.stopCapturing();
+  }
+
+  it('keeps a comparison with folded rows across a Space switch away and back', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    writeLines(['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot']);
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    // Only the last block changes; the others keep their ids and fold.
+    act(() => {
+      handle.editor.updateBlock(handle.editor.document.at(-1)!, { content: 'foxtrotted' } as never);
+    });
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await user.click(await screen.findByTestId('doc-version-compare-current'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-fold')).toBeInTheDocument());
+
+    space('hidden');
+    space('visible');
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-fold')).toBeInTheDocument());
+    expect(screen.getByTestId('doc-version-banner')).toBeInTheDocument();
+  });
+
+  it('takes up a snapshot still loading when the Space was switched away', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('second words');
+    rows.set('v2', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    let arrive: () => void = () => undefined;
+    api.list.mockResolvedValue({ versions: [row('v2', 'Second', 1), row('v1', 'First draft', 0)], nextCursor: null });
+    api.get.mockImplementation(async (_scope, id) => {
+      if (id === 'v2') await new Promise<void>((resolve) => { arrive = resolve; });
+      return { version: row(id, null, 0), content: rows.get(id)! };
+    });
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    await user.click(screen.getByTestId('doc-version-row-v2'));
+
+    space('hidden');
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    act(() => arrive());
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('Second'));
+    expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('second words');
+  });
+
+  it('puts the preview back where the user was reading after a Space switch away and back', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    const scrollTo = vi.fn();
+    viewport.scrollTo = scrollTo as typeof viewport.scrollTo;
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await user.click(await screen.findByTestId('doc-version-compare-current'));
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+    viewport.scrollTop = 700;
+    fireEvent.scroll(viewport);
+    scrollTo.mockClear();
+
+    space('hidden');
+    // The browser cuts the scroll back while the preview is let go.
+    viewport.scrollTop = 0;
+    space('visible');
+
+    await waitFor(() => expect(viewport.scrollTop).toBe(700));
+    expect(screen.getByTestId('doc-version-banner')).toBeInTheDocument();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('puts the current content back where the user was reading after a Space switch away and back', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    await openPanel(user);
+    viewport.scrollTop = 500;
+    fireEvent.scroll(viewport);
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
+    expect(viewport.scrollTop).toBe(500);
+  });
+
+  it('lets go of the place it was taking back to when that snapshot cannot be drawn again', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    viewport.scrollTop = 700;
+    fireEvent.scroll(viewport);
+
+    space('hidden');
+    api.get.mockRejectedValueOnce(new ApiException({ status: 500, message: 'boom', fromServer: true }));
+    space('visible');
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    viewport.scrollTop = 0;
+
+    await user.click(screen.getByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    expect(viewport.scrollTop).toBe(0);
+  });
+
   it('leaves a page that came back not found to the list alone', async () => {
     const user = userEvent.setup();
     api.list.mockImplementation(async (_scope, cursor) => {
