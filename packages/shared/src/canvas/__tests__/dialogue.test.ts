@@ -150,6 +150,10 @@ describe('dialogueText', () => {
     expect(dialogueText([], SPEAKERS)).toBe('');
   });
 
+  it('takes a line\'s speaker from a typed name and colon in front, and takes the name off, as the editor does (design 8.5)', () => {
+    expect(dialogueText([{ text: 'Ava：hi' }, { text: 'Leo: hello' }, { speaker: 1, text: 'Leo:  again' }], SPEAKERS)).toBe('Ava: hi\nLeo: hello\nLeo: again');
+  });
+
   it('folds a line break inside a line into one space', () => {
     expect(dialogueText([{ speaker: 1, text: 'one\ntwo' }], SPEAKERS)).toBe('Ava: one two');
   });

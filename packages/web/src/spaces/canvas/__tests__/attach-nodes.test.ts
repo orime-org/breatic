@@ -334,16 +334,17 @@ describe('a dialogue handed over (inner#1825)', () => {
   /**
    * The snapshot of a Gemini node with the given record.
    * @param record - Its params for the model.
+   * @param blocks - Its tts prompt's blocks; three lines with speakers when left out.
    * @returns What the agent is handed for it.
    */
-  function handed(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  function handed(record: Record<string, unknown>, blocks?: Y.XmlElement[]): Record<string, unknown> | undefined {
     const doc = new Y.Doc();
     const root = doc.getMap<Y.Map<unknown>>('data');
     root.set('d1', ymap({
       mode: 'tts',
       model: 'gemini',
       paramsByModel: ymap({ gemini: ymap(record) }),
-      prompts: ymap({ tts: fragment(line(1, 'Hi.'), line(2, 'Hello.'), line(1, 'Bye.')) }),
+      prompts: ymap({ tts: fragment(...(blocks ?? [line(1, 'Hi.'), line(2, 'Hello.'), line(1, 'Bye.')])) }),
     }));
     const dialogue = node('d1', 'audio', { name: 'Dialogue', mode: 'tts', model: 'gemini', paramsByModel: { gemini: record } });
     const item = itemForPick({ nodes: [dialogue], edges: [] }, ['d1'], {
@@ -356,6 +357,12 @@ describe('a dialogue handed over (inner#1825)', () => {
 
   it('gives each line with the name of who says it, on the dialogue side', () => {
     expect(handed({ speakers: PAIR, _stand_in_on: true })?.data).toMatchObject({ prompts: { tts: 'Ava: Hi.\nLeo: Hello.\nAva: Bye.' } });
+  });
+
+  it('reads a node written before the lines, never opened since, the way its lines will be put right (design 8.5)', () => {
+    expect(handed({ speakers: PAIR, _stand_in_on: true }, [paragraph('Ava：hi'), paragraph('Leo：hello')])?.data).toMatchObject({
+      prompts: { tts: 'Ava: hi\nLeo: hello' },
+    });
   });
 
   it('gives the words as written when the node reads in one voice', () => {
