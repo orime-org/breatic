@@ -264,7 +264,8 @@
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
       "sourceTooLarge": "This tool takes files up to {size}.",
-      "clipsTooLarge": "These clips are too large to join together."
+      "clipsTooLarge": "These clips are too large to join together.",
+      "joinClipCount": "A join takes 2 to {max} clips."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -1392,7 +1393,8 @@
         "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
         "sourceTooLarge": "This tool takes files up to {size}.",
         "joinClips": "Clips",
-        "joinNeedsClip": "Add one more clip to run."
+        "joinNeedsClip": "Add one more clip to run.",
+        "joinTooMany": "Up to {n} clips"
       },
       "adjust": {
         "exposure": "Exposure",

@@ -264,7 +264,8 @@
       "foreignSource": "このファイルは処理できません。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
       "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
-      "clipsTooLarge": "これらのクリップは合計サイズが大きすぎるため、つなげられません。"
+      "clipsTooLarge": "これらのクリップは合計サイズが大きすぎるため、つなげられません。",
+      "joinClipCount": "結合できるクリップは 2〜{max} 本です。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -1392,7 +1393,8 @@
         "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
         "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
         "joinClips": "クリップ",
-        "joinNeedsClip": "もう1つクリップを追加すると実行できます。"
+        "joinNeedsClip": "もう1つクリップを追加すると実行できます。",
+        "joinTooMany": "最大 {n} 本まで"
       },
       "adjust": {
         "exposure": "露出",

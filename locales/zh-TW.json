@@ -264,7 +264,8 @@
       "foreignSource": "這個檔案無法處理。",
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
-      "clipsTooLarge": "這些片段加起來太大，無法拼接。"
+      "clipsTooLarge": "這些片段加起來太大，無法拼接。",
+      "joinClipCount": "拼接需要 2 到 {max} 段。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -1392,7 +1393,8 @@
         "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
         "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
         "joinClips": "片段",
-        "joinNeedsClip": "再加一段才能執行。"
+        "joinNeedsClip": "再加一段才能執行。",
+        "joinTooMany": "最多 {n} 段"
       },
       "adjust": {
         "exposure": "曝光",

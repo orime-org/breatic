@@ -30,7 +30,7 @@ import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { isJoinTool } from '@web/spaces/canvas/mini-tool/join';
+import { isJoinTool, joinClipsOf } from '@web/spaces/canvas/mini-tool/join';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
@@ -305,9 +305,10 @@ function OpenMiniToolPanel({
   // A join's list cap is served with the canvas limits: a container tool
   // has no catalog entry to read `max_items` from (inner#1825 §6.3).
   const join = isJoinTool(spec);
+  const joinCap = join ? (getCachedJoinMaxClips() ?? undefined) : undefined;
   const slotCaps = React.useMemo(
-    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, join ? (getCachedJoinMaxClips() ?? undefined) : entry?.params[slot.param]?.max_items])),
-    [spec, entry, join],
+    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, join ? joinCap : entry?.params[slot.param]?.max_items])),
+    [spec, entry, join, joinCap],
   );
   // A join's draft is its whole list, the first clip included: the first
   // clip is what the run reads as its source, the rest its clips (§6.5).
@@ -358,6 +359,7 @@ function OpenMiniToolPanel({
     params,
     expandFrame: draft?.expand?.frame,
     mark: draft?.mark,
+    ...(join && joinCap !== undefined ? { join: { clips: joinClipsOf(slots).length, cap: joinCap } } : {}),
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
@@ -390,6 +392,10 @@ function OpenMiniToolPanel({
     }
     if (refusal === 'sourceTooLargeToExpand') {
       toast.warning(t('canvas.miniTool.panel.sourceTooLargeToExpand'));
+      return;
+    }
+    if (refusal === 'joinTooMany') {
+      toast.warning(t('canvas.miniTool.panel.joinTooMany', { n: joinCap ?? 0 }));
       return;
     }
     if (refusal === 'slotTooLong') {
@@ -430,7 +436,7 @@ function OpenMiniToolPanel({
     // Pressing Run leaves picking, as pressing generate does (inner#1304).
     if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t, joinCap]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

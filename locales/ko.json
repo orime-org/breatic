@@ -264,7 +264,8 @@
       "foreignSource": "이 파일은 처리할 수 없습니다.",
       "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
       "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
-      "clipsTooLarge": "이 클립들은 합친 크기가 너무 커서 이어 붙일 수 없습니다."
+      "clipsTooLarge": "이 클립들은 합친 크기가 너무 커서 이어 붙일 수 없습니다.",
+      "joinClipCount": "이어 붙이기는 클립 2~{max}개까지 할 수 있습니다."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
@@ -1392,7 +1393,8 @@
         "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
         "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
         "joinClips": "클립",
-        "joinNeedsClip": "클립을 하나 더 추가하면 실행할 수 있습니다."
+        "joinNeedsClip": "클립을 하나 더 추가하면 실행할 수 있습니다.",
+        "joinTooMany": "최대 {n}개까지"
       },
       "adjust": {
         "exposure": "노출",

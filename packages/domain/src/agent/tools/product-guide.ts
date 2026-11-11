@@ -1198,7 +1198,8 @@ export function renderProductGuide(): string {
       `in a numbered row headed ${quoted(t("canvas.miniTool.panel.joinClips"))}, each with its name and length: drag one to change the order, take one out while more ` +
       "than two are left, or press the add box at the end of the row to pick another from the canvas, until the " +
       `row is full. ${quoted(t("canvas.miniTool.param.crossfade.label"))} blends each clip into the next over that ` +
-      `many seconds, at most half the shorter of the two. With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. The result is ` +
+      `many seconds, at most half the shorter of the two. With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
+      `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: 20 }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +

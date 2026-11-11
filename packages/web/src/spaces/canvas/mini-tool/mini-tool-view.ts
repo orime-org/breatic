@@ -12,7 +12,7 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
+import { isJoinTool, joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
 import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
@@ -68,6 +68,7 @@ export type MiniToolRefusal =
   | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
+  | 'joinTooMany'
   | 'sourceTooLong'
   | 'sourceTooLarge'
   | 'drawingEmpty'
@@ -288,6 +289,9 @@ export function readsShownSize(spec: MiniToolSpec): boolean {
  * @param input.params - The draft params.
  * @param input.expandFrame - An expand tool's frame.
  * @param input.mark - A markup tool's draft.
+ * @param input.join - A join's list and cap.
+ * @param input.join.clips - How many clips its list holds, the first included.
+ * @param input.join.cap - The most clips it takes.
  * @returns The first reason in the order the user would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -303,6 +307,8 @@ export function miniToolRefusal(input: {
   params?: Readonly<Record<string, unknown>>;
   expandFrame?: ExpandFrame;
   mark?: MarkDraft | null;
+  /** A join's whole list, its first clip included, and the most clips `/canvas/limits` lets it take. */
+  join?: { readonly clips: number; readonly cap: number };
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
@@ -320,6 +326,8 @@ export function miniToolRefusal(input: {
     if (!slotFilled(slots[slot.key]) && !slotOptional(slot, entry)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
+  // A selection past the cap opens the panel holding every clip it picked.
+  if (isJoinTool(spec) && input.join !== undefined && input.join.clips > input.join.cap) return 'joinTooMany';
   const limit = sourceLimitOf(spec, entry, source);
   if (limit !== null) return limit.kind === 'duration' ? 'sourceTooLong' : 'sourceTooLarge';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';

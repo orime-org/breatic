@@ -219,9 +219,9 @@ async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToo
   // ponytail: the joins are the only container tools with slots, so slots mean a join.
   if (spec.slots.length > 0) {
     const clips = spec.slots.flatMap((slot) => body.slots[slot.key] ?? []);
-    // Past the cap the panel's add tile is gone, so only a forged request gets here.
+    // The panel holds a join to the cap; a request past it is said as the count.
     if (clips.length < 1 || clips.length > config.join_max_clips - 1) {
-      throw new AppError(400, t("server.mini_tool.foreignSource"));
+      throw new AppError(400, t("server.mini_tool.joinClipCount", { max: config.join_max_clips }));
     }
     for (const clip of clips) inputKeys.push(await checkedInputKey(spec, op, clip.url));
     let bytes = 0;

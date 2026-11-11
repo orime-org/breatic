@@ -548,6 +548,11 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
                 {t('canvas.miniTool.panel.joinNeedsClip')}
               </p>
             ) : null}
+            {refusal === 'joinTooMany' && joinSlot !== undefined ? (
+              <p data-testid='join-too-many' className='text-xs text-muted-foreground'>
+                {t('canvas.miniTool.panel.joinTooMany', { n: slotCaps[joinSlot.key] ?? 0 })}
+              </p>
+            ) : null}
           </>
         )}
         {spec.noteKey === undefined ? null : (

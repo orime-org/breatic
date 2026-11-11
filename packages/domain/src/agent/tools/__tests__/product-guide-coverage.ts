@@ -1056,6 +1056,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.mini_tool.sourceTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.sourceTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.clipsTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.mini_tool.joinClipCount": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.invalidParam": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.payment.consent-credits-v1": { excluded: REASONS.NOT_ON_THESE_SCREENS },
