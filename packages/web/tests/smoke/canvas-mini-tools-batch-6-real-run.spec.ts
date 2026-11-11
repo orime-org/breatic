@@ -467,6 +467,22 @@ test('transitions: two videos and a crossfade give one video as long as both les
     expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), [x, y])).toBe(true);
     const outField = dialog.getByTestId('video-clip-out');
     const outBefore = Number(await outField.inputValue());
+    // Dragging that end past the clip's other end stops at a clip that still has length, with no page error.
+    const pageErrors: string[] = [];
+    c.page.on('pageerror', (error) => pageErrors.push(error.message));
+    const firstLeft = (await firstClip.boundingBox())!.x;
+    await c.page.mouse.move(x, y);
+    await c.page.mouse.down();
+    await c.page.mouse.move(firstLeft - 40, y, { steps: 20 });
+    await c.page.mouse.up();
+    await expect.poll(async () => Number(await outField.inputValue())).toBeLessThan(outBefore);
+    expect(Number(await outField.inputValue())).toBeGreaterThan(Number(await dialog.getByTestId('video-clip-in').inputValue()));
+    expect(pageErrors).toEqual([]);
+    // The short clip shortened the transition to fit; put both back so the clips overlap as before.
+    await outField.fill(String(outBefore));
+    await expect(outField).toHaveValue(String(outBefore));
+    await overlap.fill('1');
+    await expect(overlap).toHaveValue('1');
     await c.page.mouse.move(x, y);
     await c.page.mouse.down();
     await c.page.mouse.move(x - 100, y, { steps: 10 });
