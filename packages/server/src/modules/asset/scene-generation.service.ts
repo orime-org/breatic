@@ -68,7 +68,8 @@ function violationMessage(v: ParamViolation): string {
     case "prompt_max_length":
       return t("server.three_d.setting_too_long", { param: v.param, max: v.max, length: v.length });
     case "min_length":
-      return t("server.canvas.param_too_short", { name: v.param });
+      // Named by its control's label, the one the dialog shows (the canvas panels' key family).
+      return t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${v.param}`) });
   }
 }
 
