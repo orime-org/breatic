@@ -171,3 +171,13 @@ describe('a name cut where an emoji stands', () => {
     expect(item.name.isWellFormed()).toBe(true);
   });
 });
+
+describe('a media row whose nested rows hold nothing', () => {
+  it('hands the media alone, with no empty text after it', () => {
+    const editor = open([
+      { id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' }, children: [{ id: 'e', type: 'paragraph', content: '' }] },
+    ]);
+
+    expect(mediaRowItems(editor as never, 'pic').map((item) => item.id)).toEqual(['document-media-pic']);
+  });
+});

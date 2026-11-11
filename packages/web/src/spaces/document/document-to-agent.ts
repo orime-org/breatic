@@ -191,14 +191,15 @@ export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
  */
 export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   const media = mediaItem(editor, blockId);
-  // The editor is typed without its schema, so its blocks read as `never`.
-  const row = editor.getBlock(blockId) as { readonly children?: readonly { readonly id: string }[] } | undefined;
-  const children = row?.children ?? [];
-  if (children.length === 0) return [media];
-  const markdown = blocksMarkdown(editor, children as never).trimEnd();
+  // The editor is typed without its schema, so its blocks read as `never`;
+  // `mediaItem` has found the block.
+  const { children } = editor.getBlock(blockId) as { readonly children: readonly { readonly id: string }[] };
+  // Rows that hold nothing, empty lines left under the media, hand nothing.
+  const markdown = children.length === 0 ? '' : blocksMarkdown(editor, children as never).trimEnd();
+  if (markdown === '') return [media];
   // The media holds no words, so the row's words are its children's.
-  const node = getNodeById(blockId, editor.prosemirrorState.doc)?.node;
-  const words = node === undefined ? '' : node.textBetween(0, node.content.size, '\n', '\n');
+  const { node } = getNodeById(blockId, editor.prosemirrorState.doc)!;
+  const words = node.textBetween(0, node.content.size, '\n', '\n');
   return [media, textItem(`document-block-${blockId}`, nameFrom(words), markdown)];
 }
 
