@@ -461,9 +461,9 @@ function SpaceDrawerRow({
         <div
           // Out of the flow and over the room the row button keeps free on
           // its right (`pr-8`), so the name truncates before it rather than
-          // running under it. Shown while the row is hovered, while focus is
-          // inside it, while its menu is open and while its name is being
-          // renamed.
+          // running under it. Shown while the row is hovered, while keyboard
+          // focus is inside it, while its menu is open and while its name is
+          // being renamed.
           className={cn(
             'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 has-focus-visible:opacity-100',
             menuOpen || renaming ? 'opacity-100' : 'opacity-0',

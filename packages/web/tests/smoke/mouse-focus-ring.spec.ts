@@ -160,6 +160,24 @@ test.describe('focus rings follow the input', () => {
     await context.close();
   });
 
+  test('the chat composer turns active only when the text takes the focus', async ({ page }) => {
+    await openSmokeProject(page);
+    const composer = page.getByTestId('chat-composer');
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    const border = (): Promise<string> => composer.evaluate((el) => getComputedStyle(el).borderTopColor);
+    const resting = await border();
+    await page.getByTestId('chat-model-picker').click();
+    await expect(page.getByTestId('chat-model-menu')).toBeVisible();
+    await page.locator('[data-testid^="chat-model-option-"]').nth(1).click();
+    await expect(page.getByTestId('chat-model-menu')).toBeHidden();
+    await expect(page.getByTestId('chat-model-picker')).toBeFocused();
+    // The border colour eases (`transition-colors`); give it time to move if it would.
+    await page.waitForTimeout(300);
+    expect(await border()).toBe(resting);
+    await page.getByTestId('chat-composer-box').click();
+    await expect.poll(border).not.toBe(resting);
+  });
+
   test.describe('a video in a Document', () => {
     const made: string[] = [];
     test.afterEach(async ({ page }) => {

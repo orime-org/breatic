@@ -12,17 +12,25 @@
  * modality.
  *
  * Only a key press switches to keyboard: Tab and Escape anywhere, and any other
- * key outside an editable area. Typing, shortcuts (Ctrl / Cmd chords, Alt off
- * macOS where Option+Tab moves focus in Safari), key releases, focus events and
- * window refocus keep the current modality, as React Aria's `useFocusVisible`
- * and the WICG focus-visible polyfill do.
+ * key outside an editable area. Typing does not switch, and neither do:
+ * - a lone modifier key or a Ctrl / Cmd chord, and Alt off macOS (React Aria's
+ *   `isValidKey`; Option+Tab moves focus in Safari);
+ * - a key an input method owns, the Escape that closes its candidate list
+ *   included (`composition-end.ts`);
+ * - key releases (the WICG focus-visible polyfill listens to keydown only);
+ * - focus events, scripted focus and window refocus.
  */
+import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { isMac } from '@web/lib/is-mac';
 
 export type InputModality = 'keyboard' | 'pointer';
 
-const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+/** The modifier keys of the UI Events key values; CapsLock switches the input source on many Macs. */
+const MODIFIER_KEYS = new Set([
+  'Alt', 'AltGraph', 'CapsLock', 'Control', 'Fn', 'FnLock', 'Hyper', 'Meta',
+  'NumLock', 'ScrollLock', 'Shift', 'Super', 'Symbol', 'SymbolLock',
+]);
 
 /**
  * Whether a key press means the user is moving around with the keyboard.
@@ -43,6 +51,7 @@ function isKeyboardNavigation(event: KeyboardEvent): boolean {
  */
 export function installInputModality(doc: Document = document): () => void {
   const root = doc.documentElement;
+  const ime = compositionEnd();
   /**
    * Writes the modality, touching the DOM only when it changes.
    * @param modality - The modality to record.
@@ -59,13 +68,15 @@ export function installInputModality(doc: Document = document): () => void {
    * @param event - The keydown.
    */
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (isKeyboardNavigation(event)) set('keyboard');
+    if (!keyBelongsToInputMethod(event, ime) && isKeyboardNavigation(event)) set('keyboard');
   };
   set('pointer');
   doc.addEventListener('pointerdown', onPointerDown, true);
   doc.addEventListener('keydown', onKeyDown, true);
+  doc.addEventListener('compositionend', ime.mark, true);
   return () => {
     doc.removeEventListener('pointerdown', onPointerDown, true);
     doc.removeEventListener('keydown', onKeyDown, true);
+    doc.removeEventListener('compositionend', ime.mark, true);
   };
 }

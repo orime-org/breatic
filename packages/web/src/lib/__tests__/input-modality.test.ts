@@ -134,9 +134,9 @@ describe('installInputModality', () => {
     }
   });
 
-  it('stays pointer on a lone modifier key', () => {
+  it('stays pointer on a lone modifier key, CapsLock included', () => {
     const button = mount('button');
-    for (const key of ['Shift', 'Control', 'Alt', 'Meta']) {
+    for (const key of ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'Fn', 'NumLock']) {
       press(button, 'keydown', { key });
       expect(modality(), key).toBe('pointer');
     }
@@ -155,6 +155,25 @@ describe('installInputModality', () => {
     uninstall = installInputModality(document);
     const button = mount('button');
     press(button, 'keydown', { key: 'Tab', altKey: true });
+    expect(modality()).toBe('keyboard');
+  });
+
+  it('stays pointer on the keys an input method owns', () => {
+    const input = mount('input');
+    // While composing, and the 229 the browser reports for an input method's key.
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape', isComposing: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape', keyCode: 229 }));
+    // Escape closing the candidate list arrives after compositionend, not composing.
+    input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    press(input, 'keydown', { key: 'Escape' });
+    expect(modality()).toBe('pointer');
+  });
+
+  it('switches on an Escape pressed after the composition has settled', async () => {
+    const input = mount('input');
+    input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    await new Promise((settle) => setTimeout(settle, 0));
+    press(input, 'keydown', { key: 'Escape' });
     expect(modality()).toBe('keyboard');
   });
 
