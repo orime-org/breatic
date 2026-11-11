@@ -79,3 +79,61 @@ describe("the memory parts of the system prompt", () => {
     expect(instructionsText(parts)).toBe(`base\n\n## Memory Entries\n\n- ${A} · t\n\n## Conversation So Far\n\np`);
   });
 });
+
+/**
+ * The Project Instructions (#1400): the standing requirements the members of
+ * a Project wrote, sent as the last part of the system prompt on every
+ * request in that Project, text exactly as written.
+ */
+describe("the Project Instructions part of the system prompt", () => {
+  /**
+   * The section the part holds for a text.
+   * @param text - What the members wrote.
+   * @returns The section.
+   */
+  function section(text: string): string {
+    return (
+      "## Project Instructions\n\n" +
+      "Standing requirements the members of this Project wrote for it. Follow them in every reply here; where they conflict with a memory entry, these win.\n\n" +
+      "<project_instructions>\n" + text + "\n</project_instructions>"
+    );
+  }
+
+  it("wraps the text, untrimmed, in the section", () => {
+    const text = "  Reply in English.\nUse only blue and white.  \n";
+
+    expect(instructionsForAgentMemory("base", context(), text).projectInstructions).toBe(section(text));
+  });
+
+  it("is there without any memory too", () => {
+    expect(instructionsForAgentMemory("base", undefined, "Reply in English.")).toEqual({
+      base: "base",
+      projectInstructions: section("Reply in English."),
+    });
+  });
+
+  it.each([
+    ["no text", undefined],
+    ["an empty text", ""],
+    ["a text of only whitespace", " \n\t "],
+  ])("is left out for %s", (_name, text) => {
+    const parts = instructionsForAgentMemory("base", context({ progress: "p" }), text);
+
+    expect("projectInstructions" in parts).toBe(false);
+  });
+
+  it("reads last when the prompt is joined, after the progress note", () => {
+    const parts = instructionsForAgentMemory("base", context({ entries: [{ id: A, title: "t" }], progress: "p" }), "Reply in English.");
+
+    expect(instructionsText(parts)).toBe(
+      `base\n\n## Memory Entries\n\n- ${A} · t\n\n## Conversation So Far\n\np\n\n${section("Reply in English.")}`,
+    );
+  });
+
+  it("follows the memory entries straight away when there is no progress note", () => {
+    const parts = instructionsForAgentMemory("base", context(), "Reply in English.");
+
+    expect(instructionsText(parts)).toBe(`base\n\n## Memory Entries\n\nNo entries yet.\n\n${section("Reply in English.")}`);
+  });
+});
+

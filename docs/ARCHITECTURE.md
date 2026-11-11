@@ -221,8 +221,9 @@ The inbound filter (`infra/inbound-filter.ts`) runs on every reassembled message
 |---|---|---|
 | 记忆条目 | `agent_memories`,一条一行:`conversation_id` 为空是整个 Project 的,有值只属于那个会话 | 系统提示的 `Memory Entries` 索引:两种条目按 `updated_at` 合并,取最新的 `memory_index_max_entries`(200)条,每条一行 id 和标题,其余一行计数;迁移来的整块(`origin = 'migration'`)在归纳拆开之前给全文 |
 | 进展概要 | `conversation_memories.content`,一个会话一行 | `Conversation So Far` 一段,非空时出现,上限 `memory_progress_max_chars`(2000)字 |
+| Project 指令 | `project_agent_instructions`,一个 Project 一行,Owner 和 Editor 在 Agent 面板头部的全屏编辑页里读写(`GET/PUT /chat/instructions`,上限 `AGENT_INSTRUCTIONS_MAX_CHARS` 10,000 字,后存的覆盖先存的) | `Project Instructions` 一段,非空时出现,排在系统提示最后、不打缓存断点;每次组装请求(含折叠后的重新组装)现读,不写进会话历史 |
 
-条目都限于用户自己:一个成员的条目不会进另一个成员的提示词。标题 120 字、内容 4000 字,按码点数(`countCharacters`)。Agent 用 `save_memory` / `delete_memory` / `read_memory` 直接读写条目,不经过归纳、不花积分;什么时候用写在系统提示的 `## Memory` 规程里。删会话时它的会话条目一起软删,Project 条目不动。
+条目都限于用户自己:一个成员的条目不会进另一个成员的提示词。Project 指令相反,同一 Project 每个成员的每条请求都带它;它和记忆条目冲突时以它为准。改了指令,模型服务商的缓存从这一段起失效一次;回放哈希也覆盖它,所以改之前写的回复回放时不带思考,改回原文才恢复。标题 120 字、内容 4000 字,按码点数(`countCharacters`)。Agent 用 `save_memory` / `delete_memory` / `read_memory` 直接读写条目,不经过归纳、不花积分;什么时候用写在系统提示的 `## Memory` 规程里。删会话时它的会话条目一起软删,Project 条目不动。
 
 **每一轮装载给模型的量由下面几道闸各管一段**,全部在 `config/agent.yaml`:
 
@@ -462,7 +463,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定;它把上游的 `usage.cost` 搬进 `providerMetadata.openrouter.usage.cost`。**直连那四条各自的端点不同**(DeepSeek 走 `/chat/completions`,Anthropic 走 `/v1/messages`,Google 走 `:generateContent`,OpenAI 走 `/responses`),响应形状也各不相同。
 
-**有偏好的调用自己说,怎么说由表决定**。调用方把想要的东西交给 `callOptionsFor(modelId, { thinking, cache, session?, temperature? })`,拿回一份可以直接摊进模型调用的选项。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。`cache` 是提示词缓存的时长(`config/agent.yaml` 的 `prompt_cache_ttl`,聊天用 `1h`)或 `false`;`session` 只在走 OpenRouter 时作为 `session_id` 发出,两次请求间隔不到 10 分钟时让同一会话的请求落回同一家 provider、读得到上一轮写下的缓存(OpenRouter 的粘性会话 10 分钟没有调用即失效);Claude 不接受非默认 `temperature`,表里直接丢掉。system 提示词经 `systemFor(modelId, instructions, cache)` 发出:`buildAgentConfig` 把它分成三段 —— 基础提示词(所有会话逐字相同)、项目记忆(同一用户在同一 project 的各会话相同)、这条会话的记忆;要显式开缓存的 Claude 在前两段末尾各打一个缓存断点,所以新 project 的第一个会话读得到同一请求语言的别的会话写下的工具定义和基础提示词,同一用户在同一 project 的新会话还读得到项目记忆(请求级缓存只在最后一个块写一条缓存,不写更早的位置;断点写下的条目包含排在 system 前面的工具定义,而提议工具的描述按请求语言写,所以每种语言各一份)。其余模型和不要缓存的调用照旧发一整段,内容是三段拼好的全文。回放哈希和请求大小按各段拼回去的全文算(`instructionsText`)。
+**有偏好的调用自己说,怎么说由表决定**。调用方把想要的东西交给 `callOptionsFor(modelId, { thinking, cache, session?, temperature? })`,拿回一份可以直接摊进模型调用的选项。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。`cache` 是提示词缓存的时长(`config/agent.yaml` 的 `prompt_cache_ttl`,聊天用 `1h`)或 `false`;`session` 只在走 OpenRouter 时作为 `session_id` 发出,两次请求间隔不到 10 分钟时让同一会话的请求落回同一家 provider、读得到上一轮写下的缓存(OpenRouter 的粘性会话 10 分钟没有调用即失效);Claude 不接受非默认 `temperature`,表里直接丢掉。system 提示词经 `systemFor(modelId, instructions, cache)` 发出:`buildAgentConfig` 把它分成四段 —— 基础提示词(所有会话逐字相同)、项目记忆(同一用户在同一 project 的各会话相同)、这条会话的记忆、Project 指令(同一 project 的所有成员相同,非空时才有);要显式开缓存的 Claude 在前两段末尾各打一个缓存断点,所以新 project 的第一个会话读得到同一请求语言的别的会话写下的工具定义和基础提示词,同一用户在同一 project 的新会话还读得到项目记忆(请求级缓存只在最后一个块写一条缓存,不写更早的位置;断点写下的条目包含排在 system 前面的工具定义,而提议工具的描述按请求语言写,所以每种语言各一份)。其余模型和不要缓存的调用照旧发一整段,内容是各段拼好的全文。回放哈希和请求大小按各段拼回去的全文算(`instructionsText`)。
 
 **说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**唯一的例外是 Claude 关思考**:Opus 5.5 对 `{ type: "disabled" }` 答 400,所以关的时候不发思考字段,4.x 由此不思考,5.5 落回它关不掉的自适应思考。**Claude 开思考时两条路由要的是同一档 `high`**:经 OpenRouter 发 `reasoning.effort`,它原样转给 Claude;直连发 `effort`,`@ai-sdk/anthropic` 写成 `output_config.effort`。不带 effort 时 Opus 5.5 按自己的默认档 medium 思考。**DeepSeek 开思考时两条路由要的是同一档 `max`**:直连发 `reasoningEffort: "max"`,经 OpenRouter 发 `reasoning.effort: "max"`;OpenRouter 给 Flash 1017 列的档是 max / high / low / none,发 `xhigh` 会被它换成 `high`。**当前有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
 

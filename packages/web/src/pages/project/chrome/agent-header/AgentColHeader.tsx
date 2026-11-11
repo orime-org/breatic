@@ -11,6 +11,7 @@ import { useUIStore } from '@web/stores/ui';
 
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
+import { AgentInstructionsButton } from '@web/pages/project/chrome/agent-header/AgentInstructionsButton';
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
@@ -18,6 +19,8 @@ import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 const BAR_BOX = chromeBarBox({ sides: 'var(--space-4)', gap: 'var(--space-2)' });
 
 interface AgentColHeaderProps {
+  /** The Project whose chat the column shows. */
+  projectId: string;
   conversationName: string;
   conversationNamePlaceholder: string;
   /**
@@ -37,7 +40,7 @@ interface AgentColHeaderProps {
 
 /**
  * Agent column header — sits above the ChatPanel:
- *   [💬 open history] [conversation name (editable)] [+ new]
+ *   [💬 open history] [conversation name (editable)] [Project instructions] [+ new]
  *
  * The history trigger uses `MessagesSquare` rather than `PanelLeftOpen`:
  * what is behind it is a list of past conversations, not a side panel.
@@ -58,15 +61,17 @@ interface AgentColHeaderProps {
  * conversation runtime; the column above assembles them and this header just
  * wires the triggers.
  * @param root0 - Component props.
+ * @param root0.projectId - The Project whose chat the column shows.
  * @param root0.conversationName - The conversation's own name, empty while it has none.
  * @param root0.conversationNamePlaceholder - What the title reads while the conversation has no name.
  * @param root0.onToggleHistory - Shows the conversation history, or hides it if it is showing.
  * @param root0.onNewConversation - Starts a new conversation.
  * @param root0.creating - Whether a new conversation is still being made.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
- * @returns The agent column header row with history, editable title, and new-conversation actions.
+ * @returns The agent column header row with history, editable title, Project instructions and new-conversation actions.
  */
 export function AgentColHeader({
+  projectId,
   conversationName,
   conversationNamePlaceholder,
   onToggleHistory,
@@ -107,6 +112,7 @@ export function AgentColHeader({
           maxLength={CONVERSATION_TITLE_MAX_CHARS}
         />
       </div>
+      <AgentInstructionsButton projectId={projectId} />
       <Button
         variant='chrome-ghost'
         size='chrome'

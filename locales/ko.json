@@ -600,6 +600,19 @@
       "needScene": "먼저 3D Space를 여세요.",
       "credits": "약 {credits} 크레딧",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project 지침",
+      "title": "Project 지침",
+      "description": "이 Project의 모든 대화에서 Agent에게 전달됩니다. 모든 멤버가 함께 사용합니다.",
+      "placeholder": "예: 영어로 답하기, 색은 파란색과 흰색만 쓰기.",
+      "atLimit": "{max, number}자 제한에 도달했습니다",
+      "lastEdited": "{name}님이 {time}에 마지막으로 수정",
+      "save": "저장",
+      "saved": "저장했습니다",
+      "cleared": "Project 지침을 지웠습니다",
+      "readFailed": "Project 지침을 불러오지 못했습니다",
+      "saveFailed": "Project 지침을 저장하지 못했습니다"
     }
   },
   "canvas": {

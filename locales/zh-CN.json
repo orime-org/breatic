@@ -600,6 +600,19 @@
       "needScene": "先打开一个 3D Space。",
       "credits": "约 {credits} 积分",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project 指令",
+      "title": "Project 指令",
+      "description": "这里写的内容会在这个 Project 的每次对话中发给 Agent，所有成员共用。",
+      "placeholder": "例如：回答用英文；配色只用蓝和白。",
+      "atLimit": "已达到 {max, number} 字上限",
+      "lastEdited": "最后由 {name} 修改于 {time}",
+      "save": "保存",
+      "saved": "已保存",
+      "cleared": "已清空 Project 指令",
+      "readFailed": "Project 指令读取失败",
+      "saveFailed": "Project 指令保存失败"
     }
   },
   "canvas": {

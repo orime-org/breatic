@@ -252,6 +252,8 @@ export interface World {
   watermark: number;
   /** The progress note a fold wrote last. */
   memory: string;
+  /** The Project Instructions each read of the context finds, if any (#1400). */
+  projectInstructions: string | undefined;
   /** What the model does, call by call. */
   script: ScriptedCall[];
   /** What each model call was handed. */
@@ -301,6 +303,7 @@ function emptyWorld(): World {
     history: [],
     watermark: 0,
     memory: "",
+    projectInstructions: undefined,
     script: [],
     prompts: [],
     events: [],
@@ -477,9 +480,12 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
   const { domainMock } = await import("./mock-core.js");
   const base = (await domainMock()) as Record<string, unknown>;
   const actual = await vi.importActual<Record<string, unknown>>("@breatic/domain");
-  const instructionsForAgentMemory = actual.instructionsForAgentMemory as (
+  // The one the turn's own reassembly reads off the mocked barrel, so the
+  // first assembly and a reassembly build the prompt the same way.
+  const instructionsForAgentMemory = base.instructionsForAgentMemory as (
     base: string,
     memory?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string },
+    projectInstructions?: string,
   ) => unknown;
   const recorderOf = base.createUsageRecorder as (options: { operationKey: string }) => {
     recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
@@ -490,9 +496,13 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
     finalizeTurn: actual.finalizeTurn,
     resolveProvider: () => "test",
     getModel: () => scriptedModel(),
-    buildAgentConfig: async (request: { basePrompt: string; memoryContext?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string } }) => ({
+    buildAgentConfig: async (request: {
+      basePrompt: string;
+      memoryContext?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string };
+      projectInstructions?: string;
+    }) => ({
       modelId: "test",
-      instructions: instructionsForAgentMemory(request.basePrompt, request.memoryContext),
+      instructions: instructionsForAgentMemory(request.basePrompt, request.memoryContext, request.projectInstructions),
       tools: TOOLS,
       seesPictures: false,
       contextWindow: world.window,
@@ -553,6 +563,7 @@ export function overflowTurnContext(): Record<string, unknown> {
         memoryContext: { entries: [], migrated: [], olderCount: 0, progress: world.memory },
         history: world.history.filter((row) => row.turnIndex > world.watermark && row.turnIndex < before),
         watermark: world.watermark,
+        projectInstructions: world.projectInstructions,
       };
     },
   };
