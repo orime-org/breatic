@@ -465,7 +465,7 @@ function SpaceDrawerRow({
           // inside it, while its menu is open and while its name is being
           // renamed.
           className={cn(
-            'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+            'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 has-focus-visible:opacity-100',
             menuOpen || renaming ? 'opacity-100' : 'opacity-0',
           )}
           data-testid={`space-drawer-actions-${space.id}`}

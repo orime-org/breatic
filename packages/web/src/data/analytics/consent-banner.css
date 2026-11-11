@@ -88,8 +88,9 @@
   background: var(--color-accent);
 }
 
-/* A switch's keyboard focus in the product's focus colour, which holds in both themes. */
-#cc-main .section__toggle:focus-visible {
+/* A switch's keyboard focus in the product's focus colour, which holds in both
+   themes; only while the user is on the keyboard, as every ring is. */
+[data-input-modality=keyboard] #cc-main .section__toggle:focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }

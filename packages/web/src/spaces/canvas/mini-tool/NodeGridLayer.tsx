@@ -13,16 +13,16 @@ import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry'
 
 /** A frame inside the tile whose checkbox has the keyboard focus, one line wide in each tone. */
 const FOCUS_FRAME = [
-  'has-[:focus-visible]:after:content-[\'\']',
-  'has-[:focus-visible]:after:pointer-events-none',
-  'has-[:focus-visible]:after:absolute',
-  'has-[:focus-visible]:after:[inset:calc(var(--grid-line)*4)]',
-  'has-[:focus-visible]:after:border-solid',
-  'has-[:focus-visible]:after:border-foreground',
-  'has-[:focus-visible]:after:[border-width:var(--grid-line)]',
-  'has-[:focus-visible]:after:outline',
-  'has-[:focus-visible]:after:outline-background',
-  'has-[:focus-visible]:after:[outline-width:var(--grid-line)]',
+  'has-focus-visible:after:content-[\'\']',
+  'has-focus-visible:after:pointer-events-none',
+  'has-focus-visible:after:absolute',
+  'has-focus-visible:after:[inset:calc(var(--grid-line)*4)]',
+  'has-focus-visible:after:border-solid',
+  'has-focus-visible:after:border-foreground',
+  'has-focus-visible:after:[border-width:var(--grid-line)]',
+  'has-focus-visible:after:outline',
+  'has-focus-visible:after:outline-background',
+  'has-focus-visible:after:[outline-width:var(--grid-line)]',
 ].join(' ');
 
 /** The ring of a tile's mark, white on the picture in either theme. */

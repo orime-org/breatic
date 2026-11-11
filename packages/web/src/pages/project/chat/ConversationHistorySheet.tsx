@@ -328,7 +328,7 @@ function ConversationRowView({
                 </span>
               </span>
             </Button>
-            <div className='absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100'>
+            <div className='absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 has-focus-visible:opacity-100'>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
