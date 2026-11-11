@@ -67,13 +67,15 @@ async function openStudio(page: Page): Promise<Locator> {
 }
 
 test.describe('focus rings follow the input', () => {
-  test('the account button is a 26px circle, and mouse open and close leaves it without a ring', async ({ page }) => {
+  test('the account avatar is a 26px circle, and mouse open and close leaves it without a ring', async ({ page }) => {
     const account = await openStudio(page);
     const box = (await account.boundingBox())!;
-    expect([Math.round(box.width), Math.round(box.height)]).toEqual([26, 26]);
-    expect(await account.evaluate((el) => getComputedStyle(el).borderRadius)).not.toBe('0px');
-    const avatar = (await account.locator(':scope > *').first().boundingBox())!;
-    expect([Math.round(avatar.width), Math.round(avatar.height)]).toEqual([26, 26]);
+    // As tall as the buttons beside it, which is what the menu hangs from.
+    expect([Math.round(box.width), Math.round(box.height)]).toEqual([32, 32]);
+    const avatar = account.locator(':scope > *').first();
+    const avatarBox = (await avatar.boundingBox())!;
+    expect([Math.round(avatarBox.width), Math.round(avatarBox.height)]).toEqual([26, 26]);
+    expect(await avatar.evaluate((el) => getComputedStyle(el).borderRadius)).not.toBe('0px');
 
     await account.click();
     await expect(page.getByRole('menu')).toBeVisible();
@@ -84,6 +86,7 @@ test.describe('focus rings follow the input', () => {
     await expect(account).toBeFocused();
     expect(await account.evaluate((el) => el.matches(':focus-visible'))).toBe(true);
     expect(await hasRing(account)).toBe(false);
+    expect(await hasRing(avatar)).toBe(false);
 
     // The menu opens level with the Language popover beside it.
     await page.getByTestId('lang-trigger').click();
@@ -92,21 +95,23 @@ test.describe('focus rings follow the input', () => {
     expect(await settledTop(languagePanel)).toBeCloseTo(menuTop, 0);
   });
 
-  test('Escape and Tab still show the ring', async ({ page }) => {
+  test('Escape and Tab still show the ring, hugging the avatar', async ({ page }) => {
     const account = await openStudio(page);
+    const avatar = account.locator(':scope > *').first();
     await account.click();
     await expect(page.getByRole('menu')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(account).toBeFocused();
-    expect(await hasRing(account)).toBe(true);
+    expect(await hasRing(avatar)).toBe(true);
 
     await page.mouse.click(5, 600);
-    expect(await hasRing(account)).toBe(false);
+    expect(await hasRing(avatar)).toBe(false);
     await account.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
     await expect(account).toBeFocused();
-    expect(await hasRing(account)).toBe(true);
+    expect(await hasRing(avatar)).toBe(true);
+    expect(await hasRing(account)).toBe(false);
   });
 
   test('a project card shows the keyboard ring on the card', async ({ page }) => {

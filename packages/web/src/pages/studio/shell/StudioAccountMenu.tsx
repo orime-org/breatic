@@ -221,15 +221,17 @@ export function StudioAccountMenu(): React.JSX.Element {
             aria-label={t('studio.topBar.account')}
             variant={null}
             size={null}
-            // A circle filled by the avatar, the size of the avatars in the
-            // project page's top bar.
+            // As tall as the language and theme buttons beside it, so the menu
+            // hangs from the same edge as theirs (`sideOffset` is measured
+            // from the trigger). The avatar inside is the size of the avatars
+            // in the project page's top bar, and the keyboard ring hugs it.
             //
             // Hover dims rather than tinting the background: with an avatar set
             // the background is covered by the image, so a background hover is
             // invisible. Opacity also leaves the element's box untouched — this
             // button is the menu's anchor, and anything that resizes it
             // (a scale, a border) makes the menu jump on hover.
-            className='ml-1 flex size-[var(--avatar-sm)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='group/account ml-1 flex size-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-0'
           >
             <StudioAvatar
               name={user?.name ?? '?'}
@@ -238,15 +240,16 @@ export function StudioAccountMenu(): React.JSX.Element {
               type='personal'
               avatarUrl={user?.avatarUrl ?? null}
               size='sm'
+              className='group-focus-visible/account:ring-1 group-focus-visible/account:ring-ring'
             />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align='end'
-          // The language and theme popovers beside this one hang 8 below
-          // their 32px triggers; this trigger is 26px and centred in the same
-          // row, so 3 more puts the three panels level.
-          sideOffset={11}
+          // 8, not the primitive's 6: the language and theme popovers sitting
+          // beside this one hang 8 below their triggers, and all three
+          // triggers are the same height, so the three panels open level.
+          sideOffset={8}
           // The rows carry their own highlight, so with nothing between them
           // two adjacent highlights touch and read as one block. The language
           // popover spaces its rows the same way.
