@@ -36,3 +36,12 @@ describe("violatesTextLengthForModel", () => {
     expect(violatesTextLengthForModel("no-such-model", { voice_description: "" })).toBeNull();
   });
 });
+
+describe("the voice design's languages (round 2)", () => {
+  it("names each language by a locale, so the panel says it in the user's language", () => {
+    const language = getModelCatalog().tts.find((model) => model.name === VOICE_DESIGN)?.params.language;
+    const values = (language?.values ?? []) as string[];
+    expect(language?.value_locales?.[values.indexOf("Chinese")]).toBe("zh");
+    expect(language?.value_locales).toHaveLength(values.length);
+  });
+});
