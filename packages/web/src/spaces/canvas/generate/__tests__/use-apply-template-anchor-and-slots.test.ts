@@ -36,7 +36,7 @@ vi.mock('@web/lib/toast', () => ({
 import { addEdge, addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-import { useNodeCreation, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** A sound-effects model that reads a clip from the canvas. */
@@ -149,6 +149,15 @@ function wire(from: string, to: string): void {
 }
 
 /**
+ * A placing callback's answer for a template that landed.
+ * @param _args - What it was asked to place.
+ * @returns Placed, with no new nodes.
+ */
+function lands(..._args: Parameters<PlaceTemplate>): PlacedProposal {
+  return { nodeIds: [], rects: [] };
+}
+
+/**
  * Applies a template from the panel of `nodeId`.
  * @param template - The template picked.
  * @param nodeId - The panel's node.
@@ -203,7 +212,7 @@ afterEach(() => {
 describe('a standalone template node (inner#1825 §4.2)', () => {
   it('is placed on a first apply tagged with the anchor it belongs to', () => {
     seed('target', 'audio');
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(SECTIONS, 'target', place);
 
     const { proposal, existing } = placed(place);
@@ -218,7 +227,7 @@ describe('a standalone template node (inner#1825 §4.2)', () => {
   it('is found again by the anchor its tag records, so a second apply does not place it twice', () => {
     seed('target', 'audio');
     seed('target-intro', 'audio', { name: 'Intro', templateNode: { template: 'fixture-sections', key: 'intro', anchor: 'target' } });
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(SECTIONS, 'target', place);
 
     const { proposal, existing } = placed(place);
@@ -234,7 +243,7 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
     seed('target', 'audio');
     seed('clip', 'video', { name: 'My clip', content: CLIP, coverUrl: POSTER, duration: 6 });
     wire('clip', 'target');
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(INTO, 'target', place);
 
     const { proposal, existing } = placed(place);
@@ -271,7 +280,7 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
       duration: 6,
       templateNode: { template: 'fixture-into', key: 'video', input: true, anchor: 'target' },
     });
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(INTO, 'target', place);
 
     const { proposal, existing } = placed(place);
@@ -292,7 +301,7 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
       duration: 6,
       templateNode: { template: 'fixture-into', key: 'video', input: true, anchor: 'target' },
     });
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(INTO, 'take2', place);
 
     const { proposal, existing } = placed(place);
@@ -315,7 +324,7 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
     });
     wire('shared-clip', 'target');
     wire('shared-clip', 'take2');
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(INTO, 'take2', place);
 
     const { proposal, existing } = placed(place);
@@ -329,7 +338,7 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
     const SAMPLE = 'https://cdn/sample.mp3';
     seed('target', 'audio', { mode: 'voice_clone', model: 'model-score', refAudio: { url: SAMPLE, cover: null } });
     seed('sample', 'audio', { name: 'My voice', content: SAMPLE, duration: 8 });
-    const place = vi.fn();
+    const place = vi.fn(lands);
     apply(COVER, 'target', place);
 
     const { proposal, existing } = placed(place);
