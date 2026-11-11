@@ -10,7 +10,7 @@
  */
 
 import { APICallError } from "ai";
-import type { Cost } from "@provider/cost.js";
+import type { PendingCost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, isSuccess, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type ReportedCosts, type Vendor } from "@provider/llm/vendors.js";
@@ -36,7 +36,7 @@ export interface SwitchingSetup {
    * Each billed answer the call could not hand over in a finish, shared with the prepared call:
    * a lookup when its generation id is known, else a missing cost.
    */
-  pending: Map<string, Cost>;
+  pending: Map<string, PendingCost>;
   /** Extra fields for `providerMetadata.breatic`. */
   breatic: Record<string, string>;
 }
@@ -283,7 +283,7 @@ export class SwitchingModel implements ModelV4 {
    */
   private missing(upstream: string, reason: string): string {
     const key = `${upstream}:${globalThis.crypto.randomUUID()}`;
-    this.setup.pending.set(key, { state: "missing", reason });
+    this.setup.pending.set(key, { state: "missing", reason, upstream });
     return key;
   }
 

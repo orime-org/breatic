@@ -9,7 +9,7 @@
 
 import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
-import type { Cost, TokenBuckets } from "@provider/cost.js";
+import type { Cost, PendingCost, TokenBuckets } from "@provider/cost.js";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
@@ -25,6 +25,9 @@ import type { ProviderOptions } from "@provider/provider.js";
 import type { Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
+
+/** How long a decisions refusal's words may take to arrive; the status already says what happened. */
+const REFUSAL_WORDS_MS = 500;
 
 const DEFAULT_ROUTE: Route = { mode: "default" };
 
@@ -240,12 +243,22 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
+   * The upstream a finished call names as the one that served it.
+   * @param finished - The call's metadata.
+   * @returns The upstream, when the configuration declares it.
+   */
+  const servedBy = (finished: Pick<FinishedCall, "providerMetadata">): string | undefined => {
+    const upstream = (finished.providerMetadata?.breatic as { upstream?: unknown } | undefined)?.upstream;
+    return typeof upstream === "string" && config.upstreams[upstream] !== undefined ? upstream : undefined;
+  };
+
+  /**
    * The cost of a finished call.
    * @param finished - The call's model, usage and metadata.
    * @returns Known, pending or missing.
    */
   const costOf = (finished: FinishedCall): Cost => {
-    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
+    const breatic = finished.providerMetadata?.breatic as { costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
     // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
     const tokens: TokenBuckets = {
@@ -254,8 +267,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       output: usage.outputTokens ?? 0,
       reasoning: usage.outputTokenDetails?.reasoningTokens ?? 0,
     };
-    const upstream = typeof breatic?.upstream === "string" ? breatic.upstream : undefined;
-    if (upstream === undefined || config.upstreams[upstream] === undefined) return { state: "missing", reason: "the call names no upstream", tokens };
+    const upstream = servedBy(finished);
+    if (upstream === undefined) return { state: "missing", reason: "the call names no upstream", tokens };
     const costs = llmVendorOf(upstream)?.costs;
     if (costs !== undefined) {
       const reported = costs.reported(finished.providerMetadata);
@@ -444,7 +457,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     prepare(modelId, wants, chosen = DEFAULT_ROUTE): PreparedCall {
       const route = routeOf(config.llm.routes, modelId);
       const plan = planFor(route, modelId, chosen);
-      const pending = new Map<string, Cost>();
+      const pending = new Map<string, PendingCost>();
       const model = new SwitchingModel({
         modelId,
         plan,
@@ -482,6 +495,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     },
 
     costOf,
+    servedBy,
 
     async understand(request, chosen = DEFAULT_ROUTE) {
       const route = routeOf(config.llm.understand_routes, request.model);
@@ -597,6 +611,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
 
     async judge(request, chosen = DEFAULT_ROUTE) {
       const { upstream, key, decisions } = decisionsUpstream(chosen);
+      const served = { upstream, model: decisions.model };
       const url = decisions.url(config.upstreams[upstream]!);
       const body = JSON.stringify({
         model: decisions.model,
@@ -607,21 +622,27 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const response = await send({ url, method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body }, bounds);
       let text: string;
       try {
-        text = await answerText(url, response, Number.MAX_SAFE_INTEGER, Math.max(1, bounds.deadlineAt - Date.now()), bounds);
+        // A refusal is complete at its status; its words are an addition, and a body that stalls is not worth the
+        // rest of the call's budget, so they get a short wait of their own.
+        const remaining = Math.max(1, bounds.deadlineAt - Date.now());
+        text = await answerText(url, response, Number.MAX_SAFE_INTEGER, isSuccess(response.status) ? remaining : Math.min(remaining, REFUSAL_WORDS_MS), bounds);
       } catch (error) {
         // A 2xx was billed though its body was lost; a refusal's lost body reads as no words.
-        throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error));
+        throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error, served));
       }
-      if (!isSuccess(response.status)) return { status: response.status, body: text };
+      if (!isSuccess(response.status)) return { status: response.status, body: text, ...served };
       const reported = vendorOf(kindOf(upstream)).costs?.ofBody(parsed(text)).cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
-      return { status: response.status, body: text, cost };
+      return { status: response.status, body: text, cost, ...served };
     },
 
     availability(modelId, use) {
-      const candidates = use === "judge"
-        ? judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf))
-        : candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
+      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
+      return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
+    },
+
+    judgeAvailability() {
+      const candidates = judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 

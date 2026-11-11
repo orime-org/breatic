@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 export {
+  BilledAnswerLost,
   DeadlinePassed,
   NoUpstreamAvailable,
   SendNotAccepted,
@@ -11,7 +12,7 @@ export {
   costsOf,
   type UnavailableReason,
 } from "@provider/errors.js";
-export { costSchema, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
+export { costSchema, type Cost, type CostLookup, type PendingCost, type TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
 export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
@@ -27,5 +28,6 @@ export type {
   PreparedCall,
   SystemParts,
   UnderstandAnswer,
+  UnderstandMedia,
   UnderstandRequest,
 } from "@provider/llm/api.js";

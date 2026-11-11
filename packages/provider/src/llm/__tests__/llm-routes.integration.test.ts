@@ -368,4 +368,9 @@ describe("the Project Instructions in the system prompt", () => {
     const sent = systemMessages((await call({ OPENROUTER_API_KEY: "or" }, "deepseek/deepseek-v4-pro", { thinking: true, cache: "1h" }, { ...PARTS, projectInstructions: INSTRUCTIONS })).body);
     expect(sent).toEqual([{ role: "system", content: [{ type: "text", text: `${PARTS.base}\n\n${PARTS.project}\n\n${PARTS.conversation}\n\n${INSTRUCTIONS}` }] }]);
   });
+
+  it("ends the prompt sent whole with them when the caller does not ask for caching", async () => {
+    const body = (await call({ ANTHROPIC_API_KEY: "k" }, "anthropic/claude-opus-5.5", { thinking: true, cache: false }, { ...PARTS, projectInstructions: INSTRUCTIONS })).body;
+    expect(body.system).toEqual([{ type: "text", text: `${PARTS.base}\n\n${PARTS.project}\n\n${PARTS.conversation}\n\n${INSTRUCTIONS}` }]);
+  });
 });

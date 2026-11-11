@@ -26,6 +26,12 @@ export type Cost =
   | { state: "pending"; lookup: CostLookup }
   | { state: "missing"; reason: string; tokens?: TokenBuckets };
 
+/**
+ * A cost a call could not hand over in a finish: a lookup, which names its upstream, or a missing cost with the
+ * upstream that billed it, since nothing else tells the caller who served a call that never ended.
+ */
+export type PendingCost = Extract<Cost, { state: "pending" }> | (Extract<Cost, { state: "missing" }> & { upstream: string });
+
 
 const tokenCount = z.number().int().nonnegative();
 

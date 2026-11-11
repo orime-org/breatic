@@ -478,16 +478,36 @@ describe("reading OpenRouter's understand answer against one typed structure", (
     expect((error as UpstreamRequestRejected).status).toBeUndefined();
   });
 
+  // Walked entry by entry: an entry with no case can be deleted with the suite still green, and the files it
+  // covers are then refused.
   it.each([
+    ["audio/mpeg", "mp3"],
+    ["audio/mp3", "mp3"],
+    ["audio/x-mpeg", "mp3"],
+    ["audio/wav", "wav"],
+    ["audio/x-wav", "wav"],
+    ["audio/wave", "wav"],
+    ["audio/vnd.wave", "wav"],
+    ["audio/mp4", "m4a"],
     ["audio/x-m4a", "m4a"],
     ["audio/m4a", "m4a"],
-    ["audio/x-mpeg", "mp3"],
-    ["audio/mp3", "mp3"],
-    ["audio/x-wav", "wav"],
+    ["audio/webm", "webm"],
   ])("names %s by OpenRouter's format %s, as shared's canonical types do", async (contentType, format) => {
     await openRouterAnswering({ status: 200, body: completion }, [{ bytes: new Uint8Array([1, 2]), contentType }]);
     const sent = posted(fakes.openrouter)[0] as { messages: { content: { type: string; input_audio?: { format: string } }[] }[] };
     expect(sent.messages[0]!.content.find((p) => p.type === "input_audio")?.input_audio?.format).toBe(format);
+  });
+
+  it.each([
+    ["video/mp4", "video/mp4"],
+    ["video/mpeg", "video/mpeg"],
+    ["video/webm", "video/webm"],
+    ["video/mov", "video/mov"],
+    ["video/quicktime", "video/mov"],
+  ])("sends %s to OpenRouter under the name %s", async (contentType, name) => {
+    await openRouterAnswering({ status: 200, body: completion }, [{ bytes: new Uint8Array([1, 2]), contentType }]);
+    const sent = posted(fakes.openrouter)[0] as { messages: { content: { type: string; video_url?: { url: string } }[] }[] };
+    expect(sent.messages[0]!.content.find((p) => p.type === "video_url")?.video_url?.url).toBe(`data:${name};base64,AQI=`);
   });
 });
 
@@ -600,5 +620,49 @@ describe("an understand refusal for its content", () => {
     const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "Key limit exceeded" } } });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).reason).toBeUndefined();
+  });
+});
+
+describe("the question an understand call sends", () => {
+  const media = [
+    { bytes: new Uint8Array([1, 2]), contentType: "audio/wav" },
+    { url: "https://example.com/picture.png", contentType: "image/png", read: async (): Promise<Uint8Array> => new Uint8Array([7]) },
+    { bytes: new Uint8Array([3, 4]), contentType: "video/mp4" },
+  ];
+
+  it("goes first through OpenRouter, then each item numbered in its order", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), question: "Compare these.", media });
+    const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toEqual([
+      { type: "text", text: "Compare these." },
+      { type: "text", text: "Item 1" },
+      { type: "input_audio", input_audio: { data: "AQI=", format: "wav" } },
+      { type: "text", text: "Item 2" },
+      { type: "image_url", image_url: { url: "https://example.com/picture.png" } },
+      { type: "text", text: "Item 3" },
+      { type: "video_url", video_url: { url: "data:video/mp4;base64,AwQ=" } },
+    ]);
+  });
+
+  it("goes first to Google, then each item numbered in its order", async () => {
+    await llmProvider(fakes, keys).llm.understand({ ...question(), question: "Compare these.", media });
+    const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toEqual([
+      { text: "Compare these." },
+      { text: "Item 1" },
+      { inlineData: { mimeType: "audio/wav", data: "AQI=" } },
+      { text: "Item 2" },
+      { inlineData: { mimeType: "image/png", data: "Bw==" } },
+      { text: "Item 3" },
+      { inlineData: { mimeType: "video/mp4", data: "AwQ=" } },
+    ]);
+  });
+
+  it("is cleaned with the caller's text cleaning, on each upstream", async () => {
+    const clean = { cleanText: (t: string): string => t.replaceAll("HIDDEN", "") };
+    await llmProvider(fakes, keys, clean).llm.understand({ ...question(), question: "What is in it?HIDDEN" });
+    expect(JSON.stringify(posted(fakes.google)[0])).not.toContain("HIDDEN");
+    await llmProvider(fakes, keys, { ...clean, understandOpenRouterFirst: true }).llm.understand({ ...question(), question: "What is in it?HIDDEN" });
+    expect(JSON.stringify(posted(fakes.openrouter)[0])).not.toContain("HIDDEN");
   });
 });
