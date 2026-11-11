@@ -16,12 +16,12 @@ import { DelayedError, type Job } from 'bullmq';
 import { env, getMiniToolsConfig, logger } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
-  prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadlineIfAhead, videoPresentationAtIngest,
+  prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
   videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationChunkReport,
   type VideoPresentationChunkUnit, type VideoPresentationLedger, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
 } from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
-import { advanceMiniToolPlanJob, planReportingEnd } from '@worker/handlers/mini-tool/advance-plan-job.js';
+import { advanceMiniToolPlanJob, planReadUntil } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/providers/still-running.js';
 import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
@@ -91,7 +91,7 @@ function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
   // Wait for the candidate's own ledger: no read, no check request and no log until it is ready.
   if (candidate?.state !== 'ready') return Promise.reject(new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms));
   const receipt = candidate.receipt;
-  pickup.ledger ??= readJobLedger(receipt, capability.deadlineAt).catch(async (error: unknown) => {
+  pickup.ledger ??= readJobLedger(receipt, planReadUntil(capability.deadlineAt)).catch(async (error: unknown) => {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { ...identity, toolInputId: answer.plan?.toolInputId, receiptSha256: receipt.sha256 } }, 'video_presentation_ledger_invalid');
     const policy = answer.preparation?.targetPolicyVersion;
@@ -233,7 +233,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
       }
       again = true;
     } else {
-      report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, untilDeadlineIfAhead(planReportingEnd(pickup.capability.deadlineAt)));
+      report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request, untilDeadline(planReadUntil(pickup.capability.deadlineAt)));
     }
     const usage = report !== null && (report.state === 'done' || report.state === 'failed') ? report.usage : undefined;
     // An unfinished attempt holds the job (§7.1.1 `Rec`). An ended one with no usage had a container that never
