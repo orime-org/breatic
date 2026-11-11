@@ -226,7 +226,7 @@ export function DocumentCommentDraftCard({
           {t(
             draft.why === 'cannotWrite'
               ? 'spaces.document.comment.cannotWrite'
-              : draft.mediaBlockId === undefined
+              : draft.media === undefined
                 ? 'spaces.document.comment.targetGone'
                 : 'spaces.document.comment.mediaGone',
           )}

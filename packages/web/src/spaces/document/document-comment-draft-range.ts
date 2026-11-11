@@ -155,13 +155,12 @@ export type Draft =
     readonly why: DraftDropReason;
     readonly opening: DraftOpening;
     /**
-     * The block a media draft was aimed at, kept only when the block went:
-     * the id is a reliable identity, so the draft is aimed again when the
-     * block is back (an undo, a peer's undo, a drag that moves it).
+     * The block a media draft was aimed at and the entry it was opened by,
+     * kept only when the block went: the id is a reliable identity, so the
+     * draft is aimed again when the block is back (an undo, a peer's undo, a
+     * drag that moves it).
      */
-    readonly mediaBlockId?: string;
-    /** The entry it was opened by, kept with the block id. */
-    readonly entry?: number;
+    readonly media?: { readonly blockId: string; readonly entry: number };
   };
 
 /**
@@ -197,8 +196,25 @@ export function draftIn(state: EditorState): Draft | null {
  *   aimed anywhere.
  */
 export function draftRangeIn(state: EditorState): DraftAim | null {
-  const draft = draftIn(state);
+  return aimedRange(draftIn(state));
+}
+
+/**
+ * A draft aimed at words.
+ * @param draft - The draft, if any.
+ * @returns It when it is aimed at words, else null.
+ */
+export function aimedRange(draft: Draft | null): DraftAim | null {
   return draft?.kind === 'aimed' && !('mediaBlockId' in draft) ? draft : null;
+}
+
+/**
+ * A draft aimed at a media block.
+ * @param draft - The draft, if any.
+ * @returns It when it is aimed at a block, else null.
+ */
+export function aimedMedia(draft: Draft | null): MediaDraftAim | null {
+  return draft?.kind === 'aimed' && 'mediaBlockId' in draft ? draft : null;
 }
 
 /**
@@ -235,23 +251,31 @@ const watch = watchPluginState(draftIn);
 export const onDraftChange: (listener: () => void) => () => void =
   watch.onChange;
 
+/** The block a media draft stands on and the entry it was opened by. */
+type DraftMedia = NonNullable<Extract<Draft, { kind: 'dropped' }>['media']>;
+
 /**
- * Carries a media draft across a change: aimed while its block is in the
- * body, dropped while it is not. A draft dropped for any other reason holds no
- * block id and never reaches here.
- * @param current - The draft, aimed at a block or dropped with its id; handed back when nothing changed.
- * @param doc - The body after a change to it, or null when the body did not change.
- * @returns The draft after it.
+ * The block a draft stands on, aimed at it or dropped when it went.
+ * @param draft - The draft.
+ * @returns The block and entry, or null for a draft on words or one dropped for another reason.
  */
-function carryMedia(current: Draft & { readonly mediaBlockId: string }, doc: ProseMirrorNode | null): Draft {
-  if (doc === null) return current;
-  const there = mediaRowById(doc, current.mediaBlockId) !== undefined;
-  const { mediaBlockId, opening } = current;
-  const entry = current.entry ?? 0;
-  if (current.kind === 'aimed') {
-    return there ? current : { kind: 'dropped', why: 'targetGone', opening, mediaBlockId, entry };
-  }
-  return there ? { kind: 'aimed', mediaBlockId, opening, entry } : current;
+function mediaOf(draft: Draft): DraftMedia | null {
+  if (draft.kind === 'dropped') return draft.media ?? null;
+  return 'mediaBlockId' in draft ? { blockId: draft.mediaBlockId, entry: draft.entry } : null;
+}
+
+/**
+ * Carries a media draft across a change to the body: aimed while its block is
+ * in the body, dropped while it is not.
+ * @param current - The draft.
+ * @param media - The block it stands on.
+ * @param doc - The body after the change.
+ * @returns The draft after it; `current` when nothing changed.
+ */
+function carryMedia(current: Draft, media: DraftMedia, doc: ProseMirrorNode): Draft {
+  const there = mediaRowById(doc, media.blockId) !== undefined;
+  if (current.kind === 'aimed') return there ? current : { kind: 'dropped', why: 'targetGone', opening: current.opening, media };
+  return there ? { kind: 'aimed', mediaBlockId: media.blockId, opening: current.opening, entry: media.entry } : current;
 }
 
 /**
@@ -271,8 +295,7 @@ function openingOf(current: Draft | null): DraftOpening {
  * @returns The block id, or null when no draft is aimed at a block.
  */
 export function mediaDraftIn(state: EditorState): string | null {
-  const draft = draftIn(state);
-  return draft?.kind === 'aimed' && 'mediaBlockId' in draft ? draft.mediaBlockId : null;
+  return aimedMedia(draftIn(state))?.mediaBlockId ?? null;
 }
 
 /**
@@ -329,26 +352,27 @@ export const documentCommentDraftRange = createExtension(() => {
               entries += 1;
               return { kind: 'aimed', segments, slots: segments, opening: openingOf(current), entry: entries };
             }
-            if (current !== null && 'mediaBlockId' in current && current.mediaBlockId !== undefined) {
-              return carryMedia(current as Draft & { readonly mediaBlockId: string }, tr.docChanged ? tr.doc : null);
-            }
+            if (current === null) return null;
+            const media = mediaOf(current);
+            if (media !== null) return tr.docChanged ? carryMedia(current, media, tr.doc) : current;
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a user clicking elsewhere before
             // typing their comment needs.
-            if (current?.kind !== 'aimed' || 'mediaBlockId' in current || !changesText(tr)) return current;
+            const aimed = aimedRange(current);
+            if (aimed === null || !changesText(tr)) return current;
             // Stretch by stretch. A stretch whose words are gone leaves the
             // draft on the ones that are still there; the draft is gone with
             // the last of them.
-            const moved = tracker.carry(tr, current, before);
+            const moved = tracker.carry(tr, aimed, before);
             // The same object back when nothing moved: `useSyncExternalStore`
             // requires the snapshot to be identical while the store has not
             // changed.
-            if (moved === current.slots) return current;
+            if (moved === aimed.slots) return current;
             const kept = moved.filter((segment): segment is DraftRange => segment !== null);
             if (kept.length === 0) {
-              return { kind: 'dropped', why: 'targetGone', opening: current.opening };
+              return { kind: 'dropped', why: 'targetGone', opening: aimed.opening };
             }
-            return { ...current, segments: kept, slots: moved };
+            return { ...aimed, kind: 'aimed', segments: kept, slots: moved };
           },
         },
 
