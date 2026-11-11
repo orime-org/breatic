@@ -209,6 +209,11 @@ for (const [medium, count] of [['audio', 3], ['video', 2]] as const) {
     await visibleSpace(page).locator('.react-flow__nodesselection-rect').click({ button: 'right' });
     const joinItem = page.getByTestId('selection-menu-join');
     await expect(joinItem).toHaveText('Join');
+    // Measured once the menu's zoom-in has finished: the rows' boxes scale with it.
+    await joinItem.evaluate((el) => {
+      const menu = el.closest('[role="menu"]') ?? el;
+      return Promise.all(menu.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+    });
     // Right above Copy.
     const [joinBox, copyBox] = await Promise.all([joinItem.boundingBox(), page.getByTestId('selection-menu-copy').boundingBox()]);
     expect((joinBox?.y ?? 0) + (joinBox?.height ?? 0)).toBeLessThanOrEqual(copyBox?.y ?? 0);
