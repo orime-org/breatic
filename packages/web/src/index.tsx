@@ -21,7 +21,9 @@ import { router } from '@web/app/routes';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 import { captureReferralFromUrl } from '@web/lib/referral-carry';
+import { installInputModality } from '@web/lib/input-modality';
 
+installInputModality(document);
 removeRetiredStorageKeys();
 // Before the router rewrites the address (inner#1868 §11).
 captureReferralFromUrl(new URL(window.location.href));

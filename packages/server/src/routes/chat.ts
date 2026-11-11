@@ -28,6 +28,7 @@ import {
   chatEarlierMessagesQuerySchema,
   agentInstructionsQuerySchema,
   agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   idParamSchema,
   attachmentParamSchema,
 } from "@server/routes/schemas.js";
@@ -37,6 +38,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { agentInstructionsService } from "@server/modules";
+import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
 import { SMALLEST_CREDIT } from "@breatic/domain";
@@ -194,6 +196,27 @@ async function streamTurn(
       // keeping rubbish.
       void s.write(frame({ type: "data-heartbeat", transient: true, data: {} }));
     };
+    // The turn's place in the running list other tabs and devices read
+    // (#1394). Held before the first beat and renewed on every beat after
+    // it, so it lasts exactly as long as a browser would keep waiting. A
+    // lease that cannot be written costs only the mark elsewhere; the turn
+    // goes on.
+    /**
+     * Log a lease that could not be held, renewed or released.
+     * @param err - What Redis threw.
+     */
+    const leaseFailed = (err: unknown): void => {
+      logger.error(
+        { err, userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
+        "chat_running_lease_failed",
+      );
+    };
+    let lease: runningTurnsService.RunningLease | null = null;
+    try {
+      lease = await runningTurnsService.holdRunning(turn);
+    } catch (err) {
+      leaseFailed(err);
+    }
     // Once as soon as there is a socket to say it on, before the schedule
     // starts. The user's browser began counting at the press, and the
     // network and the two checks before this made no sound on that clock; a
@@ -201,7 +224,10 @@ async function streamTurn(
     // on the work this turn does before it can speak, and a turn that is
     // doing fine gets killed for it.
     sayAlive();
-    const beat = setInterval(sayAlive, getAgentConfig().sse_heartbeat_interval_ms);
+    const beat = setInterval(() => {
+      sayAlive();
+      lease?.renew().catch(leaseFailed);
+    }, getAgentConfig().sse_heartbeat_interval_ms);
 
     try {
       await runWithContext(
@@ -238,6 +264,9 @@ async function streamTurn(
       // However the turn ended. A timer left running holds the process open
       // and writes to a stream nobody is reading.
       clearInterval(beat);
+      // Awaited here, inside the stream, so the mark is gone before the
+      // browser hears the turn end and asks again.
+      await lease?.release().catch(leaseFailed);
     }
   });
 }
@@ -405,6 +434,22 @@ chat.post(
     return c.json({ data: conversation });
   },
 );
+
+/**
+ * `GET /chat/running` — the caller's conversations in a project with an Agent
+ * turn running now, on any tab or device (#1394).
+ *
+ * Reads only the caller's own leases, the same way `GET /chat/conversations`
+ * lists only the caller's own conversations.
+ * @param c - Hono context with `project_id` in the query
+ * @returns `{ conversation_ids }`, each once, in no particular order
+ */
+chat.get("/running", validate("query", chatRunningQuerySchema), async (c) => {
+  const user = c.get("user");
+  const { project_id: projectId } = c.req.valid("query");
+  const ids = await runningTurnsService.runningConversationIds({ userId: user.id, projectId });
+  return c.json({ data: { conversation_ids: ids } });
+});
 
 /**
  * `GET /chat/instructions` — the Project's instructions for the Agent, for
@@ -621,8 +666,9 @@ chat.delete(
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
  * `config/agent.yaml`: how often a stream says it is alive, how long the
  * attachments on one message may be and how many there may be, and how much
- * of the user's Spaces one message may carry, and how long reading one Space
- * the Agent asked for may take. The browser checks
+ * of the user's Spaces one message may carry, how long reading one Space
+ * the Agent asked for may take, and how often an open conversation list asks
+ * which conversations are running (#1394). The browser checks
  * attachments against those before sending and cuts the Spaces to them, so it
  * measures against the same limits the server enforces.
  *
@@ -650,6 +696,7 @@ chat.get("/stream-config", (c) => {
       currentSpaceMaxChars: config.current_space_max_chars,
       spaceListMaxItems: config.space_list_max_items,
       spaceReadTimeoutMs: config.space_read_timeout_ms,
+      runningPollIntervalMs: config.running_poll_interval_ms,
     },
   });
 });

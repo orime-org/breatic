@@ -135,6 +135,12 @@ const agentConfigSchema = z.object({
    */
   sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
   /**
+   * How often an open conversation list asks which conversations have a turn
+   * running, in milliseconds, while the last answer named at least one
+   * (#1394). Served to the browser through `GET /chat/stream-config`.
+   */
+  running_poll_interval_ms: z.number().int().positive().default(5000),
+  /**
    * How many memory entries the system prompt lists, newest first (#1363).
    * The rest are counted in one line and found through `read_memory`.
    */
