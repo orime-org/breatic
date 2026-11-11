@@ -18,6 +18,7 @@ import { GENERATION_TEMPLATES, type GenerationTemplate, type TemplateNodeKey } f
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import {
   expandTemplate,
+  keyStanding,
   matchTemplateInstance,
   templateGuideNode,
   templateNodeDefaults,
@@ -1335,6 +1336,17 @@ const soundTagged = (id: string, key: string, type: ProposalNodeType, anchor?: s
  */
 const stillFor = (id: string, anchor: string): TemplateGraphNode =>
   ({ id, type: 'image', inputTag: { template: SOUND_ID, input: 'still', anchor }, keeps: true });
+
+describe('keyStanding (inner#1825)', () => {
+  it('says where each key stands, the same for a template and its skeleton', () => {
+    const upstream: GenerationTemplate = { ...SOUND_FIXTURE, edges: [...SOUND_FIXTURE.edges, { from: 'outro', to: 'clip' }] };
+    for (const shape of [upstream, templateSkeleton(upstream)]) {
+      expect(['foley', 'outro'].map((key) => keyStanding(shape, key))).toEqual(['downstream', 'upstream']);
+    }
+    expect(keyStanding(SOUND_FIXTURE, 'outro')).toBe('standalone');
+    expect(keyStanding(SOUND_SKELETON, 'foley')).toBe('downstream');
+  });
+});
 
 describe('matchTemplateInstance, keys downstream of the anchor and keys wired to nothing (inner#1825)', () => {
   it('matches a downstream key along the anchor’s outgoing edges', () => {
