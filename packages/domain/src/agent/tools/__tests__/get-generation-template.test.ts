@@ -279,6 +279,13 @@ describe("the craft each template gets by what it generates (inner#1825 design 1
     for (const word of ["BPM", "instrument", "pause", "breath"]) expect(TEMPLATE_CRAFT.audio, word).toContain(word);
   });
 
+  it("fits every sound template: music leaves what a reference gives, and a bed holds several sounds (round 2)", () => {
+    expect(TEMPLATE_CRAFT.audio).toMatch(/except what the template takes from a reference picture, video or song/);
+    expect(TEMPLATE_CRAFT.audio).toMatch(/each sound in its own phrase/);
+    expect(TEMPLATE_CRAFT.audio).toMatch(/a bed may hold several/);
+    expect(TEMPLATE_CRAFT.audio).not.toMatch(/one sound per take/);
+  });
+
   it("gives a template generating a video and its sound the picture, video and audio craft", () => {
     const craft = templateCraft(byId("clip-ambience-foley"));
     expect(craft).toContain(TEMPLATE_CRAFT.picture);
