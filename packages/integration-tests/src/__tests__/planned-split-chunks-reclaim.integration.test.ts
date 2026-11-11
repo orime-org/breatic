@@ -214,9 +214,13 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
 });
 
 // C15 for split (planned-terminal-closure.integration.test.ts): a container-only run the queue cleanup ends has no submit
-// attempt to wait for, so its consumption set closes and its measured usage settles.
+// attempt to wait for, so its consumption set closes and its measured usage settles. C15p: a segment a progress commit
+// already registered stays registered at cleanup (design line 622), so the cleanup's terminal commit is not refused.
 describe("a split the queue cleanup ends closes its consumption set (execution design §6.12)", () => {
-  it("C15s a split whose jobs all ended closes at cleanup, releases its hold and charges its container usage", async () => {
+  it.each([
+    { name: "C15s a split whose jobs all ended", progress: false },
+    { name: "C15p a split whose first segment a progress commit registered", progress: true },
+  ])("$name closes at cleanup, releases its hold and charges its container usage", async ({ progress }) => {
     core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused",
       UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV });
     const target = await seedStudioFixture(pg, "split-cleanup");
@@ -245,11 +249,20 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
       try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
     }
     expect([...results.values()].map((result) => result.status)).toEqual(body.outputs.map(() => "registered"));
+    if (progress) {
+      // An earlier pickup committed segment 0 non-terminally while segment 1 was still encoding.
+      const plan = execution as unknown as { outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
+      await miniToolExecutionService.commitMiniToolExecutionProgress(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0,
+        outputs: plan.outputs.map((output) => ({ ...output, late: false, result: output.outputIndex === 0 ? results.get(0)! : null })) } as never);
+    }
     // The worker died at its terminal commit, so only the queue cleanup ends the run.
     const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");
     await cleanupFailedJobNodes(core.getStreamRedis(), { name: "execute-mini-tool", data: { taskId: task.id, source: "mini_tool", executionKind: "planned" }, finishedOn: Date.now() }, "worker died");
     const [ended] = await pg<{ status: string; complete: unknown }[]>`SELECT status,result#>'{settlement,consumptionSetComplete}' AS complete FROM tasks WHERE id=${task.id}`;
     expect(ended).toEqual({ status: "failed", complete: true });
+    const { record } = await miniToolExecutionService.startMiniToolExecution(task.id, task.id);
+    expect(record.outputs.map((output) => output.result?.status)).toEqual(body.outputs.map((output) => progress && output.outputIndex === 0 ? "registered" : "failed"));
+    if (progress) expect(record.outputs[0]!.result).toEqual(results.get(0));
     const { runMiniToolSettlement } = await import("@breatic/domain");
     for (let round = 0; round < 60; round += 1) {
       const wake = await taskRepo.waitingMiniToolSettlement(task.id);

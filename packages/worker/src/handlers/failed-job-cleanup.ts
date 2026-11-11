@@ -123,7 +123,11 @@ export async function cleanupFailedJobNodes(
     if (!terminal) logger.error({ err: new Error(reason), ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_terminal_queue_failed");
     await finishMiniToolExecutionAndNotify(job.data.taskId, {
       planFingerprint: current.execution.planFingerprint, expectedVersion: current.record.resultVersion,
-      outputs: terminal ? current.record.outputs : current.execution.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),
+      // A result a progress commit already registered is never rewritten (design line 622); only the rest fail.
+      outputs: terminal ? current.record.outputs : current.execution.outputs.map((output, index) => {
+        const held = current.record.outputs[index]?.result;
+        return { ...output, result: held?.status === "registered" ? held : { status: "failed", error: failure }, late: false };
+      }),
       error: terminal ? current.record.error : failure, consumptionSet: "uncertain",
     }, streamRedis);
     return current.execution.outputs.length;
