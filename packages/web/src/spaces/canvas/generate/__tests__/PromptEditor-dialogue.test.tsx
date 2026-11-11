@@ -226,7 +226,7 @@ function press(editor: LiveEditor, key: string, keyCode?: number): void {
   });
 }
 
-describe('the dialogue lines as the user works them (demo 2026-11-10-1825-dialogue-lines)', () => {
+describe('the dialogue lines as the user works them', () => {
   it('starts each line with a speaker picker showing that speaker\'s name and colour dot', async () => {
     await mount(legacyPrompt(['Ava: x', 'Leo: y']), NAMES);
     await waitFor(() => expect(screen.getAllByTestId('dialogue-line-speaker')).toHaveLength(2));
@@ -305,7 +305,7 @@ function linePlaceholders(): Array<string | null> {
   );
 }
 
-describe('an empty dialogue line (demo 2026-11-10-1825-dialogue-lines)', () => {
+describe('an empty dialogue line', () => {
   it('says whose line it is, and none once it has words', async () => {
     const fragment = legacyPrompt(['Ava: x', 'Leo: ']);
     const editor = await mount(fragment, NAMES);

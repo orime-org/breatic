@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The prompt editor's dialogue lines (inner#1825 design 8.5, demo
- * `2026-11-10-1825-dialogue-lines`).
+ * The prompt editor's dialogue lines (inner#1825 design 8.5).
  *
  * On the dialogue side of a model whose speakers stand in for its voice, each
  * paragraph of the prompt is one line and carries the number of its speaker
