@@ -66,10 +66,17 @@ const BUTTON_IN_SENTENCE: Readonly<Record<string, (label: string) => string>> = 
 const DETECT_WORD: Readonly<Record<string, string>> = { en: 'detect', 'zh-CN': '识别', 'zh-TW': '辨識', ja: '検出', ko: '감지' };
 
 describe('batch-6 video tool copy in every locale (§97; canvas design §4)', () => {
-  it.each(LOCALE_CATALOGS)('%s lip-sync people empty state names the detect action its button carries', (tag, catalog) => {
+  it.each(LOCALE_CATALOGS)('%s lip-sync people lines name the detect action its button carries', (tag, catalog) => {
     const word = DETECT_WORD[tag]!;
     expect(String(readPath(catalog, 'canvas.miniTool.videoUI.redetectPeople')).toLowerCase(), 'redetectPeople').toContain(word);
-    expect(String(readPath(catalog, 'canvas.miniTool.videoUI.peopleIdle')).toLowerCase(), 'peopleIdle').toContain(word);
+    for (const key of ['peopleIdle', 'identifyingPeople', 'peopleIdentificationFailed']) {
+      expect(String(readPath(catalog, `canvas.miniTool.videoUI.${key}`)).toLowerCase(), key).toContain(word);
+    }
+  });
+
+  it.each(LOCALE_CATALOGS)('%s people detection failure line names the re-detect button, the only action in that state', (_tag, catalog) => {
+    const label = String(readPath(catalog, 'canvas.miniTool.videoUI.redetectPeople'));
+    expect(String(readPath(catalog, 'canvas.miniTool.videoUI.peopleIdentificationFailed'))).toContain(label);
   });
 
   it.each(LOCALE_CATALOGS)('%s has every key with its placeholders', (_tag, catalog) => {
