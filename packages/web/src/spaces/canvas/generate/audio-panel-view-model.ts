@@ -88,6 +88,21 @@ export interface AudioPanelViewModel {
 }
 
 /**
+ * The speakers' names the lines offer, one per speaker row the settings show
+ * (as many as the model takes), a speaker not named yet as a blank name.
+ * @param model - The active model.
+ * @param params - Its params.
+ * @returns The names, from speaker 1.
+ */
+function speakerNames(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): string[] {
+  const standIn = standInOf(model);
+  if (!model || !standIn) return [];
+  const size = model.params[standIn.name]?.max_items ?? standIn.min;
+  const named = dialogueSpeakers(model, params).map((one) => one.speaker).slice(0, size);
+  return [...named, ...Array.from({ length: size - named.length }, () => '')];
+}
+
+/**
  * Derives what the audio panel renders from.
  * @param input - The node, the graph, the offered models and the active mode.
  * @param input.nodeId - The node the panel is open on.
@@ -135,7 +150,7 @@ export function buildAudioPanelViewModel(input: {
     promptRequired: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
     speakersShort: speakersShort(current, params),
-    dialogueNames: dialogueSideOf(current, params) ? dialogueSpeakers(current, params).map((one) => one.speaker) : null,
+    dialogueNames: dialogueSideOf(current, params) ? speakerNames(current, params) : null,
     voiceChosen,
     voiceSelectedId: voiceChosen
       ? (storedRecord?.[voiceParam as string] as string)
