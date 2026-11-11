@@ -1531,6 +1531,7 @@
         "eraseMismatchNext": "구간을 바꾼 뒤 다시 실행하세요.",
         "expandRejectedNext": "확장 범위나 설명을 바꾼 뒤 다시 실행하세요.",
         "windowStoppedNext": "창 {number} 때문에 중지되었습니다. 창 {number}의 다음 단계를 따르세요.",
+        "windowFollowNext": "창 {number}의 다음 단계를 따르세요.",
         "retryFailedItems": "실패한 항목 다시 시도"
       }
     },

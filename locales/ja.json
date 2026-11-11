@@ -1531,6 +1531,7 @@
         "eraseMismatchNext": "範囲を変えて、もう一度実行してください。",
         "expandRejectedNext": "拡張範囲か説明を変えて、もう一度実行してください。",
         "windowStoppedNext": "ウィンドウ {number} のため停止しました。ウィンドウ {number} の次の手順に従ってください。",
+        "windowFollowNext": "ウィンドウ {number} の次の手順に従ってください。",
         "retryFailedItems": "失敗した項目を再試行"
       }
     },

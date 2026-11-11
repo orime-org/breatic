@@ -1531,6 +1531,7 @@
         "eraseMismatchNext": "换一个区间后重新运行。",
         "expandRejectedNext": "改外扩范围或描述后重新运行。",
         "windowStoppedNext": "因窗口 {number} 停止，按窗口 {number} 的下一步处理。",
+        "windowFollowNext": "按窗口 {number} 的下一步处理。",
         "retryFailedItems": "重试失败项"
       }
     },

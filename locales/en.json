@@ -1531,6 +1531,7 @@
         "eraseMismatchNext": "Change the range and run again.",
         "expandRejectedNext": "Change the expanded area or the description and run again.",
         "windowStoppedNext": "Stopped because of Window {number}. Follow Window {number}'s next step.",
+        "windowFollowNext": "Follow Window {number}'s next step.",
         "retryFailedItems": "Retry failed items"
       }
     },

@@ -206,7 +206,7 @@ const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedF
 /**
  * A failed lip-sync run (canvas design §4 lip-sync row, execution design §9.4): one line per person that did not succeed, by
  * detection number, with its category and next step, and one line for a failed shared step; once a person has no face or
- * was rejected, the other people follow that person. Retry is offered only when the shared rule says every failure can
+ * was rejected, the other people and the shared step follow that person. Retry is offered only when the shared rule says every failure can
  * clear on a retry; with a person without a face, identifying people again is.
  * @param props - The reason and the actions.
  * @param props.reason - The failure reason.
@@ -225,14 +225,20 @@ export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: 
   // No retry is offered without a handler: the node hides it for an output a retry already took over (frames-split §7.15).
   const retryable = lipsyncFailureRetryable(props.reason) && props.onRetry !== undefined;
   const noFace = persons.some((person) => person.category === 'no_face');
+  /**
+   * A line's next step: a person or the shared step that a retry could clear follows the blocker once one exists.
+   * @param category - The line's category.
+   * @returns The next step.
+   * @throws {never} Never.
+   */
+  const next = (category: keyof typeof PERSON_NEXT_KEYS): string => {
+    const follows = blocker !== undefined && category !== 'no_face' && category !== 'model_rejected';
+    return follows ? t(`canvas.miniTool.videoUI.${category === 'stopped' ? 'personFailStoppedNext' : 'personFailFollowNext'}`, { number: blocker }) : t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[category]}`);
+  };
   return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-lip-sync-failure'>
     <ul className='grid min-w-0 gap-1.5'>
-      {persons.map((person) => {
-        const follows = blocker !== undefined && person.category !== 'no_face' && person.category !== 'model_rejected';
-        const next = follows ? t(`canvas.miniTool.videoUI.${person.category === 'stopped' ? 'personFailStoppedNext' : 'personFailFollowNext'}`, { number: blocker }) : t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[person.category]}`);
-        return <li key={person.personId} className='grid gap-0.5'><span className='font-medium'>{`${t('canvas.miniTool.videoUI.personNumber', { number: person.detectionNumber })} · ${t(`canvas.miniTool.videoUI.${PERSON_CATEGORY_KEYS[person.category]}`)}`}</span><span>{next}</span></li>;
-      })}
-      {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[shared.category]}`)}</span></li>}
+      {persons.map((person) => <li key={person.personId} className='grid gap-0.5'><span className='font-medium'>{`${t('canvas.miniTool.videoUI.personNumber', { number: person.detectionNumber })} · ${t(`canvas.miniTool.videoUI.${PERSON_CATEGORY_KEYS[person.category]}`)}`}</span><span>{next(person.category)}</span></li>)}
+      {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{next(shared.category)}</span></li>}
     </ul>
     {retryable || (noFace && props.onRedetect !== undefined) ? <div className='flex justify-end'>{retryable
       ? <Button variant='outline' size='compact' loading={retrying} disabled={props.disabled} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
