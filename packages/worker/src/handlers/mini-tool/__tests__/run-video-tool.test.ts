@@ -711,9 +711,8 @@ describe("an attempt due after the deadline and an output registered before a th
   const stitchOf = (output: number, attempt = 1): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output, attempt });
   // The jobs ingest holds; as the real boundary, a job not yet submitted is never submitted after its deadline.
   let held: Set<string>;
-  // Jobs whose answer moves the clock past the deadline: a chunk's report (or a read failing past the reporting window,
-  // "throws"); a registered job named here reports failed.
-  let atDeadline: Map<string, Record<string, unknown> | "throws">;
+  // Jobs whose answer moves the clock past the deadline: a chunk's report; a registered job named here reports failed.
+  let atDeadline: Map<string, Record<string, unknown>>;
   // Ingest ends a job it expires at its deadline as failed with reason expired (transition.ts "expired" event).
   const failedReport = { schemaVersion: 2, state: "failed", reason: "expired", outputs: [], usage: { wallMs: 1000, cpuUsec: 2000000 } };
   /**
@@ -736,8 +735,6 @@ describe("an attempt due after the deadline and an output registered before a th
       closedWindow(request);
       const answer = atDeadline.get(request.jobId);
       if (answer === undefined) return advancePlan(request);
-      // A read that fails once the reporting window (two polls past the deadline) has closed throws DeadlinePassed.
-      if (answer === "throws") { vi.setSystemTime(DEADLINE + 10_001); throw new DeadlinePassed(); }
       vi.setSystemTime(DEADLINE + 1);
       return answer;
     });
@@ -862,12 +859,19 @@ describe("an attempt due after the deadline and an output registered before a th
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    // Output 0's stitch registers; output 1's chunk read then fails past its reporting window.
+    // Output 0's stitch registers; output 1's stitch registration then throws past the deadline, out of the runner, so only
+    // what the pickup settled before the throw keeps output 0 (no progress commit holds it).
     scripted.delete(stitchOf(0)); scripted.delete(chunkOf(1, 0));
-    atDeadline.set(chunkOf(1, 0), "throws");
+    const boundary = h.advance.getMockImplementation()!;
+    h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
+      if (input.request.jobId === stitchOf(1)) { vi.setSystemTime(DEADLINE + 1); throw new Error("Fixture stitch registration failed"); }
+      return boundary(input);
+    });
     const completion = await drive();
+    expect(h.progress).not.toHaveBeenCalled();
     expect(statuses(completion)).toEqual(["registered", "failed"]);
     expect(completion!.outputs[0]!.result).toMatchObject({ status: "registered" });
+    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
   });
 
   it("DL05 the first pickup after the deadline registers an output whose stitch reported done before it, while the other output's next attempt expires", async () => {
