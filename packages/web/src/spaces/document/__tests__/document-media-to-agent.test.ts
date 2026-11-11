@@ -93,6 +93,16 @@ describe('mediaItem', () => {
     expect(item.name).toBe(LONG.slice(0, 40));
     expect(item.chip?.data_snapshot).toEqual({ url: 'https://cdn.test/a.png', name: LONG });
   });
+
+  it('names a nameless picture by the start of a long caption and keeps the whole caption for the Agent', () => {
+    const caption = `${LONG} — the bakery at the corner, seen from across the road at dawn`;
+    const editor = open([{ id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name: '', caption } }]);
+
+    const item = mediaItem(editor as never, 'pic');
+
+    expect(item.name).toBe(caption.slice(0, 40));
+    expect(item.chip?.data_snapshot).toEqual({ url: 'https://cdn.test/a.png', caption });
+  });
 });
 
 describe('mediaRowItems', () => {

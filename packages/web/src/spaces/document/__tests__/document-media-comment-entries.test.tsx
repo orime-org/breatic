@@ -142,6 +142,17 @@ describe('the media toolbar', () => {
     expect(ids.slice(at, at + 4)).toEqual(['doc-media-download', 'doc-media-add-to-agent', 'doc-media-comment', 'doc-media-delete']);
   });
 
+  it('offers both on a picture inside a table cell, and its comment shows there', async () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['words', { blocks: [PICTURE] }] }] })]);
+
+    const ids = toolbarButtons(editor, 'pic');
+    expect(ids).toContain('doc-media-add-to-agent');
+    expect(ids).toContain('doc-media-comment');
+
+    await postOn(editor, 'pic');
+    expect(within(row(editor, 'pic')).getByTestId('doc-media-comment-badge').textContent).toBe('1');
+  });
+
   it('opens a draft on the picture from Comment', () => {
     const editor = open([PICTURE]);
 
@@ -200,6 +211,17 @@ describe('the comment icon on a media block', () => {
       await commentsOn(editor)!.threadStore.resolveThread({ threadId: first });
     });
     expect(within(row(editor, 'pic')).getByTestId('doc-media-comment-badge').textContent).toBe('1');
+  });
+
+  it('goes away once the only comment on the block is deleted', async () => {
+    const editor = open([PICTURE]);
+    const id = await postOn(editor, 'pic');
+
+    await act(async () => {
+      await commentsOn(editor)!.threadStore.deleteThread({ threadId: id });
+    });
+
+    expect(within(row(editor, 'pic')).queryByTestId('doc-media-comment-badge')).toBeNull();
   });
 
   it('reads every open comment on the block when pressed, and outlines the block', async () => {
