@@ -7,7 +7,7 @@
  * voice, the decision the panel and the landing make with the same shared
  * function, and the script its lines send.
  */
-import { dialogueSideOf, dialogueSpeakers, dialogueText, STAND_IN_ON, type ModelEntry, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { dialogueSideOf, dialogueSpeakers, dialogueText, STAND_IN_ON, withStandInOn, type ModelEntry, type PromptSegment, type ProposalNode } from "@breatic/shared";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
@@ -33,7 +33,9 @@ export function onDialogueSide(node: Pick<ProposalNode, "model" | "params">): bo
   // Only an explicit switch or a list of entries can put a record on the
   // dialogue side, so the catalog is read only for a record holding one.
   if (params[STAND_IN_ON] !== true && !Object.values(params).some(Array.isArray)) return false;
-  return dialogueSideOf(proposalModelEntry(node), params);
+  // Not landed yet: read as the landing will write it.
+  const entry = proposalModelEntry(node);
+  return dialogueSideOf(entry, withStandInOn(entry, params));
 }
 
 /**

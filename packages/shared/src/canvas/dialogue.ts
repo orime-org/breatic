@@ -111,24 +111,23 @@ export function withStandInOn(
   model: StandInModel | undefined,
   params: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> {
-  return dialogueSideOf(model, params) && typeof params[STAND_IN_ON] !== "boolean" ?{ ...params, [STAND_IN_ON]: true } : { ...params };
+  const standIn = standInOf(model);
+  if (!model || !standIn || typeof params[STAND_IN_ON] === "boolean" || completeCount(model, standIn, params) === 0) return { ...params };
+  return { ...params, [STAND_IN_ON]: true };
 }
 
 /**
  * Whether a record is on the dialogue side: the model declares a stand-in and
- * the switch is on, or no switch is set and the record brings at least one
- * complete stand-in entry, as a landing writer switches it.
+ * the switch is on. A stored record with no switch reads in one voice,
+ * however complete its speakers; a writer's record not yet landed is read
+ * through {@link withStandInOn} first (design 8.5).
  * @param model - The model, or undefined when unknown.
  * @param params - Its param record.
  * @returns Whether the lines are the words sent.
  * @throws {never} Never.
  */
 export function dialogueSideOf(model: StandInModel | undefined, params: Readonly<Record<string, unknown>>): boolean {
-  const standIn = standInOf(model);
-  if (!model || !standIn) return false;
-  const on = params[STAND_IN_ON];
-  if (typeof on === "boolean") return on;
-  return completeCount(model, standIn, params) > 0;
+  return standInOf(model) !== null && isStandInOn(params);
 }
 
 /**
