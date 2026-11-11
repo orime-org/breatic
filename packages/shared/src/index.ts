@@ -913,10 +913,13 @@ export {
   dialogueText,
   isStandInOn,
   lineSpeakers,
+  planDialogueLines,
   speakersShort,
   standInOf,
+  typedSpeaker,
   withStandInOn,
   type DialogueLine,
+  type LinePlan,
   type StandIn,
   type StandInModel,
 } from "@shared/canvas/dialogue.js";

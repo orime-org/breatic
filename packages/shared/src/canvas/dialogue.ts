@@ -180,6 +180,50 @@ export function lineSpeakers(lines: readonly DialogueLine[], count: number): num
   });
 }
 
+/** What a line becomes: its speaker, from 1, and how many leading characters to drop. */
+export interface LinePlan {
+  readonly speaker: number;
+  readonly strip: number;
+}
+
+/**
+ * The speaker a line's typed prefix names (a speaker's name, then a
+ * half-width or full-width colon, then any spaces), and the prefix's length.
+ * A blank name never matches; the longest name that matches wins.
+ * @param text - The line's words.
+ * @param names - The speakers' names, from speaker 1.
+ * @returns The speaker and the prefix length, or null when the line starts with no name and colon.
+ * @throws {never} Never.
+ */
+export function typedSpeaker(text: string, names: readonly string[]): LinePlan | null {
+  let best: { speaker: number; strip: number; length: number } | null = null;
+  for (const [at, raw] of names.entries()) {
+    const name = raw.trim();
+    if (name === "" || !text.startsWith(name) || (best !== null && best.length >= name.length)) continue;
+    const colon = /^\s*[:\uFF1A]\s*/.exec(text.slice(name.length));
+    if (colon) best = { speaker: at + 1, strip: name.length + colon[0].length, length: name.length };
+  }
+  return best === null ? null : { speaker: best.speaker, strip: best.strip };
+}
+
+/**
+ * Each line's speaker and the prefix it drops (design 8.5): a typed name and
+ * colon in front names the speaker and is taken off; a line with none keeps
+ * its own speaker, else the previous line's, the first such speaker 1.
+ * @param lines - The lines as they stand.
+ * @param names - The speakers' names, from speaker 1.
+ * @returns One plan per line; applying it and planning again strips nothing.
+ * @throws {never} Never.
+ */
+export function planDialogueLines(lines: readonly DialogueLine[], names: readonly string[]): LinePlan[] {
+  const typed = lines.map((line) => typedSpeaker(line.text, names));
+  const speakers = lineSpeakers(
+    lines.map((line, at) => ({ text: line.text, speaker: typed[at]?.speaker ?? line.speaker })),
+    names.length,
+  );
+  return speakers.map((speaker, at) => ({ speaker, strip: typed[at]?.strip ?? 0 }));
+}
+
 /**
  * The script a dialogue sends: each line after its speaker's name and a
  * half-width colon, a line apart, the form the upstream reads speaker labels
@@ -190,12 +234,14 @@ export function lineSpeakers(lines: readonly DialogueLine[], count: number): num
  * @throws {never} Never.
  */
 export function dialogueText(lines: readonly DialogueLine[], speakers: readonly { readonly speaker: string }[]): string {
-  const who = lineSpeakers(lines, speakers.length);
+  // Read as the editor puts the lines right, so a node never opened since it
+  // was written as `Name: line` sends the same script (design 8.5).
+  const plans = planDialogueLines(lines, speakers.map((one) => one.speaker));
   return lines
     .flatMap((line, at) => {
-      const text = line.text.replace(/\s*\n\s*/g, " ").trim();
+      const text = line.text.slice(plans[at]?.strip ?? 0).replace(/\s*\n\s*/g, " ").trim();
       if (text === "") return [];
-      const name = (speakers[(who[at] ?? 1) - 1]?.speaker ?? "").trim();
+      const name = (speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "").trim();
       return [`${name}: ${text}`];
     })
     .join("\n");
