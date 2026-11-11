@@ -222,11 +222,27 @@ describe('the snapshot panel', () => {
     await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
 
     rerender(at('hidden'));
+    // Hidden, the preview is let go like any unmount, so a tab closed while hidden leaves nothing behind.
+    expect(screen.getByTestId('doc-version-preview-body').childElementCount).toBe(0);
     rerender(at('visible'));
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft');
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
     expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('snapshot words');
+  });
+
+  it('leaves a page that came back not found to the list alone', async () => {
+    const user = userEvent.setup();
+    api.list.mockImplementation(async (_scope, cursor) => {
+      if (cursor === undefined) return { versions: [row('v1', 'First draft', 0)], nextCursor: 'c1' };
+      throw new ApiException({ status: 404, message: 'gone', fromServer: true });
+    });
+    show();
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-load-more'));
+
+    expect(await screen.findByTestId('doc-version-load-failed')).toBeInTheDocument();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(api.list).toHaveBeenCalledTimes(2);
   });
 
   it('offers no restore while another snapshot is still loading', async () => {

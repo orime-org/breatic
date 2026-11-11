@@ -154,28 +154,6 @@ export default function DocumentVersionArea({
     return { preview: built, controller: versioningOf(built) };
   });
 
-  React.useEffect(() => {
-    const at = host.current;
-    if (at === null) return undefined;
-    // Shown again after a Space switch: still mounted and still showing what
-    // it showed (design §8.2).
-    if (at.firstChild === null) {
-      // The editor takes over the element it mounts on; this one is its own,
-      // as the body's surface is, so the column's element keeps React's classes.
-      const surface = document.createElement('div');
-      at.appendChild(surface);
-      preview.mount(surface);
-      controller.open();
-      void controller.list();
-    }
-    return () => {
-      // A hidden Space keeps its DOM in the page; only a real unmount ends the preview.
-      if (at.isConnected) return;
-      controller.close();
-      preview.unmount();
-    };
-  }, [preview, controller]);
-
   const state = useControllerState(controller);
   const open = state.mode === 'versions' ? state : null;
 
@@ -214,7 +192,8 @@ export default function DocumentVersionArea({
       const result = await operation();
       if (result.status === 'done') return 'done';
       if (result.status !== 'error') return 'dropped';
-      if (result.error.type === 'not-found') {
+      // Only an operation on one snapshot finds it gone; a page is the list's.
+      if (result.error.type === 'not-found' && failure !== null) {
         toast.warning(t('spaces.document.versions.gone'));
         void controller.list();
         return 'gone';
@@ -237,6 +216,32 @@ export default function DocumentVersionArea({
   const select = React.useCallback(async (target: VersionSelection, compareTo?: string): Promise<void> => {
     await run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
   }, [controller, run, t]);
+
+  // A hidden Space runs this cleanup like an unmount, and React never calls
+  // it again if the tab is then closed; so the preview is always let go, and
+  // what it showed is taken back up when the Space is shown again (§8.2).
+  const resume = React.useRef<{ displayed: VersionSelection; compareTo: string | undefined } | null>(null);
+  React.useEffect(() => {
+    const at = host.current;
+    if (at === null) return undefined;
+    // The editor takes over the element it mounts on; this one is its own, as
+    // the body's surface is, so the column's element keeps React's classes.
+    const surface = document.createElement('div');
+    at.appendChild(surface);
+    preview.mount(surface);
+    controller.open();
+    void controller.list();
+    const back = resume.current;
+    resume.current = null;
+    if (back !== null && (back.displayed.type === 'snapshot' || back.compareTo !== undefined)) void select(back.displayed, back.compareTo);
+    return () => {
+      const now = controller.store.state;
+      if (now.mode === 'versions') resume.current = { displayed: now.displayed, compareTo: now.compareTo };
+      controller.close();
+      preview.unmount();
+      surface.remove();
+    };
+  }, [preview, controller, select]);
 
   const rows = React.useMemo(() => open?.history.data ?? [], [open]);
   // Every row seen since the panel opened: a refresh goes back to the first
