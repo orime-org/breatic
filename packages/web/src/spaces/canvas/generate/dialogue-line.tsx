@@ -248,7 +248,7 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
           data-testid='dialogue-line-remove'
           onClick={() => deleteNode()}
           // The `::after` square takes a press 3px past each side: 18 + 2 * 3 = 24.
-          className='relative mt-0.5 shrink-0 rounded-chrome p-0.5 after:absolute after:-inset-[3px] text-muted-foreground opacity-0 transition-opacity hover-enabled:bg-accent group-hover:opacity-100 focus-visible:opacity-100'
+          className='relative mt-0.5 shrink-0 rounded-chrome p-0.5 after:absolute after:-inset-[3px] text-muted-foreground opacity-0 transition-opacity hover-enabled:bg-accent-strong group-hover:opacity-100 focus-visible:opacity-100'
         >
           <X className='size-3.5' aria-hidden='true' />
         </Button>
