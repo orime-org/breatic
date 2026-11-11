@@ -82,8 +82,8 @@ export type {
   ParamForce,
   ParamScalar,
   RemoteParamSource,
-  ModelProvider,
   ModelEntry,
+  ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
   PricingContract,
@@ -1141,3 +1141,4 @@ export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverag
 export type {
   TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion,
 } from "@shared/types/entities.js";
+export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

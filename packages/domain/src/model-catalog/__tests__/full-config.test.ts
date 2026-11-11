@@ -11,8 +11,9 @@
  * config files.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initCore } from "@breatic/core";
+import { useFullCatalog, restoreProcessEnv } from "./catalog-env.js";
 import {
   MODALITIES,
   getFullModelConfig,
@@ -22,6 +23,11 @@ import {
 
 beforeAll(() => {
   initCore(process.env);
+  useFullCatalog();
+});
+
+afterAll(() => {
+  restoreProcessEnv();
 });
 
 describe("getFullModelConfig (#1672)", () => {

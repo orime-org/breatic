@@ -117,7 +117,8 @@ const T2V: ModelEntry = {
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** A picture the run starts from, declared the way the real entries do (#269). */
@@ -2314,8 +2315,6 @@ describe('the multi-shot mode', () => {
         label: 'Auto multi-shot',
         default: false,
         values: [true, false],
-        upstream: 'shot_type',
-        upstream_values: { true: 'intelligence' },
         modes: ['t2v'],
         fill: 'panel',
       },

@@ -108,8 +108,6 @@ exports[`every refusal states its fault, its rule and its facts > multishot-no-s
 
 exports[`every refusal states its fault, its rule and its facts > no-mode-model (0): is met and says what is wrong 1`] = `"Node 0 generates, so it needs a mode and a model."`;
 
-exports[`every refusal states its fault, its rule and its facts > no-model-for-kind (0): is met and says what is wrong 1`] = `"No video model can generate right now."`;
-
 exports[`every refusal states its fault, its rule and its facts > no-prompt-box (0): is met and says what is wrong, and its one fix clears it 1`] = `""omnihuman-1.5" draws no prompt box, so words, tweak marks and refs written there reach nobody. On node 1 ("Gen"), keep only notes saying what the user picks in the panel."`;
 
 exports[`every refusal states its fault, its rule and its facts > notes-missing (0): is met and says what is wrong, and its one fix clears it 1`] = `""Gen" needs a note for each of "Pic" (@'d, and empty until a file is put in it), and carries 0. On node 1 ("Gen"), give each one a note in the prompt: which slot to pick it into, or what to do first with a node that lands empty."`;

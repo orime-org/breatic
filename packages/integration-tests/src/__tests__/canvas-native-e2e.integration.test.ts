@@ -24,6 +24,7 @@
  * @see packages/worker/src/handlers.ts
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import {
   describe,
   it,
@@ -307,6 +308,7 @@ import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
 initCore(process.env);
+initConfiguredProvider();
 
 // ── Infrastructure state ─────────────────────────────────────────────────────
 

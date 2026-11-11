@@ -9,7 +9,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
   provider: () => ({
+    availability: () => ({ upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] }),
+    pricingRules: (model: string) => ({ model, upstreams: [] }),
+    estimate: async () => null,
     llm: {
       capabilities: async () => ({ pictures: true, contextWindow: 1_000_000 }),
       availability: () => ({ upstreams: [] }),

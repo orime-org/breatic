@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Every WaveSpeed endpoint the catalog reaches carries its pricing contract,
+ * Every WaveSpeed binding of the shipped configuration carries its pricing contract,
  * and that contract prices the examples WaveSpeed's own readme gives for the
  * endpoint. `usd` is the readme's figure before `discount_rate`; the test
- * applies the discount from the yaml, so a wrong rate fails here too.
+ * applies the discount from the binding, so a wrong rate fails here too.
  *
  * Two endpoints are priced from the formula, not the readme, because the two
  * disagree and the formula is what the contract API publishes:
@@ -14,8 +14,12 @@
  * at least 10s). A smoke run's actual charge settles which one is right.
  */
 import { describe, expect, it } from "vitest";
-import { upstreamPriceUsd, type ClipDurations } from "@breatic/shared/pricing";
-import { getFullModelConfig, MODALITIES, type FullProviderEndpoint } from "@domain/model-catalog/model-catalog";
+import { priceUsd } from "../../pricing/evaluate.js";
+import { parseProviderConfig } from "../schema.js";
+import { shipped } from "./shipped.js";
+
+/** Clip lengths in seconds by upstream field. */
+type ClipDurations = Readonly<Record<string, readonly number[]>>;
 
 interface PriceCase {
   readonly input: Readonly<Record<string, unknown>>;
@@ -156,10 +160,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { quality: "max", resolution: "4k" }, usd: 1.0 },
   ],
   "recraft-ai/recraft-v4.1-pro/text-to-vector": [{ input: {}, usd: 0.3 }],
-  "recraft-ai/recraft-v4-style/text-to-image": [
-    { input: {}, usd: 0.0385 },
-    { input: { images: urls(2) }, usd: 0.044 },
-  ],
   "wavespeed-ai/krea-v2-large/text-to-image": [
     { input: {}, usd: 0.06 },
     { input: { reference: urls(3) }, usd: 0.065 },
@@ -177,11 +177,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   "sync/lipsync-3": [{ input: { video: "v" }, durations: { video: [10] }, usd: 1.35 }],
   "sync/react-1": [{ input: { audio: "a" }, durations: { audio: [5] }, usd: 0.835 }],
   // inner#1305: $0.014 for every started minute, at least one, billed up to 1800 s.
-  "veed/clean-audio": [
-    { input: { audio: "a" }, durations: { audio: [30] }, usd: 0.014 },
-    { input: { audio: "a" }, durations: { audio: [61] }, usd: 0.028 },
-    { input: { audio: "a" }, durations: { audio: [3600] }, usd: 0.42 },
-  ],
   "wavespeed-ai/audio-vocal-isolator": [{ input: { audio: "a" }, durations: { audio: [60] }, usd: 0.06 }],
   "wavespeed-ai/hunyuan-video-foley": [{ input: {}, usd: 0.05 }],
   "wavespeed-ai/infinitetalk/multi": [
@@ -229,44 +224,35 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
 };
 
 /**
- * Every WaveSpeed provider entry in the catalog, keyed by its endpoint.
- *
- * @returns The provider entries by `model_id`.
+ * Every WaveSpeed binding of the shipped configuration, keyed by its endpoint.
+ * @returns The bindings' pricing by `model_id`.
  */
-function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
-  const byEndpoint = new Map<string, FullProviderEndpoint>();
-  for (const modality of MODALITIES) {
-    for (const model of getFullModelConfig(modality).models) {
-      for (const provider of model.providers ?? []) {
-        if (provider.name === "wavespeed") byEndpoint.set(provider.model_id, provider);
-      }
+function wavespeedEndpoints(): Map<string, { base_price: number; formula: string; discount_rate: number }> {
+  const byEndpoint = new Map<string, { base_price: number; formula: string; discount_rate: number }>();
+  for (const bindings of Object.values(parseProviderConfig(shipped()).models)) {
+    for (const binding of bindings) {
+      if (binding.upstream === "wavespeed") byEndpoint.set(binding.model_id, binding.pricing as { base_price: number; formula: string; discount_rate: number });
     }
   }
   return byEndpoint;
 }
 
-describe("WaveSpeed pricing contracts in the catalog", () => {
+// recraft-v4-style-text-to-image and veed-clean-audio are served off WaveSpeed (OFF_WAVESPEED), so their readme
+// examples are not WaveSpeed's to price.
+describe("WaveSpeed pricing contracts in the shipped configuration", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 67 endpoints of the finalized catalog", () => {
+  it("covers exactly the endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 
   for (const [endpoint, cases] of Object.entries(CASES)) {
     it(`prices ${endpoint} as its readme does`, async () => {
-      const pricing = endpoints.get(endpoint)?.pricing;
+      const pricing = endpoints.get(endpoint);
       expect(pricing, `${endpoint} declares no pricing`).toBeDefined();
-      const { base_price, formula, discount_rate } = pricing as {
-        base_price: number;
-        formula: string;
-        discount_rate: number;
-      };
+      const { base_price, formula, discount_rate } = pricing!;
       for (const c of cases) {
-        const usd = await upstreamPriceUsd(
-          { basePrice: base_price, formula, discountRate: discount_rate },
-          c.input,
-          c.durations ?? {},
-        );
+        const usd = await priceUsd({ basePrice: base_price, formula, discountRate: discount_rate }, c.input, c.durations ?? {});
         expect(usd).toBeCloseTo((c.usd * discount_rate) / 100, 6);
       }
     });

@@ -13,7 +13,10 @@
  * 机器恰好配了 key。
  */
 
-import { initCore } from "@breatic/core";
+import { getRawEnvVar, initCore } from "@breatic/core";
+import { createProvider } from "@breatic/provider";
+import { initProvider } from "../../provider/instance.js";
+import { readProviderConfig } from "../../provider/provider-config-loader.js";
 
 import {
   getFullModelConfig,
@@ -37,6 +40,8 @@ export function allProviderKeyNames(): string[] {
       if (config.api_key_env) names.add(config.api_key_env);
     }
   }
+  // provider's own upstreams, the keys the catalog's availability is now read from.
+  for (const upstream of Object.values(readProviderConfig().upstreams)) names.add(upstream.key_env);
   return [...names];
 }
 
@@ -53,7 +58,16 @@ export function useEnvWithKeys(configured: readonly string[]): void {
     env[name] = configured.includes(name) ? "test-key" : "";
   }
   initCore(env);
+  rebuildProvider();
   resetModelCatalog();
+}
+
+/**
+ * This process's provider again, reading the environment just set. Built here and handed over: a test catalog is
+ * not one provider's configuration binds, and binding the shipped catalog is provider's own tests' to check.
+ */
+function rebuildProvider(): void {
+  initProvider(createProvider({ config: readProviderConfig(), keyOf: getRawEnvVar, llmMaxRetries: 0, cleanText: (text) => text }));
 }
 
 /**
@@ -81,5 +95,6 @@ export function useFullCatalog(): void {
 /** 把 core 的配置和目录缓存还回进程自己的环境。 */
 export function restoreProcessEnv(): void {
   initCore(process.env);
+  rebuildProvider();
   resetModelCatalog();
 }

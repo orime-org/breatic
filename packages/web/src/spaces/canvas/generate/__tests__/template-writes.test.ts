@@ -44,7 +44,8 @@ const SHEET: ModelEntry = {
   tier: 'recommended',
   generation_time: 10,
   takes_prompt: true,
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   params: { aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' } },
 };
 
@@ -59,7 +60,8 @@ const ULTRA: ModelEntry = {
   tier: 'recommended',
   generation_time: 10,
   takes_prompt: true,
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9', '9:16'], default: '16:9' },
     resolution: { description: '', values: ['1k', '4k'], default: '1k' },

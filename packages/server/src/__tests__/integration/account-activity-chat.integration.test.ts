@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import postgres from "postgres";
@@ -26,6 +27,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 initCore(process.env);
 loadLocales();
+initConfiguredProvider();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;

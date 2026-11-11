@@ -42,8 +42,11 @@ import {
   sendsUntakenPrompt,
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
+  modelCatalog,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
+import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
+import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
 import {
   holdRun,
@@ -289,13 +292,18 @@ canvas.post(
           t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
         );
       }
+      // A model no upstream here can serve, or a route through one it is not offered on, is refused before
+      // anything is held or queued.
+      const entry = body.model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), body.model);
+      if (entry !== undefined) assertServable(entry.name, entry.display_name, body.route);
       return Promise.resolve();
     },
     credits: () =>
-      estimateTaskCredits(body.model, {
-        params: body.params,
-        prompt: extractPromptText(body.params.prompt ?? body.params.text),
-      }),
+      estimateTaskCredits(
+        body.model,
+        { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) },
+        body.route,
+      ),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -313,7 +321,8 @@ canvas.post(
       spaceId,
       body.task_type,
       mode,
-      body.params,
+      // The run is held, priced and served on one route: the task carries the one the estimate used.
+      body.route === undefined ? body.params : { ...body.params, route: body.route },
       body.model,
       body.source,
       taskId,
@@ -474,6 +483,8 @@ async function startReading(
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, userId, "editor");
+  // A deployment with no understanding upstream refuses before the row opens, saying what it is missing.
+  assertLlmServable(model, "understand");
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

@@ -29,13 +29,15 @@ function ttsModel(name: string, overrides: Partial<ModelEntry> = {}): ModelEntry
     generation_time: 30,
     takes_prompt: true,
     params: {},
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     ...overrides,
   };
 }
 
+const ELEVEN_RULES = { model: 'elevenlabs-v3', upstreams: [] };
 const ELEVEN = ttsModel('elevenlabs-v3', {
-  pricing: { base_price: 50000, formula: '', discount_rate: 100 },
+  pricing_rules: ELEVEN_RULES,
   params: {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
@@ -100,11 +102,7 @@ describe('buildAudioPanelViewModel — which model the panel is on', () => {
 
   it('carries the pricing of the model it landed on', () => {
     const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
-    expect(vm.modelEntry?.pricing).toEqual({
-      base_price: 50000,
-      formula: '',
-      discount_rate: 100,
-    });
+    expect(vm.modelEntry?.pricing_rules).toBe(ELEVEN_RULES);
   });
 
   it('offers nothing from a mode this panel is not on', () => {

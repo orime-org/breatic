@@ -12,6 +12,7 @@ import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { CANVAS_TOOLS } from "@domain/agent/tools/index.js";
 
 vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
   provider: () => ({
     llm: {
       capabilities: async () => ({ pictures: true, contextWindow: 1_000_000 }),

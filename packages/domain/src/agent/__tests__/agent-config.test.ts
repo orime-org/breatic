@@ -19,6 +19,7 @@ const capabilities = vi.hoisted(() => vi.fn(async (): Promise<{ pictures: boolea
 // Every upstream configured, so every tool that needs one is handed out.
 const configured = { upstreams: [{ upstream: "openrouter", weight: 0, configured: true, envVar: "OPENROUTER_API_KEY" }] };
 vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
   provider: () => ({ llm: { capabilities, availability: () => configured, judgeAvailability: () => configured } }),
 }));
 

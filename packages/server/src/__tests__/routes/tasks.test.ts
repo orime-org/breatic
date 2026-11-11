@@ -169,6 +169,8 @@ describe("Tasks routes", () => {
       expect(domain.estimateTaskCredits).toHaveBeenCalledWith(
         "test-model",
         { params: { duration: 10, prompt: "<p>a slow pan</p>" }, prompt: "a slow pan" },
+        // No route in the request: priced on the upstream the weights choose.
+        undefined,
       );
       expect(mocks.taskService.create).not.toHaveBeenCalled();
     });

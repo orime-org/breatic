@@ -70,7 +70,7 @@ describe("joinSlotFiles", () => {
 
   it("passes a model with no joining slot through untouched", () => {
     const krea: Readonly<Record<string, ParamDescriptor>> = {
-      style_images: { description: "", default: null, fill: "canvas", accepts: "image", type: "list", max_items: 3, upstream: "reference", item_key: "image" },
+      style_images: { description: "", default: null, fill: "canvas", accepts: "image", type: "list", max_items: 3 },
     };
     const params = { style_images: ["s1"] };
     const out = joinSlotFiles(krea, params, "A lighthouse.");

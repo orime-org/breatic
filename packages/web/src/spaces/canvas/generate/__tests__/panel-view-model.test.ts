@@ -42,7 +42,8 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     tier: 'optional',
     generation_time: 10,
     takes_prompt: true,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     ...over,
     mode,
     // i2i / edit take the reference pool and cannot run without it, the way

@@ -7,9 +7,10 @@
  */
 
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { createProvider, type Provider } from "@breatic/provider";
+import { createProvider, type CatalogShape, type Provider } from "@breatic/provider";
 import { stripUnicodeTags } from "@breatic/shared";
 import { readProviderConfig } from "@domain/provider/provider-config-loader.js";
+import { getFullModelConfig, MODALITIES, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
 
 let instance: Provider | undefined;
 
@@ -17,16 +18,41 @@ let instance: Provider | undefined;
  * Build this process's provider: keys read from the environment `initCore` was given.
  * @param built - A provider built elsewhere, which a test hands over in place of the configured one.
  * @returns The provider.
- * @throws {ProviderConfigError} When the configuration does not validate, every problem named.
+ * @throws {ProviderConfigError} When the configuration does not validate, or does not bind every model and param of
+ *   our catalog, every problem named.
  */
 export function initProvider(built?: Provider): Provider {
-  instance = built ?? createProvider({
+  if (built !== undefined) {
+    instance = built;
+    return instance;
+  }
+  const configured = createProvider({
     config: readProviderConfig(),
     keyOf: getRawEnvVar,
     llmMaxRetries: getAgentConfig().llm_max_retries,
     cleanText: stripUnicodeTags,
   });
+  configured.assertBindsCatalog({ models: MODALITIES.flatMap((modality) => getFullModelConfig(modality).models.map(catalogShapeOf)) });
+  instance = configured;
   return instance;
+}
+
+/**
+ * One catalog model as provider checks its bindings against: each param's offered values and how it travels.
+ * @param model - The yaml entry.
+ * @returns Its shape.
+ */
+function catalogShapeOf(model: FullModelEntry): CatalogShape["models"][number] {
+  return {
+    name: model.name,
+    params: Object.fromEntries(Object.entries(model.params ?? {}).map(([name, spec]) => [name, {
+      ...(spec.values === undefined ? {} : { values: spec.values as (string | number | boolean)[] }),
+      ...(typeof spec.joins === "string" ? { joins: spec.joins } : {}),
+      ...(spec.type === undefined ? {} : { type: spec.type }),
+      ...(spec.fields === undefined ? {} : { fields: spec.fields }),
+      ...(spec.remote_source === undefined ? {} : { remote_source: spec.remote_source }),
+    }])),
+  };
 }
 
 /**

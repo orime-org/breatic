@@ -112,12 +112,17 @@ const ELEVEN: ModelEntry = {
       value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
     },
   },
-  providers: [],
-  prompt_upstream: 'text',
-  pricing: {
-    base_price: 50000,
-    formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}',
-    discount_rate: 100,
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+  // As provider prices it on WaveSpeed: the prompt goes as `text`.
+  pricing_rules: {
+    model: 'elevenlabs-v3',
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'text',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}', discount_rate: 100 },
+      steps: [],
+    }],
   },
 };
 
@@ -165,11 +170,15 @@ const SFX: ModelEntry = {
     },
     audio_format: { description: '', default: 'mp3' },
   },
-  // As the catalog prices it: $0.002 a second, three seconds at least.
-  pricing: {
-    base_price: 2000,
-    formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}',
-    discount_rate: 100,
+  // As provider prices it: $0.002 a second, three seconds at least.
+  pricing_rules: {
+    model: 'sonilo-sfx-v1',
+    upstreams: [{
+      upstream: 'wavespeed',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 2000, formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}', discount_rate: 100 },
+      steps: [],
+    }],
   },
 };
 
@@ -554,8 +563,8 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
   it('states the price per thousand characters while the prompt is still empty', async () => {
     // A model priced by its text has no figure for a run with no text, so the
     // panel states the rate instead: $0.05 per thousand characters is five
-    // credits. What it does as text arrives is `estimateCredits`, and its own
-    // tests cover the pricing formulas.
+    // credits. What it does as text arrives is provider's `estimateCost`, and its
+    // own tests cover the pricing formulas.
     await openPanel({ model: 'fish-s2-pro' });
     await waitFor(() =>
       expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(

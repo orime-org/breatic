@@ -9,6 +9,7 @@
  */
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
+import { assertServable } from "@server/modules/task/model-servable.js";
 import {
   assetRepo,
   containerCostUsd,
@@ -144,12 +145,14 @@ async function assertSourceWithinModel(spec: MiniToolSpec, body: MiniToolRequest
  * @param spec - The tool.
  * @param body - The validated request.
  * @returns The prepared run.
- * @throws {AppError} 503 when the pinned model is not served; 400 when a value is one it does not take.
+ * @throws {AppError} 503 when the pinned model is not served or no upstream here can serve it; 400 when a value is one it does not take.
+ * @throws {ValidationError} When the route names an upstream the model is not offered through.
  */
 async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promise<PreparedRun> {
   const model = spec.run.kind === "model" ? spec.run.model : "";
   const entry = catalogEntryOf(modelCatalog.getModelCatalog(), model);
   if (!entry) throw new AppError(503, t("server.mini_tool.unavailable"));
+  assertServable(model, entry.display_name, body.route);
   for (const [name, value] of Object.entries(body.params)) {
     const declared = entry.params?.[name];
     if (declared && !paramValueAllowed(declared, value)) {
@@ -161,11 +164,13 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   const input = miniToolEstimateInput(spec, snapshot);
   const params: Record<string, unknown> = { ...input.params };
   if (spec.prompt) params.prompt = snapshot.prompt;
+  // The run is held, priced and served on one route: the task carries the one the estimate used.
+  if (body.route !== undefined) params.route = body.route;
   return {
     model,
     params,
     sourceKey: undefined,
-    credits: await estimateTaskCredits(model, input),
+    credits: await estimateTaskCredits(model, input, body.route),
   };
 }
 

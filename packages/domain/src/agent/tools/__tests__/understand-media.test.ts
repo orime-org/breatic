@@ -49,6 +49,7 @@ vi.mock("@domain/understand/index.js", async (importOriginal) => {
 const keyed = vi.hoisted(() => ({ current: true }));
 
 vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
   provider: () => ({
     llm: {
       availability: () => ({ upstreams: [{ upstream: "openrouter", weight: 0, configured: keyed.current, envVar: "OPENROUTER_API_KEY" }] }),

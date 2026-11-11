@@ -15,7 +15,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES, markedSegments, t, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
 
-import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
+import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
@@ -39,8 +39,6 @@ type Sent = Parameters<typeof verdictFor>[0];
 
 /** One refusal: what meets it, what its reason says, and its one fix where it has one. */
 interface RefusalCase {
-  /** The catalog the case is met under, where it is not the full one. */
-  catalog?: () => void;
   /** A proposal the check refuses with this refusal. */
   meets: Sent;
   /** Statements the reason makes, each true of the catalog and the proposal. */
@@ -483,11 +481,6 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "mode-unbacked": [{
     meets: group([gen("image", "no-such-mode", T2I)]),
     states: ['No model here backs "no-such-mode" on an image node. It offers: t2i'],
-  }],
-  "no-model-for-kind": [{
-    catalog: () => useEnvWithKeys([]),
-    meets: group([gen("video", "t2v", SHOTS)]),
-    states: ["No video model can generate right now."],
   }],
   "model-not-in-mode": [{
     meets: group([gen("image", "t2i", EDIT)]),
@@ -983,7 +976,6 @@ describe("every refusal states its fault, its rule and its facts", () => {
   for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
     for (const [at, entry] of cases.entries()) {
       it(`${refusal} (${String(at)}): is met and says what is wrong${REFUSALS[refusal] === false ? "" : ", and its one fix clears it"}`, () => {
-        entry.catalog?.();
         // Every proposal here is one the tool would take in, so a fix is proven on what the agent can send.
         expect(inputSchema.safeParse(entry.meets).success, "the met proposal passes the tool's schema").toBe(true);
         if (entry.fix !== undefined) expect(inputSchema.safeParse(entry.fix).success, "the fixed proposal passes the tool's schema").toBe(true);
@@ -1065,7 +1057,6 @@ describe("a fix names what to take out by value, so the copies of it do not chan
       const changing = doublings.filter((double) => JSON.stringify(double(entry.meets)) !== JSON.stringify(entry.meets));
       if (changing.length === 0) continue;
       it(`${refusal} (${String(at)}): ends on the same fix with its elements written twice`, () => {
-        entry.catalog?.();
         const once = verdictFor(entry.meets, MATERIALS, entry.templates);
         // Writing everything twice can trip an earlier check first, so each case
         // has to meet its own refusal under one doubling that changes it at least,

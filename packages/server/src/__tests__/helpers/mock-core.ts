@@ -627,13 +627,16 @@ export const domainMock = async () => ({
   creditHoldService: mocks.creditHoldService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
-  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
+  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0 }) },
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
   // Arithmetic, so the real one: a double would be a second copy of the rate.
   creditsForUsd: REAL_CREDITS_FOR_USD,
   containerCostUsd: REAL_CONTAINER_COST_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
+  // Every model here is servable; the refusal of one that is not is tested on its own (model-servable.test.ts).
+  servability: vi.fn(() => ({ servable: true })),
+  llmServability: vi.fn(() => ({ servable: true })),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,

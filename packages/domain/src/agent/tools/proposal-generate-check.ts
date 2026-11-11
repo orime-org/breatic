@@ -66,9 +66,8 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   // `modelsForMode` already names what the node does offer instead.
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
-    return reachable.offered.length > 0
-      ? refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`)
-      : refuse("no-model-for-kind", `No ${node.type} model can generate right now.`);
+    const offers = reachable.offered.length > 0 ? ` It offers: ${reachable.offered.join(", ")}.` : "";
+    return refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}.${offers}`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen

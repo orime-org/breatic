@@ -50,11 +50,18 @@ export function fakeProvider(
 
 /**
  * A provider for domain's own assembly of a turn (`buildAgentConfig`), handed to the real domain's `initProvider`:
- * a model whose pictures and window nobody can say, and no upstream with a key for a tool that needs one -- what a
- * deployment with only the test environment's keys has.
+ * a model whose pictures and window nobody can say, served for chat by one upstream with its key, and no upstream with
+ * a key for reading media or judging -- what a deployment with only the test environment's chat key has.
  * @returns The provider, typed loosely for `initProvider`.
  */
 export function assemblyProvider(): never {
   const none = { upstreams: [] };
-  return { llm: { capabilities: async () => ({ pictures: false }), availability: () => none, judgeAvailability: () => none } } as never;
+  const served = { upstreams: [{ upstream: TEST_UPSTREAM, weight: 0, configured: true, envVar: "TEST_UPSTREAM_KEY" }] };
+  return {
+    llm: {
+      capabilities: async () => ({ pictures: false }),
+      availability: (_model: string, use: "call" | "understand") => (use === "call" ? served : none),
+      judgeAvailability: () => none,
+    },
+  } as never;
 }

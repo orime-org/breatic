@@ -53,7 +53,8 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 30,
     takes_prompt: true,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

@@ -12,7 +12,7 @@ import { defaultDynamicsValue } from "@shared/audio-dynamics.js";
 import { defaultEqValue } from "@shared/audio-eq.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec, ModelToolSpec, SizeTier } from "@shared/mini-tools/types.js";
-import type { EstimateInput } from "@shared/pricing/estimate.js";
+import type { EstimateInput } from "@shared/pricing/prepare.js";
 import type { ModelCatalog, ModelEntry, ParamDescriptor } from "@shared/types/model-catalog.js";
 import { paramValueAllowed } from "@shared/types/param-values.js";
 
@@ -261,7 +261,7 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
  * expand's padded picture stands in for the source beside its mask.
  * @param spec - The tool.
  * @param snapshot - What the run reads.
- * @returns The input `estimateCredits` takes for the pinned model.
+ * @returns The run as set up, which `prepareRunParams` prepares for the pinned model.
  */
 export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnapshot): EstimateInput {
   const drawing = snapshot.drawing;

@@ -13,6 +13,7 @@
  * top of the name its owner chose.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // The SDK is stubbed. These tests POST to /chat/message, which runs a turn and
@@ -49,6 +50,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 const PG_DRIVER_LOCAL = "conversation-naming-test-driver";
 

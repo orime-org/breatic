@@ -27,6 +27,7 @@ const judge = vi.hoisted(() => vi.fn());
 const keyed = vi.hoisted(() => ({ current: true }));
 
 vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
   provider: () => ({
     llm: {
       judge,

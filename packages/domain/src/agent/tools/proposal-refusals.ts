@@ -65,7 +65,6 @@ export const REFUSALS = {
   "text-generates": false,
   "no-mode-model": false,
   "mode-unbacked": false,
-  "no-model-for-kind": false,
   "model-not-in-mode": false,
   "shots-outside-multishot": "node",
   "multishot-no-shots": "node",

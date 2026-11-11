@@ -12,6 +12,7 @@
  * something to refuse.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 let provider = "deepseek";
@@ -142,7 +143,7 @@ const SUITE_ENV = {
 
 beforeAll(async () => {
   initCore(SUITE_ENV);
-  (await vi.importActual<typeof DomainModule>("@breatic/domain")).initProvider();
+  initConfiguredProvider();
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");

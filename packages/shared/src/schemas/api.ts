@@ -14,6 +14,7 @@
 import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
+import { routeSchema } from "@shared/schemas/route.js";
 import {
   BILLING_PERIODS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
@@ -556,6 +557,8 @@ export const taskCreateSchema = z
      *     want from the node's task list.
      */
     mode: z.enum(["append", "overwrite"]),
+    /** How the run chooses its upstream; the deployment's weights when left out. Written into the task's params. */
+    route: routeSchema.optional(),
   })
   .superRefine((val, ctx) => {
     if (val.mode === "overwrite" && !val.target_node_id) {

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import postgres from "postgres";
@@ -28,6 +29,7 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
 
 initCore({ ...process.env, PAYMENT_ENABLED: "false", WAVESPEED_API_KEY: "unused_activity_background_fixture" });
 loadLocales();
+initConfiguredProvider();
 let sql: ReturnType<typeof postgres>;
 let app: ReturnType<typeof createApp>;
 beforeAll(async () => { sql = postgres(inject("DATABASE_URL"), { max: 5, prepare: false }); app = (await import("@server/app.js")).createApp(); });

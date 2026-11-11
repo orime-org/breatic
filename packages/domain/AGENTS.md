@@ -16,7 +16,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Estimate credits through the model catalog
 
-**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`.** They apply each model's pricing contract through shared `estimateCredits`, and the enqueue pre-check depends on every estimate coming out the same way.
+**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`.** They lay the run out with shared `prepareRunParams`, have provider price it on the upstream the route picks and turn that into credits with shared `creditEstimateOf`, the same steps the panels take; the enqueue pre-check depends on every estimate coming out the same way.
 
 ### Charging is atomic and idempotent
 

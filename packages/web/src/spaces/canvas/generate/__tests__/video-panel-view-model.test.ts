@@ -43,7 +43,8 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
       duration: { description: '', values: [4, 6, 8], default: 8 },
       generate_audio: { description: '', values: [true, false], default: true },
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     ...over,
     mode,
   };

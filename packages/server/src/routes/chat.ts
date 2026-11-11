@@ -46,6 +46,7 @@ import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
+import { assertLlmServable } from "@server/modules/task/model-servable.js";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -298,6 +299,8 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     resumed === undefined
       ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
+  // A deployment with no upstream for the model refuses before the card's answer is taken, saying what it is missing.
+  assertLlmServable(modelId, "call");
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
