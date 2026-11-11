@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { DelayedError, type Job } from "bullmq";
-import { createPgClient, currentConsent, getNodeTaskConfig, getStreamRedis, initCore, initLogger, loadLocales, logger } from "@breatic/core";
+import { createPgClient, currentConsent, getMiniToolsConfig, getNodeTaskConfig, getStreamRedis, initCore, initLogger, loadLocales, logger } from "@breatic/core";
 import {
   beginMiniToolStepAttempt, miniToolStepStateSchema, recordMiniToolStepIdentity, recordMiniToolStepResult,
   taskRepo, upstreamStepRepo, modelCatalog, type MiniToolExecutionJob,
@@ -127,7 +127,9 @@ describe("narrow planned job reaches the original persistent lifecycle", () => {
     await dispatch(j);
     const actual = await observations(f); expect(actual.record).toMatchObject({ runId: f.taskId, status: "completed", resultVersion: 1, outputs: [{ ...f.plan.outputs[0], result: f.registered, late: false }] });
     expect(runPrediction).toHaveBeenCalledExactlyOnceWith(expect.any(Object), f.plan.provider.model_id, resolvedBody(f), expect.objectContaining({ deadlineAt: d, retryStarting: false }));
-    expect(storeFromUrl).toHaveBeenCalledExactlyOnceWith(TEMP, expect.objectContaining({ actingUserId: f.userId, projectId: f.projectId, generationTaskId: f.taskId, deadlineAt: d, knownAlpha: true }));
+    // Storing the finished prediction is bounded by the read bound: the reporting window (two polls past D) here.
+    expect(storeFromUrl).toHaveBeenCalledExactlyOnceWith(TEMP, expect.objectContaining({ actingUserId: f.userId, projectId: f.projectId, generationTaskId: f.taskId,
+      deadlineAt: d + 2 * getMiniToolsConfig().poll_interval_ms, knownAlpha: true }));
     expect(actual.source).toEqual([{ content: f.plan.binding.canonicalURL, status: "success", task_id: null }]); expect(actual.target).toEqual([{ content: f.registered.canonicalURL, status: "success", task_id: f.taskId }]);
   });
   it("W04 does not re-resolve source or reselect the currently served catalog model", async () => {

@@ -14,7 +14,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
-import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, getMiniToolsConfig, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
 import {
   assetRepo, beginMiniToolStepAttempt, miniToolConsumptionRecordSchema, miniToolStepStateSchema, presentationPinService,
@@ -184,6 +184,19 @@ describe("prepared pins at preparation registration (inner#1306 §90 E4; design 
     expect(runPrediction).not.toHaveBeenCalled();
   });
 
+  // A prediction that completed before the deadline is read by the first pickup after it: storing its result starts no new
+  // work, so the output is registered instead of the run ending expired with the provider already charged.
+  it("PP06 a prediction completed before the deadline and read by a pickup 1 s after it registers its output", async () => {
+    const f = await seed(); completeProvider(); backend(f); await identify(f);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(f.deadlineAt + 1000);
+      await winner(f, await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, true));
+    } finally { vi.useRealTimers(); }
+    expect(runPrediction).toHaveBeenCalledTimes(1); expect(storeFromUrl).toHaveBeenCalledTimes(1);
+    expect((await step(f)).output["miniToolAsset:0"]).toBe(f.assetId);
+  });
+
   it("PP02 a chunked preparation pins the stitched object; once the stitch is committed its chunk outputs are registered for reclaim", async () => {
     const f = await seed(); completeProvider(); backend(f);
     const plan = structuredClone(f.plan);
@@ -313,12 +326,13 @@ function completeProvider(): void {
   });
 }
 
-/** Return the controlled backend receipt that points at a real registered SQL winner.
+/** Return the controlled backend receipt that points at a real registered SQL winner; as the real transfer
+ * (backend-upload.service.ts transferUrlToStorage), it refuses once the deadline it is given has come.
  * @throws {never} Never.
  */
 function backend(f: Fixture, presentationQueueFailed = false): void {
   const stored: StoredAsset = { assetId: f.assetId, fileUrl: f.canonicalURL, kind: "video", coverUrl: f.coverURL, width: 960, height: 540, durationSeconds: 5.013, mimeType: "video/webm", sizeBytes: 1588436, ...(presentationQueueFailed ? { presentationQueueFailed: true } : {}) };
-  storeFromUrl.mockResolvedValue(stored);
+  storeFromUrl.mockImplementation(async (_url, ctx) => { shared.assertBeforeDeadline(ctx.deadlineAt); return stored; });
 }
 
 /** Require actual winner rows and the original immutable parent without invoking any finalizer.
@@ -428,7 +442,9 @@ describe("canonical registration receipt from actual SQL winner rows", () => {
   it("C01-C02 forwards the original upload context and returns the winner and live cover", async () => {
     const f = await seed(); completeProvider(); backend(f);
     await winner(f, await runMiniToolRemoveBackground(f.plan.taskId, f.deadlineAt, false));
-    expect(storeFromUrl).toHaveBeenCalledExactlyOnceWith(PROVIDER_URL, { projectId: f.plan.projectId, actingUserId: f.userId, generationTaskId: f.plan.taskId, assetSource: "ai", taskType: "video", ext: ".webm", contentType: "video/webm", deadlineAt: f.deadlineAt, knownAlpha: true });
+    expect(storeFromUrl).toHaveBeenCalledExactlyOnceWith(PROVIDER_URL, { projectId: f.plan.projectId, actingUserId: f.userId, generationTaskId: f.plan.taskId, assetSource: "ai", taskType: "video", ext: ".webm", contentType: "video/webm",
+      // Storing the finished prediction is bounded by the read bound: the reporting window (two polls past the deadline) here.
+      deadlineAt: f.deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms, knownAlpha: true });
     const owned = await step(f); expect(owned.output["miniToolAsset:0"]).toBe(f.assetId);
   });
   it("C02 retains a dedup winner's existing SQL attribution rather than fabricating a new row", async () => {

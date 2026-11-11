@@ -10,6 +10,7 @@ import {
 } from "@breatic/domain";
 import { assertBeforeDeadline, type StudioAssetEntity } from "@breatic/shared";
 import { storeFromUrl } from "@worker/handlers/backend-upload.js";
+import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, prepareModelInput } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
@@ -126,10 +127,11 @@ export async function runMiniToolRemoveBackground(
   if (state?.result?.outcome !== "done") throw new Error("Video removal has no completed provider result");
   onProviderReturned?.(step.id);
   const result = operationResultSchema.parse(state.result.result);
+  // Storing a finished prediction starts no new provider work, so a pickup after the deadline still stores it (`planReadUntil`).
   const stored = await storeFromUrl(result.providerURL, {
     projectId: execution.projectId, actingUserId: task.userId, generationTaskId: task.id,
     assetSource: "ai", taskType: "video", ext: ".webm", contentType: "video/webm",
-    deadlineAt: originalDeadline, knownAlpha: true,
+    deadlineAt: planReadUntil(originalDeadline), knownAlpha: true,
   });
   noteSideEffects(stored, { taskId: task.id, stepId: step.id });
   const assetId = assetIdentitySchema.parse(stored.assetId);
