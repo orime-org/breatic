@@ -379,3 +379,23 @@ describe('a name typed in front of a line, key by key', () => {
     expect(linesOf(editor)).toEqual([{ speaker: 2, text: 'Ava:' }]);
   });
 });
+
+describe('an input method composing in a line (design 8.5)', () => {
+  it('leaves the line alone while composing, and puts it right once the composition ends', async () => {
+    const editor = await mount(legacyPrompt(['Ava: ']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: '' }]));
+    const view = editor.view as unknown as { input: { composing: boolean }; dom: HTMLElement };
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    view.input.composing = true;
+    typeKeys(editor, 'Leo：你');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'Leo：你' }]);
+    view.input.composing = false;
+    act(() => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '你' }));
+    });
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: '你' }]));
+  });
+});
