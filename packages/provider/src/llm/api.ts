@@ -48,11 +48,20 @@ export interface FinishedCall {
   providerMetadata?: ProviderMetadata;
 }
 
+/**
+ * One item to read: its bytes, or an image by its address with the type the caller settled and a reader for the bytes.
+ * An upstream that fetches an address itself is sent the address; one that needs the bytes calls `read`, whose error
+ * ends the call as `UnderstandInterrupted` with that error as its cause.
+ */
+export type UnderstandMedia =
+  | { bytes: Uint8Array; contentType: string }
+  | { url: string; contentType: string; read: (signal: AbortSignal) => Promise<Uint8Array> };
+
 /** One reading of media by an understand model. */
 export interface UnderstandRequest {
   model: string;
   question: string;
-  media: { bytes: Uint8Array; contentType: string }[];
+  media: UnderstandMedia[];
   maxOutputTokens: number;
   deadlineAt: number;
   signal?: AbortSignal;

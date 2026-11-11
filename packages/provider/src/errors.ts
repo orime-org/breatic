@@ -47,6 +47,8 @@ export class UpstreamRequestRejected extends Error {
   readonly costs: Cost[];
   /** The upstream's status for the refusal (an error carried in an answer gives its code). */
   readonly status?: number;
+  /** What the refusal was about, in words that are the same for every upstream, when the upstream said. */
+  readonly reason?: "content_blocked";
 
   /**
    * Record what the error carries.
@@ -57,14 +59,16 @@ export class UpstreamRequestRejected extends Error {
    * @param refusal - The upstream's status and its own error, when an upstream refused.
    * @param refusal.status - The status.
    * @param refusal.cause - The upstream's error.
+   * @param refusal.reason - What the refusal was about, when the upstream said.
    */
-  constructor(model: string, upstream: string, message: string, costs: Cost[] = [], refusal: { status?: number; cause?: unknown } = {}) {
+  constructor(model: string, upstream: string, message: string, costs: Cost[] = [], refusal: { status?: number; cause?: unknown; reason?: "content_blocked" } = {}) {
     super(message, refusal.cause === undefined ? undefined : { cause: refusal.cause });
     this.name = "UpstreamRequestRejected";
     this.model = model;
     this.upstream = upstream;
     this.costs = costs;
     if (refusal.status !== undefined) this.status = refusal.status;
+    if (refusal.reason !== undefined) this.reason = refusal.reason;
   }
 }
 

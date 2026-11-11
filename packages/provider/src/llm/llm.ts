@@ -16,7 +16,7 @@ import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@pr
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { priceAt } from "@provider/llm/prices.js";
 import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel } from "@provider/llm/switching.js";
-import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
+import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -269,8 +269,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param upstream - The upstream it was on.
    * @returns Its class, or null.
    */
-  const understandFailure = (error: unknown, upstream: string): Failure | null =>
-    classifyLlm(error, error instanceof StepRefused ? undefined : vendorOf(kindOf(upstream)));
+  const understandFailure = (error: unknown, upstream: string): Failure | null => {
+    // The caller's reader failed: the upstream was never asked, so the call stops here and moves on nowhere.
+    if (error instanceof MediaReadFailed) return null;
+    return classifyLlm(error, error instanceof StepRefused ? undefined : vendorOf(kindOf(upstream)));
+  };
 
   /**
    * How an understand call ended, when it did not answer: a refusal the route
@@ -287,18 +290,28 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const understandEnding = (model: string, upstream: string | undefined, error: unknown, billed: Cost[]): Error => {
     if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
     if (upstream === undefined) return new UnderstandInterrupted(model, billed, error);
+    if (error instanceof MediaReadFailed) return new UnderstandInterrupted(model, billed, error.cause);
+    /**
+     * What the refusal was about, read the answering upstream's way from its error value.
+     * @param value - The upstream's error value.
+     * @returns The reason, when it says one.
+     */
+    const reasonOf = (value: unknown): { reason?: "content_blocked" } =>
+      (understandAdapterOf(kindOf(upstream)).contentBlocked?.(value) === true ? { reason: "content_blocked" } : {});
     if (error instanceof UnreadableAnswer) return new UpstreamRequestRejected(model, upstream, error.message, billed, { cause: error });
     const failure = understandFailure(error, upstream);
     if (error instanceof InBandError) {
       const status = failure?.kind === "http_status" ? failure.status : error.answerStatus;
       if (status === undefined) return new UnderstandInterrupted(model, billed, error);
       const said = (error.error as { message?: unknown } | null)?.message;
-      return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status, cause: error });
+      return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status, cause: error, ...reasonOf(error.error) });
     }
     if (failure?.kind !== "http_status") return new UnderstandInterrupted(model, billed, error);
     // The refused answer's whole text, a model answer's or an upload step's.
-    const said = messageOf(parsed(error instanceof HttpStatus ? error.body : undefined));
-    return new UpstreamRequestRejected(model, upstream, said !== "" ? said : (error as Error).message, billed, { status: failure.status, cause: error });
+    const refused = parsed(error instanceof HttpStatus ? error.body : undefined);
+    const said = messageOf(refused);
+    const value = (refused as { error?: unknown } | null | undefined)?.error;
+    return new UpstreamRequestRejected(model, upstream, said !== "" ? said : (error as Error).message, billed, { status: failure.status, cause: error, ...reasonOf(value) });
   };
 
   /**

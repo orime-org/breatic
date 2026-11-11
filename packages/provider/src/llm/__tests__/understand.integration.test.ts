@@ -537,3 +537,68 @@ describe("understand in cheapest mode", () => {
     expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
   });
 });
+
+describe("an image handed over by its address", () => {
+  const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+
+  /**
+   * An image item whose reads are counted.
+   * @param read - What reading it does.
+   * @returns The item and how often it was read.
+   */
+  const addressed = (read: () => Promise<Uint8Array> = () => Promise.resolve(bytes)): { item: { url: string; contentType: string; read: () => Promise<Uint8Array> }; reads: () => number } => {
+    let reads = 0;
+    return {
+      item: { url: "https://media.example/a.png", contentType: "image/jpeg", read: () => { reads += 1; return read(); } },
+      reads: () => reads,
+    };
+  };
+
+  it("sends OpenRouter the address, as today, and never reads the image", async () => {
+    const { item, reads } = addressed();
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), media: [item] });
+    const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toContainEqual({ type: "image_url", image_url: { url: "https://media.example/a.png" } });
+    expect(reads()).toBe(0);
+  });
+
+  it("reads the image for Google and sends it inline under the type the caller gave", async () => {
+    const { item, reads } = addressed();
+    await llmProvider(fakes, keys).llm.understand({ ...question(), media: [item] });
+    const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toContainEqual({ inlineData: { mimeType: "image/jpeg", data: Buffer.from(bytes).toString("base64") } });
+    expect(reads()).toBe(1);
+  });
+
+  it("ends as interrupted with the reader's own error as its cause, moving on to no other upstream", async () => {
+    const unreachable = new Error("the image's host did not answer");
+    const { item } = addressed(() => Promise.reject(unreachable));
+    const error = await llmProvider(fakes, keys).llm.understand({ ...question(), media: [item] }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).cause).toBe(unreachable);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+});
+
+describe("an understand refusal for its content", () => {
+  it.each(["content_policy_violation", "refusal"])("says the content was blocked when OpenRouter's refusal names %s", async (errorType) => {
+    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "blocked", metadata: { error_type: errorType } } } });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBe(403);
+    expect((error as UpstreamRequestRejected).reason).toBe("content_blocked");
+  });
+
+  it("says the content was blocked when the error comes inside a 200 answer", async () => {
+    const body = { id: "gen-u", error: { code: 403, message: "blocked", metadata: { error_type: "content_policy_violation" } }, usage: { cost: 0.001 } };
+    const error = await openRouterAnswering({ status: 200, body });
+    expect((error as UpstreamRequestRejected).reason).toBe("content_blocked");
+  });
+
+  it("names no reason for a 403 that is about the key or the budget", async () => {
+    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "Key limit exceeded" } } });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).reason).toBeUndefined();
+  });
+});
