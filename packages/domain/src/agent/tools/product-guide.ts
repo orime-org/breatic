@@ -920,7 +920,9 @@ export function renderProductGuide(): string {
     "Clicking the mode lists the modes this node's type offers; picking one changes which models are offered. " +
       "Clicking the model's name lists the current mode's models, each with its maker's icon, its name and a line " +
       "saying what it is good at; picking one switches to it. Mode and model together decide which slot buttons " +
-      "and settings show. Each model keeps its own settings on the node: switching to another model shows that " +
+      "and settings show. A setting written as words, such as a negative prompt or a voice description, is a box " +
+      "that wraps and grows with its words up to four lines, then scrolls; Enter or clicking away keeps it, and " +
+      "Shift+Enter starts a new line. Each model keeps its own settings on the node: switching to another model shows that " +
       "model's settings (its defaults if never set, so a voice has to be picked again), and switching back " +
       "brings the earlier ones back. Switching mode returns to the model last used in that mode, and to that " +
       "mode's own prompt: each mode keeps its own words (and, for music, its own lyrics), so a mode never typed " +
@@ -1014,8 +1016,8 @@ export function renderProductGuide(): string {
       `text to video and image to video have a ${quoted(t("canvas.generatePanel.param.auto_shots"))} switch in ` +
       "the settings pill: on, the model splits the prompt into shots itself.",
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
-      "connected text node can be mentioned; a connected sound shows as a faded chip, and a sound goes in through " +
-      "its slot. On a model with voices the settings pill shows a speaker icon and the current voice and " +
+      "connected text node can be mentioned; a connected sound, video or picture shows as a faded chip; these go in " +
+      "through a slot where the model has one. On a model with voices the settings pill shows a speaker icon and the current voice and " +
       "settings, for example Alex · 1.00x, or " +
       `${quoted(t("canvas.generatePanel.voicePlaceholder"))} until a voice is picked; clicking it opens rows such ` +
       `as ${quoted(t("canvas.generatePanel.audioVoice"))}, which opens the voice list beside it with ` +
@@ -1036,10 +1038,10 @@ export function renderProductGuide(): string {
       "the dialogue turns the voice row into one row per speaker, " +
       `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 1 }))}, ` +
       `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 2 }))} and so on, each showing that speaker's ` +
-      "name and voice. Opening a speaker's row shows a box for the speaker's name at the top and the same voice " +
+      "name and voice, each led by a dot in the colour that speaker's lines carry in the prompt box. Opening a speaker's row shows a box for the speaker's name at the top and the same voice " +
       "list as the single voice below it; picking a voice sets it and closes the list. In the dialogue the prompt " +
       "box holds one line per turn: each line starts with a small button showing a coloured dot and the name of " +
-      "who says it, which opens the speakers to pick another, and the rest of the line is only the words said; " +
+      "who says it, which opens the speakers, each with its voice beside its name and the line's own speaker highlighted, to pick another, and the rest of the line is only the words said; " +
       "the names are put in front when it is sent, so no name or colon is typed. A line with no words yet shows " +
       "in grey the name of whoever says it, as a hint to write their line. Enter at the end of a line starts " +
       `a new line for the other speaker, and so does ${quoted(t("canvas.generatePanel.dialogueAddLine"))} under the ` +

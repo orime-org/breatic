@@ -603,7 +603,7 @@ function TextControl({ name, label, held, onChange, invalid }: TextControlProps)
           {...box}
           onKeyDown={onKeyDown}
           aria-invalid={invalid === true ? true : undefined}
-          // 7px above and below a 16px line is the 32px of the one-line box it replaced.
+          // 7px above and below a 16px line makes one line 32px tall, as the h-8 number box is.
           className='min-h-0 resize-none overflow-hidden rounded-none border-0 px-3 py-[7px] text-xs focus-visible:border-0 md:text-xs'
         />
       </ScrollArea>

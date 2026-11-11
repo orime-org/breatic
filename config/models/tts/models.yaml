@@ -2877,9 +2877,8 @@ models:
         description: "The voice to speak in, described in words: age, gender, tone, pace, accent"
         label: "Voice description"
         type: "text"
-        # The catalog has no required text param; with a default the line
-        # still speaks when the user or the Agent leaves it, and the panel
-        # shows it to change.
+        # With a default the line speaks when the user or the Agent leaves
+        # it as it is, and the panel shows it to change.
         default: "A clear, warm adult narrator with a neutral accent, speaking at a calm, steady pace."
         # The upstream refuses a body without it, so emptied it is refused first.
         min_length: 1
