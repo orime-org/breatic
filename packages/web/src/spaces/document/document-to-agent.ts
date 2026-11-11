@@ -20,7 +20,10 @@ import type { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { MessageSquarePlus } from 'lucide-react';
 
+import { t } from '@breatic/shared';
+
 import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
+import { mediaNameOf, mediaQuoteOf, MEDIA_BLOCK_ID } from '@web/spaces/document/document-comment-media';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -153,6 +156,51 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
   const markdown = blocksMarkdown(editor, [block]);
   const words = node.textBetween(0, node.content.size, '\n', '\n');
   return textItem(`document-block-${blockId}`, nameFrom(words), markdown);
+}
+
+/**
+ * A picture, video or audio block as a media attachment, the way a file the
+ * user uploads into the chat goes (inner#1316 §5.5): the tray shows its name
+ * cut to the tray's length, and the snapshot carries the block's whole name
+ * and caption beside its address, each only when set.
+ * @param editor - The document editor.
+ * @param blockId - The media block.
+ * @returns The tray item.
+ * @throws {Error} When the document holds no media block with that id.
+ */
+export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
+  const media = mediaQuoteOf(editor.prosemirrorState.doc, { [MEDIA_BLOCK_ID]: blockId });
+  if (media === null) throw new Error(`no media block ${blockId} in the document`);
+  const id = `document-media-${blockId}`;
+  const name = nameFrom(mediaNameOf(media, t));
+  const snapshot = {
+    url: media.url,
+    ...(media.name === '' ? {} : { name: media.name }),
+    ...(media.caption === '' ? {} : { caption: media.caption }),
+  };
+  return { id, name, type: media.type, status: 'ready', chip: { id, type: media.type, name, data_snapshot: snapshot } };
+}
+
+/**
+ * What the handle menu hands over for a media row: the media, and the rows
+ * nested under it as text, the way it hands any row over with its children.
+ * @param editor - The document editor.
+ * @param blockId - The media block.
+ * @returns The media item, then a text item when rows are nested under it.
+ * @throws {Error} When the document holds no media block with that id.
+ */
+export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
+  const media = mediaItem(editor, blockId);
+  // The editor is typed without its schema, so its blocks read as `never`.
+  const row = editor.getBlock(blockId) as { readonly children?: readonly { readonly id: string }[] } | undefined;
+  const children = row?.children ?? [];
+  if (children.length === 0) return [media];
+  const markdown = blocksMarkdown(editor, children as never).trimEnd();
+  const words = children
+    .map((child) => getNodeById(child.id, editor.prosemirrorState.doc)?.node)
+    .map((node) => (node === undefined ? '' : node.textBetween(0, node.content.size, '\n', '\n')))
+    .join('\n');
+  return [media, textItem(`document-block-${blockId}`, nameFrom(words), markdown)];
 }
 
 /** The bubble bar's entry, handing the user's selection to the Agent. */
