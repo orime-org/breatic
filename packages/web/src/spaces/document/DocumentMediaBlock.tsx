@@ -112,14 +112,14 @@ interface DocumentMediaBlockProps {
   /** Told when the pointer arrives on the media or its toolbar, or leaves them. */
   onHover: (host: HTMLElement, on: boolean) => void;
   actions: MediaBlockActions;
-  /** Comment, Add to Agent and the comment icon; absent draws none of them. */
-  commentActions?: MediaCommentActions;
+  /** Comment, Add to Agent and the comment icon. */
+  commentActions: MediaCommentActions;
   /** How many open comments stand on the block. */
-  commentCount?: number;
+  commentCount: number;
   /** Whether a comment on the block, or a draft aimed at it, is being read. */
-  commentReading?: boolean;
+  commentReading: boolean;
   /** Whether a table is open full screen, where neither entry nor icon is drawn. */
-  tableFullscreen?: boolean;
+  tableFullscreen: boolean;
 }
 
 /** The narrowest an image or a video can be dragged to. */
@@ -291,11 +291,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   onHover,
   actions,
   commentActions,
-  commentCount = 0,
-  commentReading = false,
-  tableFullscreen = false,
+  commentCount,
+  commentReading,
+  tableFullscreen,
 }: DocumentMediaBlockProps): React.JSX.Element {
   const t = useTranslation();
+  const { comment, addToAgent } = commentActions;
   const sized = type !== 'audio';
   const frame = React.useRef<HTMLDivElement>(null);
   const [dragWidth, setDragWidth] = React.useState<number | null>(null);
@@ -721,21 +722,21 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       >
         <Download />
       </ToolButton>}
-      {!readOnly && !tableFullscreen && commentActions?.addToAgent != null && <ToolButton
+      {!readOnly && !tableFullscreen && addToAgent !== null && <ToolButton
         tabbable={floating && panelShown}
         label={t('canvas.contextMenu.addToAgent')}
         action='add-to-agent'
         testId='doc-media-add-to-agent'
-        onPress={() => commentActions.addToAgent?.(blockId)}
+        onPress={() => addToAgent(blockId)}
       >
         <MessageSquarePlus />
       </ToolButton>}
-      {!readOnly && !tableFullscreen && commentActions?.comment != null && <ToolButton
+      {!readOnly && !tableFullscreen && comment !== null && <ToolButton
         tabbable={floating && panelShown}
         label={t('spaces.document.commands.comment')}
         action='comment'
         testId='doc-media-comment'
-        onPress={() => commentActions.comment?.(blockId)}
+        onPress={() => comment(blockId)}
       >
         <MessageSquareText />
       </ToolButton>}
@@ -774,7 +775,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       onDragEnd={actions.dragEnd}
     >
       {body}
-      {commentCount > 0 && !tableFullscreen && commentActions !== undefined && (
+      {commentCount > 0 && !tableFullscreen && (
         <Button
           variant='chrome-ghost'
           size='compact'
