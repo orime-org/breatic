@@ -761,7 +761,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       data-comment-reading={commentReading}
       onPointerEnter={pointerOn}
       onPointerLeave={pointerOff}
-      className='relative data-[comment-reading=true]:outline data-[comment-reading=true]:outline-2 data-[comment-reading=true]:outline-offset-2 data-[comment-reading=true]:outline-[var(--color-comment-mark-active)]'
+      className='relative data-[comment-reading=true]:outline data-[comment-reading=true]:outline-1 data-[comment-reading=true]:outline-offset-2 data-[comment-reading=true]:outline-[var(--color-comment-mark-active)]'
       draggable
       // Decided as the press lands: the corners resize and the player's
       // controls play, and a native drag starting under either would
