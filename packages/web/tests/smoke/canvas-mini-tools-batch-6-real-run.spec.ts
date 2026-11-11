@@ -430,6 +430,12 @@ test('transitions: two videos and a crossfade give one video as long as both les
     // Picking the video opens the timeline (canvas design §4 transitions row).
     const dialog = c.page.getByTestId('video-timeline-dialog');
     await expect(dialog).toBeVisible();
+    // Both clips are drawn on the track; the timeline library lays it out only with its stylesheet loaded.
+    const trackClips = dialog.locator('.timeline-editor-action');
+    await expect(trackClips).toHaveCount(2);
+    for (const clip of await trackClips.all()) expect((await clip.boundingBox())?.height ?? 0).toBeGreaterThan(0);
+    const fontOf = (target: Locator): Promise<string> => target.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(await fontOf(trackClips.first())).toBe(await fontOf(dialog));
     // The clip picker, then the transition's type.
     await dialog.getByRole('combobox').nth(1).click();
     await c.page.getByRole('option', { name: 'Crossfade' }).click();
