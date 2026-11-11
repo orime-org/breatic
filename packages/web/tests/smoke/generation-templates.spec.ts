@@ -116,6 +116,19 @@ async function openGoal(goal: string): Promise<void> {
 }
 
 /**
+ * Close the template menu and its goal submenu the way a user does, one Escape
+ * per level, until neither is on screen: a menu left open takes every press
+ * on the page, the cleanup's included.
+ */
+async function closeTemplateMenu(): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(0, { timeout: 500 });
+    await expect(page.getByTestId('generate-template-trigger')).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+}
+
+/**
  * The open Space's nodes by name and its edges by node name, read from its document.
  * @returns Each node's name by id, and each edge as its two names.
  */
@@ -502,6 +515,7 @@ test('an audio panel lists the ten sound templates under one goal', async () => 
     'music-mood-from-image',
     'section-mapped-score',
   ]);
+  await closeTemplateMenu();
 });
 
 test('a video panel lists the one sound template, the silent shot with foley', async () => {
@@ -509,6 +523,7 @@ test('a video panel lists the one sound template, the silent shot with foley', a
   await openGoal('sound');
   await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*1$/);
   expect(await listedTemplates()).toEqual(['clip-ambience-foley']);
+  await closeTemplateMenu();
 });
 
 test('picking music for your video places the video it asks for, wired into the anchor, and notes to pick it into the Video slot', async () => {
