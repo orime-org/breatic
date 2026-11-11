@@ -1025,6 +1025,16 @@ describe('sound, music and voice templates (inner#1825)', () => {
     }
   });
 
+  it('asks no length for the music in the mood of a picture, in any language, and tells the agent the model keeps to none (design 9)', () => {
+    const template = sound('music-mood-from-image');
+    for (const locale of LOCALES) {
+      const prompt = raw(locale, textKey(template, 'prompt')) ?? '';
+      expect(prompt.match(/\{✏️/g)?.length, `${locale} blanks`).toBe(1);
+      expect(prompt, `${locale} length example`).not.toMatch(/30/);
+    }
+    expect(template.agentNote).toMatch(/does not keep to a length/);
+  });
+
   it('tells the agent the dialogue goes line by line, with no name in front of a line', () => {
     const note = sound('two-voice-dialogue').agentNote;
     expect.soft(note).not.toMatch(/starting with the speaker's name and a colon/);
