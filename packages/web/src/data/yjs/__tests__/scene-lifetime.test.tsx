@@ -72,7 +72,7 @@ function provider(doc: Y.Doc): HocuspocusProvider {
 function fixture(): { doc: Y.Doc; session: SceneSession; connection: SocketState } {
   const doc = getDoc(NAME);
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  expect(applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('peer'), true)).toEqual({ ok: true, ids: [ID] });
+  expect(applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('peer'), true, NAME)).toEqual({ ok: true, ids: [ID] });
   return { doc, session: getSceneSession(doc, NAME), connection: {
     provider: provider(doc), status: 'connected', synced: true, hasEverSynced: true,
     writeAccess: 'granted', authFailedReason: null,

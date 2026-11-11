@@ -17,6 +17,7 @@ import { addShot, enterCustom, newId, removeShot, retotal, stepShot } from '@bre
 
 import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
+import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
 
 /** One shot as read off the document. */
 export interface StoryboardShotView {
@@ -89,21 +90,24 @@ function newShot(duration: number): Y.Map<unknown> {
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
+ * @param kind - What the edit produces in Yjs (inner#1790, design 5.2).
  * @param edit - Given the shots array and their durations, applies the change.
- * @returns Whether the node has shots to edit.
+ * @returns Whether the node has shots to edit and the size cap let the edit in.
  */
 function editShots(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  kind: SpaceWriteKind,
   edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
 ): boolean {
   const shots = shotListOf(projectId, spaceId, nodeId);
   if (!shots) return false;
-  shots.doc?.transact(() => {
-    edit(shots, shots.toArray().map(durationOf));
-  }, CANVAS_UNDO);
-  return true;
+  return writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind }, () => {
+    shots.doc?.transact(() => {
+      edit(shots, shots.toArray().map(durationOf));
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -119,6 +123,19 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
 }
 
 /**
+ * What entering the multi-shot mode produces: laying out the two first shots
+ * is an add, re-splitting existing ones an edit.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @returns The kind.
+ */
+export function storyboardEntryKind(projectId: string, spaceId: string, nodeId: string): SpaceWriteKind {
+  const shots = shotListOf(projectId, spaceId, nodeId);
+  return shots && shots.length > 0 ? 'edit' : 'add';
+}
+
+/**
  * Enters the multi-shot mode: two shots when there are none, the existing
  * ones re-split to the total when they drifted from it.
  * @param projectId - Project the canvas space belongs to.
@@ -127,7 +144,7 @@ function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly numb
  * @param total - The model's total seconds.
  */
 export function enterStoryboardShots(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, storyboardEntryKind(projectId, spaceId, nodeId), (shots, durations) => {
     const next = enterCustom(durations, total);
     if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
     else writeDurations(shots, next);
@@ -151,7 +168,7 @@ export function addStoryboardShot(
   maxShots: number,
 ): string | null {
   let added: string | null = null;
-  editShots(projectId, spaceId, nodeId, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, 'add', (shots, durations) => {
     const next = addShot(durations, total, maxShots);
     if (!next) return;
     writeDurations(shots, next);
@@ -177,7 +194,7 @@ export function stepStoryboardShot(
   shotId: string,
   delta: 1 | -1,
 ): void {
-  editShots(projectId, spaceId, nodeId, (shots, durations) => {
+  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : stepShot(durations, index, delta);
     if (next) writeDurations(shots, next);
@@ -199,7 +216,8 @@ export function removeStoryboardShot(
   shotId: string,
   total: number,
 ): void {
-  editShots(projectId, spaceId, nodeId, (shots, durations) => {
+  // Its seconds go to the previous shot, a rewrite beside the delete.
+  editShots(projectId, spaceId, nodeId, 'compound', (shots, durations) => {
     const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
     const next = index === -1 ? null : removeShot(durations, index, total);
     if (!next) return;
@@ -217,7 +235,7 @@ export function removeStoryboardShot(
  * @param total - The new total seconds.
  */
 export function retotalStoryboard(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, (shots, durations) => writeDurations(shots, retotal(durations, total)));
+  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => writeDurations(shots, retotal(durations, total)));
 }
 
 /**
@@ -227,7 +245,8 @@ export function retotalStoryboard(projectId: string, spaceId: string, nodeId: st
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
  * @param durations - Each shot's seconds, in order.
- * @returns Each new shot's prompt fragment, in order; empty when the node has no list of shots.
+ * @returns Each new shot's prompt fragment, in order; empty when the node has
+ *   no list of shots or the size cap refused them.
  */
 export function setStoryboardShots(
   projectId: string,
@@ -236,7 +255,7 @@ export function setStoryboardShots(
   durations: readonly number[],
 ): Y.XmlFragment[] {
   const fresh = durations.map((d) => newShot(d));
-  const landed = editShots(projectId, spaceId, nodeId, (shots) => {
+  const landed = editShots(projectId, spaceId, nodeId, 'add', (shots) => {
     shots.delete(0, shots.length);
     shots.push(fresh);
   });

@@ -3,6 +3,7 @@ import path from 'path';
 import { everyLocaleMessages } from './every-locale-messages.mjs';
 
 const LOCALES_DIR = path.resolve(__dirname, '../../locales');
+const SIZE_PERF_TESTS = ['src/features/collab-editor/__tests__/space-size-perf.test.ts'];
 
 export default defineConfig({
   test: {
@@ -50,8 +51,20 @@ export default defineConfig({
     poolOptions: {
       forks: {
         singleFork: true,
+        // Node's default heap is about 4 GB. The 10 MiB body timing cases
+        // alone need close to that (measured: pass at 4096, fail at 3584),
+        // and vitest reads `execArgv` for the whole forks pool, so every
+        // fork here gets the larger heap.
+        execArgv: ['--max-old-space-size=8192'],
       },
     },
+    // The 10 MiB body timing cases are a project of their own: vitest starts
+    // a fresh fork for each project, so they do not run on top of what the
+    // other files leave in the shared fork and its one jsdom document.
+    projects: [
+      { extends: true, test: { name: 'unit', exclude: SIZE_PERF_TESTS } },
+      { extends: true, test: { name: 'size-perf', include: SIZE_PERF_TESTS } },
+    ],
   },
   resolve: {
     alias: {

@@ -13,13 +13,14 @@ import { uploadableFormatList, type TimelineClip } from '@breatic/shared';
 import type { UploadFailureReason } from '@web/data/upload/media-upload';
 import type { useTranslation } from '@web/i18n/use-translation';
 import { useDocProvider, type WriteAccess } from '@web/data/yjs/collab-socket';
+import { readDocSize, subscribeDocSize } from '@web/data/yjs/doc-size';
 import { claimIn, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
 import { timelineUploadWriteAccess, type TimelineUploadEntry, type TimelineUploads } from '@web/spaces/timeline/timeline-uploads';
 
 /** What a placeholder shows: its `data-state`, this page's progress and failure, and whether this page can retry it. */
 export interface TimelineUploadView {
-  state: 'uploading' | 'failed' | 'waiting' | 'unfinished';
+  state: 'uploading' | 'failed' | 'waiting' | 'waitingFull' | 'unfinished';
   /** The share sent, 0 to 1, when this page runs the upload and knows it. */
   progress: number | null;
   /** Why this page's upload failed; null for a collaborator's. */
@@ -32,13 +33,15 @@ export interface TimelineUploadView {
  * @param entry - This page's record of the upload, if it ran it.
  * @param access - This page's write access to the document.
  * @param claim - What other clients claim about it.
+ * @param full - Whether the Space is full or over its ceiling, outside a rebuild (inner#1790).
  * @returns What it shows.
  * @throws {never} Never.
  */
-export function timelineUploadView(entry: TimelineUploadEntry | undefined, access: WriteAccess, claim: UploadClaim | null): TimelineUploadView {
+export function timelineUploadView(entry: TimelineUploadEntry | undefined, access: WriteAccess, claim: UploadClaim | null, full = false): TimelineUploadView {
   const none = { progress: null, reason: null, retryable: false };
   if (entry?.phase === 'failed') return { state: 'failed', progress: null, reason: entry.reason, retryable: entry.retryable };
   if (entry?.phase === 'done' && access !== 'granted') return { state: 'waiting', ...none };
+  if (entry?.phase === 'done' && full) return { state: 'waitingFull', ...none };
   if (entry !== undefined) return { state: 'uploading', ...none, progress: entry.phase === 'uploading' ? entry.progress : null };
   if (claim === 'uploading') return { state: 'uploading', ...none };
   return { state: claim === 'failed' ? 'failed' : 'unfinished', ...none };
@@ -58,6 +61,8 @@ export function timelineUploadText(t: ReturnType<typeof useTranslation>, view: T
     // The same parameters the Canvas and Document refusals pass (canvas-upload.ts, document-uploads.ts).
     return view.reason === null ? t('timeline.upload.failed') : t(uploadFailureMessageKey(view.reason), { filename: name, kind: 'video', formats: uploadableFormatList('video') });
   }
+  // The same sentence the Document's pending blocks show while the Space is full.
+  if (view.state === 'waitingFull') return t('spaces.sizeCap.wait');
   return t(`timeline.upload.${view.state}`);
 }
 
@@ -75,21 +80,24 @@ export function useTimelineUploadViews(name: string, uploads: TimelineUploads, c
   const provider = useDocProvider(name);
   const subscribe = React.useCallback((listener: () => void): (() => void) => {
     const stop = uploads.subscribe(listener);
+    const stopSize = subscribeDocSize(name, listener);
     provider?.awareness?.on('change', listener);
     provider?.on('authenticated', listener);
     provider?.on('authenticationFailed', listener);
     return () => {
       stop();
+      stopSize();
       provider?.awareness?.off('change', listener);
       provider?.off('authenticated', listener);
       provider?.off('authenticationFailed', listener);
     };
-  }, [uploads, provider]);
+  }, [name, uploads, provider]);
   const read = React.useCallback((): string => {
     const access = timelineUploadWriteAccess(name);
+    const full = readDocSize(name).phase === 'full';
     const states = provider?.awareness?.getStates() as ReadonlyMap<number, Record<string, unknown>> | undefined;
     return JSON.stringify(clips.flatMap((clip) => clip.kind !== 'upload' ? [] : [[clip.id, timelineUploadView(uploads.entry(clip.upload.uploadId), access,
-      states === undefined ? null : claimIn(states, clip.upload.uploadId))]]));
+      states === undefined ? null : claimIn(states, clip.upload.uploadId), full)]]));
   }, [name, provider, uploads, clips]);
   const key = React.useSyncExternalStore(subscribe, read);
   return React.useMemo(() => new Map(JSON.parse(key) as Array<[string, TimelineUploadView]>), [key]);

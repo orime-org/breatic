@@ -26,11 +26,12 @@ export default defineConfig({
   ...base,
   test: {
     ...base.test,
+    // The base's projects list the unit files; this suite is one set of
+    // files of its own.
+    projects: undefined,
     include: ["src/**/*.integration.test.ts"],
     globalSetup: ["@breatic/integration-tests/containers"],
     setupFiles: ["@breatic/integration-tests/env"],
-    // The base excludes exactly these. Spreading overwrites rather than
-    // concatenating, so the list has to be cleared by hand.
     exclude: [],
     // Everything else — the path alias, one process for the whole package —
     // comes from the base, so an alias added there reaches both suites.

@@ -12,6 +12,8 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
+const NAME = 'project-p1/3d-s1';
+
 const ID = '11111111-1111-4111-8111-111111111111';
 const owners: Array<{ doc: Y.Doc; session: SceneSession }> = [];
 
@@ -53,8 +55,8 @@ function setup(): { doc: Y.Doc; session: SceneSession; input: HTMLElement; user:
     id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
     position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
   };
-  applySceneCommand(doc, { type: 'create', objects: [object] }, Symbol('fixture'), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects: [object] }, Symbol('fixture'), true, NAME);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   session.select(ID, false);
   owners.push({ doc, session });
@@ -169,7 +171,7 @@ describe('scene name editing follows the Canvas rename contract (inner#1705)', (
     const { doc, session, input, user } = setup();
     await user.click(input);
     act(() => {
-      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer title', position: [0, 7, 0] }] }, Symbol('peer'), true);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer title', position: [0, 7, 0] }] }, Symbol('peer'), true, NAME);
     });
     expect(input).toHaveValue('Figure');
     await user.click(screen.getByLabelText('Next field'));

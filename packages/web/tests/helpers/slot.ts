@@ -52,4 +52,11 @@ export const test = base.extend({
   storageState: async ({}, provide): Promise<void> => {
     await provide(stateFile('A'));
   },
+  // The Project page loads more modules than the browser's default 250
+  // resource-timing entries hold, and `liveModuleUrl` reads that list: a
+  // module fetched after the 250th is missing from it although it loaded.
+  context: async ({ context }, provide): Promise<void> => {
+    await context.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
+    await provide(context);
+  },
 });

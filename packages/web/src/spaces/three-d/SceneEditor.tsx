@@ -9,7 +9,7 @@ import { getLocale, type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
-import { isOlderSceneFormat } from '@web/data/yjs/scene-document';
+import { isOlderSceneFormat, isSceneSizeRefusal } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -141,7 +141,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [session, userId, projectId, spaceId, t]);
 
   React.useEffect(() => {
-    if (snapshot.commandError && snapshot.commandError !== reportedCommandError.current) {
+    // A size refusal is reported by its own warning.
+    if (snapshot.commandError && !isSceneSizeRefusal(snapshot.commandError.reason) && snapshot.commandError !== reportedCommandError.current) {
       toast.error(t('spaces.threeD.commandFailed'));
     }
     reportedCommandError.current = snapshot.commandError;

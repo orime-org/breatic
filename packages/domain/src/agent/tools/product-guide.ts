@@ -1979,6 +1979,21 @@ export function renderProductGuide(): string {
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
       "new can be uploaded or generated until they upgrade. The bell's " +
       `${quoted(t("notifications.headline.storageQuotaExceeded"))} is the same thing.`,
+    "- Each space has a size limit. As a space nears it, a notice at the top of the space says how much it is " +
+      "using and that past the limit no more content can be added. Once it is full the notice says so, and only " +
+      `deleting works until it is back under the limit: anything that adds or changes content is refused with ${quoted(t("spaces.sizeCap.add"))} ` +
+      `and a deletion that would also change other content is refused with ${quoted(t("spaces.sizeCap.compound"))} ` +
+      "Once a space is past its hard ceiling, the notice says it is over its limit and only deleting a whole node, " +
+      `clip, model or passage works: ${quoted(t("spaces.sizeCap.over"))} While a space is full, an Agent proposal is ` +
+      `not placed (${quoted(t("spaces.sizeCap.proposal"))}), text read from a dropped file is not added ` +
+      `(${quoted(t("spaces.sizeCap.text"))}), a file already uploaded into a document waits with ` +
+      `${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
+      `could not start fails with ${quoted(t("spaces.sizeCap.reason"))} and can be retried. Adding media to a ` +
+      "timeline or importing a 3D model shows the same sentence inside its dialog as a refused edit: " +
+      `${quoted(t("spaces.sizeCap.add"))} Past the hard ceiling, the timeline's dialog shows ` +
+      `${quoted(t("timeline.errors.over_ceiling"))} and the 3D model import shows ${quoted(t("spaces.sizeCap.over"))} ` +
+      "If a change still goes over " +
+      `the limit, the space reloads from the server and ${quoted(t("spaces.sizeCap.resync"))} shows: that last change is lost.`,
     `- When the project page itself cannot load, it shows ${quoted(t("pageLoadError.message"))} with ` +
       `${quoted(t("pageLoadError.retry"))}.`,
   ].join("\n");

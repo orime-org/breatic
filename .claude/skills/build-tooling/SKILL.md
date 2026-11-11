@@ -64,7 +64,7 @@ Check: can the mocked module be imported on its own?
 vi.mock('@core/x', async (importOriginal) => ({ ...(await importOriginal<typeof import('@core/x')>()), fn: vi.fn() }));
 ```
 
-**Each package except `@breatic/ingest` runs all its unit test files in one process (`singleFork: true`), and `isolate` resets only module caches and mocks; server's integration tests run one file at a time, each in a fresh fork, because a single fork grows past the heap limit (`packages/server/vitest.integration.config.ts`).** Within a single-fork package these survive from file to file:
+**Each package except `@breatic/ingest` runs all its unit test files in one process (`singleFork: true`; web's `size-perf` and collab's `size-cap` projects each get a fork of its own, since vitest starts a fresh fork per project), and `isolate` resets only module caches and mocks; server's integration tests run one file at a time, each in a fresh fork, because a single fork grows past the heap limit (`packages/server/vitest.integration.config.ts`).** Within a single-fork package these survive from file to file:
 
 | Shared state | Example |
 |---|---|
@@ -79,7 +79,9 @@ Check: does this test change something that exists once per process and does not
 
 **In `vitest.setup.ts`, run the resets that must always happen before any hygiene step that can throw.** One exception in an `afterEach` skips the lines after it for every later file in the package, not only the failing test.
 
-**A full local run of web's unit tests can stop with `JavaScript heap out of memory`, because all its files share that one fork; run web in four shards as CI does.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4; an out-of-memory stop is not a test failure.
+**A suite that leaves the fork's heap large slows every file that runs after it in the same fork, and vitest's file order changes from run to run; give such a suite a vitest project of its own.** A test that fails on its timeout only on some runs, and passes alone, points here. A project with `extends: true` adds its `include` to the root's, so declare `include` in each project and none at the root, and clear `projects` in a config that spreads this one (`packages/collab/vitest.integration.config.ts`).
+
+**Run web's unit tests in four shards as CI does: an unsharded run puts the `size-perf` timing cases beside every other file, and their warning-to-full ratios can fail under that load.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4. Web's forks get an 8 GB heap from the root `poolOptions.forks.execArgv` in `vitest.config.mts`; vitest ignores an `execArgv` set inside one project, and the root value overrides `NODE_OPTIONS`.
 
 **vitest 3.2.7 has no `list` reporter.** `--reporter=list` makes it look for a package named `list`, it runs no tests, and the exit looks like a finished run. Use one of vitest's own reporter names (`default`, `verbose`, `dot`, `json`).
 

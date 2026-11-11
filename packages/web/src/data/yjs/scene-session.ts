@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
@@ -69,8 +70,9 @@ export class SceneSession {
   /**
    * Attach in-memory editing state to the same live document held by its provider.
    * @param doc - Live collaborative scene document.
+   * @param name - Its canonical document name, whose size gates writes.
    */
-  constructor(readonly doc: Y.Doc) {
+  constructor(readonly doc: Y.Doc, readonly name: string) {
     this.history = createSceneHistory(doc, this.origin);
     doc.on('update', this.refresh);
     this.history.on('stack-item-added', this.refresh);
@@ -324,7 +326,7 @@ export class SceneSession {
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
     this.commandError = result.ok ? null : result;
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
@@ -334,12 +336,15 @@ export class SceneSession {
   /**
    * Undo or redo one personal operation even when the object has become explicitly locked.
    * @param direction - Personal undo or redo operation to invoke.
+   * @returns The step's outcome; a size refusal (its toast shown once) leaves the history untouched.
    */
-  historyStep(direction: 'undo' | 'redo'): void {
-    if (!this.snapshot.canEdit) return;
+  historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
+    if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
     this.endGesture(false);
-    this.history[direction]();
+    const written = runHistoryStep(this.name, this.history, direction);
+    this.commandError = written.ok ? null : written;
     this.refresh();
+    return written.ok ? { ok: true, ids: [] } : written;
   }
 
   /** Detach all owned listeners once the manager releases this document. */
@@ -357,8 +362,8 @@ export class SceneSession {
 
 }
 
-const sessions = createDocScopedCache<SceneSession>(
-  (doc) => new SceneSession(doc), (session) => session.destroy(),
+const sessions = createDocScopedCache<SceneSession, string>(
+  (doc, name) => new SceneSession(doc, name), (session) => session.destroy(),
 );
 
 /**
@@ -368,7 +373,7 @@ const sessions = createDocScopedCache<SceneSession>(
  * @returns The document's existing session or its new in-memory owner.
  */
 export function getSceneSession(doc: Y.Doc, name: string): SceneSession {
-  return sessions.get(doc, name, undefined);
+  return sessions.get(doc, name, name);
 }
 
 /**
