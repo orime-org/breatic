@@ -98,7 +98,7 @@ describe("runLongMediaSegment", () => {
     try {
       await runLongMediaSegment(request, deps);
 
-      expect(error).toHaveBeenCalledWith("long_media_segment_encode_failed", { err: "The stream read failed: the source stopped at 20000 of 40000 bytes" });
+      expect(error).toHaveBeenCalledWith("long_media_segment_encode_failed", { report: request.reportUrl, mediaKind: "video", interval: { startUs: "0", endUs: "1000000" }, err: "The stream read failed: the source stopped at 20000 of 40000 bytes" });
       expect(deps.report).toHaveBeenCalledWith(request.reportUrl, "failed");
       expect(deps.write).not.toHaveBeenCalled();
     } finally {

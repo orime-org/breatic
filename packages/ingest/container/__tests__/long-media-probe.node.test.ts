@@ -48,7 +48,7 @@ describe("runLongMediaProbe", () => {
     try {
       await runLongMediaProbe(request, { execute: async () => "{}", measure: async () => { throw new Error("The stream read failed: the source stopped at 20000 of 40000 bytes"); }, report, now: () => Date.now() });
 
-      expect(error).toHaveBeenCalledWith("long_media_probe_read_failed", { err: "The stream read failed: the source stopped at 20000 of 40000 bytes" });
+      expect(error).toHaveBeenCalledWith("long_media_probe_read_failed", { source: request.objectUrl, err: "The stream read failed: the source stopped at 20000 of 40000 bytes" });
       expect(report).toHaveBeenCalledWith(request.reportUrl, { failure: "probe_failed" });
     } finally {
       error.mockRestore();

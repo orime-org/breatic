@@ -54,7 +54,7 @@ export async function runLongMediaProbe(
       result = measured.length === 0 ? { stdout } : { stdout, measured };
     }
   } catch (err) {
-    console.error("long_media_probe_read_failed", { err: err instanceof Error ? err.message : String(err) });
+    console.error("long_media_probe_read_failed", { source: request.objectUrl, err: err instanceof Error ? err.message : String(err) });
     result = { failure: "probe_failed" };
   }
   await deps.report(request.reportUrl, result);

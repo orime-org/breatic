@@ -112,7 +112,12 @@ export async function runLongMediaSegment(
       signal,
     );
   } catch (err) {
-    console.error("long_media_segment_encode_failed", { err: err instanceof Error ? err.message : String(err) });
+    console.error("long_media_segment_encode_failed", {
+      report: request.reportUrl,
+      mediaKind: request.mediaKind,
+      interval: request.interval,
+      err: err instanceof Error ? err.message : String(err),
+    });
     encoded = null;
   }
   if (encoded === "over_cap") {
