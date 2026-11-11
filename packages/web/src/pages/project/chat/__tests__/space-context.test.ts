@@ -445,7 +445,9 @@ describe('an open document', () => {
     thread.set('metadata', { mediaBlockId: 'pic' });
     documentCommentThreads(getDoc(name)).set('t1', thread);
 
-    expect(readBlocks().map((b) => [b.id, b.lossy])).toEqual([[editor.document[0]!.id, false], ['pic', true]]);
+    const [before] = editor.document as { id: string }[];
+
+    expect(readBlocks().map((b) => [b.id, b.lossy])).toEqual([[before!.id, false], ['pic', true]]);
   });
 
   it('marks a coloured table, whose colour its Markdown does not carry', async () => {
