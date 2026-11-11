@@ -346,9 +346,10 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   }
 
   // Inputs go to nodes on each fed node that keeps the template: first a
-  // node tagged for that input and this anchor, or tagged for it and wired
-  // in or filled into its slot here, whatever anchor its tag names, so takes
-  // of one template share it (design 8.6); then, in declaration order, the first wired node of the input's type
+  // node tagged for that input, wired in or filled into its slot here, one
+  // tagged for this anchor before one tagged for another, so takes of one
+  // template share it (design 8.6); a tagged node given to no fed node is
+  // no fed node's input; then, in declaration order, the first wired node of the input's type
   // no other input has taken; then the node the fed node's fills name in the
   // input's slot.
   /**
@@ -381,12 +382,10 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
     return node?.inputTag?.template === skeleton.id && node.inputTag.input === input.key && node.type === input.type;
   };
   for (const input of skeleton.inputs) {
-    const mine = [...graph.nodes.keys()].find((id) => isInputTagged(id, input) && graph.nodes.get(id)?.inputTag?.anchor === anchor);
     for (const [fed, id] of fedNodes(input)) {
       const filled = input.into === undefined ? undefined : graph.fills?.get(id)?.get(input.into);
-      const own = mine
-        ?? incoming(id).find((wire) => isInputTagged(wire.from, input))?.from
-        ?? (filled !== undefined && isInputTagged(filled, input) ? filled : undefined);
+      const given = [...incoming(id).map((wire) => wire.from), ...(filled === undefined ? [] : [filled])].filter((from) => isInputTagged(from, input));
+      const own = given.find((from) => graph.nodes.get(from)?.inputTag?.anchor === anchor) ?? given[0];
       if (own !== undefined) give(input.key, fed, own);
     }
   }
