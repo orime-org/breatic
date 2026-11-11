@@ -467,13 +467,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             if (Object.keys(mark).length > 0) marks[vendor.sdkName] = mark;
           }
           if (Object.keys(marks).length === 0) {
-            return [{ role: "system", content: [parts.base, parts.project, parts.conversation].filter((p) => p !== undefined).join("\n\n") }];
+            return [{ role: "system", content: [parts.base, parts.project, parts.conversation, parts.projectInstructions].filter((p) => p !== undefined).join("\n\n") }];
           }
           const providerOptions = marks as Record<string, Record<string, JSONValue>>;
           return [
             { role: "system", content: parts.base, providerOptions },
             ...(parts.project === undefined ? [] : [{ role: "system" as const, content: parts.project, providerOptions }]),
             ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
+            ...(parts.projectInstructions === undefined ? [] : [{ role: "system" as const, content: parts.projectInstructions }]),
           ];
         },
         pendingCosts: () => [...pending.values()],

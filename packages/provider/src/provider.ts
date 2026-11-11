@@ -60,6 +60,11 @@ export interface Provider {
   readonly cost: {
     /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
     lookup(lookup: CostLookup, options: { lastAttempt: boolean }): Promise<Cost>;
+    /**
+     * The lookup of a generation queued before lookups named their upstream: the first upstream that keeps
+     * generations to look a cost up by, or undefined when none does.
+     */
+    fromGeneration(generationId: string): CostLookup | undefined;
   };
 }
 
@@ -97,7 +102,13 @@ export function createProvider(options: ProviderOptions): Provider {
     pricingRules,
     estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
     llm: createLlm(config, options),
-    cost: { lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt) },
+    cost: {
+      lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt),
+      fromGeneration(generationId) {
+        const upstream = Object.keys(config.upstreams).find((u) => hasLlmAdapter(config.upstreams[u]!.kind) && vendorOf(config.upstreams[u]!.kind).costs !== undefined);
+        return upstream === undefined ? undefined : { upstream, generationId };
+      },
+    },
   };
 }
 

@@ -300,3 +300,72 @@ describe("the temperature a call asks for", () => {
     expect((await call({ OPENROUTER_API_KEY: "or" }, "anthropic/claude-opus-5.5", AT_ZERO)).body.temperature).toBeUndefined();
   });
 });
+
+/**
+ * A caller that names how hard the model should think (inner#1860: the text tools run Gemini 3.8 Flash at `low`).
+ * Gemini 3 takes a level, not a budget (Google, "Gemini thinking": sending both is an error), and OpenRouter takes
+ * the same word as `reasoning.effort`; moved from domain's llm.test.ts.
+ */
+describe("a thinking level the caller names", () => {
+  const LEVELS = ["low", "medium", "high"] as const;
+
+  it.each(LEVELS)("asks OpenRouter for effort %s", async (level) => {
+    const req = await call({ OPENROUTER_API_KEY: "or" }, "google/gemini-3.8-flash", { thinking: true, cache: false, thinkingLevel: level });
+    expect(req.body.reasoning).toEqual({ effort: level });
+  });
+
+  it.each(LEVELS)("asks Google directly for thinking level %s and no budget", async (level) => {
+    const req = await call({ GOOGLE_API_KEY: "g" }, "google/gemini-3.8-flash", { thinking: true, cache: false, thinkingLevel: level });
+    const thinking = (req.body.generationConfig as { thinkingConfig?: Record<string, unknown> }).thinkingConfig;
+    expect(thinking).toMatchObject({ thinkingLevel: level });
+    expect(thinking).not.toHaveProperty("thinkingBudget");
+  });
+
+  it("asks a route that takes no level for its own depth", async () => {
+    const req = await call({ ANTHROPIC_API_KEY: "k" }, "anthropic/claude-opus-5.5", { thinking: true, cache: false, thinkingLevel: "low" });
+    expect(req.body).toMatchObject({ thinking: { type: "adaptive", display: "summarized" }, output_config: { effort: "high" } });
+  });
+});
+
+/**
+ * The Project Instructions (#1400) go last and unmarked: a Project's members can change them at any moment, so a
+ * mark after them would write an entry nobody reads; moved from domain's llm.test.ts.
+ */
+describe("the Project Instructions in the system prompt", () => {
+  const PARTS = { base: "persona", project: "project memory", conversation: "this conversation's memory" };
+  const INSTRUCTIONS = "## Project Instructions\n\nthe members' standing requirements";
+  const ONE_HOUR = { type: "ephemeral", ttl: "1h" };
+  const systemMessages = (body: Record<string, unknown>): unknown[] =>
+    (body.messages as { role: string }[]).filter((m) => m.role === "system");
+
+  it("sends them last and unmarked when calling Anthropic directly", async () => {
+    expect((await call({ ANTHROPIC_API_KEY: "k" }, "anthropic/claude-opus-5.5", { thinking: true, cache: "1h" }, { ...PARTS, projectInstructions: INSTRUCTIONS })).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
+      { type: "text", text: INSTRUCTIONS },
+    ]);
+  });
+
+  it("sends them last and unmarked when reaching Claude through OpenRouter", async () => {
+    expect(systemMessages((await call({ OPENROUTER_API_KEY: "or" }, "anthropic/claude-opus-5.5", { thinking: true, cache: "1h" }, { ...PARTS, projectInstructions: INSTRUCTIONS })).body)).toEqual([
+      { role: "system", content: [{ type: "text", text: PARTS.base, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.project, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.conversation }] },
+      { role: "system", content: [{ type: "text", text: INSTRUCTIONS }] },
+    ]);
+  });
+
+  it("sends them right after the marked memory entries when there is no progress note", async () => {
+    expect((await call({ ANTHROPIC_API_KEY: "k" }, "anthropic/claude-opus-5.5", { thinking: true, cache: "1h" }, { base: PARTS.base, project: PARTS.project, projectInstructions: INSTRUCTIONS })).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
+      { type: "text", text: INSTRUCTIONS },
+    ]);
+  });
+
+  it("ends the prompt sent whole with them, for a model that caches a prefix on its own", async () => {
+    const sent = systemMessages((await call({ OPENROUTER_API_KEY: "or" }, "deepseek/deepseek-v4-pro", { thinking: true, cache: "1h" }, { ...PARTS, projectInstructions: INSTRUCTIONS })).body);
+    expect(sent).toEqual([{ role: "system", content: [{ type: "text", text: `${PARTS.base}\n\n${PARTS.project}\n\n${PARTS.conversation}\n\n${INSTRUCTIONS}` }] }]);
+  });
+});

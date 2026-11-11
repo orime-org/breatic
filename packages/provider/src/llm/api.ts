@@ -15,6 +15,11 @@ export interface CallWants {
   /** The conversation the call belongs to, so a gateway keeps it on one backend. */
   session?: string;
   temperature?: number;
+  /**
+   * How long the model thinks, on the upstreams that take a named level (OpenRouter `reasoning.effort`, Google
+   * `thinkingLevel`); read only with `thinking` on. Without it each upstream asks for its own depth.
+   */
+  thinkingLevel?: "low" | "medium" | "high";
 }
 
 /** The system prompt in the parts other conversations share. */
@@ -22,6 +27,8 @@ export interface SystemParts {
   base: string;
   project?: string;
   conversation?: string;
+  /** The Project Instructions, sent last and never marked: the Project's members change them at any moment. */
+  projectInstructions?: string;
 }
 
 /** One prepared call: hand `model` and `options` to `generateText` or `streamText`. */

@@ -85,7 +85,10 @@ export function cacheMark(vendor: Vendor, modelId: string, cache: CallWants["cac
  * @returns The vendor's options.
  */
 export function optionsFor(vendor: Vendor, modelId: string, wants: CallWants): VendorOptions {
-  const reasoning = wants.thinking ? vendor.reasoning.on(modelId) : isClaude(modelId) ? {} : vendor.reasoning.off;
+  const level = wants.thinkingLevel;
+  const reasoning = wants.thinking
+    ? level !== undefined && vendor.reasoning.at !== undefined ? vendor.reasoning.at(level) : vendor.reasoning.on(modelId)
+    : isClaude(modelId) ? {} : vendor.reasoning.off;
   const session: VendorOptions = wants.session !== undefined && vendor.gateway ? { session_id: wants.session } : {};
   return { ...reasoning, ...cacheMark(vendor, modelId, wants.cache), ...session };
 }

@@ -117,7 +117,11 @@ export const openrouter: Vendor = {
   vendorId: asWritten,
   gateway: true,
   // OpenRouter lists max for DeepSeek and turns `xhigh` into `high`; `none` turns reasoning off.
-  reasoning: { on: (modelId) => ({ reasoning: { effort: modelId.startsWith("deepseek/") ? "max" : "high" } }), off: { reasoning: { effort: "none" } } },
+  reasoning: {
+    on: (modelId) => ({ reasoning: { effort: modelId.startsWith("deepseek/") ? "max" : "high" } }),
+    off: { reasoning: { effort: "none" } },
+    at: (level) => ({ reasoning: { effort: level } }),
+  },
   // It turns a request-level mark into Anthropic's automatic caching; other models cache a prefix on their own.
   cache: (modelId, ttl) => (isClaude(modelId) ? cacheControl(ttl) : {}),
   refusal: openRouterRefusal,

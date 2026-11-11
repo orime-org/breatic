@@ -585,6 +585,22 @@ describe("cost.lookup", () => {
   });
 });
 
+describe("cost.fromGeneration: a lookup queued before it named its upstream", () => {
+  it("names the upstream that keeps generations to look a cost up by", () => {
+    expect(llmProvider(fakes, {}).cost.fromGeneration("gen-9")).toEqual({ upstream: "openrouter", generationId: "gen-9" });
+  });
+
+  it("names none when no upstream keeps generations", () => {
+    const config = llmConfig(fakes);
+    delete config.upstreams.openrouter;
+    config.llm!.routes = [{ prefix: "", upstreams: [{ upstream: "google", weight: 0 }] }];
+    config.llm!.understand_routes = [{ prefix: "", upstreams: [{ upstream: "google", weight: 0 }] }];
+    delete config.llm!.openrouter_backends;
+    const provider = createProvider({ config, keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t });
+    expect(provider.cost.fromGeneration("gen-9")).toBeUndefined();
+  });
+});
+
 describe("cost.lookup is a side request", () => {
   it("ends within the side-request limit while OpenRouter never answers, missing on the last attempt", async () => {
     fakes.openrouter.answer(() => "hang");

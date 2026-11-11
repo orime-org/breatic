@@ -78,7 +78,12 @@ export interface Vendor {
   vendorId: (modelId: string) => string;
   /** Whether it takes our whole model id rather than what follows the route prefix. */
   gateway: boolean;
-  reasoning: { on: (modelId: string) => VendorOptions; off: VendorOptions };
+  reasoning: {
+    on: (modelId: string) => VendorOptions;
+    off: VendorOptions;
+    /** How it is told a named depth, on an upstream that takes one. */
+    at?: (level: "low" | "medium" | "high") => VendorOptions;
+  };
   /** The cache mark for a lifetime, or nothing when it caches a repeated prefix on its own. */
   cache: (modelId: string, ttl: "5m" | "1h") => VendorOptions;
   /**
