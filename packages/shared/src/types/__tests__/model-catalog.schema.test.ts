@@ -351,6 +351,46 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out?.source_groups).toEqual(groups);
   });
 
+  // inner#1692: a step the run may lose without failing, such as rigging a
+  // generated mesh, says so with `optional`; the panel's copy keeps the flag
+  // and every other step beside it.
+  it("keeps an optional after step with its flag, beside a step that has none", () => {
+    const steps = [
+      {
+        endpoint: "mureka-ai/create-upload-id",
+        at: "before",
+        for_param: "song",
+        pricing: { base_price: 10_000, formula: "", discount_rate: 100 },
+      },
+      {
+        endpoint: "tripo3d/rig",
+        at: "after",
+        for_param: "rig_skeleton",
+        optional: true,
+        pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
+      },
+    ];
+    const out = sanitizeModelCatalog(catalog([entry("tripo", { extra_steps: steps })])).image[0];
+    expect(out?.extra_steps).toEqual(steps);
+    expect(out?.extra_steps?.[1]?.optional).toBe(true);
+    expect(out?.extra_steps?.[0]?.optional).toBeUndefined();
+  });
+
+  it("keeps a step that says it is not optional", () => {
+    const steps = [
+      {
+        endpoint: "tripo3d/rig",
+        at: "after",
+        for_param: "rig_skeleton",
+        optional: false,
+        pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
+      },
+    ];
+    const out = sanitizeModelCatalog(catalog([entry("tripo", { extra_steps: steps })])).image[0];
+    expect(out?.extra_steps).toEqual(steps);
+    expect(out?.extra_steps?.[0]?.optional).toBe(false);
+  });
+
   it("leaves the optional model fields undefined when a model declares none", () => {
     const out = sanitizeModelCatalog(catalog([entry("flux")])).image[0];
     expect(out?.extra_steps).toBeUndefined();

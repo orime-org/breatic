@@ -13,7 +13,7 @@
  */
 
 import type { DbTx } from "@breatic/core";
-import type { SceneGenerationOrigin, TaskEntity, TaskFailureReason } from "@breatic/shared";
+import { SCENE_TASK_NOTICES, type SceneGenerationOrigin, type SceneTaskNotice, type TaskEntity, type TaskFailureReason } from "@breatic/shared";
 import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
@@ -100,20 +100,32 @@ export async function openGeneration(opts: {
   return repo.insertSceneGenerationRow(opts);
 }
 
-/** How a row ends: done with its model, or failed with a `task-failure` code. */
-export type SceneOutcome = { outcome: "done"; assetId: string } | { outcome: "failed"; errorMessage: string };
+/**
+ * How a row ends: done with its model and what the user is told beside it,
+ * or failed with a `task-failure` code.
+ */
+export type SceneOutcome =
+  | { outcome: "done"; assetId: string; notice: SceneTaskNotice | null }
+  | { outcome: "failed"; errorMessage: string };
 
 /**
  * How a 3D generation's row ends from what its run stored (inner#1691): done
  * with the registered model, or `no_result` when the run came back with none.
- * @param outputs - The run's persisted outputs; the catalog lane writes one.
+ * The notice is read from the stored result too (inner#1692), so every path
+ * that settles from it (the live run, a billed redelivery, the crash net, the
+ * server's check) tells the user the same thing.
+ * @param result - The run's stored result: its persisted outputs (the catalog lane writes one) and the notice.
  * @returns The outcome the row settles with.
  */
-export function generationOutcome(outputs: readonly { asset_id?: unknown }[] | null | undefined): SceneOutcome {
+export function generationOutcome(
+  result: { readonly outputs?: readonly { asset_id?: unknown }[]; readonly notice?: unknown } | null | undefined,
+): SceneOutcome {
   // ponytail: the first output is the model, as the catalog lane returns it;
   // a vendor listing the GLB elsewhere needs a model-level output index (design H4).
-  const assetId = outputs?.[0]?.asset_id;
-  return typeof assetId === "string" ? { outcome: "done", assetId } : { outcome: "failed", errorMessage: "no_result" satisfies TaskFailureReason };
+  const assetId = result?.outputs?.[0]?.asset_id;
+  if (typeof assetId !== "string") return { outcome: "failed", errorMessage: "no_result" satisfies TaskFailureReason };
+  const notice = SCENE_TASK_NOTICES.find((known) => known === result?.notice) ?? null;
+  return { outcome: "done", assetId, notice };
 }
 
 /**
@@ -145,8 +157,8 @@ export async function settle(
   outcome: SceneOutcome,
 ): Promise<SceneSettleResult> {
   if (outcome.outcome === "done") {
-    const applied = await repo.settleRunning(row.id, "done", { assetId: outcome.assetId });
-    const assetWritten = applied || (await repo.attachAsset(row.id, outcome.assetId));
+    const applied = await repo.settleRunning(row.id, "done", { assetId: outcome.assetId, notice: outcome.notice });
+    const assetWritten = applied || (await repo.attachAsset(row.id, outcome.assetId, outcome.notice));
     return { row, applied, assetWritten };
   }
   const expired = failureOutcome(row.startedAt.getTime() + row.budgetMs) === "expired";

@@ -353,3 +353,49 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(255) })).not.toThrow();
   });
 });
+
+/**
+ * A param that switches on a call made after the model's own (inner#1692,
+ * design 6.1) is the next call's switch, not the model's input: it never goes
+ * into the model's own body. A param a call before the model reads still does.
+ */
+describe("upstreamBody — params that switch on a later call (inner#1692)", () => {
+  const PRICE = { base_price: 10_000, formula: "", discount_rate: 100 };
+
+  const RIGGED: FullModelEntry = {
+    name: "rigged",
+    takes_prompt: true,
+    params: {
+      texture: { fill: "panel", default: true, values: [true, false] },
+      rig_skeleton: { fill: "panel", default: false, values: [true, false] },
+      elements: { fill: "pool", type: "list", default: null },
+    },
+    extra_steps: [
+      { endpoint: "vendor/before", at: "before", for_param: "elements", pricing: PRICE },
+      { endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing: PRICE },
+    ],
+  };
+
+  it("keeps the after step's switch off the body, on or off", () => {
+    for (const rig_skeleton of [true, false]) {
+      const body = upstreamBody(RIGGED, { texture: true, rig_skeleton }, "a knight");
+      expect(body).toEqual({ texture: true, prompt: "a knight" });
+    }
+  });
+
+  it("still sends a param a step before the model's own call reads", () => {
+    expect(upstreamBody(RIGGED, { elements: ["https://a/1.png"], rig_skeleton: true }, "x")).toMatchObject({
+      elements: ["https://a/1.png"],
+    });
+  });
+
+  it("keeps rig_skeleton off every Tripo entry's body in the real catalog", () => {
+    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+    for (const name of ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"]) {
+      const entry = getFullModelConfig("three_d").models.find((m) => m.name === name);
+      expect(entry, name).toBeDefined();
+      expect(entry!.params?.rig_skeleton, name).toMatchObject({ default: false, fill: "panel" });
+      expect(upstreamBody(entry!, { rig_skeleton: true, image: "https://a/f.png", images: ["https://a/f.png"] }, "x")).not.toHaveProperty("rig_skeleton");
+    }
+  });
+});

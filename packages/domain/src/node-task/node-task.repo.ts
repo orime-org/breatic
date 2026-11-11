@@ -14,7 +14,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
-import type { NodeTaskAction, SceneGenerationOrigin } from "@breatic/shared";
+import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -55,6 +55,8 @@ export interface SceneTaskRow extends NodeTaskRow {
   taskId: string | null;
   /** Where a generation was started from; null on a model upload. */
   origin: SceneGenerationOrigin | null;
+  /** What the user is told beside a done generation; null when there is nothing to tell. */
+  notice: SceneTaskNotice | null;
 }
 
 /**
@@ -113,10 +115,11 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
 /**
  * A stored Space-level row as its reads hand it out.
  * @param row - The row as selected.
- * @returns The shared fields, the job and the origin.
+ * @returns The shared fields, the job, the origin and the notice.
  */
 function sceneRowOf(row: typeof nodeTasks.$inferSelect): SceneTaskRow {
-  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null };
+  return { ...rowOf(row), taskId: row.taskId, origin: row.origin as SceneGenerationOrigin | null,
+    notice: row.notice as SceneTaskNotice | null };
 }
 
 /**
@@ -177,12 +180,13 @@ export async function insertRunning(data: {
  * @param fields.nodeHistoryId - The history row holding the result.
  * @param fields.assetId - The registered model a Space-level row lands with.
  * @param fields.errorMessage - Why it failed or timed out.
+ * @param fields.notice - What the user is told beside a done Space-level generation.
  * @returns True when this call is the one that moved it.
  */
 export async function settleRunning(
   taskId: string,
   status: Exclude<NodeTaskStatus, "running">,
-  fields: { nodeHistoryId?: string; assetId?: string; errorMessage?: string },
+  fields: { nodeHistoryId?: string; assetId?: string; errorMessage?: string; notice?: SceneTaskNotice | null },
 ): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
@@ -556,12 +560,13 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Sce
  * holds one keeps it.
  * @param taskId - Which task.
  * @param assetId - The registered model.
+ * @param notice - What the user is told beside the model; null when nothing.
  * @returns True when this call wrote it.
  */
-export async function attachAsset(taskId: string, assetId: string): Promise<boolean> {
+export async function attachAsset(taskId: string, assetId: string, notice: SceneTaskNotice | null): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
-    .set({ assetId })
+    .set({ assetId, notice })
     .where(
       and(
         eq(nodeTasks.id, taskId),

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
-import { isPresent } from "@shared/item-cap";
+import { isPresent, stepRequested } from "@shared/item-cap";
 import { joinSlotFiles } from "@shared/join-slot-files";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
 import { ceilToCreditCent } from "@shared/credit-cent";
@@ -184,7 +184,7 @@ export async function estimateCredits(
   // every step marked reused whose source is sent.
   const ownReused = model.reused_by !== undefined && isPresent(params[model.reused_by]);
   const stepReused = steps.some(
-    (step) => step.reused === true && (step.for_param === undefined || isPresent(params[step.for_param])),
+    (step) => step.reused === true && (step.for_param === undefined || stepRequested(params[step.for_param])),
   );
 
   /**
@@ -200,7 +200,7 @@ export async function estimateCredits(
     for (const step of steps) {
       if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : params[step.for_param];
-      if (step.for_param !== undefined && !isPresent(source)) continue;
+      if (step.for_param !== undefined && !stepRequested(source)) continue;
       const calls = step.per_item ? itemCount(source) : 1;
       usd += calls * (await upstreamPriceUsd(toPricing(step.pricing), upstream, durations));
     }

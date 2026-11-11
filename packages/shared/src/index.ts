@@ -222,6 +222,7 @@ export type {
   CanvasProposal,
   DocumentProposal,
   SceneGenerationOrigin,
+  SceneTaskNotice,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -257,6 +258,7 @@ export {
   canvasProposalSchema,
   documentProposalSchema,
   SCENE_GENERATION_ORIGINS,
+  SCENE_TASK_NOTICES,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -578,7 +580,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, stepRequested, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 export { joinSlotFiles } from "@shared/join-slot-files.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
@@ -1128,8 +1130,8 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
