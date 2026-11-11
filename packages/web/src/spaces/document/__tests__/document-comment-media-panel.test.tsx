@@ -80,6 +80,9 @@ describe('media comments on the document page', () => {
     expect(screen.getByTestId('doc-comment-card').textContent).toContain('warmer light');
   });
 
+  // Writing a table whose cell holds a picture under the mounted page takes
+  // about ten seconds in jsdom, close to the 15 s default; this case gets a
+  // minute until that render is fast.
   it('brings a picture in a table cell into view when its comment is read', async () => {
     const id = await showWithComment([tableBlock({ rows: [{ cells: ['words', { blocks: [PICTURE] }] }] })], 'editor');
 
@@ -90,5 +93,5 @@ describe('media comments on the document page', () => {
     await waitFor(() => expect(reveal).toHaveBeenCalled());
     const target = reveal.mock.calls.at(-1)![0] as HTMLElement;
     expect(target.getAttribute('data-id')).toBe('pic');
-  });
+  }, 60_000);
 });
