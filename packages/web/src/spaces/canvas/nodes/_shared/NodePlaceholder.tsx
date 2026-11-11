@@ -119,7 +119,7 @@ export function NodePlaceholder({
         <Icon className='h-5 w-5 shrink-0 opacity-70' aria-hidden='true' />
       )}
       {waiting ? null : failed ? (
-        <span data-testid='node-upload-error' className='text-xs wrap-anywhere'>
+        <span data-testid='node-upload-error' className='text-xs text-balance wrap-anywhere [word-break:auto-phrase]'>
           {'text' in failed ? failed.text : t(failed.key, failed.params)}
         </span>
       ) : (
