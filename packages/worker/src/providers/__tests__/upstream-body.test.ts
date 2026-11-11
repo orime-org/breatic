@@ -196,6 +196,19 @@ describe("upstreamBody", () => {
     expect(body.speakers[1]?.speaker).toBe("Leo");
   });
 
+  it("cleans each storyboard shot's prompt and keeps its seconds (#2218)", () => {
+    const [, validated] = validateModelParams("video", "kling-v3.0-4k-text-to-video", {
+      multi_prompt: [
+        { prompt: "<b>a boat</b>", duration: 2 },
+        { prompt: "the pond\u200b <!-- x -->", duration: 3 },
+      ],
+    });
+    expect(validated.multi_prompt).toEqual([
+      { prompt: "a boat", duration: 2 },
+      { prompt: "the pond", duration: 3 },
+    ]);
+  });
+
   it("sends a speaker's name without the spaces around it, the name the script reads (inner#1825 design 8.5)", () => {
     const script = dialogueText([{ speaker: 1, text: "Hello." }], [{ speaker: "Ava " }]);
     expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "Ava ", voice: "Kore" }] }, script)).toEqual({
