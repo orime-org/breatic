@@ -159,3 +159,15 @@ describe('readTopBlocks and comments on media', () => {
     expect(readTopBlocks(editor as never, new Set())[0]!.lossy).toBe(false);
   });
 });
+
+describe('a name cut where an emoji stands', () => {
+  it('keeps the emoji whole when it straddles the cut, so the name stays storable text', () => {
+    const name = `${'x'.repeat(39)}😀 and the rest`;
+    const editor = open([{ id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name, caption: '' } }]);
+
+    const item = mediaItem(editor as never, 'pic');
+
+    expect(item.name).toBe(`${'x'.repeat(39)}😀`);
+    expect(item.name.isWellFormed()).toBe(true);
+  });
+});

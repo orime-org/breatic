@@ -22,7 +22,7 @@ import { MessageSquarePlus } from 'lucide-react';
 
 import { t } from '@breatic/shared';
 
-import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
+import { clipAttachmentName, hashOf } from '@web/lib/attachment-naming';
 import { mediaNameOf, mediaQuoteOf } from '@web/spaces/document/document-comment-media';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
@@ -38,7 +38,7 @@ import { cellsBlocks, tableClippedBlocks } from '@web/spaces/document/document-t
  */
 function nameFrom(text: string): string {
   const line = text.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '';
-  return line.slice(0, ATTACHMENT_NAME_CHARS);
+  return clipAttachmentName(line);
 }
 
 /**
