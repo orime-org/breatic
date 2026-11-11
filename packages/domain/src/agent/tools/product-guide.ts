@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { getAgentConfig } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
 import {
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
@@ -261,6 +261,8 @@ function templateMenuLine(type: GenerationNodeType, node: string): string {
  * @returns Every section of the guide; a call reads only the sections it names (`readSections`).
  */
 export function renderProductGuide(): string {
+  // Read here, when the guide is rendered, so the cap said is the one served.
+  const joinCap = getMiniToolsConfig().join_max_clips;
   return [
     "## The top bar",
     "Left to right: the brand mark, which opens our website in a new tab; an arrow with the word Studio, which " +
@@ -1200,7 +1202,7 @@ export function renderProductGuide(): string {
       "than two are left, or press the add box at the end of the row to pick another from the canvas, until the " +
       `row is full. ${quoted(t("canvas.miniTool.param.crossfade.label"))} blends each clip into the next over that ` +
       `many seconds, at most half the shorter of the two. With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
-      `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: 20 }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
+      `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: joinCap }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
