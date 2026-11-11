@@ -262,6 +262,28 @@ describe('an input that goes straight into a slot (inner#1825 §4.1)', () => {
     expect(proposal.nodes[0]?.fills).toEqual({ video: [at] });
     expect(proposal.nodes[0]?.prompt).not.toContainEqual(NOTE);
   });
+  it('gives a second take the clip another take was placed with, filled into both slots, and places no input or note for it (design 8.6)', () => {
+    const slotted = { mode: 'sfx', model: 'model-score', soundVideo: { url: CLIP, cover: POSTER, duration: 6 } };
+    seed('target', 'audio', slotted);
+    seed('take2', 'audio', slotted);
+    seed('shared-clip', 'video', {
+      name: 'Clip',
+      content: CLIP,
+      coverUrl: POSTER,
+      duration: 6,
+      templateNode: { template: 'fixture-into', key: 'video', input: true, anchor: 'target' },
+    });
+    const place = vi.fn();
+    apply(INTO, 'take2', place);
+
+    const { proposal, existing } = placed(place);
+    expect(proposal.nodes.filter((_, i) => !existing.has(i))).toEqual([]);
+    const at = indexOf(existing, 'shared-clip');
+    expect(at).toBeGreaterThan(0);
+    expect(proposal.nodes[0]?.fills).toEqual({ video: [at] });
+    expect(proposal.nodes[0]?.prompt).not.toContainEqual(NOTE);
+  });
+
   it('gives a second take the clip another take was placed with, wired into both, and places no input for it (design 8.6)', () => {
     seed('target', 'audio', { mode: 'sfx', model: 'model-score' });
     seed('take2', 'audio', { mode: 'sfx', model: 'model-score' });
