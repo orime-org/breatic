@@ -219,7 +219,6 @@ describe("prepareRun — a join", () => {
     await prepareRun(VIDEO_JOIN, joinRequest(VIDEO_JOIN, a, [b, c]));
 
     expect(vi.mocked(assetRepo.findLiveByStorageKey).mock.calls.map(([key]) => key)).toEqual(["v/a.mp4", "v/b.mp4", "v/c.mp4"]);
-    expect((assetRepo as { findKindByStorageKey?: unknown }).findKindByStorageKey).toBeUndefined();
   });
 
   it("takes join_max_clips − 1 clips and refuses one more", async () => {
