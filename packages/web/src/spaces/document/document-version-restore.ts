@@ -64,6 +64,9 @@ function withoutUploading(node: Json, left: { out: number }): Json {
   for (const child of children) {
     if (child.type === 'blockContainer' && isUploading(child)) {
       left.out += 1;
+      // What is nested under it is finished content: it takes the block's place.
+      const nested = (child.content as Json[])[1];
+      if (nested !== undefined) kept.push(...(withoutUploading(nested, left).content as Json[]));
       continue;
     }
     const next = withoutUploading(child, left);

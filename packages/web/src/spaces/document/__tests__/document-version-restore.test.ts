@@ -246,6 +246,23 @@ describe('snapshotOf', () => {
     expect(() => only.pmSchema.nodeFromJSON(alone.content).check()).not.toThrow();
   });
 
+  it('keeps what is nested under a block still uploading, in its place', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'before' },
+      { ...pending, children: [{ type: 'paragraph', content: 'child one' }, { type: 'paragraph', content: 'child two' }] },
+      { type: 'paragraph', content: 'after' },
+    ]);
+
+    const { content, leftOut } = snapshotOf(editor.prosemirrorState.doc);
+
+    expect(leftOut).toBe(1);
+    const node = editor.pmSchema.nodeFromJSON(content);
+    expect(() => node.check()).not.toThrow();
+    const lines: string[] = [];
+    node.firstChild!.forEach((block) => lines.push(block.textContent));
+    expect(lines).toEqual(['before', 'child one', 'child two', 'after']);
+  });
+
   it('does not change the body it reads', () => {
     const { editor } = open([{ type: 'paragraph', content: 'kept' }, pending]);
     const before = json(editor);
