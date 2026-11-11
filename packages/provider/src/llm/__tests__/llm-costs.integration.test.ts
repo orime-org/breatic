@@ -941,6 +941,49 @@ describe("capabilities", () => {
   });
 });
 
+describe("capabilities: the context window", () => {
+  const policy: CapabilityPolicy = { override: "auto", timeoutMs: 2_000, ttlMs: 60_000, retryMs: 200 };
+  const PATH = "/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints";
+  const endpoints = { data: { endpoints: [{ context_length: 1_048_576 }, { context_length: 1_000_000 }] } };
+  const asked = (): number => fakes.openrouter.seen.filter((s) => s.path === PATH).length;
+
+  it("reads the smallest endpoint window once per model and serves it from the cache", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", policy)).contextWindow).toBe(1_000_000);
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", policy)).contextWindow).toBe(1_000_000);
+    expect(asked()).toBe(1);
+  });
+
+  it("reads the window when the picture capability is fixed by the deployment", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("deepseek/deepseek-v4.1-flash-1017", { ...policy, override: "no" }))
+      .toEqual({ pictures: false, contextWindow: 1_000_000 });
+  });
+
+  it("has no window when the list fails, and does not ask again inside the cooldown", async () => {
+    fakes.openrouter.answer(() => ({ status: 503, body: {} }));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    // A cooldown longer than the run, so the second ask always falls inside it.
+    const cooling = { ...policy, retryMs: 60_000 };
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", cooling)).contextWindow).toBeUndefined();
+    const first = asked();
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", cooling)).contextWindow).toBeUndefined();
+    expect(asked()).toBe(first);
+  });
+
+  it("keeps the last window when a later list names none", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    const shortLived = { ...policy, ttlMs: 50 };
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", shortLived)).contextWindow).toBe(1_000_000);
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: { data: { endpoints: [] } } } : undefined));
+    await new Promise((done) => setTimeout(done, 80));
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", shortLived)).contextWindow).toBe(1_000_000);
+    expect(asked()).toBe(2);
+  });
+});
+
 describe("assertModelsPriced", () => {
   it("refuses a model this deployment reaches directly without a token price", () => {
     const llm = llmProvider(fakes, { ANTHROPIC_API_KEY: "k", OPENROUTER_API_KEY: "or" }).llm;

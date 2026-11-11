@@ -48,6 +48,9 @@ const modelRowSchema = z.looseObject({
   architecture: z.looseObject({ input_modalities: z.array(z.unknown()).optional() }).nullish(),
 });
 
+/** One model's endpoint list, as far as it is read. */
+const endpointListSchema = z.looseObject({ data: z.looseObject({ endpoints: z.array(z.unknown()) }) });
+
 /**
  * The quantizations a cheapest call of one model takes: `openrouter_quantizations`, without `unknown` when one of
  * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
@@ -153,6 +156,20 @@ export const openrouter: Vendor = {
         pictures.set(row.data.id, row.data.architecture?.input_modalities?.includes("image") === true);
       }
       return pictures;
+    },
+    // It keeps a conversation on one endpoint (a call's `session`), so the window a turn can count on is the smallest
+    // `context_length` among the model's endpoints, not the model-level figure (inner#1567).
+    contextWindow: {
+      url: (decl, modelId) => `${decl.base_url}/models/${modelId}/endpoints`,
+      read(body) {
+        const list = endpointListSchema.safeParse(body);
+        if (!list.success) return undefined;
+        const lengths = list.data.data.endpoints.flatMap((endpoint) => {
+          const value = (endpoint as { context_length?: unknown } | null)?.context_length;
+          return typeof value === "number" && Number.isFinite(value) && value > 0 ? [value] : [];
+        });
+        return lengths.length === 0 ? undefined : Math.min(...lengths);
+      },
     },
   },
   decisions: { model: JEV_MODEL, url: (decl) => new URL(JEV_PATH, `${decl.base_url}/`).toString() },

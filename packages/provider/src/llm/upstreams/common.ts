@@ -63,8 +63,15 @@ export interface Vendor {
   listedPrice?: (llm: LlmConfig, modelId: string, at: number) => LlmPrice | undefined;
   /** What it is told about where to send a call (its own routing options), or nothing. */
   routing?: (llm: LlmConfig, modelId: string, cheapest: boolean, pinned: boolean) => VendorOptions | undefined;
-  /** Its model list, read for which models take pictures. */
-  catalog?: { url: (decl: UpstreamDecl) => string; read: (body: unknown) => ReadonlyMap<string, boolean> | undefined };
+  /**
+   * Its model list, read for which models take pictures, and each model's own endpoint list, read for the context
+   * window a turn can count on.
+   */
+  catalog?: {
+    url: (decl: UpstreamDecl) => string;
+    read: (body: unknown) => ReadonlyMap<string, boolean> | undefined;
+    contextWindow: { url: (decl: UpstreamDecl, modelId: string) => string; read: (body: unknown) => number | undefined };
+  };
   /** The decisions endpoint (JEV) it serves. */
   decisions?: { model: string; url: (decl: UpstreamDecl) => string };
 }

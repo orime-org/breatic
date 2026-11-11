@@ -26,6 +26,14 @@ import { tryInOrder } from "@provider/routing/try-in-order.js";
 
 const DEFAULT_ROUTE: Route = { mode: "default" };
 
+/** One model's cached context window and its clocks. */
+interface WindowEntry {
+  window: number | undefined;
+  freshUntil: number;
+  retryAfter: number;
+  refreshing: Promise<void> | undefined;
+}
+
 /**
  * Wait for the shared refresh while letting just this caller leave.
  * @param pending - The shared request, which this function never cancels.
@@ -79,6 +87,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     freshUntil: 0,
     retryAfter: 0,
   };
+  /** Each model's context window and its clocks, refreshed apart from the model list. */
+  const windows = new Map<string, WindowEntry>();
 
   /**
    * An upstream's adapter kind.
@@ -375,6 +385,56 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     }
   };
 
+  /**
+   * Read one model's endpoint list, at the first upstream that has a model list, into its context window. A failure
+   * keeps the last window and cools down.
+   * @param modelId - Our model id.
+   * @param entry - Its cache entry, updated in place.
+   * @param policy - Its timeout and cache intervals.
+   * @returns Once the entry's clocks are updated.
+   */
+  const refreshWindow = async (modelId: string, entry: WindowEntry, policy: CapabilityPolicy): Promise<void> => {
+    try {
+      const name = Object.keys(config.upstreams).find((u) => llmVendorOf(u)?.catalog !== undefined);
+      if (name === undefined) throw new Error("No upstream to read the endpoint list from");
+      const reader = llmVendorOf(name)!.catalog!.contextWindow;
+      const body = await fetchJson(
+        { url: reader.url(config.upstreams[name]!, modelId), method: "GET", headers: { accept: "application/json" } },
+        { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs, maxBodyBytes: Number.MAX_SAFE_INTEGER, idleMs: policy.timeoutMs },
+      );
+      const window = reader.read(body);
+      if (window === undefined) throw new Error("No endpoint of the model states a context length");
+      Object.assign(entry, { window, freshUntil: Date.now() + policy.ttlMs, retryAfter: 0 });
+    } catch {
+      entry.retryAfter = Date.now() + policy.retryMs;
+    }
+  };
+
+  /**
+   * One model's context window, refreshed when its cache is stale and not cooling down.
+   * @param modelId - Our model id.
+   * @param policy - Its timeout and cache intervals.
+   * @param signal - The waiting caller's stop signal.
+   * @returns The window, or undefined when it has never been read.
+   * @throws {unknown} The stop signal's reason when the caller leaves.
+   */
+  const contextWindowOf = async (modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<number | undefined> => {
+    let entry = windows.get(modelId);
+    if (entry === undefined) {
+      entry = { window: undefined, freshUntil: 0, retryAfter: 0, refreshing: undefined };
+      windows.set(modelId, entry);
+    }
+    const now = Date.now();
+    if (now >= entry.freshUntil && now >= entry.retryAfter) {
+      const one = entry;
+      one.refreshing ??= refreshWindow(modelId, one, policy).finally(() => {
+        one.refreshing = undefined;
+      });
+    }
+    if (entry.refreshing !== undefined) await waitForCatalog(entry.refreshing, signal);
+    return entry.window;
+  };
+
   return {
     prepare(modelId, wants, chosen = DEFAULT_ROUTE): PreparedCall {
       const route = routeOf(config.llm.routes, modelId);
@@ -542,16 +602,24 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
 
     async capabilities(modelId, policy, signal) {
       signal?.throwIfAborted();
-      if (policy.override !== "auto") return { pictures: policy.override === "yes" };
-      const now = Date.now();
-      if (now >= catalog.freshUntil && now >= catalog.retryAfter) {
-        refreshing ??= refreshCatalog(policy).finally(() => {
-          refreshing = undefined;
-        });
-        await waitForCatalog(refreshing, signal);
-      }
+      /**
+       * Whether the model takes pictures: the deployment's override, else the model list.
+       * @returns The answer.
+       */
+      const pictures = async (): Promise<boolean> => {
+        if (policy.override !== "auto") return policy.override === "yes";
+        const now = Date.now();
+        if (now >= catalog.freshUntil && now >= catalog.retryAfter) {
+          refreshing ??= refreshCatalog(policy).finally(() => {
+            refreshing = undefined;
+          });
+          await waitForCatalog(refreshing, signal);
+        }
+        return catalog.pictures.get(modelId) === true;
+      };
+      const [takesPictures, contextWindow] = await Promise.all([pictures(), contextWindowOf(modelId, policy, signal)]);
       signal?.throwIfAborted();
-      return { pictures: catalog.pictures.get(modelId) === true };
+      return { pictures: takesPictures, ...(contextWindow === undefined ? {} : { contextWindow }) };
     },
   };
 }

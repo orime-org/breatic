@@ -108,7 +108,7 @@ export interface LlmApi {
   costOf(finished: FinishedCall): Cost;
   understand(request: UnderstandRequest, route?: Route): Promise<UnderstandAnswer>;
   judge(request: JudgeRequest, route?: Route): Promise<JudgeAnswer>;
-  capabilities(modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<{ pictures: boolean }>;
+  capabilities(modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<{ pictures: boolean; contextWindow?: number }>;
   /**
    * Check that every model this deployment reaches directly (not through a
    * gateway that reports its own cost) has token prices in llm.yaml.
