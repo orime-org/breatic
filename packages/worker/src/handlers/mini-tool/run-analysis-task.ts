@@ -45,7 +45,7 @@ export async function runMiniToolAnalysisTask(
         completion = { kind: "result", result: await execute(execution, deadlineAt) };
         marker = { analysisRunId: record.analysisRunId, status: "completed" };
       } catch (thrown) {
-        // A step still running once the reporting window has closed is never waited for again: the analysis ends expired.
+        // A step still running once the reporting window has closed is never waited for again: the analysis ends with its timeout code.
         if (thrown instanceof StillRunning && Date.now() < planReportingEnd(deadlineAt)) {
           if (token === undefined) throw thrown;
           await job.moveToDelayed(thrown.resumeAt, token);
