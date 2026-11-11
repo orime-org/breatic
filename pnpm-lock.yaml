@@ -241,7 +241,7 @@ patchedDependencies:
     hash: 7jpc67tegm3zk4u27ibpbo34nu
     path: patches/@xyflow__react@12.11.2.patch
   '@xzdarcy/react-timeline-editor@1.0.0':
-    hash: veiujykcfocwuwdi7b6is4wn5q
+    hash: raa4abpcpdk37inkt2nlilw7hu
     path: patches/@xzdarcy__react-timeline-editor@1.0.0.patch
   prosemirror-tables@1.8.5:
     hash: romndgeojnzxxa6r2thvj4upvy
@@ -1019,7 +1019,7 @@ importers:
         version: 0.0.79
       '@xzdarcy/react-timeline-editor':
         specifier: 1.0.0
-        version: 1.0.0(patch_hash=veiujykcfocwuwdi7b6is4wn5q)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 1.0.0(patch_hash=raa4abpcpdk37inkt2nlilw7hu)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       ahooks:
         specifier: ^3.9.7
         version: 3.9.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -15522,7 +15522,7 @@ snapshots:
       d3-selection: 3.0.0
       d3-zoom: 3.0.0
 
-  '@xzdarcy/react-timeline-editor@1.0.0(patch_hash=veiujykcfocwuwdi7b6is4wn5q)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@xzdarcy/react-timeline-editor@1.0.0(patch_hash=raa4abpcpdk37inkt2nlilw7hu)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@interactjs/types': 1.10.28
       '@types/react-virtualized': 9.22.4

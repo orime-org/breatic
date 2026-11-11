@@ -1,5 +1,5 @@
 diff --git a/dist/index.es.js b/dist/index.es.js
-index b48875e9ab04f3ec66c0224a92759d125b2be978..89917afb838bb31be1e6f12d4377a8184dc8483f 100644
+index b48875e9ab04f3ec66c0224a92759d125b2be978..39088c683cf8530fa7015205b0f225dd5cca2a6f 100644
 --- a/dist/index.es.js
 +++ b/dist/index.es.js
 @@ -8412,7 +8412,7 @@ const rc = /* @__PURE__ */ no(nc), ic = ({ children: s, interactRef: i, draggabl
@@ -54,3 +54,21 @@ index b48875e9ab04f3ec66c0224a92759d125b2be978..89917afb838bb31be1e6f12d4377a818
      };
      return /* @__PURE__ */ Ee(
        ic,
+@@ -9222,6 +9223,7 @@ const uc = (s, i) => s.reduce((r, e) => r + (e?.rowHeight || i), 0), dc = (s, i)
+             rowHeight: ({ index: ve }) => me[ve] || e,
+             overscanRowCount: 10,
+             overscanColumnCount: 0,
++            tabIndex: -1,
+             onScroll: (ve) => {
+               Re.current = ve, C(ve);
+             }
+@@ -9266,7 +9268,8 @@ const uc = (s, i) => s.reduce((r, e) => r + (e?.rowHeight || i), 0), dc = (s, i)
+         overscanRowCount: 0,
+         overscanColumnCount: 10,
+         cellRenderer: R,
+-        scrollLeft: v
++        scrollLeft: v,
++        tabIndex: -1
+       }
+     ),
+     /* @__PURE__ */ Ee(

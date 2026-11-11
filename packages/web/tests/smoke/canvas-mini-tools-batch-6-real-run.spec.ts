@@ -454,6 +454,12 @@ test('transitions: two videos and a crossfade give one video as long as both les
     const secondBox = (await secondClip.boundingBox())!;
     const overlapMiddle = [(secondBox.x + firstBox.x + firstBox.width) / 2, firstBox.y + 4];
     expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), overlapMiddle)).toBe(true);
+    // The other clip's resize handle still sits above the selected clip, so its in point can be dragged there.
+    const otherHandle = (await secondClip.locator('.timeline-editor-action-left-stretch').boundingBox())!;
+    const otherHandleMiddle = [otherHandle.x + otherHandle.width / 2, otherHandle.y + otherHandle.height / 2];
+    expect(await secondClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), otherHandleMiddle)).toBe(true);
+    // The track's scroll grids have no keyboard use, so Tab never stops on them.
+    expect(await dialog.locator('.ReactVirtualized__Grid').evaluateAll((grids) => grids.filter((grid) => (grid as HTMLElement).tabIndex >= 0).length)).toBe(0);
     // The first clip's right resize handle stays above the second clip where they overlap, and dragging it trims the first clip.
     const handle = await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox();
     expect(handle).not.toBeNull();
