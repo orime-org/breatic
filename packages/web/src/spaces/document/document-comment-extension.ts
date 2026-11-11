@@ -80,6 +80,11 @@ export interface CommentsApi {
   /** Threads, their contents, and every write that changes them. */
   readonly threadStore: {
     getThreads(): Map<string, ThreadData>;
+    /**
+     * One thread, read without rebuilding the whole map.
+     * @throws {Error} When the store holds no thread with that id.
+     */
+    getThread(threadId: string): ThreadData;
     subscribe(listener: () => void): () => void;
     addComment(options: {
       threadId: string;

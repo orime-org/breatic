@@ -21,7 +21,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 
-import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
+import { isMediaBlockType, pendingUploadId, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
 
 /** The thread metadata key naming the media block a comment stands on. */
@@ -69,6 +69,27 @@ export function canCommentOnMedia(doc: PMNode, blockId: string): boolean {
 }
 
 /**
+ * The rows of the media blocks with these ids, found in one walk of the body.
+ * @param doc - The body.
+ * @param ids - The block ids wanted.
+ * @returns Block id to row, for each one the body holds.
+ */
+function mediaRows(doc: PMNode, ids: ReadonlySet<string>): Map<string, RowInDocument> {
+  const rows = new Map<string, RowInDocument>();
+  if (ids.size === 0) return rows;
+  doc.descendants((node, pos) => {
+    if (rows.size === ids.size) return false;
+    const id = node.attrs['id'];
+    if (node.type.name === 'blockContainer' && typeof id === 'string' && ids.has(id) && !rows.has(id)) {
+      const content = node.firstChild;
+      if (content !== null && isMediaBlockType(content.type.name)) rows.set(id, { node, from: pos, to: pos + node.nodeSize });
+    }
+    return true;
+  });
+  return rows;
+}
+
+/**
  * Where each media thread stands now: the whole row of its block. Threads on
  * words, and threads whose block is gone, are left out.
  * @param doc - The body.
@@ -79,14 +100,104 @@ export function mediaThreadPositions(
   doc: PMNode,
   threads: Iterable<AnchoredThread>,
 ): Map<string, { from: number; to: number }> {
-  const positions = new Map<string, { from: number; to: number }>();
+  const named: [string, string][] = [];
   for (const thread of threads) {
     const blockId = mediaBlockIdOf(thread.metadata);
-    if (blockId === null) continue;
-    const row = mediaRowById(doc, blockId);
-    if (row !== undefined) positions.set(thread.id, { from: row.from, to: row.to });
+    if (blockId !== null) named.push([thread.id, blockId]);
+  }
+  const rows = mediaRows(doc, new Set(named.map(([, blockId]) => blockId)));
+  const positions = new Map<string, { from: number; to: number }>();
+  for (const [threadId, blockId] of named) {
+    const row = rows.get(blockId);
+    if (row !== undefined) positions.set(threadId, { from: row.from, to: row.to });
   }
   return positions;
+}
+
+/**
+ * Where every thread stands: the library's table for comments on words,
+ * joined with the media blocks for comments on media. This is the one table
+ * the panel's order, cards and count read.
+ * @param doc - The body.
+ * @param threads - Every thread.
+ * @param onWords - The library's position table.
+ * @returns Thread id to range.
+ */
+export function commentPositions<T>(
+  doc: PMNode,
+  threads: Iterable<AnchoredThread>,
+  onWords: ReadonlyMap<string, T>,
+): ReadonlyMap<string, T | { from: number; to: number }> {
+  const onMedia = mediaThreadPositions(doc, threads);
+  if (onMedia.size === 0) return onWords;
+  return new Map<string, T | { from: number; to: number }>([...onWords, ...onMedia]);
+}
+
+/** What a card shows in place of quoted words, for a comment on media. */
+export interface MediaQuote {
+  /** The block it stands on. */
+  readonly blockId: string;
+  readonly type: MediaBlockType;
+  /** The block's name, possibly empty. */
+  readonly name: string;
+  /** Its caption, possibly empty. */
+  readonly caption: string;
+  /** Where the file is, for a picture's thumbnail. */
+  readonly url: string;
+}
+
+/** The catalog key of each media kind's name. */
+const MEDIA_KIND_KEY: Readonly<Record<MediaBlockType, string>> = {
+  image: 'spaces.document.media.image',
+  video: 'spaces.document.media.video',
+  audio: 'spaces.document.media.audio',
+};
+
+/**
+ * What a picture, video or audio block is called wherever it is named: its
+ * name, else its caption, else its kind (§5.4).
+ * @param media - The block's kind, name and caption.
+ * @param translate - The catalog lookup.
+ * @returns The name.
+ */
+export function mediaNameOf(
+  media: Pick<MediaQuote, 'type' | 'name' | 'caption'>,
+  translate: (key: string) => string,
+): string {
+  return media.name || media.caption || translate(MEDIA_KIND_KEY[media.type]);
+}
+
+/**
+ * The media a thread stands on, as a card quotes it.
+ * @param doc - The body.
+ * @param metadata - The thread's metadata.
+ * @returns The quote, or null for a thread on words or one whose block is gone.
+ */
+export function mediaQuoteOf(doc: PMNode, metadata: unknown): MediaQuote | null {
+  const blockId = mediaBlockIdOf(metadata);
+  const media = blockId === null ? undefined : mediaRowById(doc, blockId)?.node.firstChild;
+  if (media === undefined || media === null) return null;
+  /**
+   * One of the block's text attributes, empty when unset.
+   * @param key - The attribute.
+   * @returns Its text.
+   */
+  const text = (key: string): string => (typeof media.attrs[key] === 'string' ? (media.attrs[key] as string) : '');
+  return { blockId: blockId!, type: media.type.name as MediaBlockType, name: text('name'), caption: text('caption'), url: text('url') };
+}
+
+/**
+ * The element a comment is about in the rendered body: the highlight of a
+ * comment on words, or the block of a comment on media.
+ * @param root - The editor's element.
+ * @param threadId - The thread.
+ * @param mediaBlockId - The media block it stands on, or null for words.
+ * @returns The element, or null when it is not on the page.
+ */
+export function commentedElement(root: ParentNode, threadId: string, mediaBlockId: string | null): HTMLElement | null {
+  return mediaBlockId === null
+    ? root.querySelector<HTMLElement>(`.bn-thread-mark[data-bn-thread-id="${CSS.escape(threadId)}"]`)
+    : root.querySelector<HTMLElement>(`.bn-block-outer[data-id="${CSS.escape(mediaBlockId)}"]`);
 }
 
 /**

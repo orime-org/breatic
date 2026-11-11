@@ -25,6 +25,8 @@
 
 import * as React from 'react';
 
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { mediaBlockIdOf, mediaRowById } from '@web/spaces/document/document-comment-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -106,9 +108,13 @@ export function useCommentAnchors(
         .filter((id) => id.length > 0)
         .forEach((id) => {
           const at = ranges.get(id)?.[0];
-          // Absent from the ranges means no words left; such a thread is
-          // not on the panel (A13).
-          if (at === undefined) return;
+          if (at === undefined) {
+            // No words: a comment on media stands level with its block's top;
+            // any other such thread is not on the panel (A13).
+            const block = mediaBlockOf(editor, id);
+            if (block !== null) next.set(id, block.getBoundingClientRect().top - top);
+            return;
+          }
           try {
             next.set(id, view.coordsAtPos(at.from).top - top);
           } catch {
@@ -155,6 +161,29 @@ export function useCommentAnchors(
   }, [editor, key, column, draft]);
 
   return anchors;
+}
+
+/**
+ * The rendered block a comment on media stands on.
+ * @param editor - The editor.
+ * @param threadId - The thread.
+ * @returns The block's element, or null for a thread on words or one whose block is gone.
+ */
+function mediaBlockOf(editor: ToolEditor, threadId: string): HTMLElement | null {
+  const view = editor.prosemirrorView;
+  const store = commentsOn(editor)?.threadStore;
+  if (view === null || store === undefined) return null;
+  let metadata: unknown;
+  try {
+    metadata = store.getThread(threadId).metadata;
+  } catch {
+    // A thread deleted by a peer between the panel's read and this measure.
+    return null;
+  }
+  const blockId = mediaBlockIdOf(metadata);
+  const row = blockId === null ? undefined : mediaRowById(view.state.doc, blockId);
+  const element = row === undefined ? null : view.nodeDOM(row.from);
+  return element instanceof HTMLElement ? element : null;
 }
 
 /**

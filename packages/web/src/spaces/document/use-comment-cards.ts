@@ -28,6 +28,7 @@ import {
   commentsOn,
   type CommentsApi,
 } from '@web/spaces/document/document-comment-extension';
+import { mediaQuoteOf, type MediaQuote } from '@web/spaces/document/document-comment-media';
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
 import {
   threadQuoteIn,
@@ -62,8 +63,10 @@ export interface CommentCardView {
   readonly id: string;
   /** Whether it has been settled, which is what the card offers on it. */
   readonly settled: boolean;
-  /** The words it is about. */
+  /** The words it is about; empty for a comment on media. */
   readonly quote: string;
+  /** The picture, video or audio it is about, or null for a comment on words. */
+  readonly media: MediaQuote | null;
   /** The opening comment and every reply, oldest first. */
   readonly entries: readonly CommentEntryView[];
 }
@@ -139,15 +142,18 @@ function drawCard(
   source: CommentsApi,
   doc: ProseMirrorNode,
   walked: ReadonlyMap<string, readonly ThreadRange[]>,
-  threads: ReadonlyMap<string, { comments: readonly CommentData[] }>,
+  threads: ReadonlyMap<string, { comments: readonly CommentData[]; metadata?: unknown }>,
 ): CommentCardView | null {
   const thread = threads.get(card.id);
+  if (thread === undefined) return null;
   const quote = threadQuoteIn(doc, card.id, walked);
-  if (thread === undefined || quote === null) return null;
+  const media = quote === null ? mediaQuoteOf(doc, thread.metadata) : null;
+  if (quote === null && media === null) return null;
   return {
     id: card.id,
     settled: card.settled,
-    quote,
+    quote: quote ?? '',
+    media,
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
 }
@@ -163,6 +169,7 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
     a.id === b.id &&
     a.settled === b.settled &&
     a.quote === b.quote &&
+    sameMedia(a.media, b.media) &&
     a.entries.length === b.entries.length &&
     a.entries.every((entry, index) => {
       const other = b.entries[index];
@@ -176,6 +183,17 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
       );
     })
   );
+}
+
+/**
+ * Whether two media quotes draw the same.
+ * @param a - One.
+ * @param b - The other.
+ * @returns True when both are absent or match field for field.
+ */
+function sameMedia(a: MediaQuote | null, b: MediaQuote | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.blockId === b.blockId && a.type === b.type && a.name === b.name && a.caption === b.caption && a.url === b.url;
 }
 
 /**
