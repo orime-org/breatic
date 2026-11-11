@@ -26,11 +26,44 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
+import { readSlotPick } from '@web/spaces/canvas/generate/slots';
 import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
 import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
 export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => unknown;
+
+/**
+ * Which canvas node each generate node holds in a template input's slot: the
+ * node whose content is the slot's file, one tagged for that input of this
+ * template first (design 8.6), so a take filled with a clip another take was
+ * placed with finds that clip on a re-apply.
+ * @param template - The template applied.
+ * @param nodes - Every node on the canvas.
+ * @returns Per generate node, slot param to the node holding its file.
+ */
+function slotFills(template: GenerationTemplate, nodes: readonly CanvasNodeView[]): Map<string, Map<string, string>> {
+  const fills = new Map<string, Map<string, string>>();
+  for (const node of nodes) {
+    const data = node.data as unknown as Record<string, unknown>;
+    const mode = typeof data.mode === 'string' ? data.mode : undefined;
+    if (mode === undefined) continue;
+    for (const input of template.inputs) {
+      const spec = input.into === undefined ? undefined : slotForParam(node.type, mode, input.into);
+      const url = spec === undefined || spec.multiple ? undefined : readSlotPick(spec, data[spec.field])?.url;
+      if (url === undefined || input.into === undefined) continue;
+      const holders = nodes.filter((other) => other.id !== node.id && other.type === input.type && (other.data as { content?: unknown }).content === url);
+      const tagged = holders.find((other) => {
+        const tag = templateTagOf(other);
+        return tag?.input === true && tag.template === template.id && tag.key === input.key;
+      });
+      const holder = tagged ?? holders[0];
+      if (holder !== undefined) fills.set(node.id, (fills.get(node.id) ?? new Map<string, string>()).set(input.into, holder.id));
+    }
+  }
+  return fills;
+}
 
 /**
  * Applies a picked template to a generate panel's node (inner#977,
@@ -90,7 +123,8 @@ export function useApplyTemplate(
       );
       const incoming = new Map([...rails].map(([id, rows]) => [id, rows.map((row) => ({ from: row.sourceNodeId }))]));
       const skeleton = templateSkeleton(template);
-      const match = matchTemplateInstance(skeleton, { nodes, incoming }, nodeId);
+      const fills = slotFills(template, graph.nodes);
+      const match = matchTemplateInstance(skeleton, { nodes, incoming, fills }, nodeId);
 
       // The nodes the proposal starts from, at indices from 0: the panel's
       // node, then each template node the board already has, then each node
