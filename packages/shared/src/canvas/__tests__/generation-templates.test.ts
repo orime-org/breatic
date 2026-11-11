@@ -1035,6 +1035,13 @@ describe('sound, music and voice templates (inner#1825)', () => {
     expect(template.agentNote).toMatch(/does not keep to a length/);
   });
 
+  it('has the four sections joined as the trimmed clips, named as the cut names them, in every language (round 2)', () => {
+    const template = sound('section-mapped-score');
+    for (const locale of LOCALES) {
+      expect(raw(locale, textKey(template, 'step.join')), locale).toContain('CUT-');
+    }
+  });
+
   it('tells the agent the dialogue goes line by line, with no name in front of a line', () => {
     const note = sound('two-voice-dialogue').agentNote;
     expect.soft(note).not.toMatch(/starting with the speaker's name and a colon/);
