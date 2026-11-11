@@ -723,11 +723,15 @@ function joinVideoSteps(params: Record<string, unknown>, clips: readonly ExtraIn
   const crossfade = numberOf(params, "crossfade");
   const graph: string[] = [];
   clips.forEach((clip, i) => {
+    const length = seconds(lengthOf(clip.probe));
+    // The picture is held on its last frame, then cut, to the clip's length,
+    // the same length its sound is padded or cut to below, so the crossfade
+    // offsets read off that length meet both streams where they end.
     graph.push(
       `[${i}:v:0]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,` +
-        `setsar=1,fps=${fps},format=yuv420p,setpts=PTS-STARTPTS[v${i}]`,
+        `setsar=1,fps=${fps},format=yuv420p,setpts=PTS-STARTPTS,` +
+        `tpad=stop_mode=clone:stop_duration=${length},trim=duration=${length}[v${i}]`,
     );
-    const length = seconds(lengthOf(clip.probe));
     const sounded = clip.probe.streams.some((stream) => stream.codecType === "audio");
     graph.push(
       sounded
