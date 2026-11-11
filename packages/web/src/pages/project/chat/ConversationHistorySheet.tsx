@@ -331,7 +331,7 @@ function ConversationRowView({
                   'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
                   isActive ? 'bg-foreground' : 'bg-muted-foreground/40',
                   // The slot stays, so the name does not move when a turn
-                  // starts or ends; the spinner below is drawn over it.
+                  // starts or ends; the spinner above is drawn over it.
                   isRunning && 'invisible',
                 )}
               />

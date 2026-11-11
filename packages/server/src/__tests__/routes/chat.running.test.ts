@@ -245,8 +245,8 @@ describe("a chat turn's lease", () => {
     // The silence is five beats long, so a lease that is not renewed with
     // them would run out under a turn that is doing fine.
     expect(beats).toBeGreaterThanOrEqual(3);
-    // The first beat goes out as the lease is taken, so it may or may not
-    // renew; every later one does.
+    // The first beat goes out right after the lease is taken and does not
+    // renew it; every later beat does.
     expect(renewals).toBeGreaterThanOrEqual(beats - 1);
     expect(renewals).toBeLessThanOrEqual(beats);
     expect(lease.state.events[0]).toBe("hold");

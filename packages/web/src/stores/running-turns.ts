@@ -5,9 +5,9 @@
  * Which conversations have an Agent turn running on this page (#1394).
  *
  * `chat-sessions` knows, in a module-private map that nothing can subscribe
- * to; the conversation list needs to redraw when it changes. Kept apart from
- * both for the same reason as `consolidating.ts`: the runtime already imports
- * `chat-sessions`, so a store on either side would have to import back.
+ * to; the conversation list needs to redraw when it changes. Its own store,
+ * because the reader is a pages hook and `stores/` may not import from
+ * `pages/`.
  * Written only by `chat-sessions`, read only by `useRunningConversations`.
  */
 
