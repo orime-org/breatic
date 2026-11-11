@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { APICallError, RetryError } from "ai";
-import { providerErrorOf, readContextOverflow, unrecognised400 } from "@server/agent/context-overflow.js";
+import { providerErrorOf, readContextOverflow, unrecognised400 } from "../context-overflow.js";
 
 const URL = "https://openrouter.ai/api/v1/chat/completions";
 

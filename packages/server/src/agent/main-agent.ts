@@ -48,9 +48,9 @@ import * as conversationService from "@server/modules/conversation/conversation.
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
 import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
-import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";

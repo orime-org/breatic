@@ -201,7 +201,7 @@ permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
 | | |
 |---|---|
 | What | The `patterns` and `exclusions` regular-expression lists that recognise a provider's "prompt is over the context window" error |
-| Where it lives here | [packages/server/src/agent/context-overflow.ts](./packages/server/src/agent/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
+| Where it lives here | [packages/provider/src/llm/context-overflow.ts](./packages/provider/src/llm/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
 | Copied from | `packages/ai/src/provider-error.ts` of https://github.com/anomalyco/opencode at commit `16cd50db2278fc9b780808e44d40d1ceaf2f5e80` |
 | Changes | The `request_too_large` entry is left out (it is a byte limit, which shortening the conversation cannot fix); the one entry carrying Chinese characters is written with `\u` escapes |
 | Licence | **MIT**, Copyright (c) 2025 opencode |

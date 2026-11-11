@@ -13,6 +13,7 @@ export {
 } from "@provider/errors.js";
 export type { Cost, CostLookup, TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
+export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
 export { ProviderConfigError, type CatalogShape } from "@provider/config/schema.js";
 export type {
