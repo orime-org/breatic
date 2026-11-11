@@ -1031,8 +1031,8 @@ export function renderProductGuide(): string {
       `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap. ` +
       "Choose the lip-sync model in the panel; Run stays unavailable, with a toast giving the range, while the result is " +
       "outside the model's duration range or the used part of the video is outside what person tracking takes. " + lipSyncLimits() +
-      "A failed run lists one line per person with the step that failed " +
-      "and what to do next; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
+      "A failed run lists one line per person with why it failed and what to do next, " +
+      "and a line for a failed shared step; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
       "and it reruns only the failed people.",
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
       `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +

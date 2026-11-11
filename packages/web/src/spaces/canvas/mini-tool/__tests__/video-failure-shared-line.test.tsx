@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 execution design §9.4, §10.5 and §10.8 copy rows: the line of a failed step outside every person or window
- * (an expiry, for example) follows the item that blocks a retry, as the item lines do, instead of telling the user to
- * retry while no retry is offered. With only retryable items the shared line still says retry and the button shows.
- * Translation is real.
+ * inner#1306 execution design §9.4 and §10.8 copy rows: a lip-sync line of a failed step outside every person (an
+ * expiry, for example) follows the person that blocks a retry, as the person lines do. An expand shared line always says
+ * retry, because a rejected window never sits beside a failed shared step (§10.5). With only retryable items the shared
+ * line says retry and the button shows. Translation is real.
  */
 
 import { cleanup, render, screen, within } from '@testing-library/react';
