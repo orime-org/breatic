@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -39,6 +39,7 @@ const NOOPS = {
   onReachEnd: () => undefined,
   nextPageFailed: false,
   loadingMore: false,
+  running: new Set<string>() as ReadonlySet<string>,
 };
 
 describe('relativeTime', () => {
@@ -223,6 +224,70 @@ describe('ConversationHistorySheet', () => {
     );
     await user.click(screen.getByTestId('conversation-open-c2'));
     expect(onPick).toHaveBeenCalledWith('c2');
+  });
+});
+
+describe('the running mark on a row (#1394)', () => {
+  /**
+   * Render the open sheet with the given conversations marked running.
+   * @param running - The ids the sheet is told are running.
+   */
+  function renderWithRunning(running: ReadonlySet<string>): void {
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        running={running}
+      />,
+    );
+  }
+
+  it('spins at the head of a running row, ahead of its name, and leaves the other row its dot', () => {
+    renderWithRunning(new Set(['c2']));
+
+    const row = screen.getByTestId('conversation-open-c2');
+    const spinner = within(row).getByTestId('conversation-running-c2');
+    expect(spinner).toHaveClass('animate-spin');
+    const name = within(row).getByText('Character design');
+    // In the dot's place, which is before the name.
+    expect(spinner.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('conversation-running-c1')).toBeNull();
+  });
+
+  it('spins on the conversation on screen as well', () => {
+    renderWithRunning(new Set(['c1']));
+
+    expect(
+      within(screen.getByTestId('conversation-open-c1')).getByTestId('conversation-running-c1'),
+    ).toHaveClass('animate-spin');
+    expect(screen.queryByTestId('conversation-running-c2')).toBeNull();
+  });
+
+  it('marks a row the moment its id joins the running set and drops the mark when it leaves', () => {
+    const props = {
+      open: true,
+      onOpenChange: () => undefined,
+      conversations: CONVS,
+      activeId: 'c1',
+      onPick: () => undefined,
+      ...NOOPS,
+    };
+    const { rerender } = render(<ConversationHistorySheet {...props} running={new Set()} />);
+    expect(screen.queryByTestId('conversation-running-c2')).toBeNull();
+
+    rerender(<ConversationHistorySheet {...props} running={new Set(['c2'])} />);
+    expect(screen.getByTestId('conversation-running-c2')).toBeInTheDocument();
+
+    rerender(<ConversationHistorySheet {...props} running={new Set()} />);
+    expect(
+      screen
+        .getByTestId('conversation-history-list')
+        .querySelectorAll('[data-testid^="conversation-running-"]'),
+    ).toHaveLength(0);
   });
 });
 
