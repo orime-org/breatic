@@ -35,8 +35,9 @@ import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-crea
 export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => unknown;
 
 /**
- * Which canvas node each generate node holds in a template input's slot: the
- * node whose content is the slot's file, one tagged for that input of this
+ * Which canvas node each generate node holds in a template input's slot, the
+ * slot read under the mode of the template node the input feeds: the node
+ * whose content is the slot's file, one tagged for that input of this
  * template first (design 8.6), so a take filled with a clip another take was
  * placed with finds that clip on a re-apply.
  * @param template - The template applied.
@@ -47,10 +48,12 @@ function slotFills(template: GenerationTemplate, nodes: readonly CanvasNodeView[
   const fills = new Map<string, Map<string, string>>();
   for (const node of nodes) {
     const data = node.data as unknown as Record<string, unknown>;
-    const mode = typeof data.mode === 'string' ? data.mode : undefined;
-    if (mode === undefined) continue;
     for (const input of template.inputs) {
-      const spec = input.into === undefined ? undefined : slotForParam(node.type, mode, input.into);
+      // The slot as the template node it feeds names it, under that node's
+      // mode: a param name means another slot in another mode.
+      const fed = template.nodes.find((one) => one.key === (input.feeds?.[0] ?? template.anchor));
+      if (fed?.role !== 'generate' || fed.type !== node.type) continue;
+      const spec = input.into === undefined ? undefined : slotForParam(node.type, fed.mode, input.into);
       const url = spec === undefined || spec.multiple ? undefined : readSlotPick(spec, data[spec.field])?.url;
       if (url === undefined || input.into === undefined) continue;
       const holders = nodes.filter((other) => other.id !== node.id && other.type === input.type && (other.data as { content?: unknown }).content === url);
