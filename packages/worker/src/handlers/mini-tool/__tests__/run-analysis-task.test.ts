@@ -10,6 +10,7 @@ import { DeadlinePassed } from "@breatic/shared";
 import { miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
@@ -241,6 +242,17 @@ describe("tracked mask failures (execution design §10.3)", () => {
     h.execute.mockRejectedValue(new (await failed())(failure));
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: failure.code });
     expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: failure, consumptionSet: "complete" });
+  });
+
+  // As an execution's wait (run-execution-task): a provider step still running once the reporting window has closed is
+  // never waited for again, and the analysis ends with the timeout code.
+  it("TM03 a tracking step still running after the reporting window ends the analysis with the timeout code instead of waiting", async () => {
+    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
+    vi.mocked(Date.now).mockReturnValue(planReportingEnd(DEADLINE) + 1);
+    h.execute.mockRejectedValue(new StillRunning(planReportingEnd(DEADLINE) + 5000));
+    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "timeout" });
+    expect(h.delay).not.toHaveBeenCalled();
+    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "timeout" } });
   });
 
   it("TM02 a passed deadline ends a tracked mask analysis with the timeout code", async () => {

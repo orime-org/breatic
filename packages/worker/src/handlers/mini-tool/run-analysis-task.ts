@@ -11,6 +11,7 @@ import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/disp
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
+import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { TrackedMaskFailed } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -45,7 +46,8 @@ export async function runMiniToolAnalysisTask(
         completion = { kind: "result", result: await execute(execution, deadlineAt), consumptionSet: "uncertain" };
         marker = { analysisRunId: record.analysisRunId, status: "completed" };
       } catch (thrown) {
-        if (thrown instanceof StillRunning) {
+        // A step still running once the reporting window has closed is never waited for again: the analysis ends expired.
+        if (thrown instanceof StillRunning && Date.now() < planReportingEnd(deadlineAt)) {
           if (token === undefined) throw thrown;
           await job.moveToDelayed(thrown.resumeAt, token);
           throw new DelayedError();
