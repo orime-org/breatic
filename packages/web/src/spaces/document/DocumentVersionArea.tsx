@@ -132,6 +132,9 @@ export default function DocumentVersionArea({
   // Where the preview goes back to once the display it held before the Space
   // was hidden is drawn again.
   const landing = React.useRef<number | null>(null);
+  // Where the user is in the preview: a hidden Space's scroller has nothing
+  // to say by the time the preview is let go.
+  const place = React.useRef(0);
 
   // One preview per opening of the panel.
   const [{ preview, controller }] = React.useState(() => {
@@ -186,9 +189,7 @@ export default function DocumentVersionArea({
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
   }, [shownNow, viewport]);
 
-  // Where the user is in the preview, kept as they scroll: a hidden Space's
-  // scroller has nothing to say by the time the preview is let go.
-  const place = React.useRef(0);
+  // The user's place, kept as they scroll.
   React.useEffect(() => {
     if (viewport === null) return undefined;
     /** Notes the position the scroller has come to. */
@@ -270,16 +271,20 @@ export default function DocumentVersionArea({
       void select(back.displayed, back.compareTo).then((end) => {
         if (end !== 'done') landing.current = null;
       });
-    } else if (back !== null) {
-      // The current content is drawn by `open()` already.
+    } else {
+      // The current content is drawn by `open()` already, so the scroller
+      // stands where the user sees it.
       const scroller = at.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
-      if (scroller !== null) scroller.scrollTop = back.top;
+      if (back !== null && scroller !== null) scroller.scrollTop = back.top;
+      place.current = scroller?.scrollTop ?? 0;
     }
     return () => {
       const now = controller.store.state;
       if (now.mode === 'versions') {
         const held = now.pending !== undefined && asked.current !== null ? asked.current : { displayed: now.displayed, compareTo: now.compareTo };
-        resume.current = { ...held, top: place.current };
+        // While a display is still being taken back up, the scroller holds
+        // what the shorter current content left of the user's place.
+        resume.current = { ...held, top: landing.current ?? place.current };
       }
       controller.close();
       preview.unmount();

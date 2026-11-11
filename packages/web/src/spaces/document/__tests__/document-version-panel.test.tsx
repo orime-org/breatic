@@ -326,6 +326,58 @@ describe('the snapshot panel', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it('keeps the user’s place when the Space is switched away again before the snapshot is drawn back', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('snapshot words');
+    rows.set('v1', snapshotOf(handle.editor.prosemirrorState.doc).content);
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    viewport.scrollTop = 700;
+    fireEvent.scroll(viewport);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    api.get.mockImplementation(async (_scope, id) => {
+      await gate;
+      return { version: row(id, null, 0), content: rows.get(id)! };
+    });
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    // The shorter current content drawn meanwhile cuts the scroll back, and says so.
+    viewport.scrollTop = 0;
+    fireEvent.scroll(viewport);
+    space('hidden');
+    space('visible');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    act(() => release());
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent('First draft'));
+    await waitFor(() => expect(viewport.scrollTop).toBe(700));
+  });
+
+  it('keeps where the panel opened when the user switches the Space away without scrolling', async () => {
+    const user = userEvent.setup();
+    const space = showInSpace();
+    write('live words');
+    const viewport = screen.getByTestId('document-editor-content').closest('[data-radix-scroll-area-viewport]') as HTMLElement;
+    viewport.scrollTop = 400;
+    await openPanel(user);
+    await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
+
+    space('hidden');
+    viewport.scrollTop = 0;
+    space('visible');
+
+    await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('live words'));
+    expect(viewport.scrollTop).toBe(400);
+  });
+
   it('puts the current content back where the user was reading after a Space switch away and back', async () => {
     const user = userEvent.setup();
     const space = showInSpace();
