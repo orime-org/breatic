@@ -18,6 +18,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -38,7 +39,7 @@ const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaV
 const { asCommentBody, commentsOn } = await import('@web/spaces/document/document-comment-extension');
 const { draftIn } = await import('@web/spaces/document/document-comment-draft-range');
 const { commentOn } = await import('@web/spaces/document/document-comment-post');
-const { selectedThreadsIn } = await import('@web/spaces/document/document-comment-selection');
+const { selectedThreadsIn, selectThreads } = await import('@web/spaces/document/document-comment-selection');
 const { DocumentProjectProvider } = await import('@web/spaces/document/document-project-context');
 const { setTableFullscreen } = await import('@web/spaces/document/document-table-fullscreen');
 const { tableBlock } = await import('@web/spaces/document/__tests__/table-fixtures');
@@ -210,6 +211,35 @@ describe('the comment icon on a media block', () => {
 
     expect([...selectedThreadsIn(editor.prosemirrorState)].sort()).toEqual([first, second].sort());
     expect(within(row(editor, 'pic')).getByTestId('doc-media-frame').getAttribute('data-comment-reading')).toBe('true');
+  });
+
+  it('does not outline the block while a resolved comment on it is read', async () => {
+    const editor = open([PICTURE]);
+    const id = await postOn(editor, 'pic');
+    await act(async () => {
+      await commentsOn(editor)!.threadStore.resolveThread({ threadId: id });
+    });
+
+    act(() => {
+      selectThreads(editor as never, [id]);
+    });
+
+    expect(within(row(editor, 'pic')).getByTestId('doc-media-frame').getAttribute('data-comment-reading')).toBe('false');
+  });
+
+  it('leaves the user\'s caret alone when the icon is pressed', async () => {
+    const editor = open([{ id: 'w', type: 'paragraph', content: 'alpha' }, PICTURE]);
+    await postOn(editor, 'pic');
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
+    });
+
+    act(() => {
+      fireEvent.pointerDown(within(row(editor, 'pic')).getByTestId('doc-media-comment-badge'), { button: 0 });
+    });
+
+    expect(view.state.selection.toJSON()).toEqual({ type: 'text', anchor: 3, head: 3 });
   });
 
   it('shows to a viewer as well', async () => {

@@ -12,16 +12,21 @@ import { cleanup, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { previewUrlFor } from '@breatic/shared';
+
 import { MediaCommentQuote } from '@web/spaces/document/DocumentCommentCard';
+
+/** An address shaped like one our storage writes, so a preview is stored beside it. */
+const STORED = 'https://cdn.example/2026-10-07/1765_12345678-1234-1234-1234-123456789abc.png';
 
 afterEach(cleanup);
 
 describe('MediaCommentQuote', () => {
-  it('shows a picture as a thumbnail beside its name', () => {
-    render(<MediaCommentQuote media={{ blockId: 'b', type: 'image', name: 'a.png', caption: 'dawn', url: 'https://cdn.test/a.png' }} testId='q' />);
+  it('shows a picture as a thumbnail, loaded from its preview, beside its name', () => {
+    render(<MediaCommentQuote media={{ blockId: 'b', type: 'image', name: 'a.png', caption: 'dawn', url: STORED }} testId='q' />);
 
     const line = screen.getByTestId('q');
-    expect(line.querySelector('img')?.getAttribute('src')).toBe('https://cdn.test/a.png');
+    expect(line.querySelector('img')?.getAttribute('src')).toBe(previewUrlFor(STORED));
     expect(line.textContent).toBe('a.png');
   });
 

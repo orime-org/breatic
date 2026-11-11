@@ -83,8 +83,10 @@ export function useMediaComments(editor: ToolEditor): MediaComments {
     for (const thread of comments.threadStore.getThreads().values()) {
       const blockId = mediaBlockIdOf(thread.metadata);
       if (blockId === null) continue;
-      owner.set(thread.id, blockId);
+      // A resolved comment reads as the body, as on words (A8): it neither
+      // counts nor outlines the block while read.
       if (thread.resolved === true) continue;
+      owner.set(thread.id, blockId);
       open.set(blockId, [...(open.get(blockId) ?? []), thread.id]);
     }
     const reading = new Set<string>();

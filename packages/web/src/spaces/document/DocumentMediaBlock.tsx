@@ -779,8 +779,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           variant='chrome-ghost'
           size='compact'
           data-testid='doc-media-comment-badge'
-          // Shown to a viewer too, who reads comments (`index.css` hides the
-          // rest of the chrome in a body that cannot be edited).
+          // The block's own control, so a press here reads the comments and
+          // leaves the user's caret alone; shown to a viewer too, who reads
+          // comments (`index.css` hides the rest of the chrome in a body that
+          // cannot be edited).
+          data-media-chrome=''
           data-media-viewer=''
           // A press here reads the comments; it starts no drag of the block.
           className='nodrag absolute -right-2 -top-2 z-10 gap-0.5 rounded-full border border-border bg-popover px-1.5 text-2xs shadow-sm'

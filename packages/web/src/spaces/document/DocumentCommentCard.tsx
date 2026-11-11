@@ -43,6 +43,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 
+import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -118,7 +119,7 @@ export function MediaCommentQuote({ media, testId }: { media: MediaQuote; testId
       className='mb-2 flex min-w-0 items-center gap-1.5 border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
     >
       {media.type === 'image'
-        ? <img src={media.url} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
+        ? <PreviewImg src={media.url} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
         : <Icon className='h-3 w-3 shrink-0' aria-hidden='true' />}
       <span className='truncate'>{mediaNameOf(media, t)}</span>
     </p>
