@@ -386,6 +386,10 @@ describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inn
     return upstreamBody(found, validated, prompt);
   }
 
+  it("never sends a body with the voice description emptied (inner#1825)", () => {
+    expect(() => bodyFor({ voice_description: "", language: "English" }, "The night was long.")).toThrow(/voice_description/);
+  });
+
   it("sends the line as text, with the described voice and the language", () => {
     expect(
       bodyFor({ voice_description: "An old man, slow and gravelly", language: "English" }, "The night was long."),

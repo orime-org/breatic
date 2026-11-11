@@ -869,6 +869,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { speed: 9 } })]),
     states: ["runs from 0.5 to 1.5"],
   }],
+  "param-too-short": [{
+    meets: group([gen("audio", "tts", "qwen3-tts-voice-design", { prompt: [{ text: "Hello." }], params: { voice_description: "" } })]),
+    states: ['"voice_description" takes at least 1 character'],
+  }],
   "param-off-step": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { horizontal_angle: 50 } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ["so it takes 0, 45"],

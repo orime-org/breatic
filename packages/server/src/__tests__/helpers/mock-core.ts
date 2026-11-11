@@ -200,6 +200,8 @@ export const mocks = {
   // #1735 server reference-count gate (too many reference images). Default: no
   // violation (null) — existing tests stay green; the #1735 test flips it.
   violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
+  // inner#1825 text-length gate: default no violation.
+  violatesTextLengthForModel: vi.fn().mockReturnValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -644,6 +646,7 @@ export const domainMock = async () => ({
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
+  violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   // Shaped like the real return so a turn built on this stub spreads the

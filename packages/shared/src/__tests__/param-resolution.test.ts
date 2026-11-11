@@ -367,6 +367,13 @@ describe("checkParamCombination", () => {
     expect(found[0]).toMatchObject({ param: "negative_prompt", rule: "max_length" });
   });
 
+  it("refuses a text setting emptied below its least length, counted after cleaning (inner#1825)", () => {
+    const model = { params: { voice_description: { type: "text", min_length: 1 } } };
+    expect(checkParamCombination(model, { voice_description: "" })).toEqual([{ param: "voice_description", rule: "min_length", length: 0, min: 1 }]);
+    expect(checkParamCombination(model, { voice_description: "<b></b>" })).toEqual([{ param: "voice_description", rule: "min_length", length: 0, min: 1 }]);
+    expect(checkParamCombination(model, { voice_description: "warm" })).toEqual([]);
+  });
+
   it("refuses a text setting given anything but text", () => {
     for (const value of [5, true]) {
       expect(checkParamCombination(T23D, { negative_prompt: value })).toEqual([{ param: "negative_prompt", rule: "text", value }]);

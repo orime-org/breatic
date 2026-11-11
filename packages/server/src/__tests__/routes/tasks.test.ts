@@ -248,6 +248,29 @@ describe("Tasks routes", () => {
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
+    it("rejects a submission with a text setting emptied below its least length BEFORE enqueue (inner#1825)", async () => {
+      mocks.violatesTextLengthForModel.mockReturnValueOnce({ param: "voice_description", min: 1 });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { voice_description: "", text: "Hello." },
+          model: "qwen3-tts-voice-design",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(mocks.violatesTextLengthForModel).toHaveBeenCalledWith("qwen3-tts-voice-design", expect.objectContaining({ voice_description: "" }));
+      expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
     it("allows a submission within the reference-image cap (#1735 gate passes)", async () => {
       mocks.violatesReferenceCountForModel.mockReturnValue(null);
       const app = createApp();

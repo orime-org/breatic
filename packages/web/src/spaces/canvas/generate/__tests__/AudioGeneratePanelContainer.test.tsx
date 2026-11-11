@@ -1265,3 +1265,36 @@ describe('AudioGeneratePanelContainer — a dialogue written line by line (inner
     expect(stored()).toEqual(before);
   });
 });
+
+describe('AudioGeneratePanelContainer — a text setting a model needs written (inner#1825)', () => {
+  const DESIGN: ModelEntry = {
+    ...ELEVEN,
+    name: 'qwen3-tts-voice-design',
+    display_name: 'Qwen3 TTS Voice Design',
+    params: {
+      voice_description: { description: '', default: 'A warm narrator', type: 'text', min_length: 1, fill: 'panel' },
+    },
+  } as ModelEntry;
+
+  it('says to fill the setting in when it is emptied, and sends nothing', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), tts: [DESIGN, ...catalog().tts] });
+    const data = { mode: 'tts', model: DESIGN.name, paramsByModel: { [DESIGN.name]: { voice_description: '' } } };
+    seedAudioNode(data);
+    const fragment = getPromptFragment('p', 's', 'target', 'tts');
+    if (!fragment) throw new Error('the node has no tts prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('Hello.')]);
+    fragment.insert(0, [paragraph]);
+    render(panelTree(data));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    fireEvent.click(await screen.findByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      t('canvas.generatePanel.refuseExecuteParamEmpty', { name: t('canvas.generatePanel.param.voice_description') }),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+});
