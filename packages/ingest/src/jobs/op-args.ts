@@ -233,6 +233,28 @@ export function clipRefusal(op: ContainerOp, probe: ProbeReport): ContainerFailu
 }
 
 /**
+ * The run that reads a whole file through to learn how long it plays, for a
+ * clip whose container states no length (a browser recorder's WebM): its
+ * progress, written to stdout, ends on the time it reached.
+ * @param file - The local file.
+ * @returns The ffmpeg arguments.
+ */
+export function lengthArgs(file: string): string[] {
+  return ["-v", "error", "-nostats", "-i", file, "-map", "0", "-f", "null", "-progress", "pipe:1", "-"];
+}
+
+/**
+ * The length a run of {@link lengthArgs} reached: the last time its progress reports.
+ * @param progress - What the run wrote to stdout.
+ * @returns The seconds, or null when it reported none.
+ */
+export function readProgressLength(progress: string): number | null {
+  const times = [...progress.matchAll(/^out_time_us=(\d+)$/gm)].map((match) => Number(match[1]));
+  const last = times[times.length - 1];
+  return last === undefined || !(last > 0) ? null : last / 1_000_000;
+}
+
+/**
  * Why a finished output cannot be filed: a video operation keeps the picture,
  * so one without a video stream (a cut inside a sound-only tail) failed; an
  * audio operation's output must carry sound.

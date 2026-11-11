@@ -21,7 +21,7 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-import { clipRefusal, inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal, type ExtraInput } from "@ingest/jobs/op-args.js";
+import { clipRefusal, inputRefusal, lengthArgs, mediumOf, opSteps, outputFileName, outputRefusal, readProgressLength, type ExtraInput } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -59,6 +59,9 @@ async function put(url: string, file: string): Promise<void> {
   });
   if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
 }
+
+/** The operations that lay clips end to end by their lengths. */
+const JOINS: ReadonlySet<ContainerOp> = new Set<ContainerOp>(["join", "audio_join"]);
 
 /**
  * Download the source into the job's directory, whole, before any run reads it.
@@ -103,13 +106,21 @@ export async function runJob(job: RunBody): Promise<void> {
      */
     const fetched = async (url: string, file: string, first: boolean): Promise<ProbeReport> => {
       await download(url, file).catch(ours);
-      const probe = readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8"));
-      const refused = (first ? inputRefusal(job.op, probe) : null) ?? clipRefusal(job.op, probe);
+      const probed = readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8"));
+      const refused = (first ? inputRefusal(job.op, probed) : null) ?? clipRefusal(job.op, probed);
       if (refused !== null) {
         reason = refused;
         throw new Error(`input refused: ${refused}`);
       }
-      return probe;
+      if (!JOINS.has(job.op) || probed.durationSeconds !== null) return probed;
+      // A join lays clips end to end by their lengths; a container that states
+      // none (a browser recorder's WebM) is read through to learn it.
+      const measured = readProgressLength((await runCommand("ffmpeg", lengthArgs(file))).stdout.toString("utf8"));
+      if (measured === null) {
+        reason = "tool_failed";
+        throw new Error("input refused: a clip's length cannot be read");
+      }
+      return { ...probed, durationSeconds: measured };
     };
     const input = join(dir, "source");
     const source = await fetched(job.input, input, true);
