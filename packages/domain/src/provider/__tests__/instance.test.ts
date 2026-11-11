@@ -36,3 +36,11 @@ describe("the provider instance of this process", () => {
     expect(provider().llm.availability("anthropic/claude-opus-5.5", "call").upstreams.find((u) => u.upstream === "openrouter")?.configured).toBe(true);
   });
 });
+
+describe("a provider handed over", () => {
+  it("is the one the process uses, in place of the configured one", () => {
+    const handed = { llm: {} } as unknown as ReturnType<typeof provider>;
+    expect(initProvider(handed)).toBe(handed);
+    expect(provider()).toBe(handed);
+  });
+});

@@ -24,13 +24,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/deepseek": "catalog:",
-    "@ai-sdk/google": "catalog:",
-    "@ai-sdk/openai": "catalog:",
     "@breatic/core": "workspace:*",
     "@breatic/provider": "workspace:*",
-    "@openrouter/ai-sdk-provider": "catalog:",
     "@breatic/shared": "workspace:*",
     "ai": "catalog:",
     "drizzle-orm": "catalog:",

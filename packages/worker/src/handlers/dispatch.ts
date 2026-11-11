@@ -22,7 +22,8 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
-import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
+import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
+import type { Cost } from "@breatic/provider";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
@@ -1764,23 +1765,17 @@ export async function runUnderstand(
     : understandQuestion(params.prompt, sourceType, userLocale);
 
   /**
-   * Record the one call this run made.
-   * @param costUsd - What the service said it charged, when it said.
+   * Record one billed answer of this run.
+   * @param cost - What it cost.
+   * @param upstream - The upstream that billed it.
    */
-  const record = (costUsd: number | undefined): void => {
-    usage.recordServiceCall({
-      source: "model",
-      service: UNDERSTAND_PINS.model,
-      provider: "openrouter",
-      requests: 1,
-      ...(costUsd === undefined ? {} : { costUsd }),
-    });
+  const record = (cost: Cost, upstream: string): void => {
+    usage.recordModelCall({ source: "model", model: UNDERSTAND_PINS.model, upstream, cost, requests: 1 });
   };
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
     const sourceUrl = params.source_url as string;
-    const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
     const canCheckLongMedia = (sourceType === "audio" || sourceType === "video") &&
       execution?.projectId !== undefined && execution.taskId !== undefined;
     const storage = canCheckLongMedia ? await getStorageAdapter() : null;
@@ -1833,9 +1828,6 @@ export async function runUnderstand(
           maxItems: getAgentConfig().understand_media_max_items,
           ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
           model: UNDERSTAND_PINS.model,
-          backend: UNDERSTAND_PINS.backend,
-          apiKey,
-          baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
           checkpoint: durableOperation.checkpoint,
           signal: durableOperation.signal,
@@ -1856,9 +1848,6 @@ export async function runUnderstand(
         }],
         question,
         model: UNDERSTAND_PINS.model,
-        backend: UNDERSTAND_PINS.backend,
-        apiKey,
-        baseUrl: UNDERSTAND_PINS.baseUrl,
         maxBytes: cfg.max_media_bytes,
         ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
         maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
@@ -1872,15 +1861,11 @@ export async function runUnderstand(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
-    // A 403 is a key, a budget or a content block; only the service's own
-    // error type says which. A block was measured once in three sends of the
-    // same audio, so a transcription takes it as one worth asking again.
-    if (
-      transcribing &&
-      err instanceof UnderstandRefused &&
-      (err.errorType === "content_policy_violation" || err.errorType === "refusal")
-    ) {
-      throw new TranscriptionBlocked(err.errorType);
+    // A 403 is a key, a budget or a content block; only the upstream's own
+    // word says which. A block was measured once in three sends of the same
+    // audio, so a transcription takes it as one worth asking again.
+    if (transcribing && err instanceof UnderstandRefused && err.blocked) {
+      throw new TranscriptionBlocked("content_blocked");
     }
     throw err;
   }
@@ -1916,7 +1901,7 @@ export async function runUnderstand(
 function transcriptOf(
   answer: { text: string; finishReason: string },
 ): Record<string, unknown> {
-  if (answer.finishReason === "content_filter") throw new TranscriptionBlocked("content_filter");
+  if (answer.finishReason === "content-filter") throw new TranscriptionBlocked("content-filter");
   if (answer.finishReason === "length") throw new CutShort();
   if (answer.finishReason !== "stop") throw new StoppedPartWay(answer.finishReason);
   return { outputs: [{ content: answer.text }], finish_reason: answer.finishReason };

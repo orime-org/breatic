@@ -412,15 +412,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@ai-sdk/anthropic':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
-      '@ai-sdk/google':
-        specifier: 'catalog:'
-        version: 4.0.41(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
       '@amplitude/analytics-node':
         specifier: 'catalog:'
         version: 1.5.76
@@ -430,9 +421,6 @@ importers:
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
-      ai:
-        specifier: 'catalog:'
-        version: 7.0.68(zod@4.4.3)
       bcryptjs:
         specifier: 'catalog:'
         version: 3.0.3
@@ -485,6 +473,9 @@ importers:
       '@types/nodemailer':
         specifier: 'catalog:'
         version: 8.0.1
+      ai:
+        specifier: 'catalog:'
+        version: 7.0.68(zod@4.4.3)
       dotenv:
         specifier: 'catalog:'
         version: 16.6.1
@@ -506,18 +497,6 @@ importers:
 
   packages/domain:
     dependencies:
-      '@ai-sdk/anthropic':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
-      '@ai-sdk/deepseek':
-        specifier: 'catalog:'
-        version: 3.0.39(zod@4.4.3)
-      '@ai-sdk/google':
-        specifier: 'catalog:'
-        version: 4.0.41(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
@@ -527,9 +506,6 @@ importers:
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
-      '@openrouter/ai-sdk-provider':
-        specifier: 'catalog:'
-        version: 3.0.0(ai@7.0.68(zod@4.4.3))(zod@4.4.3)
       ai:
         specifier: 'catalog:'
         version: 7.0.68(zod@4.4.3)
@@ -637,6 +613,9 @@ importers:
       '@breatic/domain':
         specifier: workspace:*
         version: link:../domain
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared

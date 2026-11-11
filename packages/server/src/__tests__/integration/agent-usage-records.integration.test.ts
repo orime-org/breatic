@@ -23,6 +23,17 @@ let cutOffAfter: string | undefined;
 /** When set, a call that ends normally still carries this generation id. */
 let rawId: string | undefined;
 let modelCalls = 0;
+/** When every call of the suite was sent: a weekday peak hour, so a direct DeepSeek call is at its full price. */
+const SENT_AT = Date.parse("2026-11-11T02:00:00Z");
+
+/**
+ * The id the later lookup of a generation is queued under.
+ * @param lookup - The lookup.
+ * @returns The job id.
+ */
+function jobIdOf(lookup: { upstream: string; generationId: string }): string {
+  return crypto.createHash("sha256").update(JSON.stringify(lookup)).digest("hex");
+}
 /** When set, every consolidation call answers with this text. */
 let consolidationAnswer: string | undefined;
 
@@ -38,12 +49,36 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           text: consolidationAnswer,
           finishReason: "stop",
           usage: { inputTokens: 1_000, inputTokenDetails: { noCacheTokens: 1_000 }, outputTokens: 1_000, outputTokenDetails: {}, totalTokens: 2_000 },
-          providerMetadata: undefined,
+          providerMetadata: { breatic: { upstream: provider, sentAt: SENT_AT } },
           response: { id: `gen-${crypto.randomBytes(6).toString("hex")}` },
         },
-    resolveProvider: () => provider,
-    getModel: () =>
-      modelProducing(() => {
+    // The test's model, with what provider would report about it: the cost of each call is read by this
+    // process's real provider, from the upstream and the send moment its finish names.
+    provider: () => ({
+      llm: {
+        prepare: () => ({
+          model: model(),
+          options: { providerOptions: {}, maxRetries: 0 },
+          system: (parts: Parameters<typeof actual.instructionsText>[0]) => [{ role: "system", content: actual.instructionsText(parts) }],
+          pendingCosts: () =>
+            cutOffAfter === undefined
+              ? []
+              : provider === "openrouter"
+                ? [{ state: "pending", lookup: { upstream: "openrouter", generationId: cutOffAfter } }]
+                : [{ state: "missing", reason: "cut off before its finish", upstream: provider }],
+        }),
+        costOf: (finished: Parameters<ReturnType<typeof actual.provider>["llm"]["costOf"]>[0]) => actual.provider().llm.costOf(finished),
+        servedBy: (finished: Parameters<ReturnType<typeof actual.provider>["llm"]["servedBy"]>[0]) => actual.provider().llm.servedBy(finished),
+      },
+    }),
+  };
+
+  /**
+   * The test's model for one call.
+   * @returns It.
+   */
+  function model(): ReturnType<typeof modelProducing> {
+    return modelProducing(() => {
         modelCalls += 1;
         if (cutOffAfter !== undefined) {
           return [
@@ -64,16 +99,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }
         const finish = finishing("stop", 1_000_000);
         const reported =
-          finish.type === "finish" && finishMetadata !== undefined
-            ? { ...finish, providerMetadata: finishMetadata }
+          finish.type === "finish"
+            ? { ...finish, providerMetadata: { ...finishMetadata, breatic: { upstream: provider, sentAt: SENT_AT } } }
             : finish;
         return [
           ...(rawId === undefined ? [] : [{ type: "raw" as const, rawValue: { id: rawId } }]),
           ...saying("hi").filter((part) => part.type !== "finish"),
           reported,
         ];
-      }),
-  };
+      });
+  }
 });
 
 import type * as DomainModule from "@breatic/domain";
@@ -107,6 +142,7 @@ const SUITE_ENV = {
 
 beforeAll(async () => {
   initCore(SUITE_ENV);
+  (await vi.importActual<typeof DomainModule>("@breatic/domain")).initProvider();
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");
@@ -241,7 +277,7 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     const seeded = await seed(100_000);
     try {
       expect(await send(seeded)).toBe(200);
-      expect(await queue.getJob(rawId)).toBeUndefined();
+      expect(await queue.getJob(jobIdOf({ upstream: "openrouter", generationId: rawId }))).toBeUndefined();
     } finally {
       rawId = undefined;
       await queue.close();
@@ -335,7 +371,7 @@ describe("a chat turn's tool calls are recorded under the same turn", () => {
   }, 60_000);
 });
 
-describe("an OpenRouter call cut off before it reported its cost", () => {
+describe("a call cut off before it reported its cost", () => {
   it("is handed to the later lookup under its generation id", async () => {
     provider = "openrouter";
     finishMetadata = undefined;
@@ -346,9 +382,10 @@ describe("an OpenRouter call cut off before it reported its cost", () => {
       const seeded = await seed(100_000);
       await send(seeded);
 
-      const job = await queue.getJob(generationId);
+      const job = await queue.getJob(jobIdOf({ upstream: "openrouter", generationId }));
       expect(job?.data).toMatchObject({
-        generationId,
+        lookup: { upstream: "openrouter", generationId },
+        upstream: "openrouter",
         feature: "chat_turn",
         source: "model",
         actorUserId: seeded.userId,
@@ -375,7 +412,7 @@ describe("an OpenRouter call cut off before it reported its cost", () => {
     try {
       const seeded = await seed(100_000);
       await send(seeded);
-      expect(await queue.getJob(generationId)).toBeUndefined();
+      expect(await queue.getJob(jobIdOf({ upstream: "openrouter", generationId }))).toBeUndefined();
     } finally {
       cutOffAfter = undefined;
       await queue.close();

@@ -34,7 +34,7 @@ import { unicodeTagMiddleware } from "@domain/agent/strip-unicode-tags.js";
  */
 function cleaned(model: LanguageModel): Exclude<LanguageModel, string> {
   if (typeof model === "string") {
-    throw new TypeError(`A model named by id ("${model}") cannot be cleaned; pass getModel()'s model`);
+    throw new TypeError(`A model named by id ("${model}") cannot be cleaned; pass the model provider prepared`);
   }
   return wrapLanguageModel({ model, middleware: [unicodeTagMiddleware, dsmlMiddleware] });
 }

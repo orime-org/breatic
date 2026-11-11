@@ -14,8 +14,7 @@ import { accountActivityRepo } from "@breatic/core";
 import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
-import { streamTextRetry } from "@breatic/domain";
-import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
+import { provider, streamTextRetry } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
@@ -134,24 +133,20 @@ export async function* executeTextTool(
     const model = getModelForTool(tool);
     await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
-    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
+    // No temperature: Gemini 3.8 deprecates the sampling parameters.
+    const prepared = provider().llm.prepare(model, { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false });
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` }, prepared.pendingCosts);
     calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
     const result = streamTextRetry({
-      model: getModel(modelString),
+      model: prepared.model,
       system: systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       stopWhen: stepCountIs(1),
-      // No temperature: Gemini 3.8 deprecates the sampling parameters.
-      ...callOptionsFor(modelString, {
-        thinking: true,
-        thinkingLevel: getTextToolsConfig().thinking_level,
-        cache: false,
-      }),
+      ...prepared.options,
       abortSignal: signal,
-      ...watch.streamOptions,
       onLanguageModelCallEnd: (event) => {
         totalTokens += event.usage.totalTokens ?? 0;
         watch.callEnded(event);
@@ -235,8 +230,8 @@ async function chargeRecorded(
   modelString: string | null,
   tokens: number,
 ): Promise<CreditDecimal> {
-  // An OpenRouter call whose cost is not in hand is looked up and charged
-  // later, under a key of its own.
+  // A call whose cost is not in hand is looked up and charged later, under a
+  // key of its own.
   await calls?.handOff().catch((err: unknown) =>
     logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
   );
@@ -257,7 +252,7 @@ async function chargeRecorded(
         actorUserId: userId,
         amount: credits,
         model: modelString ?? undefined,
-        provider: modelString === null ? undefined : resolveProvider(modelString),
+        provider: calls?.served(),
         description: `Text tool: ${tool}`,
       },
     );

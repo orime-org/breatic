@@ -260,20 +260,17 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
     if (call.costUsd === null) {
       logger.error({ executionId: row.id, seq: call.seq, generationId: call.generationId, outcome: call.outcome }, "timeline_model_call_cost_missing");
     }
-    const tokens = call.tokens;
+    const tokens = call.tokens === null
+      ? undefined
+      : { input: call.tokens.input, cachedInput: call.tokens.cacheRead, output: call.tokens.output, reasoning: call.tokens.reasoning };
     recorder.recordModelCall({
       source: "model",
       model: step.request.model,
-      provider: "openrouter",
-      usage: {
-        inputTokens: tokens?.input,
-        inputTokenDetails: { noCacheTokens: tokens === null ? undefined : tokens.input - tokens.cacheRead, cacheReadTokens: tokens?.cacheRead },
-        outputTokens: tokens?.output,
-        outputTokenDetails: { reasoningTokens: tokens?.reasoning },
-      },
-      providerMetadata: call.costUsd === null ? undefined : { openrouter: { usage: { cost: call.costUsd } } },
-      // Only a priced call names its generation: one without a cost is recorded at zero, not looked up later.
-      ...(call.costUsd !== null && call.generationId !== null && { generationId: call.generationId }),
+      upstream: "openrouter",
+      // A call without a cost is recorded at zero, not looked up later.
+      cost: call.costUsd === null
+        ? { state: "missing", reason: `the call ${String(call.seq)} reported no cost`, ...(tokens === undefined ? {} : { tokens }) }
+        : { state: "known", usd: call.costUsd, source: "reported", ...(tokens === undefined ? {} : { tokens }) },
       costIdentity: `${timelineOperationKey(row.id)}:${call.seq}`,
     });
   }

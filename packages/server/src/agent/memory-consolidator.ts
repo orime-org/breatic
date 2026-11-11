@@ -28,14 +28,13 @@ import { parseCreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
+import type { PreparedCall } from "@breatic/provider";
 import {
   generateTextRetry,
-  getModel,
-  callOptionsFor,
   creditLotService,
   createUsageRecorder,
   handOffLookups,
-  resolveProvider,
+  provider,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
@@ -212,6 +211,8 @@ interface ConsolidationBill {
   usage: UsageRecorder;
   /** Which model spent it. */
   model: string;
+  /** The upstream that served the call; what the charge names. */
+  upstream: string;
 }
 
 /**
@@ -240,7 +241,7 @@ function consolidationKey(conversationId: string, watermarkBefore: number, foldI
  * @param input - Who ran it, over which window, and what it cost.
  */
 async function bill(input: ConsolidationBill): Promise<void> {
-  const { userId, conversationId, projectId, watermarkBefore, usage, model } = input;
+  const { userId, conversationId, projectId, watermarkBefore, usage, model, upstream } = input;
 
   let chargedAmount = 0;
   try {
@@ -249,8 +250,8 @@ async function bill(input: ConsolidationBill): Promise<void> {
     for (const err of writeFailures) {
       logger.error({ err, userId, conversationId, watermarkBefore }, "agent_usage_record_failed");
     }
-    // An OpenRouter call whose cost is not in hand is looked up and charged
-    // later, under a key of its own.
+    // A call whose cost is not in hand is looked up and charged later, under
+    // a key of its own.
     await handOffLookups(usage.awaitingLookup(), usage.operation, {
       model,
       description: "Memory consolidation",
@@ -268,7 +269,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
         amount,
         description: "Memory consolidation",
         model,
-        provider: resolveProvider(model),
+        provider: upstream,
       },
     );
 
@@ -337,13 +338,15 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   // Everything the call is built from, gathered before a single token is
   // spent. A read that fails here costs this turn its fold and nothing else.
   let input: ConsolidationInput;
-  let model: ReturnType<typeof getModel>;
+  let prepared: PreparedCall;
   try {
     input = await memoryService.consolidationInput(
       { userId, projectId, conversationId },
       config.consolidation_entries_max_chars,
     );
-    model = getModel(config.consolidation_model);
+    // Folding a transcript has no reasoning step in it, and asks for a fixed
+    // temperature of 0; provider sends each the way the upstream takes it.
+    prepared = provider().llm.prepare(config.consolidation_model, { thinking: false, cache: false, temperature: 0 });
   } catch (err) {
     if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");
@@ -363,16 +366,12 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   // behind it that were paid for.
   try {
     for (let attempt = 1; attempt <= config.consolidation_answer_attempts; attempt += 1) {
-      // One call, and transport retries happen inside it: `generateTextRetry`
-      // is handed `llm_max_retries`.
+      // One call; provider retries and moves to the next upstream inside it.
       const result = await generateTextRetry({
-        model,
+        model: prepared.model,
         messages,
         stopWhen: stepCountIs(1),
-        // Folding a transcript has no reasoning step in it, and asks for a
-        // fixed temperature of 0. Which of the two each model takes, and how,
-        // is settled in the routing table.
-        ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
+        ...prepared.options,
         maxOutputTokens: config.max_output_tokens,
         ...(signal ? { abortSignal: signal } : {}),
       });
@@ -386,15 +385,14 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
         projectId,
         onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
       });
+      const upstream = provider().llm.servedBy(result) ?? "";
       usage.recordModelCall({
         source: "model",
         model: config.consolidation_model,
-        provider: resolveProvider(config.consolidation_model),
-        usage: result.usage,
-        providerMetadata: result.providerMetadata,
-        generationId: result.response.id,
+        upstream,
+        cost: provider().llm.costOf({ model: config.consolidation_model, usage: result.usage, providerMetadata: result.providerMetadata }),
       });
-      await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model });
+      await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream });
 
       if (userLeft()) return "aborted";
       // An answer cut off by the output limit is cut off again when asked

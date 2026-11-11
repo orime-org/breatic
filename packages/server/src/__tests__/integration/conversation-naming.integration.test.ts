@@ -26,8 +26,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () => modelProducing(() => saying("hi")),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => saying("hi"))),
   };
 });
 

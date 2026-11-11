@@ -17,7 +17,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
   return {
     ...actual,
-    getRawEnvVar: () => "unit-test-key",
     getAgentConfig: () => ({ ...actual.getAgentConfig(), understand_media_max_items: maxItems, understand_media_max_bytes: maxBytes }),
   };
 });
@@ -73,19 +72,21 @@ describe("understand_media batch tool", () => {
     expect(understandMediaAtMock).toHaveBeenCalledWith(expect.objectContaining({ items: input.items, maxBytes: 12345 }));
   });
 
-  it("sends all items and one question in one capability call and records one service call", async () => {
+  it("sends all items and one question in one capability call and records one model call", async () => {
     const tool = makeUnderstandMediaTool();
     const usage = usageSpy();
     const items = [{ url: "https://example.com/a.wav" }, { url: "https://example.com/b.mp4" }, { url: "https://example.com/c.png" }];
-    understandMediaAtMock.mockImplementationOnce(async (request: { onBilled: (cost: number) => void }) => {
-      request.onBilled(0.003);
+    understandMediaAtMock.mockImplementationOnce(async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+      request.onBilled({ state: "known", usd: 0.003, source: "reported" }, "openrouter");
       return { text: "Compared.", finishReason: "stop", kind: "audio", kinds: ["audio", "video", "image"] };
     });
     if (!tool.execute) throw new Error("tool has no execute");
     expect(await tool.execute({ items, question: "Compare all three." }, toolOptions({}, usage.recorder) as never)).toBe("Compared.");
     expect(understandMediaAtMock).toHaveBeenCalledTimes(1);
     expect(understandMediaAtMock).toHaveBeenCalledWith(expect.objectContaining({ items, question: "Compare all three." }));
-    expect(usage.serviceCalls).toEqual([{ source: "tool:understand_media", service: "google/gemini-3.8-flash", provider: "openrouter", requests: 1, costUsd: 0.003 }]);
+    expect(vi.mocked(usage.recorder.recordModelCall).mock.calls.map(([call]) => call)).toEqual([
+      { source: "tool:understand_media", model: "google/gemini-3.8-flash", upstream: "openrouter", cost: { state: "known", usd: 0.003, source: "reported" }, requests: 1 },
+    ]);
   });
 
   it("preserves the one-in-flight gate for a whole batch and reopens it after completion", async () => {

@@ -14,7 +14,7 @@
 
 import { stepCountIs } from "ai";
 import { logger } from "@breatic/core";
-import { generateTextRetry, getModel } from "@breatic/domain";
+import { generateTextRetry, provider } from "@breatic/domain";
 
 import type { ModelFamily } from "@worker/providers/shared.js";
 
@@ -74,8 +74,9 @@ async function rewrittenPrompt(
     .filter(Boolean)
     .join(", ");
   const ask = "Convert this image description into a structured prompt JSON with fields: subject, style, technical, lighting, composition.";
+  const prepared = provider().llm.prepare("deepseek/deepseek-chat", { thinking: false, cache: false, temperature: 0.3 });
   const result = await generateTextRetry({
-    model: getModel("deepseek/deepseek-chat"),
+    model: prepared.model,
     messages: [
       {
         role: "user",
@@ -85,7 +86,7 @@ async function rewrittenPrompt(
       },
     ],
     stopWhen: stepCountIs(1),
-    temperature: 0.3,
+    ...prepared.options,
     abortSignal: signal,
   });
   const json = result.text.trim().match(/\{[\s\S]*\}/)?.[0];

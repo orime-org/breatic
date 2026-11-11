@@ -334,15 +334,15 @@ export function startWorker(): void {
     settleWhenStalled(job);
   });
 
-  // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
-  // are the waiting: the job throws until OpenRouter has the cost.
+  // The later lookup of a model call whose cost was not in hand (#296). Its retries are the
+  // waiting: the job throws while provider answers the cost pending.
   const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
 
   usageLookup.on("failed", (job, err) => {
     logger.warn(
       {
         err,
-        generationId: job?.data.generationId,
+        lookup: job === undefined ? undefined : "lookup" in job.data ? job.data.lookup : { generationId: job.data.generationId },
         attemptsMade: job?.attemptsMade,
         attemptsAllowed: job?.opts?.attempts,
       },

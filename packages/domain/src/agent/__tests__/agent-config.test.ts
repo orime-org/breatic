@@ -15,10 +15,11 @@ import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 
-vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
-vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+const capabilities = vi.hoisted(() => vi.fn(async (): Promise<{ pictures: boolean; contextWindow?: number }> => ({ pictures: true, contextWindow: 1_000_000 })));
+// Every upstream configured, so every tool that needs one is handed out.
+const configured = { upstreams: [{ upstream: "openrouter", weight: 0, configured: true, envVar: "OPENROUTER_API_KEY" }] };
+vi.mock("@domain/provider/instance.js", () => ({
+  provider: () => ({ llm: { capabilities, availability: () => configured, judgeAvailability: () => configured } }),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -31,7 +32,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // hands out when nothing is missing, so nothing is missing.
     env: new Proxy(actual.env, {
       get: (t, p: string) =>
-        p === "BRAVE_SEARCH_API_KEY" || p === "OPENROUTER_API_KEY"
+        p === "BRAVE_SEARCH_API_KEY"
           ? "test-key"
           : Reflect.get(t, p),
     }),
@@ -116,10 +117,9 @@ describe("buildAgentConfig", () => {
   });
 
   it("carries the main model's window, and the configured fallback when the directory cannot say (inner#1567)", async () => {
-    const { resolveModelContextWindow } = await import("@domain/agent/model-context-window.js");
-    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(200_000);
+    capabilities.mockResolvedValueOnce({ pictures: true, contextWindow: 200_000 });
     const known = await buildAgentConfig({ basePrompt: "base" });
-    vi.mocked(resolveModelContextWindow).mockResolvedValueOnce(undefined);
+    capabilities.mockResolvedValueOnce({ pictures: true });
     const unknown = await buildAgentConfig({ basePrompt: "base" });
 
     expect(known.contextWindow).toBe(200_000);

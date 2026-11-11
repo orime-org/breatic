@@ -59,11 +59,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       usageKeys.keys.push(options.operationKey);
       return (base.createUsageRecorder as (o: unknown) => unknown)(options);
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],
         (asked) => modelSays.prompts.push(asked.prompt),
-      ),
+      )),
   };
 });
 

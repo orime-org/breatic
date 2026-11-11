@@ -37,7 +37,7 @@ import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
-import { agentModelIds, assertModelsPriced, initProvider, modelCatalog } from "@breatic/domain";
+import { agentModelIds, initProvider, modelCatalog, provider } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
@@ -126,11 +126,11 @@ try {
 }
 
 // Every model the agent runs on has to be priceable (#296). One reached
-// directly reports tokens but no cost, and is priced from
-// config/usage-pricing.yaml; lazily, a missing price would surface as the
-// first call that spent money failing to record what it spent.
+// directly reports tokens but no cost, and is priced from its upstream's
+// prices in config/provider/llm.yaml; lazily, a missing price would surface
+// as the first call that spent money failing to record what it spent.
 try {
-  assertModelsPriced([...agentModelIds(), ...textToolModels()]);
+  provider().llm.assertModelsPriced([...agentModelIds(), ...textToolModels()]);
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
   await exitProcess(1);

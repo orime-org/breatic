@@ -294,9 +294,9 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // refuse a request after the card's answer is already gone (#1363). A
   // resumed turn runs on the model it started on.
   const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
-  const modelId =
+  const { modelId, upstream } =
     resumed === undefined
-      ? await conversationService.modelForMessage(conversation, user.id, body.model)
+      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
   const card =
     answer !== undefined
@@ -329,7 +329,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       c,
       { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
       (signal) =>
-        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body, modelId),
+        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body, modelId, upstream),
     );
   }
 

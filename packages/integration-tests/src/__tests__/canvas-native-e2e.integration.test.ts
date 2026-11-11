@@ -241,7 +241,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       request: Parameters<typeof orig.understandMediaAt>[0],
     ): ReturnType<typeof orig.understandMediaAt> => {
       readingCtrl.requests.push(request);
-      request.onBilled(readingCtrl.costUsd);
+      request.onBilled({ state: "known", usd: readingCtrl.costUsd, source: "reported" }, "openrouter");
       const kind = request.items[0]?.ledgerType === "video/mp4" ? "video" : "audio";
       return {
         text: readingCtrl.text,
@@ -1582,7 +1582,6 @@ describe("transcription results and usage cross the real settlement and collabor
         expect(readingCtrl.requests).toHaveLength(1);
         expect(readingCtrl.requests[0]).toMatchObject({
           model: MODEL,
-          backend: "google-vertex",
           items: [{ url: params.source_url, ledgerType: params.source_mime_type }],
         });
 

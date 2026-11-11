@@ -17,11 +17,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "deepseek",
-    getModel: () => modelProducing(() => {
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => {
       if (model.fail) throw new Error("activity model fixture failed");
       return saying("ok");
-    }),
+    })),
   };
 });
 

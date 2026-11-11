@@ -8,7 +8,7 @@
  * created with.
  */
 
-import { getRawEnvVar, getStorageAdapter, getUnderstandConfig } from "@breatic/core";
+import { getStorageAdapter, getUnderstandConfig } from "@breatic/core";
 import {
   assetRepo,
   readingLimitsUntil,
@@ -60,14 +60,11 @@ export function stepDepsFor(studioId: string | null, deadlineAt: number): StepDe
         items: [{ url }],
         question: DESCRIBE_QUESTION,
         model: UNDERSTAND_PINS.model,
-        backend: UNDERSTAND_PINS.backend,
-        apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
-        baseUrl: UNDERSTAND_PINS.baseUrl,
         maxBytes: cfg.max_media_bytes,
         ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
         maxOutputTokens: cfg.max_output_tokens,
         onBilled: (billed) => {
-          costUsd = billed ?? 0;
+          costUsd = billed.state === "known" ? billed.usd : 0;
         },
       }));
       return { text: answer.text.trim(), costUsd };

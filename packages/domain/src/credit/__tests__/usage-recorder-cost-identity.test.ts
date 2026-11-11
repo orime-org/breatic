@@ -16,12 +16,7 @@ const PRICING = {
   services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
 };
 
-const TIMELINE_USAGE = {
-  inputTokens: 1_200,
-  inputTokenDetails: { noCacheTokens: 1_000, cacheReadTokens: 200 },
-  outputTokens: 300,
-  outputTokenDetails: { reasoningTokens: 100 },
-};
+const TIMELINE_TOKENS = { input: 1_200, cachedInput: 200, output: 300, reasoning: 100 };
 
 /**
  * A Timeline execution's recorder whose writes land in an array.
@@ -49,10 +44,8 @@ describe("a model call's cost identity", () => {
     recorder.recordModelCall({
       source: "model",
       model: "deepseek/deepseek-v4.1-flash-1017",
-      provider: "openrouter",
-      usage: TIMELINE_USAGE,
-      providerMetadata: { openrouter: { usage: { cost: 0.0125 } } },
-      generationId: "gen-1",
+      upstream: "openrouter",
+      cost: { state: "known", usd: 0.0125, source: "reported", tokens: TIMELINE_TOKENS },
       costIdentity: "timeline:11111111-1111-4111-8111-111111111111:1",
     });
     expect(await recorder.settle()).toBe(1.25);
@@ -84,9 +77,8 @@ describe("a model call's cost identity", () => {
     recorder.recordModelCall({
       source: "model",
       model: "deepseek/deepseek-v4.1-flash-1017",
-      provider: "openrouter",
-      usage: TIMELINE_USAGE,
-      providerMetadata: { openrouter: { usage: { cost: 0.5 } } },
+      upstream: "openrouter",
+      cost: { state: "known", usd: 0.5, source: "reported", tokens: TIMELINE_TOKENS },
     });
     recorder.recordServiceCall({ source: "container", service: "cloudflare-container:web_animation", provider: "cloudflare", requests: 1, costUsd: 0.01, costSource: "computed" });
     await recorder.settle();
@@ -98,9 +90,8 @@ describe("a model call's cost identity", () => {
     recorder.recordModelCall({
       source: "model",
       model: "deepseek/deepseek-v4.1-flash-1017",
-      provider: "openrouter",
-      usage: TIMELINE_USAGE,
-      providerMetadata: undefined,
+      upstream: "openrouter",
+      cost: { state: "missing", reason: "the call reported no cost", tokens: TIMELINE_TOKENS },
       costIdentity: "timeline:11111111-1111-4111-8111-111111111111:3",
     });
     expect(await recorder.settle()).toBe(0);

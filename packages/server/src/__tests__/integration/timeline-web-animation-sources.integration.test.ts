@@ -144,15 +144,8 @@ describe("agent_usage_records.cost_identity", () => {
       recorder.recordModelCall({
         source: "model",
         model: "deepseek/deepseek-v4.1-flash-1017",
-        provider: "openrouter",
-        usage: {
-          inputTokens: 1_200,
-          inputTokenDetails: { noCacheTokens: 1_000, cacheReadTokens: 200 },
-          outputTokens: 300,
-          outputTokenDetails: { reasoningTokens: 100 },
-        },
-        providerMetadata: { openrouter: { usage: { cost: 0.0125 } } },
-        generationId: "gen-1",
+        upstream: "openrouter",
+        cost: { state: "known", usd: 0.0125, source: "reported", tokens: { input: 1_200, cachedInput: 200, output: 300, reasoning: 100 } },
         costIdentity: `timeline:${executionId}:1`,
       });
       return recorder.settle();

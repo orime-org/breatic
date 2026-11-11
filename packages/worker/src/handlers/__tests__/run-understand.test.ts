@@ -52,7 +52,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     ...actual,
-    getRawEnvVar: vi.fn(() => "test-key"),
     getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "audio/source.wav" })),
     env: { CREDIT_MULTIPLIER: MULTIPLIER },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -111,16 +110,19 @@ function recorder(): UsageRecorder {
 }
 
 /**
- * A capability that reports the call billed, the way the real one does once
- * the answer shows it, and then answers or fails.
- * @param costUsd - What it reports the call cost.
+ * A capability that reports the answer billed, the way the real one does, and
+ * then answers or fails.
+ * @param costUsd - What the answer reported it cost; none reads as a missing cost.
  * @param then - What it does next.
  */
 function billedThen(costUsd: number | undefined, then: () => unknown): void {
   vi.mocked(understandMediaAt).mockImplementation((async (request: {
-    onBilled: (cost: number | undefined) => void;
+    onBilled: (cost: unknown, upstream: string) => void;
   }) => {
-    request.onBilled(costUsd);
+    request.onBilled(
+      costUsd === undefined ? { state: "missing", reason: "no cost" } : { state: "known", usd: costUsd, source: "reported" },
+      "openrouter",
+    );
     return then();
   }) as never);
 }
@@ -179,8 +181,6 @@ describe("running one understand task", () => {
         maxOutputTokens: expect.any(Number),
         question: expect.any(String),
         model: expect.any(String),
-        apiKey: "test-key",
-        baseUrl: expect.any(String),
       }),
     );
   });
@@ -267,7 +267,7 @@ describe("running one understand task", () => {
   // The media was the prompt, so a call that wrote nothing was still paid
   // for. The run fails and charges nothing, and the row says what it cost.
   it("records what an empty answer cost before failing", async () => {
-    billedThen(0.0041, () => ({ text: "", finishReason: "content_filter", kind: "image" }));
+    billedThen(0.0041, () => ({ text: "", finishReason: "content-filter", kind: "image" }));
 
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow();
 
@@ -490,7 +490,7 @@ describe("running one transcription", () => {
 
   it.each([
     ["length", CutShort],
-    ["content_filter", TranscriptionBlocked],
+    ["content-filter", TranscriptionBlocked],
     ["error", StoppedPartWay],
   ])("puts nothing on the node when it stopped for %s part way", async (reason, kind) => {
     answers("The first half of what was", reason);
@@ -499,24 +499,17 @@ describe("running one transcription", () => {
 
   it.each([
     ["length", CutShort],
-    ["content_filter", TranscriptionBlocked],
+    ["content-filter", TranscriptionBlocked],
     ["error", StoppedPartWay],
   ])("keeps an empty response stopped for %s on the error path", async (reason, kind) => {
     answers("", reason);
     await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
   });
 
-  it.each(["content_policy_violation", "refusal"])(
-    "reads a refusal the service typed %s as a block",
-    async (errorType) => {
-      vi.mocked(understandMediaAt).mockRejectedValue(
-        new UnderstandRefused(403, "SAFETY", "deployment", errorType),
-      );
-      await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
-        TranscriptionBlocked,
-      );
-    },
-  );
+  it("reads a refusal the upstream said was a content block as a block", async () => {
+    vi.mocked(understandMediaAt).mockRejectedValue(new UnderstandRefused(403, "SAFETY", "deployment", true));
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(TranscriptionBlocked);
+  });
 
   it("lets any other refusal through as it is", async () => {
     vi.mocked(understandMediaAt).mockRejectedValue(new UnderstandRefused(403, "budget", "deployment"));
@@ -526,7 +519,7 @@ describe("running one transcription", () => {
   });
 
   it("leaves an understanding that stopped part way as it was", async () => {
-    answers("A dog on a", "content_filter");
+    answers("A dog on a", "content-filter");
     const [result] = await runUnderstand(
       { source_type: "image", source_url: "https://assets.invalid/image/a.png" },
       recorder(),
@@ -534,7 +527,7 @@ describe("running one transcription", () => {
     );
     expect(result).toMatchObject({ outputs: [{ content: "A dog on a" }] });
     vi.mocked(understandMediaAt).mockRejectedValue(
-      new UnderstandRefused(403, "SAFETY", "deployment", "content_policy_violation"),
+      new UnderstandRefused(403, "SAFETY", "deployment", true),
     );
     await expect(
       runUnderstand({ source_type: "image", source_url: "https://assets.invalid/image/a.png" }, recorder(), DEADLINE_AT),

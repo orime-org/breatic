@@ -45,18 +45,20 @@ vi.mock("@domain/understand/index.js", async (importOriginal) => {
   };
 });
 
-let apiKey = "test-key";
+/** Whether the deployment has an understanding upstream with its key, per test. */
+const keyed = vi.hoisted(() => ({ current: true }));
+
+vi.mock("@domain/provider/instance.js", () => ({
+  provider: () => ({
+    llm: {
+      availability: () => ({ upstreams: [{ upstream: "openrouter", weight: 0, configured: keyed.current, envVar: "OPENROUTER_API_KEY" }] }),
+    },
+  }),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
-  return {
-    ...actual,
-    getRawEnvVar: (name: string) => (name === "OPENROUTER_API_KEY" ? apiKey : undefined),
-    env: new Proxy(
-      {},
-      { get: (_t, prop: string) => (prop === "OPENROUTER_API_KEY" ? apiKey : undefined) },
-    ),
-  };
+  return { ...actual, env: new Proxy({}, { get: () => undefined }) };
 });
 
 const { getAgentConfig } = await import("@breatic/core");
@@ -132,7 +134,7 @@ beforeEach(() => {
   vi.mocked(understandMediaInBatches).mockReset();
   vi.mocked(advanceLongMediaSegmentation).mockReset();
   vi.mocked(cancelLongMediaSegmentation).mockReset();
-  apiKey = "test-key";
+  keyed.current = true;
   understandMediaAtMock.mockResolvedValue({
     text: "A black Labrador retriever.",
     finishReason: "stop",
@@ -156,56 +158,53 @@ describe("understand_media context", () => {
 
 describe("understand_media — recording what the service billed", () => {
   const ASKED = { url: "https://example.com/dog.jpg", question: "What is this?" };
-  const RECORDED = {
-    source: "tool:understand_media",
-    service: UNDERSTAND_PINS.model,
-    provider: "openrouter",
-    requests: 1,
-  };
+  const BILLED = { state: "known", usd: 0.003, source: "reported" } as const;
 
   /**
-   * A capability that reports the call billed, the way the real one does
-   * once the answer shows it, and then answers or fails.
-   * @param costUsd - What it reports the call cost.
+   * The model calls a recorder was handed.
+   * @param recorder - The spy's recorder.
+   * @returns Each call's first argument.
+   */
+  const modelCalls = (recorder: UsageRecorder): unknown[] =>
+    vi.mocked(recorder.recordModelCall).mock.calls.map(([call]) => call);
+
+  /**
+   * A capability that reports a billed answer, the way the real one does, and then answers or fails.
+   * @param cost - What it reports the answer cost.
    * @param then - What it does next.
    */
-  function billedThen(costUsd: number | undefined, then: () => unknown): void {
+  function billedThen(cost: unknown, then: () => unknown): void {
     understandMediaAtMock.mockImplementation(
-      async (request: { onBilled: (cost: number | undefined) => void }) => {
-        request.onBilled(costUsd);
+      async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+        request.onBilled(cost, "openrouter");
         return then();
       },
     );
   }
 
-  it("records the cost the service reported", async () => {
-    billedThen(0.003, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
+  it("records each billed answer at what it cost, under the upstream that billed it", async () => {
+    billedThen(BILLED, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED);
-    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.003 }]);
-  });
-
-  it("records a billed call with no figure without one", async () => {
-    billedThen(undefined, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
-    const spy = usageSpy();
-    await turnCopy(spy.recorder)(ASKED);
-    expect(spy.serviceCalls).toEqual([RECORDED]);
+    expect(modelCalls(spy.recorder)).toEqual([
+      { source: "tool:understand_media", model: UNDERSTAND_PINS.model, upstream: "openrouter", cost: BILLED, requests: 1 },
+    ]);
   });
 
   it("keeps the record of a billed call that then failed", async () => {
-    billedThen(0.002, () => {
+    billedThen(BILLED, () => {
       throw new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter");
     });
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.002 }]);
+    expect(modelCalls(spy.recorder)).toEqual([expect.objectContaining({ cost: BILLED })]);
   });
 
   it("records nothing when the service never billed the call", async () => {
     understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([]);
+    expect(modelCalls(spy.recorder)).toEqual([]);
   });
 });
 
@@ -222,11 +221,11 @@ describe("understand_media — reaching a turn at all", () => {
   // every name that was never registered: on its own it would pass against a
   // tool that does not exist. What the requirement entry buys is the
   // difference between the two sets, so the difference is what is pinned.
-  it("is offered where the key is set and left out where it is not", () => {
-    apiKey = "test-key";
+  it("is offered where an understanding upstream has its key and left out where none has", () => {
+    keyed.current = true;
     expect(Object.keys(buildToolSet(["understand_media"]))).toContain("understand_media");
 
-    apiKey = "";
+    keyed.current = false;
     expect(Object.keys(buildToolSet(["understand_media"]))).not.toContain("understand_media");
   });
 });
@@ -261,9 +260,6 @@ describe("understand_media — a call that worked", () => {
       timeoutMs: config.understand_media_call_timeout_ms,
       maxOutputTokens: config.understand_media_max_output_tokens,
       model: "google/gemini-3.8-flash",
-      backend: "google-vertex",
-      apiKey: "test-key",
-      baseUrl: "https://openrouter.ai/api/v1",
       // The call is recorded where the service shows it billed.
       onBilled: expect.any(Function),
     });
@@ -631,7 +627,7 @@ describe("understand_media — a call that came back with nothing", () => {
   it("tells the model the answer was empty, and that rewording may help", async () => {
     understandMediaAtMock.mockResolvedValue({
       text: "",
-      finishReason: "content_filter",
+      finishReason: "content-filter",
       kind: "video",
       });
 
@@ -639,7 +635,7 @@ describe("understand_media — a call that came back with nothing", () => {
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
     );
 
-    expect(forModel).toContain("content_filter");
+    expect(forModel).toContain("content-filter");
     expect(forModel.toLowerCase()).toContain("differently");
     expect(userKey).toBe("chat.tool.failure.badAnswer");
   });
@@ -825,7 +821,7 @@ describe("understand_media — an answer that stopped before it finished", () =>
   it("says a content filter withheld the rest", async () => {
     understandMediaAtMock.mockResolvedValue({
       text: "Two people are talking",
-      finishReason: "content_filter",
+      finishReason: "content-filter",
       kind: "video" as const,
     });
 
@@ -1144,17 +1140,17 @@ describe("understand_media — what a user is shown, and what the panel is told"
     expect(userKey).toBe(FAILURE_LINES.linkUnreachable);
   });
 
-  it("says it has no credentials rather than calling the service silent", async () => {
-    // `buildToolSet` leaves the tool out entirely when the key is missing, so
-    // a turn should not reach this branch — but the branch answers the model,
-    // and until now nothing ran it.
-    apiKey = "";
+  it("says the deployment cannot do it, rather than calling the service silent, when no upstream can serve it", async () => {
+    // `buildToolSet` leaves the tool out entirely when no upstream has its
+    // key, so a turn should not reach this branch -- but the branch answers
+    // the model.
+    understandMediaAtMock.mockRejectedValue(new UnderstandRefused(0, "No upstream can serve google/gemini-3.8-flash", "deployment"));
 
     const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/a.jpg", question: "What is this?" }),
     );
-    expect(forModel).toContain("no credentials");
-    expect(forModel).toContain("do not try again");
+    expect(forModel).toContain("not available");
+    expect(forModel).toContain("do not blame anything they sent");
     expect(userKey).toBe(FAILURE_LINES.unavailable);
   });
 });

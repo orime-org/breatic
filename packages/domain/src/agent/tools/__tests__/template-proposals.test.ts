@@ -8,10 +8,14 @@
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
-vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+vi.mock("@domain/provider/instance.js", () => ({
+  provider: () => ({
+    llm: {
+      capabilities: async () => ({ pictures: true, contextWindow: 1_000_000 }),
+      availability: () => ({ upstreams: [] }),
+      judgeAvailability: () => ({ upstreams: [] }),
+    },
+  }),
 }));
 
 import { loadLocales, runWithLocale } from "@breatic/core";

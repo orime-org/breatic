@@ -9,7 +9,8 @@
       "@domain/*": ["../domain/src/*"],
       "@server/*": ["../server/src/*"],
       "@worker/*": ["../worker/src/*"],
-      "@collab/*": ["../collab/src/*"]
+      "@collab/*": ["../collab/src/*"],
+      "@provider/*": ["../provider/src/*"]
     }
   },
   "include": ["src/**/*.ts", "vitest.integration.config.ts"]

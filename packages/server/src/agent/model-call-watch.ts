@@ -2,42 +2,30 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Records a stream's model calls, and hands the OpenRouter calls whose cost
- * is not in hand to the later lookup (#296).
+ * Records a stream's model calls, and hands the calls whose cost is not in hand to the later lookup (#296).
  *
- * Each call is recorded from its end event under the OpenRouter generation id
- * it ran as; the recorder keeps the ones that reported no cost for the lookup.
- * A call cut off before it ended is looked up by the id on its raw chunks,
- * which the SDK passes to `onChunk` only when asked for.
+ * Each call is recorded from its end event at what provider says it cost, under the upstream that served it. A call
+ * cut off before it ended has no end event: provider keeps its cost among the prepared call's pending costs, a lookup
+ * or a missing cost, which `handOff` reads once the stream is over.
  */
 
-import type { PromptCacheTtl } from "@breatic/core";
-import {
-  handOffLookups,
-  isGenerationId,
-  resolveProvider,
-  trackOpenGeneration,
-  type ModelCallUsage,
-  type UsageRecorder,
-} from "@breatic/domain";
+import type { LanguageModelUsage, ProviderMetadata } from "ai";
+import type { CostLookup, PendingCost } from "@breatic/provider";
+import { handOffLookups, provider, type UsageRecorder } from "@breatic/domain";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {
-  responseId: string;
-  usage: ModelCallUsage;
-  providerMetadata?: Record<string, unknown>;
+  usage: LanguageModelUsage;
+  providerMetadata?: ProviderMetadata;
 }
 
 /** One stream's watch. */
 export interface ModelCallWatch {
-  /** Spread into the `streamText` options. */
-  streamOptions: {
-    includeRawChunks: true;
-    onChunk: (event: { chunk: { type: string; rawValue?: unknown } }) => void;
-  };
   /** Call from `onLanguageModelCallEnd`; records the call. */
   callEnded(event: ModelCallEnd): void;
-  /** Call once the stream is over; queues the lookup of every OpenRouter call whose cost is not in hand. */
+  /** The upstream that served the stream's calls, once one ended or was cut off; what its charge names. */
+  served(): string | undefined;
+  /** Call once the stream is over; records what was cut off and queues the lookup of every cost not in hand. */
   handOff(): Promise<void>;
 }
 
@@ -47,42 +35,38 @@ export interface ModelCallWatch {
  * @param call - The model the stream calls, and what a ledger row says the charge was for.
  * @param call.model - The model id.
  * @param call.description - What the ledger row says the charge was for.
- * @param call.cacheTtl - How long the stream asks the provider to cache, if it caches.
+ * @param pendingCosts - The prepared call's `pendingCosts`.
  * @returns The watch.
  */
 export function watchModelCalls(
   usage: UsageRecorder,
-  call: { model: string; description: string; cacheTtl?: PromptCacheTtl },
+  call: { model: string; description: string },
+  pendingCosts: () => readonly PendingCost[],
 ): ModelCallWatch {
-  const provider = resolveProvider(call.model);
-  const open = trackOpenGeneration();
+  let served: string | undefined;
   return {
-    streamOptions: {
-      includeRawChunks: true,
-      onChunk: ({ chunk }) => {
-        if (chunk.type === "raw") open.seen(chunk.rawValue);
-      },
-    },
     callEnded(event) {
-      // A stream whose first chunk is an in-band error never passes the id on
-      // to the SDK, and the end event carries the SDK's own id instead.
-      const generationId = isGenerationId(event.responseId) ? event.responseId : open.pending();
-      open.ended(event.responseId);
-      usage.recordModelCall({
-        source: "model",
-        model: call.model,
-        provider,
-        usage: event.usage,
-        providerMetadata: event.providerMetadata,
-        generationId,
-        ...(call.cacheTtl === undefined ? {} : { cacheTtl: call.cacheTtl }),
-      });
+      const upstream = provider().llm.servedBy(event);
+      served = upstream ?? served;
+      const cost = provider().llm.costOf({ model: call.model, usage: event.usage, providerMetadata: event.providerMetadata });
+      usage.recordModelCall({ source: "model", model: call.model, upstream: upstream ?? "", cost });
     },
+    served: () => served,
     async handOff() {
-      if (provider !== "openrouter") return;
-      const cutOff = open.pending();
-      const ids = cutOff === undefined ? usage.awaitingLookup() : [...usage.awaitingLookup(), cutOff];
-      await handOffLookups(ids, usage.operation, { model: call.model, description: call.description, charge: true });
+      const cutOff: CostLookup[] = [];
+      for (const pending of pendingCosts()) {
+        if (pending.state === "pending") {
+          cutOff.push(pending.lookup);
+          served ??= pending.lookup.upstream;
+          continue;
+        }
+        const { upstream, ...cost } = pending;
+        served ??= upstream;
+        usage.recordModelCall({ source: "model", model: call.model, upstream, cost });
+      }
+      const lookups = [...usage.awaitingLookup(), ...cutOff];
+      if (lookups.length === 0) return;
+      await handOffLookups(lookups, usage.operation, { model: call.model, description: call.description, charge: true });
     },
   };
 }

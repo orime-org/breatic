@@ -69,7 +69,18 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-const getModel = vi.fn((id: string) => ({ modelId: id }));
+const LOOKUP = { upstream: "openrouter", generationId: "gen-5" };
+const llm = vi.hoisted(() => ({
+  prepare: vi.fn((id: string) => ({ model: { modelId: id }, options: { providerOptions: {}, maxRetries: 0, temperature: 0 } })),
+  // Known, with the tokens the call reported: the recorder double counts a credit per token.
+  costOf: vi.fn((finished: { usage: { inputTokens?: number; outputTokens?: number } }): unknown => ({
+    state: "known",
+    usd: 0.004,
+    source: "reported",
+    tokens: { input: finished.usage.inputTokens ?? 0, cachedInput: 0, output: finished.usage.outputTokens ?? 0, reasoning: 0 },
+  })),
+  servedBy: vi.fn(() => "openrouter"),
+}));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
@@ -78,11 +89,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     generateTextRetry,
-    getModel,
-    resolveProvider: () => "test",
-    // The real one. What it puts on the call is the thing being asserted,
-    // and a stub would be answering the question with its own return value.
-    callOptionsFor: actual.callOptionsFor,
+    provider: () => ({ llm }),
     memoryTitle: actual.memoryTitle,
     countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,
@@ -240,9 +247,9 @@ describe("a consolidation that works", () => {
     // one model the config names for it, and is recorded and charged as it.
     await consolidate();
 
-    expect(getModel).toHaveBeenCalledWith(CONSOLIDATION_MODEL);
-    expect(getModel).not.toHaveBeenCalledWith("anthropic/claude-opus-5.5");
-    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ model: CONSOLIDATION_MODEL });
+    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, expect.anything());
+    expect(llm.prepare).not.toHaveBeenCalledWith("anthropic/claude-opus-5.5", expect.anything());
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ model: CONSOLIDATION_MODEL, provider: "openrouter" });
   });
 
   it("records the fold, which spent money and moved the watermark", async () => {
@@ -335,15 +342,17 @@ describe("a consolidation that works", () => {
     expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
   });
 
-  it("asks the consolidation model for no reasoning the way that model takes it", async () => {
+  it("asks for no reasoning, no caching and a temperature of 0, and sends the call as provider prepared it", async () => {
+    // How each upstream is told is provider's, and its tests hold it.
     await consolidate();
 
-    const call = generateTextRetry.mock.calls[0]?.[0] as {
-      providerOptions?: Record<string, Record<string, unknown>>;
-      temperature?: number;
-    };
-    expect(call.providerOptions).toEqual({ openrouter: { reasoning: { effort: "none" } } });
-    expect(call.temperature).toBe(0);
+    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, { thinking: false, cache: false, temperature: 0 });
+    expect(generateTextRetry.mock.calls[0]?.[0]).toMatchObject({
+      model: { modelId: CONSOLIDATION_MODEL },
+      providerOptions: {},
+      maxRetries: 0,
+      temperature: 0,
+    });
   });
 
   it("bills the studio once for the call, under the key of this fold and this attempt", async () => {
@@ -371,7 +380,8 @@ describe("a consolidation that works", () => {
     expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ projectId: PROJECT }), "credits_signal_failed");
   });
 
-  it("records the call under its generation id, and hands what it could not price to the lookup", async () => {
+  it("records the call at what provider says it cost, and hands what it could not price to the lookup", async () => {
+    llm.costOf.mockReturnValueOnce({ state: "pending", lookup: LOOKUP });
     const { mocks } = await import("../helpers/mock-core.js");
     const recordModelCall = vi.fn();
     const operation = {
@@ -385,16 +395,21 @@ describe("a consolidation that works", () => {
       recordModelCall,
       recordServiceCall: vi.fn(),
       recordLookedUpCall: vi.fn(),
-      awaitingLookup: () => ["gen-5"],
+      awaitingLookup: () => [LOOKUP],
       settle: async () => 0,
       settleForCharge: async () => ({ credits: 0, writeFailures: [] }),
     });
 
     await consolidate();
 
-    expect(recordModelCall).toHaveBeenCalledWith(expect.objectContaining({ generationId: "gen-5", model: CONSOLIDATION_MODEL }));
+    expect(recordModelCall).toHaveBeenCalledWith({
+      source: "model",
+      model: CONSOLIDATION_MODEL,
+      upstream: "openrouter",
+      cost: { state: "pending", lookup: LOOKUP },
+    });
     expect(mocks.handOffLookups).toHaveBeenCalledWith(
-      ["gen-5"],
+      [LOOKUP],
       operation,
       expect.objectContaining({ description: "Memory consolidation", charge: true }),
     );

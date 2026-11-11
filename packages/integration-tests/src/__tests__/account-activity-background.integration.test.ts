@@ -17,7 +17,13 @@ import { activityRows, seedActivityProject } from "@server/__tests__/integration
 // The outside provider's eventual cost response is the only substituted boundary.
 // Its recorder, SQL, queue, worker handler and user-activity reads remain real.
 vi.mock("@breatic/domain", async (importOriginal) => ({
-  ...await importOriginal<typeof Domain>(), lookupGeneration: async () => ({ costUsd: 0.01, tokens: { input: 1, output: 1, cachedInput: 0, reasoning: 0 } }),
+  ...await importOriginal<typeof Domain>(),
+  provider: () => ({
+    cost: {
+      lookup: async () => ({ state: "known", usd: 0.01, source: "billing", tokens: { input: 1, output: 1, cachedInput: 0, reasoning: 0 } }),
+      fromGeneration: (generationId: string) => ({ upstream: "openrouter", generationId }),
+    },
+  }),
 }));
 
 initCore({ ...process.env, PAYMENT_ENABLED: "false", WAVESPEED_API_KEY: "unused_activity_background_fixture" });

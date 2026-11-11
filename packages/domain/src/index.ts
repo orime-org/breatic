@@ -42,16 +42,13 @@ export {
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
-export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
-export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export { creditsForUsd } from "@domain/credit/usage-cost.js";
+export { agentModelIds } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,
   handOffLookups,
-  lookupGeneration,
-  type GenerationAnswer,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
-export { isGenerationId, trackOpenGeneration, type OpenGeneration } from "@domain/credit/open-generation.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
@@ -112,8 +109,6 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, callOptionsFor, systemFor } from "@domain/agent/llm.js";
-export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,
@@ -179,7 +174,6 @@ export {
   type ToolPictureContext,
   type AgentPicturePreparation,
 } from "@domain/agent/prepare-agent-pictures.js";
-export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
 export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
 export {
   projectAgentRequest,

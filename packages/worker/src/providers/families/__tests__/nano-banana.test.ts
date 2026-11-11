@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@breatic/core", () => ({ logger: { warn: (): undefined => undefined } }));
 vi.mock("@breatic/domain", () => ({
   generateTextRetry: vi.fn(),
-  getModel: vi.fn(() => "mock-model"),
+  provider: () => ({ llm: { prepare: () => ({ model: "mock-model", options: { providerOptions: {}, maxRetries: 0, temperature: 0.3 } }) } }),
 }));
 
 import { generateTextRetry } from "@breatic/domain";

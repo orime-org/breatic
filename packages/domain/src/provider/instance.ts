@@ -15,11 +15,12 @@ let instance: Provider | undefined;
 
 /**
  * Build this process's provider: keys read from the environment `initCore` was given.
+ * @param built - A provider built elsewhere, which a test hands over in place of the configured one.
  * @returns The provider.
  * @throws {ProviderConfigError} When the configuration does not validate, every problem named.
  */
-export function initProvider(): Provider {
-  instance = createProvider({
+export function initProvider(built?: Provider): Provider {
+  instance = built ?? createProvider({
     config: readProviderConfig(),
     keyOf: getRawEnvVar,
     llmMaxRetries: getAgentConfig().llm_max_retries,

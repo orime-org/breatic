@@ -16,7 +16,8 @@
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { budgetDeadlineFrom, getAgentConfig, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
+import { budgetDeadlineFrom, getAgentConfig, getUnderstandConfig } from "@breatic/core";
+import type { Cost } from "@breatic/provider";
 import { FAILURE_LINES, type FailureLine, type LongMediaSourceReference } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
@@ -217,13 +218,14 @@ function refusedFailure(err: UnderstandRefused): Error {
 /**
  * What to add to an answer that stopped before the model was finished.
  *
- * Keyed by the endpoint's own vocabulary, and absent for every reason that
- * means the model said what it had to say.
+ * Keyed by the AI SDK's finish reasons, which provider answers for every
+ * upstream, and absent for every reason that means the model said what it had
+ * to say.
  */
 const STOPPED_SHORT: Readonly<Record<string, string>> = {
   length: "This description was cut off at the length limit.",
   error: "This description stopped part way: the service failed while writing it.",
-  content_filter: "The rest of this description was withheld by a content filter.",
+  "content-filter": "The rest of this description was withheld by a content filter.",
 };
 
 /** The caller capabilities the media tool may use during one turn. */
@@ -295,31 +297,19 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
       { abortSignal, context, toolCallId }: { abortSignal?: AbortSignal; context: UnderstandMediaContext; toolCallId: string },
     ): Promise<string> => {
       /**
-       * Record one billed call.
-       * @param costUsd - What the service said it charged, when it said.
+       * Record one billed answer.
+       * @param cost - What it cost.
+       * @param upstream - The upstream that billed it.
        */
-      const recordBilled = (costUsd: number | undefined): void => {
-        context.usage.recordServiceCall({
-          source: "tool:understand_media",
-          service: UNDERSTAND_PINS.model,
-          provider: "openrouter",
-          requests: 1,
-          ...(costUsd === undefined ? {} : { costUsd }),
-        });
+      const recordBilled = (cost: Cost, upstream: string): void => {
+        context.usage.recordModelCall({ source: "tool:understand_media", model: UNDERSTAND_PINS.model, upstream, cost, requests: 1 });
       };
 
       if (abortSignal?.aborted) throw stoppedByUser();
       const input = inputSchema.parse({ items, question });
-      const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
-      if (!apiKey) {
-        // Defensive: `buildToolSet` leaves this tool out of the set entirely
-        // when the key is missing, so a turn should not reach here.
-        throw toolFailed(
-          "Media understanding is not available on this deployment: it has no credentials. " +
-            "Tell the user, and do not try again.",
-          FAILURE_LINES.unavailable,
-        );
-      }
+      // A deployment with no understanding upstream has this tool left out of
+      // the set (`buildToolSet`); one that reaches it anyway is refused as a
+      // deployment matter by `understandMedia`.
 
       if (running) {
         // Turned away, not failed: nothing went wrong, the model is told to wait,
@@ -346,9 +336,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
           readFloorMs: config.understand_media_read_floor_ms,
           timeoutMs: config.understand_media_call_timeout_ms,
           model: UNDERSTAND_PINS.model,
-          backend: UNDERSTAND_PINS.backend,
-          apiKey,
-          baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
           onBilled: recordBilled,
@@ -380,7 +367,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
             question: input.question,
             context,
             config,
-            apiKey,
             userActionKey: toolCallId,
             signal: abortSignal,
             onBilled: recordBilled,
@@ -402,7 +388,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
               question: input.question,
               context,
               config,
-              apiKey,
               userActionKey: toolCallId,
               signal: abortSignal,
               onBilled: recordBilled,
@@ -478,7 +463,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
  * @param input.question - The user's understanding question.
  * @param input.context - The turn's ownership and storage capabilities.
  * @param input.config - The caller's byte, item and request limits.
- * @param input.apiKey - The model provider key.
  * @param input.userActionKey - The stable SDK tool-call identity for retries.
  * @param input.signal - The turn cancellation signal, when present.
  * @param input.onBilled - The per-request billing recorder.
@@ -491,10 +475,9 @@ async function understandLongMedia(input: {
   question: string;
   context: UnderstandMediaContext;
   config: ReturnType<typeof getAgentConfig>;
-  apiKey: string;
   userActionKey: string;
   signal?: AbortSignal;
-  onBilled: (costUsd: number | undefined) => void;
+  onBilled: (cost: Cost, upstream: string) => void;
 }): Promise<Awaited<ReturnType<typeof understandMediaAt>>> {
   if (!input.context.projectId || !input.context.actorUserId) throw new Error("Long-media ownership context is missing.");
   const deadlineAt = budgetDeadlineFrom(Date.now());
@@ -541,9 +524,6 @@ async function understandLongMedia(input: {
         readFloorMs: input.config.understand_media_read_floor_ms,
         timeoutMs: input.config.understand_media_call_timeout_ms,
         model: UNDERSTAND_PINS.model,
-        backend: UNDERSTAND_PINS.backend,
-        apiKey: input.apiKey,
-        baseUrl: UNDERSTAND_PINS.baseUrl,
         maxOutputTokens: input.config.understand_media_max_output_tokens,
         checkpoint: durableOperation.checkpoint,
         signal: input.signal ? AbortSignal.any([input.signal, durableOperation.signal]) : durableOperation.signal,

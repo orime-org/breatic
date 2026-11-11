@@ -494,8 +494,7 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
-    resolveProvider: () => "test",
-    getModel: () => scriptedModel(),
+    provider: (await import("./fake-provider.js")).fakeProvider(() => scriptedModel()),
     buildAgentConfig: async (request: {
       basePrompt: string;
       memoryContext?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string };
