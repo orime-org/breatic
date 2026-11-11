@@ -51,6 +51,7 @@ const AUDIO_TOOLS = [
   'audio.normalize',
   'audio.speed',
   'audio.cut',
+  'audio.join',
   'audio.eq',
   'audio.compress',
   'audio.pan',
