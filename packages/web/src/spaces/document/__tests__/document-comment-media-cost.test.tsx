@@ -13,6 +13,7 @@
  * every comment in the document.
  */
 
+import { YjsThreadStore } from '@blocknote/core/yjs';
 import { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import * as React from 'react';
@@ -89,7 +90,7 @@ async function panelCostOfAKeystroke(pictures: number): Promise<{ walks: number;
     return useCommentAnchors(editor, rail.unresolved.map((card) => card.id), React.useRef(column));
   });
   const walks = vi.spyOn(ProseMirrorNode.prototype, 'descendants');
-  const singleReads = vi.spyOn(commentsOn(editor)!.threadStore, 'getThread');
+  const singleReads = vi.spyOn(YjsThreadStore.prototype, 'getThread');
   typeOne(editor);
   return { walks: walks.mock.calls.length, singleReads: singleReads.mock.calls.length };
 }
