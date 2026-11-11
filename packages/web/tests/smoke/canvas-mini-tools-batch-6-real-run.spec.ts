@@ -445,10 +445,15 @@ test('transitions: two videos and a crossfade give one video as long as both les
     // The track redraws with the two clips overlapping by the transition.
     const [firstClip, secondClip] = [trackClips.first(), trackClips.last()];
     await expect.poll(async () => ((await firstClip.boundingBox())?.x ?? 0) + ((await firstClip.boundingBox())?.width ?? 0) - ((await secondClip.boundingBox())?.x ?? 0)).toBeGreaterThan(50);
-    // Only the selected clip (the first, selected on open) is outlined on the track.
+    // Only the selected clip (the first, selected on open) is outlined, inside its own box so the track row cannot clip it.
     const shadowOf = (target: Locator): Promise<string> => target.evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(await shadowOf(firstClip)).not.toBe('none');
+    expect(await shadowOf(firstClip)).toContain('inset');
     expect(await shadowOf(secondClip)).toBe('none');
+    // Where the clips overlap, the selected clip is drawn on top, so its whole range stays visible.
+    const firstBox = (await firstClip.boundingBox())!;
+    const secondBox = (await secondClip.boundingBox())!;
+    const overlapMiddle = [(secondBox.x + firstBox.x + firstBox.width) / 2, firstBox.y + 4];
+    expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), overlapMiddle)).toBe(true);
     // The first clip's right resize handle stays above the second clip where they overlap, and dragging it trims the first clip.
     const handle = await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox();
     expect(handle).not.toBeNull();
