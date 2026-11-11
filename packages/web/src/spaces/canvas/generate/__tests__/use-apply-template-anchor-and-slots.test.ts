@@ -59,7 +59,6 @@ const INTO: GenerationTemplate = {
   triggers: { asks: ['a fixture'], offerWhen: [] },
 };
 
-/** An audio anchor with one standalone section node: no template edge touches it (§4.2). */
 /** A cover's shape: the song goes into `audio`, the same param name a voice clone's sample travels as. */
 const COVER: GenerationTemplate = {
   id: 'fixture-cover',
@@ -73,6 +72,7 @@ const COVER: GenerationTemplate = {
   triggers: { asks: ['a fixture'], offerWhen: [] },
 };
 
+/** An audio anchor with one standalone section node: no template edge touches it (§4.2). */
 const SECTIONS: GenerationTemplate = {
   id: 'fixture-sections',
   anchor: 'score',
