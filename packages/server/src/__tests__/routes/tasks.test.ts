@@ -5,7 +5,11 @@
  * Tasks route tests — list, get, canvas task creation.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resetLocales, setLocale, setLocaleMessages } from "@breatic/shared";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
@@ -249,6 +253,8 @@ describe("Tasks routes", () => {
     });
 
     it("rejects a submission with a text setting emptied below its least length BEFORE enqueue (inner#1825)", async () => {
+      setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+      setLocale("en");
       // The case above leaves the reference gate refusing; this one is about the text gate.
       mocks.violatesReferenceCountForModel.mockReturnValue(null);
       mocks.violatesTextLengthForModel.mockReturnValueOnce({ param: "voice_description", min: 1 });
@@ -269,6 +275,10 @@ describe("Tasks routes", () => {
 
       expect(mocks.violatesTextLengthForModel).toHaveBeenCalledWith("qwen3-tts-voice-design", expect.objectContaining({ voice_description: "" }));
       expect(res.status).toBe(422);
+      // Said with the control's name the panel shows (round 3).
+      const said = JSON.stringify(await res.json());
+      resetLocales();
+      expect(said).toContain("Fill in Voice description first");
       expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });

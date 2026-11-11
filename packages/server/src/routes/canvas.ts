@@ -285,7 +285,7 @@ canvas.post(
       const short = violatesTextLengthForModel(body.model, body.params);
       if (short) {
         logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
-        throw new ValidationError(t("server.canvas.param_too_short", { name: short.param }));
+        throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
       return Promise.resolve();
     },

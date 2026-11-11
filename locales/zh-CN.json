@@ -129,7 +129,7 @@
     "canvas": {
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
-      "param_too_short": "「{name}」是空的，这个模型需要填写。",
+      "param_too_short": "先填写{name}",
       "history_entry_not_found": "找不到这条历史记录",
       "voices_model_not_found": "这个模型不可用",
       "voices_not_offered": "这个模型没有音色列表"
