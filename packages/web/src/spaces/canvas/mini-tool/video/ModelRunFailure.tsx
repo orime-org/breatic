@@ -14,7 +14,7 @@ const EXPAND_NEXT_KEYS = { model_rejected: 'expandRejectedNext', timeout: 'perso
 /**
  * A failed erase or expand run (execution design §10.4, §10.5 failure tables): an erase's one step and category with its next
  * step; an expand's line per window that did not succeed, a stopped window naming the window that stopped it, and the line
- * of a failed step outside every window, which follows a rejected window. Retry is offered only when shared `modelFailureRetryable` allows it.
+ * of a failed step outside every window. Retry is offered only when shared `modelFailureRetryable` allows it.
  * @param props - The reason and the actions.
  * @param props.reason - The failure reason.
  * @param props.disabled - Whether the panel takes edits.
@@ -47,10 +47,7 @@ export function ModelRunFailure(props: { reason: EraseFailureReason | ExpandFail
     lines = reason.windows.map((window) => line(t('canvas.miniTool.videoUI.windowNumber', { number: window.windowIndex + 1 }), window.category,
       window.category === 'stopped' ? t('canvas.miniTool.videoUI.windowStoppedNext', { number: (blocker?.windowIndex ?? window.windowIndex) + 1 })
         : t(`canvas.miniTool.videoUI.${EXPAND_NEXT_KEYS[window.category]}`), `window-${window.windowIndex}`));
-    // The shared step follows a window a retry cannot clear, as the lip-sync shared line follows its blocking person.
-    const rejected = reason.windows.find((window) => window.category === 'model_rejected');
-    if (reason.shared !== null) lines.push(line(t(`canvas.miniTool.videoUI.stepFail.${reason.shared.step}`), reason.shared.category,
-      rejected === undefined ? t('canvas.miniTool.videoUI.personFailRetryNext') : t('canvas.miniTool.videoUI.windowFollowNext', { number: rejected.windowIndex + 1 }), 'shared'));
+    if (reason.shared !== null) lines.push(line(t(`canvas.miniTool.videoUI.stepFail.${reason.shared.step}`), reason.shared.category, t('canvas.miniTool.videoUI.personFailRetryNext'), 'shared'));
   }
   return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-model-run-failure'>
     <ul className='grid min-w-0 gap-1.5'>{lines}</ul>

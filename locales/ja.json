@@ -1487,7 +1487,7 @@
         "personFailFailed": "失敗",
         "personFailStopped": "停止済み",
         "personFailNoFaceNext": "この人物のセリフ行を削除するか、別のフレームで再検出してください。",
-        "personFailRejectedNext": "別のモデルに切り替えて再実行してください。",
+        "personFailRejectedNext": "この人物のセリフ音声を変えて、もう一度実行してください。",
         "personFailRetryNext": "失敗した項目を再試行してください。",
         "personFailStoppedNext": "人物 {number} の失敗で停止しました。人物 {number} の次の手順に従ってください。",
         "personFailFollowNext": "人物 {number} の次の手順に従ってください。",
@@ -1531,7 +1531,6 @@
         "eraseMismatchNext": "範囲を変えて、もう一度実行してください。",
         "expandRejectedNext": "拡張範囲か説明を変えて、もう一度実行してください。",
         "windowStoppedNext": "ウィンドウ {number} のため停止しました。ウィンドウ {number} の次の手順に従ってください。",
-        "windowFollowNext": "ウィンドウ {number} の次の手順に従ってください。",
         "retryFailedItems": "失敗した項目を再試行"
       }
     },

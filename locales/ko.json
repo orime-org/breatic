@@ -1487,7 +1487,7 @@
         "personFailFailed": "실패",
         "personFailStopped": "중지됨",
         "personFailNoFaceNext": "이 인물의 대사 행을 삭제하거나 다른 프레임에서 다시 감지하세요.",
-        "personFailRejectedNext": "다른 모델로 바꾼 뒤 다시 실행하세요.",
+        "personFailRejectedNext": "이 인물의 대사 오디오를 바꾼 뒤 다시 실행하세요.",
         "personFailRetryNext": "실패한 항목을 다시 시도하세요.",
         "personFailStoppedNext": "인물 {number} 때문에 중지되었습니다. 인물 {number}의 다음 단계를 따르세요.",
         "personFailFollowNext": "인물 {number}의 다음 단계를 따르세요.",
@@ -1531,7 +1531,6 @@
         "eraseMismatchNext": "구간을 바꾼 뒤 다시 실행하세요.",
         "expandRejectedNext": "확장 범위나 설명을 바꾼 뒤 다시 실행하세요.",
         "windowStoppedNext": "창 {number} 때문에 중지되었습니다. 창 {number}의 다음 단계를 따르세요.",
-        "windowFollowNext": "창 {number}의 다음 단계를 따르세요.",
         "retryFailedItems": "실패한 항목 다시 시도"
       }
     },

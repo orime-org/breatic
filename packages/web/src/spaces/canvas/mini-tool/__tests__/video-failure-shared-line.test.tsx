@@ -49,19 +49,7 @@ describe('lip-sync shared line follows the person that blocks a retry (§9.4)', 
   });
 });
 
-describe('expand shared line follows the window that blocks a retry (§10.5)', () => {
-  it('an expiry beside a rejected window names that window and offers no retry', () => {
-    const reason: ExpandFailureReason = { kind: 'expand', windows: [
-      { windowIndex: 0, step: 'generate', category: 'timeout' },
-      { windowIndex: 1, step: 'generate', category: 'model_rejected' },
-    ], shared: EXPIRED };
-    render(<ModelRunFailure reason={reason} disabled={false} onRetry={() => undefined} />);
-    const block = screen.getByTestId('video-model-run-failure');
-    expect(within(block).getByText(ui('windowFollowNext', { number: 2 }))).toBeInTheDocument();
-    expect(within(block).getAllByText(ui('personFailRetryNext'))).toHaveLength(1);
-    expect(within(block).queryByRole('button', { name: ui('retryFailedItems') })).toBeNull();
-  });
-
+describe('expand shared line after an expiry (§10.5)', () => {
   it('an expiry beside timeouts only still says retry and offers it', () => {
     const reason: ExpandFailureReason = { kind: 'expand', windows: [{ windowIndex: 0, step: 'generate', category: 'timeout' }], shared: EXPIRED };
     render(<ModelRunFailure reason={reason} disabled={false} onRetry={() => undefined} />);

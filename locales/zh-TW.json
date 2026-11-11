@@ -1487,7 +1487,7 @@
         "personFailFailed": "失敗",
         "personFailStopped": "已停止",
         "personFailNoFaceNext": "刪除該人物的對白行，或換一幀重新辨識。",
-        "personFailRejectedNext": "換一個模型後重新執行。",
+        "personFailRejectedNext": "換掉這個人物的對白音訊後重新執行。",
         "personFailRetryNext": "重試失敗項目。",
         "personFailStoppedNext": "因人物 {number} 停止，依人物 {number} 的下一步處理。",
         "personFailFollowNext": "依人物 {number} 的下一步處理。",
@@ -1531,7 +1531,6 @@
         "eraseMismatchNext": "換一個區間後重新執行。",
         "expandRejectedNext": "修改外擴範圍或描述後重新執行。",
         "windowStoppedNext": "因視窗 {number} 停止，請依視窗 {number} 的下一步處理。",
-        "windowFollowNext": "請依視窗 {number} 的下一步處理。",
         "retryFailedItems": "重試失敗項目"
       }
     },
