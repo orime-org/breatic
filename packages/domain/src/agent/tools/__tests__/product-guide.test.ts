@@ -94,11 +94,13 @@ type MessageCall = [id: string, values: Record<string, number> | undefined];
  * @returns The calls, in source order.
  */
 function messageCalls(): MessageCall[] {
+  // A value the guide reads from the deployment's config, by the local it names it with.
+  const locals: Record<string, number> = { joinCap: getMiniToolsConfig().join_max_clips };
   return [...source.matchAll(/\bt\("([\w.-]+)"(?:, (\{[^}]*\}))?\)/g)].map((m) => [
     m[1] ?? "",
     m[2] === undefined
       ? undefined
-      : (JSON.parse(m[2].replace(/(\w+):/g, '"$1":')) as Record<string, number>),
+      : (JSON.parse(m[2].replace(/: ([a-z]\w*)/g, (_, name: string) => `: ${String(locals[name])}`).replace(/(\w+):/g, '"$1":')) as Record<string, number>),
   ]);
 }
 
