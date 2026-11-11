@@ -196,12 +196,6 @@ async function streamTurn(
       // keeping rubbish.
       void s.write(frame({ type: "data-heartbeat", transient: true, data: {} }));
     };
-    // Once as soon as there is a socket to say it on, before the schedule
-    // starts. The user's browser began counting at the press, and the
-    // network and the two checks before this made no sound on that clock; a
-    // first beat one whole interval later spends the client's whole budget
-    // on the work this turn does before it can speak, and a turn that is
-    // doing fine gets killed for it.
     // The turn's place in the running list other tabs and devices read
     // (#1394). Held before the first beat and renewed on every beat after
     // it, so it lasts exactly as long as a browser would keep waiting. A
@@ -217,12 +211,18 @@ async function streamTurn(
         "chat_running_lease_failed",
       );
     };
-    let lease: Awaited<ReturnType<typeof runningTurnsService.holdRunning>> | null = null;
+    let lease: runningTurnsService.RunningLease | null = null;
     try {
       lease = await runningTurnsService.holdRunning(turn);
     } catch (err) {
       leaseFailed(err);
     }
+    // Once as soon as there is a socket to say it on, before the schedule
+    // starts. The user's browser began counting at the press, and the
+    // network and the two checks before this made no sound on that clock; a
+    // first beat one whole interval later spends the client's whole budget
+    // on the work this turn does before it can speak, and a turn that is
+    // doing fine gets killed for it.
     sayAlive();
     const beat = setInterval(() => {
       sayAlive();

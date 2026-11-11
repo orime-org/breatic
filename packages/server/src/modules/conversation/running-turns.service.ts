@@ -79,11 +79,7 @@ async function writeLease(key: string, member: string, onlyExisting: boolean): P
  * @returns The lease, to renew on every heartbeat and release when the turn ends.
  * @throws {Error} When Redis refuses or cannot be reached.
  */
-export async function holdRunning(scope: {
-  userId: string;
-  projectId: string;
-  conversationId: string;
-}): Promise<RunningLease> {
+export async function holdRunning(scope: RunningScope & { conversationId: string }): Promise<RunningLease> {
   const key = keyOf(scope);
   // One member per turn: two tabs running the same conversation hold two, and
   // the first to finish does not take the other's mark away.

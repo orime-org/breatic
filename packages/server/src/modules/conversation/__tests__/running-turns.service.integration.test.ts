@@ -34,7 +34,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import crypto from "node:crypto";
 import { env, getRedis, initCore } from "@breatic/core";
 import { SSE_HEARTBEAT_MISSES_ALLOWED } from "@breatic/shared";
-import { holdRunning, runningConversationIds } from "@server/modules/conversation/running-turns.js";
+import { holdRunning, runningConversationIds } from "@server/modules/conversation/running-turns.service.js";
 
 /** How long one lease lasts without a renewal. */
 const LEASE_MS = HEARTBEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED;

@@ -36,22 +36,15 @@ export function useRunningConversations(projectId: string, open: boolean): Reado
   if (opening.open !== open) setOpening({ open, at: open ? Date.now() : 0 });
   const openedAt = opening.open === open ? opening.at : 0;
 
-  const [pollMs, setPollMs] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    if (!open || pollMs !== null) return;
-    let live = true;
-    chatApi.streamConfig().then(
-      (config) => {
-        if (live) setPollMs(config.runningPollIntervalMs);
-      },
-      () => {
-        // No interval to poll on; opening and focus still ask.
-      },
-    );
-    return (): void => {
-      live = false;
-    };
-  }, [open, pollMs]);
+  // Without it there is no interval to poll on; opening and focus still ask.
+  const { data: config } = useQuery({
+    queryKey: ['chat', 'stream-config'],
+    queryFn: () => chatApi.streamConfig(),
+    enabled: open,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const pollMs = config?.runningPollIntervalMs ?? null;
 
   const query = useQuery({
     queryKey,
@@ -87,10 +80,14 @@ export function useRunningConversations(projectId: string, open: boolean): Reado
 
   const local = useRunningTurns((s) => s.byConversation);
   const { data, dataUpdatedAt, isError } = query;
+  // Decided outside the memo, so a poll that brings back the same ids (React
+  // Query keeps the same array for equal data) keeps the same set and the
+  // memoized list does not redraw.
+  const fresh = open && !isError && data !== undefined && openedAt > 0 && dataUpdatedAt >= openedAt;
+  const shown = fresh ? data : undefined;
   return React.useMemo(() => {
     const ids = new Set(Object.keys(local));
-    const fresh = open && !isError && data !== undefined && openedAt > 0 && dataUpdatedAt >= openedAt;
-    if (fresh) for (const id of data) ids.add(id);
+    for (const id of shown ?? []) ids.add(id);
     return ids;
-  }, [local, open, isError, data, dataUpdatedAt, openedAt]);
+  }, [local, shown]);
 }

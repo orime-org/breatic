@@ -15,7 +15,7 @@
  * every other route.
  *
  * The lease module is doubled here; what it does against Redis is pinned by
- * `modules/conversation/__tests__/running-turns.integration.test.ts`.
+ * `modules/conversation/__tests__/running-turns.service.integration.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -79,7 +79,7 @@ const { HEARTBEAT_MS, SILENCE_MS, PROJECT_ID, CONVERSATION_ID, lease } = vi.hois
   };
 });
 
-vi.mock("@server/modules/conversation/running-turns.js", () => ({
+vi.mock("@server/modules/conversation/running-turns.service.js", () => ({
   holdRunning: lease.holdRunning,
   runningConversationIds: lease.runningConversationIds,
 }));

@@ -388,3 +388,17 @@ describe('turns of this page', () => {
     expect(marked().has('c-1')).toBe(false);
   });
 });
+
+describe('what the list is handed', () => {
+  it('keeps the same set when a poll brings back the same ids, so the memoized list does not redraw', async () => {
+    running.mockResolvedValue(['c-1']);
+    const { marked } = mount(true);
+    await flush();
+    const first = marked();
+    expect(first.has('c-1')).toBe(true);
+
+    await wait(POLL_MS);
+    expect(running).toHaveBeenCalledTimes(2);
+    expect(marked()).toBe(first);
+  });
+});
