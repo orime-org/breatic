@@ -255,7 +255,9 @@ describe("planned upstream intent and canonical identity persistence", () => {
   it("does not admit a fresh POST after the original deadline or computation terminal", async () => {
     const f = await seed(); await beginMiniToolStepAttempt(f.input); await failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: ERROR }); const before = await snapshot(f);
     expect((await beginMiniToolStepAttempt({ ...f.input, attemptId: crypto.randomUUID() })).shouldSubmit).toBe(false); expect(await snapshot(f)).toEqual(before);
-    const expired = await seed(); expect((await beginMiniToolStepAttempt({ ...expired.input, deadlineAt: Date.now() - 1 })).shouldSubmit).toBe(false); expect((await snapshot(expired)).step.output.miniToolStep?.attempts ?? []).toEqual([]);
+    // The service compares the deadline with the database clock, so a deadline a full minute past stays past despite drift between
+    // the host and the database container.
+    const expired = await seed(); expect((await beginMiniToolStepAttempt({ ...expired.input, deadlineAt: Date.now() - 60_000 })).shouldSubmit).toBe(false); expect((await snapshot(expired)).step.output.miniToolStep?.attempts ?? []).toEqual([]);
   });
   it("does not reopen a complete or billed parent to accept an unaccounted receipt", async () => {
     const f = await seed(); await beginMiniToolStepAttempt(f.input); await pg`UPDATE tasks SET status='failed',billed_at=now(),billed_credits=1,result=result || ${pg.json({ settlement: { version: 4, state: "settled", consumptionSetComplete: true, pendingConsumptionKeys: [], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null } })} WHERE id=${f.taskId}`;
