@@ -14,8 +14,10 @@
  * {@link STAND_IN_ON}, so leaving the dialogue keeps the speakers the user
  * wrote. On the dialogue side the script is one line per turn, each line
  * naming its speaker by number; {@link dialogueText} writes it out as the
- * `Name: line` script the upstream reads. The panel, the landing writers and
- * the agent's checks all decide the side through {@link dialogueSideOf}.
+ * `Name: line` script the upstream reads. The landing writers switch the
+ * side on through {@link withStandInOn}; the panel reads it through
+ * {@link dialogueSideOf}, and the agent's checks read a record not yet landed
+ * through both.
  */
 
 import { completeEntries } from "@shared/item-cap.js";

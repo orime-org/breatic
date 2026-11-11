@@ -393,8 +393,8 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
 
 /**
  * Qwen3 TTS Voice Design (inner#1825 §8): a voice described in words. The
- * description has a neutral English default, so a run the user or the Agent
- * left it empty on still speaks.
+ * description has a neutral English default, so a run that names none still
+ * speaks; one that empties it is refused before any body is sent.
  */
 describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inner#1825)", () => {
   beforeAll(() => {

@@ -4,8 +4,8 @@
 /**
  * A proposed generation read as a dialogue (inner#1825 design 8.5): whether
  * it is on the dialogue side of a model whose speakers stand in for its
- * voice, the decision the panel and the landing make with the same shared
- * function, and the script its lines send.
+ * voice, decided with the shared functions the landing (`withStandInOn`) and
+ * the panel (`dialogueSideOf`) use, and the script its lines send.
  */
 import { dialogueSideOf, dialogueSpeakers, dialogueText, STAND_IN_ON, withStandInOn, type ModelEntry, type PromptSegment, type ProposalNode } from "@breatic/shared";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
