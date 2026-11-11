@@ -26,6 +26,10 @@
  * the draft card keeps its place in the panel and says so instead, keeping
  * what the user wrote.
  *
+ * A draft on a picture, a video or an audio block is aimed by the block's id
+ * (inner#1316 §5.3): it is dropped while the block is gone and aimed again
+ * when the block comes back, by an undo or a move.
+ *
  * ## One draft, one place
  *
  * Everything about the open draft that is not the user's words lives here:
@@ -140,12 +144,15 @@ export interface MediaDraftAim {
   readonly entry: number;
 }
 
+/** The block a media draft stands on and the entry it was opened by. */
+type DraftMedia = Pick<MediaDraftAim, 'mediaBlockId' | 'entry'>;
+
 /** Why a draft can no longer be written (A21, A22). */
 export type DraftDropReason = 'targetGone' | 'cannotWrite';
 
 /**
- * The draft as the panel shows it: aimed at words, or dropped and saying why
- * until the user dismisses the notice.
+ * The draft as the panel shows it: aimed at words or at a media block, or
+ * dropped and saying why until the user dismisses the notice.
  */
 export type Draft =
   | ({ readonly kind: 'aimed' } & DraftAim)
@@ -160,14 +167,14 @@ export type Draft =
      * draft is aimed again when the block is back (an undo, a peer's undo, a
      * drag that moves it).
      */
-    readonly media?: { readonly blockId: string; readonly entry: number };
+    readonly media?: DraftMedia;
   };
 
 /**
- * What a caller dispatches under the plugin's key: stretches open a draft, or
- * move the open one there — aimed or dropped — keeping its opening and so
- * its words; `null` closes it; `{ drop }` drops it for a reason the plugin
- * cannot see for itself.
+ * What a caller dispatches under the plugin's key: stretches, or
+ * `{ mediaBlockId }` for a media block, open a draft there or move the open
+ * one there — aimed or dropped — keeping its opening and so its words; `null`
+ * closes it; `{ drop }` drops it for a reason the plugin cannot see for itself.
  */
 export type DraftCommand =
   | readonly DraftRange[]
@@ -193,7 +200,7 @@ export function draftIn(state: EditorState): Draft | null {
  * The range the open draft is going to land on.
  * @param state - The editor state to read.
  * @returns That range and which opening it is, or null when no draft is
- *   aimed anywhere.
+ *   aimed at words: none is open, it is dropped, or it is aimed at media.
  */
 export function draftRangeIn(state: EditorState): DraftAim | null {
   return aimedRange(draftIn(state));
@@ -251,9 +258,6 @@ const watch = watchPluginState(draftIn);
 export const onDraftChange: (listener: () => void) => () => void =
   watch.onChange;
 
-/** The block a media draft stands on and the entry it was opened by. */
-type DraftMedia = NonNullable<Extract<Draft, { kind: 'dropped' }>['media']>;
-
 /**
  * The block a draft stands on, aimed at it or dropped when it went.
  * @param draft - The draft.
@@ -261,7 +265,7 @@ type DraftMedia = NonNullable<Extract<Draft, { kind: 'dropped' }>['media']>;
  */
 function mediaOf(draft: Draft): DraftMedia | null {
   if (draft.kind === 'dropped') return draft.media ?? null;
-  return 'mediaBlockId' in draft ? { blockId: draft.mediaBlockId, entry: draft.entry } : null;
+  return 'mediaBlockId' in draft ? draft : null;
 }
 
 /**
@@ -273,9 +277,10 @@ function mediaOf(draft: Draft): DraftMedia | null {
  * @returns The draft after it; `current` when nothing changed.
  */
 function carryMedia(current: Draft, media: DraftMedia, doc: ProseMirrorNode): Draft {
-  const there = mediaRowById(doc, media.blockId) !== undefined;
-  if (current.kind === 'aimed') return there ? current : { kind: 'dropped', why: 'targetGone', opening: current.opening, media };
-  return there ? { kind: 'aimed', mediaBlockId: media.blockId, opening: current.opening, entry: media.entry } : current;
+  const { mediaBlockId, entry } = media;
+  const there = mediaRowById(doc, mediaBlockId) !== undefined;
+  if (current.kind === 'aimed') return there ? current : { kind: 'dropped', why: 'targetGone', opening: current.opening, media: { mediaBlockId, entry } };
+  return there ? { kind: 'aimed', mediaBlockId, entry, opening: current.opening } : current;
 }
 
 /**
