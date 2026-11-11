@@ -219,6 +219,9 @@ describe("prepareRun — a join", () => {
 
     const err = await refusal(prepareRun(VIDEO_JOIN, joinRequest(VIDEO_JOIN, a, clips)));
     expect(err.statusCode).toBe(400);
+    // Said as the count, not as a file that cannot be processed.
+    expect(err.message).toBe(t("server.mini_tool.joinClipCount", { max: CONFIG.join_max_clips }));
+    expect(err.message).not.toBe(t("server.mini_tool.foreignSource"));
   });
 
   // §6.4: the container holds every input and the output, which is about their sum.

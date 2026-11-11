@@ -23,10 +23,11 @@ vi.mock('@web/data/api/request', async (importOriginal) => {
   return { ...actual, apiGet: vi.fn() };
 });
 
-import type { ModelCatalog } from '@breatic/shared';
+import { t, type ModelCatalog } from '@breatic/shared';
 import type { MiniToolSlotValue } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { toast } from '@web/lib/toast';
 import { canvasApi, type CanvasLimits } from '@web/data/api/canvas';
 import { apiGet } from '@web/data/api/request';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -179,6 +180,19 @@ describe('the join panel (inner#1825 §6.5)', () => {
     expect(screen.getByTestId('join-add')).toBeInTheDocument();
     act(() => session().fillMiniToolSlot('clips', clip('c', 8), true));
     expect(screen.queryByTestId('join-add')).toBeNull();
+  });
+
+  it('refuses Run past the cap with a toast naming it, and says the same under the row (inner#1825 §6.5)', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    // A selection of four opens the panel past the cap of three.
+    session().openJoinPanel('audio.join', [clip('a', 10), clip('b', 4), clip('c', 8), clip('d', 6)]);
+    mount(onRun);
+    const said = t('canvas.miniTool.panel.joinTooMany', { n: 3 });
+    expect(said).toContain('3');
+    expect(screen.getByTestId('join-too-many')).toHaveTextContent(said);
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith(said);
   });
 
   it.each([
