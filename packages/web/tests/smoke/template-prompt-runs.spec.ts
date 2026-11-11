@@ -686,7 +686,7 @@ const RUNS: Record<string, Run> = {
   'song-cover': { type: 'audio', photo: false, song: true, first: [], fills: { anchor: ['指弹吉他伴奏、轻声演唱的慢板民谣'] } },
   'voice-clone-line': { type: 'audio', photo: false, media: VOICE_SAMPLE, first: [], fills: { anchor: ['今天的风很轻，我们沿着河边慢慢走吧。'] } },
   'score-for-my-video': { type: 'audio', photo: false, media: 'mini-tools/driving.mp4', first: [], fills: { anchor: ['带轻打击乐的温暖原声民谣'] } },
-  'music-mood-from-image': { type: 'audio', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['30 秒', '慢、梦幻'] } },
+  'music-mood-from-image': { type: 'audio', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['慢、梦幻'] } },
   'clip-ambience-foley': {
     type: 'video',
     photo: false,

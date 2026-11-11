@@ -1797,7 +1797,7 @@
       "music-mood-from-image": {
         "name": "Music from a picture",
         "description": "Music in the mood of your picture",
-        "prompt": "Instrumental music in the mood of the reference image: its feeling, colours and setting decide the genre, the key and the instruments. Length: {✏️ e.g. 30 seconds}. {✏️ anything else, e.g. slow and dreamy}.",
+        "prompt": "Instrumental music in the mood of the reference image: its feeling, colours and setting decide the genre, the key and the instruments. {✏️ anything else, e.g. slow and dreamy}.",
         "input": {
           "image": {
             "name": "Picture",

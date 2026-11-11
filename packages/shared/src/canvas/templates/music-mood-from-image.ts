@@ -16,7 +16,7 @@ export const MUSIC_MOOD_FROM_IMAGE: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "music whose genre, key and instruments follow the mood of a picture the user gives; the user picks the picture into the image slot",
+    "music whose genre, key and instruments follow the mood of a picture the user gives; the user picks the picture into the image slot; the model does not keep to a length, so the prompt asks for none",
   goal: "sound",
   triggers: {
     asks: ["music that matches this picture", "music with the feel of this image"],
