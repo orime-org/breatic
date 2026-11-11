@@ -116,7 +116,7 @@ interface DocumentMediaBlockProps {
   commentActions: MediaCommentActions;
   /** How many open comments stand on the block. */
   commentCount: number;
-  /** Whether a comment on the block, or a draft aimed at it, is being read. */
+  /** Whether the block is outlined: a comment on it is selected or its card is under the pointer, or a draft is aimed at it. */
   commentReading: boolean;
   /** Whether a table is open full screen, where neither entry nor icon is drawn. */
   tableFullscreen: boolean;
