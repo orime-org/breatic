@@ -39,7 +39,7 @@ const { DocumentMediaViews } = await import('@web/spaces/document/DocumentMediaV
 const { asCommentBody, commentsOn } = await import('@web/spaces/document/document-comment-extension');
 const { draftIn } = await import('@web/spaces/document/document-comment-draft-range');
 const { commentOn } = await import('@web/spaces/document/document-comment-post');
-const { selectedThreadsIn, selectThreads } = await import('@web/spaces/document/document-comment-selection');
+const { hoverThread, selectedThreadsIn, selectThreads } = await import('@web/spaces/document/document-comment-selection');
 const { DocumentProjectProvider } = await import('@web/spaces/document/document-project-context');
 const { setTableFullscreen } = await import('@web/spaces/document/document-table-fullscreen');
 const { tableBlock } = await import('@web/spaces/document/__tests__/table-fixtures');
@@ -247,6 +247,22 @@ describe('the comment icon on a media block', () => {
     });
 
     expect(within(row(editor, 'pic')).getByTestId('doc-media-frame').getAttribute('data-comment-reading')).toBe('false');
+  });
+
+  it('outlines the block while the pointer rests on its comment\'s card, as words deepen (A24)', async () => {
+    const editor = open([PICTURE]);
+    const id = await postOn(editor, 'pic');
+    const frame = (): string | null => within(row(editor, 'pic')).getByTestId('doc-media-frame').getAttribute('data-comment-reading');
+
+    act(() => {
+      hoverThread(editor as never, id);
+    });
+    expect(frame()).toBe('true');
+
+    act(() => {
+      hoverThread(editor as never, null);
+    });
+    expect(frame()).toBe('false');
   });
 
   it('leaves the user\'s caret alone when the icon is pressed', async () => {

@@ -4,8 +4,8 @@
 /**
  * What the body draws on each picture, video and audio block about its
  * comments (inner#1316 §5.4): how many open comments stand on it, and whether
- * it is the one being read — a comment on it is selected, or a draft is
- * aimed at it.
+ * it is the one being read — a comment on it is selected or its card is under
+ * the pointer (A24), or a draft is aimed at it.
  *
  * Read once for every media block in the body, so a block re-renders only
  * when what it shows moves.
@@ -16,7 +16,12 @@ import * as React from 'react';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { mediaDraftIn, onDraftChange } from '@web/spaces/document/document-comment-draft-range';
 import { mediaBlockIdOf } from '@web/spaces/document/document-comment-media';
-import { onSelectedThreadsChange, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
+import {
+  hoveredThreadIn,
+  onHoveredThreadChange,
+  onSelectedThreadsChange,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -64,6 +69,7 @@ export function useMediaComments(editor: ToolEditor): MediaComments {
       const stops = [
         comments.threadStore.subscribe(onChange),
         onSelectedThreadsChange(onChange),
+        onHoveredThreadChange(onChange),
         onDraftChange(onChange),
       ];
       return () => {
@@ -90,8 +96,8 @@ export function useMediaComments(editor: ToolEditor): MediaComments {
       open.set(blockId, [...(open.get(blockId) ?? []), thread.id]);
     }
     const reading = new Set<string>();
-    for (const id of selectedThreadsIn(state)) {
-      const blockId = owner.get(id);
+    for (const id of [...selectedThreadsIn(state), hoveredThreadIn(state)]) {
+      const blockId = id === null ? undefined : owner.get(id);
       if (blockId !== undefined) reading.add(blockId);
     }
     const drafted = mediaDraftIn(state);
