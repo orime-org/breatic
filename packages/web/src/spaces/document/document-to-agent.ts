@@ -24,6 +24,7 @@ import { t } from '@breatic/shared';
 
 import { clipAttachmentName, hashOf } from '@web/lib/attachment-naming';
 import { mediaNameOf, mediaQuoteOf } from '@web/spaces/document/document-comment-media';
+import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -182,6 +183,20 @@ export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
 }
 
 /**
+ * Whether a block group holds a picture, video or audio whose upload finished.
+ * @param group - The rows nested under a block, or null when there are none.
+ * @returns True when it does.
+ */
+function holdsUploadedMedia(group: PMNode | null): boolean {
+  let found = false;
+  group?.descendants((node) => {
+    found ||= isMediaBlockType(node.type.name) && pendingUploadId(node.attrs) === null;
+    return !found;
+  });
+  return found;
+}
+
+/**
  * What the handle menu hands over for a media row: the media, and the rows
  * nested under it as text, the way it hands any row over with its children.
  * @param editor - The document editor.
@@ -191,15 +206,16 @@ export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
  */
 export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   const media = mediaItem(editor, blockId);
-  // The editor is typed without its schema, so its blocks read as `never`;
-  // `mediaItem` has found the block.
-  const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
-  // Rows that hold nothing, empty lines left under the media, hand nothing.
-  const markdown = children.length === 0 ? '' : blocksMarkdown(editor, children as never).trimEnd();
-  if (markdown === '') return [media];
-  // The media holds no words, so the row's words are its children's.
+  // `mediaItem` has found the block. The media holds no words, so the row's
+  // words are those of the rows nested under it.
   const { node } = getNodeById(blockId, editor.prosemirrorState.doc)!;
   const words = node.textBetween(0, node.content.size, '\n', '\n');
+  // Nested rows hand something only when they hold words or uploaded media,
+  // the rule that greys Add to Agent on a text row with no words.
+  if (words.trim() === '' && !holdsUploadedMedia(node.childCount > 1 ? node.child(1) : null)) return [media];
+  // The editor is typed without its schema, so its blocks read as `never`.
+  const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
+  const markdown = blocksMarkdown(editor, children as never).trimEnd();
   return [media, textItem(`document-block-${blockId}`, nameFrom(words), markdown)];
 }
 

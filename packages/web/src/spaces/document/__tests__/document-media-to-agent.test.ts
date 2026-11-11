@@ -21,6 +21,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { mediaItem, mediaRowItems } from '@web/spaces/document/document-to-agent';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -173,11 +174,39 @@ describe('a name cut where an emoji stands', () => {
 });
 
 describe('a media row whose nested rows hold nothing', () => {
-  it('hands the media alone, with no empty text after it', () => {
-    const editor = open([
-      { id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' }, children: [{ id: 'e', type: 'paragraph', content: '' }] },
-    ]);
+  // Every kind of row the user can leave empty under media; a row with no
+  // words hands nothing, as a text row with no words has Add to Agent greyed.
+  const EMPTY_ROWS: Record<string, unknown> = {
+    paragraph: { id: 'e', type: 'paragraph', content: '' },
+    'whitespace paragraph': { id: 'e', type: 'paragraph', content: '   ' },
+    heading: { id: 'e', type: 'heading', content: '' },
+    'bullet list item': { id: 'e', type: 'bulletListItem', content: '' },
+    'numbered list item': { id: 'e', type: 'numberedListItem', content: '' },
+    'check list item': { id: 'e', type: 'checkListItem', content: '' },
+    'code block': { id: 'e', type: 'codeBlock', content: '' },
+    divider: { id: 'e', type: 'divider' },
+    'table with empty cells': { id: 'e', ...tableBlock({ rows: [{ cells: ['', ''] }] }) },
+  };
+
+  it.each(Object.entries(EMPTY_ROWS))('hands the media alone under an empty %s', (_kind, row) => {
+    const editor = open([{ id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' }, children: [row] }]);
 
     expect(mediaRowItems(editor as never, 'pic').map((item) => item.id)).toEqual(['document-media-pic']);
+  });
+
+  it('hands a picture nested under the media after it, though it holds no words', () => {
+    const editor = open([
+      {
+        id: 'pic',
+        type: 'image',
+        props: { url: 'https://cdn.test/a.png', name: 'a.png' },
+        children: [{ id: 'inner', type: 'image', props: { url: 'https://cdn.test/b.png', name: 'b.png' } }],
+      },
+    ]);
+
+    const items = mediaRowItems(editor as never, 'pic');
+
+    expect(items.map((item) => item.id)).toEqual(['document-media-pic', 'document-block-pic']);
+    expect(items[1]!.chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/b.png') });
   });
 });
