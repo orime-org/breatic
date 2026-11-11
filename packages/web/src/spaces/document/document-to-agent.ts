@@ -196,10 +196,9 @@ export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   const children = row?.children ?? [];
   if (children.length === 0) return [media];
   const markdown = blocksMarkdown(editor, children as never).trimEnd();
-  const words = children
-    .map((child) => getNodeById(child.id, editor.prosemirrorState.doc)?.node)
-    .map((node) => (node === undefined ? '' : node.textBetween(0, node.content.size, '\n', '\n')))
-    .join('\n');
+  // The media holds no words, so the row's words are its children's.
+  const node = getNodeById(blockId, editor.prosemirrorState.doc)?.node;
+  const words = node === undefined ? '' : node.textBetween(0, node.content.size, '\n', '\n');
   return [media, textItem(`document-block-${blockId}`, nameFrom(words), markdown)];
 }
 
