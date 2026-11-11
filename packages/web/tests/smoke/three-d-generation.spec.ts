@@ -159,6 +159,23 @@ async function chooseFromProject(page: Page, dialog: Locator, index: number, nam
   await expect(dialog.getByTestId(`scene-generate-view-${String(index)}`).locator('img')).toBeVisible();
 }
 
+test('turning on Rig skeleton adds the rig step to the estimate, and off takes it away (inner#1692)', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `scene-rig-estimate-${crypto.randomUUID()}`);
+  created.push(id);
+  const dialog = await openDialog(page);
+  const rig = dialog.getByRole('switch', { name: 'Rig skeleton', exact: true });
+  await expect(rig).toHaveAttribute('aria-checked', 'false');
+  const without = await shownCredits(dialog);
+  await rig.click();
+  await expect(rig).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(() => shownCredits(dialog)).toBeGreaterThan(without);
+  await rig.click();
+  await expect.poll(() => shownCredits(dialog)).toBe(without);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test('text to 3D runs from the dialog to a model placed in the scene @needs-model @needs-storage @needs-ingest', async ({ page }) => {
   test.setTimeout(CASE_TIMEOUT);
   await openSmokeProject(page);

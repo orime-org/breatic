@@ -1515,6 +1515,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.catalogOffline"))} ` +
       `Opened from the rail it starts empty and says ${quoted(t("spaces.threeD.generateDialog.descriptionBlank"))} ` +
       `On top, under ${quoted(t("spaces.threeD.generateDialog.common"))}, are the model's settings both modes share, in two columns with each setting's name at the left of its row: switches, choices that show the value set and list every value when clicked, and number boxes. ` +
+      `The last switch, ${quoted(t("canvas.generatePanel.param.rig_skeleton"))}, is off by default; turned on, the finished model also gets a skeleton so it can be posed, and the estimate includes that step. ` +
       "A setting another choice holds is locked; clicking it shows why in a short message, such as " +
       `${quoted(t("spaces.threeD.force.low_poly_skips_parts"))} ${quoted(t("spaces.threeD.force.pbr_needs_texture"))} ${quoted(t("spaces.threeD.force.parts_geometry_only"))} or ${quoted(t("spaces.threeD.force.fast_uses_v35"))} ` +
       "A value a setting does not accept shows the rule it breaks under that setting. " +
@@ -1565,6 +1566,8 @@ export function renderProductGuide(): string {
       `then the model · who started it · ${quoted(t("spaces.threeD.taskList.originSpace"))} or ${quoted(t("spaces.threeD.taskList.originAgent"))} (with a robot icon), and its state: ` +
       `${quoted(t("spaces.threeD.taskList.generating"))}, with the minutes after the first, ${quoted(t("spaces.threeD.taskList.done"))}, ` +
       `${quoted(t("spaces.threeD.taskList.failed"))} with its reason, or ${quoted(t("spaces.threeD.taskList.expired"))}; one whose model arrived after it timed out shows ${quoted(t("spaces.threeD.taskList.done"))}. ` +
+      `A generation asked to rig a skeleton adds a line: ${quoted(t("spaces.threeD.taskList.willRig"))} while it runs, then ${quoted(t("spaces.threeD.taskList.rigged"))}, ` +
+      `or ${quoted(t("spaces.threeD.taskList.rigFailed"))} when only the skeleton step failed; that model is still delivered and placeable, and only the generation is charged. ` +
       `A generation row with a model has ${quoted(t("spaces.threeD.taskList.place"))} as well. ` +
       `A failed generation, and a timed-out one with no model, has ${quoted(t("spaces.threeD.taskList.remove"))} and, for the member who started it while they can edit, ` +
       `${quoted(t("spaces.threeD.taskList.retry"))}: it opens the generation dialog filled with that task's prompt or pictures and settings, saying ` +
@@ -1601,6 +1604,17 @@ export function renderProductGuide(): string {
       `Escape cancels its draft. A rejected value stays in the box, which shows ${quoted(t("spaces.threeD.valueFailed"))} Correct it or cancel. ` +
       `For several objects the panel shows a selection count, ${quoted(t("spaces.threeD.mixed"))} where their values differ, and ` +
       `${quoted(t("spaces.threeD.multiTransform"))} Use the viewport handles to change them together.`,
+    `For one object, below ${quoted(t("spaces.threeD.scale"))}, a ${quoted(t("spaces.threeD.pose.title"))} section appears once its model has loaded. ` +
+      `A model without a skeleton says ${quoted(t("spaces.threeD.pose.noSkeleton"))} A humanoid character (the built-in ${quoted(t("spaces.threeD.figure"))}, a generated model rigged with a skeleton, or an imported humanoid rig) ` +
+      `offers the presets ${quoted(t("spaces.threeD.pose.stand"))}, ${quoted(t("spaces.threeD.pose.sit"))}, ${quoted(t("spaces.threeD.pose.lie"))}, ` +
+      `${quoted(t("spaces.threeD.pose.walk"))} and ${quoted(t("spaces.threeD.pose.wave"))}; each replaces the whole pose and keeps the object where it is. ` +
+      `Another skeleton says ${quoted(t("spaces.threeD.pose.humanoidOnly"))} Both offer the ${quoted(t("spaces.threeD.pose.jointMode"))} switch and ` +
+      `${quoted(t("spaces.threeD.pose.reset"))}, which returns the model to its own resting pose. ` +
+      `With ${quoted(t("spaces.threeD.pose.jointMode"))} on, dots mark the character's joints, drawn over the model, and the move, rotate and scale handles are hidden; ` +
+      "click a dot, or a part of the body, to pick its joint, then drag the rotation rings that appear on it. Releasing saves only that joint; " +
+      `each preset, reset or joint drag is one undo step. Choosing ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} or ${quoted(t("spaces.threeD.scale"))}, ` +
+      "changing the selection, a lock, losing editing access or switching or closing the panel turns joint adjustment off; while it is on, none of those three shows as the current tool. " +
+      "These controls are greyed for a Viewer and on a locked object, like the position boxes.",
     `The padlock button in the properties header, just left of its X, shows an open or closed lock using the ordinary button colours. ` +
       `Its tooltip is ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}. ` +
       `${quoted(t("spaces.threeD.lock"))} protects selected objects from movement, renaming and deletion; ` +
@@ -1610,11 +1624,12 @@ export function renderProductGuide(): string {
       "Users can edit the same unlocked object concurrently; selecting or dragging it does not reserve it. " +
       `The toolbar's ${quoted(t("spaces.threeD.undo"))} and ${quoted(t("spaces.threeD.redo"))} act on your own editing history, including through a lock. ` +
       "Other users' selected objects have coloured outlines, with each user's name and selected-object count in the properties panel. " +
+      "While another user moves, rotates, scales or poses an object, you see the model itself change as they drag; it is saved when they release. " +
       `If an action cannot apply, an error toast says ${quoted(t("spaces.threeD.commandFailed"))}`,
     "With the Space holding keyboard focus and no text box being edited, Cmd/Ctrl+D duplicates, Delete or Backspace deletes, " +
       "Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z redoes, and Ctrl+Y also redoes on Windows. F focuses the selection. " +
-      "Escape in a property box cancels its draft; outside a box it cancels an active handle gesture first, then closes an open panel, " +
-      "and clears the selection when neither owns the key. Losing focus, hiding the scene " +
+      "Escape in a property box cancels its draft; outside a box each press does the first of these that applies: cancel an active handle or joint drag, " +
+      "turn joint adjustment off, close an open panel, clear the selection. Losing focus, hiding the scene " +
       "or losing editing access cancels an unfinished handle gesture. A Viewer can browse and select, but cannot change shared objects.",
     `A refused scene connection says ${quoted(t("spaces.threeD.refused"))} ` +
       "The scene uses the same live collaborative document while its tab stays open, including across Space switches and reconnects. " +

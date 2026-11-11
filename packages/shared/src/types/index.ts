@@ -156,8 +156,8 @@ export {
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
 export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
-export type { SceneGenerationOrigin, SceneGenerationProposal } from "@shared/types/scene-generation-proposal.js";
-export { SCENE_GENERATION_ORIGINS, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
+export type { SceneGenerationOrigin, SceneGenerationProposal, SceneTaskNotice } from "@shared/types/scene-generation-proposal.js";
+export { SCENE_GENERATION_ORIGINS, SCENE_TASK_NOTICES, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
 
 export type {
   ReferenceRefusal,

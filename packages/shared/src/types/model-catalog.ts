@@ -69,6 +69,8 @@ export interface ExtraStep {
   readonly per_item?: boolean;
   /** Skipped when the same source was sent through it before. */
   readonly reused?: boolean;
+  /** A failure of this step keeps the run: the previous step's output is delivered. */
+  readonly optional?: boolean;
 }
 
 /** Params of which at least one has to carry material in one mode. */
@@ -684,6 +686,7 @@ const modelEntrySchema = z.object({
         for_param: z.string().optional(),
         per_item: z.boolean().optional(),
         reused: z.boolean().optional(),
+        optional: z.boolean().optional(),
       }),
     )
     .optional()

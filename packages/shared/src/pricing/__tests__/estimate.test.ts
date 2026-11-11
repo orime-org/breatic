@@ -137,6 +137,22 @@ const EDIT_WITH_STYLE: PricedModel = {
   },
 };
 
+/** A generation with a rigging step a panel toggle switches on (inner#1692). */
+const RIGGED: PricedModel = {
+  takes_prompt: true,
+  params: { rig_skeleton: { default: false, fill: "panel" } },
+  pricing: { base_price: 120_000, formula: "", discount_rate: 100 },
+  extra_steps: [
+    {
+      endpoint: "tripo3d/rig",
+      at: "after",
+      for_param: "rig_skeleton",
+      optional: true,
+      pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
+    },
+  ],
+};
+
 describe("estimateCredits", () => {
   it("counts a joining style slot's files inside the pool they join", async () => {
     const joined = await estimateCredits(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s1", "s2"] } }, 1);
@@ -296,5 +312,41 @@ describe("estimateCredits", () => {
       pricing: { base_price: 40_000, formula: "", discount_rate: 100 },
     };
     expect(await estimateCredits(FLAT_SLOT, { params: {} }, 1)).toEqual({ credits: 4, bound: "exact" });
+  });
+
+  it("adds a toggled step's price when its toggle is on", async () => {
+    expect(await estimateCredits(RIGGED, { params: { rig_skeleton: true }, prompt: "a cat" }, 1)).toEqual({
+      credits: 42,
+      bound: "exact",
+    });
+  });
+
+  it("leaves a toggled step out when its toggle is off, unset or cleared", async () => {
+    for (const params of [{ rig_skeleton: false }, {}, { rig_skeleton: null }]) {
+      expect(await estimateCredits(RIGGED, { params, prompt: "a cat" }, 1), JSON.stringify(params)).toEqual({
+        credits: 12,
+        bound: "exact",
+      });
+    }
+  });
+
+  it("applies the credit multiplier to the toggled step as well", async () => {
+    expect(await estimateCredits(RIGGED, { params: { rig_skeleton: true }, prompt: "a cat" }, 2)).toEqual({
+      credits: 84,
+      bound: "exact",
+    });
+  });
+
+  it("still prices a list-driven step by its items, nothing for an empty list", async () => {
+    const PER_REF: PricedModel = {
+      takes_prompt: false,
+      params: { refs: { fill: "pool", type: "list", default: null, optional: true } },
+      pricing: { base_price: 100_000, formula: "", discount_rate: 100 },
+      extra_steps: [
+        { endpoint: "upload", at: "before", for_param: "refs", per_item: true, pricing: { base_price: 10_000, formula: "", discount_rate: 100 } },
+      ],
+    };
+    expect(await estimateCredits(PER_REF, { params: { refs: [] } }, 1)).toEqual({ credits: 10, bound: "exact" });
+    expect(await estimateCredits(PER_REF, { params: { refs: ["a", "b"] } }, 1)).toEqual({ credits: 12, bound: "exact" });
   });
 });

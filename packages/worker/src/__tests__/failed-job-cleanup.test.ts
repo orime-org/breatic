@@ -493,7 +493,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
 
     await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
 
-    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
     expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mock.calls[0]![0]).toMatchObject({
@@ -506,6 +506,29 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     });
     expect(vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+
+  // inner#1692: a run whose optional rig failed stored the notice on its result.
+  it("settles a billed result whose rig failed on the row with the notice", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "three_d",
+      billedAt: new Date(),
+      billedCredits: 0.24,
+      durationMs: 1000,
+      params: { rig_skeleton: true },
+      result: {
+        model: "tripo-h3.1-t23d",
+        cost: 0.24,
+        notice: "rig_failed",
+        outputs: [{ url: "https://x/out.glb", asset_id: "asset-glb" }],
+      },
+    } as never);
+
+    await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
+
+    expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
   });
 
   it("settles an unbilled death on the row as failed with a stored cause", async () => {

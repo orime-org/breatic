@@ -112,3 +112,37 @@ describe("planSteps", () => {
     expect(() => planSteps(unknown, {})).toThrow("No step runs vendor/unknown");
   });
 });
+
+/**
+ * The optional rig step after a Tripo generation (inner#1692, design 6.1 and
+ * 6.2): planned as `rig` only when `rig_skeleton` is on. A switch set to false
+ * is not a request for the step, even though false is a value.
+ */
+describe("planSteps — rigging a generated model (inner#1692)", () => {
+  const TRIPO: FullModelEntry = {
+    name: "tripo-h3.1-t23d",
+    takes_prompt: true,
+    params: { rig_skeleton: { fill: "panel", default: false, values: [true, false] } },
+    extra_steps: [{ endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing: PRICE }],
+    providers: [{ name: "wavespeed", model_id: "tripo3d/h3.1/text-to-3d" }],
+  };
+
+  it("rigs after the generation when the switch is on", () => {
+    expect(shape(TRIPO, { rig_skeleton: true })).toEqual(["generate@tripo3d/h3.1/text-to-3d", "rig@tripo3d/rig"]);
+  });
+
+  it("takes no rig step when the switch is off or absent", () => {
+    expect(shape(TRIPO, { rig_skeleton: false })).toEqual(["generate@tripo3d/h3.1/text-to-3d"]);
+    expect(shape(TRIPO, {})).toEqual(["generate@tripo3d/h3.1/text-to-3d"]);
+    expect(shape(TRIPO, { rig_skeleton: null })).toEqual(["generate@tripo3d/h3.1/text-to-3d"]);
+  });
+
+  it("keeps every other after step a speak step", () => {
+    const other: FullModelEntry = {
+      ...PLAIN,
+      params: { voice: {} },
+      extra_steps: [{ endpoint: "vendor/after", at: "after", for_param: "voice", pricing: PRICE }],
+    };
+    expect(shape(other, { voice: "https://a/v.mp3" })).toEqual(["generate@vendor/plain", "speak@vendor/after"]);
+  });
+});

@@ -85,6 +85,12 @@ export interface ResumeContext {
    * upstream is bounded by it and by no figure of the model's own.
    */
   deadlineAt: number;
+  /**
+   * Whether no retry follows this pickup: an optional step's transient failure
+   * is final then. Dispatch always sets it; a caller that leaves it out is
+   * treated as one that will be retried.
+   */
+  lastAttempt?: boolean;
 }
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────

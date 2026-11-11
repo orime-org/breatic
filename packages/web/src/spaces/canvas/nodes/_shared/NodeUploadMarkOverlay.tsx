@@ -27,7 +27,7 @@ export function NodeUploadMarkOverlay(): React.JSX.Element | null {
   return (
     <span
       data-testid='node-upload-error'
-      className='pointer-events-none absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-status-error wrap-anywhere'
+      className='pointer-events-none absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-pretty text-status-error wrap-anywhere [word-break:auto-phrase]'
     >
       {'text' in mark.message ? mark.message.text : t(mark.message.key, mark.message.params)}
     </span>

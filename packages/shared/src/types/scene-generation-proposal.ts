@@ -22,6 +22,12 @@ export const SCENE_GENERATION_ORIGINS = ["space", "agent"] as const;
 /** One of {@link SCENE_GENERATION_ORIGINS}. */
 export type SceneGenerationOrigin = (typeof SCENE_GENERATION_ORIGINS)[number];
 
+/** What a done 3D generation tells the user: the model arrived without the skeleton it was asked for (inner#1692). */
+export const SCENE_TASK_NOTICES = ["rig_failed"] as const;
+
+/** One of {@link SCENE_TASK_NOTICES}. */
+export type SceneTaskNotice = (typeof SCENE_TASK_NOTICES)[number];
+
 /** A whole proposal: what the generate dialog is filled with, and what it costs. */
 export const sceneGenerationProposalSchema = z.object({
   proposalId: z.string().uuid(),

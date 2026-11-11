@@ -75,11 +75,14 @@ describe('ChatEmpty', () => {
     expect(line.className).toContain('text-balance');
   });
 
-  it('marks the capability line with the user language so it breaks between phrases', () => {
+  // inner#1737 test spec LB-09: the page declares the language, so the line
+  // carries no language of its own and still breaks between phrases.
+  it('LB-09 breaks the capability line between phrases in the page language', () => {
     render(<ChatEmpty />);
     const line = screen.getByText(/I can find material/);
-    expect(line).toHaveAttribute('lang', 'en');
+    expect(line).not.toHaveAttribute('lang');
     expect(line.className).toContain('[word-break:auto-phrase]');
+    expect(line.className).toContain('text-balance');
   });
 
   it('clicking a quick action fires onQuickAction with the label', async () => {
