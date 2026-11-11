@@ -73,7 +73,7 @@ async function artifact(studioId: string, userId: string, role: MiniToolAnalysis
 
 /**
  * Seed a frozen task with registered references and independent execution facts.
- * @param open - Whether the task also holds a provider submit intent with no answer, so an uncertain outcome leaves its set open.
+ * @param open - Whether the task also holds a provider submit intent with no answer, so a terminal outcome leaves its set open.
  */
 async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0, open = false): Promise<Fixture> {
   const { userId, studioId, projectId } = await seedStudioFixture(pg, "analysis-persistence");
@@ -125,7 +125,7 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
 }
 
 /**
- * Seed a task whose call set an uncertain outcome cannot close: it also holds a provider submit intent with no answer.
+ * Seed a task whose call set a terminal outcome cannot close: it also holds a provider submit intent with no answer.
  * @param kind - The analysis kind.
  * @param status - The task status.
  * @param at - The acceptance instant.
@@ -304,7 +304,7 @@ describe("atomic analysis computation completion", () => {
     expect(after.task.billed_at).toBeNull();
   });
 
-  it.each(["result", "error"] as const)("retains incomplete identities after an uncertain %s outcome", async (kind) => {
+  it.each(["result", "error"] as const)("keeps the set open after a %s outcome while a submit attempt is unresolved", async (kind) => {
     const f = await seedOpen("scene_cuts"); const before = await snapshot(f);
     const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
     const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
@@ -314,7 +314,7 @@ describe("atomic analysis computation completion", () => {
     assertPreserved(before, after);
   });
 
-  it.each(["result", "error"] as const)("closes a set with no unresolved attempt after an uncertain %s outcome (execution design §6.12)", async (kind) => {
+  it.each(["result", "error"] as const)("closes a set with no unresolved attempt after a %s outcome (execution design §6.12)", async (kind) => {
     const f = await seed("scene_cuts"); const before = await snapshot(f);
     const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
     await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
@@ -353,7 +353,7 @@ describe("atomic analysis computation completion", () => {
     expect((await snapshot(f)).task.result.settlement).toEqual({ ...claim, consumptionSetComplete: true });
   });
 
-  it("keeps a previously closed set on an uncertain replay", async () => {
+  it("keeps a previously closed set on a terminal replay", async () => {
     const f = await seed("scene_cuts", "completed");
     await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,consumptionSetComplete}','true'::jsonb) WHERE id=${f.taskId}`;
     const before = await snapshot(f);
@@ -384,7 +384,7 @@ describe("atomic analysis computation completion", () => {
     expect(await snapshot(f)).toEqual(before);
   });
 
-  it.each(["result", "error"] as const)("rejects a foreign task source before its uncertain %s transition", async (kind) => {
+  it.each(["result", "error"] as const)("rejects a foreign task source before its %s transition", async (kind) => {
     const f = await seed("scene_cuts");
     await pg`UPDATE tasks SET source='task' WHERE id=${f.taskId}`;
     const before = await snapshot(f);
