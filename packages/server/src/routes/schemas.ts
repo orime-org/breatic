@@ -34,6 +34,7 @@ export {
   chatRenameConversationSchema,
   chatSetModelSchema,
   agentInstructionsQuerySchema,
+  chatRunningQuerySchema,
   agentInstructionsSaveSchema,
 } from "@breatic/shared";
 

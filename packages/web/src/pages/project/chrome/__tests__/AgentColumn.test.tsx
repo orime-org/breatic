@@ -23,6 +23,9 @@ vi.mock('@web/data/api/chat', () => ({
     createConversation: vi.fn(),
     renameConversation: vi.fn(),
     deleteConversation: vi.fn(),
+    // The open conversation list asks which conversations are running (#1394).
+    running: vi.fn(async () => []),
+    streamConfig: vi.fn(async () => ({ runningPollIntervalMs: 5000 })),
   },
 }));
 

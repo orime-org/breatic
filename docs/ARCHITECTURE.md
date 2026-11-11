@@ -267,6 +267,7 @@ The inbound filter (`infra/inbound-filter.ts`) runs on every reassembled message
 | `POST /chat/conversations` | 用户按「+」时的那条,只建不猜;project 已归档时答 404 |
 | `PATCH /chat/conversations/:id` | 改名。**不动 `updated_at`**(见下) |
 | `GET /chat/conversations` | 列表,游标分页(见下) |
+| `GET /chat/running` | 这个用户在这个 project 里正在跑回答的会话 id(#1394)。只读调用者自己的 Redis 租约(DB0,`{prefix}:server:chat-running:{userId}:{projectId}`,有序集合,成员是 `会话 id:租约 id`,分数是到期时刻),读时先删掉过期成员 |
 
 **列表按 `(updated_at, id)` 倒序,游标也是这两列一起**。改标题不动这个排序,由写入侧保证:`updateTitle` 把 `updated_at` 设成它自己(`SET updated_at = updated_at`),压掉列上的 `$onUpdate` —— **改名不算「使用」,所以改名不移动一条会话在列表里的位置**。
 
@@ -449,7 +450,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;客户端连着三个间隔没收到就当这条流没了,走跟用户点停止**完全同一条路**(标中断、输入框恢复可按),**只多一句话** —— 向正在看的人闪一句「网络错误」,四个字、不解释也不建议;它是一次性事件不是常驻提示条,4 秒后自己消失,而用户自己点停止是零提示的(他知道自己干了什么)。
 
-**间隔是部署配置,次数写死**:间隔在 `config/agent.yaml` 的 `sse_heartbeat_interval_ms`,经只读端点 `GET /chat/stream-config` 下发给浏览器;客户端的耐心由它乘 `SSE_HEARTBEAT_MISSES_ALLOWED`(3,写死在 `packages/shared/src/agent/heartbeat.ts`)得出:发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
+**间隔是部署配置,次数写死**:间隔在 `config/agent.yaml` 的 `sse_heartbeat_interval_ms`,经只读端点 `GET /chat/stream-config` 下发给浏览器;客户端的耐心由它乘 `SSE_HEARTBEAT_MISSES_ALLOWED`(3,写死在 `packages/shared/src/agent/heartbeat.ts`)得出:发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由。**每一轮在 Redis 里有一条租约**(#1394):`streamTurn` 在第一次心跳之前写入,每次心跳续期,在 `finally` 里流关闭之前删除;有效期是心跳间隔乘 `SSE_HEARTBEAT_MISSES_ALLOWED`,进程崩溃时这条租约在一个有效期内自己过期。会话列表读 `GET /chat/running` 标出正在跑的会话,轮询间隔是 `config/agent.yaml` 的 `running_poll_interval_ms`,经 `GET /chat/stream-config` 下发。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
 
 ### Agent 的 provider 路由
 
