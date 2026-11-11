@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, loadLocales, runWithLocale } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
@@ -793,8 +793,14 @@ describe("the guide's source", () => {
     for (const call of registry) expect(source.split(call), call).toHaveLength(2);
     const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
-    // A sample number may fill a message that carries one; nothing else goes in.
-    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
+    // A sample number, or a number read from the deployment's config into a
+    // local of the guide, may fill a message that carries one; nothing else goes in.
+    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: (?:\d+|[a-z]\w*),?)+ ?\})?\)$/);
+  });
+
+  it("names the join's clip cap the deployment serves (round 2)", () => {
+    expect(renderProductGuide()).toContain(t("canvas.miniTool.panel.joinTooMany", { n: getMiniToolsConfig().join_max_clips }));
+    expect(source).toContain('t("canvas.miniTool.panel.joinTooMany", { n: joinCap })');
   });
 
   it("does not name the generate button by its hidden label", () => {
