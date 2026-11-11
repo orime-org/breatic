@@ -16,6 +16,7 @@ interface PlanApi {
   planVideoDialogues: (input: { videoDuration: number; dialogues: readonly Dialogue[]; syncMode: SyncMode }) => { duration: number; dialogues: Dialogue[] };
   // §97 D12-2, D13-2: the timeline planner takes the output frame rate as the plan's exact rational and plans on its grid.
   planVideoTimeline: (clips: readonly Clip[], fps: Rational) => FrameTimeline;
+  timelineClipLacksOutputFrame: (clip: Pick<Clip, "in" | "out">, fps: Rational) => boolean;
 }
 type Rational = { numerator: string; denominator: string };
 const fps = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
