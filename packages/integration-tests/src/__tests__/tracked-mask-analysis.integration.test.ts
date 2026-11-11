@@ -232,6 +232,28 @@ describe("the tracked mask analysis executor (execution design §10.2, §10.3)",
     const failure = await drive(f).then(() => null, (error: unknown) => error);
     expect(failure).toBeInstanceOf(DeadlinePassed);
   });
+
+  // User decision (same rule as runs): a pickup after the deadline still reads what already finished, the frozen ledger
+  // included, and hands it to the user; only new work stays refused. The join runs until the deadline, reports done before
+  // the next pickup, which runs within the reporting window (two polls past the deadline) or after it.
+  it.each([["TA06 within the reporting window", 1], ["TA07 after the reporting window", 2 * 5000 + 1]])("%s a join that reported done is registered by the first pickup after the deadline", async (_name, late) => {
+    const f = await seed();
+    scripted.set("rle_join", { schemaVersion: 2, state: "running" });
+    const execution = await miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, f.taskId);
+    const run = await executor();
+    let waited = false;
+    for (let pickup = 0; pickup < 30 && !waited; pickup += 1) {
+      waited = await run(execution, Date.now() + 3_600_000).then(() => { throw new Error("The join was held running"); },
+        (error: unknown) => { if (!(error instanceof StillRunning)) throw error; return submitted.some((job) => job.outputs[0]!.recipe.kind === "rle_join"); });
+    }
+    expect(waited).toBe(true);
+    scripted.delete("rle_join");
+    const before = submitted.length;
+    const result = await run(execution, Date.now() - late) as { kind: string; artifactRefs: { role: string }[] };
+    expect(result.kind).toBe("tracked_mask");
+    expect(result.artifactRefs.map((ref) => ref.role)).toEqual(["rle"]);
+    expect(submitted).toHaveLength(before);
+  });
 });
 
 // C15 for an analysis (planned-terminal-closure.integration.test.ts): an analysis the queue cleanup ends closes its

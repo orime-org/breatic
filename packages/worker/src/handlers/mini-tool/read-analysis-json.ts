@@ -9,9 +9,9 @@ import { HttpStatusError } from "@worker/providers/http.js";
 export interface RegisteredAnalysisJson { asset: StudioAssetEntity; json: unknown }
 
 /**
- * Read a registered analysis artifact within its original execution budget.
+ * Read a registered analysis artifact within its bound.
  * @param assetId - The canonical asset returned by the original registration.
- * @param deadlineAt - The original task deadline in epoch milliseconds.
+ * @param deadlineAt - The read's bound in epoch milliseconds (the caller's `planReadUntil`).
  * @returns The registered facts and parsed JSON without changing their ownership.
  * @throws {Error} When registration, delivery, the original budget or JSON is invalid.
  */

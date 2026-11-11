@@ -11,6 +11,7 @@ import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { FullLedgerInvalid, peopleRecipeOf, readJobLedger, sceneCutsRecipeOf, sceneCutsResultOf } from "@worker/handlers/video-presentation-recipes.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { advanceRegisteredMiniToolPlanJob, type RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
+import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { readMiniToolAnalysisJson } from "@worker/handlers/mini-tool/read-analysis-json.js";
 
 /** SQL owns the original source, accepted inputs and notification context. */
@@ -86,7 +87,8 @@ export async function advanceAnalysisJob(
 }
 
 /**
- * Reuse an owned JSON value or read its canonical registered object within D.
+ * Reuse an owned JSON value or read its canonical registered object. Reading a registered result starts no new work, so a
+ * pickup after the deadline still reads it and hands it to the user (`planReadUntil`, as a run reads its finished jobs).
  * @param analysis - The original step and its registered outputs.
  * @param outputIndex - The original JSON output identity.
  * @returns The original JSON for subsequent owned content validation.
@@ -102,8 +104,7 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
     }
     return analysis.step.output[key];
   }
-  assertBeforeDeadline(analysis.job.request.deadlineAt);
-  const read = await readMiniToolAnalysisJson(registered.asset.id, analysis.job.request.deadlineAt);
+  const read = await readMiniToolAnalysisJson(registered.asset.id, planReadUntil(analysis.job.request.deadlineAt));
   await upstreamStepRepo.recordInline(analysis.step.id, { [key]: read.json }, 0);
   return read.json;
 }
@@ -111,16 +112,17 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
 /**
  * Read the full ledger the analysis froze (§93 D5, D4-7): bytes that fail the frozen receipt never recover in this run, so
  * the analysis ends as `source_ledger_invalid` (a new run freezes the repaired ledger); a transport failure keeps the retry.
+ * Reading it starts no new work, so a pickup after the deadline still reads it (`planReadUntil`).
  * @param execution - The accepted analysis.
  * @param deadlineAt - The task deadline.
  * @returns The validated full ledger.
  * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the bytes fail the receipt.
- * @throws {Error} When the read fails in transport or the deadline passed.
+ * @throws {Error} When the read fails in transport or outlasts its bound.
  */
 export async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
   const { ledgerReceipts, presentationRef } = execution.params.analysis;
   try {
-    return await readJobLedger(ledgerReceipts.source, deadlineAt);
+    return await readJobLedger(ledgerReceipts.source, planReadUntil(deadlineAt));
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: execution.context.taskId, toolInputId: presentationRef.source.toolInputId } }, "mini_tool_analysis_ledger_invalid");

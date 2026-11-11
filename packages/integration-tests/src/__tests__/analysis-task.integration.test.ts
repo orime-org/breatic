@@ -60,6 +60,8 @@ interface Fixture extends StudioFixture {
   token: string;
   scenario: Scenario;
   delayed: boolean;
+  /** Whether the first job, too, runs until released. */
+  holdInitial: boolean;
   release: boolean;
   body: MiniToolAnalysisRequest;
   anchor: AnchorConnection;
@@ -90,6 +92,8 @@ const submitted: MiniToolPlanJobRequest[] = [];
 const objectReads = new Map<string, number>();
 const reportReads = new Map<string, number>();
 const pickups: Pickup[] = [];
+// When each pickup of a task started, in epoch ms.
+const pickupTimes = new Map<string, number[]>();
 const delayedJobs = new Set<string>();
 const completedJobs = new Set<string>();
 const errors: unknown[] = [];
@@ -235,7 +239,7 @@ function acceptExternal(request: MiniToolPlanJobRequest): MiniToolPlanJobReport 
     schemaVersion: 2, state: "done", outputs,
     usage: { wallMs: 2000, cpuUsec: 1_000_000 },
   };
-  const running = fixture.delayed && request.outputs.every((output) => output.recipe.kind === "frame");
+  const running = fixture.holdInitial || (fixture.delayed && request.outputs.every((output) => output.recipe.kind === "frame"));
   externalJobs.set(request.jobId, { request, report, running });
   return running ? { schemaVersion: 2, state: "running" } : report;
 }
@@ -396,7 +400,7 @@ async function seed(scenario: Scenario, delayed = false): Promise<Fixture> {
   const [sourceBefore] = await sql<Record<string, unknown>[]>`SELECT * FROM studio_assets WHERE id=${sourceAssetId}`;
   const fixture: Fixture = {
     ...base, taskId, spaceId, hostNodeId, sourceAssetId, sourceKey, sourceURL, sourceHash,
-    lotId, token, scenario, delayed, release: false, body, anchor: connection,
+    lotId, token, scenario, delayed, holdInitial: false, release: false, body, anchor: connection,
     hostBefore: {}, historyBefore: [], sourceBefore: sourceBefore!, accepted: null, ledger: presentation.full,
   };
   fixtures.push(fixture);
@@ -685,6 +689,7 @@ beforeAll(async () => {
   });
   worker = new Worker<TasksJobData>("tasks", async (job, token) => {
     pickups.push({ taskId: job.data.taskId, name: job.name, tokenPresent: typeof token === "string" });
+    pickupTimes.set(job.data.taskId, [...pickupTimes.get(job.data.taskId) ?? [], Date.now()]);
     return runTask(job, token);
   }, { connection: queueConnection(), concurrency: 1, lockDuration: getWorkerConfig().lock_duration_ms,
     settings: { backoffStrategy: jitterBackoffStrategy(getWorkerConfig().job_backoff_delay_ms) } });
@@ -803,4 +808,37 @@ describe("accepted analysis → real task execution → canonical registration a
     expect(objectReads.get(initial.outputs[0]!.storageKey)).toBe(1);
     await settle(fixture, 2);
   });
+
+  // User decision (same rule as runs): a pickup after the deadline still reads what already finished and hands it to the
+  // user; only new work stays refused after it.
+  it.each([["AT06 a scene", "scene"], ["AT07 an empty people", "empty"]] as const)(
+    "%s analysis whose job reported done before the deadline completes in its first pickup after it and records its usage once", async (_name, scenario) => {
+      const fixture = await seed(scenario);
+      fixture.holdInitial = true;
+      await worker.pause();
+      fixture.accepted = await admit(fixture);
+      // The task's two hours end 4 s from now: the first pickup submits before then, and the next, a poll (5 s) later, runs after.
+      await sql`UPDATE node_tasks SET started_at = now() - make_interval(secs => (budget_ms - 4000) / 1000.0) WHERE task_id=${fixture.taskId}`;
+      const deadline = (await nodeTaskService.deadlineFor(fixture.taskId))!;
+      await worker.resume();
+      await waitUntil(async () => delayedJobs.has(fixture.taskId), "the delayed pickup before the deadline");
+      const plans = submitted.filter((request) => request.inputs[0]!.inputId === fixture.sourceAssetId);
+      expect(plans.map((request) => request.deadlineAt)).toEqual([deadline]);
+      fixture.release = true;
+      await waitUntil(async () => completedJobs.has(fixture.taskId), "the completed BullMQ job", 60_000);
+      const times = pickupTimes.get(fixture.taskId)!;
+      expect(times[0]!).toBeLessThan(deadline);
+      expect(times.slice(1).length).toBeGreaterThan(0);
+      expect(times[1]!).toBeGreaterThanOrEqual(deadline);
+      await waitUntil(async () => {
+        const host = await hostSnapshot(fixture);
+        const counts = (host.data as Record<string, unknown>).taskCounts as Record<string, number>;
+        return counts.running === 0 && counts.done === 1 && counts.failed === 0 && counts.expired === 0;
+      }, "Collab's actual host counts");
+      const record = await getRecord(fixture);
+      expect(record.error).toBeNull();
+      expect(record.result).toMatchObject(scenario === "scene" ? { kind: "scene_cuts", cuts } : { kind: "people", anchor: ANCHOR, people: [] });
+      await assertCompleted(fixture, record, 1, 1);
+      await settle(fixture, 1);
+    });
 });
