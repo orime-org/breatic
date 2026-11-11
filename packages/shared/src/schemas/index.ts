@@ -51,6 +51,7 @@ export {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   agentInstructionsQuerySchema,
   agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
@@ -96,4 +97,5 @@ export type {
   ChatSetModelInput,
   AgentInstructionsSaveInput,
   AgentInstructionsView,
+  ChatRunningAnswer,
 } from "@shared/schemas/api.js";

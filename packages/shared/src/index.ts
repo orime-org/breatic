@@ -355,6 +355,7 @@ export {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   agentInstructionsQuerySchema,
   agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -398,6 +399,7 @@ export type {
   ChatSetModelInput,
   AgentInstructionsSaveInput,
   AgentInstructionsView,
+  ChatRunningAnswer,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";
