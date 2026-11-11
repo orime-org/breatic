@@ -1459,6 +1459,7 @@
         "timelineComposition": "合成タイムライン",
         "timelineEmpty": "タイムラインは空です",
         "timelineInstructions": "クリップの両端をドラッグしてイン点とアウト点を調整し、「順序を入れ替え」で2つのクリップの順序を入れ替え、その間のトランジションを設定します。再生して確認後、書き出します。",
+        "timelineExportHint": "このタイムラインを新しい動画ノードに書き出します。",
         "timelineProperties": "クリップ設定",
         "trackObject": "選択領域を追跡",
         "trackingPrompt": "追跡する対象を説明します。空欄なら選択範囲だけで追跡します",

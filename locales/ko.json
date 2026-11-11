@@ -1459,6 +1459,7 @@
         "timelineComposition": "합성 타임라인",
         "timelineEmpty": "타임라인이 비어 있습니다",
         "timelineInstructions": "클립 양 끝을 드래그해 시작 지점과 끝 지점을 조정하고, 「순서 바꾸기」로 두 클립의 순서를 바꾼 뒤 두 클립 사이의 전환을 설정하세요. 미리보기를 재생한 후 내보내세요.",
+        "timelineExportHint": "현재 타임라인을 새 비디오 노드 하나로 내보냅니다.",
         "timelineProperties": "클립 설정",
         "trackObject": "선택 영역 추적",
         "trackingPrompt": "추적할 대상을 설명하세요. 비워 두면 선택 영역만으로 추적합니다",

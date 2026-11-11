@@ -1459,6 +1459,7 @@
         "timelineComposition": "Composition",
         "timelineEmpty": "The timeline is empty",
         "timelineInstructions": "Drag either end of a clip to set its in and out points, press Swap order to swap the two clips, and set the transition between them. Play the preview, then export.",
+        "timelineExportHint": "Export creates one new video node from this timeline.",
         "timelineProperties": "Clip settings",
         "trackObject": "Track selection",
         "trackingPrompt": "Describe the object to track, or leave empty to track the selection only",

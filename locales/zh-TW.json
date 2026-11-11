@@ -1459,6 +1459,7 @@
         "timelineComposition": "合成時間線",
         "timelineEmpty": "時間線為空",
         "timelineInstructions": "拖動片段兩端調整入出點，用「交換順序」調換兩段順序，設定兩段之間的轉場，播放預覽後匯出。",
+        "timelineExportHint": "依目前時間線匯出為一個新影片節點。",
         "timelineProperties": "片段設定",
         "trackObject": "追蹤選區",
         "trackingPrompt": "描述要追蹤的物件，留空則只依選取範圍追蹤",

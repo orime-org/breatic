@@ -1059,7 +1059,7 @@ export function renderProductGuide(): string {
       "Picking a shorter video turns the transition into Cut when it no longer fits. A problem with the picked video shows " +
       `on the panel as the current video's does, with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))} to repair it. ` +
       `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
-      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} runs it. To join more clips, run the tool again on the exported result.`,
+      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} makes one new video node from the timeline. To join more clips, run the tool again on the exported result.`,
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Removing a video's background keeps the transparent source available for download and downstream tools.",
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +

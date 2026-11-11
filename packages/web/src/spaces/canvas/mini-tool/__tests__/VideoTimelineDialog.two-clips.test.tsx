@@ -165,3 +165,20 @@ describe('the multi-clip controls are gone (design: 不增、不删、不复制;
     expect(screen.queryAllByText(t(`canvas.miniTool.videoUI.${key}`))).toHaveLength(0);
   });
 });
+
+describe('the instructions sit in the header and the footer says what Export makes (demo timeline-editor.tsx footer)', () => {
+  it('shows the instructions once and the export hint in the footer while every field is valid', () => {
+    open(vi.fn());
+    expect(screen.getAllByText(t('canvas.miniTool.videoUI.timelineInstructions'))).toHaveLength(1);
+    expect(screen.getByText(t('canvas.miniTool.videoUI.timelineExportHint'))).toBeInTheDocument();
+    expect(screen.queryByText(t('canvas.miniTool.videoUI.invalidNumber'))).toBeNull();
+  });
+
+  it('shows the invalid-number error in place of the hint while a field is invalid', () => {
+    open(vi.fn());
+    expect(screen.getByText(t('canvas.miniTool.videoUI.timelineExportHint'))).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('video-clip-out'), { target: { value: 'x' } });
+    expect(screen.getByText(t('canvas.miniTool.videoUI.invalidNumber'))).toBeInTheDocument();
+    expect(screen.queryByText(t('canvas.miniTool.videoUI.timelineExportHint'))).toBeNull();
+  });
+});
