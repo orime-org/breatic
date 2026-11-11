@@ -22,7 +22,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 
 import { isMediaBlockType, pendingUploadId, type MediaBlockType } from '@web/spaces/document/document-media-types';
-import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
+import type { RowInDocument } from '@web/spaces/document/document-row-by-id';
 
 /** The thread metadata key naming the media block a comment stands on. */
 export const MEDIA_BLOCK_ID = 'mediaBlockId';
@@ -51,9 +51,7 @@ export function mediaBlockIdOf(metadata: unknown): string | null {
  * @returns The row, or undefined when no media block has that id.
  */
 export function mediaRowById(doc: PMNode, blockId: string): RowInDocument | undefined {
-  const row = rowById(doc, blockId);
-  const content = row?.node.type.name === 'blockContainer' ? row.node.firstChild : null;
-  return content !== null && isMediaBlockType(content.type.name) ? row : undefined;
+  return mediaRows(doc, new Set([blockId])).get(blockId);
 }
 
 /**
