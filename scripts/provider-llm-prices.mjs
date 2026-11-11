@@ -48,7 +48,7 @@ function pinnedTo(tag, only) {
  * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @param {readonly string[]} quantizations - `openrouter_quantizations`, which `levels` narrows per model; an endpoint naming none is `unknown`.
- * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's OpenRouter adapter.
  * @param {Readonly<Record<string, { only: readonly string[]; allow_fallbacks: boolean }>>} [backends] - `openrouter_backends` as llm.yaml writes it: by our model id, the providers it is pinned to.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; statesQuantization: string[]; problems: string[] }} The prices by our model id, the models that state a level in the order of `ids`, and a problem for each model given no price.
  */
@@ -126,7 +126,7 @@ export function directPriceChangeNotices(prices, now) {
  * them.
  * @param {string} text - The file as it is.
  * @param {(raw: unknown) => { prices: Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
- * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's OpenRouter adapter.
  * @param {(id: string) => Promise<readonly object[] | undefined>} fetchEndpoints - OpenRouter's endpoints of one model by its id there; undefined when it lists none (404).
  * @param {number} [now] - The run's moment, in epoch ms: when OpenRouter's prices are read, and for `offPeakHolidayProblems` and `directPriceChangeNotices`.
  * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[]; notices: string[] }>} The file's new text, how many models were priced of how many asked, a problem for each model given no price or whose off-peak holidays run out, and a notice for each model whose direct price changes later.

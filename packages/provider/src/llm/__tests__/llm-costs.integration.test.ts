@@ -555,6 +555,14 @@ describe("cost.lookup", () => {
     expect(fakes.openrouter.seen).toHaveLength(0);
   });
 
+  it("answers missing at once for a direct upstream, which keeps no generations, and for a lookup with no generation", async () => {
+    const provider = llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
+    expect(await provider.cost.lookup({ upstream: "google", generationId: "gen-9" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
+    expect(await provider.cost.lookup({ upstream: "openrouter" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
+    expect(fakes.openrouter.seen).toHaveLength(0);
+    expect(fakes.google.seen).toHaveLength(0);
+  });
+
   it("stays pending while OpenRouter has not recorded it, and is missing on the last attempt", async () => {
     fakes.openrouter.answer(() => ({ status: 404, body: { error: { message: "not found" } } }));
     const provider = llmProvider(fakes, { OPENROUTER_API_KEY: "or" });

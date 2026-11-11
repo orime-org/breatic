@@ -176,17 +176,6 @@ const openRouterQuantization = z.enum(["int4", "int8", "fp4", "mxfp4", "nvfp4", 
  */
 const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
 
-/**
- * The quantizations a cheapest OpenRouter call of one model takes: `openrouter_quantizations`, without `unknown` when one of
- * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
- * @param quantizations - `openrouter_quantizations`.
- * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (it is in `openrouter_states_quantization`).
- * @returns The levels the model's call takes.
- */
-export function openRouterLevels<T extends string>(quantizations: T[], statesQuantization: boolean): T[] {
-  return statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations;
-}
-
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 

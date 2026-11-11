@@ -10,12 +10,10 @@
  */
 
 import { APICallError } from "ai";
-import { z } from "zod";
-import { numberLeaf, type Cost } from "@provider/cost.js";
+import type { Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, isSuccess, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
-import { costedOf } from "@provider/llm/understand/openrouter.js";
-import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
+import { inBandBodyOf, inBandStatusOf, type ModelV4, type ReportedCosts, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
@@ -31,10 +29,8 @@ export interface SwitchingSetup {
   plan: RoutePlan;
   /** The upstream's model for this call. */
   modelFor: (candidate: Candidate) => ModelV4;
-  /** How an upstream's vendor is spoken to, for reading its refusals. */
+  /** How an upstream's vendor is spoken to, for reading its refusals and the costs it reports. */
   vendorFor: (upstream: string) => Vendor;
-  /** Whether an upstream reports a generation id to look its cost up by later. */
-  tracksGenerations: (upstream: string) => boolean;
   maxRetries: number;
   /**
    * Each billed answer the call could not hand over in a finish, shared with the prepared call:
@@ -46,13 +42,14 @@ export interface SwitchingSetup {
 }
 
 /**
- * The generation id a stream part names: a raw chunk's, read as OpenRouter's answer is, or the
+ * The generation id a stream part names: a raw chunk's, read as its upstream writes an answer, or the
  * response metadata's.
  * @param part - One part of the stream.
+ * @param costs - How the upstream reports costs, when it does.
  * @returns The id, or undefined for a part that names none.
  */
-function idOf(part: StreamPart): string | undefined {
-  if (part.type === "raw") return costedOf(part.rawValue).id;
+function idOf(part: StreamPart, costs: ReportedCosts | undefined): unknown {
+  if (part.type === "raw") return costs?.ofBody(part.rawValue).id;
   return part.type === "response-metadata" ? part.id : undefined;
 }
 
@@ -134,30 +131,6 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
 }
 
 /**
- * Whether an id is an OpenRouter generation id.
- * @param id - The value.
- * @returns True for a `gen-` id.
- */
-export function isGenerationId(id: unknown): id is string {
-  return typeof id === "string" && id.startsWith("gen-");
-}
-
-/** Provider metadata as far as OpenRouter's reported cost is read; a level it cannot read reads as absent. */
-const reportedSchema = z.looseObject({
-  openrouter: z.looseObject({ usage: z.looseObject({ cost: numberLeaf }).optional().catch(undefined) }).optional().catch(undefined),
-});
-
-/**
- * The cost OpenRouter put on a response.
- * @param metadata - The provider metadata.
- * @returns The cost in USD, or undefined.
- */
-export function reportedCost(metadata: unknown): number | undefined {
-  const parsed = reportedSchema.safeParse(metadata);
-  return parsed.success ? parsed.data.openrouter?.usage?.cost : undefined;
-}
-
-/**
  * Wait before a retry on the same upstream: as long as the upstream
  * asked, up to a minute; beyond that the upstream is not retried. Otherwise a
  * full-jitter backoff. The wait ends with the call's signal.
@@ -188,13 +161,13 @@ export async function pauseBeforeRetry(error: unknown, retry: number, signal: Ab
  * The lookup a finished call carries: an upstream that reports
  * generations, a generation id, and no cost reported on the answer.
  * @param upstream - The upstream that served the call.
- * @param tracksGenerations - Whether that upstream reports generations to look up.
+ * @param costs - How that upstream reports costs, when it does.
  * @param generationId - The id the answer carried, if any.
  * @param metadata - The answer's provider metadata.
  * @returns The lookup, or undefined when there is nothing to look up.
  */
-export function costRefOf(upstream: string, tracksGenerations: boolean, generationId: unknown, metadata: unknown): { upstream: string; generationId: string } | undefined {
-  return tracksGenerations && isGenerationId(generationId) && reportedCost(metadata) === undefined ? { upstream, generationId } : undefined;
+export function costRefOf(upstream: string, costs: ReportedCosts | undefined, generationId: unknown, metadata: unknown): { upstream: string; generationId: string } | undefined {
+  return costs !== undefined && costs.isGeneration(generationId) && costs.reported(metadata) === undefined ? { upstream, generationId } : undefined;
 }
 
 /** A language model that switches upstream before its first content and then stays. */
@@ -267,7 +240,7 @@ export class SwitchingModel implements ModelV4 {
    * @returns The metadata to add.
    */
   private finished(upstream: string, generationId: string | undefined, metadata: unknown, sentAt: number): Record<string, unknown> {
-    const costRef = costRefOf(upstream, this.setup.tracksGenerations(upstream), generationId, metadata);
+    const costRef = costRefOf(upstream, this.setup.vendorFor(upstream).costs, generationId, metadata);
     return { ...this.setup.breatic, upstream, sentAt, ...(costRef === undefined ? {} : { costRef }) };
   }
 
@@ -278,7 +251,8 @@ export class SwitchingModel implements ModelV4 {
    * @returns The id, when it is one the upstream's costs are looked up by.
    */
   private track(upstream: string, generationId: unknown): string | undefined {
-    if (!this.setup.tracksGenerations(upstream) || !isGenerationId(generationId)) return undefined;
+    const costs = this.setup.vendorFor(upstream).costs;
+    if (costs === undefined || !costs.isGeneration(generationId)) return undefined;
     this.setup.pending.set(generationId, { state: "pending", lookup: { upstream, generationId } });
     return generationId;
   }
@@ -321,7 +295,7 @@ export class SwitchingModel implements ModelV4 {
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
     const { value: { answer, sentAt }, servedBy } = await this.attempt(async (c) => {
-      const tracks = this.setup.tracksGenerations(c.upstream);
+      const costs = this.setup.vendorFor(c.upstream).costs;
       // The answer's status, and a copy of its body when a 2xx may name a generation; any other copy
       // is cancelled at once. The SDK fetches once per call (its own retries are off).
       let last: { status: number; copy: Response | undefined } | undefined;
@@ -330,7 +304,7 @@ export class SwitchingModel implements ModelV4 {
        * @param copy - A copy of the answer.
        */
       const keep = (copy: Response): void => {
-        const needed = tracks && isSuccess(copy.status);
+        const needed = costs !== undefined && isSuccess(copy.status);
         if (!needed) void copy.body?.cancel().catch(() => undefined);
         last = { status: copy.status, copy: needed ? copy : undefined };
       };
@@ -345,13 +319,14 @@ export class SwitchingModel implements ModelV4 {
         // was cut, the caller stopped): by the generation it names, else missing.
         if (last !== undefined && isSuccess(last.status)) {
           const text = last.copy === undefined ? "" : await last.copy.text().catch(() => "");
-          const id = tracks ? this.track(c.upstream, costedOf(parsed(text)).id) : undefined;
+          const id = costs === undefined ? undefined : this.track(c.upstream, costs.ofBody(parsed(text)).id);
           if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${last.status} and the call ended before it could use the answer`);
         }
         throw error;
       }
     }, options.abortSignal);
-    const id = isGenerationId(answer.response?.id) ? answer.response.id : undefined;
+    const responseId = answer.response?.id;
+    const id = this.setup.vendorFor(servedBy.upstream).costs?.isGeneration(responseId) === true ? responseId : undefined;
     const breatic = this.finished(servedBy.upstream, id, answer.providerMetadata, sentAt);
     return { ...answer, providerMetadata: { ...answer.providerMetadata, breatic: breatic as Record<string, never> } };
   }
@@ -390,7 +365,7 @@ export class SwitchingModel implements ModelV4 {
       for (let read = await next(); !read.done; read = await next()) {
         // Registered as soon as it is read: a call stopped before its content is still billed.
         const part = read.value;
-        this.named(c.upstream, idOf(part), opened);
+        this.named(c.upstream, idOf(part, this.setup.vendorFor(c.upstream).costs), opened);
         if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
           throw new InBandError(part.error);
@@ -402,6 +377,7 @@ export class SwitchingModel implements ModelV4 {
     }, options.abortSignal);
     const { result, reader, held, opened, sentAt } = value;
     const upstream = servedBy.upstream;
+    const costs = this.setup.vendorFor(upstream).costs;
     let generationId: string | undefined;
     /**
      * Note the generation a part names and mark the finish with who served it.
@@ -410,7 +386,7 @@ export class SwitchingModel implements ModelV4 {
      */
     const pass = (part: StreamPart): StreamPart | undefined => {
       if (part.type === "raw" || part.type === "response-metadata") {
-        generationId = this.named(upstream, idOf(part), opened) ?? generationId;
+        generationId = this.named(upstream, idOf(part, costs), opened) ?? generationId;
         return part.type === "raw" && options.includeRawChunks !== true ? undefined : part;
       }
       if (part.type !== "finish") return part;

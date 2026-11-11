@@ -11,7 +11,7 @@ import { offPeakHolidayProblems, openRouterPrices, syncedLlmYaml } from "./provi
 /** One endpoint of OpenRouter's `/api/v1/models/{author}/{slug}/endpoints`: USD per token, as strings. */
 const endpoint = (tag, prompt, completion, quantization = "fp8") => ({ tag, quantization, pricing: { prompt, completion, input_cache_read: "0.0000001" } });
 const TAKEN = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
-/** The rule `openRouterLevels` in packages/provider/src/config/schema.ts holds, which provider-prices.ts passes in. */
+/** The rule `openRouterLevels` in packages/provider/src/llm/upstreams/openrouter.ts holds, which provider-prices.ts passes in. */
 const levels = (quantizations, statesQuantization) => (statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations);
 
 test("writes the cheapest endpoint's per-token prices as USD per million tokens, by our model id", () => {
