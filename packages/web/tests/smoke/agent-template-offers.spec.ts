@@ -34,9 +34,6 @@ const CHARACTER_TEMPLATES = new Set(GENERATION_TEMPLATES.filter((template) => te
 /** The music templates a video's background music is built on. */
 const MUSIC_FOR_VIDEO = ['underscore-bgm', 'score-for-my-video'];
 
-/** The sound templates that give a video music, ambience or foley. */
-const SOUND_FOR_VIDEO = new Set([...MUSIC_FOR_VIDEO, 'clip-ambience-foley', 'ambience-sfx-bed']);
-
 /**
  * How many audio generations the landed proposals offer.
  * @param turn - The turn.
@@ -251,7 +248,7 @@ test('given a video with no sound and asked only to finish it, what lands offers
   // The clip has no audio stream at all, so the missing sound is what is left to finish.
   await ask('Help me finish this. Do not ask me anything, just propose it.', 'mini-tools/driving-silent.mp4');
   const turn = await settledTurn(page);
-  // Solved when the user is offered sound for the video, whether through a sound template or a setup of the agent's own.
-  const offered = audioGenerations(turn) > 0 || turn.read.some((id) => SOUND_FOR_VIDEO.has(id));
-  expect(offered, `audio generations: ${String(audioGenerations(turn))}; read: ${turn.read.join(', ')}; templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
+  // Solved when a landed proposal offers sound drawing on the video, whether through a sound template or a setup of the agent's own.
+  const scoring = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, (node) => node.type === 'audio', 'video'), 0);
+  expect(scoring, `audio generations drawing on the video: ${String(scoring)} of ${String(audioGenerations(turn))}; read: ${turn.read.join(', ')}; templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
 });
