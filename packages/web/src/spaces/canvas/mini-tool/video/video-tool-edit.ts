@@ -49,17 +49,28 @@ export function editDialogue(rows: readonly VideoToolDialogueRow[], id: string, 
 }
 
 /**
- * Applies track-handle deltas to one source trim.
+ * Applies track-handle deltas to one source trim. The handles report seconds through the timeline library's pixel round
+ * trip, so the trim is settled to whole milliseconds inside the source; a trim that settles to no length leaves the clips as
+ * they were.
  * @throws {Error} When the supplied plan is invalid.
  * @param clips - The full ordered source clip sequence.
  * @param id - The stable identity of the row or clip being edited.
  * @param start - The new composition start from the timeline handle.
  * @param end - The new composition end from the timeline handle.
+ * @param duration - The edited clip's source duration in seconds, when known.
  * @returns The current value derived from these inputs.
  */
-export function trimTimelineClip(clips: readonly VideoToolTimelineClip[], id: string, start: number, end: number): VideoToolTimelineClip[] {
-  return planVideoTimelineSeconds(clips).clips.map((clip) => {
+export function trimTimelineClip(clips: readonly VideoToolTimelineClip[], id: string, start: number, end: number, duration?: number): VideoToolTimelineClip[] {
+  /**
+   * Settles a handle's seconds to whole milliseconds.
+   * @param seconds - The seconds the handle reported.
+   * @returns The nearest whole millisecond.
+   * @throws {never} Never.
+   */
+  const millis = (seconds: number): number => Math.round(seconds * 1000) / 1000;
+  const trimmed = planVideoTimelineSeconds(clips).clips.map((clip) => {
     const { start: at, end: until, overlap: _overlap, ...source } = clip;
-    return clip.clipId === id ? { ...source, in: source.in + start - at, out: source.out + end - until } : source;
+    return clip.clipId === id ? { ...source, in: Math.max(0, millis(source.in + start - at)), out: Math.min(duration ?? Infinity, millis(source.out + end - until)) } : source;
   });
+  return trimmed.some((clip) => clip.out <= clip.in) ? [...clips] : trimmed;
 }
