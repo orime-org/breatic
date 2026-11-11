@@ -412,7 +412,10 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.instructions.open"))}), which opens the Project instructions; and a plus sign, which ` +
       "starts a new conversation. In the list, click a conversation to switch to " +
       "it; hovering one shows three dots with " +
-      `${quoted(t("chat.conversation.rename"))} and ${quoted(t("chat.conversation.delete"))}, which asks first.`,
+      `${quoted(t("chat.conversation.rename"))} and ${quoted(t("chat.conversation.delete"))}, which asks first. ` +
+      "Each conversation in the list has a small dot before its name; while the Agent is still answering in a " +
+      "conversation, on this page or in another tab or on another device of the same user, its dot turns into a small " +
+      "spinning circle, which turns back into the dot when the answer ends.",
     "The Project instructions are one plain text per Project that the Agent receives with every message in " +
       "every conversation of that Project, from every member: standing requirements such as the language to " +
       "reply in, a style to keep or how prompts are written. The Owner and every Editor can change them. The " +
