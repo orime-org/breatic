@@ -31,7 +31,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { useTranslation } from '@web/i18n/use-translation';
 import { dispatchMachineEdit, MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
-import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
+import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { planDialogueLines, type PlanOptions } from '@web/spaces/canvas/generate/dialogue-lines';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
@@ -280,15 +280,22 @@ const NORMALISE = new PluginKey('dialogueLines');
  * the end of one. Ahead of the default keymap, which would split the line for
  * the same speaker; an open `@` list keeps its Enter.
  */
-export const DialogueLines = Extension.create<DialogueNames>({
+export const DialogueLines = Extension.create<DialogueNames, { ended: CompositionEnd }>({
   name: 'dialogueLines',
   priority: 200,
   addOptions() {
     return { names: () => [] };
   },
+  // One tracker for the keymap and the plugin: tiptap installs the keymap
+  // ahead of the plugin, so the plugin's own key handler never saw the key.
+  addStorage() {
+    return { ended: compositionEnd() };
+  },
   addKeyboardShortcuts() {
     return {
       Enter: ({ editor }) => {
+        // The Enter that accepts an input method's candidate is not a new line.
+        if (editor.view.composing || this.storage.ended.justEnded()) return true;
         const { selection } = editor.state;
         const { $from } = selection;
         if ((SuggestionPluginKey.getState(editor.state) as { active?: boolean } | undefined)?.active === true) return false;
@@ -299,7 +306,7 @@ export const DialogueLines = Extension.create<DialogueNames>({
   },
   addProseMirrorPlugins() {
     const { names } = this.options;
-    const ended = compositionEnd();
+    const { ended } = this.storage;
     // Read by the plugin's handlers; set once its view is made.
     let live: EditorView | null = null;
     let settleNow: (() => void) | null = null;
@@ -321,8 +328,6 @@ export const DialogueLines = Extension.create<DialogueNames>({
               return false;
             },
           },
-          // The key that accepts an input method's candidate is not a new line.
-          handleKeyDown: (_view, event) => event.key === 'Enter' && keyBelongsToInputMethod(event, ended),
         },
         // A user's typing waits for the words after a typed name; a paste
         // lands whole, so it is put right at once.

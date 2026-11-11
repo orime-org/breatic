@@ -399,3 +399,34 @@ describe('an input method composing in a line (design 8.5)', () => {
     await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: '你' }]));
   });
 });
+
+describe('the Enter an input method sends to accept a candidate (round 3)', () => {
+  it('starts no new line, and a plain Enter afterwards still does', async () => {
+    const editor = await mount(legacyPrompt(['Ava: x']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    const view = editor.view as unknown as { dom: HTMLElement };
+    /**
+     * Sends a keydown of Enter the way ProseMirror receives it.
+     * @param keyCode - The key code the browser reports.
+     */
+    const enter = (keyCode: number): void => {
+      const event = new KeyboardEvent('keydown', { key: 'Enter', keyCode, bubbles: true, cancelable: true });
+      act(() => {
+        editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, event));
+      });
+    };
+    // Chrome ends the composition, then sends the key twice: as 229, then as 13.
+    act(() => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'x' }));
+    });
+    enter(229);
+    enter(13);
+    expect(linesOf(editor)).toHaveLength(1);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    enter(13);
+    await waitFor(() => expect(linesOf(editor)).toHaveLength(2));
+  });
+});
