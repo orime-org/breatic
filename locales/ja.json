@@ -1477,6 +1477,7 @@
         "point": "ポイント",
         "swapClips": "順序を入れ替え",
         "transitionTooShort": "クリップが短すぎてトランジションを追加できません",
+        "timelineClipTooShort": "1フレームより短いクリップがあります",
         "transitionCut": "カット",
         "transitionFade": "クロスフェード",
         "transitionWipeLeft": "左ワイプ",

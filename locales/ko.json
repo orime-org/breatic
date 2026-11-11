@@ -1477,6 +1477,7 @@
         "point": "포인트",
         "swapClips": "순서 바꾸기",
         "transitionTooShort": "클립이 너무 짧아 전환을 추가할 수 없음",
+        "timelineClipTooShort": "한 프레임보다 짧은 클립이 있습니다",
         "transitionCut": "컷",
         "transitionFade": "크로스페이드",
         "transitionWipeLeft": "왼쪽 와이프",

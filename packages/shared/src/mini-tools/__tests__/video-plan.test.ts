@@ -107,6 +107,13 @@ describe("complete video tool execution plans", () => {
       ] });
     });
 
+    it("finds a trimmed clip that snaps to no output frame, a tie going down", () => {
+      expect(api.timelineClipLacksOutputFrame({ in: 0, out: 0.01 }, FPS30)).toBe(true);
+      expect(api.timelineClipLacksOutputFrame({ in: 0, out: 1 / 60 }, FPS30)).toBe(true);
+      expect(api.timelineClipLacksOutputFrame({ in: 0, out: 0.02 }, FPS30)).toBe(false);
+      expect(() => api.planVideoTimeline([{ ...clips[0]!, in: 1, out: 1.01 }, clips[1]!], FPS30)).toThrow(RangeError);
+    });
+
     it("keeps source identity independent for repeated uses of one input", () => {
       const repeated = [clips[0]!, { ...clips[1]!, inputId: clips[0]!.inputId }];
       const plan = api.planVideoTimeline(repeated, FPS30);

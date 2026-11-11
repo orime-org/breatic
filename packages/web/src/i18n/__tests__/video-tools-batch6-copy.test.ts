@@ -17,6 +17,7 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 /** Each new key and the ICU placeholders its message takes. */
 const KEYS: readonly (readonly [string, readonly string[]])[] = [
   ['transitionTooShort', []],
+  ['timelineClipTooShort', []],
   ['transitionCut', []],
   ['transitionFade', []],
   ['transitionWipeLeft', []],

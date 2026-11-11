@@ -1477,6 +1477,7 @@
         "point": "點選",
         "swapClips": "交換順序",
         "transitionTooShort": "片段太短，無法加入轉場",
+        "timelineClipTooShort": "有片段短於一個影格",
         "transitionCut": "直接切換",
         "transitionFade": "交叉淡化",
         "transitionWipeLeft": "向左擦除",

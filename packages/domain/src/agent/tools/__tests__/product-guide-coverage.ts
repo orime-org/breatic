@@ -83,6 +83,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.timelineProperties": { described: /Select a clip and edit/ },
   "canvas.miniTool.videoUI.timelineExportHint": { described: /makes one new video node from the timeline/ },
   "canvas.miniTool.videoUI.transitionTooShort": { described: /clips too short for one leave only Cut/ },
+  "canvas.miniTool.videoUI.timelineClipTooShort": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.personFailNoFace": { described: /lists one line per person with why it failed/ },
   "canvas.miniTool.videoUI.personFailRejected": { described: /lists one line per person with why it failed/ },
   "canvas.miniTool.videoUI.personFailTimeout": { described: /lists one line per person with why it failed/ },

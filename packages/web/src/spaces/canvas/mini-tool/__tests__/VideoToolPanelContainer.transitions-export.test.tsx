@@ -58,15 +58,17 @@ function usableInputClient(): QueryClient {
  * Mounts the transitions panel on a committed draft and opens the timeline Dialog.
  * @param presentation - The node's presentation facts; undefined leaves Run unavailable.
  * @param onRunVideo - The execution entry the panel and Export share.
+ * @param client - The query cache holding the inputs' presentations.
+ * @param firstOut - The current video clip's out point, when the test trims it.
  * @returns The open Dialog.
  */
-function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>, client = usableInputClient()): HTMLElement {
+function openDialog(presentation: VideoToolPresentation | undefined, onRunVideo: () => Promise<unknown>, client = usableInputClient(), firstOut?: number): HTMLElement {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   // The two-clip timeline the design fixes: the current video first, the picked input video second.
   const initial = createVideoToolDraft('video.transitions', { nodeId, canonicalURL: sourceURL, mediaInfo });
   const second = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://assets.example.test/second.webm', mediaInfo: { ...mediaInfo, duration: 3 } };
-  commitVideoToolDraft(doc, nodeId, 'video.transitions', { ...initial, inputs: [...initial.inputs, second], params: { clips: [...initial.params.clips, { clipId: '50000000-0000-4000-8000-000000000002', inputId: second.inputId, in: 0, out: 3, transition: { kind: 'cut', duration: 0 } }] } });
+  commitVideoToolDraft(doc, nodeId, 'video.transitions', { ...initial, inputs: [...initial.inputs, second], params: { clips: [...initial.params.clips.map((clip) => (firstOut === undefined ? clip : { ...clip, out: firstOut })), { clipId: '50000000-0000-4000-8000-000000000002', inputId: second.inputId, in: 0, out: 3, transition: { kind: 'cut', duration: 0 } }] } });
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.transitions', { sourceContent: sourceURL, params: {} });
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.transitions' node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -116,6 +118,16 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
     await waitFor(() => expect(toastMessages()).toContain(refusal.message));
     expect(screen.getByTestId('video-timeline-dialog')).toBeInTheDocument();
   });
+  it('refuses an export with a clip shorter than one output frame before anything is sent, and says so', () => {
+    const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
+    // 0.01 s is a quarter of a 25 fps frame, which the output grid rounds to no frame.
+    const dialog = openDialog(ready, onRunVideo, usableInputClient(), 0.01);
+    act(() => within(dialog).getByRole('button', { name: 'Export' }).click());
+    expect(toastMessages()).toContain('A clip is shorter than one frame');
+    expect(onRunVideo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('video-timeline-dialog')).toBeInTheDocument();
+  });
+
   it('exports with each clip input\'s own selected version, read from that input\'s presentation', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const SECOND_URL = 'https://assets.example.test/second.webm';

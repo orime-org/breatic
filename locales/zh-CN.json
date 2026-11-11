@@ -1477,6 +1477,7 @@
         "point": "点选",
         "swapClips": "交换顺序",
         "transitionTooShort": "片段太短，无法添加转场",
+        "timelineClipTooShort": "有片段短于一帧",
         "transitionCut": "直接切换",
         "transitionFade": "交叉淡化",
         "transitionWipeLeft": "向左擦除",

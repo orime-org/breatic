@@ -1477,6 +1477,7 @@
         "point": "Point",
         "swapClips": "Swap order",
         "transitionTooShort": "Clips too short for a transition",
+        "timelineClipTooShort": "A clip is shorter than one frame",
         "transitionCut": "Cut",
         "transitionFade": "Crossfade",
         "transitionWipeLeft": "Wipe left",

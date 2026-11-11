@@ -171,6 +171,19 @@ function nearestFrame(seconds: number, perSecond: number): number {
 }
 
 /**
+ * Whether a trimmed clip snaps to no output frame (§97 D15-3: in and out snap to the nearest frame, a tie going down), which
+ * {@link planVideoTimeline} refuses; the panel checks it before any node is made.
+ * @param clip - The trimmed clip.
+ * @param fps - The output frame rate.
+ * @returns True when the clip has no output frame.
+ * @throws {RangeError} When the frame rate is not positive.
+ */
+export function timelineClipLacksOutputFrame(clip: Pick<VideoToolTimelineClip, "in" | "out">, fps: VideoFrameRate): boolean {
+  const perSecond = framesPerSecond(fps);
+  return nearestFrame(clip.out, perSecond) <= nearestFrame(clip.in, perSecond);
+}
+
+/**
  * Plans the two-clip transition timeline on the output frame grid (§97 D15-3; frames-split §7.17): each clip's in and
  * out and the transition duration snap to the nearest output frame (a tie going down), a transition lasts at least one
  * frame, its window starts where the first clip ends less the window, and the second clip starts with the window; a Cut
@@ -186,9 +199,9 @@ export function planVideoTimeline(clips: readonly VideoToolTimelineClip[], fps: 
   if (sequence.length !== 2) throw new RangeError("A transition timeline has two clips");
   const perSecond = framesPerSecond(fps);
   const [first, second] = sequence.map((clip) => {
+    if (timelineClipLacksOutputFrame(clip, fps)) throw new RangeError("A timeline clip lasts at least one output frame");
     const inFrame = nearestFrame(clip.in, perSecond);
     const outFrame = nearestFrame(clip.out, perSecond);
-    if (outFrame <= inFrame) throw new RangeError("A timeline clip lasts at least one output frame");
     return { clipId: clip.clipId, inputId: clip.inputId, startFrame: 0, frameCount: outFrame - inFrame, inFrame, outFrame };
   }) as [VideoFramePlannedClip, VideoFramePlannedClip];
   const transition = sequence[0]!.transition;
