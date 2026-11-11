@@ -20,6 +20,7 @@ import { Extension, type Editor } from '@tiptap/core';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from '@tiptap/react';
 import { ChevronDown, X } from 'lucide-react';
@@ -299,6 +300,9 @@ export const DialogueLines = Extension.create<DialogueNames>({
   addProseMirrorPlugins() {
     const { names } = this.options;
     const ended = compositionEnd();
+    // Read by the plugin's handlers; set once its view is made.
+    let live: EditorView | null = null;
+    let settleNow: (() => void) | null = null;
     return [
       new Plugin<boolean>({
         key: NORMALISE,
@@ -312,6 +316,8 @@ export const DialogueLines = Extension.create<DialogueNames>({
           handleDOMEvents: {
             compositionend: () => {
               ended.mark();
+              // The words composed are in now: put the line right once.
+              settleNow?.();
               return false;
             },
           },
@@ -320,8 +326,10 @@ export const DialogueLines = Extension.create<DialogueNames>({
         },
         // A user's typing waits for the words after a typed name; a paste
         // lands whole, so it is put right at once.
+        // Nothing is put right while an input method composes: rewriting the
+        // line under it breaks the composition.
         appendTransaction: (transactions, _old, state) =>
-          transactions.some((tr) => tr.docChanged) && transactions.every(isUserEdit)
+          live?.composing !== true && transactions.some((tr) => tr.docChanged) && transactions.every(isUserEdit)
             ? dialogueNormalisation(state, names(), { waitForWords: !transactions.some((tr) => tr.getMeta('uiEvent') === 'paste') })
             : null,
         view: (view) => {
@@ -331,10 +339,12 @@ export const DialogueLines = Extension.create<DialogueNames>({
             if (pending !== undefined) return;
             pending = setTimeout(() => {
               pending = undefined;
-              const tr = view.isDestroyed ? null : dialogueNormalisation(view.state, names());
+              const tr = view.isDestroyed || view.composing ? null : dialogueNormalisation(view.state, names());
               if (tr) dispatchMachineEdit(view, tr);
             }, 0);
           };
+          live = view;
+          settleNow = settle;
           settle();
           return {
             update: (_view, previous) => {
