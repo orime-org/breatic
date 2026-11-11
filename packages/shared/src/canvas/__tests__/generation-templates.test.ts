@@ -1048,6 +1048,13 @@ describe('sound, music and voice templates (inner#1825)', () => {
     expect.soft(note).toMatch(/\bline/);
   });
 
+  it('tells the agent the voice goes in the Voice description param, with no language asked of it (round 3)', () => {
+    const note = sound('voice-from-descriptor').agentNote;
+    expect(note).toMatch(/Voice description param/);
+    expect(note).toMatch(/age, gender, texture, tone, pace/);
+    expect(note).not.toMatch(/written in English/);
+  });
+
   it('gives the voice-design anchor an English voice description to start from', () => {
     const description = anchorOf(sound('voice-from-descriptor'))?.params.voice_description;
     expect(typeof description === 'string' && description.trim().length > 0).toBe(true);

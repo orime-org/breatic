@@ -21,7 +21,7 @@ export const VOICE_FROM_DESCRIPTOR: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "the user's line spoken in a voice described in words (age, gender, texture, attitude, pace) in the Voice description param, written in English",
+    "the user's line spoken in a voice described in words; the voice goes in the Voice description param (age, gender, texture, tone, pace)",
   goal: "sound",
   triggers: {
     asks: ["a voice that sounds like a certain kind of person", "a described voice"],
