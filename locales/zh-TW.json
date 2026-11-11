@@ -2255,6 +2255,7 @@
         "captionReadOnly": "目前為唯讀，可複製這份草稿。",
         "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
         "notFinished": "上傳沒有完成",
+        "notUploaded": "媒體還沒上傳完成。",
         "pendingExport": "{name}（尚未上傳完成）",
         "uploadFailed": "上傳失敗",
         "failure": {

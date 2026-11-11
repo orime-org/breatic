@@ -14,6 +14,7 @@
  */
 
 import * as React from 'react';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import {
@@ -74,10 +75,11 @@ import {
   type IndentReach,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
-import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
+import { openCommentDraft, openMediaCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockItem } from '@web/spaces/document/document-to-agent';
+import { blockItem, mediaRowItems } from '@web/spaces/document/document-to-agent';
+import { canCommentOnMedia, mediaRowById } from '@web/spaces/document/document-comment-media';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
@@ -135,6 +137,12 @@ interface StyleFaces {
    * pressing it would write nothing.
    */
   readonly quotable: boolean;
+  /**
+   * Whether the row is a picture, video or audio block, and whether its
+   * upload has finished: Comment and Add to Agent work on an uploaded one and
+   * are greyed on a pending frame (inner#1316 §5.1).
+   */
+  readonly media: 'none' | 'uploaded' | 'pending';
 }
 
 /**
@@ -151,8 +159,20 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
     a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
     a.quotable === b.quotable &&
+    a.media === b.media &&
     sameColours(a.colour, b.colour)
   );
+}
+
+/**
+ * Whether a row is a media block, and whether its upload has finished.
+ * @param doc - The body.
+ * @param blockId - The row.
+ * @returns What the Comment and Add to Agent rows read.
+ */
+function mediaFaceOf(doc: ProseMirrorNode, blockId: string): StyleFaces['media'] {
+  if (mediaRowById(doc, blockId) === undefined) return 'none';
+  return canCommentOnMedia(doc, blockId) ? 'uploaded' : 'pending';
 }
 
 /**
@@ -177,6 +197,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
+      media: mediaFaceOf(tr.doc, blockId),
     };
   });
 }
@@ -220,6 +241,13 @@ export function DocumentBlockMenu({
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
+  // A pending frame's Comment and Add to Agent say why they are greyed.
+  const refusedOnPending =
+    faces.media === 'pending'
+      ? (): void => {
+        toast.warning(t('spaces.document.media.notUploaded'));
+      }
+      : undefined;
 
   const rowNow = useRowNow(editor, block.id);
   const projectId = useDocumentProjectId();
@@ -514,12 +542,18 @@ export function DocumentBlockMenu({
           // of a menu — "Disabled menu items are focusable but cannot be
           // activated" — so an arrow key lands here, and the row's own
           // background is the only thing that says so.
-          const reachable = faces.canComment;
+          const reachable = faces.canComment || faces.media === 'uploaded';
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
               {...itemWithin(reachable, () => {
+                if (faces.media === 'uploaded') {
+                  const live = rowNow();
+                  if (live !== undefined) openMediaCommentDraft(editor, live.id);
+                  close();
+                  return;
+                }
                 const over = rangeNow();
                 if (over === undefined) {
                   close();
@@ -529,7 +563,7 @@ export function DocumentBlockMenu({
                   { from: over.from, to: over.to },
                 ]);
                 close();
-              })}
+              }, refusedOnPending)}
             >
               <Icon />
               {label}
@@ -542,18 +576,20 @@ export function DocumentBlockMenu({
           // Markdown it reads as now. Greyed where Comment is, off the same
           // reading: a row with no words has nothing to hand over. Outside a
           // project there is nowhere to hand it, and the row is not drawn.
+          // A media row hands the media itself, then the rows under it as
+          // text (inner#1316 §5.5).
           if (projectId === null) return null;
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.canComment, () => {
+              {...itemWithin(faces.canComment || faces.media === 'uploaded', () => {
                 const live = rowNow();
                 if (live !== undefined) {
-                  void attachToChat(projectId, [blockItem(editor, live.id)]);
+                  void attachToChat(projectId, faces.media === 'uploaded' ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);
                 }
                 close();
-              })}
+              }, refusedOnPending)}
             >
               <Icon />
               {label}

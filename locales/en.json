@@ -2255,6 +2255,7 @@
         "captionReadOnly": "Read-only. You can copy this draft.",
         "captionRetained": "Media removed. Copy this draft before closing the Space.",
         "notFinished": "Upload not finished",
+        "notUploaded": "The media has not finished uploading.",
         "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
         "failure": {

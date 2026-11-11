@@ -2255,6 +2255,7 @@
         "captionReadOnly": "読み取り専用です。この下書きはコピーできます。",
         "captionRetained": "メディアが削除されました。Spaceを閉じる前に下書きをコピーしてください。",
         "notFinished": "アップロードが完了していません",
+        "notUploaded": "メディアのアップロードがまだ完了していません。",
         "pendingExport": "{name}（アップロード未完了）",
         "uploadFailed": "アップロードに失敗しました",
         "failure": {
