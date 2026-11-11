@@ -59,6 +59,7 @@ import {
   PluginKey,
   type EditorState,
 } from '@tiptap/pm/state';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import {
@@ -74,6 +75,7 @@ import {
   localRangeView,
   type LocalRange,
 } from '@web/spaces/document/document-local-range';
+import { canCommentOnMedia, mediaRowById } from '@web/spaces/document/document-comment-media';
 
 export { mapLocalRange as mapDraftRange } from '@web/spaces/document/document-local-range';
 
@@ -126,6 +128,18 @@ export interface DraftAim {
   readonly entry: number;
 }
 
+/**
+ * An open draft on a picture, a video or an audio block, aimed by the
+ * block's id (inner#1316 §5.3). It has no words under it, so it carries no
+ * stretches.
+ */
+export interface MediaDraftAim {
+  readonly mediaBlockId: string;
+  readonly opening: DraftOpening;
+  /** As on {@link DraftAim}. */
+  readonly entry: number;
+}
+
 /** Why a draft can no longer be written (A21, A22). */
 export type DraftDropReason = 'targetGone' | 'cannotWrite';
 
@@ -135,10 +149,19 @@ export type DraftDropReason = 'targetGone' | 'cannotWrite';
  */
 export type Draft =
   | ({ readonly kind: 'aimed' } & DraftAim)
+  | ({ readonly kind: 'aimed' } & MediaDraftAim)
   | {
     readonly kind: 'dropped';
     readonly why: DraftDropReason;
     readonly opening: DraftOpening;
+    /**
+     * The block a media draft was aimed at, kept only when the block went:
+     * the id is a reliable identity, so the draft is aimed again when the
+     * block is back (an undo, a peer's undo, a drag that moves it).
+     */
+    readonly mediaBlockId?: string;
+    /** The entry it was opened by, kept with the block id. */
+    readonly entry?: number;
   };
 
 /**
@@ -147,7 +170,11 @@ export type Draft =
  * its words; `null` closes it; `{ drop }` drops it for a reason the plugin
  * cannot see for itself.
  */
-export type DraftCommand = readonly DraftRange[] | null | { readonly drop: 'cannotWrite' };
+export type DraftCommand =
+  | readonly DraftRange[]
+  | { readonly mediaBlockId: string }
+  | null
+  | { readonly drop: 'cannotWrite' };
 
 /** The plugin's key, which is also the meta a {@link DraftCommand} goes under. */
 export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
@@ -171,7 +198,7 @@ export function draftIn(state: EditorState): Draft | null {
  */
 export function draftRangeIn(state: EditorState): DraftAim | null {
   const draft = draftIn(state);
-  return draft?.kind === 'aimed' ? draft : null;
+  return draft?.kind === 'aimed' && !('mediaBlockId' in draft) ? draft : null;
 }
 
 /**
@@ -207,6 +234,44 @@ const watch = watchPluginState(draftIn);
 /** Hear about every change to the open draft. */
 export const onDraftChange: (listener: () => void) => () => void =
   watch.onChange;
+
+/**
+ * Carries a media draft across a change: aimed while its block is in the
+ * body, dropped while it is not. A draft dropped for any other reason holds no
+ * block id and never reaches here.
+ * @param media - The draft's block id, opening and entry.
+ * @param media.mediaBlockId - The block.
+ * @param media.opening - The opening its words are kept against.
+ * @param media.entry - The entry it was opened by.
+ * @param current - The draft as it stands, handed back when nothing changed.
+ * @param doc - The body after a change to it, or null when the body did not change.
+ * @returns The draft after it.
+ */
+function carryMedia(
+  media: { readonly mediaBlockId: string; readonly opening: DraftOpening; readonly entry?: number },
+  current: Draft,
+  doc: ProseMirrorNode | null,
+): Draft {
+  if (doc === null) return current;
+  const there = mediaRowById(doc, media.mediaBlockId) !== undefined;
+  const entry = media.entry ?? 0;
+  if (current.kind === 'aimed') {
+    return there
+      ? current
+      : { kind: 'dropped', why: 'targetGone', opening: media.opening, mediaBlockId: media.mediaBlockId, entry };
+  }
+  return there ? { kind: 'aimed', mediaBlockId: media.mediaBlockId, opening: media.opening, entry } : current;
+}
+
+/**
+ * The block an open media draft is aimed at.
+ * @param state - The editor state.
+ * @returns The block id, or null when no draft is aimed at a block.
+ */
+export function mediaDraftIn(state: EditorState): string | null {
+  const draft = draftIn(state);
+  return draft?.kind === 'aimed' && 'mediaBlockId' in draft ? draft.mediaBlockId : null;
+}
 
 /**
  * The extension that keeps an unposted comment's range on the text it was
@@ -245,6 +310,16 @@ export const documentCommentDraftRange = createExtension(() => {
             }
             if (asked !== undefined) {
               if (asked === null) return null;
+              if ('mediaBlockId' in asked) {
+                if (!canCommentOnMedia(tr.doc, asked.mediaBlockId)) return current;
+                let opening = current?.opening;
+                if (opening === undefined) {
+                  openings += 1;
+                  opening = { serial: openings };
+                }
+                entries += 1;
+                return { kind: 'aimed', mediaBlockId: asked.mediaBlockId, opening, entry: entries };
+              }
               // A range covering no letters is refused here rather than left
               // for the post to notice: the entries are unavailable over such
               // ranges already (`canCommentOver`), so one arriving means a
@@ -262,10 +337,13 @@ export const documentCommentDraftRange = createExtension(() => {
               entries += 1;
               return { kind: 'aimed', segments, slots: segments, opening, entry: entries };
             }
+            if (current !== null && 'mediaBlockId' in current && current.mediaBlockId !== undefined) {
+              return carryMedia({ ...current, mediaBlockId: current.mediaBlockId }, current, tr.docChanged ? tr.doc : null);
+            }
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a user clicking elsewhere before
             // typing their comment needs.
-            if (current?.kind !== 'aimed' || !changesText(tr)) return current;
+            if (current?.kind !== 'aimed' || 'mediaBlockId' in current || !changesText(tr)) return current;
             // Stretch by stretch. A stretch whose words are gone leaves the
             // draft on the ones that are still there; the draft is gone with
             // the last of them.

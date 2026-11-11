@@ -28,7 +28,7 @@ import {
   commentsOn,
   type CommentsApi,
 } from '@web/spaces/document/document-comment-extension';
-import { mediaQuoteOf, type MediaQuote } from '@web/spaces/document/document-comment-media';
+import { mediaQuoteOf, sameMediaQuote, type MediaQuote } from '@web/spaces/document/document-comment-media';
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
 import {
   threadQuoteIn,
@@ -169,7 +169,7 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
     a.id === b.id &&
     a.settled === b.settled &&
     a.quote === b.quote &&
-    sameMedia(a.media, b.media) &&
+    sameMediaQuote(a.media, b.media) &&
     a.entries.length === b.entries.length &&
     a.entries.every((entry, index) => {
       const other = b.entries[index];
@@ -183,17 +183,6 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
       );
     })
   );
-}
-
-/**
- * Whether two media quotes draw the same.
- * @param a - One.
- * @param b - The other.
- * @returns True when both are absent or match field for field.
- */
-function sameMedia(a: MediaQuote | null, b: MediaQuote | null): boolean {
-  if (a === null || b === null) return a === b;
-  return a.blockId === b.blockId && a.type === b.type && a.name === b.name && a.caption === b.caption && a.url === b.url;
 }
 
 /**

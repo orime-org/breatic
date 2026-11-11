@@ -2147,6 +2147,7 @@
       "comment": {
         "placeholder": "寫一條批註…",
         "targetGone": "原文已被改動或刪除。",
+        "mediaGone": "這個媒體已被刪除。",
         "cannotWrite": "你已無法在這裡書寫。",
         "railTitle": "批註",
         "filterOpen": "未解決",

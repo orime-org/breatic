@@ -2147,6 +2147,7 @@
       "comment": {
         "placeholder": "コメントを書く",
         "targetGone": "対象の文章は変更または削除されました。",
+        "mediaGone": "このメディアは削除されました。",
         "cannotWrite": "ここには書き込めなくなりました。",
         "railTitle": "コメント",
         "filterOpen": "未解決",

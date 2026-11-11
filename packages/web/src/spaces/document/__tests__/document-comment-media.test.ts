@@ -18,6 +18,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
 import {
   MEDIA_BLOCK_ID,
@@ -31,6 +32,9 @@ import { rowById } from '@web/spaces/document/document-row-by-id';
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
+
+/** Each editor's undo manager, the product's own (`createDocumentUndo`). */
+const managers = new Map<Editor, Y.UndoManager>();
 
 afterEach(() => {
   mounted.splice(0).forEach((editor) => {
@@ -49,14 +53,17 @@ const PENDING = { id: 'pending', type: 'image', props: { uploadId: 'up-1', url: 
  * @returns The editor.
  */
 function mount(doc: Y.Doc, blocks?: unknown[]): Editor {
+  const { manager, extension } = createDocumentUndo(doc);
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
+    extensions: [extension],
     comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
+  managers.set(editor, manager);
   if (blocks !== undefined) editor.replaceBlocks(editor.document, blocks as never);
   return editor;
 }
@@ -141,6 +148,7 @@ describe('mediaThreadPositions', () => {
     const editor = mount(doc, [WORDS, PICTURE]);
     const posted = (await postOn(editor, 'pic')) as { id: string };
 
+    managers.get(editor)!.stopCapturing();
     editor.removeBlocks(['pic']);
     expect(mediaThreadPositions(editor.prosemirrorState.doc, threadsOf(editor)).size).toBe(0);
 

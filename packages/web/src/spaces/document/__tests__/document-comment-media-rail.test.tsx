@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { commentedElement } from '@web/spaces/document/document-comment-media';
 import { commentOn } from '@web/spaces/document/document-comment-post';
@@ -31,6 +32,9 @@ import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
+
+/** Each editor's undo manager, the product's own (`createDocumentUndo`). */
+const managers = new Map<Editor, Y.UndoManager>();
 
 afterEach(() => {
   cleanup();
@@ -49,14 +53,17 @@ const WORDS = { id: 'words', type: 'paragraph', content: 'alpha bravo' };
  */
 function open(blocks: unknown[]): Editor {
   const doc = new Y.Doc();
+  const { manager, extension } = createDocumentUndo(doc);
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
+    extensions: [extension],
     comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
+  managers.set(editor, manager);
   editor.replaceBlocks(editor.document, blocks as never);
   return editor;
 }
@@ -107,6 +114,7 @@ describe('useCommentRail with media comments', () => {
     });
 
     act(() => {
+      managers.get(editor)!.stopCapturing();
       editor.removeBlocks(['pic']);
     });
     expect(result.current.unresolved).toEqual([]);

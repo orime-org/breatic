@@ -187,6 +187,17 @@ export function mediaQuoteOf(doc: PMNode, metadata: unknown): MediaQuote | null 
 }
 
 /**
+ * Whether two media quotes draw the same.
+ * @param a - One.
+ * @param b - The other.
+ * @returns True when both are absent or match field for field.
+ */
+export function sameMediaQuote(a: MediaQuote | null, b: MediaQuote | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.blockId === b.blockId && a.type === b.type && a.name === b.name && a.caption === b.caption && a.url === b.url;
+}
+
+/**
  * The element a comment is about in the rendered body: the highlight of a
  * comment on words, or the block of a comment on media.
  * @param root - The editor's element.

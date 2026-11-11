@@ -2147,6 +2147,7 @@
       "comment": {
         "placeholder": "Write a comment…",
         "targetGone": "The text was changed or deleted.",
+        "mediaGone": "This media was deleted.",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",

@@ -57,7 +57,7 @@ import {
   resolveThread,
 } from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
+import { useCommentAnchors, type DraftAnchor } from '@web/spaces/document/use-comment-anchors';
 import {
   DRAFT_THREAD_ID,
   draftIn,
@@ -299,11 +299,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // against, so a card's top needs nothing added to it.
   const column = React.useRef<HTMLDivElement>(null);
   // Keyed on the start alone, which is all the hook measures: the card sits
-  // level with where the words begin.
-  const draftFrom = draft?.kind === 'aimed' ? draft.segments[0]!.from : null;
+  // level with where the words begin. A draft on media is keyed on its block,
+  // whose top the hook measures again on every change to the body.
+  const draftFrom = draft?.kind === 'aimed' && !('mediaBlockId' in draft) ? draft.segments[0]!.from : null;
+  const draftMedia = draft?.kind === 'aimed' && 'mediaBlockId' in draft ? draft.mediaBlockId : null;
   const draftAnchor = React.useMemo(
-    () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
-    [draftFrom],
+    (): DraftAnchor | null =>
+      draftFrom !== null
+        ? { id: DRAFT_THREAD_ID, from: draftFrom }
+        : draftMedia !== null
+          ? { id: DRAFT_THREAD_ID, mediaBlockId: draftMedia }
+          : null,
+    [draftFrom, draftMedia],
   );
   const { tops: anchors, measuredFor } = useCommentAnchors(
     editor,

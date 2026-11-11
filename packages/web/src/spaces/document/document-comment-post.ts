@@ -32,7 +32,7 @@ import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
-import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
+import { draftRangeIn, mediaDraftIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   COMMENT_MARK,
   asCommentBody,
@@ -156,7 +156,13 @@ export async function commentOn(
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
 export async function postComment(editor: CommentableEditor, body: string): Promise<ThreadData | null> {
-  const posted = await commentOn(editor, asCommentBody(body), (state) => draftRangeIn(state)?.segments ?? null);
+  const state = editor.prosemirrorView?.state;
+  const media = state === undefined ? null : mediaDraftIn(state);
+  const posted = await commentOn(
+    editor,
+    asCommentBody(body),
+    media === null ? (now) => draftRangeIn(now)?.segments ?? null : { mediaBlockId: media },
+  );
   if (posted !== null && 'ok' in posted) throw new SpaceFullError();
   return posted;
 }
