@@ -70,6 +70,22 @@ function generationsCarryingMaterial(
 }
 
 /**
+ * The model a proposed generation runs on: its own, or, sent with a template
+ * and no model of its own, the one its template node keeps (the anchor's
+ * without a key).
+ * @param node - The node, as the agent sent it.
+ * @returns The model, or undefined when neither names one.
+ */
+function modelOf(node: CanvasProposal['nodes'][number]): string | undefined {
+  if (node.model !== undefined) return node.model;
+  const tag = (node as { template?: { id?: string; key?: string } }).template;
+  const template = GENERATION_TEMPLATES.find((one) => one.id === tag?.id);
+  if (template === undefined) return undefined;
+  const own = template.nodes.find((one) => one.key === (tag?.key ?? template.anchor));
+  return own?.role === 'generate' ? own.model : undefined;
+}
+
+/**
  * How many generated videos in a proposal draw on the material it carries.
  * @param proposal - The proposal, as the agent sent it.
  * @returns The count.
@@ -236,7 +252,7 @@ test('given a video and asked outright for background music, it reads a music te
   // whether the proposal names the template or the agent built it from it.
   const models = new Set(GENERATION_TEMPLATES.filter((template) => read.includes(template.id)).map((template) => templateAnchor(template).model));
   const scoring = turn.landed.reduce(
-    (count, proposal) => count + generationsCarryingMaterial(proposal, (node) => node.type === 'audio' && node.model !== undefined && models.has(node.model), 'video'),
+    (count, proposal) => count + generationsCarryingMaterial(proposal, (node) => node.type === 'audio' && models.has(modelOf(node) ?? ''), 'video'),
     0,
   );
   expect(scoring, `music on ${[...models].join(', ')} drawing on the video. Audio generations: ${String(audioGenerations(turn))}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
