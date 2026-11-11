@@ -82,7 +82,7 @@ describe('media comments on the document page', () => {
 
   // Writing a table whose cell holds a picture under the mounted page takes
   // about ten seconds in jsdom, close to the 15 s default; this case gets a
-  // minute until that render is fast.
+  // minute until that render is fast (#1484).
   it('brings a picture in a table cell into view when its comment is read', async () => {
     const id = await showWithComment([tableBlock({ rows: [{ cells: ['words', { blocks: [PICTURE] }] }] })], 'editor');
 
