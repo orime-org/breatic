@@ -282,7 +282,7 @@ Worker 在常规分派前识别 `execute-mini-tool` 的 `executionKind: planned`
 
 容器分析编排器使用 SQL 冻结的源、profile 和原任务期限：场景初始作业同时产生 inspect 与 scene JSON；人物初始作业产生 display 候选，再按原检测编号分组生成缩略图。已读取 JSON 按原输出索引合入原步骤，后续恢复复用缓存；新作业沿首次计划的 class、limits 和期限，保留原步骤前缀。已有作业的报告、冻结账本与未缓存 JSON 都按 `planReadUntil` 读取，截止后仍读；新作业只在原计算期限内开启。ingest 在截止时结束的作业、截止后无法开启的作业和报告窗口结束时仍在运行的作业，都使分析以超时结束（跟踪为 `timeout`，其余为 `expired`）。空候选正常返回空列表；终态失败保留实际产物子集及消费，由外层任务生命周期持有终结与通知。
 
-分析任务外层复用原节点任务期限、重试分类和 BullMQ 锁所有权检查：非终态等待通过 StillRunning 归还队列处理位；已持久 completed / failed 的任务重放原结果及通知,不重新执行计算。终结前读取原持久步骤的提交事实,未决或冲突身份保持消费集合 uncertain,由共同领域事务复核闭合条件。`finishMiniToolAnalysisAndNotify` 保存分析终态并发布原宿主任务计数,保留宿主媒体与历史;费用查询及父结算沿独立持久周期推进。
+分析任务外层复用原节点任务期限、重试分类和 BullMQ 锁所有权检查：非终态等待通过 StillRunning 归还队列处理位；已持久 completed / failed 的任务重放原结果及通知,不重新执行计算。终结在同一 task 锁内由 `completeResolvedMiniToolConsumptionSet` 复核闭合条件：仍有未决提交尝试时消费集合保持未闭合，由迟到回执或失败证明再次复核。`finishMiniToolAnalysisAndNotify` 保存分析终态并发布原宿主任务计数,保留宿主媒体与历史;费用查询及父结算沿独立持久周期推进。
 
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
