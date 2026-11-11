@@ -28,7 +28,7 @@ const openBrowserStore = vi.fn(() => { throw new Error('Scene content must stay 
 function scene(): { doc: Y.Doc; session: SceneSession } {
   const doc = getDoc(NAME);
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const result = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-content'), true);
+  const result = applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('shared-content'), true, NAME);
   if (!result.ok) throw new Error('The shared scene fixture must contain its object');
   const session = getSceneSession(doc, NAME);
   sessions.add(session);

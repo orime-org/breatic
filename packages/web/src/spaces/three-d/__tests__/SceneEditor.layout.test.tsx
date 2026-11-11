@@ -16,6 +16,8 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useUIStore } from '@web/stores/ui';
 
+const NAME = 'project-p1/3d-s1';
+
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
   listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
@@ -44,8 +46,8 @@ function Bound({ session }: { session: SceneSession }): React.JSX.Element {
 function setup(): { session: SceneSession; doc: Y.Doc; page: ReturnType<typeof render>; client: QueryClient } {
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Box' : 'Figure', model: { kind: 'builtin', id: 'box' }, position: [index, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }));
-  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
   const page = render(tree(session, client)); return { session, doc, page, client };
@@ -291,8 +293,8 @@ describe('approved scene layout (inner#1724)', () => {
     fireEvent.change(input, { target: { value: 'Retained draft' } });
     await act(async () => page.rerender(tree(session, client, 'hidden')));
     act(() => {
-      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true);
-      if (change === 'lock') applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME);
+      if (change === 'lock') applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true, NAME);
       if (change === 'role') session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     });
     await act(async () => page.rerender(tree(session, client)));
@@ -328,7 +330,7 @@ describe('approved scene layout (inner#1724)', () => {
     const inspector = await screen.findByTestId('scene-properties-panel');
     const field = within(within(inspector).getByRole('group', { name: t('spaces.threeD.position') })).getByLabelText('X', { exact: true });
     act(() => field.focus()); fireEvent.change(field, { target: { value: '2.5' } });
-    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true); });
+    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true, NAME); });
     await act(async () => { fireEvent.blur(field); });
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.position).toEqual([2.5, 7, 0]);
   });
@@ -337,7 +339,7 @@ describe('approved scene layout (inner#1724)', () => {
     const { session, doc } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false)); await screen.findByTestId('scene-right-panel');
     act(() => { session.beginGesture(); session.previewGesture([{ id: ID, position: [9, 0, 0] }]); });
-    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true); });
+    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME); });
     const canvas = screen.getByTestId('scene-native-boundary'); act(() => canvas.focus());
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(session.getSnapshot().gestureActive).toBe(false);

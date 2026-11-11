@@ -121,7 +121,7 @@ describe("charging a turn that folds and continues", () => {
 
           const owed = accepted.reduce((sum, n) => sum + n, 0);
           const turnCharges = world.charges.filter((one) => one.key === "turn:c1:9");
-          expect(turnCharges).toEqual(owed === 0 ? [] : [{ key: "turn:c1:9", amount: owed }]);
+          expect(turnCharges).toEqual(owed === 0 ? [] : [{ kind: "operation", key: "turn:c1:9", amount: owed }]);
 
           const starts = world.folds.map((fold) => fold.watermarkBefore);
           expect(new Set(starts).size).toBe(starts.length);

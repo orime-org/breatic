@@ -8,11 +8,18 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
+import {
+  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, DOC_SIZE_ACK_PARAM, isReauthCloseReason, parseDocName, t,
+  type DocSizeSeen,
+} from '@breatic/shared';
 import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
+import {
+  clearAllDocSizes, clearDocSize, docSizeSynced, isSpaceContentDoc, readDocSize, receiveDocSizePayload, startDocResync,
+} from '@web/data/yjs/doc-size';
+import { toast } from '@web/lib/toast';
 
 /**
  * Placeholder token the Hocuspocus client must send purely to trip the
@@ -33,9 +40,11 @@ const COLLAB_WS_PATH = import.meta.env.VITE_COLLAB_URL?.trim() || '/ws';
  * @returns The absolute WebSocket URL to dial.
  */
 function toAbsoluteWsUrl(url: string): string {
-  if (url.startsWith('ws')) return url;
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${window.location.host}${url}`;
+  const absolute = new URL(url.startsWith('ws') ? url : `${scheme}://${window.location.host}${url}`);
+  // Tells collab this tab acknowledges size pushes and handles the size-limit close.
+  absolute.searchParams.set(DOC_SIZE_ACK_PARAM, '1');
+  return absolute.toString();
 }
 
 // ───────────────────────── module-level shared socket ─────────────────────────
@@ -140,6 +149,44 @@ interface DocEntry {
   pendingRelease: ReturnType<typeof setTimeout> | null;
   facts: Omit<DocFacts, 'sessionEnded'>;
   sync: DocSyncBinding | null;
+}
+
+/**
+ * The provider every Space document uses: a hidden page may never run the
+ * flush timer again, so its own `pagehide` handler (bound in the base
+ * constructor, removed on destroy) sends what it buffered, the awareness
+ * withdrawal included.
+ */
+class SpaceProvider extends HocuspocusProvider {
+  /** Withdraws this user's awareness, then sends the buffered updates. */
+  override pageHide(): void {
+    super.pageHide();
+    this.flushPendingUpdates();
+  }
+
+  /**
+   * Sends the buffered updates, then the stateless message. Stateless
+   * messages skip the provider's batching, and collab reads a receipt request
+   * or a `doc:size-seen` as coming after every update written before it
+   * (inner#1790).
+   * @param payload - The message.
+   */
+  override sendStateless(payload: string): void {
+    this.flushPendingUpdates();
+    super.sendStateless(payload);
+  }
+
+  /**
+   * Counts a SyncStatus receipt without marking the provider synced: only a
+   * server SyncStep2 does. Collab answers an Update with
+   * SyncStatus even after it closed that document connection, so a receipt
+   * from the previous connection can reach a reopened or rebuilt provider
+   * before its handshake (inner#1790).
+   */
+  override decrementUnsyncedChanges(): void {
+    if (this.unsyncedChanges > 0) this.unsyncedChanges -= 1;
+    this.emit('unsyncedChanges', { number: this.unsyncedChanges });
+  }
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
@@ -275,6 +322,7 @@ function destroyAccountTransport(): void {
   // Retired provider callbacks must not mutate the current registry or session facts.
   docEntries.clear();
   entries.forEach(([name, entry]) => destroyDocEntry(name, entry));
+  clearAllDocSizes();
   sessionEnded = false;
   if (sharedSocket) {
     sharedSocket.destroy();
@@ -429,11 +477,16 @@ export function acquireDocProvider(
   }
   if (existing) destroyDocEntry(name, existing);
   const websocketProvider = ensureSharedSocket(url);
-  const provider = new HocuspocusProvider({
+  const provider = new SpaceProvider({
     websocketProvider,
     name,
     document: doc,
     token: COOKIE_AUTH_PLACEHOLDER,
+    // Collab judges the size cap per message: the writes of one user operation
+    // (including follow-ups libraries make in a microtask) must leave as one
+    // merged Update, or the second half is refused once the first fills the
+    // document (inner#1790). Any truthy value enables batching; 0 does not.
+    flushDelay: 1,
   });
   const entry: DocEntry = {
     doc,
@@ -447,6 +500,35 @@ export function acquireDocProvider(
   if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
     entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
+  if (isSpaceContentDoc(name)) {
+    // Every Space document hears its size from collab and acknowledges it:
+    // collab judges what this tab sends next by the phase it has
+    // acknowledged (inner#1790). Before the handshake the acknowledgement
+    // waits for `synced`, so it follows the handshake SyncStep2, which
+    // carries what was written offline before the push.
+    let heldSeq: number | null = null;
+    /**
+     * Tells collab this tab has seen the push numbered `seq`.
+     * @param seq - The push's sequence number.
+     * @throws {never} Never.
+     */
+    const acknowledge = (seq: number): void => {
+      provider.sendStateless(JSON.stringify({ type: 'doc:size-seen', seq } satisfies DocSizeSeen));
+    };
+    provider.on('stateless', (data: { payload: string }) => {
+      if (docEntries.get(name) !== entry) return;
+      const seq = receiveDocSizePayload(name, data.payload);
+      if (seq === null) return;
+      if (provider.synced) acknowledge(seq);
+      else heldSeq = seq;
+    });
+    provider.on('synced', () => {
+      if (docEntries.get(name) !== entry || heldSeq === null) return;
+      const seq = heldSeq;
+      heldSeq = null;
+      acknowledge(seq);
+    });
+  }
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
   // them: consumers come and go, and the one that happens to be mounted when
@@ -455,6 +537,7 @@ export function acquireDocProvider(
   provider.on('synced', () => {
     if (docEntries.get(name) !== entry) return;
     entry.facts.hasEverSynced = true;
+    docSizeSynced(name);
   });
   provider.on('authenticationFailed', (data: { reason?: string } | undefined) => {
     if (docEntries.get(name) !== entry) return;
@@ -478,6 +561,10 @@ export function acquireDocProvider(
   // reconnect re-opens every attached document anyway.
   provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
     if (docEntries.get(name) !== entry) return;
+    if (data?.event?.reason === COLLAB_DOCUMENT_TOO_LARGE_REASON) {
+      resetDocument(name);
+      return;
+    }
     if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) sessionEnded = true;
     const opened = websocketProvider.receivedOnOpenPayload;
     if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
@@ -489,6 +576,25 @@ export function acquireDocProvider(
   provider.attach();
   notifyDocProvider(name);
   return provider;
+}
+
+/**
+ * Rebuild a document collab refused an update for (inner#1790). Its local
+ * content, with the refused change, is discarded; the Space remounts under a
+ * new generation and syncs a fresh document from the server.
+ * @param name - Canonical document name.
+ */
+function resetDocument(name: string): void {
+  const entry = docEntries.get(name);
+  if (!entry) return;
+  // Out of the socket's map first, so destroying the provider sends no CLOSE:
+  // collab would queue it and apply it to the fresh connection.
+  entry.provider.configuration.websocketProvider.configuration.providerMap.delete(name);
+  destroyDocEntry(name, entry);
+  // A refusal while the document is already being rebuilt was told once.
+  const told = readDocSize(name).phase === 'resyncing';
+  startDocResync(name);
+  if (!told) toast.warning(t('spaces.sizeCap.resync'));
 }
 
 /**
@@ -549,6 +655,7 @@ export function releaseDocProvider(name: string, expectedDoc?: Y.Doc): void {
     // cancels this deferred callback before it fires, so the doc is never
     // evicted mid-oscillation.
     destroyDocEntry(name, entry);
+    clearDocSize(name);
     maybeDestroySharedSocket();
   }, 0);
 }

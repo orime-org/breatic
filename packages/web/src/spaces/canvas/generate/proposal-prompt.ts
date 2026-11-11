@@ -127,6 +127,35 @@ function mentionElement(mention: ProposalMention): Y.XmlElement {
 }
 
 /**
+ * A line's parts with a space on each side of every mention, one space shared
+ * by two neighbouring mentions: the prompt editor's whitespace rule
+ * (`planWhitespaceInsertions`), written here so no editor that shows the
+ * prompt adds the spaces on its own afterwards.
+ * @param parts - The line's words and mentions.
+ * @returns The parts as written.
+ * @throws {never} Never.
+ */
+function spacedAroundMentions(parts: readonly Part[]): Part[] {
+  const out: Part[] = [];
+  for (const part of parts) {
+    const last = out[out.length - 1];
+    if (typeof part === 'string') {
+      if (part.length === 0) continue;
+      out.push(last !== undefined && typeof last !== 'string' && !part.startsWith(' ') ? ` ${part}` : part);
+      continue;
+    }
+    if (typeof last === 'string') {
+      if (!last.endsWith(' ')) out[out.length - 1] = `${last} `;
+    } else {
+      out.push(' ');
+    }
+    out.push(part);
+  }
+  if (out.length > 0 && typeof out[out.length - 1] !== 'string') out.push(' ');
+  return out;
+}
+
+/**
  * Build one line's block.
  * @param parts - The line's words and mentions.
  * @returns The paragraph element; a blank line is a paragraph with no children,
@@ -135,9 +164,7 @@ function mentionElement(mention: ProposalMention): Y.XmlElement {
  */
 function lineBlock(parts: readonly Part[]): Y.XmlElement {
   const block = new Y.XmlElement(BLOCK);
-  const children = parts.flatMap((part): (Y.XmlElement | Y.XmlText)[] =>
-    typeof part !== 'string' ? [mentionElement(part)] : part.length > 0 ? [new Y.XmlText(part)] : [],
-  );
+  const children = spacedAroundMentions(parts).map((part) => (typeof part === 'string' ? new Y.XmlText(part) : mentionElement(part)));
   if (children.length > 0) block.insert(0, children);
   return block;
 }

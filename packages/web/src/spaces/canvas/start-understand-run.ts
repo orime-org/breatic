@@ -273,14 +273,14 @@ function buildReadingRun(
   // edge away and leave a node running a task with nothing tying it to what
   // that task is about.
   let wired = false;
-  runCanvasUndoBatch(projectId, spaceId, () => {
+  const edge = { id: `${source.id}->${node.id}`, source: source.id, target: node.id };
+  // The node and its edge are one add for the size cap, judged before the
+  // paid request: a Space without room for them gets no run and no charge.
+  const placed = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
     addNode(projectId, spaceId, node);
-    wired = addEdge(projectId, spaceId, {
-      id: `${source.id}->${node.id}`,
-      source: source.id,
-      target: node.id,
-    });
+    wired = addEdge(projectId, spaceId, edge);
   });
+  if (!placed.ok) return null;
   // `addEdge` refuses an edge whose endpoint is gone and hands that back: the
   // node being read can be deleted by a collaborator while this menu stands
   // open. The address it holds was captured before that, so the reading goes

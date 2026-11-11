@@ -5,10 +5,11 @@
  * The credits a finished run records and charges are rounded up to whole
  * cents once, before the task row, the node's history, the activity feed and
  * the charge read them (inner#1666), whichever lane priced the run: a model
- * generation, a reading or a container mini-tool. The rounding sits after the
- * vendor has returned, so a figure it cannot round passes through untouched
- * instead of throwing: the charge refuses a cost that is not a number, and a
- * negative one charges nothing.
+ * generation, a reading or a container mini-tool. The charge is the request
+ * `markCompletedAndBill` writes in the completion's own commit (inner#1617),
+ * then settled. The rounding sits after the vendor has returned, so a figure
+ * it cannot round passes through untouched instead of throwing: a cost that
+ * is not a number, or a negative one, writes no request and charges nothing.
  *
  * No real Redis / DB — everything is mocked.
  */
@@ -45,7 +46,10 @@ const h = vi.hoisted(() => {
     slotFull: { value: false },
     understandMediaAt: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
-    chargeForGeneration: vi.fn(),
+    settleCharge: vi.fn(),
+    pendingChargeRequestId: vi.fn(),
+    /** The request the stand-in completion wrote, or null when it wrote none. */
+    request: { id: null as string | null },
     error: vi.fn(),
     readingCredits: { value: 0 },
     recordGenerationSuccess: vi.fn(async (_entry: unknown) => ({ id: "history-1" })),
@@ -117,7 +121,10 @@ vi.mock("@breatic/domain", async () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
-  creditLotService: { chargeForGeneration: h.chargeForGeneration },
+  creditLotService: {
+    settleCharge: h.settleCharge,
+    pendingChargeRequestId: h.pendingChargeRequestId,
+  },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   // A dollar is a credit here, so each case's cost is the figure to round.
   creditsForUsd: (usd: number) => usd,
@@ -213,12 +220,23 @@ async function billedFor(lane: Lane, credits: number): Promise<number> {
   return billed;
 }
 
+/** What the completion was asked to record as the charge. */
+type ChargeArg = { amount: number; actorUserId: string; projectId: string | null; releaseHold?: string } | null;
+
+/**
+ * What the completion was asked to charge.
+ * @returns The charge handed to `markCompletedAndBill`.
+ */
+function chargeArg(): ChargeArg {
+  return h.markCompletedAndBill.mock.calls[0]![4] as ChargeArg;
+}
+
 /**
  * What the charge was asked to take.
- * @returns The amount handed to the charge.
+ * @returns The amount handed to the completion's charge request.
  */
 function charged(): number {
-  return (h.chargeForGeneration.mock.calls[0]![0] as { amount: number }).amount;
+  return chargeArg()!.amount;
 }
 
 beforeEach(() => {
@@ -226,7 +244,14 @@ beforeEach(() => {
   h.getByIdInternal.mockResolvedValue({ status: "running", startedAt: new Date(), billedAt: null, providerResultUrl: null, providerTaskId: null });
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
-  h.markCompletedAndBill.mockResolvedValue(true);
+  // The real completion writes a request only when it won the CAS and the
+  // charge has an amount above zero; NaN and negatives are neither.
+  h.request.id = null;
+  h.markCompletedAndBill.mockImplementation(async (_taskId: string, _result: unknown, _credits: number, _ms: number, charge: ChargeArg) => {
+    if (charge !== null && charge.amount > 0) h.request.id = "req-1";
+    return true;
+  });
+  h.pendingChargeRequestId.mockImplementation(async () => h.request.id);
   h.recordProviderResult.mockReset();
   h.resolveRegisteredProjectMedia.mockReset();
   h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({
@@ -240,10 +265,11 @@ beforeEach(() => {
     mimeType: fileUrl.endsWith(".mp4") ? "video/mp4" : "image/png",
     sizeBytes: 10,
   }));
-  // The real charge settles its amount before it writes anything.
-  h.chargeForGeneration.mockImplementation(async (input: { amount: number }) => {
-    toChargeMicro(input.amount);
-    return { billed: true, charged: input.amount, shortfall: 0, studioId: "studio-1", lotIds: [] };
+  h.settleCharge.mockImplementation(async () => {
+    // The real settle charges the request's stored amount.
+    const amount = charged();
+    toChargeMicro(amount);
+    return { billed: true, charged: String(amount), shortfall: "0.000000", studioId: "studio-1", lotIds: [] };
   });
 });
 
@@ -251,6 +277,7 @@ describe.each(LANES)("the credits $name is billed with", (lane) => {
   it("rounds a part-cent cost up to the next cent, and charges that", async () => {
     expect(await billedFor(lane, 3.075)).toBe(3.08);
     expect(charged()).toBe(3.08);
+    expect(h.settleCharge).toHaveBeenCalledExactlyOnceWith("req-1");
   });
 
   it("does not round floating-point residue up a cent (inner#1637)", async () => {
@@ -258,16 +285,20 @@ describe.each(LANES)("the credits $name is billed with", (lane) => {
     expect(charged()).toBe(7);
   });
 
+  it("asks the completion to charge the run's actor and project and to release the run's hold", async () => {
+    await billedFor(lane, 3.075);
+    expect(chargeArg()).toEqual(expect.objectContaining({ actorUserId: "user-1", projectId: "proj-1", releaseHold: "task-1" }));
+  });
+
   // The vendor has returned by now: a throw would rerun the task and pay it twice.
-  it("passes a cost that is not a number through without throwing, and the charge refuses it", async () => {
+  it("passes a cost that is not a number through without throwing, and charges nothing", async () => {
     expect(await billedFor(lane, Number.NaN)).toBeNaN();
-    await expect(h.chargeForGeneration.mock.results[0]!.value).rejects.toThrow(RangeError);
-    expect(h.error).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("DEDUCT_FAILED_AFTER_COMPLETION"));
+    expect(h.settleCharge).not.toHaveBeenCalled();
   });
 
   it("passes a negative cost through without throwing, and charges nothing", async () => {
     expect(await billedFor(lane, -1)).toBe(-1);
-    expect(h.chargeForGeneration).not.toHaveBeenCalled();
+    expect(h.settleCharge).not.toHaveBeenCalled();
   });
 });
 
@@ -302,7 +333,7 @@ describe("accepting registered media after the vendor has returned", () => {
     expect(h.markFailed).toHaveBeenCalledExactlyOnceWith("task-1", "internal");
     expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
-    expect(h.chargeForGeneration).not.toHaveBeenCalled();
+    expect(h.settleCharge).not.toHaveBeenCalled();
     expect(h.recordGenerationSuccess).not.toHaveBeenCalled();
     expect(h.upsertGenerationSucceeded).not.toHaveBeenCalled();
     expect(row.providerResultUrl).toBe(fileUrl);
@@ -319,7 +350,7 @@ describe("accepting registered media after the vendor has returned", () => {
     expect(h.markFailed).toHaveBeenCalledTimes(2);
     expect(h.markFailed).toHaveBeenNthCalledWith(2, "task-1", "internal");
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
-    expect(h.chargeForGeneration).not.toHaveBeenCalled();
+    expect(h.settleCharge).not.toHaveBeenCalled();
     expect(h.moveToDelayed).not.toHaveBeenCalled();
   });
 });

@@ -12,7 +12,6 @@
  * Anything else throws.
  */
 
-import { parseCreditDecimal } from "@breatic/shared";
 
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
@@ -70,6 +69,7 @@ import {
   transcribeQuestion,
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
+import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -286,12 +286,13 @@ function resolveCanvasDocName(
  *   3. Once the provider has returned a result, retries are forbidden
  *      — if BullMQ redelivers this job after `providerResultUrl` was
  *      recorded, we mark the task failed immediately and return.
- *   4. Each successful completion charges exactly once, enforced by a
- *      CAS on `tasks.billed_at` inside `markCompletedAndBill`.
+ *   4. Each successful completion charges exactly once: the `tasks.billed_at`
+ *      CAS and the task's charge request commit together in
+ *      `markCompletedAndBill`, and the request is settled once (inner#1617).
  *
  * Execution stages:
  *   [re-entry guard] → [provider call] → [record providerResultUrl]
- *   → [persist to storage] → [markCompletedAndBill (CAS)] → [deduct]
+ *   → [persist to storage] → [complete + request charge] → [settle charge]
  *
  * Errors before the provider result is recorded cause BullMQ to retry
  * the job. Errors after (persist failure, markCompleted failure) cause
@@ -419,10 +420,16 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
-    // A crash between marking the task billed and charging it leaves the
-    // run's hold standing, and this job now completes, so nothing after it
-    // releases the hold. Releasing one that is already released does nothing.
-    await releaseRunHold(taskId, userId);
+    // A crash between completing the task and settling its charge leaves the
+    // request pending and the run's hold standing, and this job now completes:
+    // settle the request here, or release the hold when nothing is pending.
+    await settleRunCharge({
+      taskId,
+      userId,
+      projectId: projectId ?? null,
+      wasFirst: false,
+      creditsUsed: existing.billedCredits ?? 0,
+    });
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
@@ -432,6 +439,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       credits?: number;
+      notice?: unknown;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -463,7 +471,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedResult), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -565,6 +573,7 @@ async function runTaskBody(
       externalTaskId: `breatic-${taskId}`,
       retryStarting,
       deadlineAt,
+      lastAttempt: isTerminalAttempt(job),
     };
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
@@ -756,16 +765,22 @@ async function runTaskBody(
   // feed and the charge all carry the same whole-cent figure (inner#1666).
   creditsUsed = toChargeCredits(creditsUsed);
 
-  // ─── Stage 3: Mark completed + charge (atomic via CAS) ────────────
-  // markCompletedAndBill uses a WHERE billed_at IS NULL clause so only
-  // the first Worker to reach this step wins the charge. Any subsequent
-  // retry (shouldn't happen given the re-entry guard above, but defense
-  // in depth) reads `wasFirst = false` and skips the deduct step.
-  const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
-  if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
-
+  // ─── Stage 3: Complete the task and record its charge, in one commit ──
+  // markCompletedAndBill's WHERE billed_at IS NULL lets only the first
+  // attempt complete the task, and only that attempt records the charge
+  // request, so the completion and what it owes commit together.
   const usedModel = (result.model as string | undefined) ?? model;
   const usedProvider = providerOf(taskType, usedModel);
+  const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs, {
+    actorUserId: userId,
+    projectId: projectId ?? null,
+    amount: creditsUsed,
+    description: `Task: ${taskType}`,
+    model: usedModel,
+    provider: usedProvider,
+    releaseHold: taskId,
+  });
+  if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
   // One line per finished generation, whatever it cost and whether or not a
   // charge follows. Not every modality carries a price yet, and a run whose
   // upstream reports nothing would otherwise leave no trace of the usage at
@@ -786,17 +801,8 @@ async function runTaskBody(
     );
   }
 
-  if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
-  await settleRunCharge({
-    taskId,
-    taskType,
-    userId,
-    projectId: projectId ?? null,
-    model: usedModel,
-    provider: usedProvider,
-    wasFirst,
-    creditsUsed,
-  });
+  if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; settling only what is pending");
+  await settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst, creditsUsed });
 
   // ─── Stage 4: Record history + settle each node's task row ───────
   // No canvas-node lock check here (#1618): the billed result is recorded to
@@ -831,7 +837,7 @@ async function runTaskBody(
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(result), { rethrow: true });
   }
 
   if (projectId) {
@@ -1190,14 +1196,11 @@ export interface FailedRunEnd {
 /** A finished run, as the charge for it needs it. */
 export interface RunCharge {
   taskId: string;
-  taskType: string;
   userId: string;
   projectId: string | null;
-  model: string | undefined;
-  provider: string | undefined;
-  /** Whether this attempt is the one that marked the task completed. */
+  /** Whether this attempt is the one that marked the task completed; logged with a failed settlement. */
   wasFirst: boolean;
-  /** What the run actually cost. */
+  /** What the run actually cost; logged with a failed settlement. */
   creditsUsed: number;
 }
 
@@ -1214,64 +1217,42 @@ export async function releaseRunHold(taskId: string, userId: string): Promise<vo
 }
 
 /**
- * Charge a completed run what it actually cost, or release what was held for
- * it (inner#1611).
+ * Settle a completed run's charge, or release what was held for it
+ * (inner#1611, inner#1617).
  *
- * The run was admitted by holding its estimate under the task id. The attempt
- * that marked the task completed charges the actual cost and releases that
- * hold in the same commit; one that cost nothing, or that lost the completion
- * to another attempt, only releases it.
+ * The attempt that completed the task recorded a charge request in the same
+ * commit. Settling it charges what the run cost and releases the hold in the
+ * settlement's own commit; a run with no pending request (it cost nothing,
+ * another attempt or the sweep already settled it) only releases the hold.
  *
- * Nothing here throws: the result is already delivered. A charge that fails is
- * logged for reconciliation and its hold is left to expire (inner#1617).
+ * Nothing here throws: the result is already delivered. A settlement that
+ * fails leaves the request pending and the hold standing, for the worker sweep
+ * or the hold's expiry.
  * @param run - The run and what it cost.
  */
 export async function settleRunCharge(run: RunCharge): Promise<void> {
   const { taskId, userId } = run;
-  if (!run.wasFirst || run.creditsUsed <= 0) {
+  let requestId: string | null;
+  try {
+    requestId = await creditLotService.pendingChargeRequestId("task", userId, taskId);
+  } catch (err) {
+    logger.error(
+      { err, taskId, userId, projectId: run.projectId, amount: run.creditsUsed },
+      "credit_charge_request_lookup_failed",
+    );
+    return;
+  }
+  if (requestId === null) {
     await releaseRunHold(taskId, userId);
     return;
   }
-  try {
-    const outcome = await creditLotService.chargeForGeneration({
-      projectId: run.projectId,
-      actorUserId: userId,
-      amount: run.creditsUsed,
-      description: `Task: ${run.taskType}`,
-      referenceId: taskId,
-      model: run.model,
-      provider: run.provider,
-      releaseHold: taskId,
-    });
-    if (parseCreditDecimal(outcome.shortfall) > 0n) {
-      // The studio's pool ran out mid-flight, or its credits were reassigned
-      // while the task ran. The result is already delivered, so what is left
-      // uncharged goes to reconciliation.
-      logger.error(
-        {
-          taskId,
-          userId,
-          studioId: outcome.studioId,
-          charged: outcome.charged,
-          shortfall: outcome.shortfall,
-        },
-        "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-      );
-    }
-    if (outcome.signalFailure) {
-      logger.error({ err: outcome.signalFailure, taskId, userId, projectId: run.projectId }, "credits_signal_failed");
-    }
-  } catch (err) {
-    // Deduct failed AFTER the CAS marked billed_at. The file is already
-    // persisted and the task is completed. Log loudly for manual
-    // reconciliation — do NOT roll back billed_at because that would allow a
-    // double-charge on the next retry. Also do NOT fail the task — the user
-    // is entitled to their result.
-    logger.error(
-      { taskId, userId, creditsUsed: run.creditsUsed, err },
-      "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
-    );
-  }
+  await settleChargeLogged(requestId, {
+    taskId,
+    userId,
+    projectId: run.projectId,
+    amount: run.creditsUsed,
+    wasFirst: run.wasFirst,
+  });
 }
 
 /**
@@ -2034,7 +2015,8 @@ async function importProvider(taskType: string): Promise<{
           return {
             ...(await runCatalogTask(
               stepDepsFor(studioId, run.resume.deadlineAt),
-              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting },
+              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting,
+                lastAttempt: run.resume.lastAttempt ?? false },
               modality,
               prompt,
               model,

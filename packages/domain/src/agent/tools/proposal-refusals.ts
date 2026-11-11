@@ -17,6 +17,25 @@
  * and each marked fix to clearing its refusal.
  */
 
+import type { ParamGate } from "@breatic/shared";
+
+/**
+ * The condition a gate states, in words.
+ * @param gate - The gate.
+ * @param quoted - Whether each param name is quoted.
+ * @returns The condition.
+ */
+export function gateWords(gate: ParamGate, quoted = true): string {
+  /**
+   * One param name as written.
+   * @param name - The name.
+   * @returns It, quoted when asked.
+   */
+  const named = (name: string): string => (quoted ? `"${name}"` : name);
+  const equals = Object.entries(gate.equals ?? {}).map(([name, value]) => `${named(name)} is ${JSON.stringify(value)}`);
+  return [...(gate.flag_on !== undefined ? [`${named(gate.flag_on)} is on`] : []), ...equals].join(" and ");
+}
+
 /** Every refusal the proposal check gives, each marked with where its one fix acts, or false for none. */
 export const REFUSALS = {
   "nothing-generates": false,
@@ -59,6 +78,8 @@ export const REFUSALS = {
   "line-empty": false,
   "speakers-missing": false,
   "no-prompt-box": "node",
+  "prompt-box-gated-off": false,
+  "slot-gated-off": false,
   "ref-outside": "node",
   "ref-self": "node",
   "ref-arrives-otherwise": false,

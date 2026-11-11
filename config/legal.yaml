@@ -7,8 +7,7 @@
 # this repository. Change this value when they are republished.
 terms_version: "2026-10-02"
 
-# Promoter program terms (inner#1868), published at
-# https://breatic.ai/promoter-terms/. This value is the version the terms
-# carry; change it whenever they are republished. Empty keeps promoter
-# applications closed.
-promoter_terms_version: "2026-11-08"
+# Promoter program terms are served at https://breatic.ai/promoter-terms/.
+# Set this to the approved version only after that page has been published.
+# Empty keeps promoter applications closed.
+promoter_terms_version: ""

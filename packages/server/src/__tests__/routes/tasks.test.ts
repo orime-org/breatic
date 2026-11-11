@@ -223,6 +223,30 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).toHaveBeenCalled();
     });
 
+    it("rejects a style prompt sent while Mureka composes from a melody BEFORE enqueue (breatic#1393)", async () => {
+      mocks.sendsUntakenPrompt.mockReturnValue(true);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { compose_from: "melody", prompt: "lo-fi piano", lyrics: "la", melody: "https://cdn/m.mp3" },
+          model: "mureka-v9.5-generate-song",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.sendsUntakenPrompt).toHaveBeenCalledWith("mureka-v9.5-generate-song", expect.objectContaining({ compose_from: "melody" }));
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      mocks.sendsUntakenPrompt.mockReturnValue(false);
+    });
+
     it("rejects a submission with too many reference images BEFORE enqueue (#1735) — no task, no bill", async () => {
       // The submission over-fills a capped list param; the gate must fire
       // before taskService.create + enqueue so nothing is created / queued /

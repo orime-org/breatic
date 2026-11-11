@@ -6,7 +6,7 @@
  *
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
- * atomic deduction) / tasks / node history / agent (model · tools) /
+ * recording a task's charge request with its completion) / tasks / node history / agent (model · tools) /
  * model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
@@ -58,7 +58,7 @@ export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.j
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
 export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 
-// ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
+// ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
@@ -72,6 +72,7 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+export { materialFacts, type MaterialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
 export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
@@ -202,7 +203,7 @@ export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, sendsUntakenPrompt, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:

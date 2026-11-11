@@ -160,6 +160,8 @@ exports[`every refusal states its fault, its rule and its facts > param-too-shor
 
 exports[`every refusal states its fault, its rule and its facts > param-undeclared (0): is met and says what is wrong, and its one fix clears it 1`] = `""qwen-image-edit-multiple-angles" declares no format. The ones set here: distance, horizontal_angle, vertical_angle. On node 1 ("Gen"), leave "format" out of params."`;
 
+exports[`every refusal states its fault, its rule and its facts > prompt-box-gated-off (0): is met and says what is wrong 1`] = `""mureka-v9.5-generate-song" draws its prompt box only while "compose_from" is "references", so words, tweak marks and refs written there reach nobody."`;
+
 exports[`every refusal states its fault, its rule and its facts > prompt-missing (0): is met and says what is wrong, and its one fix clears it 1`] = `""nano-banana-2" generates from what the prompt says, and this proposal writes nothing in it. On node 0 ("Gen"), write a prompt."`;
 
 exports[`every refusal states its fault, its rule and its facts > prompt-too-long (0): is met and says what is wrong 1`] = `""realtime-tts-2" takes 2000 characters and this prompt is 2100."`;
@@ -207,6 +209,8 @@ exports[`every refusal states its fault, its rule and its facts > shots-duration
 exports[`every refusal states its fault, its rule and its facts > shots-outside-multishot (0): is met and says what is wrong, and its one fix clears it 1`] = `"Shots belong to the multi_shot mode, and "Gen" runs "t2v". On node 0 ("Gen"), leave shots out."`;
 
 exports[`every refusal states its fault, its rule and its facts > shots-with-prompt (0): is met and says what is wrong, and its one fix clears it 1`] = `"With shots the main prompt is not sent; its words, refs and notes go in the shots. On node 0 ("Gen"), leave prompt out."`;
+
+exports[`every refusal states its fault, its rule and its facts > slot-gated-off (0): is met and says what is wrong 1`] = `""Tune" goes into "melody" of "Gen", and "mureka-v9.5-generate-song" draws "melody" only while "compose_from" is "melody"."`;
 
 exports[`every refusal states its fault, its rule and its facts > source-configured (0): is met and says what is wrong 1`] = `""Pic" is a source node: it holds material or stands empty for the user, so it takes no mode, model, params, fills, shots, lines, or prompt; it carries mode."`;
 
@@ -274,7 +278,7 @@ exports[`every refusal states its fault, its rule and its facts > way-over-room 
 
 exports[`every refusal states its fault, its rule and its facts > way-over-room (2): is met and says what is wrong 1`] = `""nano-banana-pro-edit-ultra" takes 11 image node(s) by "pool", and 12 are going that way ("Pic 0", "Pic 1", "Pic 2", "Pic 3", "Pic 4", "Pic 5", "Pic 6", "Pic 7", "Pic 8", "Pic 9", "Pic 10", "M"). An empty image node goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref. An image node holding material goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref. "style_images" takes 3 image node(s) and holds none."`;
 
-exports[`every refusal states its fault, its rule and its facts > way-over-room (3): is met and says what is wrong 1`] = `""mureka-v9.5-generate-song" takes 1 audio node(s) by "melody", and 3 are going that way ("A", "X", "C"). An audio node holding material goes into "Gen" through fills "melody" on "Gen", with no edge and no ref, or through fills "song" on "Gen", with no edge and no ref, or through fills "vocal" on "Gen", with no edge and no ref. "song" takes 1 audio node(s) and holds none. "vocal" takes 1 audio node(s) and holds "X"."`;
+exports[`every refusal states its fault, its rule and its facts > way-over-room (3): is met and says what is wrong 1`] = `""mureka-v9.5-generate-song" takes 1 audio node(s) by "song", and 3 are going that way ("A", "X", "C"). An audio node holding material goes into "Gen" through fills "song" on "Gen", with no edge and no ref, or through fills "vocal" on "Gen", with no edge and no ref. "vocal" takes 1 audio node(s) and holds "X"."`;
 
 exports[`every refusal states its fault, its rule and its facts > written-configured (0): is met and says what is wrong 1`] = `""Words" already holds its words, so it takes no mode, model, params, fills, shots, or lines -- nothing is generated there; it carries mode."`;
 

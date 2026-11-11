@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
+import { createPublishThrottle } from '@web/lib/publish-throttle';
 
 /** The frame length the fake timers run animation callbacks at. */
 const FRAME_MS = 16;

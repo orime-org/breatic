@@ -8,9 +8,9 @@
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { sanitizeModelCatalog } from "@breatic/shared";
+import { resolveParams, sanitizeModelCatalog } from "@breatic/shared";
 
-import { getFullModelConfig, getModelCatalog, MODALITIES } from "../model-catalog.js";
+import { estimateModelCredits, getFullModelConfig, getModelCatalog, MODALITIES } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 const T23D = "tripo-h3.1-t23d";
@@ -22,6 +22,7 @@ const IMAGE_ONLY = ["texture_alignment", "orientation", "enable_image_autofix"];
 
 /** The forced values every entry declares, in this order. */
 const FORCES = [
+  { id: "low_poly_skips_parts", when: { flag_on: "smart_low_poly" }, set: { generate_parts: false }, lock: true },
   { id: "parts_geometry_only", when: { flag_on: "generate_parts" }, set: { texture: false, pbr: false }, lock: true },
   { id: "pbr_needs_texture", when: { flag_on: "pbr" }, set: { texture: true }, lock: true },
   {
@@ -30,6 +31,22 @@ const FORCES = [
     set: { texture_version: "v3.5" },
     lock: true,
   },
+];
+
+/** The rigging step every entry declares (inner#1692, design 6.1). */
+const RIG_STEP = {
+  endpoint: "tripo3d/rig",
+  at: "after",
+  for_param: "rig_skeleton",
+  optional: true,
+  pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
+};
+
+/** Each entry's sources and its default generation price in US cents (Standard texture with PBR). */
+const DEFAULT_RUNS: readonly { name: string; params: Record<string, unknown>; cents: number }[] = [
+  { name: T23D, params: {}, cents: 24 },
+  { name: I23D, params: { image: "i" }, cents: 36 },
+  { name: MULTIVIEW, params: { images: ["a", "b"] }, cents: 36 },
 ];
 
 /**
@@ -109,9 +126,17 @@ describe("the 3D model catalog", () => {
     ).toEqual([[], IMAGE_ONLY, IMAGE_ONLY]);
   });
 
-  it("gives every entry the same three forced values, in order", () => {
+  it("gives every entry the same four forced values, in order", () => {
     for (const name of [T23D, I23D, MULTIVIEW]) {
       expect(declared(name).forces, name).toEqual(FORCES);
+    }
+  });
+
+  // Tripo: generate_parts is "Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced".
+  it("turns separate parts off under smart low-poly and leaves the texture the user chose", () => {
+    for (const name of [T23D, I23D, MULTIVIEW]) {
+      const resolved = resolveParams(declared(name), { smart_low_poly: true, generate_parts: true, texture: true });
+      expect([resolved.generate_parts, resolved.texture], name).toEqual([false, true]);
     }
   });
 
@@ -123,7 +148,7 @@ describe("the 3D model catalog", () => {
       expect(entry.params.delight?.when, entry.name).toEqual({ flag_on: "texture", equals: { texture_version: "v3.5" } });
       expect(entry.params.face_limit, entry.name).toMatchObject({
         type: "integer",
-        min: 1,
+        min: 48,
         max: 1_500_000,
         bounds: [
           { when: { flag_on: "smart_low_poly" }, min: 500, max: 20_000 },
@@ -139,5 +164,48 @@ describe("the 3D model catalog", () => {
     const t23d = wire.three_d.find((m) => m.name === T23D);
     expect(t23d?.prompt_max_length).toBe(1024);
     expect(t23d?.params.negative_prompt?.max_length).toBe(255);
+  });
+});
+
+describe("rigging a generated 3D model (inner#1692)", () => {
+  beforeEach(useFullCatalog);
+  afterAll(restoreProcessEnv);
+
+  it("declares the rig toggle on every entry, off by default and set in the panel", () => {
+    for (const name of [T23D, I23D, MULTIVIEW]) {
+      expect(declared(name).params?.rig_skeleton, name).toMatchObject({
+        label: "Rig skeleton",
+        default: false,
+        values: [true, false],
+        fill: "panel",
+      });
+    }
+  });
+
+  it("declares exactly one extra step on every entry: the optional rig after generation", () => {
+    for (const name of [T23D, I23D, MULTIVIEW]) {
+      expect(declared(name).extra_steps, name).toEqual([RIG_STEP]);
+    }
+  });
+
+  it("ships the rig toggle and the optional rig step to the panel intact", () => {
+    const wire = sanitizeModelCatalog(JSON.parse(JSON.stringify(getModelCatalog())));
+    expect(wire.three_d).toHaveLength(3);
+    for (const entry of wire.three_d) {
+      expect(entry.extra_steps, entry.name).toEqual([RIG_STEP]);
+      expect(entry.params.rig_skeleton, entry.name).toMatchObject({ default: false, values: [true, false], fill: "panel" });
+    }
+  });
+
+  it("prices the rig on top of the generation when the toggle is on, and leaves it out when off", async () => {
+    const multiplier = getModelCatalog().credit_multiplier;
+    for (const run of DEFAULT_RUNS) {
+      const off = await estimateModelCredits(run.name, { params: { ...run.params, rig_skeleton: false } });
+      const unset = await estimateModelCredits(run.name, { params: run.params });
+      const on = await estimateModelCredits(run.name, { params: { ...run.params, rig_skeleton: true } });
+      expect(off, run.name).toEqual({ credits: expect.closeTo(run.cents * multiplier, 6) as number, bound: "exact" });
+      expect(unset, run.name).toEqual(off);
+      expect(on, run.name).toEqual({ credits: expect.closeTo((run.cents + 30) * multiplier, 6) as number, bound: "exact" });
+    }
   });
 });

@@ -11,6 +11,10 @@
 # ── Build: the runner, the font set, the runtime and dsh ─────────────────
 FROM node:24-bookworm-slim AS build
 WORKDIR /src
+COPY scripts/release.mjs /src/scripts/release.mjs
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+RUN mkdir -p /out && node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /out/build-info.json
 
 # The runner, bundled into one file with the Worker's shared agreement and the
 # three shared modules it reads, resolved through tsconfig's paths.
@@ -90,6 +94,7 @@ COPY --from=build /opt/dsh /opt/dsh
 COPY --from=build /out/fonts /app/fonts
 COPY --from=build /out/runtime /app/runtime
 COPY --from=build /out/server.mjs /app/server.mjs
+COPY --from=build /out/build-info.json /app/build-info.json
 COPY --chown=runner:runner packages/ingest/container/web-animation-dsh-profile /home/runner/.dsh/profiles/breatic-web-animation
 
 ENV WEB_ANIMATION_FONTS_DIR=/app/fonts \

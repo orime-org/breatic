@@ -14,7 +14,10 @@
 
 import type * as Y from 'yjs';
 
-import { claimIn } from '@web/spaces/document/document-pending-status';
+import { readDocSize, subscribeDocSize } from '@web/data/yjs/doc-size';
+import { docNameOf } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
+import { claimIn } from '@web/lib/upload-claims';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { ClaimChannel, UploadController, UploadSource } from '@web/spaces/document/document-upload-controller';
@@ -58,32 +61,41 @@ export interface BodyUploads {
  * @param body.spaceId - Its Space.
  * @param body.doc - Its document.
  * @param body.connection - This page's connection to it.
+ * @param body.name - Its document name; read off the document cache when left out.
  * @returns The link.
  */
 export function openBodyUploads(
   controller: UploadController,
-  body: { spaceId: string; doc: Y.Doc; connection: BodyConnection },
+  body: { spaceId: string; doc: Y.Doc; connection: BodyConnection; name?: string },
 ): BodyUploads {
   const { connection } = body;
-  const detach = controller.attach({ spaceId: body.spaceId, doc: body.doc, ...connection });
+  const name = body.name ?? docNameOf(body.doc);
+  const detach = controller.attach({ spaceId: body.spaceId, doc: body.doc, name, ...connection });
   const pending: PendingUploadsStore = {
     factsOf: (uploadId) => ({
       entry: controller.entry(uploadId),
       access: connection.writeAccess(),
       refused: connection.refused(),
       claim: connection.awareness === undefined ? null : claimIn(connection.awareness.getStates(), uploadId),
+      // A rebuild holds the write too, but its own sentence was said once.
+      full: name !== null && readDocSize(name).phase === 'full',
     }),
     subscribe: (listener) => {
       const stopController = controller.subscribe(listener);
       const stopConnection = connection.onChange(listener);
+      const stopSize = name === null ? null : subscribeDocSize(name, listener);
       connection.awareness?.on('change', listener);
       return () => {
         stopController();
         stopConnection();
+        stopSize?.();
         connection.awareness?.off('change', listener);
       };
     },
     retry: (uploadId) => {
+      // A Retry asks the server again for what lands in the body: a Space
+      // that cannot take an add sends nothing and keeps the file (design 5.2).
+      if (name !== null && !checkAdd(name).ok) return;
       controller.retry(uploadId);
     },
   };

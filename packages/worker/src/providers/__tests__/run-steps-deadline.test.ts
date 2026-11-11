@@ -100,7 +100,7 @@ function stores(preset: Step[] = []): { steps: Step[]; deps: Parameters<typeof r
  * @returns The context.
  */
 function ctx(offsetMs: number, retryStarting = false): Parameters<typeof runCatalogTask>[1] {
-  return { taskId: TASK, studioId: null, deadlineAt: NOW + offsetMs, retryStarting };
+  return { taskId: TASK, studioId: null, deadlineAt: NOW + offsetMs, retryStarting, lastAttempt: false };
 }
 
 /**

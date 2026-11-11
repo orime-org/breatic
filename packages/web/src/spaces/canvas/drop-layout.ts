@@ -10,7 +10,8 @@
  * function a test can walk.
  */
 
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, groupRectForMembers, type Rect } from '@web/spaces/canvas/group-geometry';
+import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
 
 /** A point on the canvas. */
 export interface DropPoint {
@@ -89,4 +90,37 @@ export function batchCentresAt(
     x: left + (index % COLUMNS) * NODE_STEP.x,
     y: top + Math.floor(index / COLUMNS) * NODE_STEP.y,
   }));
+}
+
+/** Where one batch's nodes go and the Group framing them. */
+export interface BatchLayout {
+  /** Each node's centre, in the order the batch came in. */
+  readonly centres: DropPoint[];
+  /** Each node's top-left, at the empty footprint the placement stepped by. */
+  readonly tops: DropPoint[];
+  /** The Group around two or more nodes; null for one. */
+  readonly frame: Rect | null;
+}
+
+/**
+ * One batch laid out at a point: files dropped, pasted or picked together, or
+ * media pasted from the document body, each arriving the same way.
+ * @param origin - Where the batch came in.
+ * @param count - How many nodes the batch makes.
+ * @returns The centres, the top-lefts and the Group's frame.
+ */
+export function batchLayoutAt(origin: DropPoint, count: number): BatchLayout {
+  const centres = batchCentresAt(origin, count);
+  const tops = centres.map((centre) => centerToTopLeft(centre, EMPTY_NODE_SIZE));
+  const frame = count >= 2 ? groupRectForMembers(tops.map((top) => ({ ...top, ...EMPTY_NODE_SIZE }))) : null;
+  return { centres, tops, frame };
+}
+
+/**
+ * The name of the Group a batch arrives in, the same in every language.
+ * @param count - How many nodes the batch holds.
+ * @returns The name.
+ */
+export function batchGroupName(count: number): string {
+  return `${String(count)} files`;
 }

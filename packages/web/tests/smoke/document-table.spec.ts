@@ -368,6 +368,7 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
     els.map((el) => `${el.getAttribute('data-testid')}${el.getAttribute('aria-disabled') === 'true' ? ' off' : ''}`),
   );
   expect(rows).toEqual([
+    'doc-block-row-fullscreen',
     'doc-block-row-insertBelow',
     'doc-block-row-duplicate',
     'doc-block-row-copy',
@@ -396,6 +397,85 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
   await expect(page.locator(TOP).nth(1)).toHaveText('tail');
   await expect(page.locator(TOP).nth(2).locator('table')).toHaveCount(1);
   expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
+});
+
+test('#1427: Full screen lays the table over the window for editing, and Escape goes back to where it stood', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  const before = await page.locator(`${EDITOR} [data-node-type='docTable']`).boundingBox();
+  await hoverTable(page);
+  await page.getByTestId('doc-block-table-handle').click();
+  await page.getByTestId('doc-block-row-fullscreen').click();
+
+  // The editor area covers the window, the top bar and the Agent panel with it,
+  // and shows the table alone with the way out at the top right.
+  const area = page.locator('[data-table-fullscreen]');
+  await expect(area).toBeVisible();
+  const covered = await page.evaluate(() => document.querySelector('[data-table-fullscreen]')!.contains(document.elementFromPoint(10, 10)));
+  expect(covered).toBe(true);
+  await expect(page.locator(`${EDITOR} .bn-block-content`).filter({ hasText: 'lead' })).toBeHidden();
+  await expect(page.getByTestId('doc-table-fullscreen-exit')).toBeVisible();
+
+  // The way out stands in the corner the media full screen uses, its label
+  // ends where it ends, and the table starts below it.
+  const exitBox = (await page.getByTestId('doc-table-fullscreen-exit').boundingBox())!;
+  const screenSize = page.viewportSize()!;
+  expect(screenSize.width - (exitBox.x + exitBox.width)).toBe(16);
+  expect(exitBox.y).toBe(16);
+  const tableTop = (await page.locator(`${EDITOR} [data-node-type='docTable']`).boundingBox())!.y;
+  expect(tableTop).toBeGreaterThanOrEqual(exitBox.y + exitBox.height + 8);
+  await page.getByTestId('doc-table-fullscreen-exit').hover();
+  const label = (await page.getByRole('tooltip').locator('..').boundingBox())!;
+  expect(Math.round(label.x + label.width)).toBe(Math.round(exitBox.x + exitBox.width));
+  await page.mouse.move(screenSize.width / 2, screenSize.height / 2, { steps: 8 });
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+
+  // Editing in a cell is the same table, and undo takes it back in place.
+  await clickAndSettle(page, page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }));
+  await page.keyboard.press('End');
+  await page.keyboard.type('Z');
+  expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2Z']]]);
+  await pressAndSettle(page, 'ControlOrMeta+z');
+  expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
+  await expect(area).toBeVisible();
+
+  // The row handle is there; the table's own icon and the cell blocks' dots are not.
+  const first = await page.locator(`${EDITOR} td`).first().boundingBox();
+  await page.mouse.move(first!.x + 20, first!.y + 10, { steps: 3 });
+  await expect(page.getByTestId('doc-table-row-handle')).toBeVisible();
+  await expect(page.getByTestId('doc-block-table-handle')).toHaveCount(0);
+  await expect(page.getByTestId('doc-block-handle')).toHaveCount(0);
+
+  // A row dragged by its handle still lands, as in the body.
+  await hoverCell(page, 'a1');
+  const handle = await page.getByTestId('doc-table-row-handle').boundingBox();
+  const last = await cell(page, 'a2').boundingBox();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle!.x + 4, handle!.y + 10, { steps: 4 });
+  await page.mouse.move(last!.x + 30, last!.y + last!.height - 3, { steps: 8 });
+  await page.mouse.up();
+  expect(await grids(page)).toEqual([[['a2', 'b2'], ['a1', 'b1']]]);
+  await expect(area).toBeVisible();
+
+  // A row added from its handle, and the cell's own button by the caret.
+  await hoverCell(page, 'b1');
+  await page.getByTestId('doc-table-row-handle').click();
+  await page.getByTestId('doc-table-row-insertBelow').click();
+  expect(await grids(page)).toEqual([[['a2', 'b2'], ['a1', 'b1'], ['', '']]]);
+  await expect(area).toBeVisible();
+  await cell(page, 'a2').click();
+  await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
+
+  await page.locator(`${EDITOR} td`).filter({ hasText: 'b2' }).click();
+  // A tooltip a handle left open takes the first Escape, as anywhere.
+  await page.mouse.move(5, 5);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(area).toHaveCount(0);
+  await expect(page.locator(`${EDITOR} .bn-block-content`).filter({ hasText: 'lead' })).toBeVisible();
+  const after = await page.locator(`${EDITOR} [data-node-type='docTable']`).boundingBox();
+  expect(Math.abs(after!.y - before!.y)).toBeLessThan(2);
 });
 
 test('A6: the row and column handles insert, delete and set the header', async () => {
@@ -1070,7 +1150,7 @@ async function pageWithHeldFrames(
 ): Promise<{ p: Page; hold: (on: boolean) => void }> {
   const p = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   let held: (() => void)[] | null = null;
-  await p.routeWebSocket('**/ws', (route) => {
+  await p.routeWebSocket((url) => url.pathname === '/ws', (route) => {
     const server = route.connectToServer();
     route.onMessage((data) => {
       if (held === null) server.send(data);

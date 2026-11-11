@@ -27,6 +27,7 @@ If you are joining an existing instance, use the address provided by its operato
 - **Work with selected nodes:** right-click a node or selection for available actions such as copy, duplicate, group, rename, lock/unlock, download and delete. The menu depends on the selection and your permissions; not every action applies to every node.
 - **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
 - **Make it with the Agent:** tell the Agent in the chat panel what you want to make. It first asks, in one questionnaire, only what it cannot know or see, such as who a character of yours is or whether there is existing work to match. Where the look is a matter of taste, it proposes two or three different takes at the lowest price settings and says what they cost; it sets up the later steps once you pick one. Its proposals arrive as cards: nothing is placed until you press the card's button, and nothing is generated until you start the generation.
+- **Give the Agent standing instructions:** the scroll icon at the top of the chat panel (**Project instructions**) opens one plain text that the Agent receives with every message in every conversation of the Project, from every member, such as the language to reply in or a style to keep. The Owner and Editors can change it; **Save** applies it from the next message on, saving an empty text removes it, and the icon carries a small dot while the Project has instructions.
 - **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
 
 ## Arrange videos in Timeline
@@ -37,7 +38,7 @@ Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge
 | --- | --- |
 | **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
 | Select a Project video or use **Choose video** | Select a registered Project video or a local video file. |
-| **Track** and **Start frame**, then **Add to Timeline** | Confirm the track and whole-frame position and add the clip (on the main track with **Main track magnet** on, the start chooses where the clip is inserted and the main track stays end to end); a local file uploads and registers at this step. The track starts at the selected clip's track or the main track, the start at the sequence end, and each addition creates an independent clip. |
+| **Track** and **Start frame**, then **Add to Timeline** | Confirm the track and whole-frame position and add the clip (on the main track with **Main track magnet** on, the start chooses where the clip is inserted and the main track stays end to end); a local file is placed at once as a dashed clip named after the file, the dialog closes and the file uploads in the background while the Space tab shows a spinner, and the clip becomes the video when the upload finishes. The track starts at the selected clip's track or the main track, the start at the sequence end, and each addition creates an independent clip. |
 | Click a clip | Select it; the right panel shows its **Track**, **Start frame**, **In point (frames)** and **Duration (frames)**, then its video's length in frames at the Timeline's frame rate, or, for a web animation copy, the request it came from. Type a whole frame and press Enter or leave the field to apply it. |
 | Drag a clip | Move it in time, onto another track, or into the dashed row above the top track to create a new track. Drag the edges of the selected clip to trim it. |
 | **Undo**, **Redo**, **Split**, **Duplicate**, **Delete** | Undo or redo your own edits, split the selected clip at the playhead, place a copy right after it, or delete it. |
@@ -48,7 +49,7 @@ Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge
 | **Executions** | Open the execution list in the right panel with **Completed** and **In progress**. Press a row to see its steps, its usage and, for a finished result, a preview. **Cancel** stops a run, **Add to Timeline now** places its placeholder, **Add to Timeline** adds a new copy of a finished result each time, and **Run again** reopens the dialog filled in as before after a failure, cancel or expiry. Each copy is edited like a video clip; changing or removing one leaves the other copies and the execution as they are. |
 | Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it; the edit buttons stay disabled for them. |
 
-Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with **Main track magnet** on they swap it with the clip before or after it; with nothing selected they move the playhead; Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes; N turns snapping on or off; Esc cancels a drag. A failed local upload retains its selected file and position in the open form for retry.
+Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with **Main track magnet** on they swap it with the clip before or after it; with nothing selected they move the playhead; Alt+Up and Alt+Down change its track; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes; N turns snapping on or off; Esc cancels a drag. While a local file uploads, the uploader's clip properties show its progress; a failed upload keeps the clip and reads **Upload failed** on the track; the uploader's clip properties give the reason, with **Retry** when sending the same file again can help. If the uploader leaves before the upload finishes, the clip reads **Unfinished** and anyone who can edit can delete it. The preview shows nothing for such a clip, only a note naming its track. A web animation run in progress also makes the Timeline's Space tab show a spinner, even while another Space is shown.
 
 Audio/image/text placement and video export are planned additions.
 
@@ -60,14 +61,15 @@ Choose **3D** when creating a project or adding a Space. The type picker orders 
 | --- | --- |
 | Left **Add** button | Open the built-in object menu and add a box or figure. |
 | Left upload-arrow button | Open **Import model** and choose glTF or GLB files, a folder or a ZIP; the upload appears in the Tasks panel, where any member can place the model in the scene. |
-| Left sparkle button | Open **AI generation**: choose Text to 3D or Image to 3D from the mode button at the bottom left, write a prompt or fill the front, left, back and right views from your computer or the Project, adjust the settings and press the round generate button. The run appears in the Tasks panel. |
+| Left sparkle button | Open **AI generation**: choose Text to 3D or Image to 3D from the mode button at the bottom left, write a prompt or fill the front, left, back and right views from your computer or the Project, adjust the settings and press the round generate button. Turn on **Rig skeleton** to get a model with a skeleton that can be posed; the estimate includes that step. The run appears in the Tasks panel. |
 | Click an object; Shift-click more objects | Select objects in the viewport or object list. Click empty scene space to clear the selection. |
 | Bottom-centre selection menu | Choose Move, Rotate or Scale and drag the native scene handles; frame, duplicate or delete the selection. Multiple objects scale uniformly. |
-| Right **Properties** panel | Edit one object's name, position in metres, rotation in degrees and positive scale. Enter or leaving a field applies the value; Escape cancels its draft. |
+| Right **Properties** panel | Edit one object's name, position in metres, rotation in degrees and positive scale. Enter or leaving a field applies the value; Escape cancels its draft. A model with a skeleton adds a **Pose** section: the presets Stand, Sit, Lie down, Walk and Wave for a humanoid character, the **Adjust joints** switch and **Reset pose**. |
+| **Adjust joints** | Dots mark the character's joints. Click a dot, or a part of the body, to pick its joint, then drag the rotation rings on it; collaborators see the joint move while you drag. Escape leaves joint adjustment before it closes the panel; choosing Move, Rotate or Scale also leaves it. |
 | Padlock beside the panel's X | Lock or unlock selected objects. An Editor can unlock an object another collaborator locked. Copies start unlocked. |
 | Bottom-right bar | From left to right: Undo, Redo, Properties, Scene objects, Tasks and the minimap switch. Panel buttons toggle the corresponding right floating panel; its X also closes it. |
 | Minimap | Click its top view to navigate your personal viewing camera. |
-| Tasks panel | Lists every member's imports and generations, newest first, with filters. A finished row offers **Place in scene**; a row whose model is in the scene offers **Locate in scene**, which selects every copy and frames them. A failed generation offers **Retry** and **Remove**. |
+| Tasks panel | Lists every member's imports and generations, newest first, with filters. A finished row offers **Place in scene**; a row whose model is in the scene offers **Locate in scene**, which selects every copy and frames them. A failed generation offers **Retry** and **Remove**. A generation asked to rig a skeleton says whether the skeleton was rigged; if only that step failed, the model is still delivered and only the generation is charged. |
 | Agent proposals | Ask the Agent for a 3D model; its card opens the AI generation dialog of the 3D Space in front, filled from the proposal. |
 | Annotations | The dimmed annotation button explains on hover that annotations are still under development. |
 
@@ -129,6 +131,7 @@ These shortcuts act inside the document editor, not on canvas nodes. On macOS, `
 | To-do list | `Cmd+Shift+9` | `Ctrl+Shift+9` |
 | Code block | `Cmd+Option+C` | `Ctrl+Alt+C` |
 | Quote | `Cmd+Shift+B` | `Ctrl+Shift+B` |
+| Leave a table opened full screen | `Esc` | `Esc` |
 
 ### Chat
 

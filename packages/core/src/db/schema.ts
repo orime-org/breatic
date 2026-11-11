@@ -183,7 +183,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `chargeOnceForGeneration` already do.
+ * and `creditLotService.chargeOnce` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -786,10 +786,10 @@ export const tasks = pgTable(
      */
     providerTaskId: text("provider_task_id"),
     /**
-     * Idempotency guard for credit deduction. Set via CAS when the task
-     * is marked completed AND the file is persisted to storage. If set,
-     * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,
-     * stalled-job redelivery, or duplicate Worker instances.
+     * Set by the CAS that completes the task once its file is persisted.
+     * Only the attempt that sets it records the task's charge request
+     * (`credit_charge_requests`), in the same transaction, so BullMQ retries,
+     * stalled-job redelivery or a duplicate worker cannot record a second.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
     /**
@@ -816,13 +816,13 @@ export const tasks = pgTable(
 
 /**
  * The upstream calls one task makes, in order (#2156): a Mureka upload, a
- * cloned voice, vocal or element, then the model's own call, and for Voice
- * Cloning the speech after it. Written by the worker on the task's first run
+ * cloned voice, vocal or element, then the model's own call, and after it the
+ * speech for Voice Cloning or the rig for a 3D generation asked to rig a skeleton. Written by the worker on the task's first run
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind and status CHECKs live in migration 0085 only, as 0061 does for
- * its tables.
+ * The kind CHECK was last redefined by migration 0123 (0085 added it, 0092
+ * extended it); the status CHECK lives in 0085.
  */
 export const taskUpstreamSteps = pgTable(
   "task_upstream_steps",
@@ -1054,6 +1054,10 @@ export const nodeTasks = pgTable(
     // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
     // only, null on every other row; its CHECK lives in 0117.
     origin: varchar("origin", { length: 16 }),
+    // What the user is told beside a done 3D generation (inner#1692):
+    // 'rig_failed' when the model was delivered without the skeleton it was
+    // asked for. Null on every other row; its CHECK lives in 0123.
+    notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -2107,6 +2111,44 @@ export const creditHolds = pgTable(
   ],
 );
 
+// ── 8f. Credit charge requests (0121, inner#1617) ─────────────────────
+
+export const creditChargeRequests = pgTable(
+  "credit_charge_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
+    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // What the settlement's ledger rows carry as their reference.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // Above zero. CHECK in 0121.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    description: text("description"),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    // The credit hold the settlement releases, if any.
+    releaseHold: varchar("release_hold", { length: 255 }),
+    // 'pending' | 'settled'. CHECK in 0121.
+    status: varchar("status", { length: 16 }).$type<"pending" | "settled">().default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    // Set exactly when settled. CHECK in 0121.
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_charge_requests_key_idx").on(table.kind, table.actorUserId, table.referenceId),
+    index("credit_charge_requests_pending_idx")
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
@@ -2216,6 +2258,23 @@ export const agentMemories = pgTable(
       .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
   ],
 );
+
+/**
+ * A Project's instructions for the Agent (0122, #1400): one row per Project,
+ * sent at the end of the system prompt on every request there. Clearing sets
+ * `deleted_at`; a later save brings the same row back.
+ */
+export const projectAgentInstructions = pgTable("project_agent_instructions", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  content: text("content").notNull(),
+  updatedByUserId: uuid("updated_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
 
 /**
  * One Timeline execution the user accepted (0119, inner#1711).

@@ -20,7 +20,7 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protoc
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
-import { claimIn } from '@web/spaces/document/document-pending-status';
+import { claimIn } from '@web/lib/upload-claims';
 import {
   createUploadController,
   type AttachedBody,

@@ -127,6 +127,7 @@
       "attachment_limit_reached": "이 대화의 첨부 파일이 최대 {limit}개에 도달했습니다. 일부를 삭제한 후 업로드하세요."
     },
     "canvas": {
+      "prompt_not_taken": "이 모델은 현재 설정에서 스타일을 받지 않습니다. 스타일을 지운 뒤 생성하세요.",
       "model_requires_source": "이 모델에는 소스 입력이 필요합니다. 이미지, 동영상 또는 오디오 노드를 연결하세요",
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
       "param_too_short": "{name}을(를) 입력하세요",
@@ -602,6 +603,19 @@
       "needScene": "먼저 3D Space를 여세요.",
       "credits": "약 {credits} 크레딧",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project 지침",
+      "title": "Project 지침",
+      "description": "이 Project의 모든 대화에서 Agent에게 전달됩니다. 모든 멤버가 함께 사용합니다.",
+      "placeholder": "예: 영어로 답하기, 색은 파란색과 흰색만 쓰기.",
+      "atLimit": "{max, number}자 제한에 도달했습니다",
+      "lastEdited": "{name}님이 {time}에 마지막으로 수정",
+      "save": "저장",
+      "saved": "저장했습니다",
+      "cleared": "Project 지침을 지웠습니다",
+      "readFailed": "Project 지침을 불러오지 못했습니다",
+      "saveFailed": "Project 지침을 저장하지 못했습니다"
     }
   },
   "canvas": {
@@ -841,6 +855,7 @@
       "coverSongTip": "오디오 노드를 골라 그 곡을 커버합니다",
       "selectCoverSongFromCanvas": "커버할 곡 고르기",
       "errorNoMusicSong": "곡을 먼저 고르세요",
+      "errorNoMusicMelody": "멜로디를 먼저 고르세요",
       "moodImage": "참고 이미지",
       "moodImageTip": "이미지를 골라 분위기를 정합니다",
       "removeMoodImage": "참고 이미지 제거",
@@ -852,7 +867,7 @@
       "musicLyricsLabel": "가사",
       "lyricsMissing": "먼저 가사를 적으세요",
       "refuseExecuteNoStyle": "먼저 스타일을 적으세요",
-      "refuseExecuteNoReference": "전체 곡, 멜로디, 보컬 중 하나를 고르세요",
+      "refuseExecuteNoReference": "전체 곡이나 보컬을 먼저 고르세요",
       "creditsPerThousandChars": "{credits} / 1000자",
       "itemsAdd": "추가",
       "itemsRemove": "삭제",
@@ -871,6 +886,7 @@
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
       "param": {
+        "compose_from": "생성 기준",
         "language": "언어",
         "voice_description": "음성 설명",
         "speakers": "화자",
@@ -924,6 +940,7 @@
         "face_limit": "면 수 제한",
         "auto_size": "자동 크기",
         "export_uv": "UV 내보내기",
+        "rig_skeleton": "스켈레톤 리깅",
         "model_seed": "모델 시드",
         "texture_seed": "텍스처 시드",
         "texture_alignment": "텍스처 정렬",
@@ -2345,6 +2362,8 @@
         "splitCell": "셀 분할",
         "mergeCells": "셀 병합",
         "textHighlight": "배경(텍스트 강조)",
+        "fullscreen": "전체 화면",
+        "exitFullscreen": "전체 화면 종료",
         "cut": "잘라내기",
         "pasteAbove": "위에 붙여넣기",
         "pasteBelow": "아래에 붙여넣기",
@@ -2387,7 +2406,8 @@
         },
         "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
         "notWrittenYet": "업로드됨, 아직 추가되지 않음",
-        "notPasted": "{count}개 항목을 붙여넣지 못했습니다."
+        "notPasted": "{count}개 항목을 붙여넣지 못했습니다.",
+        "stillUploading": "이미지, 동영상, 오디오 {count}개는 업로드 중이라 붙여넣지 않았습니다. 업로드가 완료되면 다시 복사하세요."
       }
     },
     "readOnlyReconnect": "다시 연결",
@@ -2418,6 +2438,18 @@
       "selectedCount": "{count}개 선택됨",
       "multiTransform": "장면의 기즈모로 선택한 개체들을 중심 주위에서 변환하세요.",
       "mixed": "여러 값",
+      "pose": {
+        "title": "포즈",
+        "stand": "서기",
+        "sit": "앉기",
+        "lie": "눕기",
+        "walk": "걷기",
+        "wave": "손 흔들기",
+        "jointMode": "관절 조정",
+        "reset": "포즈 초기화",
+        "noSkeleton": "이 모델에는 스켈레톤이 없어 포즈를 지정할 수 없습니다.",
+        "humanoidOnly": "프리셋은 인간형 캐릭터에만 적용됩니다."
+      },
       "selectObject": "속성을 편집할 오브젝트를 선택하세요.",
       "refused": "이 장면에 대한 연결이 거부되었습니다. 변경 사항은 저장되지 않습니다.",
       "retry": "재시도",
@@ -2507,6 +2539,9 @@
         "kindGeneration": "생성",
         "originSpace": "Space 내",
         "originAgent": "Agent",
+        "rigFailed": "스켈레톤 리깅에 실패해 이 모델은 포즈를 잡을 수 없습니다",
+        "rigged": "스켈레톤 리깅 완료",
+        "willRig": "생성이 끝나면 스켈레톤을 리깅합니다",
         "generating": "생성 중",
         "generatingFor": "생성 중 · {minutes}분 경과",
         "stillRunning": "이 생성은 아직 마무리 중입니다. 나중에 다시 시도하세요.",
@@ -2526,6 +2561,7 @@
       "proposalBusy": "다른 생성을 제출하는 중입니다.",
       "readOnlyCreate": "Viewer는 모델을 추가, 가져오기, 생성할 수 없습니다.",
       "force": {
+        "low_poly_skips_parts": "스마트 로우폴리에서는 파트를 분리하지 않습니다.",
         "parts_geometry_only": "파트 분리는 지오메트리만 생성합니다.",
         "pbr_needs_texture": "PBR에는 텍스처가 필요합니다.",
         "fast_uses_v35": "Fast 텍스처는 v3.5만 지원합니다."
@@ -2572,6 +2608,19 @@
         "formats": "PNG, JPEG 또는 WebP",
         "chooseFile": "파일 선택"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "이 Space는 {used}를 사용하고 있습니다. {limit}를 넘으면 더 이상 내용을 추가할 수 없습니다.",
+      "noticeFull": "이 Space가 가득 찼습니다({used} / {limit}). 한도 아래로 내려갈 때까지 내용을 삭제만 할 수 있습니다.",
+      "noticeOver": "이 Space가 한도를 초과했습니다({used} / {limit}). 노드, 클립, 모델, 단락 전체를 통째로만 삭제할 수 있습니다.",
+      "add": "이 Space가 가득 찼습니다. 계속 편집하려면 일부 내용을 삭제하세요.",
+      "compound": "이 Space가 가득 찼습니다. 이 삭제는 다른 내용도 바꾸어야 해서 지금은 실행할 수 없습니다.",
+      "over": "이 Space가 한도를 초과했습니다. 노드, 클립, 모델, 단락 전체를 통째로 삭제하세요.",
+      "resync": "방금 변경한 내용이 이 Space의 크기 한도를 넘어 저장되지 않았습니다.",
+      "proposal": "이 Space가 가득 차서 제안을 배치하지 못했습니다.",
+      "reason": "이 Space가 가득 찼습니다.",
+      "text": "텍스트가 추가되지 않았습니다. 이 Space가 가득 찼습니다.",
+      "wait": "이 Space가 가득 찼습니다. 일부 내용을 삭제하면 완료됩니다."
     }
   },
   "menu": {
@@ -3549,8 +3598,6 @@
       "more": "더 불러오기",
       "chooseFile": "동영상 선택",
       "fileEmpty": "로컬 동영상 파일을 선택하세요.",
-      "preparing": "동영상 준비 중…",
-      "progress": "업로드 중 {progress}%",
       "confirm": "Timeline에 추가",
       "insertAfter": "{name} 뒤에 삽입",
       "insertFirst": "메인 트랙 맨 앞에 삽입"
@@ -3564,12 +3611,13 @@
       "invalid_range": "동영상 범위 안의 프레임을 입력하세요.",
       "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
       "clip_removed": "이 클립은 다른 멤버가 삭제했습니다.",
-      "upload": "업로드에 실패했습니다. 선택한 파일로 다시 시도할 수 있습니다.",
       "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요.",
       "track_missing": "대상 트랙이 삭제되었습니다. 다른 트랙을 선택하세요.",
       "id_taken": "이미 있는 항목입니다. 다시 시도하세요.",
       "main_track": "메인 트랙은 삭제할 수 없습니다.",
       "track_not_empty": "빈 트랙만 삭제할 수 있습니다.",
+      "full": "이 Space가 가득 찼습니다. 계속 편집하려면 일부 내용을 삭제하세요.",
+      "over_ceiling": "이 Space가 한도를 초과했습니다. 클립 전체를 삭제하세요.",
       "source_unresolved": "웹 애니메이션이 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요."
     },
     "mainTrack": "메인 트랙",
@@ -3663,6 +3711,14 @@
         "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
         "loading": "{track}: 웹 애니메이션 불러오는 중…"
       }
+    },
+    "upload": {
+      "uploading": "업로드 중",
+      "progress": "업로드 중 {progress}%",
+      "failed": "업로드 실패",
+      "waiting": "업로드됨, 편집 권한 대기 중",
+      "unfinished": "미완료",
+      "preview": "{track}: {state, select, failed {동영상 업로드 실패, 표시 안 함} unfinished {동영상 미완료, 표시 안 함} other {동영상 업로드 중…}}"
     }
   }
 }

@@ -35,6 +35,8 @@ const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 const charge = vi.hoisted(() => ({
   fail: null as Error | null,
   calls: [] as unknown[][],
+  /** What the settled charge says it took. */
+  charged: "2000.000000",
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -48,7 +50,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 /** What each recorder was opened with, and what it was told. */
-const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unknown[] }));
+const recorders = vi.hoisted(() => ({
+  opened: [] as unknown[],
+  calls: [] as unknown[],
+  /** When set, the recorder's usage row could not be written. */
+  writeFailure: null as Error | null,
+}));
 
 vi.mock("@breatic/domain", async () => ({
   // Real: the tracker is pure, and what the run hands off depends on it.
@@ -109,7 +116,14 @@ vi.mock("@breatic/domain", async () => ({
       },
       recordServiceCall: () => {},
       awaitingLookup: () => [],
-      settle: async () => credits,
+      settle: async () => {
+        if (recorders.writeFailure) throw recorders.writeFailure;
+        return credits;
+      },
+      settleForCharge: async () => ({
+        credits,
+        writeFailures: recorders.writeFailure ? [recorders.writeFailure] : [],
+      }),
     };
   },
   // The real one routes on which API keys the deployment has, so a name
@@ -119,10 +133,10 @@ vi.mock("@breatic/domain", async () => ({
   // spells per route is `llm.ts`'s to test.
   callOptionsFor: () => ({ providerOptions: {} }),
   creditLotService: {
-    chargeOnceForGeneration: async (...args: unknown[]) => {
+    chargeOnce: async (...args: unknown[]) => {
       charge.calls.push(args);
       if (charge.fail) throw charge.fail;
-      return { charged: "0.000000", shortfall: "0.000000", studioId: null, lotIds: [] };
+      return { billed: true, charged: charge.charged, shortfall: "0.000000", studioId: null, lotIds: [] };
     },
   },
 }));
@@ -167,6 +181,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   charge.fail = null;
   charge.calls = [];
+  charge.charged = "2000.000000";
+  recorders.writeFailure = null;
   recorders.opened = [];
   recorders.calls = [];
   modelRun.tokens = 2000;
@@ -191,9 +207,43 @@ describe("扣费失败", () => {
       Record<string, unknown>,
       string,
     ];
-    expect(message).toBe("text_tool_credit_charge_failed");
+    expect(message).toBe("credit_charge_settle_failed");
     expect(ctx).toMatchObject({ userId: "u-1", tool: "generate", tokens: 2000 });
     expect(ctx.err).toBe(charge.fail);
+    // What finds the pending request the sweep will settle: its key and amount.
+    expect(charge.calls).toHaveLength(1);
+    expect(ctx).toMatchObject({ refKey: charge.calls[0]![1], amount: (charge.calls[0]![2] as { amount: number }).amount });
+  });
+
+  it("reports zero credits used when the charge fails", async () => {
+    charge.fail = new Error("boom");
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", creditsUsed: "0.000000" });
+  });
+
+  it("reports what the settled charge took as the credits used", async () => {
+    charge.charged = "1500.000000";
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", tokens: 2000, creditsUsed: "1500.000000" });
+  });
+
+  it("charges the full amount when a usage row could not be written, and logs the row", async () => {
+    // inner#1617: a lost usage row must not lose the charge.
+    recorders.writeFailure = new Error("usage row insert failed");
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", creditsUsed: "2000.000000" });
+    expect(charge.calls).toHaveLength(1);
+    expect(charge.calls[0]?.[2]).toMatchObject({ amount: 2000 });
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ err: recorders.writeFailure }),
+      "agent_usage_record_failed",
+    );
   });
 
   it("扣费成功时不记错误", async () => {
@@ -207,7 +257,8 @@ describe("扣费失败", () => {
     // 画布生成写进同一张表，两边都得填。
     await run();
 
-    expect(charge.calls[0]?.[1]).toMatchObject({
+    expect(charge.calls[0]?.[0]).toBe("operation");
+    expect(charge.calls[0]?.[2]).toMatchObject({
       model: "openai/gpt-4o-mini",
       provider: "routed:openai/gpt-4o-mini",
     });
@@ -276,8 +327,8 @@ describe("一次跑到一半就死掉的运行", () => {
     expect(thrown.value).toMatchObject({ type: "error" });
     expect(charge.calls).toHaveLength(2);
     // 同一个幂等键，所以两次里只有一次真扣得下去。
-    expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
-    expect(charge.calls[1]?.[1]).toMatchObject({ amount: 2000 });
+    expect(charge.calls[1]?.[1]).toBe(charge.calls[0]?.[1]);
+    expect(charge.calls[1]?.[2]).toMatchObject({ amount: 2000 });
   });
 });
 
@@ -323,8 +374,9 @@ describe("what a run records", () => {
         provider: "routed:openai/gpt-4o-mini",
       }),
     ]);
-    expect(charge.calls[0]?.[0]).toBe("texttool:key-1");
-    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000, projectId: PROJECT, actorUserId: "u-1" });
+    expect(charge.calls[0]?.[0]).toBe("operation");
+    expect(charge.calls[0]?.[1]).toBe("texttool:key-1");
+    expect(charge.calls[0]?.[2]).toMatchObject({ amount: 2000, projectId: PROJECT, actorUserId: "u-1" });
   });
 });
 

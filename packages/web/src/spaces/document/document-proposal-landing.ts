@@ -20,6 +20,8 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { occurrences, type DocumentProposal } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import { docNameOf } from '@web/data/yjs/manager';
+import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
@@ -29,6 +31,7 @@ import { threadRangesByThread } from '@web/spaces/document/document-comment-rang
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
 import { proposalBlocks, writtenBlockId } from '@web/spaces/document/document-proposal-blocks';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import type { LandingAction } from '@web/stores/document-proposals';
 
@@ -37,7 +40,21 @@ import type { LandingAction } from '@web/stores/document-proposals';
 type LandingResult =
   | ({ outcome: 'applied'; leftOut?: number } & Landed)
   | { outcome: 'mediaOnly'; leftOut: number }
-  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' };
+  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' }
+  | { outcome: 'refused'; refusal: SpaceRefusal };
+
+/**
+ * Whether the Space can take what a press adds, asked quietly: the press
+ * reports a refusal through its own outcome (inner#1790, design 5.2).
+ * @param handle - The document.
+ * @returns The outcome to end with, or null when the write may go.
+ */
+function refusedForSize(handle: Landable): LandingResult | null {
+  const name = docNameOf(handle.undoManager.doc);
+  if (name === null) return null;
+  const result = checkAdd(name, { notify: false });
+  return result.ok ? null : { outcome: 'refused', refusal: result };
+}
 
 /** Current lifecycle and connection permission, read synchronously at commit. */
 export type ProposalAdmission = Readonly<{
@@ -358,31 +375,40 @@ export function writeRefusal(admission: ProposalAdmission, editor: Landable['edi
 }
 
 /**
- * Writes prepared output in the target's current context as one undo step.
+ * Writes prepared output in the target's current context as one undo step,
+ * once the Space is known to take an add.
  * @param handle - The document.
  * @param proposal - The proposal.
  * @param blocks - Its prepared new blocks.
+ * @returns Why the Space's size refused the write, or null when it was not refused.
  * @throws {Error} If schema conversion or the atomic block write fails.
  */
-function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readonly WrittenBlock[]): void {
+function landBlocks(handle: Landable, proposal: DocumentProposal, blocks: readonly WrittenBlock[]): LandingResult | null {
   const { editor, undoManager } = handle;
   const last = editor.document[editor.document.length - 1] as { id: string; type: string; content?: unknown; children?: unknown[] };
   const targetId = proposal.blockId ?? last.id;
   const doc = editor.prosemirrorState.doc;
   const written = proposalBlocks(blocks, doc, blockInTableCell(doc, targetId), proposal.proposalId);
-  if (written.length === 0) return;
+  if (written.length === 0) return null;
+  // A rewrite or an insert writes new blocks: an add, asked before writing.
+  // Nothing between the answer and the write can change the size state.
+  const refused = refusedForSize(handle);
+  if (refused !== null) return refused;
   asOneUndoStep(undoManager, () => {
-    if (proposal.kind === 'rewrite') {
-      editor.replaceBlocks([targetId], written as never);
-    } else if (proposal.blockId !== null) {
-      editor.insertBlocks(written as never, targetId, 'after');
-    } else {
-      // An empty final paragraph is the end gap, not content to retain above it.
-      const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
-      if (empty) editor.replaceBlocks([targetId], written as never);
-      else editor.insertBlocks(written as never, targetId, 'after');
-    }
+    editor.transact(() => {
+      if (proposal.kind === 'rewrite') {
+        editor.replaceBlocks([targetId], written as never);
+      } else if (proposal.blockId !== null) {
+        editor.insertBlocks(written as never, targetId, 'after');
+      } else {
+        // An empty final paragraph is the end gap, not content to retain above it.
+        const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
+        if (empty) editor.replaceBlocks([targetId], written as never);
+        else editor.insertBlocks(written as never, targetId, 'after');
+      }
+    });
   });
+  return null;
 }
 
 /**
@@ -431,11 +457,15 @@ export async function landProposal(
     if (ready !== null) return ready;
     const blockId = proposal.blockId!;
     const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
-    await commentOn(handle.editor as never, body, (state) =>
+    // A table opened full screen during the wait shows only its cells
+    // (#1427 §5.3).
+    setTableFullscreen(handle.editor, null);
+    const posted = await commentOn(handle.editor as never, body, (state) =>
       currentResult(handle, proposal, readAdmission) === null ? aim(state) : null, {
       thread: { proposalId: proposal.proposalId },
       comment: { fromAgent: true },
-    });
+    }, { notify: false });
+    if (posted !== null && 'ok' in posted) return { outcome: 'refused', refusal: posted };
     const result = currentResult(handle, proposal, readAdmission);
     return result ?? { outcome: 'changed' };
   }
@@ -443,7 +473,9 @@ export async function landProposal(
   const ready = currentResult(handle, proposal, readAdmission);
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;
-  landBlocks(handle, proposal, prepared.blocks);
+  setTableFullscreen(handle.editor, null);
+  const refused = landBlocks(handle, proposal, prepared.blocks);
+  if (refused !== null) return refused;
   const landed = landedAt(handle, proposal);
   if (landed !== null) return leftOut > 0 ? { outcome: 'applied', ...landed, leftOut } : { outcome: 'applied', ...landed };
   return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };

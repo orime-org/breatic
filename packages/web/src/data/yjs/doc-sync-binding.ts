@@ -74,11 +74,14 @@ export function bindDocSync(name: string, doc: Y.Doc, provider: HocuspocusProvid
    */
   function scheduleConfirmation(handshake = false): void {
     const epoch = state.epoch;
-    queueMicrotask(() => {
+    // After the provider's own send window: its `update` listener was added
+    // before this binding's, so its timer of the same delay fires first and
+    // one operation's batched writes leave as one Update ahead of the receipt.
+    setTimeout(() => {
       if (!active || state.epoch !== epoch) return;
       if (handshake) apply({ type: 'handshake-complete', epoch });
       sendConfirmation();
-    });
+    }, provider.configuration.flushDelay || 0);
   }
 
   /**

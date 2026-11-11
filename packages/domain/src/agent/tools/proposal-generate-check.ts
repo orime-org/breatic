@@ -13,6 +13,7 @@ import {
   extractPromptText,
   PANEL_EDITOR_PARAM,
   promptPlainText,
+  promptTaken,
   promptTextOf,
   proposalMarkSegments,
   referencePool,
@@ -20,12 +21,13 @@ import {
   storyboardSend,
   type CanvasProposal,
   type ExecuteVerdict,
+  type ModelEntry,
   type ProposalNode,
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { onDialogueSide, proposalDialogueText, proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
-import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, gateWords, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import { quoted } from "@domain/agent/tools/template-expansion.js";
 import {
@@ -78,6 +80,29 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
 }
 
 /**
+ * The catalog entry of the model a generation names.
+ * @param node - The generation.
+ * @returns The entry, or undefined for a text node or a model the catalog lacks.
+ * @throws {never} Never.
+ */
+function entryOf(node: ProposalNode): ModelEntry | undefined {
+  return node.type === "text" ? undefined : getModelCatalog()[node.type]?.find((m) => m.name === node.model);
+}
+
+/**
+ * Whether the run a generation describes takes its prompt, asked the way the
+ * panel and the server ask it: Mureka V9.5 Song composing from a melody takes none.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @returns True when the panel draws the prompt box for this run.
+ * @throws {never} Never.
+ */
+export function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean {
+  const entry = entryOf(node);
+  return entry === undefined ? chosen.takesPrompt : promptTaken(entry, node.mode, node.params ?? {});
+}
+
+/**
  * Whether the node's values, shots and prompt suit its model.
  * @param node - The node.
  * @param chosen - Its model.
@@ -106,8 +131,12 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): Pr
   // A model drawing no box mounts no editor and forces the box empty: only a
   // note, which the user reads on the card and which is never sent, has a
   // place there. Words, a tweak and an @ all need a box.
-  if (!chosen.takesPrompt && proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note")) {
+  const written = proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note");
+  if (written && !chosen.takesPrompt) {
     return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, fixOn(at, "keep only notes saying what the user picks in the panel."));
+  }
+  if (written && chosen.promptWhen !== undefined && !takesPromptHere(node, chosen)) {
+    return refuse("prompt-box-gated-off", `"${chosen.name}" draws its prompt box only while ${gateWords(chosen.promptWhen)}, so words, tweak marks and refs written there reach nobody.`);
   }
   return { ok: true };
 }
@@ -186,8 +215,9 @@ function strayRefReason(
   }
   const ways = waysOrNone(named, node, chosen);
   const byRefs = count > 1 ? `${String(count)} refs` : "a ref";
-  const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
-  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
+  const params = node.params ?? {};
+  const pool = (waysIn(chosen, params).get(named.type) ?? []).find((way) => way.mark === "ref");
+  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named), params).some((entry) => entry.ref)) {
     return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, takeOut);
   }
   const held = goingWay(arriving, named.type, pool.into);
@@ -238,8 +268,10 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   if ("refusal" in filling) return filling;
   const arriving = [...routing.routed, ...filling.filled];
   // Over a way's room is said first: every count below would otherwise ask
-  // for a mark or note for a node that may not stay.
-  for (const [kind, list] of waysIn(chosen)) {
+  // for a mark or note for a node that may not stay. Only the places drawn for
+  // the node's settings are room.
+  const params = node.params ?? {};
+  for (const [kind, list] of waysIn(chosen, params)) {
     for (const option of list) {
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
@@ -247,7 +279,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       // The rule for each kind of node going this way, and the room and
       // holders of every other way the kind has.
       const holdings = [...new Set(going.map(holdingOf))];
-      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding)));
+      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding, params)));
       const others = list.filter((way) => way !== option).map((way) => `"${way.into}" takes ${roomOf(way.room)} ${kind} node(s) and holds ${namesOrNone(goingWay(arriving, kind, way.into))}.`);
       return refuse("way-over-room", [over, ...rules, ...others].join(" "));
     }
@@ -288,7 +320,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
 function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: readonly number[]): (at: number) => string {
   const pool = node.type === "text"
     ? {}
-    : referencePool(getModelCatalog()[node.type]?.find((m) => m.name === node.model), node.mode ?? "");
+    : referencePool(entryOf(node), node.mode ?? "");
   return (at) => {
     const target = proposal.nodes[at];
     if (!target) return "";
@@ -379,7 +411,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
       : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
-  const lyricsRequired = waysIn(chosen).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
+  const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
   const lyricsText = arriving
     .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
     .map(({ node: n }) => promptPlainText(n.prompt ?? []))
@@ -389,7 +421,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
     model: chosen.name,
     nodeExists: true,
     isSubmitting: false,
-    promptRequired: chosen.takesPrompt,
+    promptRequired: takesPromptHere(node, chosen),
     ...(lyricsRequired ? { lyricsRequired, lyricsText } : {}),
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
     ...(node.shots !== undefined && total !== undefined

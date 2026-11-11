@@ -20,6 +20,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -190,5 +191,21 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
 
     await waitFor(() => expect(written['text/html']).toContain('<table'));
     expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(false);
+  });
+});
+
+describe('a table open full screen (#1427)', () => {
+  it('keeps the row and column handles over a cell and leaves the table\'s own strip out', () => {
+    const editor = open();
+    const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    act(() => {
+      setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+    });
+
+    pointAt(editor, 'b1');
+
+    expect(screen.getByTestId('doc-table-row-handle')).toBeTruthy();
+    expect(screen.getByTestId('doc-table-col-handle')).toBeTruthy();
+    expect(screen.queryByTestId('doc-block-table-handle')).toBeNull();
   });
 });

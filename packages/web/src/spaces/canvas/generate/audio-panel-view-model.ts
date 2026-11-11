@@ -18,7 +18,7 @@
  * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
-import { dialogueSideOf, dialogueSpeakers, type ModelEntry } from '@breatic/shared';
+import { dialogueSideOf, dialogueSpeakers, promptTaken, type ModelEntry } from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
@@ -56,8 +56,10 @@ export interface AudioPanelViewModel {
   params: Record<string, unknown>;
   /** Whether the target node is still on the board — gates execute. */
   nodeExists: boolean;
-  /** Whether the active model consumes the prompt. */
+  /** Whether this run sends the prompt (`promptTaken`): the style box is asked for and read only then, and, beside a lyrics box, drawn only then. */
   promptRequired: boolean;
+  /** Whether the active model takes a prompt at all, which the reference rail reads. */
+  takesPrompt: boolean;
   /**
    * Whether the active model takes a voice for this run: false on a model with
    * none, and on the dialogue side of one whose speakers replace it.
@@ -168,7 +170,8 @@ export function buildAudioPanelViewModel(input: {
     modelEntry: current,
     params,
     nodeExists: content !== undefined,
-    promptRequired: current?.takes_prompt ?? true,
+    promptRequired: current ? promptTaken(current, mode, params) : true,
+    takesPrompt: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
     speakersShort: speakersShort(current, params),
     dialogueNames: dialogueSideOf(current, params) ? speakerNames(current, params) : null,

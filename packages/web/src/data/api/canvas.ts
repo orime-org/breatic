@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
+import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
@@ -317,13 +317,14 @@ export const canvasApi = {
    * Register what a paste or duplicate brings into this project's Studio and
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
-   * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   * @returns Old address → address in this Studio (null for a cover that could not be filed), and what
+   *   this Studio's ledger holds for each address it maps to.
    * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 404 / 413 / 429 / 502 / 507), or when the transfer ticket is refused.
    * @throws {Error} When a body over the request limit could not be moved through storage.
    */
-  async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+  async paste(body: CanvasPasteInput): Promise<CanvasPasteAnswer> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
-    return apiPost<{ map: Record<string, string | null> }>(
+    return apiPost<CanvasPasteAnswer>(
       '/canvas/paste',
       await bodyOrTransfer(body.project_id, body),
     );

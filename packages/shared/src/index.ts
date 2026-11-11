@@ -42,6 +42,7 @@ export type {
   ProjectRegisteredAsset,
   ProjectAssetPage,
   ConversationAttachmentEntity,
+  ProjectAgentInstructionsEntity,
   AssetKind,
   PaymentEntity,
   CreditLotEntity,
@@ -222,6 +223,7 @@ export type {
   CanvasProposal,
   DocumentProposal,
   SceneGenerationOrigin,
+  SceneTaskNotice,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -257,6 +259,7 @@ export {
   canvasProposalSchema,
   documentProposalSchema,
   SCENE_GENERATION_ORIGINS,
+  SCENE_TASK_NOTICES,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -353,6 +356,9 @@ export {
   chatRenameConversationSchema,
   chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  AGENT_INSTRUCTIONS_MAX_CHARS,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -381,6 +387,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -393,6 +400,8 @@ export type {
   ChatCreateConversationInput,
   ChatRenameConversationInput,
   ChatSetModelInput,
+  AgentInstructionsSaveInput,
+  AgentInstructionsView,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";
@@ -426,7 +435,9 @@ export {
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
-export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, DocSizeSeenSchema, DocSizeStatusSchema } from "@shared/doc-size.js";
+export type { DocSizeSeen, DocSizeStatus } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
@@ -469,6 +480,7 @@ export {
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
   TimelineWebAnimationClipSchema,
+  TimelineUploadClipSchema,
   TimelineClipSchema,
   TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
@@ -482,6 +494,7 @@ export type {
   TimelineVideoClip,
   TimelineWebAnimationClip,
   TimelineWebAnimationContentBinding,
+  TimelineUploadClip,
   TimelineClip,
   TimelineOperationReceipt,
   TimelineDocumentV1,
@@ -569,7 +582,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, stepRequested, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 export { joinSlotFiles } from "@shared/join-slot-files.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
@@ -640,7 +653,7 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
-export { applyForces, checkParamCombination, gateHolds, gateParams, resolveParams } from "@shared/param-resolution.js";
+export { applyForces, checkParamCombination, gateHolds, gateParams, promptTaken, resolveParams } from "@shared/param-resolution.js";
 export { modesOf, picturesOf } from "@shared/scene-generation.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
@@ -884,6 +897,7 @@ export {
 // when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
+  nodeMediaEntries,
   writeNodeMedia,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";
@@ -1138,8 +1152,8 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";

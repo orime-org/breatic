@@ -558,7 +558,7 @@ describe("the parts of the system prompt other conversations share", () => {
    */
   async function sendSystem(
     model: string,
-    parts: { base: string; project?: string; conversation?: string },
+    parts: { base: string; project?: string; conversation?: string; projectInstructions?: string },
     cache: LlmModule.CallWants["cache"],
   ): Promise<Seen> {
     const { getModel, callOptionsFor, systemFor } = await freshLlm();
@@ -650,6 +650,58 @@ describe("the parts of the system prompt other conversations share", () => {
     const sent = (await sendSystem("anthropic/claude-opus-5.5", PARTS, false)).body.system;
     expect(sent).toHaveLength(1);
     expect(sent).toEqual((await sendWhole("anthropic/claude-opus-5.5", false)).body.system);
+  });
+
+  /**
+   * The Project Instructions (#1400) go last and unmarked: a Project's
+   * members can change them at any moment, so a mark after them would write
+   * an entry nobody reads, and everything before them keeps the entries it
+   * already writes.
+   */
+  const WITH_INSTRUCTIONS = { ...PARTS, projectInstructions: "## Project Instructions\n\nthe members' standing requirements" };
+
+  it("sends the Project Instructions last and unmarked, the parts before them as they were, when calling Anthropic directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", WITH_INSTRUCTIONS, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
+      { type: "text", text: WITH_INSTRUCTIONS.projectInstructions },
+    ]);
+  });
+
+  it("sends the Project Instructions last and unmarked when reaching Claude through OpenRouter", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect(systemMessages((await sendSystem("anthropic/claude-opus-5.5", WITH_INSTRUCTIONS, "1h")).body)).toEqual([
+      { role: "system", content: [{ type: "text", text: PARTS.base, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.project, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.conversation }] },
+      { role: "system", content: [{ type: "text", text: WITH_INSTRUCTIONS.projectInstructions }] },
+    ]);
+  });
+
+  it("sends the Project Instructions right after the marked memory entries when there is no progress note", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    const parts = { base: PARTS.base, project: PARTS.project, projectInstructions: WITH_INSTRUCTIONS.projectInstructions };
+    expect((await sendSystem("anthropic/claude-opus-5.5", parts, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
+      { type: "text", text: WITH_INSTRUCTIONS.projectInstructions },
+    ]);
+  });
+
+  it("ends the prompt sent whole with the Project Instructions, for a model that caches a prefix on its own", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const sent = systemMessages((await sendSystem("deepseek/deepseek-v4-pro", WITH_INSTRUCTIONS, "1h")).body);
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0]?.content)).toContain(JSON.stringify(`${WHOLE}\n\n${WITH_INSTRUCTIONS.projectInstructions}`).slice(1, -1));
+  });
+
+  it("ends the prompt sent whole with the Project Instructions, when the caller does not ask for caching", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", WITH_INSTRUCTIONS, false)).body.system).toEqual([
+      { type: "text", text: `${WHOLE}\n\n${WITH_INSTRUCTIONS.projectInstructions}` },
+    ]);
   });
 });
 

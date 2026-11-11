@@ -724,6 +724,13 @@ describe("what the guide says", () => {
 });
 
 describe("in the user's language", () => {
+  it("names the instructions editor's cancel button the way the screen shows it (#1400)", () => {
+    const text = runWithLocale("zh-CN", () => section("The chat panel"));
+    const cancel = runWithLocale("zh-CN", () => t("common.cancel"));
+    expect(text).toContain(`"${cancel}" or Esc leaves without saving`);
+    expect(text).not.toContain("Cancel or Esc");
+  });
+
   it("names every control it quotes the way a Chinese screen shows it", () => {
     // Every quoted name in the guide comes from quoted(t(...)), so in a locale
     // whose words differ from English each quoted fragment must be one of the

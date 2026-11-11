@@ -51,6 +51,8 @@ import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -3062,6 +3064,73 @@ describe('the comment panel', () => {
         ).toBeInTheDocument();
       });
       expect(screen.queryByTestId('doc-comment-draft-input')).toBeNull();
+    });
+  });
+
+  describe('a table opened full screen and left again (#1427)', () => {
+    /** Puts a table under the line and opens it full screen. */
+    function openTableFullscreen(): void {
+      const { editor } = handle;
+      act(() => {
+        editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1'] }] })] as never, editor.document.at(-1)!, 'after');
+      });
+      const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+      act(() => {
+        setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+      });
+    }
+
+    it('brings back the same panel, still reading the same comment', async () => {
+      show();
+      await comment(0, 5, 'about alpha');
+      await pressCommentsRow();
+      const card = await screen.findByTestId('doc-comment-card');
+      act(() => {
+        selectThreads(handle.editor, [card.getAttribute('data-thread')!]);
+      });
+      await waitFor(() => expect(screen.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true'));
+      const rail = screen.getByTestId('doc-comment-rail');
+
+      openTableFullscreen();
+      await waitFor(() => expect(rail).not.toBeVisible());
+      fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+
+      await waitFor(() => expect(rail).toBeVisible());
+      expect(screen.getByTestId('doc-comment-rail')).toBe(rail);
+      expect(screen.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+    });
+
+    it('brings the cards back in place, moving none of them on the way', async () => {
+      show();
+      await comment(0, 5, 'about alpha');
+      await pressCommentsRow();
+      const box = (await screen.findByTestId('doc-comment-card')).closest<HTMLElement>('.absolute.inset-x-0')!;
+      await waitFor(() => expect(box.className).toContain('transition-[top]'));
+      const classes: string[] = [];
+      const watch = new MutationObserver(() => classes.push(box.className));
+      watch.observe(box, { attributes: true, attributeFilter: ['class'] });
+
+      openTableFullscreen();
+      fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+      await waitFor(() => expect(box.className).toContain('transition-[top]'));
+      watch.disconnect();
+
+      // Back on screen without the transition first; it returns a frame later.
+      expect(classes.some((name) => !name.includes('transition-[top]'))).toBe(true);
+    });
+
+    it('hands the keyboard back to the body over a draft being written', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+
+      openTableFullscreen();
+      fireEvent.click(await screen.findByTestId('doc-table-fullscreen-exit'));
+
+      const box = await screen.findByTestId('doc-comment-draft-input');
+      expect(box).toHaveValue('half');
+      expect(box).not.toHaveFocus();
     });
   });
 

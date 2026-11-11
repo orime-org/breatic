@@ -111,7 +111,7 @@ async function openPanel(): Promise<void> {
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={() => true}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
             edges={['vid', 'img', 'txt'].map((id) => ({ id: `e-${id}`, source: id, target: 'target' }))}
             nodes={board}
           />

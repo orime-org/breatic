@@ -47,8 +47,15 @@ export interface TimelineWebAnimationClip extends Omit<TimelineVideoClip, "kind"
   contentBinding: TimelineWebAnimationContentBinding;
 }
 
+/** A placeholder for a local video still uploading; it becomes a video clip with the same id once registered. */
+export interface TimelineUploadClip extends Omit<TimelineVideoClip, "kind" | "sourceId"> {
+  kind: "upload";
+  /** The local file it stands for while the upload runs in the uploader's browser. */
+  upload: { uploadId: string; name: string; durationSeconds: number };
+}
+
 /** Any placement on a track, discriminated by `kind`. */
-export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip;
+export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip | TimelineUploadClip;
 
 /** The record that an accepted action has landed in this document, keyed by its action id. */
 export interface TimelineOperationReceipt { executionId: string; inputHash: string; landedAt: string }
@@ -122,8 +129,15 @@ export const TimelineWebAnimationClipSchema = z.object({
     .refine((binding) => binding.baseSourceResultId !== null || binding.operationId !== null, { message: "Unbound web-animation clip" }),
 }).strict();
 
+/** An upload placeholder; its range against `upload.durationSeconds` is checked by the arrangement, not here. */
+export const TimelineUploadClipSchema = z.object({
+  ...placementFields,
+  kind: z.literal("upload"),
+  upload: z.object({ uploadId: identity, name: z.string().min(1).max(255), durationSeconds: z.number().finite().positive() }).strict(),
+}).strict();
+
 /** Every clip kind, discriminated by `kind`. */
-export const TimelineClipSchema = z.discriminatedUnion("kind", [TimelineVideoClipSchema, TimelineWebAnimationClipSchema]);
+export const TimelineClipSchema = z.discriminatedUnion("kind", [TimelineVideoClipSchema, TimelineWebAnimationClipSchema, TimelineUploadClipSchema]);
 
 /** One landed action's receipt. */
 export const TimelineOperationReceiptSchema = z.object({

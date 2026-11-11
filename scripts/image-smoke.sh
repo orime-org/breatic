@@ -44,5 +44,8 @@ case "$IMAGE_KIND" in
     docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /usr/share/doc/breatic/THIRD-PARTY.md'
     docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-reader-smoke.mjs
     ;;
+  ingestWebAnimation)
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-smoke.mjs:/tmp/web-animation-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-animation-smoke.mjs
+    ;;
   *) echo 'Unknown image kind' >&2; exit 1 ;;
 esac

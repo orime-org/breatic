@@ -26,6 +26,7 @@ import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
+import type { NodeMediaFields } from "@shared/canvas/node-media.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -692,6 +693,14 @@ export const canvasPasteSchema = z.object({
 });
 export type CanvasPasteInput = z.infer<typeof canvasPasteSchema>;
 
+/** `POST /canvas/paste`'s answer (inner#1349, inner#1537). */
+export interface CanvasPasteAnswer {
+  /** Old address → address in the target Studio; null for a cover that could not be filed. */
+  map: Record<string, string | null>;
+  /** Each mapped address in the target Studio and what its ledger row holds, cover included for a video. */
+  media: Record<string, NodeMediaFields>;
+}
+
 // ── Projects ─────────────────────────────────────────────────────────
 
 /**
@@ -911,6 +920,34 @@ export const CONVERSATION_TITLE_MAX_CHARS = 200;
  * and has room above this for that content.
  */
 export const CHAT_MESSAGE_MAX_CHARS = 10_000;
+
+/** How long a Project's instructions for the Agent may be, by `.length` (#1400). */
+export const AGENT_INSTRUCTIONS_MAX_CHARS = 10_000;
+
+/** Query for reading a Project's instructions for the Agent. */
+export const agentInstructionsQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/**
+ * Body for saving a Project's instructions for the Agent. The text is kept
+ * exactly as typed; one that is empty or only whitespace clears them.
+ */
+export const agentInstructionsSaveSchema = z.object({
+  project_id: z.string().uuid(),
+  text: z.string().max(AGENT_INSTRUCTIONS_MAX_CHARS),
+});
+export type AgentInstructionsSaveInput = z.infer<typeof agentInstructionsSaveSchema>;
+
+/** A Project's instructions as the editor shows them. */
+export interface AgentInstructionsView {
+  /** The text as saved; empty when there are none. */
+  text: string;
+  /** Display name of whoever saved them last, or null when there are none. */
+  updatedBy: string | null;
+  /** When they were last saved (ISO), or null when there are none. */
+  updatedAt: string | null;
+}
 
 /**
  * Body for naming a conversation.

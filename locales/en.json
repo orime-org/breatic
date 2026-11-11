@@ -127,6 +127,7 @@
       "attachment_limit_reached": "This conversation has reached its limit of {limit} attachments. Delete some before uploading more."
     },
     "canvas": {
+      "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
       "param_too_short": "Fill in {name} first",
@@ -602,6 +603,19 @@
       "needScene": "Open a 3D Space first.",
       "credits": "About {credits} credits",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project instructions",
+      "title": "Project instructions",
+      "description": "Sent to the Agent in every conversation in this Project. Shared by all members.",
+      "placeholder": "For example: reply in English; use only blue and white.",
+      "atLimit": "{max, number}-character limit reached",
+      "lastEdited": "Last edited by {name} on {time}",
+      "save": "Save",
+      "saved": "Saved",
+      "cleared": "Project instructions cleared",
+      "readFailed": "Couldn't load the Project instructions",
+      "saveFailed": "Couldn't save the Project instructions"
     }
   },
   "canvas": {
@@ -854,6 +868,7 @@
       "coverSongTip": "Pick an audio node to cover",
       "selectCoverSongFromCanvas": "Pick a song to cover",
       "errorNoMusicSong": "Pick a song first",
+      "errorNoMusicMelody": "Pick a melody first",
       "moodImage": "Reference image",
       "moodImageTip": "Pick an image to set the mood",
       "removeMoodImage": "Remove reference image",
@@ -865,7 +880,7 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, melody or vocals",
+      "refuseExecuteNoReference": "Pick a song or vocals first",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
       "itemsRemove": "Remove",
@@ -884,6 +899,7 @@
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
+        "compose_from": "Compose from",
         "language": "Language",
         "voice_description": "Voice description",
         "speakers": "Speakers",
@@ -937,6 +953,7 @@
         "face_limit": "Face limit",
         "auto_size": "Auto size",
         "export_uv": "Export UV",
+        "rig_skeleton": "Rig skeleton",
         "model_seed": "Model seed",
         "texture_seed": "Texture seed",
         "texture_alignment": "Texture alignment",
@@ -2345,6 +2362,8 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight",
+        "fullscreen": "Full screen",
+        "exitFullscreen": "Exit full screen",
         "cut": "Cut",
         "pasteAbove": "Paste above",
         "pasteBelow": "Paste below",
@@ -2387,7 +2406,8 @@
         },
         "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
         "notWrittenYet": "Uploaded, not added yet",
-        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"
+        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
+        "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
       }
     },
     "readOnlyReconnect": "Reconnect",
@@ -2418,6 +2438,18 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "pose": {
+        "title": "Pose",
+        "stand": "Stand",
+        "sit": "Sit",
+        "lie": "Lie down",
+        "walk": "Walk",
+        "wave": "Wave",
+        "jointMode": "Adjust joints",
+        "reset": "Reset pose",
+        "noSkeleton": "This model has no skeleton and cannot be posed.",
+        "humanoidOnly": "Presets work on humanoid characters only."
+      },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",
       "retry": "Retry",
@@ -2507,6 +2539,9 @@
         "kindGeneration": "Generate",
         "originSpace": "In Space",
         "originAgent": "Agent",
+        "rigFailed": "Skeleton rigging failed; this model can't be posed",
+        "rigged": "Skeleton rigged",
+        "willRig": "A skeleton is rigged when generation finishes",
         "generating": "Generating",
         "generatingFor": "Generating · {minutes} min",
         "stillRunning": "This generation is still finishing. Try again later.",
@@ -2526,6 +2561,7 @@
       "proposalBusy": "Another generation is being submitted.",
       "readOnlyCreate": "Viewers can’t add, import or generate models.",
       "force": {
+        "low_poly_skips_parts": "Smart low-poly doesn't separate parts.",
         "parts_geometry_only": "Separate parts generates geometry only.",
         "pbr_needs_texture": "PBR needs texture.",
         "fast_uses_v35": "Fast texture uses v3.5 only."
@@ -2572,6 +2608,19 @@
         "formats": "PNG, JPEG or WebP",
         "chooseFile": "Choose file"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "This Space is using {used}. Once it passes {limit}, no more content can be added.",
+      "noticeFull": "This Space is full ({used} of {limit}). You can only delete content until it is back under the limit.",
+      "noticeOver": "This Space is over its limit ({used} of {limit}). You can only delete whole items: a node, a clip, a model or a whole passage.",
+      "add": "This Space is full. Delete some content before editing further.",
+      "compound": "This Space is full. This deletion would also change other content, so it cannot run right now.",
+      "over": "This Space is over its limit. Delete whole items: a node, a clip, a model or a whole passage.",
+      "resync": "Your last change went over this Space's size limit and was not saved.",
+      "proposal": "This Space is full, so the proposal was not placed.",
+      "reason": "This Space is full.",
+      "text": "Text not added: this Space is full.",
+      "wait": "This Space is full. It will finish once some content is deleted."
     }
   },
   "menu": {
@@ -3549,8 +3598,6 @@
       "more": "Load more",
       "chooseFile": "Choose video",
       "fileEmpty": "Choose a local video file.",
-      "preparing": "Preparing video…",
-      "progress": "Uploading {progress}%",
       "confirm": "Add to Timeline",
       "insertAfter": "Inserts after {name}",
       "insertFirst": "Inserts at the start of the main track"
@@ -3564,12 +3611,13 @@
       "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
-      "upload": "Upload failed. Retry with the selected file.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
       "track_not_empty": "Only an empty track can be deleted.",
+      "full": "This Space is full. Delete some content before editing further.",
+      "over_ceiling": "This Space is over its limit. Delete a whole clip.",
       "source_unresolved": "This web animation is not ready yet. Try again shortly."
     },
     "mainTrack": "Main track",
@@ -3663,6 +3711,14 @@
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
       }
+    },
+    "upload": {
+      "uploading": "Uploading",
+      "progress": "Uploading {progress}%",
+      "failed": "Upload failed",
+      "waiting": "Uploaded, waiting for edit access",
+      "unfinished": "Unfinished",
+      "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
     }
   }
 }

@@ -54,6 +54,9 @@ async function connect(fixture: ActivityCollabFixture, mode: "read-write" | "rea
   const client = await connectCollabActivity(active.server, fixture, name, mode);
   clients.push(client);
   client.socket.send(syncFrame(name, WIRE.sync, SYNC.step1, Y.encodeStateVector(client.document)));
+  // A real provider answers the server's SyncStep1 with its SyncStep2; collab
+  // drops Updates sent before that handshake frame (inner#1790).
+  client.socket.send(syncFrame(name, WIRE.sync, SYNC.step2, Y.encodeStateAsUpdate(client.document)));
   await waitFor(() => client.document.getMap("activity-test").get("existing") === "preserved", "production initial content sync");
   return client;
 }

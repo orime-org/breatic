@@ -5,14 +5,19 @@ import type * as Y from 'yjs';
 import { z } from 'zod';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
+import { SceneObjectSchema, type SceneObject, type ScenePose } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
   type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
+import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
+
+/** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
+type SceneGestureDraft = ScenePatch & { pose?: ScenePose };
 
 export interface SceneEnvironment {
   readOnly: boolean;
@@ -58,7 +63,11 @@ export class SceneSession {
   private environment: SceneEnvironment = { readOnly: true, connected: false, hasEverSynced: false,
     writeAccess: 'unknown', refused: false, awareness: null };
   private selectedIds: string[] = [];
-  private gesture: ScenePatch[] | null = null;
+  private gesture: SceneGestureDraft[] | null = null;
+  /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
+  private gestureStartPoses = new Map<string, ScenePose>();
+  /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
+  private readonly previewPublish = createPublishThrottle(() => this.publishNow(), PRESENCE_WRITE_INTERVAL_MS);
   private cancelRevision = 0;
   private visible = false;
   private focused = false;
@@ -69,8 +78,9 @@ export class SceneSession {
   /**
    * Attach in-memory editing state to the same live document held by its provider.
    * @param doc - Live collaborative scene document.
+   * @param name - Its canonical document name, whose size gates writes.
    */
-  constructor(readonly doc: Y.Doc) {
+  constructor(readonly doc: Y.Doc, readonly name: string) {
     this.history = createSceneHistory(doc, this.origin);
     doc.on('update', this.refresh);
     this.history.on('stack-item-added', this.refresh);
@@ -195,8 +205,21 @@ export class SceneSession {
     awareness.setLocalState(Object.keys(uploads).length === 0 ? rest : { ...rest, sceneUploads: uploads });
   }
 
-  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  /**
+   * Publish presence: a drag preview through the throttle, anything else (selection,
+   * a withdrawal, an ineligible view) at once, dropping a preview still waiting.
+   */
   private publishPresence(): void {
+    if (this.gesture !== null && !this.destroyed) {
+      this.previewPublish.schedule();
+      return;
+    }
+    this.previewPublish.cancel();
+    this.publishNow();
+  }
+
+  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  private publishNow(): void {
     const awareness = this.environment.awareness;
     if (!awareness) return;
     const eligible = this.visible && this.focused && this.environment.connected && !this.destroyed;
@@ -283,15 +306,17 @@ export class SceneSession {
       return false;
     }
     this.gesture = this.selectedIds.map((id) => ({ id }));
+    this.gestureStartPoses = new Map(this.snapshot.objects
+      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.pose ?? {}]));
     this.refresh();
     return true;
   }
 
   /**
    * Preview only fields supplied by the active control, keeping committed values independent.
-   * @param patches - Complete transform fields previewed by the active local gesture.
+   * @param patches - The active gesture's draft per object: the transform fields a drag supplies, or the whole pose a joint drag shows.
    */
-  previewGesture(patches: readonly ScenePatch[]): void {
+  previewGesture(patches: readonly SceneGestureDraft[]): void {
     if (!this.gesture) return;
     if (patches.some((patch) => !this.selectedIds.includes(patch.id))) return;
     const committed = readSceneDocument(this.doc).objects;
@@ -309,13 +334,33 @@ export class SceneSession {
 
   /**
    * Finish through one exit; cancellation never creates a document transaction.
+   * A commit first publishes the final value past the throttle, then writes the
+   * document, then withdraws the gesture, so a collaborator's model never steps
+   * back to the start value in between (canvas #2010).
    * @param commit - Whether to apply the completed draft as one command.
    */
   endGesture(commit: boolean): void {
     const gesture = this.gesture;
+    const startPoses = this.gestureStartPoses;
+    this.previewPublish.cancel();
+    if (!commit || !gesture) {
+      this.clearGesture();
+      this.refresh();
+      return;
+    }
+    this.publishNow();
+    const transforms = gesture.map(({ pose: _pose, ...transform }) => transform)
+      .filter((transform) => Object.keys(transform).length > 1);
+    const poses = gesture.flatMap((patch) => (patch.pose ? [poseChange(patch.id, startPoses.get(patch.id) ?? {}, patch.pose)] : []))
+      .filter((command) => Object.keys(command.set).length > 0);
+    // The gesture stays published while the document is written: the undo stack
+    // refreshes this session inside the transaction, before the document update
+    // goes out, and a withdrawal there would reach collaborators first.
+    if (transforms.length > 0) this.execute({ type: 'patch', patches: transforms });
+    poses.forEach((command) => this.execute(command));
+    this.previewPublish.cancel();
     this.clearGesture();
     this.refresh();
-    if (commit && gesture) this.execute({ type: 'patch', patches: gesture });
   }
 
   /**
@@ -324,7 +369,7 @@ export class SceneSession {
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
     this.commandError = result.ok ? null : result;
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
@@ -334,17 +379,21 @@ export class SceneSession {
   /**
    * Undo or redo one personal operation even when the object has become explicitly locked.
    * @param direction - Personal undo or redo operation to invoke.
+   * @returns The step's outcome; a size refusal (its toast shown once) leaves the history untouched.
    */
-  historyStep(direction: 'undo' | 'redo'): void {
-    if (!this.snapshot.canEdit) return;
+  historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
+    if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
     this.endGesture(false);
-    this.history[direction]();
+    const written = runHistoryStep(this.name, this.history, direction);
+    this.commandError = written.ok ? null : written;
     this.refresh();
+    return written.ok ? { ok: true, ids: [] } : written;
   }
 
   /** Detach all owned listeners once the manager releases this document. */
   destroy(): void {
     if (this.destroyed) return;
+    this.previewPublish.cancel();
     this.clearGesture();
     this.visible = false;
     this.publishPresence();
@@ -357,8 +406,21 @@ export class SceneSession {
 
 }
 
-const sessions = createDocScopedCache<SceneSession>(
-  (doc) => new SceneSession(doc), (session) => session.destroy(),
+/**
+ * The pose command for the bones one joint drag changed, compared with the pose
+ * the drag started from; bones another member committed meanwhile are left alone.
+ * @param id - The posed object.
+ * @param start - Its committed pose when the drag began.
+ * @param draft - The pose the drag ended with: the start pose with the dragged bone's new value.
+ * @returns The bones to set.
+ */
+function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
+  const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
+  return { type: 'pose', id, set, replace: false };
+}
+
+const sessions = createDocScopedCache<SceneSession, string>(
+  (doc, name) => new SceneSession(doc, name), (session) => session.destroy(),
 );
 
 /**
@@ -368,7 +430,7 @@ const sessions = createDocScopedCache<SceneSession>(
  * @returns The document's existing session or its new in-memory owner.
  */
 export function getSceneSession(doc: Y.Doc, name: string): SceneSession {
-  return sessions.get(doc, name, undefined);
+  return sessions.get(doc, name, name);
 }
 
 /**

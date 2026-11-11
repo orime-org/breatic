@@ -61,6 +61,18 @@ export function getDoc(name: string): Y.Doc {
 }
 
 /**
+ * The name a cached document is registered under, for code that holds a
+ * fragment of it but not its name (the editors' size filter, inner#1790).
+ * @param doc - A document, or null for a fragment not yet in one.
+ * @returns Its canonical name, or null when it is not in the cache.
+ */
+export function docNameOf(doc: Y.Doc | null): string | null {
+  if (doc === null) return null;
+  for (const [name, cached] of docs) if (cached === doc) return name;
+  return null;
+}
+
+/**
  * Whether a document is open in this tab: created and not yet destroyed. A
  * Space hidden behind another tab is still open; a closed one is not.
  * @param name - Canonical document name.

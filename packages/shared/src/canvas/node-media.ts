@@ -37,12 +37,23 @@ export const NODE_MEDIA_KEYS = ['coverUrl', 'mediaWidth', 'mediaHeight', 'durati
  * @param media - The result's media fields.
  */
 export function writeNodeMedia(data: Y.Map<unknown>, media: NodeMediaFields): void {
-  setOrRemove(data, 'coverUrl', media.coverUrl);
-  setOrRemove(data, 'mediaWidth', media.width);
-  setOrRemove(data, 'mediaHeight', media.height);
-  setOrRemove(data, 'duration', media.duration);
-  setOrRemove(data, 'mimeType', media.mimeType);
-  setOrRemove(data, 'size', media.size);
+  for (const [key, value] of nodeMediaEntries(media)) setOrRemove(data, key, value);
+}
+
+/**
+ * A result's media fields under the node-data keys they land on.
+ * @param media - The result's media fields.
+ * @returns Each node key with its value, null when the medium has none.
+ */
+export function nodeMediaEntries(media: NodeMediaFields): Array<[(typeof NODE_MEDIA_KEYS)[number], string | number | null]> {
+  return [
+    ['coverUrl', media.coverUrl],
+    ['mediaWidth', media.width],
+    ['mediaHeight', media.height],
+    ['duration', media.duration],
+    ['mimeType', media.mimeType],
+    ['size', media.size],
+  ];
 }
 
 /**

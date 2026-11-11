@@ -8,18 +8,9 @@ import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
 import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
-import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
+import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
 
-/**
- * The shortest gap allowed between two awareness writes, in ms.
- *
- * Awareness resends the whole state on every field write, so the fastest field
- * sets the rate for all of them. 33ms is where Excalidraw puts its cursor sync
- * (`CURSOR_SYNC_TIMEOUT = 33`) and where tldraw puts its collaborative frame
- * rate (`COLLABORATIVE_MODE_FPS = 30`).
- */
-const MIN_WRITE_INTERVAL_MS = 33;
 
 /** A point, in either screen or canvas coordinates. */
 interface Point {
@@ -206,7 +197,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   }, [awareness]);
 
   const throttle = React.useMemo(
-    () => createPublishThrottle(() => publish(), MIN_WRITE_INTERVAL_MS),
+    () => createPublishThrottle(() => publish(), PRESENCE_WRITE_INTERVAL_MS),
     [publish],
   );
 

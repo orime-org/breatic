@@ -52,6 +52,17 @@ export function isPresent(value: unknown): boolean {
 }
 
 /**
+ * Whether a param asks for the extra step that names it: supplied, and not a
+ * switch turned off. A switch's `false` is a value the user set, so it is
+ * present (and sent where a model takes it) while still asking for no step.
+ * @param value - The submitted value of the step's `for_param`.
+ * @returns True when the run takes the step.
+ */
+export function stepRequested(value: unknown): boolean {
+  return isPresent(value) && value !== false;
+}
+
+/**
  * The usable files in a list a slot holds: non-empty strings, in order, once
  * each. The list arrives through collaborative data and the wire, so every
  * entry is checked whatever the type says (inner#826).

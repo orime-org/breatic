@@ -35,11 +35,8 @@ import { addEdge, addNode, createGroup, readCanvasGraph, removeNode, setNodeLock
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
-import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
-
-/** The callback `CanvasSpace` passes the panels (6.5). */
-type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>) => unknown;
+import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import type { ExistingNode, PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 
 const ULTRA = {
   name: 'nano-banana-pro-edit-ultra',
@@ -202,6 +199,15 @@ function seedFlowInstance(anchor: string, options: { guide?: boolean; models?: b
 }
 
 /**
+ * A placing callback's answer for a template that landed.
+ * @param _args - What it was asked to place.
+ * @returns Placed, with no new nodes.
+ */
+function lands(..._args: Parameters<PlaceTemplate>): PlacedProposal {
+  return { nodeIds: [], rects: [] };
+}
+
+/**
  * Applies a template from the panel of `nodeId`.
  * @param template - The template picked.
  * @param nodeId - The panel's node.
@@ -301,7 +307,7 @@ describe('useApplyTemplate', () => {
   describe('what stops it before anything is placed', () => {
     it('says the model is unavailable and places nothing when the catalog no longer has it', () => {
       seed('target', 'image');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [], place);
       expect(toast.error).toHaveBeenCalledWith(en.canvas.generatePanel.modelUnavailable);
       expect(place).not.toHaveBeenCalled();
@@ -309,7 +315,7 @@ describe('useApplyTemplate', () => {
 
     it('judges availability over every generate node of the template, not only the anchor (6.5 step 2)', () => {
       seed('target', 'image');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', [FINAL_MODEL], place);
       expect(toast.error).toHaveBeenCalledWith(en.canvas.generatePanel.modelUnavailable);
       expect(place).not.toHaveBeenCalled();
@@ -322,7 +328,7 @@ describe('useApplyTemplate', () => {
 
     it('warns that the panel’s own node is locked and places nothing (6.5 step 1)', () => {
       seed('target', 'image', { locked: true });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       expect(toast.warning).toHaveBeenCalledWith(en.canvas.gate.locked, { id: 'canvas-node-gate' });
       expect(place).not.toHaveBeenCalled();
@@ -331,7 +337,7 @@ describe('useApplyTemplate', () => {
     it('warns and places nothing when the upstream node it would reuse is locked (6.5 step 3)', () => {
       seedFlowInstance('target');
       setNodeLocked('p', 's', 'target-sheet', true);
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       expect(toast.warning).toHaveBeenCalledWith(en.canvas.gate.locked, { id: 'canvas-node-gate' });
       expect(place).not.toHaveBeenCalled();
@@ -343,7 +349,7 @@ describe('useApplyTemplate', () => {
       seed('target', 'image', { paramsByModel: { 'nano-banana': { aspect_ratio: '16:9' } } });
       seed('src', 'image', { name: 'Hero', content: 'https://cdn/hero.png' });
       wire('src', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
 
       const { proposal, existing } = placed(place);
@@ -372,7 +378,7 @@ describe('useApplyTemplate', () => {
 
     it('creates an empty reference node, wires it and @s it, with the note on top, when nothing is wired', () => {
       seed('target', 'image');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
 
       const { proposal, existing } = placed(place);
@@ -393,10 +399,19 @@ describe('useApplyTemplate', () => {
       expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
     });
 
+    it('says nothing more when the Space refused the template, which has its own warning', () => {
+      seed('target', 'image');
+      const place = vi.fn(() => ({ ok: false as const, reason: 'full' as const }));
+      apply(grid(), 'target', [ULTRA], place);
+      expect(place).toHaveBeenCalledTimes(1);
+      expect(toast.info).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
     it('writes the anchor prompt in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       const { proposal } = placed(place);
       const words = (proposal.nodes[0]?.prompt ?? []).map((s) => s.text ?? '').join('');
@@ -406,7 +421,7 @@ describe('useApplyTemplate', () => {
     it('names the group its new nodes may form after the template, in the user’s language', () => {
       seed('target', 'image');
       setLocale('zh-CN');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       expect(placed(place).proposal.groupName).toBe(t('canvas.template.storyboard-grid-25.name'));
     });
@@ -417,7 +432,7 @@ describe('useApplyTemplate', () => {
       seed('second', 'image', { name: 'Second', content: 'https://cdn/second.png' });
       wire('first', 'target');
       wire('second', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
 
       const { proposal, existing } = placed(place);
@@ -435,7 +450,7 @@ describe('useApplyTemplate', () => {
         templateNode: { template: 'costume-sheet', key: 'sheet' },
       });
       wire('other', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
 
       const { proposal, existing } = placed(place);
@@ -447,7 +462,7 @@ describe('useApplyTemplate', () => {
   describe('the multi-node fixture', () => {
     it('lays out every template node, every input and the guide around an anchor with nothing wired', () => {
       seed('target', 'image');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -480,7 +495,7 @@ describe('useApplyTemplate', () => {
 
     it('reuses the whole instance on a second apply: nothing new, no second guide, each input @ing its own node', () => {
       seedFlowInstance('target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -520,7 +535,7 @@ describe('useApplyTemplate', () => {
       // `b` is written first but connected later.
       wire('b', 'target', 20_000);
       wire('a', 'target', 19_000);
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -532,7 +547,7 @@ describe('useApplyTemplate', () => {
       seed('target', 'image');
       seed('only', 'image', { name: 'Only', content: 'https://cdn/only.png' });
       wire('only', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -543,7 +558,7 @@ describe('useApplyTemplate', () => {
 
     it('keeps every node after the user switched the anchor’s and upstream’s models', () => {
       seedFlowInstance('target', { models: true });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -555,7 +570,7 @@ describe('useApplyTemplate', () => {
     it('marks an input node this template placed as part of the instance, and a user\'s own input not', () => {
       seedFlowInstance('target');
       setNodeTemplateNode('p', 's', 'target-pose', { template: 'fixture-flow', key: 'pose', input: true, anchor: 'target' });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { existing } = placed(place);
@@ -569,7 +584,7 @@ describe('useApplyTemplate', () => {
       it(`leaves an input node placed by ${what} out of the instance`, () => {
         seedFlowInstance('target');
         setNodeTemplateNode('p', 's', 'target-pose', tag);
-        const place = vi.fn();
+        const place = vi.fn(lands);
         apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
         const { existing } = placed(place);
@@ -580,7 +595,7 @@ describe('useApplyTemplate', () => {
     it('hands the placing the template\'s own node order, so a node put back stacks where the template puts it', () => {
       seedFlowInstance('target');
       removeNode('p', 's', 'target-style');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -597,7 +612,7 @@ describe('useApplyTemplate', () => {
       seed('second', 'image');
       // The first instance's result is the second one's front view.
       wire('first', 'second');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'second', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -613,7 +628,7 @@ describe('useApplyTemplate', () => {
     it('does not reuse a tagged node that was copied but never wired in', () => {
       seed('target', 'image');
       seed('stray', 'image', { name: 'Sheet', templateNode: { template: 'fixture-flow', key: 'sheet' } });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -625,7 +640,7 @@ describe('useApplyTemplate', () => {
   describe('the guide text node', () => {
     it('puts the guide back when the user deleted it', () => {
       seedFlowInstance('target', { guide: false });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -638,7 +653,7 @@ describe('useApplyTemplate', () => {
         name: 'Fixture flow',
         templateNode: { template: 'fixture-flow', key: 'guide', anchor: 'elsewhere' },
       });
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
 
       const { proposal, existing } = placed(place);
@@ -647,7 +662,7 @@ describe('useApplyTemplate', () => {
 
     it('puts no guide for a template without steps', () => {
       seed('target', 'image');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       const { proposal } = placed(place);
       expect(proposal.nodes.some((n) => n.templateNode?.key === 'guide')).toBe(false);
@@ -672,7 +687,7 @@ describe('useApplyTemplate', () => {
     it('warns and places nothing when the template needs a new node', () => {
       seed('target', 'image');
       lockInGroup(['target']);
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(t('canvas.template.groupLocked'));
       expect(place).not.toHaveBeenCalled();
@@ -681,7 +696,7 @@ describe('useApplyTemplate', () => {
     it('warns and places nothing when the only new node would be the guide', () => {
       seedFlowInstance('target', { guide: false });
       lockInGroup(['target', 'target-sheet', 'target-style', 'target-pose', 'target-front', 'target-back', 'target-character']);
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe(t('canvas.template.groupLocked'));
       expect(place).not.toHaveBeenCalled();
@@ -699,7 +714,7 @@ describe('useApplyTemplate', () => {
         'target-character',
         'target-guide',
       ]);
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       expect(toast.warning).not.toHaveBeenCalled();
       const { proposal, existing } = placed(place);
@@ -712,7 +727,7 @@ describe('useApplyTemplate', () => {
       seed('target', 'image');
       seed('src', 'image', { name: 'Empty one' });
       wire('src', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(grid(), 'target', [ULTRA], place);
       const { proposal } = placed(place);
       expect(proposal.nodes[0]?.prompt).toContainEqual({
@@ -722,7 +737,7 @@ describe('useApplyTemplate', () => {
 
     it('hands a reused resource node over with its path, so an empty one is fetched again', () => {
       seedFlowInstance('target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
       const { proposal, existing } = placed(place);
       expect(proposal.nodes[indexOf(existing, 'target-style')]?.resource).toBe('templates/fixture-flow/style.png');
@@ -745,7 +760,7 @@ describe('useApplyTemplate', () => {
       expect(template).toBeDefined();
       if (!template) return;
       seed('target', 'video');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(template, 'target', [SEEDANCE_T2V], place);
 
       const { proposal } = placed(place);
@@ -777,7 +792,7 @@ describe('useApplyTemplate', () => {
       seed('target', 'video');
       seed('photo', 'image', { name: 'Hero photo', content: 'https://cdn/photo.png' });
       wire('photo', 'target');
-      const place = vi.fn();
+      const place = vi.fn(lands);
       apply(template, 'target', [SEEDANCE_I2V, ULTRA], place);
 
       const { proposal, existing } = placed(place);

@@ -36,9 +36,12 @@ export function upstreamBody(
   // A slot the upstream has no field for travels inside the pool it joins,
   // named by the prompt (inner#826).
   const { params, prompt } = joinSlotFiles(entry.params ?? {}, given, written);
+  // A param that switches on a call after the model's own is that call's
+  // input, not the model's: the rig switch never reaches the generation.
+  const later = new Set((entry.extra_steps ?? []).flatMap((step) => (step.at === "after" && step.for_param !== undefined ? [step.for_param] : [])));
   const sent = new Map<string, unknown>();
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
-    if (consumed.has(name)) continue;
+    if (consumed.has(name) || later.has(name)) continue;
     const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? {}) : params[name];
     // The declared "send nothing" value hands the choice back to the upstream.
     if (isPresent(value) && value !== spec.absent_value) sent.set(name, value);

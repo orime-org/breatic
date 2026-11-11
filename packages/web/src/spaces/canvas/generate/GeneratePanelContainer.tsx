@@ -14,6 +14,8 @@ import {
   setNodeParams,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
@@ -635,6 +637,9 @@ function GeneratePanelBody({
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
+    // The result is written into this node by the server, past the size
+    // gate, so a Space that cannot take an add sends nothing (design 5.2).
+    if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
     submitGeneration({
       spaceId,
       nodeId,

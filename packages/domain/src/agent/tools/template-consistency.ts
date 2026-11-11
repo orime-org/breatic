@@ -133,7 +133,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       const generation = proposal.nodes[to];
       const chosen = generation === undefined ? undefined : chosenModelOf(generation);
       // The registry test passes every template through this check, so its edges go a way their model takes.
-      const ways = node === undefined || chosen === undefined ? [] : entriesFor(chosen, node.type, holdingOf(node)).filter((one) => one.way.into === into);
+      const ways = node === undefined || chosen === undefined ? [] : entriesFor(chosen, node.type, holdingOf(node), generation?.params ?? {}).filter((one) => one.way.into === into);
       const subject = nodeLabel(proposal.nodes, from);
       // Material goes into a slot through fills alone (an input into a slot, inner#1825).
       const filled = ways.find((one) => one.by === "fills");

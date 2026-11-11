@@ -29,9 +29,9 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
-import { checkParams, gateWords } from "@domain/agent/tools/proposal-params-check.js";
+import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import { proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
-import { nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
+import { gateWords, nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
@@ -187,7 +187,9 @@ function renderModel(model: PricedModelInfo): string {
   const at = model.atParams ? (model.rejected === undefined ? "at the params given" : "at the params it takes") : undefined;
   const refused = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not priced: not a setting or value it takes)`;
   const price = model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
-  const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
+  const prompt = !model.takesPrompt
+    ? " Takes no prompt: its words come from its sources."
+    : model.promptWhen === undefined ? "" : ` Takes a prompt only while ${gateWords(model.promptWhen, false)}.`;
   const cap =
     model.maxInputChars !== undefined
       ? `, takes at most ${model.maxInputChars} characters of prompt`
@@ -260,7 +262,8 @@ function renderModel(model: PricedModelInfo): string {
       const how = spec.fromReferencePool
         ? `filled on the canvas, not typed here, by an edge into this node, then a mention of it in ${wordsBox(model)}`
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
-      return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
+      const drawn = spec.gate === undefined ? "" : `; it applies only while ${gateWords(spec.gate, false)}`;
+      return `    ${name}:${shape}${howMany} ${how}${drawn}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the
     // only useful thing to say is that asking for another value goes nowhere.

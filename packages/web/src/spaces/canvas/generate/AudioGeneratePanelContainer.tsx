@@ -29,6 +29,8 @@ import {
   setNodeModel,
   setNodeParams,
 } from '@web/data/yjs/canvas-space';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -271,9 +273,12 @@ function AudioGeneratePanelBody({
   // Both off the model: which places it collects material in, and whether it
   // keeps the words to sing in a box of its own. A mode two models serve
   // differently is drawn differently for each.
+  // Read off the content-stable params: the view model rebuilds on every
+  // canvas mutation, and the slots flow into the memoised panel.
+  const params = useContentStable(vm.params);
   const slots = React.useMemo(
-    () => audioSlotsForModel(vm.modelEntry, mode),
-    [vm.modelEntry, mode],
+    () => audioSlotsForModel(vm.modelEntry, mode, params),
+    [vm.modelEntry, mode, params],
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
@@ -314,11 +319,10 @@ function AudioGeneratePanelBody({
   );
   useEndPickWhenSlotGone(nodeId, slots, getLastWriteWasLocal);
 
-  // Both rebuild with the view model, which rebuilds on every canvas mutation
-  // — every frame of any node drag — and both flow into React.memo components
-  // (the panel, and the rail and params picker under it).
+  // It rebuilds with the view model, which rebuilds on every canvas mutation
+  // — every frame of any node drag — and flows into React.memo components
+  // (the panel, and the rail under it).
   const references = useContentStable(derivedReferences);
-  const params = useContentStable(vm.params);
   // The picked slot URLs and what to paint for them are two more fresh objects
   // per view-model build. One unstable prop is enough to make the panel's memo
   // — and every memoised child under it — re-render on every frame of a drag.
@@ -454,6 +458,9 @@ function AudioGeneratePanelBody({
     setSeenLyrics(shownLyricsFragment);
     setExpanded('prompt');
   }
+  // A run whose style box is left out (Mureka V9.5 Song composing from a
+  // melody) shows its lyrics box; a lone box stays as it is.
+  const shownBox = vm.promptRequired || !lyrics ? expanded : 'lyrics';
   // Set by the user's own click on a row, and spent once that box is shown.
   const focusOnOpen = React.useRef(false);
   const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
@@ -463,19 +470,19 @@ function AudioGeneratePanelBody({
   React.useEffect(() => {
     if (!focusOnOpen.current) return;
     focusOnOpen.current = false;
-    (expanded === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
-  }, [expanded, lyricsEditorRef, promptEditorRef]);
+    (shownBox === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
+  }, [shownBox, lyricsEditorRef, promptEditorRef]);
   // The rail's insert lands in the box on show: a chip put into the hidden
   // one would arrive where the writer cannot see it.
   const onInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       const target =
-        expanded === 'lyrics' && lyricsEditorRef.current
+        shownBox === 'lyrics' && lyricsEditorRef.current
           ? lyricsEditorRef.current
           : promptEditorRef.current;
       target?.insertReference(item);
     },
-    [expanded, promptEditorRef, lyricsEditorRef],
+    [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
   const onExecute = React.useCallback((): void => {
@@ -514,14 +521,14 @@ function AudioGeneratePanelBody({
       speakersShort: fresh.speakersShort,
       linesEmpty: fresh.dialogueNames !== null && extractPromptText(freshPrompt).length === 0,
       ...tooShort(fresh.modelEntry, fresh.params),
-      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls),
+      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
     });
     if (verdict != null) {
       const key = slotRefusalKey(
         AUDIO_SLOTS,
-        audioSlotsForModel(fresh.modelEntry, mode),
+        audioSlotsForModel(fresh.modelEntry, mode, fresh.params),
         verdict,
       );
       // `max` comes from the same value the gate judged by, so the sentence
@@ -535,6 +542,9 @@ function AudioGeneratePanelBody({
     const modelEntry = fresh.modelEntry;
     if (!modelEntry) return;
 
+    // The result is written into this node by the server, past the size
+    // gate, so a Space that cannot take an add sends nothing (design 5.2).
+    if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
     submitGeneration({
       spaceId,
       nodeId,
@@ -689,7 +699,8 @@ function AudioGeneratePanelBody({
       model={vm.model}
       currentModel={vm.modelEntry}
       creditText={creditText}
-      modelTakesPrompt={vm.promptRequired}
+      modelTakesPrompt={vm.takesPrompt}
+      promptShown={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
       voiceList={voices.state}
@@ -716,7 +727,7 @@ function AudioGeneratePanelBody({
         speakersShort: vm.speakersShort,
         linesEmpty: vm.dialogueNames !== null && extractPromptText(promptText).length === 0,
         ...tooShort(vm.modelEntry, vm.params),
-        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls),
+        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
       })?.refusal ?? null}
@@ -724,7 +735,7 @@ function AudioGeneratePanelBody({
       lyricsSlot={lyricsSlot}
       promptLabel={promptLabel}
       promptPlaceholder={promptPlaceholder}
-      expanded={expanded}
+      expanded={shownBox}
       onExpand={onExpand}
       promptFragment={fragment}
       lyricsFragment={shownLyricsFragment}

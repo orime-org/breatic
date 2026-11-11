@@ -35,6 +35,7 @@ import {
   render,
   screen,
   cleanup,
+  createEvent,
   fireEvent,
   waitFor,
 } from '@testing-library/react';
@@ -473,6 +474,20 @@ describe('dismissing the field', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
+  });
+
+  it('marks the Escape it takes, so nothing further up the page answers the same press', async () => {
+    // A table open full screen ends on an Escape nobody took (#1427
+    // design §5.3); the toolbar closing on that press has to say it took it.
+    openToolbar();
+    await screen.findByTestId('doc-link-toolbar');
+    await userEvent.click(screen.getByTestId('doc-link-edit'));
+    const field = screen.getByTestId('doc-link-input');
+    const event = createEvent.keyDown(field, { key: 'Escape' });
+
+    fireEvent(field, event);
+
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it('takes the toolbar away on a press outside', async () => {

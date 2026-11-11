@@ -29,10 +29,11 @@ import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-promp
 import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
 import { readSlotPick } from '@web/spaces/canvas/generate/slots';
 import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
-import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
+import { standsEmpty, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
-export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => unknown;
+export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => PlacedProposal | SpaceRefusal;
 
 /**
  * Which canvas node each generate node holds in a template input's slot, the
@@ -223,12 +224,15 @@ export function useApplyTemplate(
         if (tag === undefined || tag.key === TEMPLATE_GUIDE_KEY) return last + index;
         return (tag.input ? inputRank.get(tag.key) : nodeRank.get(tag.key)) ?? last + index;
       });
+      let placed: PlacedProposal | SpaceRefusal;
       try {
-        placeTemplate(proposal, existing, order);
+        placed = placeTemplate(proposal, existing, order);
       } catch {
         toast.error(t('canvas.template.applyFailed'));
         return;
       }
+      // Refused for room, with its own warning.
+      if ('ok' in placed) return;
       // An empty node to fill or words in braces to write are left for the
       // user; nothing stops them generating as it is.
       const toFill =

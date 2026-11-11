@@ -488,7 +488,9 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     return { ...built, data: { ...built.data, name: placed.name, ...size } };
   });
   let group: BuiltGroup | undefined;
-  runCanvasUndoBatch(projectId, spaceId, () => {
+  // The results, their edges and their Group are one add for the size cap,
+  // judged before anything is sent: a Space without room runs nothing.
+  const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
     for (const node of nodes) {
       addNode(projectId, spaceId, node);
       for (const from of wiredFrom) {
@@ -502,6 +504,7 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     }
     if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
   });
+  if (!built.ok) return null;
   // The press has its place on the canvas at once; the uploader sees each node
   // wait until the server answers (inner#1303 §6.7).
   const marks = useUploadMarksStore.getState();

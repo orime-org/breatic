@@ -282,6 +282,28 @@ describe('buildAudioPanelViewModel — what execute needs to know', () => {
   });
 });
 
+describe('buildAudioPanelViewModel — a run that takes no style (breatic#1393)', () => {
+  const SONG = ttsModel('mureka-v9.5-generate-song', {
+    modality: 'audio',
+    mode: ['t2m', 'a2m'],
+    prompt_when: { equals: { compose_from: 'references' } },
+    params: {
+      compose_from: { description: '', label: 'Compose from', default: 'references', values: ['references', 'melody'], modes: ['a2m'], fill: 'panel' },
+      melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+    },
+  });
+
+  it('asks for no style while composing from a melody, and still takes text references for the lyrics', () => {
+    const vm = buildAudioPanelViewModel({
+      ...BASE,
+      models: [SONG],
+      mode: 'a2m',
+      nodes: nodes({ model: 'mureka-v9.5-generate-song', paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }),
+    });
+    expect([vm.promptRequired, vm.takesPrompt]).toEqual([false, true]);
+  });
+});
+
 describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', () => {
   const GEMINI = ttsModel('gemini', {
     params: {

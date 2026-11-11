@@ -65,6 +65,11 @@ export interface FileUploadsDeps {
   readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
   /** Starts the upload behind a pending block. */
   readonly start: (uploadId: string, source: UploadSource) => void;
+  /**
+   * Whether the Space can take new blocks now, saying why not itself
+   * (inner#1790): asked before any file is admitted. Left out, it always can.
+   */
+  readonly canAdd?: () => boolean;
 }
 
 /** Admitted files: their blocks, and what starts their uploads once the blocks are in. */
@@ -104,6 +109,7 @@ function rejectionOf(file: File, maxBytes: number): FileRejection | null {
 export function createFileUploads(deps: FileUploadsDeps): FileUploads {
   return {
     prepare(files) {
+      if (deps.canAdd?.() === false) return null;
       const maxBytes = deps.maxUploadBytes();
       const admitted: { file: File; block: PendingBlock }[] = [];
       for (const file of files) {

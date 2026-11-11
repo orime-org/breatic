@@ -71,7 +71,7 @@ function tree(session: SceneSession, client: QueryClient, mode: 'visible' | 'hid
 async function setup(): Promise<{ session: SceneSession; client: QueryClient; page: ReturnType<typeof render> }> {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, 'project-p1/3d-s1');
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   owners.push({ doc, session, client });

@@ -12,12 +12,13 @@
  * about the model: the catalog entry, the family, and param validation.
  */
 
-import { checkParamCombination, extractPromptText, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, extractPromptText, resolveParams, type ResolvableModel, type SceneTaskNotice } from "@breatic/shared";
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
 import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
+import murekaSong from "@worker/providers/families/mureka-song.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 import nanoBananaRelight from "@worker/providers/families/nano-banana-relight.js";
 
@@ -31,11 +32,13 @@ export interface GenerationResult {
   model: string;
   /** What WaveSpeed billed, in USD; 0 when there was no prediction to bill. */
   cost: number;
+  /** Set when an optional step failed and the run delivered without it (inner#1692). */
+  notice?: SceneTaskNotice;
 }
 
 /** Model name -> family, for the models that have one. */
 export const FAMILIES = new Map<string, ModelFamily>(
-  [minimaxSpeech, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
+  [minimaxSpeech, murekaSong, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
 /**

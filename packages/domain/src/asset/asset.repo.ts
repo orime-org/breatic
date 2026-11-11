@@ -26,6 +26,8 @@ export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.r
 export const setCoverAsset: typeof assetRepo.setCoverAsset = assetRepo.setCoverAsset;
 /** The shared repository implementation of findCoverOf. */
 export const findCoverOf: typeof assetRepo.findCoverOf = assetRepo.findCoverOf;
+/** The shared repository implementation of findCoverUnderKey. */
+export const findCoverUnderKey: typeof assetRepo.findCoverUnderKey = assetRepo.findCoverUnderKey;
 /** The shared repository implementation of usageByStudio. */
 export const usageByStudio: typeof assetRepo.usageByStudio = assetRepo.usageByStudio;
 /** The shared repository implementation of usageByStudios. */

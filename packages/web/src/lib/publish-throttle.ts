@@ -1,6 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+/**
+ * The shortest gap allowed between two awareness writes, in ms.
+ *
+ * Awareness resends the whole state on every field write, so the fastest field
+ * sets the rate for all of them. 33ms is where Excalidraw puts its cursor sync
+ * (`CURSOR_SYNC_TIMEOUT = 33`) and where tldraw puts its collaborative frame
+ * rate (`COLLABORATIVE_MODE_FPS = 30`).
+ */
+export const PRESENCE_WRITE_INTERVAL_MS = 33;
+
 /** A run that has been asked for and not happened yet. */
 export interface PublishThrottle {
   /** Ask for a run; repeat calls before it happens fold into that one run. */

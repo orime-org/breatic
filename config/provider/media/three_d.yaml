@@ -88,6 +88,9 @@ models:
             field: texture_seed
           negative_prompt:
             field: negative_prompt
+        drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -124,6 +127,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0
@@ -170,6 +175,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0
@@ -256,6 +263,9 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -295,6 +305,8 @@ models:
           orientation:
             field: orientation
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0
@@ -342,6 +354,8 @@ models:
           model_seed:
             field: seed
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0
@@ -441,6 +455,9 @@ models:
             field: orientation
           enable_image_autofix:
             field: enable_image_autofix
+        drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -480,6 +497,8 @@ models:
           orientation:
             field: orientation
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0
@@ -527,6 +546,8 @@ models:
           model_seed:
             field: seed
         drops:
+          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
+          rig_skeleton: "*"
           texture_version:
             values:
               - v3.0

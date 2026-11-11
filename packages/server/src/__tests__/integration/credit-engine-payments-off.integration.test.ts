@@ -24,9 +24,10 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore, env } from "@breatic/core";
+import { db, initCore, env } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService } from "@server/modules/index.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-engine-off-test-driver";
 
@@ -90,7 +91,7 @@ describe("支付关闭", () => {
   it("照写用量记录，lot_id 为空而付款方照填", async () => {
     const fx = await seedFixture();
 
-    const outcome = await creditLotService.chargeForGeneration({
+    const outcome = await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 42.5,
@@ -124,11 +125,37 @@ describe("支付关闭", () => {
     expect(row?.model).toBe("seedance-1.5-pro");
   });
 
+  it("settles the charge request and writes one standalone usage row", async () => {
+    const fx = await seedFixture();
+    const referenceId = `off-request-${Date.now()}`;
+    const requestId = await db.transaction((tx) =>
+      creditLotService.requestCharge(
+        { kind: "task", referenceId, actorUserId: fx.userId, projectId: fx.projectId, amount: 12, model: "seedream-4.0" },
+        tx,
+      ),
+    );
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const outcome = await creditLotService.settleCharge(requestId!);
+
+    expect(outcome).toEqual({ billed: false, charged: "0.000000", shortfall: "0.000000", studioId: fx.studioId, lotIds: [] });
+    expect(
+      await sql`SELECT status, attempts, (settled_at IS NOT NULL) AS stamped FROM credit_charge_requests WHERE id = ${requestId}`,
+    ).toEqual([{ status: "settled", attempts: 0, stamped: true }]);
+    expect(
+      await sql`SELECT entry_type, amount::text AS amount, lot_id, payer_user_id FROM credit_ledger WHERE reference_id = ${referenceId}`,
+    ).toEqual([{ entry_type: "spend", amount: "-12.000000", lot_id: null, payer_user_id: fx.userId }]);
+
+    // Settled is final: a second settlement writes nothing more.
+    expect(await creditLotService.settleCharge(requestId!)).toBeNull();
+    expect(await sql`SELECT 1 FROM credit_ledger WHERE reference_id = ${referenceId}`).toHaveLength(1);
+  });
+
   it("一笔都没有也不报错、不失败", async () => {
     // 这正是每个开发环境的日常：库里一行 credit_lots 都没有。
     const fx = await seedFixture();
     await expect(
-      creditLotService.chargeForGeneration({
+      chargeNow({
         projectId: fx.projectId,
         actorUserId: fx.userId,
         amount: 1,
@@ -142,7 +169,7 @@ describe("the account ledger on a deployment that charges nobody", () => {
     // 这个部署里每一行用量的 lot_id 都是空的。验收项 13 说消耗流水照常
     // 显示，而这一项的脚注也已经对用户说了「下面是用量记录」。
     const fx = await seedFixture();
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 42,
@@ -165,7 +192,7 @@ describe("the account ledger on a deployment that charges nobody", () => {
 describe("支付关闭时的已消耗（任务 #12，计划 §4.6）", () => {
   it("无包可扣的用量算进这个 studio 的已消耗", async () => {
     const fx = await seedFixture();
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 42,

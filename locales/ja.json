@@ -127,6 +127,7 @@
       "attachment_limit_reached": "この会話の添付ファイルは上限の {limit} 件に達しています。いくつか削除してからアップロードしてください。"
     },
     "canvas": {
+      "prompt_not_taken": "このモデルは現在の設定ではスタイルを受け付けません。スタイルを外してから生成してください。",
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "param_too_short": "{name}を入力してください",
@@ -602,6 +603,19 @@
       "needScene": "先に 3D Space を開いてください。",
       "credits": "約 {credits} クレジット",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project の指示",
+      "title": "Project の指示",
+      "description": "この Project のすべての会話で Agent に送られます。メンバー全員で共有します。",
+      "placeholder": "例：英語で回答する。配色は青と白だけにする。",
+      "atLimit": "{max, number} 文字の上限に達しました",
+      "lastEdited": "{name} が {time} に最終更新",
+      "save": "保存",
+      "saved": "保存しました",
+      "cleared": "Project の指示をクリアしました",
+      "readFailed": "Project の指示を読み込めませんでした",
+      "saveFailed": "Project の指示を保存できませんでした"
     }
   },
   "canvas": {
@@ -841,6 +855,7 @@
       "coverSongTip": "音声ノードを選び、その曲をカバーします",
       "selectCoverSongFromCanvas": "カバーする曲を選ぶ",
       "errorNoMusicSong": "先に楽曲を選んでください",
+      "errorNoMusicMelody": "先にメロディを選んでください",
       "moodImage": "参考画像",
       "moodImageTip": "画像を選び、雰囲気を決めます",
       "removeMoodImage": "参考画像を外す",
@@ -852,7 +867,7 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
+      "refuseExecuteNoReference": "先に楽曲かボーカルを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
       "itemsRemove": "削除",
@@ -871,6 +886,7 @@
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
+        "compose_from": "生成のもと",
         "language": "言語",
         "voice_description": "声の説明",
         "speakers": "話者",
@@ -924,6 +940,7 @@
         "face_limit": "ポリゴン数上限",
         "auto_size": "自動サイズ",
         "export_uv": "UV を出力",
+        "rig_skeleton": "スケルトンをリギング",
         "model_seed": "モデルシード",
         "texture_seed": "テクスチャシード",
         "texture_alignment": "テクスチャの合わせ方",
@@ -2345,6 +2362,8 @@
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）",
+        "fullscreen": "全画面",
+        "exitFullscreen": "全画面を終了",
         "cut": "切り取り",
         "pasteAbove": "上に貼り付け",
         "pasteBelow": "下に貼り付け",
@@ -2387,7 +2406,8 @@
         },
         "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
         "notWrittenYet": "アップロード済み。まだ追加されていません",
-        "notPasted": "{count} 件を貼り付けられませんでした。"
+        "notPasted": "{count} 件を貼り付けられませんでした。",
+        "stillUploading": "{count} 件の画像・動画・音声はアップロード中のため貼り付けられませんでした。アップロードが完了したらもう一度コピーしてください。"
       }
     },
     "readOnlyReconnect": "再接続",
@@ -2418,6 +2438,18 @@
       "selectedCount": "{count} 個を選択中",
       "multiTransform": "シーンのギズモで、選択したオブジェクトを中心の周りで変形します。",
       "mixed": "複数の値",
+      "pose": {
+        "title": "ポーズ",
+        "stand": "立つ",
+        "sit": "座る",
+        "lie": "寝そべる",
+        "walk": "歩く",
+        "wave": "手を振る",
+        "jointMode": "関節を調整",
+        "reset": "ポーズをリセット",
+        "noSkeleton": "このモデルにはスケルトンがないため、ポーズを付けられません。",
+        "humanoidOnly": "プリセットは人型キャラクター専用です。"
+      },
       "selectObject": "オブジェクトを選択してプロパティを編集します。",
       "refused": "このシーンへの接続が拒否されました。変更は保存されません。",
       "retry": "再試行",
@@ -2507,6 +2539,9 @@
         "kindGeneration": "生成",
         "originSpace": "Space 内",
         "originAgent": "Agent",
+        "rigFailed": "スケルトンのリギングに失敗しました。このモデルはポーズを付けられません",
+        "rigged": "スケルトンをリギング済み",
+        "willRig": "生成完了後にスケルトンをリギングします",
         "generating": "生成中",
         "generatingFor": "生成中 · {minutes} 分経過",
         "stillRunning": "この生成はまだ処理中です。後でもう一度お試しください。",
@@ -2526,6 +2561,7 @@
       "proposalBusy": "別の生成を送信中です。",
       "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
       "force": {
+        "low_poly_skips_parts": "スマートローポリではパーツ分割できません。",
         "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
         "pbr_needs_texture": "PBR にはテクスチャが必要です。",
         "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"
@@ -2572,6 +2608,19 @@
         "formats": "PNG、JPEG、WebP",
         "chooseFile": "ファイルを選択"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "この Space は {used} を使用しています。{limit} を超えると、これ以上内容を追加できません。",
+      "noticeFull": "この Space はいっぱいです（{used} / {limit}）。上限を下回るまでは内容の削除だけができます。",
+      "noticeOver": "この Space は上限を超えています（{used} / {limit}）。ノード、クリップ、モデル、段落全体を丸ごと削除することだけができます。",
+      "add": "この Space はいっぱいです。編集を続けるには一部の内容を削除してください。",
+      "compound": "この Space はいっぱいです。この削除はほかの内容も変更するため、今は実行できません。",
+      "over": "この Space は上限を超えています。ノード、クリップ、モデル、段落全体を丸ごと削除してください。",
+      "resync": "直前の変更はこの Space のサイズ上限を超えたため、保存されませんでした。",
+      "proposal": "この Space はいっぱいのため、提案は配置されませんでした。",
+      "reason": "この Space はいっぱいです。",
+      "text": "テキストは追加されませんでした。この Space はいっぱいです。",
+      "wait": "この Space はいっぱいです。一部の内容を削除すると完了します。"
     }
   },
   "menu": {
@@ -3549,8 +3598,6 @@
       "more": "さらに読み込む",
       "chooseFile": "動画を選択",
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
-      "preparing": "動画を準備中…",
-      "progress": "アップロード中 {progress}%",
       "confirm": "Timeline に追加",
       "insertAfter": "{name} の後に挿入",
       "insertFirst": "メイントラックの先頭に挿入"
@@ -3564,12 +3611,13 @@
       "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
-      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
       "main_track": "メイントラックは削除できません。",
       "track_not_empty": "空のトラックのみ削除できます。",
+      "full": "この Space はいっぱいです。編集を続けるには一部の内容を削除してください。",
+      "over_ceiling": "この Space は上限を超えています。クリップ全体を削除してください。",
       "source_unresolved": "ウェブアニメーションはまだ準備できていません。しばらくしてから再試行してください。"
     },
     "mainTrack": "メイントラック",
@@ -3663,6 +3711,14 @@
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
       }
+    },
+    "upload": {
+      "uploading": "アップロード中",
+      "progress": "アップロード中 {progress}%",
+      "failed": "アップロードに失敗しました",
+      "waiting": "アップロード済み、編集権限を待っています",
+      "unfinished": "未完了",
+      "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
     }
   }
 }
