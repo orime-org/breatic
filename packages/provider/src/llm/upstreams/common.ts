@@ -8,7 +8,8 @@
 
 import type { JSONValue, LanguageModel } from "ai";
 import type { LlmPrice, ProviderConfig, UpstreamDecl } from "@provider/config/schema.js";
-import type { Cost, CostLookup } from "@provider/cost.js";
+import type { Cost, CostLookup, TokenBuckets } from "@provider/cost.js";
+import { priceAt, tokenUsd, type PriceEntries } from "@provider/llm/prices.js";
 
 /** A language model of the specification the AI SDK providers implement. */
 export type ModelV4 = Extract<LanguageModel, { specificationVersion: "v4" }>;
@@ -35,6 +36,36 @@ export interface ReportedCosts {
   isGeneration: (id: unknown) => id is string;
   /** Asks the upstream what one generation cost; until the last attempt an unanswered lookup stays pending. */
   lookup: (decl: UpstreamDecl, key: string, generationId: string, lookup: CostLookup, lastAttempt: boolean) => Promise<Cost>;
+}
+
+/** What a relayed Messages call left for its cost to be read from. */
+export interface MessagesCall {
+  upstream: string;
+  /** The id of message_start, once it came. */
+  messageId: string | undefined;
+  /** The usage of message_delta, once the call completed. */
+  usage: Record<string, unknown> | undefined;
+  /** When the request that served the call was sent, in epoch ms. */
+  sentAt: number;
+  /** The model's direct prices, for an upstream priced from `llm.yaml`. */
+  prices: PriceEntries | undefined;
+}
+
+/**
+ * How one upstream kind takes an Anthropic Messages request: what the web-animation relay needs of it, all of which
+ * runs in a Cloudflare Worker.
+ */
+export interface MessagesSpeaker {
+  /** Its Messages endpoint under the upstream's base address. */
+  url: (baseUrl: string) => string;
+  /** The headers that carry the key. */
+  auth: (key: string) => Record<string, string>;
+  /** Its own change to the request body, made in place. */
+  rewrite?: (body: Record<string, unknown>) => void;
+  /** What its refusal means beyond its status (its own forms). */
+  refusal: (status: number, body: unknown) => Refusal | undefined;
+  /** What a call it served cost. */
+  cost: (call: MessagesCall) => Cost;
 }
 
 /** How one upstream kind is spoken to. */
@@ -134,3 +165,40 @@ export const asWritten = (modelId: string): string => modelId;
  * @returns Nothing.
  */
 export const cachesOnItsOwn = (): VendorOptions => ({});
+
+/**
+ * A non-negative integer counter of a usage object, or zero.
+ * @param value - The counter.
+ * @returns It, or zero when missing or not a counter.
+ */
+export function counter(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+/**
+ * The tokens a Messages usage object counts: its input counts only the uncached input, the cached and the
+ * cache-written input are counted beside it, and thinking is part of the output.
+ * @param usage - The usage of message_delta.
+ * @returns The token buckets, and the cache-written input.
+ */
+export function messagesTokens(usage: Record<string, unknown>): TokenBuckets & { written: number } {
+  const cachedInput = counter(usage["cache_read_input_tokens"]);
+  const written = counter(usage["cache_creation_input_tokens"]);
+  const details = usage["output_tokens_details"];
+  const reasoning = counter(typeof details === "object" && details !== null ? (details as Record<string, unknown>)["thinking_tokens"] : undefined);
+  return { input: counter(usage["input_tokens"]) + cachedInput + written, cachedInput, output: counter(usage["output_tokens"]), reasoning, written };
+}
+
+/**
+ * What a direct upstream's Messages call cost: its tokens at the direct price in effect when it was sent. A call that
+ * did not complete, or a model with no direct price, is missing, never free.
+ * @param call - The call.
+ * @returns The cost.
+ */
+export function priceTableMessagesCost(call: MessagesCall): Cost {
+  if (call.usage === undefined) return { state: "missing", reason: `the call on ${call.upstream} ended before its usage` };
+  const { written, ...tokens } = messagesTokens(call.usage);
+  const price = priceAt(call.prices, call.sentAt);
+  if (price === undefined) return { state: "missing", reason: `no direct price for the call on ${call.upstream}`, tokens };
+  return { state: "known", usd: tokenUsd(price, { input: tokens.input, cachedInput: tokens.cachedInput, written, output: tokens.output }), tokens, source: "price_table" };
+}

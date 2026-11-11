@@ -5,7 +5,8 @@
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { aiSdkFetch } from "@provider/http/request.js";
-import { cacheControl, errorOf, messageOf, type Vendor } from "@provider/llm/upstreams/common.js";
+import { anthropicRefusal } from "@provider/llm/upstreams/anthropic.messages.js";
+import { cacheControl, type Vendor } from "@provider/llm/upstreams/common.js";
 
 /** Anthropic's error types and the statuses its error docs give them (https://platform.claude.com/docs/en/api/errors). */
 const ANTHROPIC_STATUS: Readonly<Record<string, number>> = {
@@ -33,9 +34,5 @@ export const anthropic: Vendor = {
   gateway: false,
   reasoning: { on: () => ({ thinking: { type: "adaptive", display: "summarized" }, effort: "high" }), off: {} },
   cache: (_modelId, ttl) => cacheControl(ttl),
-  // Measured 2026-10-27 for the balance; the missing model from Anthropic's error docs.
-  refusal: (status, body) => {
-    if (status === 404 && errorOf(body).type === "not_found_error") return "model_not_found";
-    return status === 400 && messageOf(body).includes("credit balance is too low") ? "insufficient_balance" : undefined;
-  },
+  refusal: anthropicRefusal,
 };

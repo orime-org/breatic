@@ -11,10 +11,11 @@ export {
   costsOf,
   type UnavailableReason,
 } from "@provider/errors.js";
-export type { Cost, CostLookup, TokenBuckets } from "@provider/cost.js";
+export { costSchema, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
 export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
+export type { MessagesCallEnd, MessagesCandidate, MessagesPlan, MessagesTokens } from "@provider/messages/relay.js";
 export { ProviderConfigError, type CatalogShape } from "@provider/config/schema.js";
 export type {
   CallWants,

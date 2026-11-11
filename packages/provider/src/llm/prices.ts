@@ -40,3 +40,27 @@ export function priceAt(entries: PriceEntries | undefined, at: number): LlmPrice
   // Every number of a price is a per-million-token price, so each is scaled, a field added later included.
   return Object.fromEntries(Object.entries(entry).flatMap(([field, usd]) => (typeof usd === "number" ? [[field, usd * factor]] : []))) as LlmPrice;
 }
+
+/** The tokens a call is priced by: input counts every input token, the cached and the cache-written among them. */
+export interface PricedTokens {
+  input: number;
+  cachedInput: number;
+  written: number;
+  output: number;
+}
+
+/**
+ * What a call cost at a price: uncached input at the miss price, cached input at the hit price (else the miss price),
+ * written input at the write price of its lifetime (else the miss price), output at the output price.
+ * @param price - The price in effect.
+ * @param tokens - The call's tokens.
+ * @param cacheTtl - The lifetime the call cached for, when it did; a five-minute write otherwise.
+ * @returns The cost in USD.
+ */
+export function tokenUsd(price: LlmPrice, tokens: PricedTokens, cacheTtl?: unknown): number {
+  const writePrice = (cacheTtl === "1h" ? price.input_cache_write_1h_per_mtok : price.input_cache_write_5m_per_mtok) ?? price.input_cache_miss_per_mtok;
+  return ((tokens.input - tokens.cachedInput - tokens.written) * price.input_cache_miss_per_mtok
+    + tokens.cachedInput * (price.input_cache_hit_per_mtok ?? price.input_cache_miss_per_mtok)
+    + tokens.written * writePrice
+    + tokens.output * price.output_per_mtok) / 1_000_000;
+}

@@ -13,7 +13,8 @@ import { numberLeaf, type Cost, type TokenBuckets } from "@provider/cost.js";
 import { aiSdkFetch, fetchJson, sideBounds, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import { entryAt } from "@provider/llm/prices.js";
 import { costedOf } from "@provider/llm/understand/openrouter.js";
-import { asWritten, cacheControl, isClaude, messageOf, type ReportedCosts, type Vendor, type VendorOptions } from "@provider/llm/upstreams/common.js";
+import { asWritten, cacheControl, isClaude, type ReportedCosts, type Vendor, type VendorOptions } from "@provider/llm/upstreams/common.js";
+import { openRouterRefusal } from "@provider/llm/upstreams/openrouter.messages.js";
 
 /** The decisions endpoint's model (JEV), pinned like domain's `JEV_PINS`. */
 const JEV_MODEL = "typesafe/jev-1.13";
@@ -119,11 +120,7 @@ export const openrouter: Vendor = {
   reasoning: { on: (modelId) => ({ reasoning: { effort: modelId.startsWith("deepseek/") ? "max" : "high" } }), off: { reasoning: { effort: "none" } } },
   // It turns a request-level mark into Anthropic's automatic caching; other models cache a prefix on their own.
   cache: (modelId, ttl) => (isClaude(modelId) ? cacheControl(ttl) : {}),
-  // The missing model measured 2026-10-26; 402 from OpenRouter's error docs.
-  refusal: (status, body) => {
-    if (status === 400 && messageOf(body).endsWith(" is not a valid model ID")) return "model_not_found";
-    return status === 402 ? "insufficient_balance" : undefined;
-  },
+  refusal: openRouterRefusal,
   costs,
   listedPrice(llm, modelId, at) {
     // While a dated direct price is in effect, prices read before it took effect (or read at a moment the file does

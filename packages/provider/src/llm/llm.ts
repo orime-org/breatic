@@ -14,11 +14,13 @@ import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamR
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { priceAt } from "@provider/llm/prices.js";
+import { priceAt, tokenUsd } from "@provider/llm/prices.js";
 import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
+import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
+import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import type { Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -158,9 +160,18 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
     const candidates = candidatesOn(route);
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
-    // Cheapest by unit price: input first, then output, then weight; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
-    // One moment for the whole ranking: the direct price in effect when the call is planned.
+    return { ...plan, order: byUnitPrice(modelId, plan.order) };
+  };
+
+  /**
+   * Upstreams cheapest first by unit price: input first, then output, then weight; an upstream without a price goes
+   * last. One moment for the whole ranking: the direct price in effect now.
+   * @param modelId - Our model id.
+   * @param upstreams - The upstreams, each with its weight.
+   * @returns Them in price order.
+   */
+  const byUnitPrice = <T extends { upstream: string; weight: number }>(modelId: string, upstreams: readonly T[]): T[] => {
     const at = Date.now();
     const direct = priceAt(config.llm.prices[modelId], at);
     /**
@@ -168,16 +179,15 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
      * @param c - The upstream.
      * @returns Both prices; infinite when unknown.
      */
-    const price = (c: Candidate): [number, number] => {
+    const price = (c: T): [number, number] => {
       const listed = vendorOf(kindOf(c.upstream)).listedPrice;
       const p = listed === undefined ? direct : listed(config.llm, modelId, at);
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
-    const order = [...plan.order].sort((a, b) => {
+    return [...upstreams].sort((a, b) => {
       const [pa, pb] = [price(a), price(b)];
       return pa[0] - pb[0] || pa[1] - pb[1] || a.weight - b.weight;
     });
-    return { ...plan, order };
   };
 
   /**
@@ -262,13 +272,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (usage.inputTokens === undefined && usage.outputTokens === undefined) return { state: "missing", reason: `${upstream} reported no token usage for ${finished.model}`, tokens };
     const price = priceAt(config.llm.prices[finished.model], breatic.sentAt);
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
-    const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-    const writePrice = (breatic?.cacheTtl === "1h" ? price.input_cache_write_1h_per_mtok : price.input_cache_write_5m_per_mtok) ?? price.input_cache_miss_per_mtok;
-    const usd = ((input - cachedInput - written) * price.input_cache_miss_per_mtok
-      + cachedInput * (price.input_cache_hit_per_mtok ?? price.input_cache_miss_per_mtok)
-      + written * writePrice
-      + (usage.outputTokens ?? 0) * price.output_per_mtok) / 1_000_000;
+    const usd = tokenUsd(price, { input: tokens.input, cachedInput: tokens.cachedInput, written, output: usage.outputTokens ?? 0 }, breatic?.cacheTtl);
     return { state: "known", usd, tokens, source: "price_table" };
   };
 
@@ -555,6 +560,38 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         dispose();
         for (const cleanup of session.cleanups) cleanup();
       }
+    },
+
+    messagesPlan(modelId, chosen = DEFAULT_ROUTE): MessagesPlan {
+      const route = routeOf(config.llm.routes, modelId);
+      // Every upstream of the route that takes a Messages request, whatever keys this process holds: the Worker that
+      // sends the call reads its own.
+      const speaking = route.upstreams.filter(({ upstream }) => messagesSpeakerOf(kindOf(upstream)) !== undefined);
+      if (chosen.mode === "upstream" && !speaking.some(({ upstream }) => upstream === chosen.upstream)) {
+        throw new UpstreamRequestRejected(modelId, chosen.upstream, `${chosen.upstream} takes no Messages request for ${modelId}`);
+      }
+      const picked = chosen.mode === "upstream"
+        ? speaking.filter(({ upstream }) => upstream === chosen.upstream)
+        : chosen.mode === "cheapest" ? byUnitPrice(modelId, speaking) : speaking;
+      if (picked.length === 0) {
+        throw new NoUpstreamAvailable(modelId, route.upstreams.map(({ upstream }) => ({ upstream, kind: "failed", failure: "takes no Messages request" })));
+      }
+      return {
+        model: modelId,
+        candidates: picked.map(({ upstream }) => {
+          const decl = config.upstreams[upstream]!;
+          // An upstream that reports no cost of its own is priced from the model's direct prices.
+          const prices = vendorOf(decl.kind).costs === undefined ? config.llm.prices[modelId] : undefined;
+          return {
+            upstream,
+            kind: decl.kind,
+            baseUrl: decl.base_url,
+            vendorModel: vendorModelId(route, upstream, modelId),
+            keyEnv: decl.key_env,
+            ...(prices === undefined ? {} : { prices }),
+          };
+        }),
+      };
     },
 
     async judge(request, chosen = DEFAULT_ROUTE) {

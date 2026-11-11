@@ -26,3 +26,18 @@ export type Cost =
   | { state: "pending"; lookup: CostLookup }
   | { state: "missing"; reason: string; tokens?: TokenBuckets };
 
+
+const tokenCount = z.number().int().nonnegative();
+
+/** The token buckets of a Cost, as JSON carries them. */
+const tokenBucketsSchema = z.strictObject({ input: tokenCount, cachedInput: tokenCount, output: tokenCount, reasoning: tokenCount });
+
+/**
+ * A Cost as JSON carries it across processes (the web-animation job's report, a queued lookup): the caller reads one
+ * back with this rather than trusting its shape.
+ */
+export const costSchema: z.ZodType<Cost> = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("known"), usd: z.number().finite().nonnegative(), tokens: tokenBucketsSchema.optional(), source: z.enum(["reported", "billing", "price_table"]) }),
+  z.strictObject({ state: z.literal("pending"), lookup: z.looseObject({ upstream: z.string().min(1) }) }),
+  z.strictObject({ state: z.literal("missing"), reason: z.string(), tokens: tokenBucketsSchema.optional() }),
+]);

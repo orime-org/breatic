@@ -5,7 +5,8 @@
 
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { aiSdkFetch } from "@provider/http/request.js";
-import { asWritten, cachesOnItsOwn, messageOf, type Vendor } from "@provider/llm/upstreams/common.js";
+import { asWritten, cachesOnItsOwn, type Vendor } from "@provider/llm/upstreams/common.js";
+import { deepSeekRefusal } from "@provider/llm/upstreams/deepseek.messages.js";
 
 export const deepseek: Vendor = {
   sdkName: "deepseek",
@@ -15,9 +16,5 @@ export const deepseek: Vendor = {
   // DeepSeek's deepest level; inner#1650 measured Flash 1017 at it.
   reasoning: { on: () => ({ thinking: { type: "enabled" }, reasoningEffort: "max" }), off: { thinking: { type: "disabled" } } },
   cache: cachesOnItsOwn,
-  // The missing model measured 2026-10-27; 402 from DeepSeek's error code page.
-  refusal: (status, body) => {
-    if (status === 400 && messageOf(body).startsWith("The supported API model names are")) return "model_not_found";
-    return status === 402 ? "insufficient_balance" : undefined;
-  },
+  refusal: deepSeekRefusal,
 };

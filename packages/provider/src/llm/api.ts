@@ -3,6 +3,7 @@
 
 import type { FinishReason, JSONValue, LanguageModel, LanguageModelUsage, ProviderMetadata, SystemModelMessage } from "ai";
 import type { Cost } from "@provider/cost.js";
+import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { Availability } from "@provider/pricing/estimate.js";
 import type { Route } from "@provider/routing/route.js";
 
@@ -108,6 +109,13 @@ export interface LlmApi {
   costOf(finished: FinishedCall): Cost;
   understand(request: UnderstandRequest, route?: Route): Promise<UnderstandAnswer>;
   judge(request: JudgeRequest, route?: Route): Promise<JudgeAnswer>;
+  /**
+   * Where a web-animation Messages call of a model may go, in order, for the Worker that relays it: every upstream of
+   * the model's route that takes a Messages request, with no key read here.
+   * @throws {UpstreamRequestRejected} When the route pins an upstream that takes none for this model.
+   * @throws {NoUpstreamAvailable} When no upstream of the route takes one.
+   */
+  messagesPlan(modelId: string, route?: Route): MessagesPlan;
   capabilities(modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<{ pictures: boolean; contextWindow?: number }>;
   /**
    * Check that every model this deployment reaches directly (not through a

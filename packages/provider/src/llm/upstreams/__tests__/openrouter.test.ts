@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
+import { deepseek } from "../deepseek.js";
+import { google } from "../google.js";
+import { openai } from "../openai.js";
 import { openrouter } from "../openrouter.js";
 
 /**
@@ -33,5 +36,11 @@ describe("OpenRouter's context window, from its endpoint list", () => {
   it("asks for the model's own endpoint list", () => {
     expect(openrouter.catalog!.contextWindow.url({ kind: "openrouter", base_url: "https://or.test/api/v1", key_env: "K", empty_output_wait_ms: 0 }, "deepseek/deepseek-v4.1-flash-1017"))
       .toBe("https://or.test/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints");
+  });
+});
+
+describe("the cache mark of an upstream that caches a repeated prefix on its own", () => {
+  it.each([["deepseek", deepseek], ["google", google], ["openai", openai]] as const)("is nothing for %s", (_kind, vendor) => {
+    expect(vendor.cache("x/y", "1h")).toEqual({});
   });
 });
