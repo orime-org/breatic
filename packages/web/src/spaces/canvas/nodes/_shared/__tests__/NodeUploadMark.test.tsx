@@ -55,6 +55,23 @@ describe('an empty node with an upload mark', () => {
     expect(screen.getByTestId('node-upload-error')).toHaveClass('wrap-anywhere');
   });
 
+  // inner#1737 test spec LB-07: Japanese breaks between phrases (the page
+  // declares the language) and the centred lines are balanced; a long name
+  // still breaks anywhere.
+  it.each([
+    ['a catalog sentence', { key: 'canvas.upload.failed' }],
+    ['a sentence given as text', { text: 'アップロードできませんでした。' }],
+  ] as const)('LB-07 breaks %s between phrases on the placeholder', (_case, message) => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, message);
+    });
+    render(<NodePlaceholder modality='image' />);
+    const line = screen.getByTestId('node-upload-error');
+    expect(line).toHaveClass('[word-break:auto-phrase]', 'text-balance', 'wrap-anywhere');
+    expect(line).not.toHaveAttribute('lang');
+  });
+
   it('goes back to the call to action once answered', () => {
     let op = '';
     act(() => {
@@ -109,6 +126,20 @@ describe('NodeContent with an upload mark', () => {
     });
     renderFramed(<p>held content</p>);
     expect(screen.getByTestId('node-upload-error')).toHaveClass('pointer-events-none');
+  });
+
+  // inner#1737 LB-07b: the same sentence along the bottom edge of a node with
+  // content breaks the same way; the left-aligned line keeps more than one
+  // word on its last line.
+  it('LB-07b breaks the failure line over content between phrases', () => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
+    });
+    renderFramed(<p>held content</p>);
+    const line = screen.getByTestId('node-upload-error');
+    expect(line).toHaveClass('[word-break:auto-phrase]', 'text-pretty', 'wrap-anywhere');
+    expect(line).not.toHaveAttribute('lang');
   });
 
   it('breaks a long unspaced name in the line over what the node shows anywhere', () => {
