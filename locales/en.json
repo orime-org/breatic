@@ -1840,7 +1840,7 @@
         },
         "step": {
           "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
-          "join": "Select the four sections, right-click and choose Join; check that the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+          "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
         }
       }
     },
