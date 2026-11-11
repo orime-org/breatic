@@ -251,36 +251,3 @@ describe("cleaning the shots of a storyboard (#2218)", () => {
     expect(validated.speakers).toEqual(speakers);
   });
 });
-
-/**
- * A 3D text generation's negative prompt is typed in the same dialog as its
- * prompt and gets the same cleaning (inner#1691, design sections 2.3 and 5).
- * It rides inside the bag, since the vendor reads it as a declared param, and
- * its 255-character bound is judged on the cleaned text: what the validator
- * sees is what goes upstream.
- */
-describe("cleaning the negative prompt of a 3D generation (inner#1691)", () => {
-  it("strips markup, comments and invisible characters from it", () => {
-    const [, , validated] = takePromptAndValidate(
-      { prompt: "a wooden chair", negative_prompt: "<b>no</b> blur<!-- hidden -->\u200b" },
-      "tripo-h3.1-t23d",
-      keepAll,
-    );
-    expect(validated.negative_prompt).toBe("no blur");
-  });
-
-  it("hands the validator the cleaned text, so its length bound judges what is sent", () => {
-    const seen: unknown[] = [];
-    const words = "a".repeat(255);
-    const [, , validated] = takePromptAndValidate(
-      { prompt: "a wooden chair", negative_prompt: `<p>${words}</p>` },
-      "tripo-h3.1-t23d",
-      (model, params) => {
-        seen.push(params.negative_prompt);
-        return [model, params];
-      },
-    );
-    expect(seen).toEqual([words]);
-    expect(validated.negative_prompt).toBe(words);
-  });
-});

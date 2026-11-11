@@ -12,7 +12,7 @@
  * about the model: the catalog entry, the family, and param validation.
  */
 
-import { checkParamCombination, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, extractPromptText, resolveParams, type ResolvableModel } from "@breatic/shared";
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
@@ -67,8 +67,14 @@ export function validateModelParams(
   modelName: string | undefined,
   params?: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  const [name, cleaned] = validateParams(modality, modelName, params);
-  const model = entryOf(modality, name) as unknown as ResolvableModel;
+  const [name, validated] = validateParams(modality, modelName, params);
+  const entry = entryOf(modality, name);
+  // Every text setting is something the user typed, cleaned as a prompt is
+  // before its length is judged, so what is judged is what is sent.
+  const cleaned = Object.fromEntries(
+    Object.entries(validated).map(([key, value]) => [key, entry.params?.[key]?.type === "text" && typeof value === "string" ? extractPromptText(value) : value]),
+  );
+  const model = entry as unknown as ResolvableModel;
   const found = checkParamCombination(model, cleaned);
   const tooLong = found.find((v) => v.rule === "max_length");
   if (tooLong?.rule === "max_length") {

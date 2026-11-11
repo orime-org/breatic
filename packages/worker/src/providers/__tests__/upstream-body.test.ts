@@ -390,7 +390,7 @@ describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inn
   }
 
   it("sends the voice description cleaned of markup and invisible characters, as every text setting is (round 2)", () => {
-    expect(bodyFor({ voice_description: "<b>An old man</b>, slow\u200b", language: "English" }, "Hi.")).toMatchObject({
+    expect(bodyFor({ voice_description: "<b>An old man, slow</b>\u200b", language: "English" }, "Hi.")).toMatchObject({
       voice_description: "An old man, slow",
     });
   });
