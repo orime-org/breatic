@@ -168,22 +168,35 @@ export function mediaNameOf(
 }
 
 /**
- * The media a thread stands on, as a card quotes it.
+ * What a card quotes for each of these media blocks, found in one walk of the
+ * body.
  * @param doc - The body.
- * @param metadata - The thread's metadata.
- * @returns The quote, or null for a thread on words or one whose block is gone.
+ * @param blockIds - The blocks.
+ * @returns Block id to quote, for each media block the body holds.
  */
-export function mediaQuoteOf(doc: PMNode, metadata: unknown): MediaQuote | null {
-  const blockId = mediaBlockIdOf(metadata);
-  const media = blockId === null ? undefined : mediaRowById(doc, blockId)?.node.firstChild;
-  if (media === undefined || media === null) return null;
-  /**
-   * One of the block's text attributes, empty when unset.
-   * @param key - The attribute.
-   * @returns Its text.
-   */
-  const text = (key: string): string => (typeof media.attrs[key] === 'string' ? (media.attrs[key] as string) : '');
-  return { blockId: blockId!, type: media.type.name as MediaBlockType, name: text('name'), caption: text('caption'), url: text('url') };
+export function mediaQuotes(doc: PMNode, blockIds: Iterable<string>): Map<string, MediaQuote> {
+  const quotes = new Map<string, MediaQuote>();
+  for (const [blockId, row] of mediaRows(doc, new Set(blockIds))) {
+    const media = row.node.firstChild!;
+    /**
+     * One of the block's text attributes, empty when unset.
+     * @param key - The attribute.
+     * @returns Its text.
+     */
+    const text = (key: string): string => (typeof media.attrs[key] === 'string' ? (media.attrs[key] as string) : '');
+    quotes.set(blockId, { blockId, type: media.type.name as MediaBlockType, name: text('name'), caption: text('caption'), url: text('url') });
+  }
+  return quotes;
+}
+
+/**
+ * What a card quotes for one media block.
+ * @param doc - The body.
+ * @param blockId - The block.
+ * @returns The quote, or null when the body holds no media block with that id.
+ */
+export function mediaQuoteOf(doc: PMNode, blockId: string): MediaQuote | null {
+  return mediaQuotes(doc, [blockId]).get(blockId) ?? null;
 }
 
 /**

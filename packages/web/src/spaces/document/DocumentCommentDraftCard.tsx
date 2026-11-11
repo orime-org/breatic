@@ -56,7 +56,6 @@ import {
   MediaCommentQuote,
 } from '@web/spaces/document/DocumentCommentCard';
 import {
-  MEDIA_BLOCK_ID,
   mediaQuoteOf,
   sameMediaQuote,
   type MediaQuote,
@@ -90,7 +89,7 @@ interface DraftCardProps {
 function readDraftMedia(editor: ToolEditor): MediaQuote | null {
   const state = editor.prosemirrorView?.state;
   const blockId = state === undefined ? null : mediaDraftIn(state);
-  return blockId === null ? null : mediaQuoteOf(state!.doc, { [MEDIA_BLOCK_ID]: blockId });
+  return blockId === null ? null : mediaQuoteOf(state!.doc, blockId);
 }
 
 /**

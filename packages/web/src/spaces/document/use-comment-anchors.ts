@@ -27,7 +27,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
-import { mediaBlockIdOf, mediaRowById } from '@web/spaces/document/document-comment-media';
+import { mediaRowById, mediaThreadPositions } from '@web/spaces/document/document-comment-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -109,6 +109,7 @@ export function useCommentAnchors(
       // One walk for every thread: this runs on each settle, and per-thread
       // it was one full walk of the document each.
       const ranges = threadRangesByThread(view.state.doc);
+      let onMedia: ReadonlyMap<string, { from: number; to: number }> | undefined;
       key
         .split(',')
         .filter((id) => id.length > 0)
@@ -116,9 +117,12 @@ export function useCommentAnchors(
           const at = ranges.get(id)?.[0];
           if (at === undefined) {
             // No words: a comment on media stands level with its block's top;
-            // any other such thread is not on the panel (A13).
-            const block = mediaBlockOf(editor, id);
-            if (block !== null) next.set(id, block.getBoundingClientRect().top - top);
+            // any other such thread is not on the panel (A13). The media
+            // threads are placed in one walk, the first time one is needed.
+            onMedia ??= mediaThreadPositions(view.state.doc, commentsOn(editor)?.threadStore.getThreads().values() ?? []);
+            const row = onMedia.get(id);
+            const block = row === undefined ? null : view.nodeDOM(row.from);
+            if (block instanceof HTMLElement) next.set(id, block.getBoundingClientRect().top - top);
             return;
           }
           try {
@@ -167,27 +171,6 @@ export function useCommentAnchors(
   }, [editor, key, column, draft]);
 
   return anchors;
-}
-
-/**
- * The rendered block a comment on media stands on.
- * @param editor - The editor.
- * @param threadId - The thread.
- * @returns The block's element, or null for a thread on words or one whose block is gone.
- */
-function mediaBlockOf(editor: ToolEditor, threadId: string): HTMLElement | null {
-  const view = editor.prosemirrorView;
-  const store = commentsOn(editor)?.threadStore;
-  if (view === null || store === undefined) return null;
-  let metadata: unknown;
-  try {
-    metadata = store.getThread(threadId).metadata;
-  } catch {
-    // A thread deleted by a peer between the panel's read and this measure.
-    return null;
-  }
-  const blockId = mediaBlockIdOf(metadata);
-  return blockId === null ? null : blockElement(view, blockId);
 }
 
 /**

@@ -23,7 +23,7 @@ import { MessageSquarePlus } from 'lucide-react';
 import { t } from '@breatic/shared';
 
 import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
-import { mediaNameOf, mediaQuoteOf, MEDIA_BLOCK_ID } from '@web/spaces/document/document-comment-media';
+import { mediaNameOf, mediaQuoteOf } from '@web/spaces/document/document-comment-media';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -169,7 +169,7 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
  * @throws {Error} When the document holds no media block with that id.
  */
 export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
-  const media = mediaQuoteOf(editor.prosemirrorState.doc, { [MEDIA_BLOCK_ID]: blockId });
+  const media = mediaQuoteOf(editor.prosemirrorState.doc, blockId);
   if (media === null) throw new Error(`no media block ${blockId} in the document`);
   const id = `document-media-${blockId}`;
   const name = nameFrom(mediaNameOf(media, t));

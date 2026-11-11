@@ -58,11 +58,11 @@ export function useMediaComments(editor: ToolEditor): MediaComments {
   const subscribe = React.useCallback(
     (onChange: () => void): (() => void) => {
       if (comments === undefined) return () => undefined;
-      // The store for comments written, resolved and deleted; the body for
-      // blocks coming and going; the two plugins for what is being read.
+      // The store for comments written, resolved and deleted; the two
+      // plugins for what is being read. Nothing here is read off the body: a
+      // block that goes is not drawn, whatever its entry says.
       const stops = [
         comments.threadStore.subscribe(onChange),
-        editor.onChange(onChange),
         onSelectedThreadsChange(onChange),
         onDraftChange(onChange),
       ];
@@ -72,7 +72,7 @@ export function useMediaComments(editor: ToolEditor): MediaComments {
         });
       };
     },
-    [comments, editor],
+    [comments],
   );
 
   const read = React.useCallback((): MediaComments => {

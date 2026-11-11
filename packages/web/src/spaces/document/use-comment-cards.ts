@@ -28,7 +28,7 @@ import {
   commentsOn,
   type CommentsApi,
 } from '@web/spaces/document/document-comment-extension';
-import { mediaQuoteOf, sameMediaQuote, type MediaQuote } from '@web/spaces/document/document-comment-media';
+import { mediaBlockIdOf, mediaQuotes, sameMediaQuote, type MediaQuote } from '@web/spaces/document/document-comment-media';
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
 import {
   threadQuoteIn,
@@ -135,6 +135,7 @@ function entryOf(
  * @param doc - The body, which the quote is read out of.
  * @param walked - Every thread's stretches, walked once for the whole panel.
  * @param threads - Every thread, built once for the whole panel.
+ * @param onMedia - The media cards' quotes, by block id, read once for the whole panel.
  * @returns The card, or null once the thread or its words are gone.
  */
 function drawCard(
@@ -143,11 +144,13 @@ function drawCard(
   doc: ProseMirrorNode,
   walked: ReadonlyMap<string, readonly ThreadRange[]>,
   threads: ReadonlyMap<string, { comments: readonly CommentData[]; metadata?: unknown }>,
+  onMedia: ReadonlyMap<string, MediaQuote>,
 ): CommentCardView | null {
   const thread = threads.get(card.id);
   if (thread === undefined) return null;
   const quote = threadQuoteIn(doc, card.id, walked);
-  const media = quote === null ? mediaQuoteOf(doc, thread.metadata) : null;
+  const blockId = mediaBlockIdOf(thread.metadata);
+  const media = quote === null && blockId !== null ? onMedia.get(blockId) ?? null : null;
   if (quote === null && media === null) return null;
   return {
     id: card.id,
@@ -245,12 +248,14 @@ export function useCommentCards(
     // not a lookup, it rebuilds the whole map and deserialises every comment
     // in it (`@blocknote/core/dist/y.js:676-681`).
     const threads = comments.threadStore.getThreads();
+    // The media cards' quotes, in one walk too.
+    const onMedia = mediaQuotes(doc, [...threads.values()].flatMap((thread) => mediaBlockIdOf(thread.metadata) ?? []));
     const next: CommentCards = {
       unresolved: rail.unresolved
-        .map((card) => drawCard(card, comments, doc, walked, threads))
+        .map((card) => drawCard(card, comments, doc, walked, threads, onMedia))
         .filter((card) => card !== null),
       resolved: rail.resolved
-        .map((card) => drawCard(card, comments, doc, walked, threads))
+        .map((card) => drawCard(card, comments, doc, walked, threads, onMedia))
         .filter((card) => card !== null),
     };
     return next;

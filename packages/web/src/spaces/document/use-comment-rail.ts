@@ -85,16 +85,14 @@ export function useCommentRail(editor: ToolEditor): CommentRail {
   const subscribe = React.useCallback(
     (onChange: () => void): (() => void) => {
       if (comments === undefined) return () => undefined;
-      // Each can change what a card says without the others moving:
-      // resolving touches only the store, deleting the text only the
-      // positions, and deleting a picture only the body — a comment on media
-      // has no mark, and the library's table does not change for it.
+      // The store for comments written, resolved and deleted; the body for
+      // where every comment stands. The library writes its position table
+      // while the change applies, so it is current when the body's listeners
+      // run, and a comment on media stands on its block in the body.
       const stopThreads = comments.threadStore.subscribe(onChange);
-      const stopPositions = comments.store.subscribe(onChange);
       const stopBody = editor.onChange(onChange);
       return () => {
         stopThreads();
-        stopPositions();
         stopBody();
       };
     },
