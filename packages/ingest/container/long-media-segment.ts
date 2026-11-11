@@ -111,7 +111,8 @@ export async function runLongMediaSegment(
       request.maxOutputBytes,
       signal,
     );
-  } catch {
+  } catch (err) {
+    console.error("long_media_segment_encode_failed", { err: err instanceof Error ? err.message : String(err) });
     encoded = null;
   }
   if (encoded === "over_cap") {

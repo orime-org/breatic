@@ -90,6 +90,22 @@ describe("runLongMediaSegment", () => {
     expect(deps.write).not.toHaveBeenCalled();
   });
 
+  it("logs why an encode threw before reporting the segment failed", async () => {
+    const deps = dependencies();
+    deps.encode.mockRejectedValue(new Error("The stream read failed: the source stopped at 20000 of 40000 bytes"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      await runLongMediaSegment(request, deps);
+
+      expect(error).toHaveBeenCalledWith("long_media_segment_encode_failed", { err: "The stream read failed: the source stopped at 20000 of 40000 bytes" });
+      expect(deps.report).toHaveBeenCalledWith(request.reportUrl, "failed");
+      expect(deps.write).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("reports an output-write refusal as a failed segment", async () => {
     const deps = dependencies();
     deps.encode.mockResolvedValue(Buffer.from("segment"));
