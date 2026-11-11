@@ -249,8 +249,11 @@ describe('the running mark on a row (#1394)', () => {
   it('spins at the head of a running row, ahead of its name, and leaves the other row its dot', () => {
     renderWithRunning(new Set(['c2']));
 
-    const row = screen.getByTestId('conversation-open-c2');
+    // On the row and outside its button: a spinner inside a button is the
+    // button's own waiting state (breatic/no-hand-written-button-spinner).
+    const row = screen.getByTestId('conversation-c2');
     const spinner = within(row).getByTestId('conversation-running-c2');
+    expect(within(screen.getByTestId('conversation-open-c2')).queryByTestId('conversation-running-c2')).toBeNull();
     expect(spinner).toHaveClass('animate-spin');
     const name = within(row).getByText('Character design');
     // In the dot's place, which is before the name.
@@ -262,7 +265,7 @@ describe('the running mark on a row (#1394)', () => {
     renderWithRunning(new Set(['c1']));
 
     expect(
-      within(screen.getByTestId('conversation-open-c1')).getByTestId('conversation-running-c1'),
+      within(screen.getByTestId('conversation-c1')).getByTestId('conversation-running-c1'),
     ).toHaveClass('animate-spin');
     expect(screen.queryByTestId('conversation-running-c2')).toBeNull();
   });

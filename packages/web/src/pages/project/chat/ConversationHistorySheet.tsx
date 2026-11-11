@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { MoreVertical } from 'lucide-react';
+import { Loader2, MoreVertical } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -122,6 +122,8 @@ interface ConversationHistorySheetProps {
    * this and believe they misremembered.
    */
   listLoading?: boolean;
+  /** The conversations with an Agent turn running here or on another tab or device (#1394). */
+  running: ReadonlySet<string>;
 }
 
 /**
@@ -173,6 +175,8 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
 interface RowProps {
   row: ConversationRow;
   isActive: boolean;
+  /** An Agent turn is running in this conversation. */
+  isRunning: boolean;
   onPick: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void>;
   onAskDelete: (id: string) => void;
@@ -190,6 +194,7 @@ interface RowProps {
  * @param root0 - The component props.
  * @param root0.row - The conversation this row shows.
  * @param root0.isActive - This is the conversation on screen.
+ * @param root0.isRunning - An Agent turn is running in it, so a spinner takes the dot's place.
  * @param root0.onPick - Called with the id when the row is selected.
  * @param root0.onRename - Called with the id and the name that was typed.
  * @param root0.onAskDelete - Called with the id when delete is chosen, before
@@ -199,6 +204,7 @@ interface RowProps {
 function ConversationRowView({
   row,
   isActive,
+  isRunning,
   onPick,
   onRename,
   onAskDelete,
@@ -291,6 +297,22 @@ function ConversationRowView({
           />
         ) : (
           <>
+            {isRunning ? (
+              // Outside the button: a spinner inside one says the button
+              // itself is waiting (breatic/no-hand-written-button-spinner).
+              // Centred on the dot's slot: the button's `pl-4` / `py-3` plus
+              // the slot's `mt-1.5` put its 8px square at 16px / 18px, so
+              // the 12px spinner sits at 14px / 16px. Presses go through to
+              // the button underneath.
+              <Loader2
+                aria-hidden
+                data-testid={`conversation-running-${row.id}`}
+                className={cn(
+                  'pointer-events-none absolute left-3.5 top-4 h-3 w-3 animate-spin',
+                  isActive ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              />
+            ) : null}
             <Button
               type='button'
               variant={null}
@@ -308,6 +330,9 @@ function ConversationRowView({
                 className={cn(
                   'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
                   isActive ? 'bg-foreground' : 'bg-muted-foreground/40',
+                  // The slot stays, so the name does not move when a turn
+                  // starts or ends; the spinner below is drawn over it.
+                  isRunning && 'invisible',
                 )}
               />
               <span className='flex min-w-0 flex-1 flex-col gap-1'>
@@ -418,6 +443,7 @@ function ConversationRowView({
  * @param root0.loadingMore - A request for the next page is out.
  * @param root0.nextPageFailed - The last attempt at the next page failed.
  * @param root0.listLoading - The first page of the list is on its way.
+ * @param root0.running - The conversations whose dot spins: an Agent turn is running in them.
  * @returns The left-side sheet listing the project's conversations.
  */
 function ConversationHistorySheetInner({
@@ -433,6 +459,7 @@ function ConversationHistorySheetInner({
   loadingMore,
   nextPageFailed,
   listLoading = false,
+  running,
 }: ConversationHistorySheetProps): React.JSX.Element {
   const t = useTranslation();
   // Which conversation the user has asked to delete, while they are being
@@ -556,6 +583,7 @@ function ConversationHistorySheetInner({
                     key={c.id}
                     row={c}
                     isActive={c.id === activeId}
+                    isRunning={running.has(c.id)}
                     onPick={onPick}
                     onRename={onRename}
                     onAskDelete={setDeleting}
