@@ -201,7 +201,7 @@ describe('copies of a commented picture', () => {
     moveRowTo(view, 'pic', rowById(view.state.doc, 'words')!.to);
 
     expect(pictureIds(editor)).toEqual(['pic']);
-    expect(editor.document.map((block) => block.id)).toEqual(['words', 'pic']);
+    expect((editor.document as { id: string }[]).map((block) => block.id)).toEqual(['words', 'pic']);
     expect(standing(editor)).toEqual({ [id]: 'pic' });
   });
 
