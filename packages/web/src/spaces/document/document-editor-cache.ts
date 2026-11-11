@@ -134,6 +134,16 @@ export interface DocumentEditorHandle {
   pending: PendingUploadsStore | null;
   /** Closes the body's link to the page's uploads; run when it is evicted. */
   closeUploads: () => void;
+  /**
+   * Subscribe to this editor being evicted, for what lives as long as it
+   * within one Space: a component inside a hidden Space never runs its
+   * cleanup again if the tab is then closed.
+   * @param listener - Called once, when the editor is torn down.
+   * @returns Unsubscribe.
+   */
+  onEvict: (listener: () => void) => () => void;
+  /** Runs the eviction listeners; run when it is evicted. */
+  evicted: () => void;
 }
 
 /** Where a body's uploads land. */
@@ -197,6 +207,7 @@ function createDocumentEditor(
   const { manager: undoManager, extension: undoExtension } =
     createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
+  const evictListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
   const uploads =
     target === undefined
@@ -295,12 +306,23 @@ function createDocumentEditor(
         clearListeners.delete(listener);
       };
     },
+    onEvict: (listener) => {
+      evictListeners.add(listener);
+      return () => {
+        evictListeners.delete(listener);
+      };
+    },
+    evicted: () => {
+      evictListeners.forEach((listener) => listener());
+      evictListeners.clear();
+    },
   };
 }
 
 const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
+    handle.evicted();
     handle.closeUploads();
     handle.captionDrafts.dispose();
     handle.editor.unmount();

@@ -61,6 +61,8 @@ const PANEL_WIDTH: React.CSSProperties = { width: COMMENT_PANEL_WIDTH };
 interface DocumentVersionAreaProps {
   /** The live body's editor. */
   editor: Live;
+  /** Subscribes to that editor being evicted, which happens when its tab closes. */
+  onEvict: DocumentEditorHandle['onEvict'];
   /** The document. */
   scope: DocumentScope;
   /** The panel's switch. */
@@ -91,9 +93,6 @@ function labelOf(snapshot: VersionSnapshot): string {
   return snapshot.name ?? savedAt(snapshot.createdAt);
 }
 
-/** What the preview shows: one item, or one compared with another. */
-type Display = { displayed: VersionSelection; compareTo: string | undefined };
-
 /** The panel's operations, each marked waiting while it runs. */
 type PanelAction = 'select' | 'rename' | 'delete' | 'restore' | 'page' | 'retry';
 
@@ -110,6 +109,7 @@ function useControllerState(controller: VersioningController): VersioningControl
  * The snapshot panel, its preview and their dialogs.
  * @param props - Area props.
  * @param props.editor - The live body.
+ * @param props.onEvict - Subscribes to the live body's editor being evicted.
  * @param props.scope - The document.
  * @param props.versions - The panel's switch.
  * @param props.readOnly - Whether the user is a viewer.
@@ -119,6 +119,7 @@ function useControllerState(controller: VersioningController): VersioningControl
  */
 export default function DocumentVersionArea({
   editor,
+  onEvict,
   scope,
   versions,
   readOnly,
@@ -129,12 +130,6 @@ export default function DocumentVersionArea({
   const host = React.useRef<HTMLDivElement>(null);
   const outcome = React.useRef<'restored' | 'unchanged'>('restored');
   const [shownNow, setShownNow] = React.useState<{ comparing: boolean } | null>(null);
-  // Where the preview goes back to once the display it held before the Space
-  // was hidden is drawn again; each taking-up owns its own object.
-  const landing = React.useRef<{ top: number } | null>(null);
-  // Where the user is in the preview: a hidden Space's scroller has nothing
-  // to say by the time the preview is let go.
-  const place = React.useRef(0);
 
   // One preview per opening of the panel.
   const [{ preview, controller }] = React.useState(() => {
@@ -171,12 +166,6 @@ export default function DocumentVersionArea({
   React.useEffect(() => {
     if (shownNow === null || shownNow === handled.current || viewport === null) return;
     handled.current = shownNow;
-    const back = landing.current;
-    landing.current = null;
-    if (back !== null) {
-      viewport.scrollTop = back.top;
-      return;
-    }
     if (!shownNow.comparing) return;
     // Looked up in our own element: the preview's view throws once unmounted.
     const mark = host.current?.querySelector('[data-user-ids]');
@@ -188,17 +177,6 @@ export default function DocumentVersionArea({
     const top = words.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
   }, [shownNow, viewport]);
-
-  // The user's place, kept as they scroll.
-  React.useEffect(() => {
-    if (viewport === null) return undefined;
-    /** Notes the position the scroller has come to. */
-    const note = (): void => {
-      place.current = viewport.scrollTop;
-    };
-    viewport.addEventListener('scroll', note);
-    return () => viewport.removeEventListener('scroll', note);
-  }, [viewport]);
 
   // Refreshes the list after a save from the menu while the panel is open.
   const savedOnOpen = React.useRef(versions.saved);
@@ -242,65 +220,46 @@ export default function DocumentVersionArea({
     }
   }, [controller, t]);
 
-  // The selection last asked for: the controller's pending one has no baseline.
-  const asked = React.useRef<Display | null>(null);
-  const select = React.useCallback((target: VersionSelection, compareTo?: string): Promise<'done' | 'gone' | 'failed' | 'dropped'> => {
-    asked.current = { displayed: target, compareTo };
-    // A display the user picks lands where it lands, never at a place left
-    // for one being taken back up.
-    landing.current = null;
-    return run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
+  const select = React.useCallback(async (target: VersionSelection, compareTo?: string): Promise<void> => {
+    await run('select', () => controller.select(target, compareTo === undefined ? undefined : { compareTo }), t('spaces.document.versions.contentFailed'));
   }, [controller, run, t]);
 
-  // A hidden Space runs this cleanup like an unmount, and React never calls
-  // it again if the tab is then closed; so the preview is always let go, and
-  // what it showed, or was still loading, is taken back up where the user
-  // was when the Space is shown again (§8.2).
-  const resume = React.useRef<(Display & { top: number | null }) | null>(null);
+  // The preview lives as long as this opening of the panel, and a hidden Space
+  // keeps it as it keeps the body (§7.3, inner#1235): what it shows, a
+  // selection still loading, its open folds and the list. It is let go when
+  // the panel closes, or with the body's editor when the tab is closed while
+  // hidden, because a hidden component never runs its cleanup again.
+  const letGo = React.useRef<(() => void) | null>(null);
   React.useEffect(() => {
     const at = host.current;
     if (at === null) return undefined;
-    // The editor takes over the element it mounts on; this one is its own, as
-    // the body's surface is, so the column's element keeps React's classes.
-    const surface = document.createElement('div');
-    at.appendChild(surface);
-    preview.mount(surface);
-    controller.open();
-    void controller.list();
-    const back = resume.current;
-    resume.current = null;
-    if (back !== null && (back.displayed.type === 'snapshot' || back.compareTo !== undefined)) {
-      const taking = select(back.displayed, back.compareTo);
-      // Set after `select`, which lets go of any place still waiting; only
-      // this taking-up lets go of its own.
-      const mine = back.top === null ? null : { top: back.top };
-      landing.current = mine;
-      void taking.then((end) => {
-        if (end !== 'done' && landing.current === mine) landing.current = null;
-      });
-    } else {
-      // The current content is drawn by `open()` already, so the scroller
-      // stands where the user sees it.
-      const scroller = at.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
-      if (back?.top != null && scroller !== null) scroller.scrollTop = back.top;
-      place.current = scroller?.scrollTop ?? 0;
+    if (letGo.current === null) {
+      // The editor takes over the element it mounts on; this one is its own,
+      // as the body's surface is, so the column's element keeps React's classes.
+      const surface = document.createElement('div');
+      at.appendChild(surface);
+      preview.mount(surface);
+      controller.open();
+      void controller.list();
+      let unsubscribe: (() => void) | null = null;
+      let live = true;
+      /** Ends the preview, once. */
+      const release = (): void => {
+        if (!live) return;
+        live = false;
+        unsubscribe?.();
+        controller.close();
+        preview.unmount();
+        surface.remove();
+      };
+      unsubscribe = onEvict(release);
+      letGo.current = release;
     }
     return () => {
-      const now = controller.store.state;
-      if (now.mode === 'versions') {
-        const held = now.pending !== undefined && asked.current !== null ? asked.current : { displayed: now.displayed, compareTo: now.compareTo };
-        // A comparison asked for and never drawn lands on its first change, as
-        // it would have without the switch. While a display is still being
-        // taken back up, the scroller holds what the shorter current content
-        // left of the user's place.
-        const unseen = now.pending !== undefined && landing.current === null && held.compareTo !== undefined;
-        resume.current = { ...held, top: unseen ? null : (landing.current?.top ?? place.current) };
-      }
-      controller.close();
-      preview.unmount();
-      surface.remove();
+      // A hidden Space runs this too and keeps its elements in the page.
+      if (!at.isConnected) letGo.current?.();
     };
-  }, [preview, controller, select]);
+  }, [preview, controller, onEvict]);
 
   const rows = React.useMemo(() => open?.history.data ?? [], [open]);
   // Every row seen since the panel opened: a refresh goes back to the first
@@ -674,7 +633,7 @@ function FoldRows({ preview, host }: { preview: Preview; host: React.RefObject<H
             variant={null}
             size={null}
             data-testid='doc-version-fold'
-            className='my-2 flex w-full items-center justify-center gap-1.5 rounded-content-xs border border-dashed border-border py-1.5 text-xs text-muted-foreground hover-enabled:bg-accent'
+            className='flex h-full w-full items-center justify-center gap-1.5 rounded-content-xs border border-dashed border-border py-1.5 text-xs text-muted-foreground hover-enabled:bg-accent'
             onClick={() => {
               const view = preview.prosemirrorView;
               if (view) view.dispatch(openVersionFold(view.state, fold.key));

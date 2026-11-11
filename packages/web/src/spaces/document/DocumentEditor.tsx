@@ -6,6 +6,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   adoptDocumentEditor,
+  type DocumentEditorHandle,
   type ShowableEditor,
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
@@ -59,7 +60,7 @@ const DocumentVersionArea = React.lazy(() =>
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
-  handle: ShowableEditor;
+  handle: ShowableEditor & Pick<DocumentEditorHandle, 'onEvict'>;
   /** True for a viewer. */
   readOnly?: boolean;
   /**
@@ -486,6 +487,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               <React.Suspense fallback={null}>
                 <DocumentVersionArea
                   editor={handle.editor}
+                  onEvict={handle.onEvict}
                   scope={scope}
                   versions={versions}
                   readOnly={readOnly}

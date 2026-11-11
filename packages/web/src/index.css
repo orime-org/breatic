@@ -777,6 +777,14 @@ body {
     display: none;
   }
 
+  /* A fold row's height belongs to its host: a hidden Space also hides the
+     button React draws into it, and a scroller at its end would be cut back. */
+  .doc-body [data-version-fold] {
+    box-sizing: content-box;
+    height: 1.875rem;
+    padding-block: 0.5rem;
+  }
+
   /* ---- A line's text fills the row it sits on ----
      BlockNote lays a block's content out as a flex row carrying a marker and the
      inline content. Neither of them grows, so the width between the last glyph
