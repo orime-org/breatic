@@ -286,8 +286,7 @@ export const DialogueLines = Extension.create<DialogueNames, { ended: Compositio
   addOptions() {
     return { names: () => [] };
   },
-  // One tracker for the keymap and the plugin: tiptap installs the keymap
-  // ahead of the plugin, so the plugin's own key handler never saw the key.
+  // Shared by the Enter binding and the compositionend watcher below.
   addStorage() {
     return { ended: compositionEnd() };
   },
@@ -295,7 +294,7 @@ export const DialogueLines = Extension.create<DialogueNames, { ended: Compositio
     return {
       Enter: ({ editor }) => {
         // The Enter that accepts an input method's candidate is not a new line.
-        if (editor.view.composing || this.storage.ended.justEnded()) return true;
+        if (this.storage.ended.justEnded()) return true;
         const { selection } = editor.state;
         const { $from } = selection;
         if ((SuggestionPluginKey.getState(editor.state) as { active?: boolean } | undefined)?.active === true) return false;

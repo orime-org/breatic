@@ -19,6 +19,7 @@ import { t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { PromptEditor, type PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
 
 /** The slice of a TipTap editor these cases drive. */
@@ -36,16 +37,17 @@ interface LiveEditor {
  * Mounts the prompt editor on a fragment.
  * @param fragment - The node's tts prompt.
  * @param names - The configured speakers' names on the dialogue side; absent on the single side.
+ * @param references - The `@` picker's pool.
  * @returns The live editor once it has mounted.
  */
-async function mount(fragment: Y.XmlFragment, names?: readonly string[]): Promise<LiveEditor> {
+async function mount(fragment: Y.XmlFragment, names?: readonly string[], references: ReferenceRailItem[] = []): Promise<LiveEditor> {
   render(
     <PromptEditor
       fragment={fragment}
       placeholder='Write'
       onTextChange={vi.fn()}
       onAtMentionsChange={vi.fn()}
-      references={[]}
+      references={references}
       referenceKinds={[]}
       mentionEmptyLabel='No references'
       {...(names === undefined ? {} : { dialogue: { names } })}
@@ -214,9 +216,10 @@ function endOfFirstLine(editor: LiveEditor): number {
  * Presses a key in the editor the way ProseMirror receives it.
  * @param editor - The live editor.
  * @param key - The key.
+ * @param keyCode - The key code the browser reports, when the case needs one.
  */
-function press(editor: LiveEditor, key: string): void {
-  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+function press(editor: LiveEditor, key: string, keyCode?: number): void {
+  const event = new KeyboardEvent('keydown', { key, keyCode, bubbles: true, cancelable: true });
   act(() => {
     editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, event));
   });
@@ -401,32 +404,73 @@ describe('an input method composing in a line (design 8.5)', () => {
 });
 
 describe('the Enter an input method sends to accept a candidate (round 3)', () => {
-  it('starts no new line, and a plain Enter afterwards still does', async () => {
+  /**
+   * Ends a composition, then sends Enter twice the way Chrome does: as 229, then as 13.
+   * @param editor - The live editor.
+   */
+  function acceptCandidate(editor: LiveEditor): void {
+    const view = editor.view as unknown as { dom: HTMLElement };
+    act(() => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'x' }));
+    });
+    press(editor, 'Enter', 229);
+    press(editor, 'Enter', 13);
+  }
+
+  it('starts no new line at the end of a line, and a plain Enter afterwards still does', async () => {
     const editor = await mount(legacyPrompt(['Ava: x']), NAMES);
     await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }]));
     act(() => {
       editor.commands.setTextSelection(endOfFirstLine(editor));
     });
-    const view = editor.view as unknown as { dom: HTMLElement };
-    /**
-     * Sends a keydown of Enter the way ProseMirror receives it.
-     * @param keyCode - The key code the browser reports.
-     */
-    const enter = (keyCode: number): void => {
-      const event = new KeyboardEvent('keydown', { key: 'Enter', keyCode, bubbles: true, cancelable: true });
-      act(() => {
-        editor.view.someProp('handleKeyDown', (handler) => handler(editor.view, event));
-      });
-    };
-    // Chrome ends the composition, then sends the key twice: as 229, then as 13.
-    act(() => {
-      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'x' }));
-    });
-    enter(229);
-    enter(13);
+    acceptCandidate(editor);
     expect(linesOf(editor)).toHaveLength(1);
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-    enter(13);
+    press(editor, 'Enter', 13);
     await waitFor(() => expect(linesOf(editor)).toHaveLength(2));
   });
+
+  it('splits nothing in the middle of a line, and a plain Enter afterwards splits it', async () => {
+    const editor = await mount(legacyPrompt(['Ava: xy']), NAMES);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'xy' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor) - 1);
+    });
+    acceptCandidate(editor);
+    expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'xy' }]);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    press(editor, 'Enter', 13);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }, { speaker: 1, text: 'y' }]));
+  });
+
+  it('picks nothing from an open `@` list, and a plain Enter afterwards picks the item', async () => {
+    const note: ReferenceRailItem = { refId: 't->me', sourceNodeId: 't', sourceNodeType: 'text', sourceNodeName: 'Note', textContent: 'hi' };
+    const editor = await mount(legacyPrompt(['Ava: x']), NAMES, [note]);
+    await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x' }]));
+    act(() => {
+      editor.commands.setTextSelection(endOfFirstLine(editor));
+    });
+    typeKeys(editor, ' @');
+    await screen.findByText('Note');
+    acceptCandidate(editor);
+    expect(linesOf(editor)).toEqual([{ speaker: 1, text: 'x @' }]);
+    expect(chipsOf(editor)).toBe(0);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    press(editor, 'Enter', 13);
+    await waitFor(() => expect(chipsOf(editor)).toBe(1));
+    expect(linesOf(editor)).toHaveLength(1);
+  });
 });
+
+/**
+ * How many reference chips the editor holds.
+ * @param editor - The live editor.
+ * @returns The count.
+ */
+function chipsOf(editor: LiveEditor): number {
+  let count = 0;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === 'referenceMention') count += 1;
+  });
+  return count;
+}
