@@ -121,7 +121,7 @@ describe("original analysis task pickup", () => {
     expect(h.finish).not.toHaveBeenCalled(); expect(h.error).toHaveBeenCalled();
   });
 
-  it("ends an exhausted container-only computation with its known call-set proof", async () => {
+  it("ends an exhausted container-only computation with its error", async () => {
     const error = new Error("registered JSON is invalid"); h.execute.mockRejectedValue(error);
     expect(await runMiniToolAnalysisTask(job(2), "token", h.execute)).toEqual({ failed: true, reason: "analysis_failed" });
     expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK,

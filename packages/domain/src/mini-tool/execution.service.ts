@@ -51,7 +51,7 @@ export async function startMiniToolExecution(taskId: string, jobId: string): Pro
   });
 }
 /**
- * Commit a complete indexed result and its call-set proof under the original task lock.
+ * Commit a complete indexed result under the original task lock.
  * @param taskId - The original accepted SQL task.
  * @param completion - The complete indexed observation; the call set closes from the persisted steps.
  * @returns The committed or preserved terminal state and original context.

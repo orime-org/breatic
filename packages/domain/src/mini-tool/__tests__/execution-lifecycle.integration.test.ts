@@ -223,7 +223,7 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     const r = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId); expect(r).toMatchObject({ status: "running", resultVersion: 0, billingState: "idle", usage: [{ consumptionKey: i.key, state: "recorded", costUsd: 0.3, credits: 30 }] });
   });
-  it("U11 complete call-set proof preserves the actual live checking lease and media", async () => {
+  it("U11 completing the call set preserves the actual live checking lease and media", async () => {
     const f = await seedExecution(pg, "running"); await identity(f); const c = await claim(f); await terminal(f); const before = await executionSnapshot(pg, f);
     const period = await completeMiniToolConsumptionSet(f.taskId); expect(period).toMatchObject({ version: c.claim.version, state: "checking", leaseToken: c.claim.leaseToken, leaseUntil: c.leaseUntil, consumptionSetComplete: true });
     expect((await executionSnapshot(pg, f)).result.miniToolExecution).toEqual(before.result.miniToolExecution);

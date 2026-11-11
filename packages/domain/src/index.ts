@@ -332,7 +332,7 @@ export type {
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
 export { beginMiniToolStepAttempt, recordMiniToolStepIdentity, recordMiniToolStepResult, failMiniToolStep, type MiniToolStepJson, type MiniToolStepResultParser, type MiniToolStepAttempt, type BeginMiniToolStepAttemptInput, type BeginMiniToolStepAttemptResult, type RecordMiniToolStepIdentityInput, type RecordMiniToolStepIdentityResult, type RecordMiniToolStepResultInput, type FailMiniToolStepInput } from "@domain/mini-tool/upstream-step.service.js";
-export { miniToolStepStateSchema, hasUnresolvedMiniToolStepAttempts } from "@domain/mini-tool/upstream-step.types.js";
+export { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
 
 export * as miniToolExecutionService from "@domain/mini-tool/execution.service.js";
 export * as miniToolDeliveryService from "@domain/mini-tool/delivery.service.js";

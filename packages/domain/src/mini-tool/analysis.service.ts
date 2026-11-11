@@ -62,7 +62,7 @@ export interface AcceptedMiniToolAnalysis {
   params: MiniToolAnalysisTaskParams;
 }
 
-/** A worker's terminal computation fact and knowledge of its actual upstream identities. */
+/** A worker's terminal computation outcome. */
 export type MiniToolAnalysisCompletion =
   | { kind: "result"; result: unknown }
   | { kind: "error"; error: unknown };
