@@ -1358,10 +1358,10 @@ describe('matchTemplateInstance, keys downstream of the anchor and keys wired to
 });
 
 describe('matchTemplateInstance, inputs that go into a slot (inner#1825)', () => {
-  it('assigns a node tagged for the input and this instance’s anchor though no edge joins them, and passes one tagged for another anchor', () => {
+  it('leaves a node tagged for the input and this instance’s anchor unassigned while it is neither wired nor filled in, and passes one tagged for another anchor', () => {
     const own = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C')], []), 'C');
-    expect(own.inputs.get('still')).toEqual(new Map([['clip', 'S']]));
-    expect(own.unassigned).toEqual([]);
+    expect(own.inputs.get('still')).toBe(undefined);
+    expect(own.unassigned).toEqual([{ input: 'still', fed: 'clip' }]);
     const other = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C2')], []), 'C');
     expect(other.inputs.get('still')).toBe(undefined);
   });

@@ -16,7 +16,7 @@ import { setLocale, TEMPLATE_GUIDE_KEY } from "@breatic/shared";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { getGenerationTemplate } from "../get-generation-template.js";
-import { answerFor, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, verdictFor, type MaterialTable } from "../propose-canvas-action.js";
 
 beforeEach(() => {
   loadLocales();
@@ -77,6 +77,23 @@ describe("two takes of score-for-my-video sharing the user's video", () => {
   it("is placed with an empty video node wired into both takes", () => {
     const answer = answerFor(twoTakes("edges"), MATERIALS);
     expect(answer.placed ? "" : answer.reason).toBe("");
+  });
+});
+
+describe("an input node tagged for a take and given to none", () => {
+  it("is refused as the take's missing input", () => {
+    const verdict = verdictFor({
+      nodes: [
+        take("score-for-my-video", "Warm acoustic folk with light percussion.", {
+          prompt: [{ slot: { kind: "note", label: "Put your clip in, then pick it into the Video slot" } }, { text: "Warm acoustic folk with light percussion." }],
+        }),
+        { role: "source", type: "video", name: "My clip", template: { id: "score-for-my-video", input: "video", anchor: 0 } },
+      ],
+      edges: [],
+      rationale: "Music for the clip.",
+      groupName: "Music for my clip",
+    }, MATERIALS);
+    expect(verdict.ok ? "ok" : `${verdict.refusal}: ${verdict.reason}`).toMatch(/^template-input-missing/);
   });
 });
 
