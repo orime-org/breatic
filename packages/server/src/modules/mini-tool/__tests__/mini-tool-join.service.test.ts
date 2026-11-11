@@ -57,7 +57,6 @@ vi.mock("@breatic/domain", async () => ({
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [] }) },
   assetRepo: {
-    findKindByStorageKey: vi.fn(async (key: string) => h.assets.get(key)?.kind ?? null),
     findLiveByStorageKey: vi.fn(async (key: string) => {
       const asset = h.assets.get(key);
       return asset === undefined ? null : { storageKey: key, durationSeconds: 5, ...asset };
@@ -208,6 +207,19 @@ describe("prepareRun — a join", () => {
     const err = await refusal(prepareRun(VIDEO_JOIN, joinRequest(VIDEO_JOIN, a, [])));
 
     expect(err.statusCode).toBe(400);
+  });
+
+  it("reads each input's ledger row once, its kind and its size together (round 3)", async () => {
+    const a = stored("v/a.mp4", "video");
+    const b = stored("v/b.mp4", "video");
+    const c = stored("v/c.mp4", "video");
+    const { assetRepo } = await import("@breatic/domain");
+    vi.mocked(assetRepo.findLiveByStorageKey).mockClear();
+
+    await prepareRun(VIDEO_JOIN, joinRequest(VIDEO_JOIN, a, [b, c]));
+
+    expect(vi.mocked(assetRepo.findLiveByStorageKey).mock.calls.map(([key]) => key)).toEqual(["v/a.mp4", "v/b.mp4", "v/c.mp4"]);
+    expect((assetRepo as { findKindByStorageKey?: unknown }).findKindByStorageKey).toBeUndefined();
   });
 
   it("takes join_max_clips − 1 clips and refuses one more", async () => {

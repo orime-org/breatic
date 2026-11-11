@@ -621,7 +621,6 @@ export const domainMock = async () => ({
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
-    findKindByStorageKey: vi.fn().mockResolvedValue("video"),
     findLiveByStorageKey: vi.fn().mockResolvedValue(null),
     findLiveByKeyInStudio: vi.fn().mockResolvedValue(null),
   },

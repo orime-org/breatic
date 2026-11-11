@@ -20,8 +20,6 @@ export const fillMediaNumbers: typeof assetRepo.fillMediaNumbers = assetRepo.fil
 export const findLiveByStorageKey: typeof assetRepo.findLiveByStorageKey = assetRepo.findLiveByStorageKey;
 /** The shared repository implementation of findHashByStorageKey. */
 export const findHashByStorageKey: typeof assetRepo.findHashByStorageKey = assetRepo.findHashByStorageKey;
-/** The shared repository implementation of findKindByStorageKey. */
-export const findKindByStorageKey: typeof assetRepo.findKindByStorageKey = assetRepo.findKindByStorageKey;
 /** The shared repository implementation of registerWithDedup. */
 export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.registerWithDedup;
 /** The shared repository implementation of setCoverAsset. */

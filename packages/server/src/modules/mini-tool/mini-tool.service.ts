@@ -176,25 +176,26 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
 
 /**
  * The stored key behind one input of a container tool, checked as the source
- * is: one of our addresses, filed as the tool's medium.
+ * is: one of our addresses, filed as the tool's medium; read with its size
+ * from the one ledger row.
  * @param spec - The tool, whose declared source medium the stored file must be.
  * @param op - The container operation, for the log.
  * @param url - The input's address.
- * @returns Its storage key.
+ * @returns Its storage key and the size the ledger holds for it.
  * @throws {AppError} 400 when the input is not one of our addresses, or not the tool's medium.
  */
-async function checkedInputKey(spec: MiniToolSpec, op: string, url: string): Promise<string> {
+async function checkedInput(spec: MiniToolSpec, op: string, url: string): Promise<{ key: string; sizeBytes: number }> {
   const key = (await getStorageAdapter()).keyFromUrl(url);
   if (key === null) throw new AppError(400, t("server.mini_tool.foreignSource"));
   // A container operation reads the medium its tool declares; the panel only
   // offers a tool on a node of that medium, so another kind here came from a
   // forged request.
-  const kind = await assetRepo.findKindByStorageKey(key);
-  if (kind !== spec.source) {
-    logger.warn({ op, sourceKey: key, kind, expected: spec.source }, "mini_tool_source_wrong_kind");
+  const row = await assetRepo.findLiveByStorageKey(key);
+  if (row?.kind !== spec.source) {
+    logger.warn({ op, sourceKey: key, kind: row?.kind ?? null, expected: spec.source }, "mini_tool_source_wrong_kind");
     throw new AppError(400, t("server.mini_tool.foreignSource"));
   }
-  return key;
+  return { key, sizeBytes: row.sizeBytes };
 }
 
 /**
@@ -212,8 +213,8 @@ async function checkedInputKey(spec: MiniToolSpec, op: string, url: string): Pro
  */
 async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToolRequest): Promise<PreparedRun> {
   const config = getMiniToolsConfig();
-  const sourceKey = await checkedInputKey(spec, op, body.source.url);
-  const inputKeys = [sourceKey];
+  const source = await checkedInput(spec, op, body.source.url);
+  const inputKeys = [source.key];
   const plan = config.ops[op as keyof typeof config.ops];
   const size = config.classes[plan.container_class]!;
   // ponytail: the joins are the only container tools with slots, so slots mean a join.
@@ -223,9 +224,12 @@ async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToo
     if (clips.length < 1 || clips.length > config.join_max_clips - 1) {
       throw new AppError(400, t("server.mini_tool.joinClipCount", { max: config.join_max_clips }));
     }
-    for (const clip of clips) inputKeys.push(await checkedInputKey(spec, op, clip.url));
-    let bytes = 0;
-    for (const key of inputKeys) bytes += (await assetRepo.findLiveByStorageKey(key))?.sizeBytes ?? 0;
+    let bytes = source.sizeBytes;
+    for (const clip of clips) {
+      const input = await checkedInput(spec, op, clip.url);
+      inputKeys.push(input.key);
+      bytes += input.sizeBytes;
+    }
     if (bytes * 2 > size.disk_gb * 1_000_000_000) {
       throw new AppError(400, t("server.mini_tool.clipsTooLarge"));
     }
@@ -235,7 +239,7 @@ async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToo
   return {
     model: undefined,
     params: body.params,
-    sourceKey,
+    sourceKey: source.key,
     inputKeys,
     credits: Math.max(creditsForUsd(usd, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
   };
