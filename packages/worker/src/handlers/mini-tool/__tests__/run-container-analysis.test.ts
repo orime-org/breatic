@@ -46,8 +46,13 @@ const HOST = "50000000-0000-4000-8000-000000000001";
 const USER = "60000000-0000-4000-8000-000000000001";
 const SOURCE_KEY = "original/sql-owned-source.mp4";
 const DEADLINE = 1792927200000;
-// A read of a registered result is bounded by the reporting window (two 5 s polls past D), not refused at D (planReadUntil).
-const READ_UNTIL = DEADLINE + 2 * 5000;
+/**
+ * A read of a registered result is bounded by the reporting window (two 5 s polls past D) or the transport's own bound,
+ * whichever ends later, and is never refused at D (planReadUntil).
+ * @param now - The clock when the read starts.
+ * @returns The read's absolute bound.
+ */
+const readUntil = (now: number = Date.now()): number => Math.max(DEADLINE + 2 * 5000, now + DEFAULT_TIMEOUT_MS);
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 // §93 D5 (design §7.17 people anchor row): the frozen full ledger is the container-written cfr96 ledger (96 frames of
 // 1/25 s, 320x180, keyframes 0 and 48; worker fixtures/presentation/PROVENANCE.txt). A case may serve other bytes.
@@ -267,7 +272,7 @@ describe("accepted container analysis orchestration", () => {
     // The job is the scan alone: one scene_cuts output and no separate inspection output beside it.
     expect(call.request.outputs.map((output) => output.recipe.kind)).toEqual(["scene_cuts"]);
     expect(h.advance).toHaveBeenCalledTimes(1);
-    expect(h.read.mock.calls).toEqual([[asset(0, false).id, READ_UNTIL]]);
+    expect(h.read.mock.calls).toEqual([[asset(0, false).id, readUntil()]]);
     expect(steps[0]!.output).toMatchObject({ "miniToolAnalysisJson:0": scenes });
     expect(h.finish).not.toHaveBeenCalled(); expect(h.charge).not.toHaveBeenCalled();
   });
@@ -282,7 +287,7 @@ describe("accepted container analysis orchestration", () => {
       ...initialRequest(original), outputs: [{ ...initialRequest(original).outputs[0]!, storageKey: "derived/grant-0/0.txt" }] } });
     expect(second).toEqual({ taskId: TASK, stepId: steps[1]!.id, chunkIndex: 1, chargeTo: "platform", request: { ...thumbnailRequest(),
       outputs: thumbnailRequest().outputs.map((output, index) => ({ ...output, storageKey: `derived/grant-1/${index}.png` })) } });
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, READ_UNTIL);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, readUntil());
     expect(h.inline).toHaveBeenCalledWith(steps[0]!.id, { "miniToolAnalysisJson:0": people }, 0);
     const cacheCall = h.inline.mock.calls.findIndex((call) => Object.hasOwn(call[1], "miniToolAnalysisJson:0"));
     expect(h.inline.mock.invocationCallOrder[cacheCall]).toBeLessThan(h.grants.mock.invocationCallOrder[1]!);
@@ -375,7 +380,7 @@ describe("original request and JSON cache recovery", () => {
     const original = execution("scene_cuts"); const request = initialRequest(original); payload = structuredClone(scenes);
     const step = storedStep(request, 0);
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, READ_UNTIL);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, readUntil());
     expect(h.inline).toHaveBeenCalledWith(step.id, { "miniToolAnalysisJson:0": scenes }, 0);
     expect(step.output).toMatchObject({ miniToolPlanJob: request, "miniToolAnalysisJson:0": scenes,
       miniToolConsumption: { marker: "original-policy-and-usage" }, sibling: "original-sibling" });
@@ -389,7 +394,7 @@ describe("original request and JSON cache recovery", () => {
     const request = structuredClone(steps[0]!.output.miniToolPlanJob);
     h.read.mockClear(); h.read.mockImplementation(normal); h.grants.mockClear();
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, READ_UNTIL);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, readUntil());
     expect(h.grants).not.toHaveBeenCalled(); expect(steps[0]!.output.miniToolPlanJob).toEqual(request);
   });
 
@@ -401,7 +406,7 @@ describe("original request and JSON cache recovery", () => {
     const request = structuredClone(steps[0]!.output.miniToolPlanJob);
     h.grants.mockClear(); h.read.mockClear();
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, READ_UNTIL);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, readUntil());
     expect(h.grants).toHaveBeenCalledTimes(1); expect(steps[0]!.output.miniToolPlanJob).toEqual(request);
   });
 
@@ -477,7 +482,7 @@ describe("unchanged deadline and late pure assembly", () => {
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(kind === "people" ? expectedPeople(original) : expectedScene(original));
     // Each stored job is advanced once (its usage recorded once); no new grant, step or job is opened after D.
     expect(h.advance).toHaveBeenCalledTimes(kind === "people" ? 2 : 1); expect(h.grants).not.toHaveBeenCalled(); expect(h.ensure).not.toHaveBeenCalled();
-    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, now < READ_UNTIL ? READ_UNTIL : now + DEFAULT_TIMEOUT_MS);
+    expect(h.read).toHaveBeenCalledExactlyOnceWith(asset(0, false).id, readUntil(now));
   });
 
   it("reads an existing running thumbnail after D and preserves StillRunning for the outer lane", async () => {

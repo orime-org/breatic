@@ -83,6 +83,8 @@ const LEDGER = JSON.parse(CFR96.toString("utf8")) as VideoPresentationLedger;
 const LEDGER_URL = "https://assets.example.test/video/source.mp4.video-source-ledger.cfr96.json";
 let ledgerBytes: Buffer = CFR96;
 let ledgerFault: "reset" | null = null;
+// How long the ledger read takes on a faked clock; the fetch fake moves the clock and honours the read's signal, as a real one would.
+let ledgerReadMs = 0;
 
 type Tool = "video.extract-frames" | "video.split";
 type Steps = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>;
@@ -310,7 +312,7 @@ function statuses(completion: MiniToolExecutionCompletion | null): (string | nul
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; ledgerBytes = CFR96; ledgerFault = null;
+  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; ledgerBytes = CFR96; ledgerFault = null; ledgerReadMs = 0;
   h.deadline.mockResolvedValue(DEADLINE);
   h.removal.mockRejectedValue(new Error("A frames or split run must not take the removal runner"));
   h.list.mockImplementation(async () => steps);
@@ -353,10 +355,12 @@ beforeEach(() => {
       outputs: current.outputs.flatMap((output, outputIndex) => output.result === null ? [] : [{ outputIndex, state: "pending" }]) } }));
   h.deliver.mockImplementation(async (value: unknown) => value);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
     if (url !== LEDGER_URL) return new Response("unexpected", { status: 500 });
     if (ledgerFault === "reset") throw new TypeError("fetch failed: connection reset");
+    if (ledgerReadMs > 0) vi.setSystemTime(Date.now() + ledgerReadMs);
+    init?.signal?.throwIfAborted();
     return new Response(ledgerBytes, { headers: { "content-type": "application/json" } });
   }));
 });
@@ -839,6 +843,19 @@ describe("an attempt due after the deadline and an output registered before a th
     const completion = await drive();
     expect(statuses(completion)).toEqual(["failed", "registered"]);
     expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+  });
+
+  // Reading the frozen ledger starts no new work, so a read started 1 ms before the reporting window ends is not cut at it.
+  it("DL11 a pickup whose ledger read starts 1 ms before the reporting window ends registers the batches that reported done", async () => {
+    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
+    scripted.set(batchId(0, 1), "running"); scripted.set(batchId(1, 1), "running");
+    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
+    scripted.delete(batchId(0, 1)); scripted.delete(batchId(1, 1));
+    vi.setSystemTime(DEADLINE + 2 * 5000 - 1);
+    ledgerReadMs = 5;
+    const completion = await drive();
+    expect(statuses(completion)).toEqual(["registered", "registered"]);
+    expect(completion!.error).toBeNull();
   });
 
   it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {

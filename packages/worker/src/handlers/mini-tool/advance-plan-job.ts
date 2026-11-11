@@ -3,7 +3,7 @@
 
 import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
-  assertBeforeDeadline, DEFAULT_TIMEOUT_MS, untilDeadline, untilDeadlineIfAhead,
+  assertBeforeDeadline, DEFAULT_TIMEOUT_MS, untilDeadline,
   miniToolPlanJobRequestSchema, readMiniToolPlanJob, submitMiniToolPlanJob,
   EmptyBody, HttpRetryError, UploadHttpError,
   type MiniToolPlanJobReport, type MiniToolPlanJobRequest,
@@ -25,16 +25,17 @@ export function planReportingEnd(deadlineAt: number): number {
 }
 
 /**
- * The bound of a read of what already exists (a run's frozen ledger): the reporting window, or once it has closed the
- * transport's own bound, since reading what is stored starts no new work (as `untilDeadlineIfAhead` does for a report read).
+ * The bound of a read of what already exists (a job's report, a run's frozen ledger, a registered result): the reporting
+ * window or the transport's own bound, whichever ends later. Reading what is stored starts no new work, so a read started
+ * just before the window ends is never cut at it; whether a job still running then has expired is the caller's check after
+ * the read.
  * @param deadlineAt - The task deadline.
  * @param now - The clock now, in epoch ms.
  * @returns The read's absolute deadline, in epoch ms.
  * @throws {never} Never.
  */
 export function planReadUntil(deadlineAt: number, now: number = Date.now()): number {
-  const reportingEnd = planReportingEnd(deadlineAt);
-  return now < reportingEnd ? reportingEnd : now + DEFAULT_TIMEOUT_MS;
+  return Math.max(planReportingEnd(deadlineAt), now + DEFAULT_TIMEOUT_MS);
 }
 
 /**
@@ -82,7 +83,7 @@ export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest): P
   const reportingEnd = planReportingEnd(job.deadlineAt);
   let report: MiniToolPlanJobReport | null;
   try {
-    report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job, untilDeadlineIfAhead(reportingEnd));
+    report = await readMiniToolPlanJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job, untilDeadline(planReadUntil(job.deadlineAt)));
   } catch (error) {
     rethrowPlanFailure(error, job, "read", reportingEnd, poll);
   }

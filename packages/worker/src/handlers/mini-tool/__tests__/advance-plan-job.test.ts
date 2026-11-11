@@ -18,8 +18,8 @@ vi.mock("@breatic/core", async (original) => ({
   logger: { error: h.error },
 }));
 
-import { BodyTooLarge, DeadlinePassed, EmptyBody, HttpRetryError, UploadHttpError, miniToolPlanJobRequestSchema } from "@breatic/shared";
-import { advanceMiniToolPlanJob } from "../advance-plan-job.js";
+import { BodyTooLarge, DEFAULT_TIMEOUT_MS, DeadlinePassed, EmptyBody, HttpRetryError, UploadHttpError, miniToolPlanJobRequestSchema, type UntilDeadline } from "@breatic/shared";
+import { advanceMiniToolPlanJob, planReadUntil } from "../advance-plan-job.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
 const inputId = "20000000-0000-4000-8000-000000000001";
@@ -56,7 +56,7 @@ describe("frozen planned job advancement", () => {
     h.read.mockResolvedValue(report);
     expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
     expect(h.read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan,
-      expect.objectContaining({ timeoutMs: 30000, signal: expect.any(AbortSignal) }));
+      expect.objectContaining({ timeoutMs: DEFAULT_TIMEOUT_MS, signal: expect.any(AbortSignal) }));
     expect(h.submit).not.toHaveBeenCalled();
   });
 
@@ -133,7 +133,8 @@ describe("frozen planned job advancement", () => {
     for (const now of [GRACE_END, GRACE_END + 1]) {
       h.read.mockClear(); h.now = now; h.read.mockResolvedValue(report);
       expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
-      expect(h.read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan, undefined);
+      expect(h.read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan,
+        expect.objectContaining({ timeoutMs: DEFAULT_TIMEOUT_MS, signal: expect.any(AbortSignal) }));
     }
     expect(h.submit).not.toHaveBeenCalled();
   });
@@ -141,6 +142,25 @@ describe("frozen planned job advancement", () => {
   it.each([done, failed])("retains a $state report that arrives across the reporting boundary", async (report) => {
     h.now = GRACE_END - 1;
     h.read.mockImplementation(async () => { h.now = GRACE_END; return report; });
+    expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
+    expect(h.submit).not.toHaveBeenCalled();
+  });
+
+  // A read of what ingest already holds starts no new work, so it is never given less than the transport's own bound: one
+  // started 1 ms before the window ends is not cut at the window's end (the still-running check after it stays there).
+  it("bounds a read started 1 ms before the reporting window ends by the transport's own bound", () => {
+    expect(planReadUntil(DEADLINE, GRACE_END - 1)).toBe(GRACE_END - 1 + DEFAULT_TIMEOUT_MS);
+    expect(planReadUntil(DEADLINE, DEADLINE - 3_600_000)).toBe(GRACE_END);
+  });
+
+  it.each([done, failed])("returns a $state report whose read starts 1 ms before the reporting window ends and takes 5 ms", async (report) => {
+    h.now = GRACE_END - 1;
+    // As the real transport: a read that outlasts its bound is aborted with the bound's DeadlinePassed.
+    h.read.mockImplementation(async (_base: string, _secret: string, _request: unknown, bound: UntilDeadline | undefined) => {
+      h.now += 5;
+      if (5 > (bound?.timeoutMs ?? DEFAULT_TIMEOUT_MS)) throw new DeadlinePassed();
+      return report;
+    });
     expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
     expect(h.submit).not.toHaveBeenCalled();
   });
