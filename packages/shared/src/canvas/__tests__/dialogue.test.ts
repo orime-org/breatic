@@ -111,10 +111,9 @@ describe('dialogueSideOf', () => {
     expect(dialogueSideOf(GEMINI, { speakers: PAIR, [STAND_IN_ON]: false })).toBe(false);
   });
 
-  it('with no switch, is on once at least one speaker is complete, as a landing writer switches it', () => {
-    expect(dialogueSideOf(GEMINI, { speakers: PAIR })).toBe(true);
-    expect(dialogueSideOf(GEMINI, { speakers: HALF })).toBe(true);
-    expect(dialogueSideOf(GEMINI, { speakers: [{ speaker: '', voice: 'Kore' }] })).toBe(false);
+  it('with no switch, a stored record reads in one voice, however complete its speakers (design 8.5)', () => {
+    expect(dialogueSideOf(GEMINI, { speakers: PAIR })).toBe(false);
+    expect(dialogueSideOf(GEMINI, { speakers: HALF })).toBe(false);
     expect(dialogueSideOf(GEMINI, {})).toBe(false);
   });
 
@@ -123,10 +122,11 @@ describe('dialogueSideOf', () => {
     expect(dialogueSideOf(undefined, { [STAND_IN_ON]: true })).toBe(false);
   });
 
-  it('agrees with withStandInOn on every record a writer could bring', () => {
+  it('reads a record a writer brings as the writer switches it: speakers with at least one complete is a dialogue', () => {
     for (const speakers of [undefined, null, [], HALF, PAIR, [{ speaker: '', voice: 'Kore' }]]) {
       const record = speakers === undefined ? {} : { speakers };
-      expect(dialogueSideOf(GEMINI, record), JSON.stringify(record)).toBe(isStandInOn(withStandInOn(GEMINI, record)));
+      const complete = speakers === HALF || speakers === PAIR;
+      expect(dialogueSideOf(GEMINI, withStandInOn(GEMINI, record)), JSON.stringify(record)).toBe(complete);
     }
   });
 });

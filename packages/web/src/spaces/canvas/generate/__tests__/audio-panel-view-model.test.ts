@@ -319,9 +319,10 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo', voice: 'Puck' }];
     const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
     expect(on.dialogueNames).toEqual(['Ada', 'Bo']);
-    // A template or a proposal lands speakers with no switch: that is the dialogue too.
-    const landed = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
-    expect(landed.dialogueNames).toEqual(['Ada', 'Bo']);
+    // A stored record with speakers and no switch reads in one voice (design 8.5):
+    // a landing writes the switch, and nothing else counts as one.
+    const unswitched = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
+    expect(unswitched.dialogueNames).toBeNull();
     const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
     expect(alone.dialogueNames).toBeNull();
   });
