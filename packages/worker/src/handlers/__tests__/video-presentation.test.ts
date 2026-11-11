@@ -771,22 +771,30 @@ describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)',
   });
 
   it('AT06c an ended attempt whose report read starts 1 ms before the reporting window ends still records its usage', async () => {
-    // The window ends at D + 2 polls (poll_interval_ms 5000 above); the read takes 20 ms and, like fetch, stops when its signal aborts.
-    D = Date.now() - 10_000 + 1;
-    answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
-      units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
-    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: null }));
-    const served = vi.mocked(fetch).getMockImplementation()!;
-    vi.mocked(fetch).mockImplementation(async (input, init) => {
-      const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
-      if (url.pathname.startsWith('/jobs/')) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        init?.signal?.throwIfAborted();
-      }
-      return served(input, init);
-    });
-    await expect(advance()(data)).resolves.not.toThrow();
-    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
+    // The window ends at D + 2 polls (poll_interval_ms 5000 above). The clock stands 1 ms before it while the pickup runs; each
+    // read takes 20 ms of real time and moves the clock with it, and, like fetch, stops when its signal aborts.
+    D = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(D + 10_000 - 1);
+    try {
+      answer = prepareAnswer({ preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' },
+        units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
+      reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: null }));
+      const served = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
+        if (url.pathname.startsWith('/jobs/')) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          vi.setSystemTime(Date.now() + 20);
+          init?.signal?.throwIfAborted();
+        }
+        return served(input, init);
+      });
+      await expect(advance()(data)).resolves.not.toThrow();
+      expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('AT06b an ended attempt whose usage is unknown (its container never started or vanished unmeasured) holds nothing back and records nothing', async () => {
