@@ -38,9 +38,10 @@ interface LiveEditor {
  * @param fragment - The node's tts prompt.
  * @param names - The configured speakers' names on the dialogue side; absent on the single side.
  * @param references - The `@` picker's pool.
+ * @param voices - Each speaker's voice name beside its name.
  * @returns The live editor once it has mounted.
  */
-async function mount(fragment: Y.XmlFragment, names?: readonly string[], references: ReferenceRailItem[] = []): Promise<LiveEditor> {
+async function mount(fragment: Y.XmlFragment, names?: readonly string[], references: ReferenceRailItem[] = [], voices?: readonly string[]): Promise<LiveEditor> {
   render(
     <PromptEditor
       fragment={fragment}
@@ -50,7 +51,7 @@ async function mount(fragment: Y.XmlFragment, names?: readonly string[], referen
       references={references}
       referenceKinds={[]}
       mentionEmptyLabel='No references'
-      {...(names === undefined ? {} : { dialogue: { names } })}
+      {...(names === undefined ? {} : { dialogue: voices === undefined ? { names } : { names, voices } })}
     />,
     { wrapper: TooltipProvider },
   );
@@ -245,6 +246,19 @@ describe('the dialogue lines as the user works them (demo 2026-11-10-1825-dialog
     await user.click(await screen.findByTestId('dialogue-line-speaker-option-2'));
     await waitFor(() => expect(linesOf(editor)).toEqual([{ speaker: 2, text: 'x' }, { speaker: 2, text: 'y' }]));
     expect(storedLines(fragment)).toEqual([{ speaker: 2, text: 'x' }, { speaker: 2, text: 'y' }]);
+  });
+
+  it('holds the line\'s own speaker in its menu and names each speaker\'s voice, none for a speaker without one', async () => {
+    await mount(legacyPrompt(['Ava: x', 'Leo: y']), NAMES, [], ['Kore', '']);
+    await waitFor(() => expect(screen.getAllByTestId('dialogue-line-speaker')).toHaveLength(2));
+    const user = userEvent.setup();
+    await user.click(screen.getAllByTestId('dialogue-line-speaker')[1] as HTMLElement);
+    const first = await screen.findByTestId('dialogue-line-speaker-option-1');
+    const second = screen.getByTestId('dialogue-line-speaker-option-2');
+    expect(second).toHaveClass('bg-accent-strong');
+    expect(first).not.toHaveClass('bg-accent-strong');
+    expect(within(first).getByTestId('dialogue-line-speaker-voice')).toHaveTextContent('Kore');
+    expect(within(second).queryByTestId('dialogue-line-speaker-voice')).toBeNull();
   });
 
   it('starts a new line said by the other speaker on Enter at the end of a line', async () => {

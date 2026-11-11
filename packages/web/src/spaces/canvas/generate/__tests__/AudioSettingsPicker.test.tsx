@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import type * as React from 'react';
@@ -18,6 +18,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 }));
 
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
+import { speakerColour } from '@web/spaces/canvas/generate/dialogue-line';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
@@ -539,6 +540,16 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     // The lines say who speaks each one in the prompt box now (inner#1825 design 8.5).
     expect(screen.queryByText('Write each line as "Name: line"')).toBeNull();
     expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Dialogue · 2');
+  });
+
+  it('marks each speaker row with the colour dot its lines carry in the prompt box', () => {
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    for (const at of [0, 1]) {
+      const dot = within(screen.getByTestId(`generate-audio-row-speakers-${String(at)}`)).getByTestId('generate-audio-speaker-dot');
+      expect(dot.style.background).toBe(speakerColour(at + 1));
+    }
+    expect(screen.getByTestId('generate-audio-row-language').querySelector('[data-testid="generate-audio-speaker-dot"]')).toBeNull();
   });
 
   it('opens a speaker with a name box over the same voice list, the speaker\'s voice chosen (#2256)', () => {

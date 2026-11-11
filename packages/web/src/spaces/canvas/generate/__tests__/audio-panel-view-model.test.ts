@@ -330,4 +330,12 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
     expect(alone.dialogueNames).toBeNull();
   });
+
+  it('gives each speaker its voice beside its name, blank where none is set, and none reading alone', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueVoices).toEqual(['Kore', '']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueVoices).toBeNull();
+  });
 });

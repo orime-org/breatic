@@ -27,6 +27,7 @@ import {
 } from '@web/spaces/canvas/generate/audio-settings';
 import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { fixedEntries } from '@web/spaces/canvas/generate/fixed-entries';
+import { speakerColour } from '@web/spaces/canvas/generate/dialogue-line';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { modelControls, ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -39,7 +40,7 @@ import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
-import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { voiceDisplayName, type VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 
 /** The second panel's width in pixels. */
@@ -216,12 +217,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     const held = field === undefined ? undefined : speakers[index]?.[field];
     return typeof held === 'string' ? held : '';
   };
-  /**
-   * A voice as the voice list names it.
-   * @param id - The voice id the node holds.
-   * @returns Its name, or the id when the list does not carry it.
-   */
-  const voiceNameOf = (id: string): string => voice.list.voices.find((v) => v.id === id)?.name ?? id;
 
   if (!hasSettings(model, mode)) return null;
 
@@ -232,7 +227,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
    */
   const rowValue = (row: SettingsRow): string => {
     if (row.kind === 'speaker') {
-      return [speakerText(row.index, nameField), voiceNameOf(speakerText(row.index, voiceField))]
+      return [speakerText(row.index, nameField), voiceDisplayName(voice.list.voices, speakerText(row.index, voiceField))]
         .filter((part) => part !== '')
         .join(' · ');
     }
@@ -336,8 +331,17 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
             <SecondPanelRow
               key={panelKey(row)}
               label={
-                row.kind === 'speaker'
-                  ? t('canvas.generatePanel.audioSpeakerRow', { n: row.index + 1 })
+                row.kind === 'speaker' ? (
+                  <>
+                    {/* The colour its lines carry in the prompt box. */}
+                    <span
+                      data-testid='generate-audio-speaker-dot'
+                      className='mr-1.5 inline-block size-2 rounded-full align-middle'
+                      style={{ background: speakerColour(row.index + 1) }}
+                    />
+                    {t('canvas.generatePanel.audioSpeakerRow', { n: row.index + 1 })}
+                  </>
+                )
                   : row.kind === 'voice'
                     ? t('canvas.generatePanel.audioVoice')
                     : t(`canvas.generatePanel.param.${row.name}`)

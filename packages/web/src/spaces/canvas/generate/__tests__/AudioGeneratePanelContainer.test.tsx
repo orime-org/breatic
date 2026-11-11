@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import en from '@locales/en.json';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
@@ -1245,6 +1246,14 @@ describe('AudioGeneratePanelContainer — a dialogue written line by line (inner
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(create.mock.calls[0]?.[0]?.params.prompt).toBe('Ava: Hi.\nLeo: Hello.');
     expect(create.mock.calls[0]?.[0]?.params.speakers).toEqual(PAIR);
+  });
+
+  it('names each speaker\'s voice beside it in a line\'s speaker menu', async () => {
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByTestId('dialogue-line-speaker'))[0] as HTMLElement);
+    expect(await screen.findByTestId('dialogue-line-speaker-option-1')).toHaveTextContent('Kore');
+    expect(screen.getByTestId('dialogue-line-speaker-option-2')).toHaveTextContent('Puck');
   });
 
   it('keeps the lines\' words and speakers as they are when the reading mode goes to single and back', async () => {

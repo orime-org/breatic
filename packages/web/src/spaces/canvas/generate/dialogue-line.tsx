@@ -30,6 +30,7 @@ import { Button } from '@web/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { dispatchMachineEdit, MACHINE_EDIT_META } from '@web/features/reference-mention/reference-mention-local-input';
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { planDialogueLines, type PlanOptions } from '@web/spaces/canvas/generate/dialogue-lines';
@@ -45,6 +46,8 @@ const SPEAKER_HUES = ['blue', 'orange', 'green', 'violet', 'pink', 'teal'] as co
 export interface DialogueNames {
   /** The names, from speaker 1. */
   readonly names: () => readonly string[];
+  /** Each speaker's voice as the voice list names it, from speaker 1; empty for a speaker with none. */
+  readonly voices?: () => readonly string[];
 }
 
 /**
@@ -52,7 +55,7 @@ export interface DialogueNames {
  * @param speaker - The speaker, from 1.
  * @returns A palette colour.
  */
-function speakerColour(speaker: number): string {
+export function speakerColour(speaker: number): string {
   return `var(--color-palette-${SPEAKER_HUES[(speaker - 1) % SPEAKER_HUES.length] ?? 'blue'})`;
 }
 
@@ -171,10 +174,13 @@ function lineCount(editor: Editor): number {
  */
 function DialogueLineView(props: NodeViewProps): React.JSX.Element {
   const { editor, node, updateAttributes, deleteNode, extension } = props;
-  const read = (extension.options as DialogueNames).names;
-  // Read on every transaction: the panel changing a speaker's name dispatches
-  // one with no edit, so a renamed speaker shows at once.
-  const { lines, names } = useEditorState({ editor, selector: ({ editor: e }) => ({ lines: lineCount(e), names: [...read()] }) });
+  const { names: read, voices: readVoices } = extension.options as DialogueNames;
+  // Read on every transaction: the panel changing a speaker's name or voice
+  // dispatches one with no edit, so a renamed speaker shows at once.
+  const { lines, names, voices } = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({ lines: lineCount(e), names: [...read()], voices: [...(readVoices?.() ?? [])] }),
+  });
   const speaker = speakerOf(node) ?? 1;
   const t = useTranslation();
   /**
@@ -190,7 +196,9 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   useFollowCanvasViewport(open);
   return (
-    <NodeViewWrapper className='dialogue-line group flex items-start gap-1.5 py-0.5'>
+    // The band on hover holds the line and its × together; the padding matches
+    // the negative margin, so the words stay where they are.
+    <NodeViewWrapper className='dialogue-line group -mx-1 flex items-start gap-2 rounded-chrome-sm px-1 py-1 hover:bg-accent'>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -199,10 +207,12 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
             size={null}
             contentEditable={false}
             data-testid='dialogue-line-speaker'
-            className='inline-flex h-6 max-w-28 shrink-0 items-center gap-1 rounded-chrome border border-border bg-background px-1.5 text-xs text-foreground hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-expanded:border-active-border'
+            className='inline-flex h-6 min-w-20 max-w-28 shrink-0 items-center justify-between gap-1 rounded-chrome border border-border bg-background px-1.5 text-xs text-foreground hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-expanded:border-active-border'
           >
-            <span data-testid='dialogue-line-speaker-dot' className='size-2 shrink-0 rounded-full' style={{ background: speakerColour(speaker) }} />
-            <span className='min-w-0 truncate'>{label(speaker)}</span>
+            <span className='flex min-w-0 items-center gap-1'>
+              <span data-testid='dialogue-line-speaker-dot' className='size-2 shrink-0 rounded-full' style={{ background: speakerColour(speaker) }} />
+              <span className='min-w-0 truncate'>{label(speaker)}</span>
+            </span>
             <ChevronDown className='size-3 shrink-0 text-muted-foreground' aria-hidden='true' />
           </Button>
         </DropdownMenuTrigger>
@@ -211,10 +221,15 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
             <DropdownMenuItem
               key={at}
               data-testid={`dialogue-line-speaker-option-${String(at + 1)}`}
+              // The line's own speaker reads as held, as a single-choice list's pick does (ChoiceMenu).
+              className={cn(at + 1 === speaker && 'bg-accent-strong focus:bg-accent-strong')}
               onSelect={() => updateAttributes({ [SPEAKER_ATTR]: at + 1 })}
             >
               <span className='size-2 shrink-0 rounded-full' style={{ background: speakerColour(at + 1) }} />
               {label(at + 1)}
+              {voices[at] ? (
+                <span data-testid='dialogue-line-speaker-voice' className='ml-auto pl-4 text-xs text-muted-foreground'>{voices[at]}</span>
+              ) : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -232,7 +247,8 @@ function DialogueLineView(props: NodeViewProps): React.JSX.Element {
           contentEditable={false}
           data-testid='dialogue-line-remove'
           onClick={() => deleteNode()}
-          className='mt-0.5 shrink-0 rounded-chrome p-0.5 text-muted-foreground opacity-0 transition-opacity hover-enabled:bg-accent group-hover:opacity-100 focus-visible:opacity-100'
+          // The `::after` square takes a press 3px past each side: 18 + 2 * 3 = 24.
+          className='relative mt-0.5 shrink-0 rounded-chrome p-0.5 after:absolute after:-inset-[3px] text-muted-foreground opacity-0 transition-opacity hover-enabled:bg-accent group-hover:opacity-100 focus-visible:opacity-100'
         >
           <X className='size-3.5' aria-hidden='true' />
         </Button>
@@ -265,7 +281,7 @@ export const SpeakerParagraph = Paragraph.extend({
 /** The paragraph as a dialogue line, with its picker and ×. */
 export const DialogueParagraph = SpeakerParagraph.extend<DialogueNames>({
   addOptions() {
-    return { names: () => [] };
+    return { names: () => [], voices: () => [] };
   },
   addNodeView() {
     return ReactNodeViewRenderer(DialogueLineView);

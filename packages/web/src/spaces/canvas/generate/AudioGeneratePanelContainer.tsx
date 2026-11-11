@@ -88,6 +88,7 @@ import {
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
+import { voiceDisplayName } from '@web/spaces/canvas/generate/voice-list-state';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -588,10 +589,16 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
-  // The speakers by name, kept the same object while the names are the same.
-  const dialogueKey = vm.dialogueNames === null ? undefined : JSON.stringify(vm.dialogueNames);
+  // The speakers by name and voice, kept the same object while both are the same.
+  const dialogueKey =
+    vm.dialogueNames === null
+      ? undefined
+      : JSON.stringify({
+        names: vm.dialogueNames,
+        voices: (vm.dialogueVoices ?? []).map((id) => (id === '' ? '' : voiceDisplayName(voices.state.voices, id))),
+      });
   const dialogue = React.useMemo(
-    () => (dialogueKey === undefined ? undefined : { names: JSON.parse(dialogueKey) as string[] }),
+    () => (dialogueKey === undefined ? undefined : (JSON.parse(dialogueKey) as { names: string[]; voices: string[] })),
     [dialogueKey],
   );
   const promptSlot = React.useMemo(

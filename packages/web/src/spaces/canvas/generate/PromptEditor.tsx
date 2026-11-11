@@ -112,6 +112,8 @@ interface PromptWiring {
   onAtMentionsChange: (sourceIds: string[]) => void;
   /** The speakers' names on the dialogue side, from speaker 1. */
   dialogueNames: readonly string[];
+  /** Each speaker's voice name beside them, empty for a speaker with none. */
+  dialogueVoices: readonly string[];
   /** Where the open `@` popup registers its refresh. */
   suggestionRefresh: { current: (() => void) | null };
 }
@@ -208,9 +210,9 @@ interface PromptEditorProps {
    * (inner#1825 design 8.5): the speakers' names, from speaker 1. The box then
    * holds one line per turn, each with a picker for who says it, and reports
    * and serializes the lines as the `Name: line` script. Absent, it is one
-   * prompt.
+   * prompt. `voices` names each speaker's voice beside it in the picker.
    */
-  dialogue?: { readonly names: readonly string[] };
+  dialogue?: { readonly names: readonly string[]; readonly voices?: readonly string[] };
 }
 
 /**
@@ -288,6 +290,7 @@ export const PromptEditor = React.forwardRef<
   const t = useTranslation();
   const dialogueOn = dialogue !== undefined;
   const dialogueNames = dialogue?.names;
+  const dialogueVoices = dialogue?.voices;
   const editor = React.useMemo((): Editor => {
     /**
      * Builds the editor, with its handlers reading the wiring box.
@@ -303,6 +306,7 @@ export const PromptEditor = React.forwardRef<
         onTextChange,
         onAtMentionsChange,
         dialogueNames: dialogueNames ?? [],
+        dialogueVoices: dialogueVoices ?? [],
         suggestionRefresh: { current: null },
       };
       // The editor is built during render, and binding it to a fragment that
@@ -333,7 +337,7 @@ export const PromptEditor = React.forwardRef<
           // line's speaker survives an edit made reading in one voice.
           ...(dialogueOn
             ? [
-              DialogueParagraph.configure({ names: () => wiring.dialogueNames }),
+              DialogueParagraph.configure({ names: () => wiring.dialogueNames, voices: () => wiring.dialogueVoices }),
               DialogueLines.configure({ names: () => wiring.dialogueNames }),
             ]
             : [SpeakerParagraph]),
@@ -439,6 +443,7 @@ export const PromptEditor = React.forwardRef<
       onTextChange,
       onAtMentionsChange,
       dialogueNames: dialogueNames ?? [],
+      dialogueVoices: dialogueVoices ?? [],
     });
   }
   // Back on screen after a switch of Space, the caret goes back in if it was
@@ -529,12 +534,14 @@ export const PromptEditor = React.forwardRef<
   }, [editor, references, blockSeparator, mentionTokens, onTextChange, dialogueOn, namesKey]);
   // The lines read the speakers' names too: a renamed speaker is put right on
   // every line (a typed prefix may name one now) and shown at once, through a
-  // machine edit even when no line changes, which the lines re-read on.
+  // machine edit even when no line changes, which the lines re-read on; a
+  // changed voice is shown the same way.
+  const voicesKey = dialogueVoices?.join('\n');
   React.useEffect(() => {
     const wiring = keptOf.get(editor)?.wiring;
     if (!dialogueOn || editor.isDestroyed || wiring === undefined) return;
     dispatchMachineEdit(editor.view, dialogueNormalisation(editor.state, wiring.dialogueNames) ?? editor.state.tr);
-  }, [editor, dialogueOn, namesKey]);
+  }, [editor, dialogueOn, namesKey, voicesKey]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
