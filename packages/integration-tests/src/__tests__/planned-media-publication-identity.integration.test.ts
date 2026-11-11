@@ -56,7 +56,7 @@ async function fixture(status: "running" | "failed" | "expired" = "running"): Pr
  */
 function completion(f: ExecutionFixture): MiniToolExecutionCompletion {
   return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0,
-    outputs: [{ ...f.plan.outputs[0]!, result: structuredClone(f.registered), late: false }], error: null, consumptionSet: "complete" };
+    outputs: [{ ...f.plan.outputs[0]!, result: structuredClone(f.registered), late: false }], error: null };
 }
 
 /** Observe the complete source history independently from the publication owner.
@@ -137,7 +137,7 @@ describe("planned publication keeps SQL output identity across real Redis entrie
     const held = await executionSnapshot(pg, f);
     expect((held.result.miniToolDelivery as { outputs: { outputIndex: number; state: string }[] }).outputs).toEqual([{ outputIndex: 0, state: "published" }]);
     const replay = { planFingerprint: first.record.planFingerprint, expectedVersion: first.record.resultVersion,
-      outputs: structuredClone(first.record.outputs), error: first.record.error, consumptionSet: "complete" as const };
+      outputs: structuredClone(first.record.outputs), error: first.record.error };
     const second = await finishMiniToolExecutionAndNotify(f.taskId, replay, getStreamRedis());
     expect(second.record).toEqual(first.record);
     expect(await executionSnapshot(pg, f)).toEqual(held);
@@ -173,7 +173,7 @@ describe("planned publication keeps SQL output identity across real Redis entrie
       outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: "delivery_publish_failed" };
     expect(held.result.miniToolDelivery).toEqual(pendingDelivery);
     const recovered = await finishMiniToolExecutionAndNotify(f.taskId, { planFingerprint: first.record.planFingerprint,
-      expectedVersion: first.record.resultVersion, outputs: structuredClone(first.record.outputs), error: first.record.error, consumptionSet: "complete" }, redis);
+      expectedVersion: first.record.resultVersion, outputs: structuredClone(first.record.outputs), error: first.record.error }, redis);
     expect(recovered.record).toEqual(first.record);
     const after = await executionSnapshot(pg, f);
     const publishedDelivery = { schemaVersion: 1, planFingerprint: f.plan.planFingerprint, version: 2,

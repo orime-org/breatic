@@ -92,7 +92,7 @@ describe("delivery after the terminal commit (§93 D6; design §7.11)", () => {
     const run = execution([registered(0), registered(1)]);
     h.finish.mockResolvedValue({ ...run, record: { ...(run.record as object), status: "completed", resultVersion: 2 } });
     h.read.mockResolvedValue(context(run, { 0: "published", 1: "pending" }));
-    await finishMiniToolExecutionAndNotify(TASK, { planFingerprint: PLAN, expectedVersion: 1, outputs: (run.record as { outputs: never[] }).outputs, error: null, consumptionSet: "complete" }, REDIS);
+    await finishMiniToolExecutionAndNotify(TASK, { planFingerprint: PLAN, expectedVersion: 1, outputs: (run.record as { outputs: never[] }).outputs, error: null }, REDIS);
     expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([1]);
     expect(h.wake).toHaveBeenCalledTimes(1);
   });

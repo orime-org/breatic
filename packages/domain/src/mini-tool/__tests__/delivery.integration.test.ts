@@ -33,7 +33,7 @@ afterAll(async () => { await pg.end(); initCore(process.env); });
  * @throws {never} Never.
  */
 function completion(f: ExecutionFixture, expectedVersion = 0): MiniToolExecutionCompletion {
-  return { planFingerprint: f.plan.planFingerprint, expectedVersion, consumptionSet: "uncertain", error: null,
+  return { planFingerprint: f.plan.planFingerprint, expectedVersion, error: null,
     outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }] };
 }
 /** Produce the independently fixed delivery sibling for the sole legal registered slot.

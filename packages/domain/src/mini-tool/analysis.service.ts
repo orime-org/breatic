@@ -12,7 +12,7 @@ import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
-import { completeMiniToolConsumptionSet, completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
@@ -64,8 +64,8 @@ export interface AcceptedMiniToolAnalysis {
 
 /** A worker's terminal computation fact and knowledge of its actual upstream identities. */
 export type MiniToolAnalysisCompletion =
-  | { kind: "result"; result: unknown; consumptionSet: "complete" | "uncertain" }
-  | { kind: "error"; error: unknown; consumptionSet: "complete" | "uncertain" };
+  | { kind: "result"; result: unknown }
+  | { kind: "error"; error: unknown };
 
 /** Committed metadata and the original SQL-owned destination for subsequent notifications. */
 export interface FinishedMiniToolAnalysis {
@@ -110,14 +110,14 @@ export async function startMiniToolAnalysisExecution(taskId: string, jobId: stri
 /**
  * Commit a computation outcome and its proven call-set closure under one task lock.
  * @param taskId - The original accepted analysis.
- * @param completion - The worker's observed outcome and upstream identity knowledge.
+ * @param completion - The worker's observed outcome; the call set closes from the persisted steps.
  * @returns Committed metadata and the immutable notification destination.
  * @throws {Error} When validation, ownership or either persistent transition fails.
  */
 export async function finishMiniToolAnalysis(taskId: string, completion: MiniToolAnalysisCompletion): Promise<FinishedMiniToolAnalysis> {
   const outcome = z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("result"), result: miniToolAnalysisResultSchema, consumptionSet: z.enum(["complete", "uncertain"]) }),
-    z.strictObject({ kind: z.literal("error"), error: z.record(z.string(), z.json()), consumptionSet: z.enum(["complete", "uncertain"]) }),
+    z.strictObject({ kind: z.literal("result"), result: miniToolAnalysisResultSchema }),
+    z.strictObject({ kind: z.literal("error"), error: z.record(z.string(), z.json()) }),
   ]).parse(completion);
   return db.transaction(async (tx) => {
     const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
@@ -125,8 +125,7 @@ export async function finishMiniToolAnalysis(taskId: string, completion: MiniToo
     identityFromTask(task);
     const frozen = miniToolFrozenAnalysisSchema.parse(task.params.analysis);
     const record = outcome.kind === "result" ? await recordLockedAnalysis(task, outcome.result, tx) : await failLockedAnalysis(task, outcome.error, tx);
-    if (outcome.consumptionSet === "complete") await completeMiniToolConsumptionSet(task.id, tx);
-    else await completeResolvedMiniToolConsumptionSet(task.id, tx);
+    await completeResolvedMiniToolConsumptionSet(task.id, tx);
     return {
       record,
       context: { taskId: task.id, userId: task.userId, projectId: frozen.projectId, spaceId: frozen.spaceId, hostNodeId: frozen.hostNodeId },

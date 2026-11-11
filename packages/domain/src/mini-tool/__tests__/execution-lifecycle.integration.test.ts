@@ -230,7 +230,7 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   });
   it("U12 does not close an unresolved intent when failure is committed", async () => {
     const f = await seedExecution(pg, "running"); await identity(f, "user", false);
-    const c = completion(f, true); c.consumptionSet = "uncertain"; await miniToolExecutionService.finishMiniToolExecution(f.taskId, c);
+    const c = completion(f, true); await miniToolExecutionService.finishMiniToolExecution(f.taskId, c);
     const row = await executionSnapshot(pg, f); expect(row.status).toBe("failed"); expect(row.result.settlement).toMatchObject({ consumptionSetComplete: false }); expect(row.billed_at).toBeNull();
   });
   it("B01 builds active0 from accepted F without writing on a read", async () => {

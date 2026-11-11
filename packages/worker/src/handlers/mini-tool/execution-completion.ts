@@ -9,7 +9,7 @@ import { deliverMiniToolOutput, wakePendingMiniToolDelivery } from "@worker/hand
 /**
  * Commit indexed execution media before restoring history and original target notifications.
  * @param taskId - The original accepted task.
- * @param completion - The complete indexed observation and call-set proof.
+ * @param completion - The complete indexed observation.
  * @param streamRedis - The application's task-event stream connection.
  * @returns The committed execution and its SQL-owned notification destination.
  * @throws {Error} When the original computation state cannot be persisted.

@@ -127,7 +127,7 @@ async function completedPending(f: ExecutionFixture): Promise<void> {
   await recordMiniToolStepResult({ taskId: f.taskId, stepId: step.id, identity, outcome: "done", result: ["https://provider.example.test/parent.webm"] },
     { kind: "generate", parse: (value) => ({ providerURL: z.tuple([z.url()]).parse(value)[0] }) });
   await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);
-  await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, consumptionSet: "complete", error: null,
+  await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: null,
     outputs: [{ ...f.plan.outputs[0]!, late: false, result: f.registered }] });
 }
 

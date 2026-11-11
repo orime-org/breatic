@@ -153,7 +153,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const doneChunks = Array.from({ length: last }, (_unused, chunk) => videoPresentationWorkKeyFor(sourceKey, videoContainerJobId({ kind: "run-chunk", taskId: task.id, output: 0, chunk, attempt: 1 })));
     const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${doneChunks}) AND kind='derived'`).map((row) => row.storage_key).sort();
     const error = { code: "mini_tool_failed" };
-    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error,
+    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
       outputs: plan.outputs.map((output) => ({ ...output, late: false, result: results.get(output.outputIndex)! })) } as never);
     // A retryable failure keeps the run's pins, so its done chunks wait with them.
     expect(await queued()).toEqual([]);
@@ -203,7 +203,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
       videoPresentationWorkKeyFor(sourceKey, videoContainerJobId({ kind: "run-chunk", taskId: task.id, output, chunk, attempt: 1 }))).sort();
     const stitched = chunkKeys(0, chunksOf(0)); const waiting = chunkKeys(1, last);
     const error = { code: "mini_tool_failed" };
-    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error,
+    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
       outputs: plan.outputs.map((output) => ({ ...output, late: false, result: results.get(output.outputIndex)! })) } as never);
     const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${[...stitched, ...waiting]}) AND kind='derived'`).map((row) => row.storage_key).sort();
     expect(queued).toEqual(stitched);

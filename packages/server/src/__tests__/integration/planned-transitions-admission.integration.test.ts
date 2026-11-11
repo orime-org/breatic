@@ -417,7 +417,7 @@ describe("a failed transitions run releases its pins at the terminal commit (fra
     expect(held.filter((key) => key.endsWith(".json"))).toHaveLength(4);
     const error = { code: "mini_tool_failed" };
     const plan = execution as unknown as { planFingerprint: string; outputs: { outputIndex: number; nodeId: string; recipe: { kind: "transitions" } }[] };
-    expect((await miniToolExecutionService.finishMiniToolExecution(runId, { planFingerprint: plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error,
+    expect((await miniToolExecutionService.finishMiniToolExecution(runId, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
       outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) })).record.status).toBe("failed");
     const [live] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM presentation_pins WHERE holder_id=${runId} AND deleted_at IS NULL`;
     expect(live!.count).toBe(0);

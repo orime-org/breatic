@@ -57,7 +57,7 @@ beforeEach(() => {
 
 describe("committed analysis host notifications", () => {
   it("publishes the original SQL host after atomically committing a failed outcome", async () => {
-    const completion = { kind: "error", error: { code: "analysis_failed", message: "worker stopped" }, consumptionSet: "uncertain" } as const;
+    const completion = { kind: "error", error: { code: "analysis_failed", message: "worker stopped" } } as const;
     await finishMiniToolAnalysisAndNotify(taskId, completion, stream);
     expect(h.finish).toHaveBeenCalledExactlyOnceWith(taskId, completion);
     expect(h.settle).toHaveBeenCalledExactlyOnceWith(stream, docName, { taskId, nodeId: context.hostNodeId, outcome: "failed", errorMessage: "worker stopped" });
@@ -67,40 +67,40 @@ describe("committed analysis host notifications", () => {
 
   it("publishes a completed metadata outcome with the host's normal task result shape", async () => {
     h.finish.mockResolvedValue({ record: ready, context });
-    await finishMiniToolAnalysisAndNotify(taskId, { kind: "result", result: ready.result, consumptionSet: "complete" }, stream);
+    await finishMiniToolAnalysisAndNotify(taskId, { kind: "result", result: ready.result }, stream);
     expect(h.settle).toHaveBeenCalledExactlyOnceWith(stream, docName, { taskId, nodeId: context.hostNodeId, outcome: "done" });
     expect(h.releaseHold).not.toHaveBeenCalled(); expect(h.history).not.toHaveBeenCalled();
   });
 
   it("keeps an earlier success when the crash notification arrives later", async () => {
     h.finish.mockResolvedValue({ record: ready, context });
-    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "later_failure" }, consumptionSet: "uncertain" }, stream);
+    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "later_failure" } }, stream);
     expect(h.settle).toHaveBeenCalledExactlyOnceWith(stream, docName, { taskId, nodeId: context.hostNodeId, outcome: "done" });
   });
 
   it("publishes the expired cause from the committed record", async () => {
     h.finish.mockResolvedValue({ record: { ...record, error: { code: "expired" } }, context });
-    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "expired" }, consumptionSet: "complete" }, stream);
+    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "expired" } }, stream);
     expect(h.settle).toHaveBeenCalledExactlyOnceWith(stream, docName, { taskId, nodeId: context.hostNodeId, outcome: "expired", errorMessage: "expired" });
   });
 
   it("keeps the committed cause when a later failure differs", async () => {
     const original: MiniToolAnalysisRecord = { ...record, error: { code: "original_failure" } };
     h.finish.mockResolvedValue({ record: original, context });
-    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "later_failure" }, consumptionSet: "uncertain" }, stream);
+    await finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "later_failure" } }, stream);
     expect(h.settle.mock.calls[0]?.[2]).toEqual({ taskId, nodeId: context.hostNodeId, outcome: "failed", errorMessage: "original_failure" });
   });
 
   it("logs a failed metadata commit and preserves its original exception", async () => {
     const error = new Error("SQL unavailable"); h.finish.mockRejectedValue(error);
-    await expect(finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "analysis_failed" }, consumptionSet: "uncertain" }, stream)).rejects.toBe(error);
+    await expect(finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "analysis_failed" } }, stream)).rejects.toBe(error);
     expect(h.settle).not.toHaveBeenCalled();
     expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ err: error, ctx: expect.objectContaining({ taskId, phase: "commit" }) }), expect.any(String));
   });
 
   it("logs a failed host notification with its persisted routing context", async () => {
     const error = new Error("stream unavailable"); h.settle.mockRejectedValue(error);
-    await expect(finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "analysis_failed" }, consumptionSet: "uncertain" }, stream)).rejects.toBe(error);
+    await expect(finishMiniToolAnalysisAndNotify(taskId, { kind: "error", error: { code: "analysis_failed" } }, stream)).rejects.toBe(error);
     expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ err: error, ctx: expect.objectContaining({ ...context, phase: "notify" }) }), expect.any(String));
     expect(h.finish).toHaveBeenCalledTimes(1);
   });
@@ -111,7 +111,7 @@ describe("cross-process analysis failed-job recovery", () => {
     const job = analysisJob(); const queue = { getJob: vi.fn().mockResolvedValue(job) };
     expect(await reclaimFailedJobById(queue, stream, "queue-job-id", "worker died")).toBe(1);
     expect(queue.getJob).toHaveBeenCalledExactlyOnceWith("queue-job-id");
-    expect(h.finish).toHaveBeenCalledExactlyOnceWith(taskId, { kind: "error", error: { code: "analysis_failed", message: "worker died" }, consumptionSet: "uncertain" });
+    expect(h.finish).toHaveBeenCalledExactlyOnceWith(taskId, { kind: "error", error: { code: "analysis_failed", message: "worker died" } });
     expect(h.settle).toHaveBeenCalledExactlyOnceWith(stream, docName, { taskId, nodeId: context.hostNodeId, outcome: "failed", errorMessage: "worker stopped" });
     expect(h.releaseHold).not.toHaveBeenCalled(); expect(h.activity).not.toHaveBeenCalled(); expect(h.history).not.toHaveBeenCalled();
   });

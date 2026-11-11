@@ -26,10 +26,10 @@ export interface MiniToolExecutionJob {
 export interface MiniToolExecution {
   task: TaskEntity; execution: AcceptedMiniToolExecution; record: MiniToolExecutionRecord;
 }
-/** A complete indexed observation, with the original media CAS and actual call-set proof. */
+/** A complete indexed observation, with the original media CAS; the call set closes from the persisted steps under lock. */
 export interface MiniToolExecutionCompletion {
   planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionRecord["outputs"];
-  error: MiniToolExecutionRecord["error"]; consumptionSet: "complete" | "uncertain";
+  error: MiniToolExecutionRecord["error"];
 }
 /**
  * Enter the SQL-owned planned lane before any provider or transfer boundary.
@@ -53,7 +53,7 @@ export async function startMiniToolExecution(taskId: string, jobId: string): Pro
 /**
  * Commit a complete indexed result and its call-set proof under the original task lock.
  * @param taskId - The original accepted SQL task.
- * @param completion - The complete indexed observation and closure proof.
+ * @param completion - The complete indexed observation; the call set closes from the persisted steps.
  * @returns The committed or preserved terminal state and original context.
  * @throws {Error} When original mapping, registration, media CAS or persistence fails.
  */
@@ -61,7 +61,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
   const id = z.uuid().parse(taskId);
   const incoming = z.strictObject({
     planFingerprint: z.string().regex(/^[a-f0-9]{64}$/), expectedVersion: z.number().int().nonnegative(),
-    outputs: z.array(miniToolExecutionOutputSchema).min(1), error: z.record(z.string(), z.json()).nullable(), consumptionSet: z.enum(["complete", "uncertain"]),
+    outputs: z.array(miniToolExecutionOutputSchema).min(1), error: z.record(z.string(), z.json()).nullable(),
   }).parse(completion);
   return db.transaction(async (tx) => {
     const plan = await lockedPlan(id, tx);
@@ -87,8 +87,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
     const changed = canonicalMiniToolValue(current.outputs) !== canonicalMiniToolValue(outputs);
     // A repeated terminal commit changes nothing; a running execution whose outputs progress commits already hold still ends here.
     if (current.resultVersion > 0 && !changed && plan.task.status !== "pending" && plan.task.status !== "running") {
-      if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
-      else await completeResolvedMiniToolConsumptionSet(id, tx);
+      await completeResolvedMiniToolConsumptionSet(id, tx);
       return { task: await currentTask(id, tx), execution: plan.execution, record: recordFromPlan({ ...plan, task: await currentTask(id, tx) }) };
     }
     if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
@@ -102,8 +101,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
     await releaseUnretryablePins(id, plan.execution.tool, record, tx);
-    if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
-    else await completeResolvedMiniToolConsumptionSet(id, tx);
+    await completeResolvedMiniToolConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
   });

@@ -108,7 +108,7 @@ export async function cleanupFailedJobNodes(
 
   if (job.name === MINI_TOOL_ANALYSIS_JOB) {
     await finishMiniToolAnalysisAndNotify(job.data.taskId, {
-      kind: "error", error: { code: "analysis_failed", message: reason }, consumptionSet: "uncertain",
+      kind: "error", error: { code: "analysis_failed", message: reason },
     }, streamRedis);
     return 1;
   }
@@ -128,7 +128,7 @@ export async function cleanupFailedJobNodes(
         const held = current.record.outputs[index]?.result;
         return { ...output, result: held?.status === "registered" ? held : { status: "failed", error: failure }, late: false };
       }),
-      error: terminal ? current.record.error : failure, consumptionSet: "uncertain",
+      error: terminal ? current.record.error : failure,
     }, streamRedis);
     return current.execution.outputs.length;
   }

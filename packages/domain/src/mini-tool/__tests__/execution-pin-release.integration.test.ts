@@ -34,7 +34,7 @@ afterAll(async () => { await pg.end(); initCore(process.env); });
  * @returns It.
  */
 function completion(f: ExecutionFixture, failed: boolean): MiniToolExecutionCompletion {
-  return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain", error: failed ? ERROR : null,
+  return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: failed ? ERROR : null,
     outputs: [{ ...f.plan.outputs[0]!, result: failed ? { status: "failed", error: ERROR } : f.registered, late: false }] };
 }
 

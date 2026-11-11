@@ -178,7 +178,7 @@ async function workerFacts(f: Fixture, completed: boolean): Promise<void> {
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
     VALUES (${assetId},${f.studioId},${OUTPUT_HASH},${key},${canonicalURL},1588436,'video/webm','video','ai',${f.userId},${f.body.run_id},960,540,5.013)`;
   await upstreamStepRepo.recordInline(s.id, { "miniToolAsset:0": assetId }, 0);
-  await miniToolExecutionService.finishMiniToolExecution(f.body.run_id, { planFingerprint: entered.execution.planFingerprint, expectedVersion: 0, consumptionSet: "complete", error: null,
+  await miniToolExecutionService.finishMiniToolExecution(f.body.run_id, { planFingerprint: entered.execution.planFingerprint, expectedVersion: 0, error: null,
     outputs: [{ ...entered.execution.outputs[0]!, late: false, result: { status: "registered", assetId, canonicalURL, contentHash: OUTPUT_HASH, kind: "video", mimeType: "video/webm", size: 1588436, width: 960, height: 540, duration: 5.013, cover: null } }] });
 }
 
@@ -466,7 +466,7 @@ describe("planned admission failure shares the original task lock and settlement
   });
   it("preparation A17 keeps committed completion and pending actual expense when a queue acknowledgement later fails", async () => {
     const f = await seedExecution(pg, "running"); await holdExecution(f); await executionIdentity(f, true);
-    await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }], error: null, consumptionSet: "complete" });
+    await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }], error: null });
     const before = await executionSnapshot(pg, f); const record = await miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, { code: "internal" });
     expect(record.status).toBe("completed"); expect(await executionSnapshot(pg, f)).toEqual(before); const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "held" });
   });

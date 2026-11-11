@@ -3,7 +3,7 @@
 
 import { DelayedError, type Job } from "bullmq";
 import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
-import { failureOutcome, hasUnresolvedMiniToolStepAttempts, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
+import { failureOutcome, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
   type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
 import { DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -44,7 +44,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
     let completion: MiniToolExecutionCompletion;
     if (record.status === "completed" || record.status === "failed") {
       completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-        outputs: record.outputs, error: record.error, consumptionSet: "uncertain" };
+        outputs: record.outputs, error: record.error };
       returned = true;
     } else {
       const deadlineAt = await taskDeadline(taskId, task.createdAt);
@@ -77,7 +77,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           }
           const failed = outputs.find((output) => output.result?.status === "failed");
           completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion, outputs,
-            error: failed?.result?.status === "failed" ? failed.result.error : null, consumptionSet: "uncertain" };
+            error: failed?.result?.status === "failed" ? failed.result.error : null };
         } else {
           const output = await runMiniToolRemoveBackground(taskId, deadlineAt, (job.attemptsMade ?? 0) + (job.stalledCounter ?? 0) > 0, (stepId) => {
             returned = true;
@@ -85,7 +85,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           });
           returned = true;
           completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-            outputs: [registeredOutput(current, output)], error: null, consumptionSet: "uncertain" };
+            outputs: [registeredOutput(current, output)], error: null };
         }
       } catch (thrown) {
         // A step still running once the reporting window has closed is never read again: the run ends expired.
@@ -115,12 +115,10 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
             const now = settled.results.get(output.outputIndex);
             return { ...output, result: held?.status === "registered" ? held : now?.status === "registered" ? now : { status: "failed", error: failure }, late: false };
           }),
-          error: failure, consumptionSet: "uncertain" };
+          error: failure };
       }
       const steps = await upstreamStepRepo.listSteps(taskId);
       returned ||= steps.some((step) => step.kind === "generate" && step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
-      completion.consumptionSet = steps.some((step) => step.output.miniToolStep !== undefined
-        && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) ? "uncertain" : "complete";
     }
     phase = "ownership";
     if (!await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms)) {

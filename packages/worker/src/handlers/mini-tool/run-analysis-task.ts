@@ -3,8 +3,7 @@
 
 import { DelayedError, type Job } from "bullmq";
 import { getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
-import { failureOutcome, hasUnresolvedMiniToolStepAttempts, miniToolAnalysisService, miniToolStepStateSchema, upstreamStepRepo,
-  type MiniToolAnalysisJob } from "@breatic/domain";
+import { failureOutcome, miniToolAnalysisService, type MiniToolAnalysisJob } from "@breatic/domain";
 import { DeadlinePassed } from "@breatic/shared";
 import type { MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
@@ -38,12 +37,12 @@ export async function runMiniToolAnalysisTask(
     let marker: Record<string, unknown> = { analysisRunId: record.analysisRunId, status: record.status };
     if (record.status === "completed" || record.status === "failed") {
       completion = record.result !== null
-        ? { kind: "result", result: record.result, consumptionSet: "uncertain" }
-        : { kind: "error", error: record.error, consumptionSet: "uncertain" };
+        ? { kind: "result", result: record.result }
+        : { kind: "error", error: record.error };
     } else {
       const deadlineAt = await taskDeadline(context.taskId, new Date(record.acceptedAt));
       try {
-        completion = { kind: "result", result: await execute(execution, deadlineAt), consumptionSet: "uncertain" };
+        completion = { kind: "result", result: await execute(execution, deadlineAt) };
         marker = { analysisRunId: record.analysisRunId, status: "completed" };
       } catch (thrown) {
         // A step still running once the reporting window has closed is never waited for again: the analysis ends expired.
@@ -55,7 +54,7 @@ export async function runMiniToolAnalysisTask(
         if (thrown instanceof TrackedMaskFailed) {
           // A tracking step failed for good: its code and step are the stored error, with no other attempt (§10.3).
           logger.error({ err: thrown, ctx }, "mini_tool_analysis_computation_failed");
-          completion = { kind: "error", error: { ...thrown.failure }, consumptionSet: "uncertain" };
+          completion = { kind: "error", error: { ...thrown.failure } };
           marker = { failed: true, reason: thrown.failure.code };
         } else {
           const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
@@ -63,16 +62,10 @@ export async function runMiniToolAnalysisTask(
           logger.error({ err: thrown, ctx }, "mini_tool_analysis_computation_failed");
           // A tracking analysis names a passed deadline by its panel code (§10.3 code table).
           const code = error instanceof DeadlinePassed ? (record.kind === "tracked_mask" ? "timeout" : "expired") : "analysis_failed";
-          completion = { kind: "error", error: { code, message: error instanceof Error ? error.message : String(error) }, consumptionSet: "uncertain" };
+          completion = { kind: "error", error: { code, message: error instanceof Error ? error.message : String(error) } };
           marker = { failed: true, reason: code };
         }
       }
-      // Normal executors persist every call intent before IO. Their existing
-      // unresolved-attempt predicate distinguishes known identities from an
-      // ambiguous receipt; the completion transaction rechecks it under lock.
-      const steps = await upstreamStepRepo.listSteps(context.taskId);
-      completion.consumptionSet = steps.some((step) => step.output.miniToolStep !== undefined &&
-        hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) ? "uncertain" : "complete";
     }
     ctx = { ...ctx, phase: "completion" };
     if (!await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms)) {

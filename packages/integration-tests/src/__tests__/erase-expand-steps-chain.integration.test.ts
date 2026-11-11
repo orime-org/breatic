@@ -403,7 +403,7 @@ describe("an erase or expand failure no retry can clear ends its retryability (Â
     const before = await liveHolders(id);
     const outputs = plan.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "erase" | "expand" } }[];
     const error = result.error as Record<string, never>;
-    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(plan.planFingerprint), expectedVersion: 0, consumptionSet: "uncertain",
+    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(plan.planFingerprint), expectedVersion: 0,
       error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
     const after = await liveHolders(id);
     await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;

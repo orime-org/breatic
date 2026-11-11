@@ -164,12 +164,12 @@ function assertPreserved(before: Snapshot, after: Snapshot): void {
 
 /** Submit the independent result through the worker's entry without generating a new identity or closing the call set. */
 async function record(f: Fixture, result: unknown = f.result, taskId: string = f.taskId): Promise<MiniToolAnalysisRecord> {
-  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(taskId, { kind: "result", result, consumptionSet: "uncertain" })).record;
+  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(taskId, { kind: "result", result })).record;
 }
 
 /** Submit one known application failure through the worker's entry. */
 async function fail(f: Fixture, error: unknown = ERROR): Promise<MiniToolAnalysisRecord> {
-  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error, consumptionSet: "uncertain" })).record;
+  return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error })).record;
 }
 
 /** Select a fresh people payload for the frozen-field mutation matrix. */
@@ -281,7 +281,7 @@ describe("atomic analysis computation completion", () => {
     const f = await seed(kind); const before = await snapshot(f);
     const params = before.task.params as { analysis: { projectId: string; spaceId: string; hostNodeId: string } };
     const expected = { ...f.initial, status: "completed", result: f.result };
-    expect(await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" })).toEqual({
+    expect(await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result })).toEqual({
       record: expected,
       context: { taskId: f.taskId, userId: f.userId, projectId: params.analysis.projectId, spaceId: params.analysis.spaceId, hostNodeId: params.analysis.hostNodeId },
     });
@@ -295,7 +295,7 @@ describe("atomic analysis computation completion", () => {
 
   it.each(["pending", "running"] as const)("atomically closes a failed computation from %s while retaining its hold", async (status) => {
     const f = await seed("scene_cuts", status); const before = await snapshot(f);
-    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "complete" });
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR });
     expect(finished.record).toEqual({ ...f.initial, status: "failed", error: ERROR });
     const after = await snapshot(f);
     expect(after.task.status).toBe("failed");
@@ -306,7 +306,7 @@ describe("atomic analysis computation completion", () => {
 
   it.each(["result", "error"] as const)("retains incomplete identities after an uncertain %s outcome", async (kind) => {
     const f = await seedOpen("scene_cuts"); const before = await snapshot(f);
-    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
     const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
     expect(finished.record.status).toBe(kind === "result" ? "completed" : "failed");
     const after = await snapshot(f);
@@ -316,7 +316,7 @@ describe("atomic analysis computation completion", () => {
 
   it.each(["result", "error"] as const)("closes a set with no unresolved attempt after an uncertain %s outcome (execution design §6.12)", async (kind) => {
     const f = await seed("scene_cuts"); const before = await snapshot(f);
-    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
     await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
     const after = await snapshot(f);
     expect(after.task.result.settlement).toMatchObject({ version: 8, consumptionSetComplete: true, pendingConsumptionKeys: [f.consumptionKey] });
@@ -325,7 +325,7 @@ describe("atomic analysis computation completion", () => {
 
   it.each(["completed", "failed"] as const)("preserves the existing %s outcome while closing its proven identities", async (status) => {
     const f = await seed("scene_cuts", status); const before = await snapshot(f);
-    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: { code: "later_failure" }, consumptionSet: "complete" });
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: { code: "later_failure" } });
     expect(finished.record).toEqual(f.initial);
     const after = await snapshot(f);
     expect(after.task.status).toBe(status);
@@ -337,7 +337,7 @@ describe("atomic analysis computation completion", () => {
 
   it("retains a matching late result on a failed run and closes the original identities", async () => {
     const f = await seed("scene_cuts", "failed"); const before = await snapshot(f);
-    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" });
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result });
     expect(finished.record).toEqual({ ...f.initial, result: f.result });
     const after = await snapshot(f);
     expect(after.task.status).toBe("failed"); expect(after.task.error_message).toBe(before.task.error_message);
@@ -349,7 +349,7 @@ describe("atomic analysis computation completion", () => {
     const claim = { version: 7, state: "checking", pendingConsumptionKeys: [f.consumptionKey], nextAttemptAt: null,
       leaseToken: crypto.randomUUID(), leaseUntil: "2099-01-01T00:00:00.000000Z", lastError: null, consumptionSetComplete: false };
     await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement}',${pg.json(claim)}) WHERE id=${f.taskId}`;
-    await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" });
+    await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result });
     expect((await snapshot(f)).task.result.settlement).toEqual({ ...claim, consumptionSetComplete: true });
   });
 
@@ -357,7 +357,7 @@ describe("atomic analysis computation completion", () => {
     const f = await seed("scene_cuts", "completed");
     await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,consumptionSetComplete}','true'::jsonb) WHERE id=${f.taskId}`;
     const before = await snapshot(f);
-    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "uncertain" });
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR });
     expect(finished.record).toEqual(f.initial); expect(await snapshot(f)).toEqual(before);
   });
 
@@ -366,7 +366,7 @@ describe("atomic analysis computation completion", () => {
     await pg.unsafe(`CREATE OR REPLACE FUNCTION reject_analysis_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.result#>>'{settlement,consumptionSetComplete}'='true' THEN RAISE EXCEPTION 'fixture_call_set_close_failed'; END IF; RETURN NEW; END $$`);
     await pg.unsafe("CREATE TRIGGER reject_analysis_completion BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_analysis_completion()");
     try {
-      const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "complete" as const } : { kind, error: ERROR, consumptionSet: "complete" as const };
+      const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
       const error: unknown = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion).catch((reason: unknown) => reason);
       expect(error).toMatchObject({ cause: { message: expect.stringContaining("fixture_call_set_close_failed") } });
       expect(await snapshot(f)).toEqual(before);
@@ -379,7 +379,7 @@ describe("atomic analysis computation completion", () => {
   it("keeps all original facts when the result conflicts with its accepted identity", async () => {
     const f = await seed(); const before = await snapshot(f);
     await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, {
-      kind: "result", result: { ...f.result, acceptedAt: "2026-10-23T01:02:03.123457Z" }, consumptionSet: "complete",
+      kind: "result", result: { ...f.result, acceptedAt: "2026-10-23T01:02:03.123457Z" },
     })).rejects.toBeInstanceOf(ConflictError);
     expect(await snapshot(f)).toEqual(before);
   });
@@ -388,7 +388,7 @@ describe("atomic analysis computation completion", () => {
     const f = await seed("scene_cuts");
     await pg`UPDATE tasks SET source='task' WHERE id=${f.taskId}`;
     const before = await snapshot(f);
-    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
     await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion)).rejects.toBeInstanceOf(Error);
     expect(await snapshot(f)).toEqual(before);
   });
@@ -404,7 +404,7 @@ describe("atomic analysis computation completion", () => {
       await tx`UPDATE tasks SET status='completed',result=result || ${tx.json({ analysis: committed })},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
     });
     await entered;
-    const failure = domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "complete" });
+    const failure = domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR });
     const observed = failure.catch(() => undefined);
     try {
       await Promise.race([waitUntilBlockedOn(pg, ["tasks", "for update"], 1), failure.then(() => { throw new Error("Completion bypassed the task lock"); })]);
@@ -418,7 +418,7 @@ describe("atomic analysis computation completion", () => {
     await fc.assert(fc.asyncProperty(fc.array(fc.constantFrom("result", "error"), { minLength: 1, maxLength: 5 }), async (events) => {
       const f = await seed("scene_cuts");
       for (const kind of events) {
-        const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "complete" as const } : { kind, error: ERROR, consumptionSet: "complete" as const };
+        const completion = kind === "result" ? { kind, result: f.result } : { kind, error: ERROR };
         await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
       }
       const after = await snapshot(f);
@@ -551,7 +551,7 @@ describe("persistent analysis results", () => {
 
   it.each([{ label: "null", value: null }, { label: "nonfinite JSON", value: { cost: NaN } }, { label: "missing", value: undefined }])("refuses a $label failure without changing task state", async ({ value }) => {
     const f = await seedOpen(); const before = await snapshot(f);
-    await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: value, consumptionSet: "uncertain" })).rejects.toBeInstanceOf(z.ZodError);
+    await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: value })).rejects.toBeInstanceOf(z.ZodError);
     expect(await snapshot(f)).toEqual(before);
   });
 

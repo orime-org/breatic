@@ -748,7 +748,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     const frozen = await plan(id) as Failed["plan"];
     const outputs = frozen.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "lip-sync" } }[];
     const error = z.record(z.string(), z.json()).parse(reason);
-    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: frozen.planFingerprint, expectedVersion: 0, consumptionSet: "uncertain",
+    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: frozen.planFingerprint, expectedVersion: 0,
       error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
     await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;
     await creditHoldService.releaseHold(id);

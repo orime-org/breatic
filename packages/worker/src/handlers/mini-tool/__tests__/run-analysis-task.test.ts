@@ -5,7 +5,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { DelayedError, type Job } from "bullmq";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
-import { miniToolStepStateSchema, type MiniToolAnalysisJob, type miniToolAnalysisService } from "@breatic/domain";
+import type { MiniToolAnalysisJob, miniToolAnalysisService } from "@breatic/domain";
 import { DeadlinePassed } from "@breatic/shared";
 import { miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
@@ -14,7 +14,7 @@ import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
-const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), steps: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
+const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
   extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), stream: {} }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
@@ -23,8 +23,7 @@ vi.mock("@breatic/core", async (original) => {
 });
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
-  return { ...actual, miniToolAnalysisService: { ...actual.miniToolAnalysisService, startMiniToolAnalysisExecution: h.start },
-    upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.steps } };
+  return { ...actual, miniToolAnalysisService: { ...actual.miniToolAnalysisService, startMiniToolAnalysisExecution: h.start } };
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/analysis-completion.js", () => ({ finishMiniToolAnalysisAndNotify: h.finish }));
@@ -61,7 +60,7 @@ function job(attemptsMade = 0): Job<MiniToolAnalysisJob> {
       hostNodeId: "queue-host", sourceKey: "different/queue-source.mp4", params: {}, source: "mini_tool" } } as unknown as Job<MiniToolAnalysisJob>;
 }
 
-/** Build a tracked analysis whose managed provider attempts determine call-set knowledge. @returns The original record and valid typed result. @throws {Error} When the fixture is invalid. */
+/** Build a tracked analysis. @returns The original record and valid typed result. @throws {Error} When the fixture is invalid. */
 function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisExecution; result: MiniToolAnalysisResult } {
   const original = structuredClone(execution);
   const input = { schemaVersion: 1, kind: "tracked_mask", sourceURL: record.binding.canonicalURL, profile: record.analysisInput.profile,
@@ -86,7 +85,7 @@ function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisE
 beforeEach(() => {
   vi.resetAllMocks(); vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 1);
   h.start.mockResolvedValue(structuredClone(execution)); h.execute.mockResolvedValue(result); h.deadline.mockResolvedValue(DEADLINE);
-  h.steps.mockResolvedValue([]); h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined);
+  h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -98,7 +97,7 @@ describe("original analysis task pickup", () => {
     expect(h.deadline).toHaveBeenCalledExactlyOnceWith(TASK, new Date(record.acceptedAt));
     expect(h.execute).toHaveBeenCalledExactlyOnceWith(execution, DEADLINE);
     expect(h.extend).toHaveBeenCalledExactlyOnceWith("token", 600000);
-    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result, consumptionSet: "complete" }, h.stream);
+    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result }, h.stream);
     expect(h.extend.mock.invocationCallOrder[0]).toBeLessThan(h.finish.mock.invocationCallOrder[0]!);
     expect(result.acceptedAt).toBe("2026-10-25T01:02:03.123456Z");
   });
@@ -107,7 +106,7 @@ describe("original analysis task pickup", () => {
     vi.mocked(Date.now).mockReturnValue(now); h.execute.mockRejectedValue(new StillRunning(DEADLINE + 5000));
     await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBeInstanceOf(DelayedError);
     expect(h.delay).toHaveBeenCalledExactlyOnceWith(DEADLINE + 5000, "token");
-    expect(h.finish).not.toHaveBeenCalled(); expect(h.steps).not.toHaveBeenCalled();
+    expect(h.finish).not.toHaveBeenCalled();
   });
 
   it("preserves a tokenless wait for its caller", async () => {
@@ -126,53 +125,19 @@ describe("original analysis task pickup", () => {
     const error = new Error("registered JSON is invalid"); h.execute.mockRejectedValue(error);
     expect(await runMiniToolAnalysisTask(job(2), "token", h.execute)).toEqual({ failed: true, reason: "analysis_failed" });
     expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK,
-      { kind: "error", error: { code: "analysis_failed", message: error.message }, consumptionSet: "complete" }, h.stream);
+      { kind: "error", error: { code: "analysis_failed", message: error.message } }, h.stream);
   });
 
   it("ends a known failed original container without starting another error retry", async () => {
     h.execute.mockRejectedValue(new ContainerJobFailed("tool_failed"));
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "analysis_failed" });
-    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: { code: "analysis_failed", message: "tool_failed" }, consumptionSet: "complete" });
-  });
-
-  it.each([
-    { resolution: { kind: "unresolved" }, conflicts: [], expected: "uncertain" },
-    { resolution: { kind: "identity", predictionId: "original-prediction" }, conflicts: [], expected: "complete" },
-    { resolution: { kind: "rejected", error: { code: "refused" } }, conflicts: [], expected: "complete" },
-    { resolution: { kind: "not_sent", error: { code: "expired" } }, conflicts: [], expected: "complete" },
-    { resolution: { kind: "identity", predictionId: "original-prediction" }, conflicts: [
-      { kind: "identity", attemptId: TASK, canonicalId: "original-prediction", candidateId: "other-prediction" },
-    ], expected: "uncertain" },
-    { resolution: { kind: "identity", predictionId: "original-prediction" }, conflicts: [
-      { kind: "closed_identity", attemptId: TASK, candidateId: "other-prediction" },
-    ], expected: "uncertain" },
-  ].flatMap((entry) => [{ ...entry, failed: false }, { ...entry, failed: true }]))("keeps persisted submit knowledge $expected after failure=$failed", async ({ resolution, conflicts, expected, failed }) => {
-    const tracked = trackedFixture(); h.start.mockResolvedValue(tracked.original); h.execute.mockResolvedValue(tracked.result);
-    const state = miniToolStepStateSchema.parse({ schemaVersion: 1,
-      scope: { taskId: TASK, stepId: TASK, kind: "generate", endpoint: "original-provider", itemIndex: 0 },
-      deadlineAt: DEADLINE, requestBody: {}, requestFingerprint: "a".repeat(64), chargeTo: "user", creditMultiplier: 1,
-      attempts: [{ attemptId: TASK, preparedAt: record.acceptedAt, requestFingerprint: "a".repeat(64), resolution }],
-      result: null, error: null, conflicts });
-    h.steps.mockResolvedValue([{ id: TASK, position: 0, kind: "generate", endpoint: state.scope.endpoint, itemIndex: 0,
-      status: resolution.kind === "identity" ? "submitted" : "pending", predictionId: resolution.kind === "identity" ? resolution.predictionId : null,
-      inlineCostUsd: 0, output: { miniToolStep: state } }]);
-    if (failed) h.execute.mockRejectedValue(new Error("tracked artifact registration failed"));
-    expect(await runMiniToolAnalysisTask(job(failed ? 2 : 0), "token", h.execute)).toEqual(failed ? { failed: true, reason: "analysis_failed" } : { analysisRunId: TASK, status: "completed" });
-    expect(h.finish.mock.calls[0]?.[1]).toEqual(failed
-      ? { kind: "error", error: { code: "analysis_failed", message: "tracked artifact registration failed" }, consumptionSet: expected }
-      : { kind: "result", result: tracked.result, consumptionSet: expected });
-  });
-
-  it("preserves a failed knowledge read without inventing a complete call set", async () => {
-    const error = new Error("step knowledge unavailable"); h.steps.mockRejectedValue(error);
-    await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBe(error);
-    expect(h.finish).not.toHaveBeenCalled();
+    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: { code: "analysis_failed", message: "tool_failed" } });
   });
 
   it.each([new DeadlinePassed(), new Error("read failed at the original deadline")])("projects original expiry through the shared completion owner", async (error) => {
     vi.mocked(Date.now).mockReturnValue(DEADLINE); h.execute.mockRejectedValue(error);
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "expired" });
-    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "expired" }, consumptionSet: "complete" });
+    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "expired" } });
   });
 
   it.each([false, true])("keeps a reclaimed pickup out of terminal writes after failure=%s", async (failed) => {
@@ -197,8 +162,8 @@ describe("original analysis task pickup", () => {
       error: status === "failed" ? { code: "expired", message: "original expiry" } : null });
     h.start.mockResolvedValue(original);
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ analysisRunId: TASK, status });
-    expect(h.execute).not.toHaveBeenCalled(); expect(h.deadline).not.toHaveBeenCalled(); expect(h.steps).not.toHaveBeenCalled();
-    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result, consumptionSet: "uncertain" }, h.stream);
+    expect(h.execute).not.toHaveBeenCalled(); expect(h.deadline).not.toHaveBeenCalled();
+    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result }, h.stream);
   });
 
   it("replays an original failure without a late result", async () => {
@@ -206,7 +171,7 @@ describe("original analysis task pickup", () => {
     h.start.mockResolvedValue(original);
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ analysisRunId: TASK, status: "failed" });
     expect(h.execute).not.toHaveBeenCalled();
-    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "error", error: { code: "expired" }, consumptionSet: "uncertain" }, h.stream);
+    expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "error", error: { code: "expired" } }, h.stream);
   });
 
   it("preserves a notification failure and replays the committed result on the next pickup", async () => {
@@ -241,7 +206,7 @@ describe("tracked mask failures (execution design §10.3)", () => {
     const { original } = trackedFixture(); h.start.mockResolvedValue(original);
     h.execute.mockRejectedValue(new (await failed())(failure));
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: failure.code });
-    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: failure, consumptionSet: "complete" });
+    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: failure });
   });
 
   // As an execution's wait (run-execution-task): a provider step still running once the reporting window has closed is

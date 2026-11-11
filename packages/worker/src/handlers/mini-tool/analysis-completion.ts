@@ -8,7 +8,7 @@ import { canvasSpaceDocName } from "@breatic/shared";
 /**
  * Commit the observed analysis outcome and publish its original host's task counts.
  * @param taskId - The immutable accepted analysis.
- * @param completion - The computation outcome and actual identity knowledge.
+ * @param completion - The computation outcome.
  * @param streamRedis - The application's task-event stream connection.
  * @returns Nothing after the committed host notification succeeds.
  * @throws {Error} When metadata persistence or host notification fails.

@@ -130,8 +130,8 @@ function media(record: MiniToolExecutionRecord): unknown {
 /** Construct only the approved full indexed terminal observation.
  * @throws {never} Never.
  */
-function failure(f: ExecutionFixture, complete: "complete" | "uncertain" = "uncertain"): MiniToolExecutionCompletion {
-  return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: ERROR, consumptionSet: complete,
+function failure(f: ExecutionFixture): MiniToolExecutionCompletion {
+  return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: ERROR,
     outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed", error: ERROR }, late: false }] };
 }
 /** Independently seed a terminal record to isolate receipt/replay from an earlier finish implementation.
@@ -284,7 +284,7 @@ describe("terminal cleanup proves original call identities independently of actu
     const f = await seed(); await returned(f); const before = await executionSnapshot(pg, f); const beforeStep = await step(f);
     await pg.unsafe(`CREATE FUNCTION reject_terminal_closure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.result#>>'{settlement,consumptionSetComplete}'='true' THEN RAISE EXCEPTION 'fixture_closure_failed'; END IF; RETURN NEW; END $$`);
     await pg.unsafe("CREATE TRIGGER reject_terminal_closure BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_terminal_closure()");
-    try { await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, failure(f, "complete"))).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_closure_failed") } }); }
+    try { await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, failure(f))).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_closure_failed") } }); }
     finally { await pg.unsafe("DROP TRIGGER reject_terminal_closure ON tasks"); await pg.unsafe("DROP FUNCTION reject_terminal_closure()"); }
     expect(await executionSnapshot(pg, f)).toEqual(before); expect(await step(f)).toEqual(beforeStep); expect((await view(f)).hold).toBe("held"); expect((await view(f)).billed).toBeNull();
   });

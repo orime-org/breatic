@@ -354,7 +354,7 @@ describe("erase and expand retry quote (execution design §10.4, §10.5 quote ro
     await core.db.transaction(async (tx) => appendExecutionPinObjects(id, objects, tx));
     const error = z.record(z.string(), z.json()).parse(reason);
     const outputs = original.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "erase" | "expand" } }[];
-    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(original.planFingerprint), expectedVersion: 0, consumptionSet: "uncertain",
+    await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(original.planFingerprint), expectedVersion: 0,
       error, outputs: outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error } })) });
     await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${id}`;
     await creditHoldService.releaseHold(id);

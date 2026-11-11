@@ -573,7 +573,7 @@ describe("mini-tool analysis admission and project reads", () => {
       const result = kind === "people" ? completedPeople(record, record.acceptedAt).result : {
         ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [],
       };
-      committed = (await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result, consumptionSet: "uncertain" })).record;
+      committed = (await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result })).record;
       if (nodeStatus === "done") await sql`UPDATE node_tasks SET status='done',settled_at=now() WHERE task_id=${body.analysisRunId}`;
       const [node] = await sql<{ value: unknown }[]>`SELECT to_jsonb(n) AS value FROM node_tasks n WHERE task_id=${body.analysisRunId}`;
       nodeBefore = node!.value;
@@ -693,9 +693,9 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     const pending = await accepted(await post(body, fixture.ownerCookie));
     if (end === "completed") {
       const [row] = await sql<{ accepted_at: string }[]>`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS accepted_at FROM tasks WHERE id=${body.analysisRunId}`;
-      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result: completedPeople(pending, row!.accepted_at).result, consumptionSet: "uncertain" });
+      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result: completedPeople(pending, row!.accepted_at).result });
     } else {
-      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "error", error: { code: "analysis_failed" }, consumptionSet: "uncertain" });
+      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "error", error: { code: "analysis_failed" } });
     }
     expect(await livePins(body.analysisRunId)).toEqual([]);
     const l = ledgerKeys(fixture.sourceKey, body.presentationRef.source.toolInputId);
