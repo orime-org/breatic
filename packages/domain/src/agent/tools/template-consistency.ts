@@ -14,10 +14,10 @@
  */
 
 import {
+  keyStanding,
   matchTemplateInstance,
   templateSkeleton,
   type CanvasProposal,
-  type GenerationTemplate,
   type TemplateGraphNode,
   type TemplateInstanceMatch,
   type TemplateNodeKey,
@@ -253,28 +253,4 @@ function nodeIdOf(match: TemplateInstanceMatch, key: TemplateNodeKey): string {
   if (found?.kind === "one") return found.node;
   if (found?.kind === "many") return found.nodes[0] ?? "";
   return "";
-}
-
-/**
- * Where a non-anchor key stands in its template (inner#1825): upstream,
- * reaching the anchor along template edges; downstream, reached from it; or
- * standalone, touched by no template edge.
- * @param template - The template.
- * @param key - The key.
- * @returns Where it stands.
- * @throws {never} Never.
- */
-export function keyStanding(template: GenerationTemplate, key: TemplateNodeKey): "upstream" | "downstream" | "standalone" {
-  if (!template.edges.some((edge) => edge.from === key || edge.to === key)) return "standalone";
-  const above = new Set<TemplateNodeKey>([template.anchor]);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const edge of template.edges) {
-      if (above.has(edge.to) && !above.has(edge.from)) {
-        above.add(edge.from);
-        grew = true;
-      }
-    }
-  }
-  return above.has(key) ? "upstream" : "downstream";
 }

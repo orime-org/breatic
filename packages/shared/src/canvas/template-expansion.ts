@@ -157,6 +157,36 @@ export function templateNodeDefaults(template: GenerationTemplate, key: Template
 }
 
 /**
+ * Where a non-anchor key stands in its template (inner#1825): upstream,
+ * reaching the anchor along template edges; downstream, reached from it; or
+ * standalone, touched by no template edge. A template and its skeleton read
+ * the same.
+ * @param shape - The template or its skeleton.
+ * @param shape.anchor - Its anchor key.
+ * @param shape.edges - Its edges.
+ * @param key - The key.
+ * @returns Where it stands.
+ * @throws {never} Never.
+ */
+export function keyStanding(
+  shape: { readonly anchor: TemplateNodeKey; readonly edges: readonly { readonly from: TemplateNodeKey; readonly to: TemplateNodeKey }[] },
+  key: TemplateNodeKey,
+): "upstream" | "downstream" | "standalone" {
+  if (!shape.edges.some((edge) => edge.from === key || edge.to === key)) return "standalone";
+  const above = new Set<TemplateNodeKey>([shape.anchor]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const edge of shape.edges) {
+      if (above.has(edge.to) && !above.has(edge.from)) {
+        above.add(edge.from);
+        grew = true;
+      }
+    }
+  }
+  return above.has(key) ? "upstream" : "downstream";
+}
+
+/**
  * Which nodes on a graph belong to the instance applied at one anchor.
  *
  * Every non-anchor key stands upstream of the anchor, downstream of it, or
@@ -207,29 +237,24 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
     return node?.tag?.template === skeleton.id && node.tag.key === key && node.type === typeOf(key);
   };
 
-  // Where each key stands: upstream keys reach the anchor along template
-  // edges, downstream keys are reached from it, standalone keys touch none.
-  const upstream = new Set<TemplateNodeKey>([skeleton.anchor]);
-  const downstream = new Set<TemplateNodeKey>([skeleton.anchor]);
-  for (let pass = 0; pass < skeleton.nodes.size; pass += 1) {
-    for (const edge of skeleton.edges) {
-      if (upstream.has(edge.to)) upstream.add(edge.from);
-      if (downstream.has(edge.from)) downstream.add(edge.to);
-    }
-  }
   /**
    * Whether a key stands downstream of the anchor.
    * @param key - The key.
    * @returns Whether it does.
    */
-  const isBelow = (key: TemplateNodeKey): boolean => key !== skeleton.anchor && downstream.has(key) && !upstream.has(key);
+  const isBelow = (key: TemplateNodeKey): boolean => key !== skeleton.anchor && keyStanding(skeleton, key) === "downstream";
   /**
    * Whether a key is touched by no template edge.
    * @param key - The key.
    * @returns Whether it is.
    */
-  const isStandalone = (key: TemplateNodeKey): boolean =>
-    key !== skeleton.anchor && !skeleton.edges.some((edge) => edge.from === key || edge.to === key);
+  const isStandalone = (key: TemplateNodeKey): boolean => key !== skeleton.anchor && keyStanding(skeleton, key) === "standalone";
+  /**
+   * Whether a key is the anchor or reaches it along template edges.
+   * @param key - The key.
+   * @returns Whether it does.
+   */
+  const isAbove = (key: TemplateNodeKey): boolean => key === skeleton.anchor || keyStanding(skeleton, key) === "upstream";
 
   const keys = new Map<TemplateNodeKey, TemplateKeyMatch>();
   const at = new Map<TemplateNodeKey, string>([[skeleton.anchor, anchor]]);
@@ -307,11 +332,11 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   };
   // The registry keeps a template's edges free of circles, so every key is
   // settled; a key on a circle is never ready and ends unreached below.
-  const above = new Set([...skeleton.nodes.keys()].filter((key) => key !== skeleton.anchor && upstream.has(key)));
+  const above = new Set([...skeleton.nodes.keys()].filter((key) => key !== skeleton.anchor && isAbove(key)));
   for (let progress = true; progress; ) {
     progress = false;
     for (const key of above) {
-      const out = skeleton.edges.filter((edge) => edge.from === key && upstream.has(edge.to));
+      const out = skeleton.edges.filter((edge) => edge.from === key && isAbove(edge.to));
       if (out.length === 0 || out.some((edge) => edge.to !== skeleton.anchor && !keys.has(edge.to))) continue;
       settle(key, out, false);
       above.delete(key);
@@ -576,7 +601,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     }
     const base: ProposalNode = { role: node.role, type: node.type, name: text(`node.${node.key}.name`) };
     // A standalone node is tied to its instance by its anchor alone.
-    const standalone = !template.edges.some((edge) => edge.from === node.key || edge.to === node.key);
+    const standalone = keyStanding(template, node.key) === "standalone";
     const templateNode = { template: template.id, key: node.key, ...(standalone ? { anchor: input.anchorAt } : {}) };
     const index = append({ ...templateNodeDefaults(template, node.key, base), templateNode });
     indexOf.set(node.key, index);

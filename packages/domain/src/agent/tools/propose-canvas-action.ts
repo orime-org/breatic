@@ -41,6 +41,7 @@ import { z } from "zod";
 
 import {
   canConnect,
+  keyStanding,
   formatCredits,
   GENERATION_TEMPLATES,
   t,
@@ -61,7 +62,7 @@ import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { anchoredInstances, checkTemplateInstances, keyStanding, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";

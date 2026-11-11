@@ -13,9 +13,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { formatCredits, GENERATION_TEMPLATES, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
+import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
 
-import { keyStanding } from "@domain/agent/tools/template-consistency.js";
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";

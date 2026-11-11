@@ -925,6 +925,7 @@ export {
 } from "@shared/canvas/dialogue.js";
 export {
   expandTemplate,
+  keyStanding,
   matchTemplateInstance,
   templateGuideNode,
   templateMarkTargets,
