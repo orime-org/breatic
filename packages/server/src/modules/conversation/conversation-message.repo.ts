@@ -136,6 +136,7 @@ export async function addMessage(id: string, message: MessageInput, forModel?: u
  * @param id - Conversation UUID.
  * @param message - The message.
  * @param forModel - The reply as it was sent to the model.
+ * @param rowId - The id to write the row under, when it has one of its own.
  * @returns The turn index the message went into.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
