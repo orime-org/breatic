@@ -452,8 +452,6 @@ test('transitions: two videos and a crossfade give one video as long as both les
     const shadowOf = (target: Locator): Promise<string> => target.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(await shadowOf(firstClip)).toContain('inset');
     expect(await shadowOf(secondClip)).toBe('none');
-    // Where the clips overlap, the selected clip is drawn on top, so its whole range stays visible; the other clip's left
-    // resize handle and the first clip's right one both stay above the clip they overlap, so either end can be dragged there.
     // Each box and its hit test are read in one page evaluation, so a track redraw between them cannot move the clips.
     const hits = (): Promise<Record<string, boolean>> => dialog.evaluate((root) => {
       const [first, second] = [...root.querySelectorAll('.timeline-editor-action')];
@@ -462,11 +460,24 @@ test('transitions: two videos and a crossfade give one video as long as both les
       const [a, b] = [first!.getBoundingClientRect(), second!.getBoundingClientRect()];
       return {
         overlap: at(first!, (b.x + a.x + a.width) / 2, a.y + 4),
-        otherHandle: at(second!, ...middle(second!.querySelector('.timeline-editor-action-left-stretch')!)),
-        ownHandle: at(first!, ...middle(first!.querySelector('.timeline-editor-action-right-stretch')!)),
+        firstEnd: at(first!, ...middle(first!.querySelector('.timeline-editor-action-right-stretch')!)),
+        secondStart: at(second!, ...middle(second!.querySelector('.timeline-editor-action-left-stretch')!)),
       };
     });
-    await expect.poll(hits).toEqual({ overlap: true, otherHandle: true, ownHandle: true });
+    // With the first clip selected, it is drawn on top where the clips overlap, so its whole range stays visible, and the
+    // second clip's left resize handle still sits above it, so that clip's in point can be dragged there.
+    await expect.poll(async () => { const { overlap, secondStart } = await hits(); return { overlap, secondStart }; }).toEqual({ overlap: true, secondStart: true });
+    // With the second clip selected and raised, the first clip's right resize handle still sits above it, so the first
+    // clip's out point can be dragged there; then the first clip is selected again for the drags below.
+    const clickInside = async (clip: Locator, fromLeft: boolean): Promise<void> => {
+      const box = (await clip.boundingBox())!;
+      await c.page.mouse.click(fromLeft ? box.x + 20 : box.x + box.width - 20, box.y + box.height / 2);
+    };
+    await clickInside(secondClip, false);
+    await expect.poll(() => shadowOf(secondClip)).toContain('inset');
+    await expect.poll(async () => (await hits()).firstEnd).toBe(true);
+    await clickInside(firstClip, true);
+    await expect.poll(() => shadowOf(firstClip)).toContain('inset');
     // The track's scroll grids have no keyboard use, so Tab never stops on them.
     expect(await dialog.locator('.ReactVirtualized__Grid').evaluateAll((grids) => grids.filter((grid) => (grid as HTMLElement).tabIndex >= 0).length)).toBe(0);
     const handle = (await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox())!;
