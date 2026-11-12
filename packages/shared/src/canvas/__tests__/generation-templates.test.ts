@@ -375,7 +375,7 @@ describe('generation templates', () => {
       'travel-city-walk': t2v(24),
       'twist-comedy-skit': t2v(15),
       'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
-      'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'ideogram-v3-quality', params: { aspect_ratio: '3:4' } } },
+      'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
       'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
       'vertical-15s-quick-tip': {
         result: {
