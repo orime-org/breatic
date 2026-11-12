@@ -98,7 +98,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
   const [viewfinder, dispatchViewfinder] = React.useReducer(viewfinderReducer, INITIAL_VIEWFINDER);
   const framing = viewfinder.phase !== 'off';
-  // From Capture until Reframe or close the frame holds the still; the scene beneath it is not being edited.
+  // From Capture until Reframe or close the frame holds the still, so the view is locked and the object toolbar is put away.
   const shotTaken = framing && viewfinder.phase !== 'framing';
   const viewfinderPhase = React.useRef(viewfinder.phase);
   viewfinderPhase.current = viewfinder.phase;
