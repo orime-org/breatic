@@ -1747,8 +1747,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
-      "Agent's box as an attachment, opening the Agent panel if it is hidden; greyed when they hold no words " +
-      "(spaces are none) or uploaded media. On a media item it hands " +
+      "Agent's box as an attachment, opening the Agent panel if hidden, and is greyed when they hold " +
+      "neither words (spaces do not count) nor uploaded media. On a media item it hands " +
       `over the file and the lines under it as text, and ${quoted(t("spaces.document.commands.comment"))} comments ` +
       `on the whole item; both are greyed until its upload finishes, and pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
@@ -1859,7 +1859,7 @@ export function renderProductGuide(): string {
       `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
-      "Project and is greyed when its cells hold no words or uploaded media. Where a merged cell reaches out of the " +
+      "Project and is greyed when its cells hold neither words nor uploaded media. Where a merged cell reaches out of the " +
       "row or column, the copy, cut, paste and " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
       `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
@@ -1936,7 +1936,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
       "and what they wrote. " +
-      "Clicking highlighted words opens the panel at their comment. A comment on a picture, video or audio covers " +
+      "Clicking highlighted words opens the panel at their comment. A comment on media covers " +
       "it whole: a speech bubble at its top right counts the open ones (viewers see it too; not in a " +
       "full-screen table) and opens the panel at them; the item being read is outlined; its card shows a " +
       "picture's thumbnail or the kind's icon and name. If it is deleted mid-comment, " +

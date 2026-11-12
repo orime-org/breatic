@@ -129,9 +129,10 @@ interface StyleFaces {
   /** Whether this row holds text a comment could mark, spaces included (A3). */
   readonly canComment: boolean;
   /**
-   * Whether this row, which is not media, holds something to hand the Agent
-   * with the rows nested under it: words or uploaded media. Spaces alone mark
-   * for a comment and hand the Agent nothing, as in the bubble bar.
+   * Whether this row holds something to hand the Agent with the rows nested
+   * under it: words or uploaded media, never while its own media is still
+   * uploading. Spaces alone mark for a comment and hand the Agent nothing, as
+   * in the bubble bar.
    */
   readonly hasContent: boolean;
   /** Which way the row can be indented. */
@@ -204,7 +205,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
-      hasContent: media === 'none' && rowHoldsContent(tr.doc, blockId),
+      hasContent: media !== 'pending' && rowHoldsContent(tr.doc, blockId),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
@@ -252,8 +253,8 @@ export function DocumentBlockMenu({
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
-  // Comment and Add to Agent act on uploaded media as on a row with words;
-  // a pending frame's two rows say why they are greyed.
+  // Comment marks uploaded media whole and Add to Agent hands the media
+  // itself; a pending frame's two rows say why they are greyed.
   const uploaded = faces.media === 'uploaded';
   const refusedOnPending =
     faces.media === 'pending'
@@ -595,7 +596,7 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.hasContent || uploaded, () => {
+              {...itemWithin(faces.hasContent, () => {
                 const live = rowNow();
                 if (live !== undefined) {
                   void attachToChat(projectId, uploaded ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);

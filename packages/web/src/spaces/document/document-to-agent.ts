@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the document hands the Agent's attachment tray (inner#936): one text
- * item holding the selection or the block as Markdown, taken at the moment of
- * the click.
+ * What the document hands the Agent's attachment tray (inner#936,
+ * inner#1316): the selection or a block as one Markdown text item, or a
+ * picture, video or audio as a media attachment followed by the rows nested
+ * under it as text, taken at the moment of the click.
  *
  * Ids follow the canvas convention of naming what was picked
  * (`spaces/canvas/attach-nodes.ts`): a block is keyed by its id, so adding it
@@ -30,6 +31,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { cellsBlocks, tableClippedBlocks } from '@web/spaces/document/document-table-copy';
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -94,24 +96,33 @@ function isUploadedMedia(node: PMNode): boolean {
 }
 
 /**
- * Whether a selection holds something to hand the Agent: words, or uploaded
- * media, which its Markdown carries. Spaces alone and pending media hand
- * nothing.
+ * Whether a stretch of a node holds something to hand the Agent: words, or
+ * uploaded media, which the Markdown carries. Spaces alone and pending media
+ * hand nothing.
+ * @param node - The node.
+ * @param from - Where the stretch starts, inside the node.
+ * @param to - Where it ends.
+ * @returns True when it does.
+ */
+function holdsContentBetween(node: PMNode, from: number, to: number): boolean {
+  if (holdsWords(node.textBetween(from, to, '\n', '\n'))) return true;
+  let found = false;
+  node.nodesBetween(from, to, (child) => !(found ||= isUploadedMedia(child)));
+  return found;
+}
+
+/**
+ * Whether a selection holds something to hand the Agent. A selection leaving
+ * a table hands the table whole (`tableClippedBlocks`), so that wider range
+ * is what is read.
  * @param doc - The document.
  * @param selection - The selection.
  * @returns True when it does.
  */
 export function selectionHoldsContent(doc: PMNode, selection: Selection): boolean {
-  if (holdsWords(selectedWords(doc, selection))) return true;
-  let found = false;
-  for (const range of selection.ranges) {
-    doc.nodesBetween(range.$from.pos, range.$to.pos, (node) => {
-      found ||= isUploadedMedia(node);
-      return !found;
-    });
-    if (found) break;
-  }
-  return found;
+  const held = heldRange(selection);
+  if (held !== null) return holdsContentBetween(doc, held.from, held.to);
+  return selection.ranges.some((range) => holdsContentBetween(doc, range.$from.pos, range.$to.pos));
 }
 
 /**
@@ -213,31 +224,6 @@ export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
 }
 
 /**
- * Whether a node holds a picture, video or audio whose upload finished.
- * @param node - The node, whose descendants are read.
- * @returns True when it does.
- */
-function holdsUploadedMedia(node: PMNode): boolean {
-  let found = false;
-  node.descendants((child) => {
-    found ||= isUploadedMedia(child);
-    return !found;
-  });
-  return found;
-}
-
-/**
- * Whether a node holds something to hand the Agent: words, read as Add to
- * Agent reads them everywhere, or uploaded media. Empty rows, rows of spaces
- * and pending media hand nothing.
- * @param node - The node.
- * @returns True when it does.
- */
-function holdsContent(node: PMNode): boolean {
-  return holdsWords(node.textBetween(0, node.content.size, '\n', '\n')) || holdsUploadedMedia(node);
-}
-
-/**
  * Whether a row, with the rows nested under it, holds something to hand the
  * Agent: what {@link blockItem} hands is the row and its children, so that is
  * what is read.
@@ -247,7 +233,7 @@ function holdsContent(node: PMNode): boolean {
  */
 export function rowHoldsContent(doc: PMNode, blockId: string): boolean {
   const node = getNodeById(blockId, doc)?.node;
-  return node !== undefined && holdsContent(node);
+  return node !== undefined && holdsContentBetween(node, 0, node.content.size);
 }
 
 /**
@@ -261,12 +247,10 @@ export function rowHoldsContent(doc: PMNode, blockId: string): boolean {
  */
 export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   const media = mediaItem(editor, blockId);
-  // `mediaItem` has found the block. The media holds no words, so the row's
-  // words are those of the rows nested under it.
-  const { node } = getNodeById(blockId, editor.prosemirrorState.doc)!;
-  const words = node.textBetween(0, node.content.size, '\n', '\n');
-  const nested = node.childCount > 1 ? node.child(1) : null;
-  if (nested === null || !holdsContent(nested)) return [media];
+  // `mediaItem` has found the block.
+  const nested = getNodeById(blockId, editor.prosemirrorState.doc)!.node.maybeChild(1);
+  if (nested === null || !holdsContentBetween(nested, 0, nested.content.size)) return [media];
+  const words = nested.textBetween(0, nested.content.size, '\n', '\n');
   // The editor is typed without its schema, so its blocks read as `never`.
   const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
   const markdown = blocksMarkdown(editor, children as never).trimEnd();

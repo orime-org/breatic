@@ -132,6 +132,25 @@ describe('the bubble bar entry', () => {
     expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/a.png') });
   });
 
+  it('hands a drag from spaces into a table whose only content is an uploaded picture, which takes the table whole', () => {
+    const picture = { type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } };
+    const editor = openWith([
+      { type: 'paragraph', content: '  ' },
+      tableBlock({ rows: [{ cells: ['', { blocks: [picture] }] }] }),
+      { type: 'paragraph', content: '' },
+    ]);
+    const view = editor.prosemirrorView!;
+    let firstCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (firstCell < 0 && node.type.name === 'docTableCell') firstCell = pos;
+      return firstCell < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, firstCell + 4)));
+
+    expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/a.png') });
+    expect(addToAgentTool.canRun(editor as never)).toBe(true);
+  });
+
   it('is unavailable over a selection of spaces over a picture still uploading', () => {
     const editor = openWith([
       { type: 'paragraph', content: '  ' },
