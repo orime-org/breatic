@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns } from '../helpers/fake-run';
 
 import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
@@ -483,8 +484,7 @@ const TEMPLATE_ANSWER = {
 };
 
 test('places a template proposal with its guide text node pointing at the anchor', async () => {
-  const chunks = [
-    { type: 'data-heartbeat', transient: true, data: {} },
+  await answerRuns(page, () => [
     { type: 'data-conversation-titled', data: { title: 'template smoke' } },
     { type: 'start', messageId: 'm-reply' },
     { type: 'start-step' },
@@ -492,14 +492,7 @@ test('places a template proposal with its guide text node pointing at the anchor
     { type: 'tool-output-available', toolCallId: 'call-1', output: TEMPLATE_ANSWER },
     { type: 'finish-step' },
     { type: 'finish' },
-  ];
-  await page.route('**/chat/message', (route) =>
-    route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-      body: chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join(''),
-    }),
-  );
+  ]);
   await startNewConversation(page);
   const composer = page.getByTestId('chat-composer-box');
   await composer.fill('Make a storyboard of my character.');

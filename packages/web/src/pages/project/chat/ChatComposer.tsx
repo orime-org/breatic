@@ -30,10 +30,10 @@ interface ChatComposerProps {
   /**
    * How far along the turn is, which decides what stands where Send does.
    *
-   * `sending` is the wait between the press and the server's first word.
-   * Neither button belongs there: sending again would ask the same thing
-   * twice, and a stop button would offer to stop something this end has no
-   * word of yet -- with nothing on screen for stopping it to take back.
+   * `sending` is the wait between the press and the server's answer to the
+   * send. Neither button belongs there: sending again would ask the same
+   * thing twice, and a stop button would offer to stop a run this end has no
+   * word of yet. While a run is `running`, stop and send stand side by side.
    */
   turnPhase?: TurnPhase;
   /** A stop is on its way to the server (inner#1717). */

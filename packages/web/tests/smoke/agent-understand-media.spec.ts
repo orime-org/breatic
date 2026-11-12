@@ -167,11 +167,11 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
   await composer.press('Enter');
   const conversationId = ((await sent).postDataJSON() as { conversation_id: string }).conversation_id;
 
-  // The composer's one slot says which phase the turn is in, and the stop
-  // button is the only one of the three that means "still running". So its
-  // arrival is the turn starting and its departure is the turn done — a reply
-  // bubble appearing says neither, because the bubble is created empty and
-  // filled as the text streams.
+  // The stop button is up exactly while the run goes: the sending spinner
+  // stands before it and the send button beside it, neither of which means
+  // "still running". So its arrival is the turn starting and its departure is
+  // the turn done -- a reply bubble appearing says neither, because the
+  // bubble is created empty and filled as the text streams.
   const abort = p.getByTestId('chat-composer-abort');
   await expect(abort).toBeVisible({ timeout: 60_000 });
   await expect(abort).toHaveCount(0, { timeout: 180_000 });

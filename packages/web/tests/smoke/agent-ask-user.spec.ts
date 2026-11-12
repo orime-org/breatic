@@ -4,19 +4,20 @@
 /**
  * A questionnaire the agent puts to the user, in a browser (inner#1542).
  *
- * Two cases answer the turn requests here with streams written the way the
- * server writes them, so they reach the card without a model: the card
- * numbers its questions, sends every answer with one press through the
- * conversation's own stream, and draws what the turn says next below its
- * summary; a message written instead closes it as replied to. One case runs a
- * real turn: the model asks, the card is still waiting after a reload, and
+ * Two cases answer the sends here with runs written the way the server
+ * writes them (`helpers/fake-run.ts`), so they reach the card without a
+ * model: the card numbers its questions, sends every answer with one press,
+ * and draws what the resumed run says next below its summary; a message
+ * written instead closes it as replied to. One case runs a real turn: the
+ * model asks, the card is still waiting after a reload, and
  * answering it resumes the turn. That the answer is taken once, kept beside
  * the call and replayed is checked against a real store in the server's
  * `questionnaire-pause-resume.integration.test.ts`.
  */
-import { expect, type Page, type Route } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns, type RunFrames } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
@@ -41,20 +42,16 @@ const QUESTIONS = {
 };
 
 /**
- * A stream the way the server writes one.
+ * A run the way the server writes one, after its heartbeat.
  * @param chunks - What follows the opening.
- * @returns The response body.
+ * @returns The run's frames.
  */
-function stream(chunks: object[]): string {
-  const opening = [
-    { type: 'data-heartbeat', transient: true, data: {} },
-    { type: 'data-conversation-titled', data: { title: 'questionnaire' } },
-  ];
-  return [...opening, ...chunks].map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
+function run(chunks: object[]): RunFrames {
+  return [{ type: 'data-conversation-titled', data: { title: 'questionnaire' } }, ...chunks];
 }
 
 /** A turn that stops at the card. */
-const ASKS = stream([
+const ASKS = run([
   { type: 'start', messageId: 'm-reply' },
   { type: 'start-step' },
   { type: 'text-start', id: 't0' },
@@ -67,18 +64,13 @@ const ASKS = stream([
 ]);
 
 /**
- * Serve the turn requests in order, and keep what each one sent.
- * @param answers - The body for each request, in order.
- * @returns What each request carried.
+ * Answer the sends in order, and keep what each one sent.
+ * @param answers - The run each send opens, in order.
+ * @returns What each send carried.
  */
-async function serve(answers: string[]): Promise<Array<Record<string, unknown>>> {
-  const sent: Array<Record<string, unknown>> = [];
-  await page.route('**/chat/message', async (route: Route) => {
-    sent.push(route.request().postDataJSON() as Record<string, unknown>);
-    const body = answers[sent.length - 1] ?? stream([{ type: 'finish' }]);
-    await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body });
-  });
-  return sent;
+async function serve(answers: RunFrames[]): Promise<Array<Record<string, unknown>>> {
+  const { bodies } = await answerRuns(page, (_body, index) => answers[index] ?? run([{ type: 'finish' }]));
+  return bodies;
 }
 
 /** Say something and wait for the card. */
@@ -92,7 +84,10 @@ async function askAndWaitForTheCard(): Promise<void> {
 test('the card numbers its questions and sends every answer with one press, the turn going on below it', async () => {
   const sent = await serve([
     ASKS,
-    stream([
+    run([
+      // The real server reads the answer back from the history instead; the
+      // history served here holds only what was streamed, so the card is
+      // settled on the stream, in the paused reply the run goes on in.
       { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] } },
       // The server names the resumed reply afresh, as it does every reply.
       { type: 'start', messageId: 'm-reply-resumed' },
@@ -131,7 +126,7 @@ test('the card numbers its questions and sends every answer with one press, the 
 test('a message written instead closes the card as replied to', async () => {
   await serve([
     ASKS,
-    stream([
+    run([
       { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } },
       { type: 'start', messageId: 'm-reply-2' },
       { type: 'start-step' },
