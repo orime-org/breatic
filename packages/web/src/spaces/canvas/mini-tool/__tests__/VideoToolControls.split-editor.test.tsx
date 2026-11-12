@@ -94,7 +94,7 @@ describe('cut handles on the filmstrip (demo PlaybackStrip cuts)', () => {
     expect(document.querySelectorAll('[role=slider]')).toHaveLength(0);
   });
 
-  it('moves a dragged handle and commits once, snapped to a frame start, without seeking', () => {
+  it('moves a dragged handle and commits the dragged position once, without seeking', () => {
     const onSeek = vi.fn();
     const { onChange } = mount({ onSeek });
     layOutTrack();
@@ -104,13 +104,26 @@ describe('cut handles on the filmstrip (demo PlaybackStrip cuts)', () => {
     fireEvent.pointerMove(handle, { clientX: 200, pointerId: 1 });
     expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('50%');
     expect(onChange).not.toHaveBeenCalled();
-    fireEvent.pointerUp(handle, { clientX: 200, pointerId: 1 });
-    expect(onChange).toHaveBeenCalledOnce();
-    const cuts = (onChange.mock.calls[0]![0] as VideoToolDraftById['video.split']).params.cuts;
-    expect(cuts).toHaveLength(2);
-    expect(cuts[0]).toBeCloseTo(2.48, 6);
-    expect(cuts[1]).toBe(3);
+    fireEvent.pointerUp(handle, { clientX: 209, pointerId: 1 });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.5, 3] } }));
     expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it('leaves the cut where it is when a handle is only clicked to focus it', () => {
+    const { onChange } = mount();
+    layOutTrack();
+    const handle = screen.getByTestId('video-cut-handle-0');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 149, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 149, pointerId: 1 });
+    expect(handle).toHaveFocus();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(handle.style.left).toBe('20%');
+  });
+
+  it('draws a cut between frames on the frame start the split uses', () => {
+    mount({ draft: draftWith([2.5]) });
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('2.5');
   });
 
   it('removes a focused handle with Delete or Backspace', () => {
@@ -144,11 +157,33 @@ describe('strip clock (demo PlaybackStrip)', () => {
 
 describe('cut rows and count (canvas design §4 split row)', () => {
   it('lists the normalized cuts, sorted, unique and inside the video, numbered like the handles', () => {
-    mount({ draft: draftWith([3, 1, 1.01, 7]) });
+    mount({ draft: draftWith([3, 1, 1, 0, 7]) });
     expect(screen.getByTestId('video-cut-0')).toHaveValue('1');
     expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
     expect(screen.queryByTestId('video-cut-2')).toBeNull();
     expect(screen.queryByTestId('video-cut-handle-2')).toBeNull();
+  });
+
+  it('keeps the typed text and stores the typed number while a cut is typed key by key', () => {
+    const changes: number[][] = [];
+    /**
+     * The split panel over a draft that takes every change, as the panel container does.
+     * @returns The panel.
+     */
+    function Stateful(): React.JSX.Element {
+      const [draft, setDraft] = React.useState(draftWith([1, 3]));
+      return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; changes.push(split.params.cuts); setDraft(split); }} analyses={[]} frameTable={frameTable} presentedTime={1.25} disabled={false} pickingSlot={null}
+        inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
+    }
+    render(<Stateful />);
+    fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '' } });
+    let typed = '';
+    for (const key of ['2', '.', '5', '5']) {
+      typed += key;
+      fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: `${(screen.getByTestId('video-cut-0') as HTMLInputElement).value}${key}` } });
+      expect(screen.getByTestId('video-cut-0')).toHaveValue(typed);
+    }
+    expect(changes.at(-1)).toEqual([2.55, 3]);
   });
 
   it('refuses a typed cut at or below 0 and at or past the end', () => {

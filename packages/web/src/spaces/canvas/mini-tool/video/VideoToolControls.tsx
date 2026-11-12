@@ -386,16 +386,16 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
 }
 
 /**
- * The cuts as the plan uses them (canvas design §4 split row): snapped to frame starts, sorted, unique and inside the video;
- * a stored cut at or past the presentation's end is left out rather than refused.
- * @param table - The source's presentation table.
+ * The cuts as stored and shown (canvas design §4 split row): sorted, unique and inside the video, not snapped, so a typed
+ * value stays what was typed; only the plan snaps them to frame starts. A cut at 0 or at or past the end is left out
+ * rather than refused.
+ * @param duration - The presentation's video end.
  * @param cuts - The stored or edited cuts.
  * @returns The normalized cuts.
- * @throws {z.ZodError} When the table is malformed.
+ * @throws {never} Never.
  */
-function splitCuts(table: VideoPresentationTable, cuts: readonly number[]): number[] {
-  const end = presentationVideoEnd(table);
-  return planVideoSplit(table, cuts.filter((cut) => cut < end)).slice(1).map((segment) => segment.start);
+function splitCuts(duration: number, cuts: readonly number[]): number[] {
+  return [...new Set(cuts.filter((cut) => cut > 0 && cut < duration))].sort((a, b) => a - b);
 }
 
 /**
@@ -411,9 +411,11 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const { table } = props;
   const draft = props.draft as VideoToolDraftById['video.split'];
   const duration = presentationVideoEnd(table);
-  const cuts = React.useMemo(() => splitCuts(table, draft.params.cuts), [table, draft.params.cuts]);
+  const cuts = React.useMemo(() => splitCuts(duration, draft.params.cuts), [duration, draft.params.cuts]);
   const segments = React.useMemo(() => planVideoSplit(table, cuts), [table, cuts]);
-  const [dragging, setDragging] = React.useState<{ index: number; time: number } | null>(null);
+  // Each handle sits on the frame start its cut splits at.
+  const snapped = React.useMemo(() => cuts.map((cut) => presentationFrameAt(table, planVideoFrames(table, { mode: 'current', currentTime: cut })[0]!.frameIndex).pts), [table, cuts]);
+  const [dragging, setDragging] = React.useState<{ index: number; time: number; moved: boolean } | null>(null);
   const gesture = React.useRef<string | null>(null);
   React.useEffect(() => { gesture.current = null; setDragging(null); }, [draft.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
   const [previewing, setPreviewing] = React.useState<{ start: number; end: number } | null>(null);
@@ -421,11 +423,11 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const playback = React.useRef<SourceRangePlayback | null>(null);
   React.useEffect(() => () => playback.current?.stop(), []);
   /**
-   * Commits edited cuts, normalized as the plan uses them.
+   * Commits edited cuts, normalized.
    * @param next - The edited cuts.
-   * @throws {z.ZodError} When the table is malformed.
+   * @throws {never} Never.
    */
-  const commit = (next: readonly number[]): void => { props.onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(table, next) } }); };
+  const commit = (next: readonly number[]): void => { props.onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, next) } }); };
   /**
    * The source time under the pointer on the strip a handle sits on, kept inside the video.
    * @param event - The pointer event on a handle.
@@ -466,10 +468,10 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
       () => { if (playback.current === next) { playback.current = null; setPreviewing(null); setPlayFailed(true); } });
   };
   const cursor = props.presentedTime;
-  const addable = cursor !== null && cursor > 0 && cursor < duration && splitCuts(table, [...cuts, cursor]).length > cuts.length;
+  const addable = cursor !== null && cursor > 0 && cursor < duration && planVideoSplit(table, [...cuts, cursor]).length > segments.length;
   return <div className='grid gap-2' data-testid='video-cut-editor'>
     <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
-      {cuts.map((cut, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : cut) * 100 / duration}%` }}
+      {cuts.map((_, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : snapped[index]!) * 100 / duration}%` }}
         onPointerDown={(event) => {
           if (event.button !== 0 || props.disabled) return;
           // Prevented so the press neither seeks the strip nor selects; focused by hand, so the keys then act on this handle.
@@ -477,16 +479,17 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           event.currentTarget.focus();
           event.currentTarget.setPointerCapture(event.pointerId);
           gesture.current = draft.revision;
-          setDragging({ index, time: cut });
+          setDragging({ index, time: snapped[index]!, moved: false });
         }}
-        onPointerMove={(event) => { if (dragging?.index !== index) return; event.stopPropagation(); setDragging({ index, time: timeAt(event) }); }}
+        onPointerMove={(event) => { if (dragging?.index !== index) return; event.stopPropagation(); setDragging({ index, time: timeAt(event), moved: true }); }}
         onPointerUp={(event) => {
           if (dragging?.index !== index) return;
           event.stopPropagation();
-          const time = timeAt(event);
+          // A press without a move only focuses the handle for the arrow keys; a drag commits where it was last drawn.
+          const { time, moved } = dragging;
           const current = gesture.current === draft.revision && !props.disabled;
           gesture.current = null; setDragging(null);
-          if (current && time > 0 && time < duration) commit(cuts.map((value, position) => position === index ? time : value));
+          if (moved && current && time > 0 && time < duration) commit(cuts.map((value, position) => position === index ? time : value));
         }}
         onPointerCancel={() => { gesture.current = null; setDragging(null); }}
         onKeyDown={(event) => {
@@ -495,7 +498,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
     </VideoPlaybackStrip>
-    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: cuts.length, segments: cuts.length + 1 })}</span><Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !addable} onClick={() => { if (cursor !== null) commit([...cuts, cursor]); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div>
+    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !addable} onClick={() => { if (cursor !== null) commit([...cuts, cursor]); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div>
     {cuts.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{cuts.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => commit(cuts.map((item, at) => at === index ? value : item))} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onClick={() => commit(cuts.filter((_, at) => at !== index))}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
