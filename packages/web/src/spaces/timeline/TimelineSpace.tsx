@@ -828,8 +828,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return [{ clipId: clip.id, z: index + 1, state, track }];
   });
   const retryVideoLayer = React.useCallback((clipId: string): void => {
+    // The asset is read again first: a file address that stopped loading may have expired (#1410 design §6.2).
     const clip = document.clips[clipId];
-    if (clip !== undefined && assetOf(clip)?.isError === true) void assetOf(clip)?.refetch();
+    if (clip !== undefined) void assetOf(clip)?.refetch();
     retryVideo(clipId);
   }, [document.clips, assetOf, retryVideo]);
 
