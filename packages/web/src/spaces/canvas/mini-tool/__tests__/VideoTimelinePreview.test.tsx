@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import { VideoTimelinePreview } from '../video/VideoTimelinePreview';
+import { t } from '@breatic/shared';
+import { drawFitted, VideoTimelinePreview } from '../video/VideoTimelinePreview';
 import type { VideoTimelinePresentedFrame } from '../video/video-timeline-decoder';
 
 function FirstFrame({ frame, onFrame }: { frame: VideoTimelinePresentedFrame; onFrame: (frame: VideoTimelinePresentedFrame) => void }): React.JSX.Element | null {
@@ -66,5 +67,44 @@ describe('partial timeline presentation allocation', () => {
     expect(disconnect).toHaveBeenCalledTimes(stage === 'gain' ? 1 : 2);
     expect(close).toHaveBeenCalledOnce();
     expect(deleteTexture).toHaveBeenCalledTimes(stage === 'texture' ? 1 : 0);
+  });
+});
+
+describe('the composite has the first clip frame and fits the other inside it (canvas design §4 转场; demo timeline-preview.tsx)', () => {
+  const plan = { duration: 0, clips: [] };
+
+  it('sizes the canvas to the first clip frame, a checkerboard behind it only when the output is transparent', () => {
+    (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockReturnValue(null);
+    const view = render(<VideoTimelinePreview format={{ width: 1080, height: 1920, transparent: false }} plan={plan} inputs={[]} cursor={0} playing={false} onCursorChange={vi.fn()} onPlayingChange={vi.fn()} />);
+    const canvas = view.container.querySelector('canvas')!;
+    expect([canvas.width, canvas.height]).toEqual([1080, 1920]);
+    expect(canvas.style.backgroundImage).toBe('');
+    view.rerender(<VideoTimelinePreview format={{ width: 1080, height: 1920, transparent: true }} plan={plan} inputs={[]} cursor={0} playing={false} onCursorChange={vi.fn()} onPlayingChange={vi.fn()} />);
+    expect(view.container.querySelector('canvas')!.style.backgroundImage).not.toBe('');
+  });
+
+  it.each([
+    ['opaque', false],
+    ['transparent', true],
+  ])('scales a frame of another shape to fit, centred, with %s borders', (_name, transparent) => {
+    const calls: unknown[][] = [];
+    const context = new Proxy({}, { get: (_target, key) => (key === 'fillStyle' ? undefined : (...args: unknown[]) => { calls.push([key, ...args]); }), set: (_target, key, value) => { calls.push([key, value]); return true; } }) as CanvasRenderingContext2D;
+    const frame = Object.assign(document.createElement('canvas'), { width: 1920, height: 1080 });
+    drawFitted(context, frame, { width: 1080, height: 1920, transparent });
+    const scaled = 1080 * 1080 / 1920;
+    expect(calls).toEqual([
+      ...(transparent ? [['clearRect', 0, 0, 1080, 1920]] : [['fillStyle', '#000'], ['fillRect', 0, 0, 1080, 1920]]),
+      ['drawImage', frame, 0, (1920 - scaled) / 2, 1080, scaled],
+    ]);
+  });
+});
+
+describe('the failed preview offers Retry with its icon (demo timeline-preview.tsx)', () => {
+  it('shows the RefreshCw icon on Retry', () => {
+    (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockReturnValue(null);
+    vi.stubGlobal('AudioContext', class { close = vi.fn(); });
+    const view = render(<VideoTimelinePreview plan={{ duration: 0, clips: [] }} inputs={[]} cursor={0} playing={false} onCursorChange={vi.fn()} onPlayingChange={vi.fn()} />);
+    const retry = view.getByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') });
+    expect(retry.querySelector('.lucide-refresh-cw')).not.toBeNull();
   });
 });

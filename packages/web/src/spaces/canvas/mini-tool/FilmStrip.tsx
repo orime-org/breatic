@@ -100,6 +100,8 @@ function drawCover(video: HTMLVideoElement, canvas: HTMLCanvasElement): void {
 
 interface FilmStripProps {
   src: string;
+  /** Where the strip starts in the video, in seconds; 0 when omitted. */
+  start?: number;
   /** Seconds. */
   duration: number;
   /** The source's width over its height. */
@@ -114,11 +116,12 @@ interface FilmStripProps {
  * strip needs no CORS from the storage it plays from.
  * @param root0 - Props.
  * @param root0.src - The video URL.
- * @param root0.duration - The video's length in seconds.
+ * @param root0.start - Where the strip starts in the video, in seconds.
+ * @param root0.duration - The strip's length in seconds.
  * @param root0.aspect - The source's width over its height.
  * @returns The strip.
  */
-export const FilmStrip = React.memo(function FilmStrip({ src, duration, aspect }: FilmStripProps): React.JSX.Element {
+export const FilmStrip = React.memo(function FilmStrip({ src, start = 0, duration, aspect }: FilmStripProps): React.JSX.Element {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const tilesRef = React.useRef<(HTMLCanvasElement | null)[]>([]);
   const [box, setBox] = React.useState({ width: 0, height: 0 });
@@ -146,7 +149,7 @@ export const FilmStrip = React.memo(function FilmStrip({ src, duration, aspect }
     (async () => {
       await metadataOf(video);
       for (const [index, time] of filmstripTimes(duration, count).entries()) {
-        await seekTo(video, time);
+        await seekTo(video, start + time);
         if (cancelled) return;
         const tile = tilesRef.current[index];
         if (tile) drawCover(video, tile);
@@ -157,7 +160,7 @@ export const FilmStrip = React.memo(function FilmStrip({ src, duration, aspect }
       video.removeAttribute('src');
       video.load();
     };
-  }, [src, duration, count, box.width]);
+  }, [src, start, duration, count, box.width]);
 
   const ratio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
   const tileWidth = box.height * aspect;

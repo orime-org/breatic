@@ -6,6 +6,7 @@ import createTransition, { type GLTextureLike } from 'gl-transition';
 import fade from 'gl-transitions/transitions/fade.glsl?raw';
 import wipeLeft from 'gl-transitions/transitions/wipeLeft.glsl?raw';
 import wipeRight from 'gl-transitions/transitions/wipeRight.glsl?raw';
+import { RefreshCw } from 'lucide-react';
 import { canonicalMiniToolValue, type VideoTimelinePlan, type VideoPlannedClip, type VideoToolInput } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -14,8 +15,13 @@ import { NativeTimelineDecoder } from '@web/spaces/canvas/mini-tool/video/Native
 import type { VideoTimelineDecoderBinding, VideoTimelineDecoderRenderer, VideoTimelinePresentedFrame } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoPresentationRecoveryError } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 
+/** The composition frame: the first clip's display size, transparent when either clip is (canvas design §4 转场). */
+export interface VideoTimelineFormat { width: number; height: number; transparent: boolean }
+
 export interface VideoTimelinePreviewProps {
   plan: VideoTimelinePlan;
+  /** The composition frame; unknown until the first clip's size is read. */
+  format?: VideoTimelineFormat | null;
   inputs: readonly VideoToolInput[];
   cursor: number;
   onCursorChange: (time: number) => void;
@@ -23,6 +29,8 @@ export interface VideoTimelinePreviewProps {
   onPlayingChange: (playing: boolean) => void;
   renderDecoder?: VideoTimelineDecoderRenderer;
 }
+// The frame drawn while the first clip's size is still unknown.
+const FALLBACK_FORMAT: VideoTimelineFormat = { width: 960, height: 540, transparent: false };
 interface VideoTexture extends GLTextureLike { upload: (canvas: HTMLCanvasElement) => void; dispose: () => void }
 interface FrameSnapshot {
   canvas: HTMLCanvasElement;
@@ -55,12 +63,33 @@ function visibleClips(plan: VideoTimelinePlan, cursor: number): { from: VideoPla
 function decoderKey(clip: VideoPlannedClip, input: VideoToolInput): string { return JSON.stringify([clip.clipId, input.inputId, input.url]); }
 
 /**
- * Owns one stable canvas texture using the approved renderer's texture contract.
+ * Draws a source frame into the composition frame, scaled to fit and centred, the borders black for an opaque output and
+ * fully transparent for a transparent one, the rule export uses (canvas design §4 转场; demo timeline-preview.tsx).
+ * @param context - The composition-sized drawing context.
+ * @param frame - The source frame snapshot.
+ * @param format - The composition frame.
+ * @throws {never} Never.
+ */
+export function drawFitted(context: CanvasRenderingContext2D, frame: HTMLCanvasElement, format: VideoTimelineFormat): void {
+  const scale = Math.min(format.width / frame.width, format.height / frame.height);
+  const width = frame.width * scale;
+  const height = frame.height * scale;
+  if (format.transparent) context.clearRect(0, 0, format.width, format.height);
+  else { context.fillStyle = '#000'; context.fillRect(0, 0, format.width, format.height); }
+  context.drawImage(frame, (format.width - width) / 2, (format.height - height) / 2, width, height);
+}
+
+/**
+ * Owns one stable canvas texture using the approved renderer's texture contract, each upload fitted into the composition frame.
  * @param gl - This preview's active graphics context.
+ * @param format - The composition frame.
  * @returns An uploadable owned texture.
  * @throws {Error} When a texture cannot be allocated.
  */
-function videoTexture(gl: WebGLRenderingContext): VideoTexture {
+function videoTexture(gl: WebGLRenderingContext, format: VideoTimelineFormat): VideoTexture {
+  const fitted = document.createElement('canvas');
+  fitted.width = format.width; fitted.height = format.height;
+  const context = fitted.getContext('2d');
   const texture = gl.createTexture();
   if (texture === null) throw new Error('Video texture allocation failed');
   gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -74,18 +103,19 @@ function videoTexture(gl: WebGLRenderingContext): VideoTexture {
      * @throws {never} Never.
      */
     bind(unit: number): number { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, texture); return unit; },
-    shape: [1, 1],
+    shape: [format.width, format.height],
     /**
-     * Uploads stable canonical RGBA pixels.
+     * Uploads stable canonical RGBA pixels, fitted into the composition frame.
      * @param canvas - The owned source snapshot.
      * @throws {DOMException} When cross-origin texture access is unavailable.
+     * @throws {Error} When the composition surface is unavailable.
      */
-    upload(canvas: HTMLCanvasElement): void { gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas); owned.shape = [canvas.width, canvas.height]; },
+    upload(canvas: HTMLCanvasElement): void { if (context === null) throw new Error('Composition frame surface unavailable'); drawFitted(context, canvas, format); gl.bindTexture(gl.TEXTURE_2D, texture); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, fitted); },
     /**
-     * Releases this texture.
+     * Releases this texture and its composition surface.
      * @throws {never} Never.
      */
-    dispose(): void { gl.deleteTexture(texture); },
+    dispose(): void { gl.deleteTexture(texture); fitted.width = 0; fitted.height = 0; },
   };
   return owned;
 }
@@ -109,6 +139,8 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
   const [retrying, setRetrying] = React.useState(false);
   const pendingRetry = React.useRef(false);
   const mounted = React.useRef(false);
+  const format = props.format ?? FALLBACK_FORMAT;
+  const formatKey = `${format.width}x${format.height}:${format.transparent}`;
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const pair = visibleClips(props.plan, props.cursor);
   const sources = [pair.from, pair.to].flatMap((clip) => {
@@ -244,8 +276,9 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 4, 4, -1]), gl.STATIC_DRAW);
       gl.viewport(0, 0, surface.width, surface.height); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      textures.push(videoTexture(gl));
-      textures.push(videoTexture(gl));
+      const composition = latest.current.format ?? FALLBACK_FORMAT;
+      textures.push(videoTexture(gl, composition));
+      textures.push(videoTexture(gl, composition));
       for (const [name, glsl] of Object.entries({ fade, wipeLeft, wipeRight })) renderers.set(name, createTransition(gl, { glsl, paramsTypes: {}, defaultParams: {} }, { resizeMode: 'contain' }));
     } catch { fail(); }
     /**
@@ -344,7 +377,7 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
       surface.removeEventListener('webglcontextlost', lost); surface.removeEventListener('webglcontextrestored', restored);
       dispose();
     };
-  }, [epoch]);
+  }, [epoch, formatKey]);
   /**
    * Recovers failed preparation before rebuilding the same preview resources.
    * @throws {never} The source displays repair errors; this caller resets its wait.
@@ -365,11 +398,12 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
       if (mounted.current) setRetrying(false);
     }
   }
-  return <div className='relative flex min-h-0 items-center justify-center overflow-hidden rounded-content-sm bg-canvas' style={checkerboardStyle(1, { x: 0, y: 0 })} data-testid='video-timeline-preview'>
-    <canvas ref={canvas} width={960} height={540} className='h-full w-full object-contain' />
+  return <div className='relative flex min-h-0 items-center justify-center overflow-hidden rounded-content-sm bg-canvas' data-testid='video-timeline-preview'>
+    {/* The canvas keeps the composition aspect inside the box; only a transparent output shows the checkerboard through it. */}
+    <div className='absolute inset-0 grid place-items-center' style={{ containerType: 'size' }}><canvas key={formatKey} ref={canvas} width={format.width} height={format.height} style={{ width: `min(100cqw, ${format.width / format.height * 100}cqh)`, height: `min(100cqh, ${format.height / format.width * 100}cqw)`, ...(format.transparent ? checkerboardStyle(1, { x: 0, y: 0 }) : {}) }} /></div>
     <div hidden>{(failure ? [] : sources).map(({ input, key }) => <React.Fragment key={`${epoch}:${key}`}>{props.renderDecoder === undefined ? <NativeTimelineDecoder input={input} onBinding={(binding, error) => bind(key, binding, error)} onPresentedFrame={(frame) => presented(key, frame)} /> : props.renderDecoder(input, (binding, error) => bind(key, binding, error), (frame) => presented(key, frame))}</React.Fragment>)}</div>
     {props.plan.clips.length === 0 ? <p className='absolute inset-0 grid place-content-center p-4 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineEmpty')}</p> : null}
     {waiting && !failure ? <span className='absolute bottom-2 rounded-chrome bg-popover px-2 py-1 text-xs'>{t('canvas.miniTool.videoUI.loadingFrames')}</span> : null}
-    {failure ? <div className='absolute inset-0 grid place-content-center gap-2 bg-card p-4 text-center'><p className='text-xs'>{t('canvas.miniTool.videoUI.previewUnavailable')}</p><Button variant='outline' size='sm' loading={retrying} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}
+    {failure ? <div className='absolute inset-0 grid place-content-center gap-2 bg-card p-4 text-center'><p className='text-xs'>{t('canvas.miniTool.videoUI.previewUnavailable')}</p><Button variant='outline' size='sm' loading={retrying} icon={<RefreshCw className='size-3.5' />} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}
   </div>;
 }

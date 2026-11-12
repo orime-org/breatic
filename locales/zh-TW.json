@@ -1540,7 +1540,10 @@
         "overlapLimit": "最長 {limit}，即較短片段時長的一半。",
         "dialogueTimingHint": "時間以影片起點為準，保留每段音訊內部的靜音。",
         "noCuts": "新增切點或執行場景偵測。",
-        "detectAgain": "重新偵測"
+        "detectAgain": "重新偵測",
+        "selectedClip": "目前片段",
+        "rewind": "回到開頭",
+        "transitionBetween": "中間轉場"
       }
     },
     "template": {

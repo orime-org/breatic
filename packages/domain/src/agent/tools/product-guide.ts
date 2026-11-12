@@ -1053,16 +1053,16 @@ export function renderProductGuide(): string {
       "and Run asks for a video while none is picked. Under the slot the panel lists the clips in timeline order with " +
       "their trimmed lengths. Picking a video opens the timeline, and once a video is picked " +
       `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} opens it again; press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
-      "their order; the transition stays between them. Select a clip and edit " +
+      `their order; the transition stays between them. Select a clip under ${quoted(t("canvas.miniTool.videoUI.selectedClip"))} and edit ` +
       `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}, or drag either end of a clip on the track, to trim it. ` +
-      `${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
+      `Under ${quoted(t("canvas.miniTool.videoUI.transitionBetween"))}, ${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
       `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
       `set with ${quoted(t("canvas.miniTool.videoUI.transitionDuration"))}, and clips too short for one leave only Cut. ` +
       "Picking a shorter video turns the transition into Cut when it no longer fits. A problem with the picked video shows " +
       `on the panel as the current video's does, with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))} to repair it. ` +
       `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
-      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} makes one new video node from the timeline. To join more clips, run the tool again on the exported result.`,
+      `pauses it, and the round arrow before it goes back to the start; ${quoted(t("canvas.miniTool.videoUI.export"))} makes one new video node from the timeline. To join more clips, run the tool again on the exported result.`,
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Removing a video's background keeps the transparent source available for download and downstream tools.",
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +

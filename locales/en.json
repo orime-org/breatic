@@ -1540,7 +1540,10 @@
         "overlapLimit": "At most {limit}, half the length of the shorter clip.",
         "dialogueTimingHint": "Times refer to the video. Silence within each audio is kept.",
         "noCuts": "Add a cut or detect scenes.",
-        "detectAgain": "Detect again"
+        "detectAgain": "Detect again",
+        "selectedClip": "Selected clip",
+        "rewind": "Back to start",
+        "transitionBetween": "Transition"
       }
     },
     "template": {

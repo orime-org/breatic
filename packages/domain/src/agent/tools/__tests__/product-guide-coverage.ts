@@ -67,6 +67,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.pickAudio": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.miniTool.videoUI.pickVideo": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.miniTool.videoUI.previewUnavailable": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "canvas.miniTool.videoUI.rewind": { excluded: REASONS.SCREEN_READER, look: /the round arrow before it goes back to the start/ },
   "canvas.miniTool.videoUI.removeCut": { excluded: REASONS.SCREEN_READER, look: /the bin beside a cut removes it/ },
   "canvas.miniTool.videoUI.removeDialogue": { excluded: REASONS.SCREEN_READER, look: /The bin at the end of a dialogue row removes it/ },
   "canvas.miniTool.videoUI.segmentCount": { excluded: REASONS.FILLS_A_VALUE },
@@ -80,7 +81,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // Batch-six video tools (inner#1306): transitions, the lip-sync failure lines, range toasts and the tracking cost.
   "canvas.miniTool.videoUI.addVideoSlot": { described: /one video picked under/ },
   "canvas.miniTool.videoUI.timelineComposition": { described: /plays the result/ },
-  "canvas.miniTool.videoUI.timelineProperties": { described: /Select a clip and edit/ },
+  "canvas.miniTool.videoUI.timelineProperties": { described: /Select a clip under/ },
   "canvas.miniTool.videoUI.timelineExportHint": { described: /makes one new video node from the timeline/ },
   "canvas.miniTool.videoUI.transitionTooShort": { described: /clips too short for one leave only Cut/ },
   "canvas.miniTool.videoUI.timelineClipTooShort": { excluded: REASONS.SAYS_WHAT_HAPPENED },

@@ -1540,7 +1540,10 @@
         "overlapLimit": "최대 {limit}(짧은 클립 길이의 절반).",
         "dialogueTimingHint": "동영상 시작을 기준으로 합니다. 각 오디오의 무음 구간은 유지됩니다.",
         "noCuts": "절단 지점을 추가하거나 장면을 감지하세요.",
-        "detectAgain": "다시 감지"
+        "detectAgain": "다시 감지",
+        "selectedClip": "선택한 클립",
+        "rewind": "처음으로",
+        "transitionBetween": "클립 사이 전환"
       }
     },
     "template": {

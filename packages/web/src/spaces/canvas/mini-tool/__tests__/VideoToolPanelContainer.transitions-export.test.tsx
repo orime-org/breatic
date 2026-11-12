@@ -142,3 +142,12 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
     expect(plan?.presentationRef).toEqual(Object.fromEntries(draft.inputs.map((input) => [input.inputId, refs[input.url]])));
   });
 });
+
+describe('the Dialog composition row reads the first clip\'s selected display size (canvas design §4 转场; demo timeline-editor.tsx)', () => {
+  it('states the size the current video\'s presentation displays, not its registered size', () => {
+    const client = usableInputClient();
+    seedUsablePresentation(client, projectId, sourceURL, { display: { width: 320, height: 480, duration: { numerator: '4', denominator: '1' } } });
+    const dialog = openDialog(ready, vi.fn(), client);
+    expect(within(dialog).getByText(/^320 × 480 · 25 fps · /)).toBeInTheDocument();
+  });
+});

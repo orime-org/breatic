@@ -1540,7 +1540,10 @@
         "overlapLimit": "最大 {limit}（短い方のクリップの長さの半分）。",
         "dialogueTimingHint": "動画の先頭からの時間です。各音声内の無音は保持されます。",
         "noCuts": "カット位置を追加するかシーンを検出してください。",
-        "detectAgain": "再検出"
+        "detectAgain": "再検出",
+        "selectedClip": "選択中のクリップ",
+        "rewind": "先頭に戻る",
+        "transitionBetween": "クリップ間のトランジション"
       }
     },
     "template": {

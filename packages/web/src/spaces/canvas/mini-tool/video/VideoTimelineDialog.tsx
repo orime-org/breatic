@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
-import { ArrowLeftRight, Film, Pause, Play } from 'lucide-react';
+import { ArrowLeftRight, Film, Pause, Play, RotateCcw } from 'lucide-react';
 import { clampTransitions, planVideoTimelineSeconds, presentationOutputFps, transitionDurationBounds, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -14,10 +14,11 @@ import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { plannedRunRefusalText } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import { VideoNumericInput } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import { trimTimelineClip } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
-import { VideoTimelinePreview } from '@web/spaces/canvas/mini-tool/video/VideoTimelinePreview';
+import { VideoTimelinePreview, type VideoTimelineFormat } from '@web/spaces/canvas/mini-tool/video/VideoTimelinePreview';
 
 export interface VideoTimelineDialogProps {
   open: boolean;
@@ -32,10 +33,26 @@ export interface VideoTimelineDialogProps {
   runBlockedReason?: string;
   /** Each input's selected compact presentation table, by input id (§97 D10-3). */
   inputTables?: ReadonlyMap<string, VideoPresentationTable>;
+  /** Each input's selected display size and whether it presents with transparency, by input id. */
+  inputFormats?: ReadonlyMap<string, VideoTimelineFormat>;
   renderDecoder?: VideoTimelineDecoderRenderer;
 }
 
 const TRANSITION_KEYS = { cut: 'transitionCut', fade: 'transitionFade', wipeLeft: 'transitionWipeLeft', wipeRight: 'transitionWipeRight' } as const;
+// A Cut switched to another type starts this long, within its bounds (demo timeline-editor.tsx transition select).
+const FIRST_TRANSITION_SECONDS = 0.4;
+
+/**
+ * A frame rate as the composition row shows it: at most two decimals, trailing zeros dropped (30, 29.97, 23.98).
+ * @param fps - The exact rate.
+ * @param fps.numerator - Its numerator.
+ * @param fps.denominator - Its denominator.
+ * @returns The text.
+ * @throws {never} Never.
+ */
+function fpsText(fps: { numerator: string; denominator: string }): string {
+  return String(Number((Number(fps.numerator) / Number(fps.denominator)).toFixed(2)));
+}
 
 /**
  * The clips after a Dialog edit, each junction keeping its type with its length held within its duration range on the output
@@ -84,6 +101,14 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const firstTable = clips[0] === undefined ? undefined : props.inputTables?.get(clips[0].inputId);
   // The output grid is the first clip's rate (D13-1); without its table no transition length can be judged yet.
   const bounds = React.useMemo(() => (junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, presentationOutputFps(firstTable))), [junction, firstTable, clips]);
+  const firstInput = clips[0] === undefined ? undefined : draft.inputs.find((item) => item.inputId === clips[0]!.inputId);
+  const firstFormat = clips[0] === undefined ? undefined : props.inputFormats?.get(clips[0].inputId);
+  const frameWidth = firstFormat?.width ?? firstInput?.mediaInfo?.width;
+  const frameHeight = firstFormat?.height ?? firstInput?.mediaInfo?.height;
+  // The output is transparent when either clip is, as export decides (canvas design §4 转场).
+  const transparent = clips.some((item) => props.inputFormats?.get(item.inputId)?.transparent === true);
+  const format = React.useMemo((): VideoTimelineFormat | null => (frameWidth === undefined || frameHeight === undefined ? null : { width: frameWidth, height: frameHeight, transparent }), [frameWidth, frameHeight, transparent]);
+  const compositionText = [format === null ? null : `${format.width} × ${format.height}`, firstTable === undefined ? null : `${fpsText(presentationOutputFps(firstTable))} fps`, `${plan.duration.toFixed(3)} s`].filter((part) => part !== null).join(' · ');
   const width = Math.max(900, Math.ceil(plan.duration + 1) * 100 + 32);
   const rows: React.ComponentProps<typeof Timeline>['editorData'] = [{ id: 'video', actions: plan.clips.map((item) => ({ id: item.clipId, start: item.start, end: item.end, effectId: 'video', selected: item.clipId === clip?.clipId, minStart: Math.max(0, item.start - item.in), maxEnd: item.end + (draft.inputs.find((asset) => asset.inputId === item.inputId)?.mediaInfo?.duration ?? item.out) - item.out, flexible: !props.disabled, movable: false })) }];
   React.useEffect(() => { setPlaying(false); setCursor((value) => Math.min(value, plan.duration)); }, [draft.revision, plan.duration]);
@@ -146,6 +171,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
    * @throws {never} The run's own failure path reports request failures.
    */
   async function exportTimeline(): Promise<void> {
+    if (invalidFields.size > 0) { toast.warning(t('canvas.miniTool.videoUI.invalidNumber')); return; }
     if (props.runBlockedReason !== undefined) { toast.warning(props.runBlockedReason); return; }
     setExporting(true);
     try {
@@ -158,26 +184,28 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   }
   return <div className='grid min-h-0 flex-1 grid-rows-[minmax(280px,1fr)_auto_auto]'>
     <div className='grid min-h-0 grid-cols-[minmax(0,1fr)_232px] border-y border-border'>
-      <section className='grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 bg-background p-4'><div className='flex items-center justify-between gap-2'><h3 className='text-xs font-medium'>{t('canvas.miniTool.videoUI.timelineComposition')}</h3><span className='text-xs tabular-nums'>{plan.duration.toFixed(3)} s</span></div><VideoTimelinePreview renderDecoder={props.renderDecoder} plan={plan} inputs={draft.inputs} cursor={cursor} onCursorChange={setCursor} playing={playing} onPlayingChange={setPlaying} /></section>
-      <aside className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-border'><h3 className='border-b border-border p-3 text-xs font-medium'>{t('canvas.miniTool.videoUI.timelineProperties')}</h3><ScrollArea className='min-h-0' viewportClassName='p-3'>{clip === undefined ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.selectedClipEmpty')}</p> : <fieldset disabled={props.disabled} className='grid gap-3'>
-        <Select value={clip.clipId} onValueChange={setSelected}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{clips.map((item, index) => <SelectItem key={item.clipId} value={item.clipId}>{index + 1}. {props.inputNames.get(item.inputId)}</SelectItem>)}</SelectContent></Select>
+      <section className='grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3 bg-background p-4'><div className='flex items-center justify-between gap-2'><h3 className='text-xs font-medium'>{t('canvas.miniTool.videoUI.timelineComposition')}</h3><span className='shrink-0 text-xs tabular-nums text-muted-foreground'>{compositionText}</span></div><VideoTimelinePreview renderDecoder={props.renderDecoder} format={format} plan={plan} inputs={draft.inputs} cursor={cursor} onCursorChange={setCursor} playing={playing} onPlayingChange={setPlaying} /></section>
+      <aside className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-border'><h3 className='border-b border-border p-3 text-xs font-medium'>{t('canvas.miniTool.videoUI.timelineProperties')}</h3><ScrollArea className='min-h-0'><fieldset disabled={props.disabled} className='grid min-w-0'>{clip === undefined ? <p className='p-3 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.selectedClipEmpty')}</p> : <div className='grid min-w-0 gap-3 p-3'>
+        <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.selectedClip')}<Select value={clip.clipId} onValueChange={setSelected}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{clips.map((item, index) => <SelectItem key={item.clipId} value={item.clipId}>{index + 1}. {props.inputNames.get(item.inputId)}</SelectItem>)}</SelectContent></Select></label>
         <div data-testid='video-clip-lengths' className='grid gap-1 text-xs text-muted-foreground tabular-nums'>{selectedSourceLength === undefined ? null : <span>{t('canvas.miniTool.videoUI.sourceDuration')}: {selectedSourceLength.toFixed(2)} s</span>}<span>{t('canvas.miniTool.videoUI.clipDuration')}: {(clip.out - clip.in).toFixed(2)} s</span></div>
         <div className='grid grid-cols-2 gap-2'><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.inPoint')}<VideoNumericInput key={`${clip.clipId}:in`} onInvalidChange={invalidChange} value={clip.in} label={t('canvas.miniTool.videoUI.inPoint')} testId='video-clip-in' exclusiveMax min={0} max={clip.out} disabled={props.disabled} onChange={(value) => { if (value < clip.out) edit({ in: value }); }} /></label><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.outPoint')}<VideoNumericInput key={`${clip.clipId}:out`} onInvalidChange={invalidChange} value={clip.out} label={t('canvas.miniTool.videoUI.outPoint')} testId='video-clip-out' exclusiveMin min={clip.in} max={input?.mediaInfo?.duration} disabled={props.disabled} onChange={(value) => { if (value > clip.in) edit({ out: value }); }} /></label></div>
-        {junction === null ? null : <>
-          <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.transition')}<Select value={junction.transition.kind} disabled={props.disabled} onValueChange={(kind) => {
-            if (kind !== 'cut' && bounds === null) { toast.warning(t('canvas.miniTool.videoUI.transitionTooShort')); return; }
-            editJunction({ kind: kind as typeof junction.transition.kind, duration: kind === 'cut' || bounds === null ? 0 : Math.min(bounds.max, Math.max(bounds.min, junction.transition.duration || bounds.max)) });
-          }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(['cut', 'fade', 'wipeLeft', 'wipeRight'] as const).map((kind) => <SelectItem key={kind} value={kind} aria-disabled={kind !== 'cut' && bounds === null ? true : undefined} className='aria-disabled:opacity-50'>{t(`canvas.miniTool.videoUI.${TRANSITION_KEYS[kind]}`)}</SelectItem>)}</SelectContent></Select></label>
-          {junction.transition.kind === 'cut' || bounds === null ? null : <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.transitionDuration')}<VideoNumericInput key={`${junction.clipId}:overlap`} onInvalidChange={invalidChange} value={junction.transition.duration} label={t('canvas.miniTool.videoUI.transitionDuration')} testId='video-clip-overlap' min={0} disabled={props.disabled} onChange={(duration) => editJunction({ ...junction.transition, duration: Math.min(bounds.max, Math.max(bounds.min, duration)) })} /><span className='text-muted-foreground'>{t('canvas.miniTool.videoUI.overlapLimit', { limit: `${bounds.max.toFixed(2)} s` })}</span></label>}
-        </>}
-      </fieldset>}</ScrollArea></aside>
+      </div>}
+      <h3 className='border-y border-border p-3 text-xs font-medium'>{t('canvas.miniTool.videoUI.transitionBetween')}</h3>
+      {junction === null ? null : <div className='grid min-w-0 gap-3 p-3'>
+        <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.transition')}<Select value={junction.transition.kind} disabled={props.disabled} onValueChange={(kind) => {
+          if (kind !== 'cut' && bounds === null) { toast.warning(t('canvas.miniTool.videoUI.transitionTooShort')); return; }
+          editJunction({ kind: kind as typeof junction.transition.kind, duration: kind === 'cut' || bounds === null ? 0 : Math.min(bounds.max, Math.max(bounds.min, junction.transition.duration || FIRST_TRANSITION_SECONDS)) });
+        }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{(['cut', 'fade', 'wipeLeft', 'wipeRight'] as const).map((kind) => <SelectItem key={kind} value={kind} aria-disabled={kind !== 'cut' && bounds === null ? true : undefined} className='aria-disabled:opacity-50'>{t(`canvas.miniTool.videoUI.${TRANSITION_KEYS[kind]}`)}</SelectItem>)}</SelectContent></Select></label>
+        {junction.transition.kind === 'cut' || bounds === null ? null : <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.transitionDuration')}<VideoNumericInput key={`${junction.clipId}:overlap`} onInvalidChange={invalidChange} value={junction.transition.duration} label={t('canvas.miniTool.videoUI.transitionDuration')} testId='video-clip-overlap' min={0} disabled={props.disabled} onChange={(duration) => editJunction({ ...junction.transition, duration: Math.min(bounds.max, Math.max(bounds.min, duration)) })} /><span className='text-muted-foreground'>{t('canvas.miniTool.videoUI.overlapLimit', { limit: `${bounds.max.toFixed(2)} s` })}</span></label>}
+      </div>}
+      </fieldset></ScrollArea></aside>
     </div>
     <section className='grid min-w-0 gap-2 px-4 py-3'>
-      <div className='flex items-center justify-between gap-3'><div className='flex items-center gap-2'><Button variant='outline' size='compact' disabled={clips.length === 0} icon={playing ? <Pause className='size-3.5' /> : <Play className='size-3.5' />} onClick={() => { if (!playing && cursor >= plan.duration) setCursor(0); setPlaying((value) => !value); }}>{t(playing ? 'canvas.miniTool.videoUI.pause' : 'canvas.miniTool.videoUI.preview')}</Button><span className='text-xs tabular-nums'>{cursor.toFixed(3)} / {plan.duration.toFixed(3)} s</span></div><Button variant='outline' size='sm' disabled={junction === null || props.disabled} icon={<ArrowLeftRight className='size-3.5' />} onClick={swap}>{t('canvas.miniTool.videoUI.swapClips')}</Button></div>
+      <div className='flex items-center justify-between gap-3'><div className='flex items-center gap-2'><Button variant='ghost' size='compact' className='w-[var(--btn-compact)] px-0' aria-label={t('canvas.miniTool.videoUI.rewind')} disabled={clips.length === 0} onClick={() => seek(0)}><RotateCcw className='size-3.5' /></Button><Button variant='outline' size='compact' disabled={clips.length === 0} icon={playing ? <Pause className='size-3.5' /> : <Play className='size-3.5' />} onClick={() => { if (!playing && cursor >= plan.duration) setCursor(0); setPlaying((value) => !value); }}>{t(playing ? 'canvas.miniTool.videoUI.pause' : 'canvas.miniTool.videoUI.preview')}</Button><span className='text-xs tabular-nums'>{cursor.toFixed(3)} / {plan.duration.toFixed(3)} s</span></div><Button variant='outline' size='sm' disabled={junction === null || props.disabled} icon={<ArrowLeftRight className='size-3.5' />} onClick={swap}>{t('canvas.miniTool.videoUI.swapClips')}</Button></div>
       <Slider value={[cursor]} min={0} max={plan.duration || 1} step={0.001} disabled={clips.length === 0} onValueChange={(values) => seek(values[0] ?? 0)} />
-      <ScrollArea scrollbars='horizontal' className='h-36 rounded-content-sm border border-border'><div className='[&_.timeline-editor]:!bg-background [&_.timeline-editor]:![font-family:inherit] [&_.timeline-editor-time-area]:!bg-background [&_.timeline-editor-time-unit]:!border-border [&_.timeline-editor-time-unit-scale]:!text-muted-foreground [&_.timeline-editor-edit-row]:!bg-none [&_.timeline-editor-edit-row]:!bg-background [&_.timeline-editor-action]:!rounded-chrome [&_.timeline-editor-action]:!bg-accent [&_.timeline-editor-action-selected]:z-[5] [&_.timeline-editor-action-selected]:!ring-1 [&_.timeline-editor-action-selected]:!ring-inset [&_.timeline-editor-action-selected]:!ring-active-border [&_.timeline-editor-action-left-stretch]:z-10 [&_.timeline-editor-action-right-stretch]:z-10' style={{ width }}><Timeline key={`${draft.revision}:${cancelledGesture}`} ref={timeline} editorData={structuredClone(rows)} effects={{ video: { id: 'video', name: 'Video' } }} scale={1} scaleWidth={100} startLeft={32} rowHeight={82} minScaleCount={Math.ceil(plan.duration) + 1} maxScaleCount={Math.ceil(plan.duration) + 1} enableRowDrag={false} disableDrag={props.disabled} gridSnap={false} autoScroll={false} autoReRender style={{ width, height: 130 }} onClickTimeArea={(value) => { seek(value); return true; }} onCursorDrag={seek} onClickActionOnly={(_event, value) => { setSelected(value.action.id); seek(value.time); }} onActionResizeStart={() => { gesture.current = draft.revision; setPlaying(false); }} onActionResizing={({ start, end }) => end > start} onActionResizeEnd={(value) => { if (gesture.current !== latest.current.draft.revision || latest.current.disabled) return; gesture.current = null; commit(trimTimelineClip(clips, value.action.id, value.start, value.end, draft.inputs.find((asset) => asset.inputId === clips.find((item) => item.clipId === value.action.id)?.inputId)?.mediaInfo?.duration), value.action.id); }} getActionRender={(action) => <div className='grid h-full content-center gap-1 px-2 text-xs'><span className='truncate'>{props.inputNames.get(clips.find((item) => item.clipId === action.id)?.inputId ?? '')}</span><span className='tabular-nums text-muted-foreground'>{action.start.toFixed(2)} – {action.end.toFixed(2)}</span></div>} /></div></ScrollArea>
+      <ScrollArea scrollbars='horizontal' className='h-36 rounded-content-sm border border-border'><div className='[&_.timeline-editor]:!bg-background [&_.timeline-editor]:![font-family:inherit] [&_.timeline-editor-time-area]:!bg-background [&_.timeline-editor-time-unit]:!border-border [&_.timeline-editor-time-unit-scale]:!text-muted-foreground [&_.timeline-editor-edit-row]:!bg-none [&_.timeline-editor-edit-row]:!bg-background [&_.timeline-editor-action]:!rounded-chrome [&_.timeline-editor-action]:!bg-accent [&_.timeline-editor-action-selected]:z-[5] [&_.timeline-editor-action-selected]:!ring-1 [&_.timeline-editor-action-selected]:!ring-inset [&_.timeline-editor-action-selected]:!ring-active-border [&_.timeline-editor-action-left-stretch]:z-10 [&_.timeline-editor-action-right-stretch]:z-10' style={{ width }}><Timeline key={`${draft.revision}:${cancelledGesture}`} ref={timeline} editorData={structuredClone(rows)} effects={{ video: { id: 'video', name: 'Video' } }} scale={1} scaleWidth={100} startLeft={32} rowHeight={82} minScaleCount={Math.ceil(plan.duration) + 1} maxScaleCount={Math.ceil(plan.duration) + 1} enableRowDrag={false} disableDrag={props.disabled} gridSnap={false} autoScroll={false} autoReRender style={{ width, height: 130 }} onClickTimeArea={(value) => { seek(value); return true; }} onCursorDrag={seek} onClickActionOnly={(_event, value) => { setSelected(value.action.id); seek(value.time); }} onActionResizeStart={() => { gesture.current = draft.revision; setPlaying(false); }} onActionResizing={({ start, end }) => end > start} onActionResizeEnd={(value) => { if (gesture.current !== latest.current.draft.revision || latest.current.disabled) return; gesture.current = null; commit(trimTimelineClip(clips, value.action.id, value.start, value.end, draft.inputs.find((asset) => asset.inputId === clips.find((item) => item.clipId === value.action.id)?.inputId)?.mediaInfo?.duration), value.action.id); }} getActionRender={(action) => { const item = clips.find((candidate) => candidate.clipId === action.id); const asset = draft.inputs.find((candidate) => candidate.inputId === item?.inputId); const aspect = asset?.mediaInfo?.width === undefined || asset.mediaInfo.height === undefined ? undefined : asset.mediaInfo.width / asset.mediaInfo.height; return item === undefined ? null : <div className='relative h-full w-full overflow-hidden rounded-chrome'>{asset === undefined || aspect === undefined ? null : <div className='absolute inset-0 opacity-50'><FilmStrip src={asset.url} start={item.in} duration={item.out - item.in} aspect={aspect} /></div>}<div className='absolute inset-x-0 bottom-0 grid gap-0.5 bg-popover px-2 py-1 text-xs'><span className='truncate font-medium'>{props.inputNames.get(item.inputId)}</span><span className='tabular-nums text-muted-foreground'>{item.in.toFixed(2)} s → {item.out.toFixed(2)} s</span></div></div>; }} getScaleRender={(value) => <span className='tabular-nums'>{value}s</span>} /></div></ScrollArea>
     </section>
-    <footer className='flex items-center justify-between gap-4 border-t border-border px-4 py-3'>{invalidFields.size === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineExportHint')}</p> : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}<Button variant='outline' size='sm' aria-disabled={props.runBlockedReason === undefined ? undefined : true} disabled={props.disabled || clips.length === 0 || invalidFields.size > 0} loading={exporting} className='aria-disabled:opacity-50' icon={<Film className='size-3.5' />} onClick={() => { void exportTimeline(); }}>{t('canvas.miniTool.videoUI.export')}</Button></footer>
+    <footer className='flex items-center justify-between gap-4 border-t border-border px-4 py-3'>{invalidFields.size === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineExportHint')}</p> : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}<Button size='sm' aria-disabled={props.runBlockedReason === undefined && invalidFields.size === 0 ? undefined : true} disabled={props.disabled || clips.length === 0} loading={exporting} className='aria-disabled:opacity-50' icon={<Film className='size-3.5' />} onClick={() => { void exportTimeline(); }}>{t('canvas.miniTool.videoUI.export')}</Button></footer>
   </div>;
 }
 
