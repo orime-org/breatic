@@ -80,7 +80,9 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
     await space.getByTestId('scene-viewfinder-menu').getByRole('button', { name: 'Add to Agent', exact: true }).click();
     await expect(page.getByText('Added to Agent', { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(space.getByTestId('scene-viewfinder-frame')).toHaveCount(0);
-    await expect(page.locator('[data-testid^="chat-chip-"][data-status="ready"]').filter({ hasText: '3D-' })).toHaveCount(1);
+    // Handed over at once: the item is in the tray, and the tray finishes its upload on its own.
+    await expect(page.locator('[data-testid^="chat-chip-"]').filter({ hasText: '3D-' })).toHaveCount(1);
+    await expect(page.locator('[data-testid^="chat-chip-"][data-status="ready"]').filter({ hasText: '3D-' })).toHaveCount(1, { timeout: 60_000 });
     await expect(space.getByTestId('scene-map')).toBeVisible();
 
     // Canvas: the list names the canvas; View opens it, its tab closed and its stored camera removed,
