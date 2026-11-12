@@ -282,6 +282,10 @@ describe("a transfer across the global and region steps", () => {
       SELECT status, failed_reason FROM studio_transfers WHERE id = ${offer!.id}
     `;
     expect(after).toEqual({ status: "failed", failed_reason: "invalidated" });
+    const [directory] = await sql<{ until: Date | null }[]>`
+      SELECT transfer_pending_until AS until FROM studio_directory WHERE studio_id = ${studioId}
+    `;
+    expect(directory!.until).toBeNull();
     expect(await role(studioId, adminId)).toBe("admin");
     expect(await role(studioId, memberId)).toBe("maintainer");
   });
