@@ -14,6 +14,30 @@
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
+const faults = vi.hoisted(() => ({ historyFails: false, leaseFails: false }));
+
+vi.mock("@server/agent/turn-context.js", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    buildTurnContext: async (...args: unknown[]) => {
+      if (faults.historyFails) throw new Error("history read failed");
+      return (actual.buildTurnContext as (...a: unknown[]) => Promise<unknown>)(...args);
+    },
+  };
+});
+
+vi.mock("@server/modules/conversation/running-turns.service.js", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    holdRunning: async (...args: unknown[]) => {
+      if (faults.leaseFails) throw new Error("redis refused the lease");
+      return (actual.holdRunning as (...a: unknown[]) => Promise<unknown>)(...args);
+    },
+  };
+});
+
 const script = vi.hoisted(() => ({
   calls: [] as Array<() => unknown[]>,
   prompts: [] as unknown[][],
@@ -33,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       new MockLanguageModelV4({
         doStream: async (asked) => {
           const i = script.count++;
-          script.prompts.push(asked.prompt as unknown[]);
+          script.prompts.push(asked.prompt);
           await script.onCall[i]?.();
           if (script.hold !== undefined) await script.hold;
           const parts = (script.calls[i] ?? (() => [
@@ -82,6 +106,8 @@ afterAll(async () => {
 });
 
 afterEach(() => {
+  faults.historyFails = false;
+  faults.leaseFails = false;
   script.calls = [];
   script.prompts = [];
   script.onCall = [];
@@ -156,6 +182,8 @@ describe("POST /chat/message", () => {
       release = r;
     });
     await send(app, who, { message: "first" });
+    // The run's first step has taken what waited before its model call.
+    await until(() => script.count >= 1);
     const id = crypto.randomUUID();
     const chip = { id: "c1", type: "image", name: "a.png", data_snapshot: { url: "https://cdn.example/a.png" } };
     const res = await send(app, who, { id, message: "改成蓝色", attached_chips: [chip] });
@@ -175,6 +203,7 @@ describe("POST /chat/message", () => {
       release = r;
     });
     await send(app, who, { message: "first" });
+    await until(() => script.count >= 1);
     const id = crypto.randomUUID();
     await send(app, who, { id, message: "again" });
     const res = await send(app, who, { id, message: "again" });
@@ -192,6 +221,7 @@ describe("POST /chat/message", () => {
       release = r;
     });
     await send(app, who, { message: "first" });
+    await until(() => script.count >= 1);
     const id = crypto.randomUUID();
     await send(app, who, { id, message: "queued one", time_zone: "Asia/Seoul" }, { "Accept-Language": "ko" });
     const [raw] = await getRedis().lrange(keysOf(who.conversationId).queue, 0, -1);
@@ -385,5 +415,64 @@ describe("the running list (#1394)", () => {
     release();
     await untilIdle(who.conversationId);
     await until(async () => !(await listed()).includes(who.conversationId));
+  });
+});
+
+describe("a run on its own", () => {
+  it("runs to its end when the page reading it goes away (SR-12, LS-08)", async () => {
+    const who = await seedOwner(sql, app);
+    let release!: () => void;
+    script.hold = new Promise((r) => {
+      release = r;
+    });
+    await send(app, who, { message: "first" });
+    const abort = new AbortController();
+    const res = await app.request(`/api/v1/chat/conversations/${who.conversationId}/stream`, {
+      headers: { Cookie: who.cookie },
+      signal: abort.signal,
+    });
+    expect(res.status).toBe(200);
+    abort.abort();
+    await res.body?.cancel().catch(() => {});
+    release();
+    await untilIdle(who.conversationId);
+    const reply = (await rowsOf(who.conversationId)).find((r) => r.role === "assistant");
+    expect(reply?.parts.some((p) => p.type === "interrupted")).toBe(false);
+    expect(reply?.parts.some((p) => p.type === "text")).toBe(true);
+  });
+
+  it("tells the model the user's time in the zone the page sent (time zone into the turn)", async () => {
+    const who = await seedOwner(sql, app);
+    await send(app, who, { message: "what time is it", time_zone: "Asia/Tokyo" });
+    await untilIdle(who.conversationId);
+    expect(JSON.stringify(script.prompts[0])).toContain("Asia/Tokyo");
+  });
+
+  it("says it failed on the stream when it fails before the model is asked (ST-04 through the routes)", async () => {
+    const who = await seedOwner(sql, app);
+    faults.historyFails = true;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    await send(app, who, { message: "first" });
+    const reading = attach(app, who);
+    release();
+    await gate;
+    const { frames } = await reading;
+    const types = frames.filter((f) => f.type !== "data-heartbeat").map((f) => f.type);
+    expect(types).toContain("data-failed");
+    expect(types.at(-1)).toBe("error");
+    await untilIdle(who.conversationId);
+    expect(script.count).toBe(0);
+  });
+
+  it("still answers when its place in the running list cannot be written (LS-06)", async () => {
+    const who = await seedOwner(sql, app);
+    faults.leaseFails = true;
+    const res = await send(app, who, { message: "first" });
+    expect(((await res.json()) as { data: { running: boolean } }).data.running).toBe(true);
+    await untilIdle(who.conversationId);
+    expect((await rowsOf(who.conversationId)).some((r) => r.role === "assistant")).toBe(true);
   });
 });

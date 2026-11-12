@@ -537,7 +537,9 @@ describe("a provider error the stream carried on past", () => {
 
     expect(world.folds).toHaveLength(0);
     expect(count(chunks, "data-memory-consolidating")).toBe(0);
-    expect(count(chunks, "data-failed")).toBe(0);
+    // An ordinary failure, not one whose request could not be made to fit:
+    // its mark carries no reason (inner#1717 puts the mark on every failure).
+    expect(chunks.filter((c) => c.type === "data-failed" && (c as { data?: { reason?: unknown } }).data?.reason !== undefined)).toEqual([]);
     expectFailed(chunks);
     expectSaidThoughtOnceBeforeError(chunks);
   });

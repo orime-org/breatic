@@ -90,16 +90,6 @@ beforeEach(() => {
 });
 
 describe("POST /chat/message and the user's time zone", () => {
-  it("hands the zone the browser reported to the turn", async () => {
-    expect(await post({ ...BODY, time_zone: "Asia/Shanghai" })).toBe(200);
-    expect(handedZones).toEqual(["Asia/Shanghai"]);
-  });
-
-  it("starts the turn without a zone when none was sent", async () => {
-    expect(await post(BODY)).toBe(200);
-    expect(handedZones).toEqual([undefined]);
-  });
-
   it("refuses a zone longer than any IANA name", async () => {
     expect(await post({ ...BODY, time_zone: "x".repeat(65) })).toBe(422);
     expect(handedZones).toEqual([]);

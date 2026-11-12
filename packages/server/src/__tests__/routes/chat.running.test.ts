@@ -134,35 +134,9 @@ vi.mock("@server/agent/main-agent.js", () => {
 });
 
 import { createApp } from "../../app.js";
-import { mocks } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 const SIGNED_IN_USER = "user-1";
-
-/**
- * The chunks on a stream, in arrival order.
- * @param wire - The whole response body.
- * @returns One parsed chunk per `data:` frame.
- */
-function frames(wire: string): Array<Record<string, unknown>> {
-  return wire
-    .split("\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => JSON.parse(line.slice("data: ".length)) as Record<string, unknown>);
-}
-
-/**
- * Send one chat message and read the whole stream.
- * @returns The status and every chunk that arrived.
- */
-async function runTurn(): Promise<{ status: number; chunks: Array<Record<string, unknown>> }> {
-  const res = await createApp().request("/api/v1/chat/message", {
-    method: "POST",
-    headers: AUTH,
-    body: JSON.stringify({ message: "hi", project_id: PROJECT_ID, conversation_id: CONVERSATION_ID }),
-  });
-  return { status: res.status, chunks: frames(await res.text()) };
-}
 
 /**
  * Ask which conversations are running.
@@ -222,96 +196,5 @@ describe("GET /chat/running", () => {
     const res = await askRunning(`project_id=${PROJECT_ID}`);
 
     expect(res.status).toBe(500);
-  });
-});
-
-describe("a chat turn's lease", () => {
-  it("is held once, for the turn's user, project and conversation", async () => {
-    await runTurn();
-
-    expect(lease.holdRunning).toHaveBeenCalledTimes(1);
-    expect(lease.holdRunning).toHaveBeenCalledWith({
-      userId: SIGNED_IN_USER,
-      projectId: PROJECT_ID,
-      conversationId: CONVERSATION_ID,
-    });
-  });
-
-  it("is renewed with the heartbeats and released once, last", async () => {
-    const { chunks } = await runTurn();
-
-    const beats = chunks.filter((c) => c.type === "data-heartbeat").length;
-    const renewals = lease.state.events.filter((e) => e === "renew").length;
-    // The silence is five beats long, so a lease that is not renewed with
-    // them would run out under a turn that is doing fine.
-    expect(beats).toBeGreaterThanOrEqual(3);
-    // The first beat goes out right after the lease is taken and does not
-    // renew it; every later beat does.
-    expect(renewals).toBeGreaterThanOrEqual(beats - 1);
-    expect(renewals).toBeLessThanOrEqual(beats);
-    expect(lease.state.events[0]).toBe("hold");
-    expect(lease.state.events.filter((e) => e === "release")).toHaveLength(1);
-    expect(lease.state.events.at(-1)).toBe("release");
-  });
-
-  it("is released before the stream closes", async () => {
-    await runTurn();
-
-    expect(lease.state.releases.map((r) => r.done)).toEqual([true]);
-  });
-
-  it("is released when the turn fails", async () => {
-    turn.fails = true;
-
-    const { chunks } = await runTurn();
-
-    expect(chunks.some((c) => c.type === "error")).toBe(true);
-    expect(lease.state.events.filter((e) => e === "release")).toHaveLength(1);
-    expect(lease.state.releases.map((r) => r.done)).toEqual([true]);
-  });
-
-  it("is logged and the turn still answers when it cannot be held", async () => {
-    const down = new Error("redis unavailable on hold");
-    lease.state.holdError = down;
-
-    const { status, chunks } = await runTurn();
-
-    expect(status).toBe(200);
-    expect(chunks.some((c) => c.type === "text-delta" && c.delta === "sorry, that took a moment")).toBe(true);
-    expect(chunks.some((c) => c.type === "error")).toBe(false);
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      { err: down, userId: SIGNED_IN_USER, conversationId: CONVERSATION_ID, projectId: PROJECT_ID },
-      "chat_running_lease_failed",
-    );
-  });
-
-  it("is logged and the turn still answers when it cannot be renewed", async () => {
-    const down = new Error("redis unavailable on renew");
-    lease.state.renewError = down;
-
-    const { status, chunks } = await runTurn();
-
-    expect(status).toBe(200);
-    expect(chunks.some((c) => c.type === "text-delta" && c.delta === "sorry, that took a moment")).toBe(true);
-    expect(chunks.some((c) => c.type === "error")).toBe(false);
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      { err: down, userId: SIGNED_IN_USER, conversationId: CONVERSATION_ID, projectId: PROJECT_ID },
-      "chat_running_lease_failed",
-    );
-  });
-
-  it("is logged and the turn still answers when it cannot be released", async () => {
-    const down = new Error("redis unavailable on release");
-    lease.state.releaseError = down;
-
-    const { status, chunks } = await runTurn();
-
-    expect(status).toBe(200);
-    expect(chunks.some((c) => c.type === "text-delta" && c.delta === "sorry, that took a moment")).toBe(true);
-    expect(chunks.some((c) => c.type === "error")).toBe(false);
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      { err: down, userId: SIGNED_IN_USER, conversationId: CONVERSATION_ID, projectId: PROJECT_ID },
-      "chat_running_lease_failed",
-    );
   });
 });
