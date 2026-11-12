@@ -423,10 +423,13 @@ test('transitions: two videos and a crossfade give one video as long as both les
     await presented(c, 'clip3a.mp4');
     await presented(c, 'clip3b.mp4');
     await openTool(c, 'clip3a.mp4', 'video.transitions');
-    const add = c.page.getByTestId('video-timeline-add');
-    await add.click();
+    // One input slot; the current video is never a slot (canvas design invariant 11.2).
+    const slot = c.page.getByTestId('video-timeline-input');
+    await expect(slot).toHaveCount(1);
+    await expect(c.page.getByTestId('video-timeline-clear')).toHaveCount(0);
+    await slot.click();
     await nodeOf(c, 'clip3b.mp4').click();
-    await expect(c.page.locator('[data-testid^="video-timeline-thumbnail-"]')).toHaveCount(2);
+    await expect(c.page.getByTestId('video-timeline-thumbnail')).toHaveCount(1);
     // Picking the video opens the timeline (canvas design §4 transitions row).
     const dialog = c.page.getByTestId('video-timeline-dialog');
     await expect(dialog).toBeVisible();

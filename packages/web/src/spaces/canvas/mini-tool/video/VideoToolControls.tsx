@@ -22,7 +22,7 @@ import { useRunning } from '@web/stores/task-actions-in-flight';
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { editDialogue } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { editDialogue, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 
@@ -283,7 +283,10 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     }
     case 'video.transitions': {
       const draft = props.draft as VideoToolDraftById['video.transitions'];
-      return <><span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.videoInputs')}</span><div className='flex flex-wrap gap-2'>{draft.inputs.map((input) => <SlotTool key={input.inputId} testId={`video-timeline-input-${input.inputId}`} thumbnailTestId={`video-timeline-thumbnail-${input.inputId}`} clearTestId={`video-timeline-clear-${input.inputId}`} Icon={Film} onPick={() => props.onPick('timeline')} active={props.pickingSlot === 'timeline'} pick={{ kind: 'video', url: input.url, thumbnail: input.cover }} disabled={props.disabled} onClear={() => { if (props.pickingSlot === 'timeline') props.onEndPick?.(); props.onChange({ ...draft, inputs: draft.inputs.filter((item) => item.inputId !== input.inputId), params: { clips: draft.params.clips.filter((clip) => clip.inputId !== input.inputId) } }); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={props.inputNames.get(input.inputId) ?? t('canvas.miniTool.videoUI.video')} tip={t('canvas.miniTool.videoUI.pickVideo')} />)}<SlotTool testId='video-timeline-add' thumbnailTestId='video-timeline-empty-thumbnail' clearTestId='video-timeline-empty-clear' Icon={Plus} onPick={() => props.onPick('timeline')} active={props.pickingSlot === 'timeline'} disabled={props.disabled} onClear={() => undefined} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={t('canvas.miniTool.videoUI.addVideoSlot')} tip={t('canvas.miniTool.videoUI.pickVideo')} /></div><Button variant='outline' size='sm' onClick={props.onEditTimeline}>{t('canvas.miniTool.videoUI.editTimeline')}</Button></>;
+      // One input slot (canvas design invariant 11.2): it holds the input that is not the current video.
+      const hostId = transitionHostInputId(draft);
+      const input = draft.inputs.find((item) => item.inputId !== hostId);
+      return <><span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.videoInputs')}</span><div className='flex flex-wrap gap-2'><SlotTool testId='video-timeline-input' thumbnailTestId='video-timeline-thumbnail' clearTestId='video-timeline-clear' Icon={input === undefined ? Plus : Film} onPick={() => props.onPick('timeline')} active={props.pickingSlot === 'timeline'} pick={input === undefined ? undefined : { kind: 'video', url: input.url, thumbnail: input.cover }} disabled={props.disabled} onClear={() => { if (input === undefined) return; if (props.pickingSlot === 'timeline') props.onEndPick?.(); props.onChange({ ...draft, inputs: draft.inputs.filter((item) => item.inputId !== input.inputId), params: { clips: draft.params.clips.filter((clip) => clip.inputId !== input.inputId) } }); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.addVideoSlot') : props.inputNames.get(input.inputId) ?? t('canvas.miniTool.videoUI.video')} tip={t('canvas.miniTool.videoUI.pickVideo')} /></div><Button variant='outline' size='sm' onClick={props.onEditTimeline}>{t('canvas.miniTool.videoUI.editTimeline')}</Button></>;
     }
     case 'video.split': {
       const draft = props.draft as VideoToolDraftById['video.split'];

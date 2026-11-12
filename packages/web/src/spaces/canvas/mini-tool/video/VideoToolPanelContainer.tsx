@@ -24,7 +24,7 @@ import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { expandDrop, isExpanded, type PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { createVideoToolDraft, resetDialoguePeople } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { createVideoToolDraft, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
@@ -222,16 +222,6 @@ function lipSyncRangeBlock(draft: VideoToolDraftById['video.lip-sync'], table: V
 }
 
 const NO_INPUTS: readonly VideoToolDraft['inputs'][number][] = [];
-
-/**
- * The input a transitions draft opens with, the current video; every other input is the one picked into the slot.
- * @param draft - The transitions draft.
- * @returns The current video's input id, undefined for a draft without one.
- * @throws {never} Never.
- */
-function transitionHostInputId(draft: VideoToolDraftById['video.transitions']): string | undefined {
-  return (draft.inputs.find((input) => input.url === draft.source.canonicalURL && input.sourceNodeId === draft.source.nodeId) ?? draft.inputs[0])?.inputId;
-}
 
 type ToolInputRef = MiniToolPresentationRef['source'];
 

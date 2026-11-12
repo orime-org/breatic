@@ -27,6 +27,16 @@ export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: V
 }
 
 /**
+ * The input a transitions draft opens with, the current video; any other input is the one picked into the slot.
+ * @param draft - The transitions draft.
+ * @returns The current video's input id, undefined for a draft without one.
+ * @throws {never} Never.
+ */
+export function transitionHostInputId(draft: VideoToolDraftById['video.transitions']): string | undefined {
+  return draft.inputs.find((input) => input.url === draft.source.canonicalURL && input.sourceNodeId === draft.source.nodeId)?.inputId;
+}
+
+/**
  * Clears person identities while retaining independent audio and timing.
  * @throws {never} Never.
  * @param rows - Every independent dialogue row in display order.
