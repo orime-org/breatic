@@ -24,7 +24,7 @@ suffix, and replace the values with your own.
 | Copy this | To this | Put in it |
 |---|---|---|
 | `wrangler.toml.template` | `wrangler.toml` | Bucket name, the port it listens on, the origins allowed to send it parts, and where errors are reported |
-| `.dev.vars.template` | `.dev.vars` | The shared secret, and the optional OpenRouter key for web animation |
+| `.dev.vars.template` | `.dev.vars` | The shared secret, and the optional model keys for web animation |
 
 Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
@@ -144,9 +144,11 @@ only vars and bindings, so the secret never appears there; to tell "set" from
 "never set", run `wrangler secret list --env production`, which lists it by
 name. Without it every request except a CORS preflight answers 500.
 
-The optional second value, `HARNESS_OPENROUTER_API_KEY`, is the OpenRouter key
-web-animation runs call the model with. Only the Worker's `model.local` relay
-reads it; the container never sees it. See [Web animation](#web-animation).
+The optional model keys are what web-animation runs call the model with: each is
+`HARNESS_` plus an upstream's `key_env` in `config/provider/upstreams.yaml`
+(the template sets `HARNESS_OPENROUTER_API_KEY`), and a run goes to the first
+upstream of its model's route whose key is set. Only the Worker's `model.local`
+relay reads them; the container never sees them. See [Web animation](#web-animation).
 
 ### If a setting is missing
 
@@ -198,9 +200,9 @@ part receipts travel with the browser and come back to finish it.
 Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) is off
 unless you enable it: its container, binding, export and `[assets]` blocks are
 commented out in the template, and `HARNESS_OPENROUTER_API_KEY` is empty.
-While either is missing, the web-animation job routes answer 501
-`feature_disabled` and everything else works. To develop it, uncomment those
-blocks and set the key. Its image (`web-animation.Dockerfile`: Node, Chromium,
+Without the binding the web-animation job routes answer 501 `feature_disabled`;
+without any model key a submit answers 501 naming the variables it needs;
+everything else works. To develop it, uncomment those blocks and set a key. Its image (`web-animation.Dockerfile`: Node, Chromium,
 the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so
 the first `wrangler dev` builds for a while.
 

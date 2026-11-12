@@ -282,7 +282,7 @@ export class SwitchingModel implements ModelV4 {
    * @returns The key it is held under.
    */
   private missing(upstream: string, reason: string): string {
-    const key = `${upstream}:${globalThis.crypto.randomUUID()}`;
+    const key = `${upstream}:${crypto.randomUUID()}`;
     this.setup.pending.set(key, { state: "missing", reason, upstream });
     return key;
   }
