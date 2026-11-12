@@ -51,6 +51,8 @@ async function frameAndCapture(page: Page): Promise<void> {
   await menu.getByRole('button', { name: 'Capture', exact: true }).click();
   await expect(menu.getByRole('button', { name: 'Add to Agent', exact: true })).toBeEnabled({ timeout: 15_000 });
   await expectMenuHoldsItsControls(page);
+  // The frame is the still; the menu carries no thumbnail of it.
+  await expect(menu.locator('img')).toHaveCount(0);
 }
 
 test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs-storage @needs-ingest', async ({ page }) => {
