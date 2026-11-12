@@ -21,7 +21,8 @@ import { act, render, renderHook, type RenderHookResult } from '@testing-library
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource, TimelineWebAnimationClip } from '@breatic/shared';
-import { useTimelinePlayback, type TimelineWebLayer } from '@web/spaces/timeline/use-timeline-playback';
+import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
+import type { TimelineWebLayer } from '@web/spaces/timeline/web-animation-host';
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];
 type PlaybackResult = ReturnType<typeof useTimelinePlayback> & { frame: number };
@@ -538,6 +539,50 @@ describe('ready barrier', () => {
     expect(play).not.toHaveBeenCalled();
     answerLast(fixture);
     expect(play).toHaveBeenCalled();
+  });
+
+  it('pauses a video already sent play() when the visible copy reloads while the preview waits, and plays on once the copy answers again (#1410 design §6.3)', async () => {
+    const fixture = playerFixture();
+    const video = videoFixture(0);
+    const play = vi.mocked(video.media.play);
+    let resolvePending!: () => void;
+    const pending = new Promise<void>((resolve) => { resolvePending = resolve; });
+    // A browser sets `paused` false at once and settles the play() promise later.
+    play.mockImplementationOnce(() => {
+      video.facts.paused = false;
+      return pending;
+    });
+    const clip = web(1, 0, 48);
+    const hook = renderPlayback({
+      document: documentOf([VIDEO, clip]), layersAt: single(clip, fixture),
+      videos: { [VIDEO.id]: video }, initialFrame: 0,
+    });
+    bridgeReady(fixture);
+    act(() => hook.result.current.toggle());
+    answerLast(fixture);
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(video.facts.paused).toBe(false);
+    expect(hook.result.current.state).toBe('waiting');
+    act(() => { fixture.iframe.dispatchEvent(new Event('load')); });
+    expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
+    expect(hook.result.current.state).toBe('waiting');
+    expect(video.facts.paused).toBe(true);
+    runFrames(1000);
+    expect(hook.result.current.frame).toBe(0);
+    expect(video.facts.currentTime).toBe(0);
+    await act(async () => {
+      resolvePending();
+      await pending;
+    });
+    expect(video.facts.paused).toBe(true);
+    bridgeReady(fixture);
+    answerLast(fixture);
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(video.facts.paused).toBe(false);
+    runFrames(1250);
+    expect(hook.result.current.frame).toBe(6);
+    expect(Math.abs(video.facts.currentTime - 0.25)).toBeLessThan(1 / 24);
   });
 
   it('plays on across two adjacent copies of one source, reusing the instance and waiting for its answer', async () => {

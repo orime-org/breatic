@@ -3100,6 +3100,25 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(moveableMock.mounted).toBe(0);
   });
 
+  it('picks the lower ready layer, not an upper video whose element failed to load, and gives the failed one no handles (§4.2)', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X, CLIP.id);
+    const failed = previewVideo(X);
+    Object.defineProperty(failed, 'error', { configurable: true, value: { code: 4 } });
+    fireEvent(failed, new Event('error'));
+    await waitFor(() => screen.getByTestId('timeline-video-retry-' + X));
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(selectedOnTrack(X)).toBe('false');
+    await handlesShown();
+    // Selected from its track, the failed layer still gets no handles.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
   it('selects nothing for a click on a video whose asset is still loading, and gives it no handles (§4.2)', async () => {
     const pending = deferred<ProjectRegisteredAsset>();
     vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? pending.promise : ASSET);

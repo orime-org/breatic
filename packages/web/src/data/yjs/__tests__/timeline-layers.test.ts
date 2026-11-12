@@ -53,9 +53,9 @@ describe('visibleTimelineClipsAt stacks every ready clip', () => {
 });
 
 describe('nextTimelinePlaybackBoundary', () => {
-  it('stops at every ready clip start and end strictly after the frame', () => {
+  it('stops at every ready clip start strictly after the frame, and not where a video ends', () => {
     expect(nextTimelinePlaybackBoundary(layered, allReady, 90, 480)).toBe(100);
-    expect(nextTimelinePlaybackBoundary(layered, allReady, 100, 480)).toBe(148);
+    expect(nextTimelinePlaybackBoundary(layered, allReady, 100, 480)).toBe(480);
     expect(nextTimelinePlaybackBoundary(layered, allReady, 148, 480)).toBe(480);
   });
 
@@ -87,7 +87,7 @@ describe('nextTimelinePlaybackBoundary under an upper layer (breatic#1410 design
     expect(nextTimelinePlaybackBoundary(hidden, ready, 48, 240)).toBe(240);
   });
 
-  it('returns exactly the next frame where the visible set changes, covered clips included', () => {
+  it('returns the next ready clip start or end of a web copy showing at the frame; in between nothing appears and no showing copy leaves', () => {
     const seed = fc.record({
       layer: fc.integer({ min: 0, max: 2 }),
       startFrame: fc.integer({ min: 0, max: 60 }),
@@ -106,14 +106,21 @@ describe('nextTimelinePlaybackBoundary under an upper layer (breatic#1410 design
       const covering = (at: number): string[] => clips.filter((item) => ready.has(item.id) && item.startFrame <= at && at < item.startFrame + item.durationFrames)
         .map((item) => item.id).sort();
       const shown = (at: number): string[] => visibleIds(document, ready, at).slice().sort();
+      const readyClips = clips.filter((item) => ready.has(item.id));
+      const startsAt = (at: number): boolean => readyClips.some((item) => item.startFrame === at);
+      // The web copies showing at the frame: a video's end is not a boundary, a showing web copy's end is.
+      const showingWeb = readyClips.filter((item) => item.kind === 'web-animation' && item.startFrame <= frame && frame < item.startFrame + item.durationFrames);
+      const webEndsAt = (at: number): boolean => showingWeb.some((item) => item.startFrame + item.durationFrames === at);
       const next = nextTimelinePlaybackBoundary(document, ready, frame, end);
       expect(shown(frame)).toEqual(covering(frame));
       expect(next).toBeGreaterThan(frame);
-      for (let at = frame + 1; at < next; at += 1) expect(shown(at), `visible set changed at ${at} before ${next}`).toEqual(shown(frame));
-      if (next < end) {
-        expect(shown(next), `nothing changes at ${next}`).not.toEqual(shown(next - 1));
-        expect(shown(next)).toEqual(covering(next));
+      for (let at = frame + 1; at < next; at += 1) {
+        expect(startsAt(at) || webEndsAt(at), `a boundary at ${at} before ${next}`).toBe(false);
+        // Only videos may leave before the boundary: nothing appears, and every showing web copy stays.
+        for (const id of shown(at)) expect(shown(frame), `${id} appeared at ${at} before ${next}`).toContain(id);
+        for (const item of showingWeb) expect(shown(at)).toContain(item.id);
       }
+      if (next < end) expect(startsAt(next) || webEndsAt(next), `nothing starts or ends at ${next}`).toBe(true);
     }), { numRuns: 300 });
   });
 });
@@ -124,7 +131,7 @@ describe('nextTimelinePlaybackBoundary cost (inner#1708 D5)', () => {
     const cover = clip(cid(1), V2, 0, 2000);
     const document = timeline([...clips, cover], [track(MAIN, 0), track(V2, 1)]);
     const ready = new Set([cover.id, ...clips.map((item) => item.id)]);
-    // Warm the code paths so the measurement is not dominated by compilation. The covered main clip's end counts.
+    // Warm the code paths so the measurement is not dominated by compilation. The next main clip's start counts.
     expect(nextTimelinePlaybackBoundary(document, ready, 0, 2010)).toBe(2);
     const started = performance.now();
     for (let call = 0; call < 60; call += 1) nextTimelinePlaybackBoundary(document, ready, 0, 2010);
@@ -150,13 +157,16 @@ describe('tracks sharing an order (inner#1708 E3)', () => {
     expect(visibleIds(tied, ready, 5)).toEqual([onLower, onUpper]);
   });
 
-  it('finds the boundary where the upper tied track\'s clip ends over a longer lower one', () => {
+  it('finds the boundary where a web copy on the upper tied track ends over a longer lower one, and none where a video there ends', () => {
     const onLower = cid(1);
     const onUpper = cid(2);
-    const tied = timeline([clip(onLower, V2, 0, 40), clip(onUpper, V3, 0, 10)], [track(MAIN, 0), track(V2, 1), track(V3, 1)]);
+    const tracks = [track(MAIN, 0), track(V2, 1), track(V3, 1)];
     const ready = new Set([onLower, onUpper]);
-    expect(nextTimelinePlaybackBoundary(tied, ready, 0, 50)).toBe(10);
-    expect(visibleIds(tied, ready, 10)).toEqual([onLower]);
+    const tiedWeb = timeline([clip(onLower, V2, 0, 40), webClip(onUpper, V3, 0, 10)], tracks);
+    expect(nextTimelinePlaybackBoundary(tiedWeb, ready, 0, 50)).toBe(10);
+    expect(visibleIds(tiedWeb, ready, 10)).toEqual([onLower]);
+    const tiedVideo = timeline([clip(onLower, V2, 0, 40), clip(onUpper, V3, 0, 10)], tracks);
+    expect(nextTimelinePlaybackBoundary(tiedVideo, ready, 0, 50)).toBe(50);
   });
 });
 
@@ -168,6 +178,7 @@ describe('a clip whose source is missing (inner#1708 M1)', () => {
     const ready = new Set(resolveTimelineArrangement(document).readyClipIds);
     expect(ready.has(above)).toBe(false);
     expect(visibleIds(document, ready, 15)).toEqual([below]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 60)).toBe(48);
+    // The video below ends at 48, which is no boundary; the clip above is not ready, so its start is none either.
+    expect(nextTimelinePlaybackBoundary(document, ready, 0, 60)).toBe(60);
   });
 });

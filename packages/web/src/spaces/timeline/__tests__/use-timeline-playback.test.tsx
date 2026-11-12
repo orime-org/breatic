@@ -79,6 +79,7 @@ interface DeferredPlay {
 }
 
 const HALF_FRAME = 1 / 48;
+const ONE_FRAME = 1 / 24;
 // `web_animation.preview_premount_ms` (2000, design §6.4) at 24 fps.
 const PREMOUNT_FRAMES = 48;
 
@@ -2167,6 +2168,118 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     tick(1250);
     expect(hook.result.current.frame).toBe(30);
+  });
+
+  it('pauses a lane that already started when a retried lane\'s asset turns loading before every play() settled, and resumes every lane from the held frame', async () => {
+    const { hook, a, b } = twoLanes({}, { assets: { [LANE_B.id]: 'failed' } });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    // The retry holds the preview and the main lane is asked to play again; the retried asset reads as loading
+    // before that play() settles.
+    act(() => hook.result.current.retryVideo(LANE_B.id));
+    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'loading' } });
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.facts.paused).toBe(true);
+    const held = a.facts.currentTime;
+    tick(3000);
+    expect(hook.result.current.frame).toBe(24);
+    expect(a.facts.currentTime).toBe(held);
+    hook.rerender({ ...hook.props, assets: {} });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(Math.abs(a.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
+    tick(3250);
+    expect(hook.result.current.frame).toBe(30);
+    expect(Math.abs(a.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
+  });
+
+  it('pauses a lane that started after a user seek when another lane stalls before its play() settles, and resumes both from the held frame', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    expect(hook.result.current.state).toBe('playing');
+    const pending = deferredPlay();
+    b.play.mockReturnValueOnce(pending.promise);
+    // Frame 120 samples 5 s.
+    act(() => hook.result.current.seek(120));
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    // The main lane's play() has settled; the upper lane's is still pending.
+    expect(a.play).toHaveBeenCalledTimes(2);
+    expect(b.play).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(b, 'waiting', { readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.facts.paused).toBe(true);
+    tick(2500);
+    expect(hook.result.current.frame).toBe(120);
+    expect(a.facts.currentTime).toBe(5);
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(b, 'canplay', { readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(Math.abs(a.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    tick(2750);
+    expect(hook.result.current.frame).toBe(126);
+    expect(Math.abs(a.facts.currentTime - b.facts.currentTime)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(a.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
+  });
+
+  it('seeks a lane that ran past the resume threshold while another lane\'s play() was pending back to the held frame, and anchors the clock only once it lands', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    const pending = deferredPlay();
+    b.play.mockReturnValueOnce(pending.promise);
+    act(() => hook.result.current.seek(120));
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.seeks).toEqual([5]);
+    // The main lane plays 0.3 s past the held frame, beyond the 0.15 s resume threshold, before the upper lane stalls.
+    tick(1300);
+    expect(hook.result.current.frame).toBe(120);
+    mediaEvent(b, 'waiting', { readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.facts.paused).toBe(true);
+    const playsAtStall = a.play.mock.calls.length;
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(b, 'canplay', { readyState: 4 });
+    await settle();
+    // The main lane is sought back to 5 s and the preview waits for it to land, without starting it.
+    expect(a.seeks).toEqual([5, 5]);
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.play).toHaveBeenCalledTimes(playsAtStall);
+    tick(2000);
+    expect(hook.result.current.frame).toBe(120);
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(Math.abs(a.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    tick(2250);
+    expect(hook.result.current.frame).toBe(126);
+    expect(Math.abs(a.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
   });
 });
 

@@ -6,7 +6,8 @@
  *
  * `visibleTimelineClipsAt(document, readyIds, frame)` is every ready clip covering the frame, bottom-up by track
  * rank; a higher video no longer hides what is under it, since a layer may be moved or scaled off what it covers.
- * `nextTimelinePlaybackBoundary` counts the start and end of every web copy, under a higher video or not.
+ * `nextTimelinePlaybackBoundary` stops where a ready clip starts and where a web copy showing at the frame ends, under a
+ * higher video or not; a video's end is not a boundary, since the lanes left play on.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -92,5 +93,18 @@ describe('nextTimelinePlaybackBoundary with web copies', () => {
   it('stops at the end of the only web copy when there is no video', () => {
     const { document, ready } = stack([webClip(cid(2), V2, 0, 48)]);
     expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(48);
+  });
+
+  it('does not stop where a video ends: the next start or the end frame comes first', () => {
+    const { document, ready } = stack([clip(cid(1), MAIN, 0, 48), clip(cid(2), V3, 0, 100), webClip(cid(3), V2, 60, 10)]);
+    expect(nextTimelinePlaybackBoundary(document, ready, 0, 120)).toBe(60);
+    expect(nextTimelinePlaybackBoundary(document, ready, 70, 120)).toBe(120);
+  });
+
+  it('stops where a web copy showing at the frame ends, and not at the end of one that is not showing', () => {
+    const { document, ready } = stack([clip(cid(1), MAIN, 0, 100), webClip(cid(2), V2, 10, 30)]);
+    expect(nextTimelinePlaybackBoundary(document, ready, 10, 100)).toBe(40);
+    expect(nextTimelinePlaybackBoundary(document, ready, 39, 100)).toBe(40);
+    expect(nextTimelinePlaybackBoundary(document, ready, 40, 100)).toBe(100);
   });
 });
