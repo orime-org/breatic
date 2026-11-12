@@ -60,9 +60,12 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
+  checkParamCombination,
   evaluateExecute,
   extractPromptText,
+  type ModelEntry,
 } from '@breatic/shared';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -87,6 +90,7 @@ import {
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
+import { voiceDisplayName } from '@web/spaces/canvas/generate/voice-list-state';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -515,6 +519,8 @@ function AudioGeneratePanelBody({
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
       speakersShort: fresh.speakersShort,
+      linesEmpty: fresh.dialogueNames !== null && extractPromptText(freshPrompt).length === 0,
+      ...tooShort(fresh.modelEntry, fresh.params),
       missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
@@ -527,7 +533,8 @@ function AudioGeneratePanelBody({
       );
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
-      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
+      const name = verdict.param === undefined ? '' : t(`canvas.generatePanel.param.${verdict.param}`);
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0, name }));
       return;
     }
     // Unreachable past the gate above — `no-model` covers it — and stated so
@@ -592,6 +599,18 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  // The speakers by name and voice, kept the same object while both are the same.
+  const dialogueKey =
+    vm.dialogueNames === null
+      ? undefined
+      : JSON.stringify({
+        names: vm.dialogueNames,
+        voices: (vm.dialogueVoices ?? []).map((id) => (id === '' ? '' : voiceDisplayName(voices.state.voices, id))),
+      });
+  const dialogue = React.useMemo(
+    () => (dialogueKey === undefined ? undefined : (JSON.parse(dialogueKey) as { names: string[]; voices: string[] })),
+    [dialogueKey],
+  );
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -612,9 +631,11 @@ function AudioGeneratePanelBody({
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
+          dialogue={dialogue}
         />
       ) : null,
     [
+      dialogue,
       fragment,
       promptPlaceholder,
       onPromptChange,
@@ -704,6 +725,8 @@ function AudioGeneratePanelBody({
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
         speakersShort: vm.speakersShort,
+        linesEmpty: vm.dialogueNames !== null && extractPromptText(promptText).length === 0,
+        ...tooShort(vm.modelEntry, vm.params),
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
@@ -737,6 +760,19 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
+}
+
+/**
+ * The text setting a run would send shorter than its model takes (inner#1825),
+ * for the gate to name.
+ * @param model - The active model.
+ * @param params - Its params as the run sends them.
+ * @returns The gate's input: the setting, or nothing when every one is long enough.
+ */
+function tooShort(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): { paramTooShort?: string } {
+  if (model === undefined) return {};
+  const short = checkParamCombination(model, wireParams(model, params)).find((violation) => violation.rule === 'min_length');
+  return short === undefined ? {} : { paramTooShort: short.param };
 }
 
 /**

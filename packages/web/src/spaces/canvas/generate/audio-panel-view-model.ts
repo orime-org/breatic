@@ -18,8 +18,7 @@
  * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
-import { promptTaken } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
+import { dialogueSideOf, dialogueSpeakers, promptTaken, type ModelEntry } from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
@@ -68,6 +67,13 @@ export interface AudioPanelViewModel {
   voiceRequired: boolean;
   /** Whether a dialogue holds fewer complete speakers than the model takes. */
   speakersShort: boolean;
+  /**
+   * The speakers' names, from speaker 1, the prompt editor offers per line on
+   * the dialogue side (inner#1825 design 8.5); null reading in one voice.
+   */
+  dialogueNames: string[] | null;
+  /** Each speaker's voice id beside `dialogueNames`, empty for a speaker with none; null reading in one voice. */
+  dialogueVoices: string[] | null;
   /** Whether a voice will be sent: the node's record holds one, or the list's first stands in ({@link withListDefaultVoice}). */
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
@@ -83,6 +89,40 @@ export interface AudioPanelViewModel {
   slotThumbnails: AudioSlotUrls;
   /** How long each slot's track runs, where its pick recorded it (#2156). */
   slotDurations: Partial<Record<AudioSlot, number>>;
+}
+
+/**
+ * The speakers' names the lines offer, one per speaker row the settings show
+ * (as many as the model takes), a speaker not named yet as a blank name.
+ * @param model - The active model.
+ * @param params - Its params.
+ * @returns The names, from speaker 1.
+ */
+function speakerNames(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): string[] {
+  const standIn = standInOf(model);
+  if (!model || !standIn) return [];
+  const size = model.params[standIn.name]?.max_items ?? standIn.min;
+  const named = dialogueSpeakers(model, params).map((one) => one.speaker).slice(0, size);
+  return [...named, ...Array.from({ length: size - named.length }, () => '')];
+}
+
+/**
+ * Each speaker's voice, beside {@link speakerNames}: the field of an entry that
+ * states its values, as the settings' speaker panel reads it.
+ * @param model - The active model.
+ * @param params - Its params.
+ * @returns The voice ids, from speaker 1, empty where none is set.
+ */
+function speakerVoices(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): string[] {
+  const standIn = standInOf(model);
+  if (!model || !standIn) return [];
+  const field = Object.entries(model.params[standIn.name]?.fields ?? {}).find(([, f]) => (f.values ?? []).length > 0)?.[0];
+  const entries = params[standIn.name];
+  return speakerNames(model, params).map((_, at) => {
+    const entry: unknown = Array.isArray(entries) ? entries[at] : undefined;
+    const held = field === undefined || typeof entry !== 'object' || entry === null ? undefined : (entry as Record<string, unknown>)[field];
+    return typeof held === 'string' ? held : '';
+  });
 }
 
 /**
@@ -134,6 +174,8 @@ export function buildAudioPanelViewModel(input: {
     takesPrompt: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
     speakersShort: speakersShort(current, params),
+    dialogueNames: dialogueSideOf(current, params) ? speakerNames(current, params) : null,
+    dialogueVoices: dialogueSideOf(current, params) ? speakerVoices(current, params) : null,
     voiceChosen,
     voiceSelectedId: voiceChosen
       ? (storedRecord?.[voiceParam as string] as string)

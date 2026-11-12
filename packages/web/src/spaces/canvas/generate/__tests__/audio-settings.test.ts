@@ -117,6 +117,15 @@ describe('choiceLabel', () => {
     expect(choiceLabel(english, 'English (United States)', 'zh-CN')).toBe('英语（美国）');
   });
 
+  it('names the voice design\'s Chinese as a Chinese screen does, and keeps auto as written (round 2)', () => {
+    const design = {
+      values: ['auto', 'Chinese', 'English', 'German', 'Italian', 'Portuguese', 'Spanish', 'Japanese', 'Korean', 'French', 'Russian'],
+      value_locales: ['', 'zh', 'en', 'de', 'it', 'pt', 'es', 'ja', 'ko', 'fr', 'ru'],
+    };
+    expect(choiceLabel(design, 'Chinese', 'zh-CN')).toBe('中文');
+    expect(choiceLabel(design, 'auto', 'zh-CN')).toBe('Auto');
+  });
+
   it('falls back to the declared spelling without a tag', () => {
     expect(choiceLabel({ values: ['a'], value_labels: { a: 'Alpha' } }, 'a', 'en')).toBe('Alpha');
     expect(choiceLabel({ values: ['a'] }, 'a', 'en')).toBe('A');

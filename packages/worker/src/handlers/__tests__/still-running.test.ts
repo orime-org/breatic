@@ -249,6 +249,22 @@ describe("an upstream prediction still running when a pickup ends", () => {
     expect(h.runContainerJob.mock.calls[0]![2]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
+  // inner#1825 §6.4: the route queues a join's further clips beside its source.
+  it("hands a container job the extra keys the queue carried, in order", async () => {
+    await runTask(
+      jobOf({ taskType: "video", model: undefined, params: {}, source: "mini_tool", toolId: "video.cut", sourceKey: "v/a.mp4", extraKeys: ["v/b.mp4", "v/c.mp4"] }),
+      "lock-token",
+    ).catch(() => undefined);
+
+    expect(h.runContainerJob.mock.calls[0]![2]).toMatchObject({ sourceKey: "v/a.mp4", extraKeys: ["v/b.mp4", "v/c.mp4"] });
+  });
+
+  it("hands a container job queued without extra keys none", async () => {
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
+
+    expect(h.runContainerJob.mock.calls[0]![2]).not.toHaveProperty("extraKeys");
+  });
+
   it("hands the task's deadline to the steps of a model mini-tool", async () => {
     await runTask(jobOf({ source: "mini_tool", toolId: "image.remove-bg", model: undefined }), "lock-token").catch(
       () => undefined,

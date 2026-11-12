@@ -196,6 +196,8 @@ export const mocks = {
   // #1735 server reference-count gate (too many reference images). Default: no
   // violation (null) — existing tests stay green; the #1735 test flips it.
   violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
+  // inner#1825 text-length gate: default no violation.
+  violatesTextLengthForModel: vi.fn().mockReturnValue(null),
   // breatic#1393 server gate (a style prompt with Mureka composing from a
   // melody). Default: no violation; the breatic#1393 test flips it.
   sendsUntakenPrompt: vi.fn().mockReturnValue(false),
@@ -611,7 +613,6 @@ export const domainMock = async () => ({
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
-    findKindByStorageKey: vi.fn().mockResolvedValue("video"),
     findLiveByStorageKey: vi.fn().mockResolvedValue(null),
     findLiveByKeyInStudio: vi.fn().mockResolvedValue(null),
   },
@@ -639,6 +640,7 @@ export const domainMock = async () => ({
   llmServability: vi.fn(() => ({ servable: true })),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
+  violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,
   // A provider whose calls run on no model until a test hands one over.
   provider: fakeProvider(() => undefined),

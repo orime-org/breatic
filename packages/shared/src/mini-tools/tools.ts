@@ -24,7 +24,7 @@ function key(id: string, leaf: string): string {
  * A slot filled from the canvas.
  * @param id - The tool id, for the banner key.
  * @param slotKey - The slot's key.
- * @param param - The pinned model's yaml param it fills.
+ * @param param - The pinned model's yaml param it fills, or the container operation's input.
  * @param accepts - The medium it takes.
  * @param many - Whether it takes a list.
  * @returns The slot.
@@ -337,6 +337,21 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     sourceParam: "video",
     sourceMany: false,
   },
+  // inner#1825: the join runs clips end to end, the source first and the
+  // clips slot after it in order; it sits beside the cut, its opposite.
+  {
+    id: "video.join",
+    source: "video",
+    run: { kind: "container", op: "join" },
+    labelKey: key("video.join", "label"),
+    guide: "joins several clips into one video in the order you set, with an optional crossfade",
+    icon: "Combine",
+    params: [{ kind: "number", key: "crossfade", default: 0, min: 0, max: 2, step: 0.1, unit: "s" }],
+    slots: [{ ...slot("video.join", "clips", "clips", "video", true), required: true }],
+    outputs: [{ modality: "video", namePrefix: "JOIN-VIDEO" }],
+    sourceParam: "video",
+    sourceMany: false,
+  },
   {
     id: "video.crop",
     source: "video",
@@ -581,6 +596,19 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     params: [{ kind: "range", key: "range" }],
     slots: [],
     outputs: [{ modality: "audio", namePrefix: "CUT" }],
+    sourceParam: "audio",
+    sourceMany: false,
+  },
+  {
+    id: "audio.join",
+    source: "audio",
+    run: { kind: "container", op: "audio_join" },
+    labelKey: key("audio.join", "label"),
+    guide: "joins several sounds into one in the order you set, with an optional crossfade",
+    icon: "Combine",
+    params: [{ kind: "number", key: "crossfade", default: 0, min: 0, max: 3, step: 0.1, unit: "s" }],
+    slots: [{ ...slot("audio.join", "clips", "clips", "audio", true), required: true }],
+    outputs: [{ modality: "audio", namePrefix: "JOIN-AUDIO" }],
     sourceParam: "audio",
     sourceMany: false,
   },

@@ -152,6 +152,8 @@ export interface TaskJobData {
   toolId?: string;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order (inner#1825 §6.4). */
+  extraKeys?: string[];
   /**
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
@@ -394,7 +396,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, sceneRowId } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, extraKeys, sceneRowId } = job.data;
   const streamRedis = getStreamRedis();
   // What every way out of this run says about itself. Each exit adds the two
   // things only it knows: what to say, and whether this is the last word.
@@ -438,6 +440,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       credits?: number;
+      notice?: unknown;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -474,7 +477,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedResult), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -574,6 +577,7 @@ async function runTaskBody(
         toolId,
         params,
         ...(sourceKey !== undefined && { sourceKey }),
+        ...(extraKeys !== undefined && { extraKeys }),
         userId,
         projectId,
         taskId,
@@ -773,6 +777,7 @@ async function runTaskBody(
     reportedModel: unified.extras.model as string | undefined,
     credits: creditsUsed,
     durationMs,
+    notice: result.notice,
   };
 
   // ─── Stage 3, waiting on the cost: complete, deliver, come back to bill ──
@@ -842,6 +847,8 @@ interface Delivery {
   durationMs: number | undefined;
   /** Whether the task still waits on its cost. */
   billingPending?: boolean;
+  /** What the result says beside its outputs, such as `rig_failed`. */
+  notice?: unknown;
 }
 
 /**
@@ -883,7 +890,7 @@ async function deliver(end: RunContext, taskType: string, delivery: Delivery): P
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (end.sceneRowId !== undefined) {
-    await settleSceneRow(taskId, end.sceneRowId, sceneTaskService.generationOutcome(delivery.outputs), { rethrow: true });
+    await settleSceneRow(taskId, end.sceneRowId, sceneTaskService.generationOutcome(delivery), { rethrow: true });
   }
   if (projectId) await recordDeliveredActivity(end, taskType, delivery);
 }
@@ -1062,8 +1069,8 @@ export async function deliverWaiting(
  * @returns The delivery.
  */
 function storedDelivery(result: Record<string, unknown>, durationMs: number | undefined, credits: number): Delivery {
-  const stored = result as { model?: string; outputs?: PersistedOutput[] };
-  return { outputs: stored.outputs ?? [], reportedModel: stored.model, credits, durationMs };
+  const stored = result as { model?: string; outputs?: PersistedOutput[]; notice?: unknown };
+  return { outputs: stored.outputs ?? [], reportedModel: stored.model, credits, durationMs, notice: stored.notice };
 }
 
 /**
@@ -1921,6 +1928,8 @@ interface RunMiniToolOpts {
   params: Record<string, unknown>;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order. */
+  extraKeys?: string[];
   userId: string;
   projectId: string | undefined;
   taskId: string;
@@ -1970,6 +1979,7 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
       projectId,
       params,
       sourceKey: opts.sourceKey,
+      ...(opts.extraKeys !== undefined && { extraKeys: opts.extraKeys }),
       deadlineAt,
     });
     return { result, credits, pending: [] };

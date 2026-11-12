@@ -516,3 +516,56 @@ describe('the 3D Space task list with generation rows (inner#1691)', () => {
     expect(await screen.findByText('Models you import or generate appear here.')).toBeInTheDocument();
   });
 });
+
+/**
+ * The rig line on a generation row (inner#1692, design 6.2): a model whose
+ * optional rig failed says it cannot be posed, a rigged one says it was
+ * rigged, and a running run that will rig says so.
+ */
+describe('the 3D Space task list rig line (inner#1692)', () => {
+  const RIG_FAILED = 'spaces.threeD.taskList.rigFailed';
+  const RIGGED = 'spaces.threeD.taskList.rigged';
+  const WILL_RIG = 'spaces.threeD.taskList.willRig';
+
+  it('has its three lines in the English catalog', () => {
+    for (const key of [RIG_FAILED, RIGGED, WILL_RIG]) expect(t(key), key).not.toBe(key);
+    expect(new Set([t(RIG_FAILED), t(RIGGED), t(WILL_RIG)]).size).toBe(3);
+  });
+
+  it('says a done model whose rig failed cannot be posed, whatever the switch said', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'failed-rig', status: 'done', assetId: 'm', params: { rig_skeleton: true }, notice: 'rig_failed' }),
+    ));
+    renderList();
+    expect(within(await rowOf('failed-rig')).getByTestId('scene-task-rig-note')).toHaveTextContent(t(RIG_FAILED));
+  });
+
+  it('says a done model asked to be rigged, with no notice, was rigged', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'rigged', status: 'done', assetId: 'm', params: { rig_skeleton: true }, notice: null }),
+    ));
+    renderList();
+    expect(within(await rowOf('rigged')).getByTestId('scene-task-rig-note')).toHaveTextContent(t(RIGGED));
+  });
+
+  it('says a running generation asked to be rigged will rig when done', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'running', params: { rig_skeleton: true }, notice: null }),
+    ));
+    renderList();
+    expect(within(await rowOf('running')).getByTestId('scene-task-rig-note')).toHaveTextContent(t(WILL_RIG));
+  });
+
+  it('shows no rig line on a run never asked to rig, on a failed run, or on an import', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(
+      generation({ id: 'plain-done', status: 'done', assetId: 'm', params: { rig_skeleton: false }, notice: null }),
+      generation({ id: 'plain-running', params: {}, notice: null }),
+      generation({ id: 'broken', status: 'failed', errorMessage: 'internal', params: { rig_skeleton: true }, notice: null }),
+      row({ id: 'import', status: 'done', assetId: 'i' }),
+    ));
+    renderList();
+    for (const id of ['plain-done', 'plain-running', 'broken', 'import']) {
+      expect(within(await rowOf(id)).queryByTestId('scene-task-rig-note'), id).toBeNull();
+    }
+  });
+});

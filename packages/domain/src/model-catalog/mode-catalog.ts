@@ -96,6 +96,8 @@ export interface ParamInfo {
   step?: number;
   /** How many entries it takes, for a field that takes a list. */
   maxItems?: number;
+  /** The fewest characters it takes once cleaned, for a text field that declares it. */
+  minLength?: number;
   /**
    * Where its values come from, for a field whose domain lives upstream.
    *
@@ -419,6 +421,7 @@ function projectParam(
     ...(spec.max !== undefined ? { max: spec.max } : {}),
     ...(spec.step !== undefined ? { step: spec.step } : {}),
     ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
+    ...(spec.min_length !== undefined ? { minLength: spec.min_length } : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
     ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),

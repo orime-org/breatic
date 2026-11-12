@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
@@ -48,6 +49,14 @@ export const miniToolsConfigSchema = z
     // How often, and for how long, a band past those reads peaks not yet written.
     waveform_peaks_retry_ms: z.number().int().positive().default(5000),
     waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
+    // The most clips one join takes, source included (inner#1825 §6.3); the
+    // job contract carries the source plus MINI_TOOL_JOB_MAX_EXTRA_INPUTS.
+    join_max_clips: z
+      .number()
+      .int()
+      .min(2)
+      .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
+      .default(20),
   })
   .superRefine((config, ctx) => {
     for (const [op, spec] of Object.entries(config.ops)) {

@@ -11,14 +11,15 @@
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
- * TEMPLATE_RUN_LOCALE switches the interface language for the run. TEMPLATE_RUN_ASK instead sends that request to the
+ * TEMPLATE_RUN_LOCALE switches the interface language for the run; the sound templates' words are Chinese, written for
+ * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
  * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
  * its proposal places; TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, markedSegments } from '@breatic/shared';
+import { GENERATION_TEMPLATES, markedSegments, templateAnchor } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
 
@@ -74,6 +75,9 @@ function assertDraftSent(key: string, shown: string): void {
 }
 
 test.use({ viewport: { width: 1600, height: 1000 } });
+
+/** A generate node's type. */
+type Kind = 'image' | 'video' | 'audio';
 
 let page: Page;
 let projectId = '';
@@ -232,11 +236,17 @@ async function lowestResolution(): Promise<void> {
   await trigger.click();
 }
 
+/** Each node type's Generate button. */
+const EXECUTE: Record<Kind, string> = { image: 'generate-execute', video: 'generate-video-execute', audio: 'generate-audio-execute' };
+
+/** Each node type's file extension for a saved result. */
+const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp3' };
+
 /** Press Generate on the open panel and wait until the node holds a new result. */
-async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string> {
+async function generate(nodeId: string, kind: Kind): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
   await lowestResolution();
-  const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
+  const button = page.getByTestId(EXECUTE[kind]);
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await bringIntoView(button);
   await button.click();
@@ -267,6 +277,23 @@ async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string
  */
 async function promptText(editorId = 'generate-prompt-editor'): Promise<string> {
   return (await page.getByTestId(editorId).innerText()).trim();
+}
+
+/**
+ * The dialogue lines the prompt editor shows, each its speaker as the picker
+ * names it and its words (inner#1825 design 8.5).
+ * @returns One entry per line.
+ */
+async function dialogueLines(): Promise<{ speaker: string; text: string }[]> {
+  const lines = page.getByTestId('generate-prompt-editor').locator('.dialogue-line');
+  const shown: { speaker: string; text: string }[] = [];
+  for (const line of await lines.all()) {
+    shown.push({
+      speaker: (await line.getByTestId('dialogue-line-speaker').innerText()).trim(),
+      text: (await line.locator('p').innerText()).trim(),
+    });
+  }
+  return shown;
 }
 
 /**
@@ -318,20 +345,31 @@ async function keyed(key: string): Promise<string> {
   return node.id;
 }
 
+/** Each dropped file's type and node type, by extension. */
+const DROPPED: Record<string, { mime: string; kind: Kind }> = {
+  '.png': { mime: 'image/png', kind: 'image' },
+  '.jpg': { mime: 'image/jpeg', kind: 'image' },
+  '.mp4': { mime: 'video/mp4', kind: 'video' },
+  '.mp3': { mime: 'audio/mpeg', kind: 'audio' },
+};
+
 /**
- * Drop a picture onto the canvas and return its node once it holds the upload.
- * @param file - The picture's path.
+ * Drop a file onto the canvas and return its node once it holds the upload.
+ * @param file - The file's path.
+ * @param bytes - Its bytes, when they are not the file's own.
  * @returns The node's id.
  */
-async function dropPicture(file: string): Promise<string> {
+async function dropMedia(file: string, bytes: Buffer = readFileSync(file)): Promise<string> {
   const before = new Set((await graph()).nodes.map((n) => n.id));
   const ext = extname(file).toLowerCase();
-  await dropFile(page, `picture-${Date.now()}${ext}`, ext === '.png' ? 'image/png' : 'image/jpeg', readFileSync(file));
+  const dropped = DROPPED[ext];
+  if (dropped === undefined) throw new Error(`no file type for ${ext}`);
+  await dropFile(page, `${dropped.kind}-${Date.now()}${ext}`, dropped.mime, bytes);
   let id = '';
   await expect
     .poll(
       async () => {
-        const node = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === 'image');
+        const node = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === dropped.kind);
         id = node?.id ?? '';
         return node?.data.content ?? '';
       },
@@ -415,15 +453,94 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
 
 const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
 
+/** What every section of the score in four sections shares: genre, tempo, key and instruments. */
+const SECTION_SHARED = ['温暖的原声民谣', '96 BPM', 'A 大调', '原声吉他、钢琴和轻打击乐'];
+
+/** The intro's words before its length: the film, then what every section shares. */
+const SECTION_FILM = ['一支两分钟的咖啡品牌片', ...SECTION_SHARED];
+
+/**
+ * The voice to clone: the speech fixture played twice over, 12.3 seconds of one speaker, since a clone takes 10
+ * seconds or more and the fixture runs 6.1. Its frames are constant-rate MP3 with no tag, so the two copies join
+ * into one playable file.
+ */
+const VOICE_SAMPLE = 'voice sample';
+
+/**
+ * A file a run wires in, from the fixtures.
+ * @param media - Its path under the fixtures, or `voice sample`.
+ * @returns The path it is dropped under and its bytes.
+ */
+function mediaOf(media: string): { file: string; bytes: Buffer } {
+  if (media !== VOICE_SAMPLE) return { file: join(FIXTURES, media), bytes: readFileSync(join(FIXTURES, media)) };
+  const speech = readFileSync(join(FIXTURES, 'mini-tools/speech.mp3'));
+  return { file: join(FIXTURES, 'voice-sample.mp3'), bytes: Buffer.concat([speech, speech]) };
+}
+
+/**
+ * Generate a short song with vocals on a node of its own, for a cover to redo: the lowest-cost model that sings
+ * lyrics it is given.
+ * @returns The node's id.
+ */
+async function generateSong(): Promise<string> {
+  const id = crypto.randomUUID();
+  // Close to the anchor seeded at 600: opening this panel centres the canvas
+  // on the song, and a node seeded outside the viewport is never rendered.
+  await seedNode(page, { projectId, spaceId }, id, 'audio', 250, { name: 'song-run', state: 'idle' });
+  await openPanel(id);
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-t2m').click();
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-mureka-v9.5-generate-song').click();
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('温暖的流行民谣，女声，原声吉他伴奏');
+  await page.getByTestId('generate-prompt-group-lyrics-toggle').click();
+  await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
+  await page.keyboard.type('清晨的街角，面包刚出炉，我们慢慢走，不赶路');
+  const url = await generate(id, 'audio');
+  record({ template: 'song-cover', node: 'song', label: LABEL, result: { url } });
+  return id;
+}
+
+/**
+ * Pick the anchor's result into one slot of the open audio panel, the way a user does: the slot, then the part
+ * of the anchor still showing.
+ * @param slot - The slot's test-id stem, e.g. `sound-video`.
+ * @param nodeId - The anchor.
+ * @throws {Error} When no part of the anchor is showing.
+ */
+async function pickIntoAudioSlot(slot: string, nodeId: string): Promise<void> {
+  await page.getByTestId(`generate-audio-tool-${slot}`).click();
+  const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    for (let y = 0.1; y < 1; y += 0.1) {
+      for (let x = 0.1; x < 1; x += 0.1) {
+        const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+        if (document.elementFromPoint(at.x, at.y)?.closest('.react-flow__node') === node) return at;
+      }
+    }
+    return null;
+  });
+  if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
+  await page.mouse.click(point.x, point.y);
+  await expect(page.getByTestId(`generate-audio-${slot}-clear`)).toBeVisible({ timeout: 30_000 });
+}
+
 /** How a template is run. */
 interface Run {
   /** The anchor's node type. */
-  type: 'image' | 'video';
+  type: Kind;
   /** Whether a picture is wired in: the character picture, or `image` from the fixtures. */
   photo: boolean;
   image?: string;
+  /** A file of another kind wired in, from the fixtures: `voice sample` is the speech fixture played twice over. */
+  media?: string;
+  /** A song with vocals generated first and wired in: covers refuse an instrumental ("Cover mode needs a song with vocals"). */
+  song?: boolean;
   /** The template nodes generated before the anchor. */
   first: string[];
+  /** The template nodes generated after the anchor, each with the anchor's result picked into one of its slots first. */
+  after?: { key: string; slot: string }[];
   /** What each node's braces are filled with, in order; `anchor` for the anchor. */
   fills: Record<string, string[]>;
   /** What each of the anchor's shots' braces are filled with, in order. */
@@ -535,6 +652,51 @@ const RUNS: Record<string, Run> = {
     fills: {},
     shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
   },
+  'underscore-bgm': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['一段 40 秒的咖啡店产品讲解', '40 秒', 'lo-fi 爵士', '85 BPM', 'F 大调', '电钢琴、柔和的贝斯和刷子鼓', '开头轻，中段稍微推起来，结尾收住'] },
+  },
+  'ambience-sfx-bed': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['老城区下雨的夜晚街道', '雨打在石板路上、远处低低的车流', '远处一扇门关上、近处有人踩水走过'] },
+  },
+  'voice-line': { type: 'audio', photo: false, first: [], fills: { anchor: ['欢迎来到我们的小店。今天，新烤的面包刚刚出炉。'] } },
+  'two-voice-dialogue': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['你今天怎么来得这么早？', '想赶在人多之前，买到第一炉面包。', '那你运气好，刚好出炉。'] },
+  },
+  'voice-from-descriptor': { type: 'audio', photo: false, first: [], fills: { anchor: ['今晚的星星特别亮，我们一起去山顶看看吧。'] } },
+  'section-mapped-score': {
+    type: 'audio',
+    photo: false,
+    first: ['body', 'reveal', 'outro'],
+    fills: {
+      anchor: [...SECTION_FILM, '15 秒'],
+      body: [...SECTION_SHARED, '60 秒'],
+      reveal: [...SECTION_SHARED, '25 秒'],
+      outro: [...SECTION_SHARED, '15 秒'],
+    },
+  },
+  'song-cover': { type: 'audio', photo: false, song: true, first: [], fills: { anchor: ['指弹吉他伴奏、轻声演唱的慢板民谣'] } },
+  'voice-clone-line': { type: 'audio', photo: false, media: VOICE_SAMPLE, first: [], fills: { anchor: ['今天的风很轻，我们沿着河边慢慢走吧。'] } },
+  'score-for-my-video': { type: 'audio', photo: false, media: 'mini-tools/driving.mp4', first: [], fills: { anchor: ['带轻打击乐的温暖原声民谣'] } },
+  'music-mood-from-image': { type: 'audio', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['慢、梦幻'] } },
+  'clip-ambience-foley': {
+    type: 'video',
+    photo: false,
+    first: [],
+    after: [{ key: 'foley', slot: 'sound-video' }],
+    fills: {
+      anchor: ['厨师在木砧板上切黄瓜', '刀起落切下第一片', '把切好的片推到一边，再切两刀', '缓慢推近', '左边的窗户'],
+      foley: ['刀落在砧板上的清脆声、黄瓜片滑开的声音、远处厨房轻微的环境声'],
+    },
+  },
 };
 
 if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (let n = 1; n <= REPEAT; n += 1) {
@@ -543,10 +705,14 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
-    const photo = run.photo ? await dropPicture(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
+    const photo = run.photo ? await dropMedia(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
+    const media = run.media === undefined ? undefined : mediaOf(run.media);
+    const material = media === undefined ? undefined : await dropMedia(media.file, media.bytes);
+    const song = run.song === true ? await generateSong() : undefined;
     const anchor = crypto.randomUUID();
     await seedNode(page, { projectId, spaceId }, anchor, run.type, 600, { name: `${run.type}-run`, state: 'idle' });
-    if (photo !== undefined) await wire(page, { projectId, spaceId }, photo, anchor);
+    // Wired in before the template is picked, so it lands in the template's slot.
+    for (const wired of [photo, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
     await applyTemplate(id);
     for (const key of run.first) {
@@ -555,15 +721,27 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       await fillBraces(run.fills[key] ?? []);
       const prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
-      const url = await generate(node, 'image');
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'image') as Kind;
+      const url = await generate(node, kind);
       expect(url).toMatch(/^https?:/);
       record({ template: id, node: key, label: LABEL, n, result: { prompt, url } });
-      await save(url, `${id}-${key}-${LABEL}-${n}.png`);
+      await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
     for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as 'first-frame' | 'end-frame', await keyed(key));
     let prompt = '';
-    if (run.shots === undefined) {
+    const registered = GENERATION_TEMPLATES.find((template) => template.id === id);
+    if (registered === undefined) throw new Error(`no template "${id}" in the registry`);
+    const anchorNode = templateAnchor(registered);
+    if (anchorNode.lines !== undefined) {
+      // A dialogue: one line per turn, each for the template's speaker, its blank filled in order.
+      await fillBraces(run.fills.anchor ?? []);
+      const names = ((anchorNode.params.speakers ?? []) as { speaker: string }[]).map((one) => one.speaker);
+      const shown = await dialogueLines();
+      expect(shown.map((line) => line.speaker)).toEqual(anchorNode.lines.map((line) => names[line.speaker - 1]));
+      for (const [i, line] of shown.entries()) assertDraftSent(`canvas.template.${id}.line.${String(i + 1)}`, line.text);
+      prompt = shown.map((line) => `${line.speaker}: ${line.text}`).join('\n');
+    } else if (run.shots === undefined) {
       await fillBraces(run.fills.anchor ?? []);
       prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.prompt`, prompt);
@@ -583,6 +761,19 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
     record({ template: id, label: LABEL, n, result: { prompt, url } });
-    await save(url, `${id}-${LABEL}-${n}.${run.type === 'video' ? 'mp4' : 'png'}`);
+    await save(url, `${id}-${LABEL}-${n}.${EXTENSION[run.type]}`);
+    for (const { key, slot } of run.after ?? []) {
+      const node = await keyed(key);
+      await openPanel(node);
+      await pickIntoAudioSlot(slot, anchor);
+      await fillBraces(run.fills[key] ?? []);
+      const shown = await promptText();
+      assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, shown);
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'audio') as Kind;
+      const result = await generate(node, kind);
+      expect(result).toMatch(/^https?:/);
+      record({ template: id, node: key, label: LABEL, n, result: { prompt: shown, url: result } });
+      await save(result, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+    }
   });
 }

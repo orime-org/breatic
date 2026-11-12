@@ -43,6 +43,7 @@ import {
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
   modelCatalog,
+  violatesTextLengthForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
@@ -104,6 +105,8 @@ canvas.use("*", requireAuth);
  * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
  * often, and for how long, an open band re-reads a missing peaks file
  * (inner#1305).
+ * `joinMaxClips`: the most clips one join takes, its source included; the
+ * join panel's add tile and slot pick stop there (inner#1825 §6.3).
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
@@ -118,6 +121,7 @@ canvas.get("/limits", (c) => {
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
       waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
+      joinMaxClips: getMiniToolsConfig().join_max_clips,
     },
   });
 });
@@ -296,6 +300,12 @@ canvas.post(
       // anything is held or queued.
       const entry = body.model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), body.model);
       if (entry !== undefined) assertServable(entry.name, entry.display_name, body.route);
+      // inner#1825 text-length gate: a setting the model needs written, emptied.
+      const short = violatesTextLengthForModel(body.model, body.params);
+      if (short) {
+        logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
+        throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
+      }
       return Promise.resolve();
     },
     credits: () =>

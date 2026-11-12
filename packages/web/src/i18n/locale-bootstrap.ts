@@ -71,11 +71,22 @@ export async function bootstrapLocale(): Promise<void> {
   }
   const initial = resolveInitialLocale();
   if (await ensureCatalog(initial)) {
-    setLocale(initial);
+    activate(initial);
   } else {
     // The stored choice stays, so the next page load tries again.
-    setLocale(FALLBACK_LOCALE);
+    activate(FALLBACK_LOCALE);
   }
+}
+
+/**
+ * Make a locale the active one and declare it on the page. index.html says
+ * `en`; the browser breaks lines, falls back to fonts and offers translation
+ * by the page's language, so it follows the interface (inner#960).
+ * @param locale - The locale to activate.
+ */
+function activate(locale: Locale): void {
+  setLocale(locale);
+  document.documentElement.lang = locale;
 }
 
 /**
@@ -101,7 +112,7 @@ export async function changeLocale(locale: Locale): Promise<LocaleSwitch> {
   } catch {
     // localStorage may be unavailable (private mode, quota); fall through.
   }
-  setLocale(locale);
+  activate(locale);
   return 'switched';
 }
 

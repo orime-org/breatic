@@ -215,6 +215,11 @@ export default defineConfig(({ command, mode }) => {
               || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert|folder-open)\.m?js$/.test(id)) {
               return 'overlay-shared';
             }
+            // The switch is drawn by the project page and by the lazy 3D inspector alike.
+            if (/[\\/]src[\\/]components[\\/]ui[\\/]switch\.tsx$/.test(id)
+              || /[\\/]node_modules[\\/]@radix-ui[\\/]react-switch[\\/]/.test(id)) {
+              return 'switch';
+            }
             // Each non-English catalog is its own `import()` chunk under a
             // fixed name, which `verify-chunks.mjs` reads: Vite's JSON modules
             // leave no `sources` in the sourcemap to recognise them by.

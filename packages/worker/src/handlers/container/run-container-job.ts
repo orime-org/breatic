@@ -72,6 +72,11 @@ export interface ContainerRunInput {
   projectId: string;
   params: Record<string, unknown>;
   sourceKey: string;
+  /**
+   * The stored objects read after the source, in order: a join's further
+   * clips (inner#1825 §6.4). A job queued before joins carries none.
+   */
+  extraKeys?: string[];
   /** When the task runs out: the job is opened with it. */
   deadlineAt: number;
 }
@@ -163,6 +168,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
         op,
         params: input.params,
         input: { storageKey: input.sourceKey },
+        ...(input.extraKeys !== undefined && { extra: input.extraKeys.map((storageKey) => ({ storageKey })) }),
         outputs: job.outputs,
       }, bound);
     } catch (err) {

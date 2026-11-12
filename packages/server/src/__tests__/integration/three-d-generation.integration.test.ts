@@ -262,7 +262,10 @@ const TEXT_SETTINGS = {
   model_seed: 7,
 };
 
-/** What `resolveParams` makes of {@link TEXT_SETTINGS}: `delight` dropped, empty integers absent. */
+/**
+ * What `resolveParams` makes of {@link TEXT_SETTINGS}: `delight` dropped, empty
+ * integers absent, and the rig switch (inner#1692) filled with its default.
+ */
 const RESOLVED_TEXT_SETTINGS = {
   texture: true,
   pbr: false,
@@ -274,6 +277,7 @@ const RESOLVED_TEXT_SETTINGS = {
   face_limit: 10_000,
   auto_size: false,
   export_uv: true,
+  rig_skeleton: false,
   model_seed: 7,
 };
 
@@ -976,7 +980,7 @@ describe("removing a row", () => {
     const done = await admitted(s);
     const late = await admitted(s);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleById(done.row_id, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(done.row_id, { outcome: "done", assetId: model.assetId, notice: null });
     await expire(s, late.row_id);
     await sql`UPDATE node_tasks SET asset_id = ${model.assetId} WHERE id = ${late.row_id}`;
 
@@ -1039,7 +1043,7 @@ describe("settling a generation row", () => {
     const s = await seedProject();
     const answer = await admitted(s);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId, notice: null });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "done", asset_id: model.assetId });
   });
 
@@ -1048,7 +1052,7 @@ describe("settling a generation row", () => {
     const answer = await admitted(s);
     await expire(s, answer.row_id);
     const model = await seedAsset(s, "file", "lamp.glb");
-    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId });
+    await sceneTaskService.settleById(answer.row_id, { outcome: "done", assetId: model.assetId, notice: null });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: model.assetId });
   });
 

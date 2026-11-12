@@ -44,7 +44,7 @@ import type {
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
-import { extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
+import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { creditEstimateOf, prepareRunParams, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 import type { Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
@@ -89,6 +89,8 @@ export interface FullParamSpec {
   bounds?: ParamBound[];
   /** The most characters a text param takes once cleaned (inner#1691). */
   max_length?: number;
+  /** The fewest characters a text param takes once cleaned (inner#1825). */
+  min_length?: number;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Projected onto the wire
@@ -498,6 +500,27 @@ export function violatesReferenceCountForModel(
     if (entry) return violatesReferenceCount(entry.params, params);
   }
   return null; // unknown model — existence is not this gate's job
+}
+
+/**
+ * Whether a run writes a text setting shorter than the model takes
+ * (inner#1825): the server's gate before anything is queued, the rule the
+ * panel and the worker read from `checkParamCombination` too.
+ * @param model - The model name.
+ * @param params - The run's params.
+ * @returns The setting and the least it takes, or null when every one is long enough or the model is unknown.
+ * @throws {never} Never.
+ */
+export function violatesTextLengthForModel(model: string | undefined, params: Record<string, unknown>): { param: string; min: number } | null {
+  if (!model) return null;
+  const catalog = getModelCatalog();
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (!entry) continue;
+    const short = checkParamCombination(entry, params).find((violation) => violation.rule === "min_length");
+    return short?.rule === "min_length" ? { param: short.param, min: short.min } : null;
+  }
+  return null;
 }
 
 /**

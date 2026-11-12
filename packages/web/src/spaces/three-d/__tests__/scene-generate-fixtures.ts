@@ -43,6 +43,7 @@ const COMMON: Record<string, Record<string, unknown>> = {
   }),
   auto_size: toggle('Auto size', false, TEXTURED),
   export_uv: toggle('Export UV', true),
+  rig_skeleton: toggle('Rig skeleton', false),
   model_seed: integer('Model seed', 0, 2_147_483_647),
   texture_seed: integer('Texture seed', 0, 2_147_483_647),
 };

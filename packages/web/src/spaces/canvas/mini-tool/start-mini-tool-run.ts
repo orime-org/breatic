@@ -28,6 +28,7 @@ import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
+import { isJoinTool } from '@web/spaces/canvas/mini-tool/join';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { outputPlacementOf, plannedOutputSizes, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
@@ -107,6 +108,16 @@ export interface MiniToolRun {
   source: MiniToolSourceNode;
   /** Whether the source node is still on the canvas, asked at build time. */
   sourceExists: () => boolean;
+  /**
+   * The node the snapshot's source was picked from when that is not `source`:
+   * a join's first clip after the user reordered its list (inner#1825 §6.5).
+   */
+  sourceNodeId?: string | undefined;
+  /**
+   * Where a node is on the canvas now, or undefined once it was deleted; a
+   * join reads it for every clip, to place its result and wire the clips.
+   */
+  placementOf?: (nodeId: string) => Pick<MiniToolSourceNode, 'position' | 'groupOrigin'> | undefined;
   /** Make a browser tool's files from the snapshot and the capture, one per result in order. */
   exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
   /** Upload a browser tool's one file into its node, tagged with the tool, carrying on the press's operation. */
@@ -180,6 +191,34 @@ function requestOf(run: MiniToolRun, nodeIds: string[], uploads: PressUploads): 
     ...(uploads.drawing !== undefined && { drawing: uploads.drawing }),
     ...(uploads.expand !== undefined && { expand: uploads.expand }),
   };
+}
+
+/**
+ * A node's x on the canvas, its group's origin added.
+ * @param at - Its stored position and its group's origin.
+ * @returns The absolute x.
+ */
+function absoluteX(at: Pick<MiniToolSourceNode, 'position' | 'groupOrigin'>): number {
+  return at.position.x + (at.groupOrigin?.x ?? 0);
+}
+
+/**
+ * A join's clips whose nodes are still on the canvas, the first clip first
+ * and each node once. A clip whose node was deleted still joins, since the
+ * list holds its address, but has nowhere to be wired from.
+ * @param run - The press.
+ * @returns Each clip's node and where it is.
+ */
+function joinClipsOnCanvas(run: MiniToolRun): { id: string; position: { x: number; y: number }; groupOrigin: { x: number; y: number } | null }[] {
+  const ids = [run.sourceNodeId ?? run.source.id];
+  for (const held of Object.values(run.snapshot.slots)) {
+    const list = Array.isArray(held) ? (held as readonly MiniToolSlotValue[]) : held === undefined ? [] : [held as MiniToolSlotValue];
+    for (const value of list) if (value.nodeId !== undefined) ids.push(value.nodeId);
+  }
+  return [...new Set(ids)].flatMap((id) => {
+    const at = run.placementOf?.(id);
+    return at === undefined ? [] : [{ id, position: at.position, groupOrigin: at.groupOrigin }];
+  });
 }
 
 /** Why a press stopped before its run started, said on the nodes it built. */
@@ -422,9 +461,17 @@ export function startMiniToolRun(run: MiniToolRun): Promise<RunOnceOutcome<unkno
 async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => void): Promise<MiniToolRequest | null> {
   const { projectId, spaceId, userId, spec, source } = run;
 
+  // A join's result sits right of the clip furthest right and takes an edge
+  // from every clip still on the canvas (inner#1825 §6.5); any other tool's
+  // sits right of its source and is wired from it.
+  const wiredFrom = isJoinTool(spec) ? joinClipsOnCanvas(run) : [source];
+  const furthest = wiredFrom.reduce<Pick<MiniToolSourceNode, 'position' | 'groupOrigin'>>(
+    (best, clip) => (absoluteX(clip) > absoluteX(best) ? clip : best),
+    wiredFrom[0] ?? source,
+  );
   const base = {
-    x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
-    y: source.position.y + (source.groupOrigin?.y ?? 0),
+    x: absoluteX(furthest) + NODE_STEP.x,
+    y: furthest.position.y + (furthest.groupOrigin?.y ?? 0),
   };
   const placements = outputPlacementOf(
     spec,
@@ -446,12 +493,14 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
   const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
     for (const node of nodes) {
       addNode(projectId, spaceId, node);
-      addEdge(projectId, spaceId, {
-        id: `${source.id}->${node.id}`,
-        source: source.id,
-        target: node.id,
-        toolId: spec.id,
-      });
+      for (const from of wiredFrom) {
+        addEdge(projectId, spaceId, {
+          id: `${from.id}->${node.id}`,
+          source: from.id,
+          target: node.id,
+          toolId: spec.id,
+        });
+      }
     }
     if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
   });

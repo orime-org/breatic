@@ -148,6 +148,7 @@ export async function cleanupFailedJobNodes(
     ? (task.result as {
         model?: string;
         cost?: number;
+        notice?: unknown;
         outputs?: PersistedOutput[];
       } | null)
     : null;
@@ -197,7 +198,7 @@ export async function cleanupFailedJobNodes(
       logger.error({ err, taskId: job.data.taskId, projectId }, "crash_net_success_activity_failed");
     }
     if (sceneRowId !== undefined) {
-      await settleSceneRow(job.data.taskId, sceneRowId, sceneTaskService.generationOutcome(outputs));
+      await settleSceneRow(job.data.taskId, sceneRowId, sceneTaskService.generationOutcome(billedResult));
       return 0;
     }
     await recordGenerationForNodes(

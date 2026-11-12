@@ -15,6 +15,7 @@
 import type { GenerationTemplate, ModelEntry, TemplateGenerateNode } from '@breatic/shared';
 
 import { paramsStoreOf, resolveModelSwitch, type ParamsStoreSource } from '@web/spaces/canvas/generate/model-params';
+import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
 
 /**
  * The params a template puts on one of its generate nodes, by model.
@@ -30,7 +31,7 @@ export function templateParams(
 ): Record<string, Record<string, unknown>> {
   const store = paramsStoreOf(content);
   return resolveModelSwitch(
-    { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...node.params } } },
+    { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...withStandInOn(picked, node.params ?? {}) } } },
     picked,
   ).paramsByModel;
 }

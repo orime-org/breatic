@@ -1278,7 +1278,9 @@ describe('replace and insert keep what is outside the range (§8 property)', () 
       }),
       { numRuns: 400 },
     );
-  });
+    // 400 runs, each opening an editor: about 4s alone and five times that in
+    // a loaded full run, past the 15s default (#1482).
+  }, 60_000);
 });
 
 describe('replace, words inside one line (§5.3, Plate openTextBlock)', () => {

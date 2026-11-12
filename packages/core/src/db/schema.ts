@@ -827,13 +827,13 @@ export const tasks = pgTable(
 
 /**
  * The upstream calls one task makes, in order (#2156): a Mureka upload, a
- * cloned voice, vocal or element, then the model's own call, and for Voice
- * Cloning the speech after it. Written by the worker on the task's first run
+ * cloned voice, vocal or element, then the model's own call, and after it the
+ * speech for Voice Cloning or the rig for a 3D generation asked to rig a skeleton. Written by the worker on the task's first run
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind and status CHECKs live in migration 0085 only, as 0061 does for
- * its tables.
+ * The kind CHECK was last redefined by migration 0123 (0085 added it, 0092
+ * extended it); the status CHECK lives in 0085.
  */
 export const taskUpstreamSteps = pgTable(
   "task_upstream_steps",
@@ -1067,6 +1067,10 @@ export const nodeTasks = pgTable(
     // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
     // only, null on every other row; its CHECK lives in 0117.
     origin: varchar("origin", { length: 16 }),
+    // What the user is told beside a done 3D generation (inner#1692):
+    // 'rig_failed' when the model was delivered without the skeleton it was
+    // asked for. Null on every other row; its CHECK lives in 0123.
+    notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only

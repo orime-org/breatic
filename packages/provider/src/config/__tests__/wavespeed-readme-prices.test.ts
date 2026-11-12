@@ -200,6 +200,11 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { text: text(500) }, usd: 0.025 },
   ],
   "wavespeed-ai/qwen-image/edit-multiple-angles": [{ input: {}, usd: 0.025 }],
+  // inner#1825: $0.005 up to 100 characters, then by the character.
+  "wavespeed-ai/qwen3-tts/voice-design": [
+    { input: { text: text(50) }, usd: 0.005 },
+    { input: { text: text(300) }, usd: 0.015 },
+  ],
   "wavespeed-ai/rife": [{ input: { video: "v" }, durations: { video: [10] }, usd: 0.1 }],
   "wavespeed-ai/seedvr2/video": [
     { input: { target_resolution: "720p", video: "v" }, durations: { video: [5] }, usd: 0.1 },

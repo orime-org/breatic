@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, SkinnedMesh, SphereGeometry, Vector2, Vector3, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
-import type { Object3D } from 'three';
-import type { SceneObject } from '@breatic/shared';
+import type { Bone, Intersection, Object3D } from 'three';
+import type { SceneObject, ScenePose } from '@breatic/shared';
+import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
+import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
@@ -30,6 +32,39 @@ interface RenderedObject {
   lease: SceneModelLease;
   root: Group | null;
   state: 'loading' | 'ready' | 'failed';
+}
+/** One joint drag: its rig, the dragged bone's key and the committed pose it started from. */
+interface JointGesture {
+  id: string;
+  key: string;
+  root: Group;
+  rig: PoseRig;
+  start: ScenePose;
+}
+/** The single selected character whose joints joint mode shows. */
+interface JointTarget {
+  object: SceneObject;
+  root: Group;
+  rig: PoseRig;
+}
+interface JointMarker {
+  key: string;
+  bone: Bone;
+  mesh: Mesh<SphereGeometry, MeshBasicMaterial>;
+  /** A slightly larger sphere drawn just under the dot in the background colour, so the dot keeps an edge on any surface. */
+  rim: Mesh<SphereGeometry, MeshBasicMaterial>;
+  /** The dot's radius in the character's own space at rest, scaled by its world scale when drawn. */
+  unit: number;
+}
+/**
+ * The largest axis of an object's world scale.
+ * @param object - The object, its world matrix current.
+ * @returns The largest scale factor.
+ */
+function largestScale(object: Object3D): number {
+  object.updateWorldMatrix(true, false);
+  const scale = object.getWorldScale(new Vector3());
+  return Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
 }
 interface PointerOrigin {
   x: number;
@@ -59,6 +94,35 @@ function applyObject(root: Group, object: SceneObject): void {
   root.quaternion.fromArray(object.rotation);
   root.scale.fromArray(object.scale);
   root.updateMatrixWorld(true);
+}
+
+/**
+ * The joint a click on a skinned mesh means: the bone weighing most on the hit
+ * triangle, or its nearest ancestor that shows a joint.
+ * @param hit - The model hit.
+ * @param keys - The shown joints by bone.
+ * @returns The joint's pose key, or null when the hit is on no shown joint's skin.
+ * @throws {never} Never.
+ */
+function jointAt(hit: Intersection, keys: ReadonlyMap<Object3D, string>): string | null {
+  const mesh = hit.object;
+  if (!(mesh instanceof SkinnedMesh) || !hit.face) return null;
+  const index = mesh.geometry.getAttribute('skinIndex');
+  const weight = mesh.geometry.getAttribute('skinWeight');
+  if (!index || !weight) return null;
+  const totals = new Map<number, number>();
+  for (const vertex of [hit.face.a, hit.face.b, hit.face.c]) {
+    for (let slot = 0; slot < index.itemSize; slot += 1) {
+      const bone = index.getComponent(vertex, slot);
+      totals.set(bone, (totals.get(bone) ?? 0) + weight.getComponent(vertex, slot));
+    }
+  }
+  let heaviest = -1;
+  let most = 0;
+  for (const [bone, total] of totals) if (total > most) { heaviest = bone; most = total; }
+  let node: Object3D | null = mesh.skeleton.bones[heaviest] ?? null;
+  while (node && !keys.has(node)) node = node.parent;
+  return node ? keys.get(node) ?? null : null;
 }
 
 /**
@@ -99,6 +163,15 @@ export class SceneViewportRuntime {
   private overviewHost: HTMLDivElement | null = null;
   private outlines: BoxHelper[] = [];
   private gesture: SceneTransformGesture | null = null;
+  private joint: JointGesture | null = null;
+  /** What each object is drawn with: the document, or a collaborator's drag (design 5.4). */
+  private displayed: readonly SceneObject[] = [];
+  /** Objects drawn from a drag still in progress, this page's or a collaborator's. */
+  private previewed: ReadonlySet<string> = new Set();
+  private readonly markers = new Group();
+  private readonly markerGeometry = new SphereGeometry(1, 16, 12);
+  private markerOwner: Group | null = null;
+  private markerItems: JointMarker[] = [];
   private changed = false;
   private down: PointerOrigin | null = null;
   private suppressClick = false;
@@ -131,7 +204,7 @@ export class SceneViewportRuntime {
     this.orbit.enableDamping = true;
     this.orbit.update();
     this.controls = new SceneTransformControls173(this.camera, canvas, props.scaleSensitivity, this.onCancel);
-    this.scene.add(this.controls.getHelper(), this.pivot, this.grid);
+    this.scene.add(this.controls.getHelper(), this.pivot, this.grid, this.markers);
     this.scene.add(new HemisphereLight(0xffffff, 0x666666, 2.7));
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(5, 10, 4);
@@ -172,7 +245,7 @@ export class SceneViewportRuntime {
       }
     }
     const ready = new Set([...this.items].filter(([, item]) => item.state === 'ready').map(([id]) => id));
-    this.overview?.update(this.props.objects, ready, this.orbit.target);
+    this.overview?.update(this.displayed, ready, this.orbit.target, this.previewed);
   }
 
   /**
@@ -182,7 +255,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onOverviewNavigate = (x: number, z: number): void => {
-    if (this.gesture) return;
+    if (this.dragging) return;
     const delta = new Vector3(x - this.orbit.target.x, 0, z - this.orbit.target.z);
     this.camera.position.add(delta); this.orbit.target.add(delta); this.orbit.update(); this.onViewChange();
   };
@@ -222,6 +295,11 @@ export class SceneViewportRuntime {
       || !sameSelection(props.selectedIds, [...this.gesture.matrices.keys()])
       || [...this.gesture.matrices.keys()].some((id) => !props.objects.some((object) => object.id === id && !object.locked))
     )) this.endGesture(false);
+    const joint = this.joint;
+    if (joint && (
+      props.readOnly || !props.jointMode || props.selectedJoint !== joint.key || props.cancelRevision !== previous.cancelRevision
+      || !sameSelection(props.selectedIds, [joint.id]) || !props.objects.some((object) => object.id === joint.id && !object.locked)
+    )) this.endGesture(false);
     this.controls.setSensitivity(props.scaleSensitivity);
     const visible = new Set(props.objects.map((object) => object.id));
     for (const [id, item] of this.items) {
@@ -231,20 +309,26 @@ export class SceneViewportRuntime {
         this.items.delete(id);
       }
     }
-    for (const object of props.objects) {
+    const local = this.localGestureIds();
+    this.displayed = displayedObjects(props.objects, local, props.remotePeers);
+    this.previewed = previewedObjectIds(local, props.remotePeers);
+    for (const object of this.displayed) {
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
-        if (this.gesture?.matrices.has(object.id)) this.endGesture(false);
+        if (this.gesture?.matrices.has(object.id) || this.joint?.id === object.id) this.endGesture(false);
         this.overview?.remove(object.id);
         item.lease.release();
         this.items.delete(object.id);
         item = undefined;
       }
       if (!item) this.loadObject(object, source);
-      else if (item.root && !this.gesture?.matrices.has(object.id)) applyObject(item.root, object);
+      else if (item.root && !local.has(object.id)) {
+        applyObject(item.root, object);
+        applyPose(item.root, object.pose, !this.previewed.has(object.id));
+      }
     }
-    if (!this.gesture && !this.sameView(props.view)) {
+    if (!this.dragging && !this.sameView(props.view)) {
       this.camera.position.fromArray(props.view.position);
       this.orbit.target.fromArray(props.view.target);
       this.orbit.update();
@@ -253,6 +337,25 @@ export class SceneViewportRuntime {
     if (props.focusRevision !== previous.focusRevision) this.focus();
     this.onThemeChange();
     this.inspect();
+  }
+
+  /**
+   * Whether this page is dragging an object or a joint.
+   * @returns True while either drag lasts.
+   * @throws {never} Never.
+   */
+  private get dragging(): boolean {
+    return this.gesture !== null || this.joint !== null;
+  }
+
+  /**
+   * Objects this page is dragging, drawn from its own draft rather than the document.
+   * @returns Their IDs.
+   * @throws {never} Never.
+   */
+  private localGestureIds(): ReadonlySet<string> {
+    if (this.gesture) return new Set(this.gesture.matrices.keys());
+    return new Set(this.joint ? [this.joint.id] : []);
   }
 
   /**
@@ -270,7 +373,7 @@ export class SceneViewportRuntime {
         item.lease.release();
         return;
       }
-      const latest = this.props.objects.find((candidate) => candidate.id === object.id);
+      const latest = this.displayed.find((candidate) => candidate.id === object.id);
       if (!latest) {
         item.lease.release();
         return;
@@ -278,9 +381,13 @@ export class SceneViewportRuntime {
       item.root = root;
       item.state = 'ready';
       root.userData.sceneObjectId = object.id;
+      // The rig is measured first, while the fresh instance is still at rest.
+      const rig = poseRigOf(root);
       applyObject(root, latest);
+      applyPose(root, latest.pose, !this.previewed.has(object.id));
       this.scene.add(root);
       this.props.onModelStateChange?.(object.id, 'ready');
+      this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
       this.syncControls();
       if (this.pendingFocus) this.focus();
       this.onThemeChange();
@@ -322,8 +429,21 @@ export class SceneViewportRuntime {
    * @throws {Error} When the installed helper is not the approved r173 gizmo.
    */
   private syncControls(): void {
-    if (this.gesture) return;
+    if (this.dragging) return;
     this.controls.detach();
+    const target = this.jointTarget();
+    this.syncMarkers(target);
+    if (this.props.jointMode) {
+      const joint = target?.rig.joints.find((candidate) => candidate.key === this.props.selectedJoint);
+      this.controls.enabled = joint !== undefined;
+      if (!joint) return;
+      this.controls.setMode('rotate');
+      this.controls.setSpace('local');
+      this.controls.setMultipleSelection(false);
+      this.controls.attach(joint.bone);
+      return;
+    }
+    this.controls.setSpace('world');
     const selected = this.mutableObjects();
     this.controls.enabled = selected.length > 0;
     if (selected.length === 0) return;
@@ -336,10 +456,108 @@ export class SceneViewportRuntime {
   }
 
   /**
-   * Begin a local draft only after the session admits this mutation.
+   * The character joint mode works on: one selected, editable, loaded object with bones.
+   * @returns It with its rig, or null.
+   * @throws {never} Never.
+   */
+  private jointTarget(): JointTarget | null {
+    if (!this.props.jointMode) return null;
+    const [object, ...rest] = this.mutableObjects();
+    const root = object ? this.items.get(object.id)?.root : null;
+    if (!object || rest.length > 0 || !root) return null;
+    const rig = poseRigOf(root);
+    return rig ? { object, root, rig } : null;
+  }
+
+  /**
+   * Show the joint target's joints as dots drawn over everything, the selected one highlighted.
+   * @param target - The joint target, or null to show none.
+   * @throws {never} Never.
+   */
+  private syncMarkers(target: JointTarget | null): void {
+    if (target?.root !== this.markerOwner) {
+      for (const marker of this.markerItems) { marker.mesh.material.dispose(); marker.rim.material.dispose(); }
+      this.markers.clear();
+      this.markerItems = [];
+      this.markerOwner = target?.root ?? null;
+      if (target) {
+        // Measured on the rig at rest, so the dots do not depend on the pose joint mode opens in.
+        const { joints, restSize } = target.rig;
+        const full = restSize * 0.012;
+        joints.forEach(({ key, bone, rest }, index) => {
+          // Close joints such as finger knuckles get dots under half their spacing, so unselected neighbours do not
+          // touch; no dot shrinks below 30% of full, so joints closer than that (joints at one point included) and
+          // the enlarged selected dot overlap, and a click there picks the dot whose centre is nearest the ray.
+          const nearest = Math.min(...joints.filter((_, other) => other !== index).map((joint) => joint.rest.distanceTo(rest)));
+          const mesh = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true }));
+          mesh.renderOrder = 1000;
+          const rim = new Mesh(this.markerGeometry, new MeshBasicMaterial({ depthTest: false, depthWrite: false }));
+          rim.renderOrder = 999;
+          rim.scale.setScalar(1.3);
+          mesh.add(rim);
+          this.markerItems.push({ key, bone, mesh, rim, unit: Math.max(full * 0.3, Math.min(full, nearest * 0.45)) });
+          this.markers.add(mesh);
+        });
+      }
+    }
+    // Sized from the current scale on every sync, so a character scaled in joint mode keeps dots that fit it.
+    const scale = target ? largestScale(target.root) : 0;
+    const normal = this.token('--color-status-selected');
+    const selected = this.token('--color-foreground');
+    const edge = this.token('--color-background');
+    for (const { key, mesh, rim, unit } of this.markerItems) {
+      rim.material.color.setStyle(edge);
+      const chosen = key === this.props.selectedJoint;
+      mesh.material.color.setStyle(chosen ? selected : normal);
+      mesh.material.opacity = chosen ? 1 : 0.85;
+      mesh.scale.setScalar(unit * scale * (chosen ? 1.5 : 1));
+    }
+    this.placeMarkers();
+  }
+
+  /**
+   * Keep each joint dot on its bone as the bone moves.
+   * @throws {never} Never.
+   */
+  private placeMarkers(): void {
+    for (const { bone, mesh } of this.markerItems) bone.getWorldPosition(mesh.position);
+  }
+
+  /**
+   * Begin a joint drag on the selected joint, or an object drag.
    * @throws {never} Never directly.
    */
   private onGestureStart = (): void => {
+    if (this.props.jointMode) {
+      this.onJointStart();
+      return;
+    }
+    this.onObjectStart();
+  };
+
+  /**
+   * Begin a joint drag only after the session admits it, remembering the committed pose.
+   * @throws {never} Never directly.
+   */
+  private onJointStart(): void {
+    const target = this.jointTarget();
+    const joint = target?.rig.joints.find((candidate) => candidate.key === this.props.selectedJoint);
+    if (!target || !joint || !this.props.onGestureStart()) {
+      this.controls.cancelInteraction();
+      return;
+    }
+    this.suppressClick = true;
+    this.changed = false;
+    this.joint = { id: target.object.id, key: joint.key, root: target.root, rig: target.rig, start: target.object.pose ?? {} };
+    this.orbit.enabled = false;
+    this.inspect();
+  }
+
+  /**
+   * Begin a local draft only after the session admits this mutation.
+   * @throws {never} Never directly.
+   */
+  private onObjectStart(): void {
     const selected = this.mutableObjects();
     if (selected.length === 0 || !this.props.onGestureStart()) {
       this.controls.cancelInteraction();
@@ -350,13 +568,29 @@ export class SceneViewportRuntime {
     this.gesture = createTransformGesture(selected, this.props.mode);
     this.orbit.enabled = false;
     this.inspect();
-  };
+  }
 
   /**
    * Publish field-specific drafts, leaving final Yjs transactions to the session.
    * @throws {never} Never directly.
    */
   private onGestureChange = (): void => {
+    const joint = this.joint;
+    if (joint) {
+      const value = joint.rig.keyValue(joint.key);
+      if (!value?.every(Number.isFinite)) {
+        this.endGesture(false);
+        return;
+      }
+      // The drag-start pose with this bone's new value; the rest of the pose is set again, so children follow.
+      const pose = { ...joint.start, [joint.key]: value };
+      joint.rig.apply(pose, false);
+      this.changed = true;
+      this.props.onGestureChange([{ id: joint.id, pose }]);
+      this.rebuildOutlines();
+      this.inspect();
+      return;
+    }
     if (!this.gesture) return;
     this.pivot.updateMatrixWorld(true);
     const patches = transformPatches(this.gesture, this.pivot.matrixWorld);
@@ -400,8 +634,10 @@ export class SceneViewportRuntime {
    */
   private endGesture(commit: boolean): void {
     const gesture = this.gesture;
+    const joint = this.joint;
     const pointer = this.down;
     this.gesture = null;
+    this.joint = null;
     this.down = null;
     this.controls.cancelInteraction(!commit);
     this.orbit.enabled = true;
@@ -411,8 +647,13 @@ export class SceneViewportRuntime {
       // Orbit's official cancellation clears its pointer bookkeeping too.
       canvas.dispatchEvent(new PointerEvent('pointercancel', { pointerId: pointer.id, pointerType: 'mouse' }));
     }
-    if (!gesture) return;
-    if (!commit) {
+    if (joint) {
+      // The bones were moved by hand; the next pose shown sets every bone again.
+      joint.rig.invalidate();
+      if (!commit) applyPose(joint.root, joint.start);
+    }
+    if (!gesture && !joint) return;
+    if (!commit && gesture) {
       for (const [id, matrix] of gesture.matrices) {
         const root = this.items.get(id)?.root;
         if (root) {
@@ -450,8 +691,43 @@ export class SceneViewportRuntime {
     this.suppressClick = false;
     this.releasingPointer = null;
     this.down = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    // A press on another joint's dot belongs to that dot, as it is drawn over the rings: the rings and the orbit
+    // never see it, and the release selects the joint.
+    const dot = this.props.jointMode ? this.dotAt(event) : null;
+    if (dot !== null && dot !== this.props.selectedJoint) event.stopImmediatePropagation();
     this.renderer.domElement.focus({ preventScroll: true });
   };
+
+  /**
+   * The ray under a pointer event.
+   * @param event - A pointer event on the canvas.
+   * @returns The ray, or null while the canvas has no size.
+   * @throws {never} Never.
+   */
+  private rayAt(event: PointerEvent): Raycaster | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const point = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+    const ray = new Raycaster();
+    ray.setFromCamera(point, this.camera);
+    this.scene.updateMatrixWorld(true);
+    return ray;
+  }
+
+  /**
+   * The joint whose dot is under a pointer event: of the dots the ray crosses, the one whose centre is nearest
+   * the ray, so a press on a dot's centre finds it through a larger dot in front.
+   * @param event - A pointer event on the canvas.
+   * @returns The joint's key, or null when no dot is under it.
+   * @throws {never} Never.
+   */
+  private dotAt(event: PointerEvent): string | null {
+    const ray = this.rayAt(event);
+    if (!ray || this.markerItems.length === 0) return null;
+    const dot = ray.intersectObjects(this.markerItems.map((marker) => marker.mesh), false)
+      .sort((a, b) => ray.ray.distanceSqToPoint(a.object.position) - ray.ray.distanceSqToPoint(b.object.position))[0];
+    return (dot && this.markerItems.find((marker) => marker.mesh === dot.object)?.key) ?? null;
+  }
 
   /**
    * Mark a normal release before native controls release pointer capture.
@@ -473,13 +749,15 @@ export class SceneViewportRuntime {
     const suppressed = this.suppressClick;
     this.suppressClick = false;
     if (!down || suppressed || down.id !== event.pointerId || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const point = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
-    const ray = new Raycaster();
-    ray.setFromCamera(point, this.camera);
+    const ray = this.rayAt(event);
+    if (!ray) return;
+    // Joint dots are drawn over everything, so they are picked first.
+    const dotKey = this.dotAt(event);
+    if (dotKey !== null) {
+      this.props.onJointSelect(dotKey);
+      return;
+    }
     const roots = [...this.items.values()].flatMap((item) => item.root ? [item.root] : []);
-    this.scene.updateMatrixWorld(true);
     const hit = ray.intersectObjects(roots, true)[0];
     if (!hit) {
       this.props.onSelect(null, event.shiftKey);
@@ -487,6 +765,11 @@ export class SceneViewportRuntime {
     }
     let root = hit.object;
     while (root.parent && typeof root.userData.sceneObjectId !== 'string') root = root.parent;
+    if (this.markerOwner !== null && root === this.markerOwner) {
+      const key = jointAt(hit, new Map(this.markerItems.map((marker) => [marker.bone, marker.key])));
+      if (key !== null) this.props.onJointSelect(key);
+      return;
+    }
     if (typeof root.userData.sceneObjectId === 'string') this.props.onSelect(root.userData.sceneObjectId, event.shiftKey);
   };
 
@@ -504,7 +787,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onLostPointerCapture = (event: PointerEvent): void => {
-    if (event.pointerId !== this.releasingPointer && this.gesture) this.endGesture(false);
+    if (event.pointerId !== this.releasingPointer && this.dragging) this.endGesture(false);
   };
 
   /**
@@ -524,7 +807,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onViewChange = (): void => {
-    if (this.disposed || this.gesture) return;
+    if (this.disposed || this.dragging) return;
     this.props.onViewChange({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
     this.syncOverview();
     this.inspect();
@@ -550,20 +833,12 @@ export class SceneViewportRuntime {
         const root = this.items.get(id)?.root;
         if (root) this.addOutline(root, peer.color);
       }
-      for (const object of peer.gesture ?? []) {
-        const root = this.items.get(object.id)?.root;
-        const record = this.props.objects.find((item) => item.id === object.id);
-        if (!root || !record || record.locked) continue;
-        const preview = root.clone(true);
-        applyObject(preview, object);
-        this.addOutline(preview, peer.color);
-      }
     }
   }
 
   /**
-   * Add only an outline; a collaborator's preview never moves the real model.
-   * @param root - The loaded instance or detached preview hierarchy whose world-space bounds will be outlined.
+   * Outline a selected instance.
+   * @param root - The loaded instance whose world-space bounds will be outlined.
    * @param color - The semantic or collaborator colour, optionally expressed as a CSS token reference.
    * @throws {never} Never directly.
    */
@@ -622,6 +897,7 @@ export class SceneViewportRuntime {
         }
       });
     }
+    this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
   };
@@ -633,7 +909,8 @@ export class SceneViewportRuntime {
   private onFrame = (): void => {
     this.frame = 0;
     if (this.disposed || document.visibilityState === 'hidden') return;
-    if (!this.gesture && !this.controls.dragging) this.orbit.update();
+    if (!this.dragging && !this.controls.dragging) this.orbit.update();
+    this.placeMarkers();
     const bounds = new Box3();
     for (const item of this.items.values()) {
       if (item.root) bounds.expandByObject(item.root);
@@ -690,6 +967,8 @@ export class SceneViewportRuntime {
         programs: this.renderer.info.programs?.length ?? 0, contextLost: gl.isContextLost(),
         renderer: String(gl.getParameter(gl.RENDERER)), version: String(gl.getParameter(gl.VERSION)) },
     });
+    this.renderer.domElement.dataset.joints = JSON.stringify(this.markerItems.map(({ key, mesh }) => ({ key,
+      center: mesh.position.clone().project(this.camera).toArray(), selected: key === this.props.selectedJoint })));
   }
 
   /**
@@ -698,7 +977,7 @@ export class SceneViewportRuntime {
    */
   private inspect(): void {
     const canvas = this.renderer.domElement;
-    canvas.dataset.gestureActive = String(this.gesture !== null);
+    canvas.dataset.gestureActive = String(this.dragging);
     canvas.dataset.view = JSON.stringify({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
     canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray() }] : []));
   }
@@ -738,6 +1017,9 @@ export class SceneViewportRuntime {
       outline.material.dispose();
     }
     this.outlines = [];
+    for (const marker of this.markerItems) { marker.mesh.material.dispose(); marker.rim.material.dispose(); }
+    this.markerItems = [];
+    this.markerGeometry.dispose();
     this.grid.geometry.dispose();
     this.grid.material.dispose();
     this.renderer.dispose();

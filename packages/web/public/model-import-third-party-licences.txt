@@ -1,7 +1,41 @@
 MODEL IMPORT THIRD-PARTY LICENCES
 
-These components are bundled inside the Three.js model-loading assets.
+These components are bundled inside the Three.js model-loading assets or ship
+with the 3D Space (the built-in figure and the pose bone-name map).
 The npm dependency notices are in third-party-licences.txt.
+
+Built-in 3D figure: Mannequiny by GDQuest and contributors
+(https://www.gdquest.com/), from https://github.com/GDQuest/godot-3d-mannequin,
+licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Changed: animations, vertex colours and texture coordinates removed, the mesh
+quantized, each joint set to its bind pose and the figure scaled to 1.75 m
+tall.
+
+Mixamo bone names in the pose bone-name map: from three-vrm's
+mixamoVRMRigMap.js (https://github.com/pixiv/three-vrm), licensed under MIT.
+
+Copyright (c) 2019-2026 pixiv Inc.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Draco decoder
 https://github.com/google/draco

@@ -458,19 +458,20 @@ describe("a ref to no node", () => {
 });
 
 describe("a kind the canvas will not wire into the node (table A, first row)", () => {
-  it("is refused with the edge to take off and the way it does reach the node: picked into its slot", () => {
+  // inner#1825: a video now wires into a sound node, so the pair the canvas refuses is a sound into a picture.
+  it("is refused with the edge to take off and the model's word on whether it reaches the node another way", () => {
     const answer = checkProposal({
       nodes: [
-        { role: "source", type: "video", name: "Clip" },
-        { role: "generate", type: "audio", name: "Sfx", mode: "sfx", model: "hunyuan-video-foley", prompt: [{ text: "rain on glass" }] },
+        { role: "source", type: "audio", name: "Song" },
+        { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt: [{ text: "a poster" }] },
       ],
-      edges: [{ fromIndex: 0, toIndex: 1, into: "video" }],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
       rationale: "",
       groupName: "g",
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"Clip" goes into "Sfx" unwired, with a note saying to pick it into "video" and no ref. Take every edge from node 0 ("Clip") to node 1 ("Sfx") off.'),
+      reason: expect.stringContaining('"nano-banana-pro-edit-ultra" takes no audio node, so "Song" has no way into "Edit". Take every edge from node 0 ("Song") to node 1 ("Edit") off.'),
     });
   });
 });

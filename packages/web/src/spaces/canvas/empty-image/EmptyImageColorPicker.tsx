@@ -108,7 +108,7 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
             prefixed
             {...(inputTestId !== undefined && { 'data-testid': inputTestId })}
             aria-label={t('canvas.emptyImage.color.custom')}
-            className='w-full rounded-content-sm border border-border bg-transparent px-2 py-1 text-sm uppercase tabular-nums text-popover-foreground focus-visible:border-active-border focus-visible:outline-none'
+            className='w-full rounded-content-sm border border-border bg-transparent px-2 py-1 text-sm uppercase tabular-nums text-popover-foreground focus:border-active-border focus:outline-none'
           />
         </div>
       </PopoverContent>

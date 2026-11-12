@@ -916,7 +916,7 @@ describe("wiring that could not be placed", () => {
     source.mode = at.mode;
     source.model = at.model;
 
-    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining("takes no mode, model, params, fills, shots, or prompt") });
+    expect(checkProposal(wrong)).toMatchObject({ ok: false, reason: expect.stringContaining("takes no mode, model, params, fills, shots, lines, or prompt") });
   });
 
   it("refuses a group with nothing in it that generates", () => {

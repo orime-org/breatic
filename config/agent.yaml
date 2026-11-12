@@ -76,6 +76,11 @@ message_page_size: 30
 # a row happen to a stream that is doing fine.
 sse_heartbeat_interval_ms: 5000
 
+# How often an open conversation list asks which conversations have an Agent
+# turn running, in milliseconds, while the last answer named at least one. The
+# browser reads it from GET /chat/stream-config.
+running_poll_interval_ms: 5000
+
 # How many memory entries the system prompt lists, newest first. The rest are
 # counted in one line and found through read_memory.
 memory_index_max_entries: 200

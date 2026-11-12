@@ -932,6 +932,17 @@ export const agentInstructionsQuerySchema = z.object({
   project_id: z.string().uuid(),
 });
 
+/** Query for asking which of the caller's conversations in a project have an Agent turn running (#1394). */
+export const chatRunningQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/** What `GET /chat/running` answers: the caller's conversations in that project with a turn running. */
+export interface ChatRunningAnswer {
+  /** Each conversation once, in no particular order. */
+  conversation_ids: string[];
+}
+
 /**
  * Body for saving a Project's instructions for the Agent. The text is kept
  * exactly as typed; one that is empty or only whitespace clears them.

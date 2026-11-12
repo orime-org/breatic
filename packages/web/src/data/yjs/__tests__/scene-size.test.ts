@@ -54,16 +54,17 @@ let session: SceneSession;
 
 /**
  * Loads the scene into the registered document and opens an editable session.
+ * @param o1Pose - Flat pose keys stored on o1's record (inner#1692).
  * @returns The document.
  */
-function seed(): Y.Doc {
+function seed(o1Pose: Readonly<Record<string, readonly number[]>> = {}): Y.Doc {
   doc = getDoc(NAME);
   loadRemote(doc, (source) => {
     source.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     const objects = source.getMap<unknown>('objects');
     for (const item of [object(O1), object(O2, true)]) {
       const { id, ...values } = item;
-      objects.set(id, new Y.Map<unknown>(Object.entries(values)));
+      objects.set(id, new Y.Map<unknown>(Object.entries(id === O1 ? { ...values, ...o1Pose } : values)));
     }
     const { id, locked: _locked, ...values } = object(O3);
     objects.set(id, new Y.Map<unknown>(Object.entries(values)));
@@ -128,6 +129,34 @@ describe('SC-03 unlocking deletes the locked key: remove', () => {
 describe('SC-04 deleting an object is remove', () => {
   kindRows({ id: 'SC-04', title: 'delete o1', kind: 'remove', name: NAME, seed, run: run({ type: 'delete', ids: [O1] }),
     written: (result, target) => { expect(result).toEqual({ ok: true, ids: [O1] }); expect(target.getMap('objects').has(O1)).toBe(false); },
+    refused: refusedIn });
+});
+
+/** A quarter turn about Y, as a pose stores it. */
+const Q_Y90: [number, number, number, number] = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
+
+/**
+ * The initial scene with o1 posed: one flat pose key on its record (inner#1692).
+ * @returns The document.
+ */
+function seedPosed(): Y.Doc {
+  return seed({ 'pose.h:leftUpperArm': Q_Y90 });
+}
+
+describe('SC-09 posing a character is edit; resetting its pose deletes its keys: remove', () => {
+  kindRows({ id: 'SC-09', title: 'pose a joint', kind: 'edit', name: NAME, seed,
+    run: run({ type: 'pose', id: O1, set: { 'h:leftUpperArm': Q_Y90 }, replace: false }),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).get('pose.h:leftUpperArm')).toEqual(Q_Y90);
+    },
+    refused: refusedIn });
+  kindRows({ id: 'SC-09', title: 'reset pose', kind: 'remove', name: NAME, seed: seedPosed,
+    run: run({ type: 'pose', id: O1, set: {}, replace: true }),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('pose.h:leftUpperArm')).toBe(false);
+    },
     refused: refusedIn });
 });
 
