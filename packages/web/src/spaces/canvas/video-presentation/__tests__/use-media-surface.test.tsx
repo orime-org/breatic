@@ -242,7 +242,8 @@ describe('a play interrupted by a later pause (split segment preview pressed twi
     const binding = result.current.binding!;
     const first = binding.play();
     binding.pause();
-    void binding.play();
+    // The second play is still pending when the test unmounts, whose release pauses and so rejects it.
+    binding.play().catch(() => undefined);
     const pauses = vi.mocked(element.pause).mock.calls.length;
     await act(async () => { await expect(first).rejects.toMatchObject({ name: 'AbortError' }); });
     expect(element.pause).toHaveBeenCalledTimes(pauses);
