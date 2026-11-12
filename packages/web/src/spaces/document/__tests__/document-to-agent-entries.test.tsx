@@ -226,6 +226,14 @@ describe('the block menu row', () => {
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
   });
+
+  it('is unavailable over a row of spaces only, as the bubble bar entry is, while Comment works', () => {
+    const editor = openWith([{ type: 'paragraph', content: '   ' }]);
+    openMenuOver(editor, 0);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).not.toBe('true');
+  });
 });
 
 describe('the table entry\'s menu row', () => {
@@ -263,5 +271,13 @@ describe('the table entry\'s menu row', () => {
 
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('is unavailable over a table whose cells hold spaces only, while Comment works', () => {
+    const editor = openWith([table(['   ', ' '])]);
+    openMenuOver(editor, 0, TABLE_MENU_ROWS);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).not.toBe('true');
   });
 });

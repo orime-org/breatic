@@ -78,7 +78,7 @@ import {
 import { openCommentDraft, openMediaCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockItem, mediaRowItems } from '@web/spaces/document/document-to-agent';
+import { blockItem, mediaRowItems, selectionHasWords } from '@web/spaces/document/document-to-agent';
 import { mediaRowById } from '@web/spaces/document/document-comment-media';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { attachToChat } from '@web/stores/attach-to-chat';
@@ -128,6 +128,11 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
+  /**
+   * Whether this row holds words to hand the Agent; spaces alone mark for a
+   * comment and hand the Agent nothing, as in the bubble bar.
+   */
+  readonly hasWords: boolean;
   /** Which way the row can be indented. */
   readonly indent: IndentReach;
   /** Whether the eight rows that set a block's type reach this row. */
@@ -156,6 +161,7 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.hasWords === b.hasWords &&
     a.indent.in === b.indent.in &&
     a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
@@ -196,6 +202,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      hasWords: selectionHasWords(tr.doc, over),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
@@ -243,9 +250,9 @@ export function DocumentBlockMenu({
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
-  // Comment and Add to Agent act on a row with words or on uploaded media;
+  // Comment and Add to Agent act on uploaded media as on a row with words;
   // a pending frame's two rows say why they are greyed.
-  const actsOnRow = faces.canComment || faces.media === 'uploaded';
+  const uploaded = faces.media === 'uploaded';
   const refusedOnPending =
     faces.media === 'pending'
       ? (): void => {
@@ -550,8 +557,8 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(actsOnRow, () => {
-                if (faces.media === 'uploaded') {
+              {...itemWithin(faces.canComment || uploaded, () => {
+                if (uploaded) {
                   const live = rowNow();
                   if (live !== undefined) openMediaCommentDraft(editor, live.id);
                   close();
@@ -576,8 +583,8 @@ export function DocumentBlockMenu({
 
         if (row.id === 'addToAgent') {
           // Hands the row, children included, to the project's Agent as the
-          // Markdown it reads as now. Greyed where Comment is, off the same
-          // reading: a row with no words has nothing to hand over. Outside a
+          // Markdown it reads as now. Greyed on a row with no words, which has
+          // nothing to hand over; spaces alone count as none. Outside a
           // project there is nowhere to hand it, and the row is not drawn.
           // A media row hands the media itself, then the rows under it as
           // text (inner#1316 §5.5).
@@ -586,10 +593,10 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(actsOnRow, () => {
+              {...itemWithin(faces.hasWords || uploaded, () => {
                 const live = rowNow();
                 if (live !== undefined) {
-                  void attachToChat(projectId, faces.media === 'uploaded' ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);
+                  void attachToChat(projectId, uploaded ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);
                 }
                 close();
               }, refusedOnPending)}

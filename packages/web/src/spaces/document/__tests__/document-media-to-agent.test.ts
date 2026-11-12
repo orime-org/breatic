@@ -174,8 +174,9 @@ describe('a name cut where an emoji stands', () => {
 });
 
 describe('a media row whose nested rows hold nothing', () => {
-  // Every kind of row the user can leave empty under media; a row with no
-  // words hands nothing, as a text row with no words has Add to Agent greyed.
+  // Every kind of row the user can leave empty under media; rows with no
+  // words hand nothing, and spaces alone count as no words, as everywhere
+  // Add to Agent reads a row.
   const EMPTY_ROWS: Record<string, unknown> = {
     paragraph: { id: 'e', type: 'paragraph', content: '' },
     'whitespace paragraph': { id: 'e', type: 'paragraph', content: '   ' },

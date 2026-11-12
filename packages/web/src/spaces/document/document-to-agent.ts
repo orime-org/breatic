@@ -75,13 +75,23 @@ function selectedWords(doc: PMNode, selection: Selection): string {
 }
 
 /**
+ * Whether text holds words, which handing it to the Agent as text needs:
+ * spaces alone hand an empty attachment.
+ * @param text - The text.
+ * @returns True when it does.
+ */
+function holdsWords(text: string): boolean {
+  return text.trim() !== '';
+}
+
+/**
  * Whether a selection covers any words, which handing it to the Agent needs.
  * @param doc - The document.
  * @param selection - The selection.
  * @returns True when it does.
  */
 export function selectionHasWords(doc: PMNode, selection: Selection): boolean {
-  return selectedWords(doc, selection).trim() !== '';
+  return holdsWords(selectedWords(doc, selection));
 }
 
 /**
@@ -201,7 +211,8 @@ function holdsUploadedMedia(group: PMNode | null): boolean {
  * nested under it as text, the way it hands any row over with its children.
  * @param editor - The document editor.
  * @param blockId - The media block.
- * @returns The media item, then a text item when rows are nested under it.
+ * @returns The media item, then a text item when the rows nested under it
+ *   hold words or uploaded media.
  * @throws {Error} When the document holds no media block with that id.
  */
 export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
@@ -210,9 +221,10 @@ export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   // words are those of the rows nested under it.
   const { node } = getNodeById(blockId, editor.prosemirrorState.doc)!;
   const words = node.textBetween(0, node.content.size, '\n', '\n');
-  // Nested rows hand something only when they hold words or uploaded media,
-  // the rule that greys Add to Agent on a text row with no words.
-  if (words.trim() === '' && !holdsUploadedMedia(node.childCount > 1 ? node.child(1) : null)) return [media];
+  // Nested rows hand something only when they hold words, read as Add to
+  // Agent reads them everywhere, or uploaded media; empty rows and pending
+  // media hand nothing.
+  if (!holdsWords(words) && !holdsUploadedMedia(node.childCount > 1 ? node.child(1) : null)) return [media];
   // The editor is typed without its schema, so its blocks read as `never`.
   const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
   const markdown = blocksMarkdown(editor, children as never).trimEnd();
