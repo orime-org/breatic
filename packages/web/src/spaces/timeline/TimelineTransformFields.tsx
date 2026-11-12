@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Link2, Unlink2 } from 'lucide-react';
-import { TIMELINE_LAYER_TRANSFORM_LIMITS, type TimelineLayerTransform } from '@breatic/shared';
+import { TIMELINE_LAYER_TRANSFORM_LIMITS, normalizeTimelineLayerTransform, sameTimelineLayerTransform, type TimelineLayerTransform } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
@@ -11,7 +11,6 @@ import { Label } from '@web/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
-import { normalizeTimelineLayerTransform, sameTimelineLayerTransform } from '@web/spaces/timeline/layer-transform';
 
 /** One clip's position, scale and rotation. */
 interface TimelineTransformFieldsProps {

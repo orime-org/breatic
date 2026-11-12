@@ -509,7 +509,12 @@ export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared
 export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
 export {
   TIMELINE_LAYER_TRANSFORM_LIMITS,
+  clampTimelineScale,
+  normalizeTimelineLayerTransform,
+  normalizeTimelineRotation,
+  sameTimelineLayerTransform,
   timelineLayerBase,
+  timelineLayerContains,
   timelineLayerCorners,
   timelineLayerCss,
 } from "@shared/timeline/layer-geometry.js";

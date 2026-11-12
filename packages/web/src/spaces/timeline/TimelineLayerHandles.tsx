@@ -3,9 +3,10 @@
 
 import * as React from 'react';
 import Moveable, { type OnDrag, type OnRotate, type OnScale, type OnScaleStart } from 'react-moveable';
-import { timelineLayerCss, type TimelineLayerBox, type TimelineLayerTransform } from '@breatic/shared';
+import {
+  clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerCss, type TimelineLayerBox, type TimelineLayerTransform,
+} from '@breatic/shared';
 
-import { clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform } from '@web/spaces/timeline/layer-transform';
 import '@web/spaces/timeline/timeline-layer-handles.css';
 
 /** One selected layer's handles. */

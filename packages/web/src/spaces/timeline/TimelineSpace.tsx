@@ -6,7 +6,7 @@ import type * as Y from 'yjs';
 import { ArrowRightToLine, Code, Copy, Film, Link2, ListChecks, Magnet, Pause, Play, Plus, Redo2, Scissors, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, timelineLayerCorners, timelineLayerCss,
+  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, timelineLayerContains, timelineLayerCorners, timelineLayerCss,
   type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionRow, type TimelineLayerBox, type TimelineLayerTransform, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { TimelineExecutionCreateInputSchema, timelineExecutionEnded, timelineExecutionFailed, webAnimationDurationFrames } from '@breatic/shared/space-content';
@@ -52,7 +52,6 @@ import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document'
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
-import { timelineLayerContains } from '@web/spaces/timeline/layer-transform';
 import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationDialog } from '@web/spaces/timeline/TimelineWebAnimationDialog';
