@@ -1851,6 +1851,27 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(a.facts.playbackRate).toBe(1);
   });
 
+  // A ready upper clip starts at frame 48 (2000 ms), so the tick at 2000 ms is a playback boundary.
+  it.each([
+    ['an ordinary tick', 1950, 46],
+    ['a playback-boundary tick', 2000, 48],
+  ] as const)('hard-syncs a lane whose 0.8 s jump is first seen on %s', async (_name, jumpAt, heldFrame) => {
+    const later = { ...LANE_B, startFrame: 48, durationFrames: 48 };
+    const { hook, a } = twoLanes({}, {}, later);
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    run(jumpAt - 50);
+    expect(a.seeks).toEqual([]);
+    // A decoder skip: the main lane is 0.8 s ahead when the tick reads it (above the 0.5 s jump, below the 3 s bound).
+    tick(jumpAt, () => { a.facts.currentTime += 0.8; });
+    await settle();
+    expect(hook.result.current.frame).toBe(heldFrame);
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.seeks).toHaveLength(1);
+    expect(a.seeks[0]).toBeCloseTo(heldFrame / 24, 6);
+  });
+
   it('seeks another lane 0.2 s off the frozen frame while waiting, and holds the clock until it lands', async () => {
     const a = mediaFixture();
     const b = mediaFixture();

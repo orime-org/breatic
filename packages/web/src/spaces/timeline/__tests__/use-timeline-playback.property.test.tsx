@@ -7,8 +7,10 @@
  * shorter than the clip so a tail happens, sometimes not a whole number of frames, sometimes the second clip starting
  * exactly where the first one's tail begins; each element's decoder clock a little off), then has the user press play,
  * often after seeking to a few frames before the first lane's tail, and plays 4 to 24 random commands: play/pause, a
- * user seek, time passing, a lane stalling, recovering, a pending seek landing, a late play() settling, a timeupdate.
- * After each command:
+ * user seek, time passing, a lane stalling, recovering, its metadata arriving or a pending seek landing, a late play()
+ * settling, a timeupdate, a lane's decoder jumping 0.6 to 2.5 s (on the next tick on which a visible lane plays).
+ * Three fixed runs, a lane more than `resume_seek_seconds` ahead in the resume step, always run first. After each
+ * command:
  *
  * - while waiting, the clock does not move and no visible lane plays, except in the resume step (every visible lane in
  *   place and a play() of the resume still pending);
@@ -16,11 +18,14 @@
  *   playing and stays paused;
  * - when the preview starts playing, every visible lane not in its tail is within `resume_seek_seconds` of the clock's
  *   source time, plus what it played on in the resume step after the last hold (the design starts every lane and
- *   anchors the clock once every play() has settled, so a lane that started first runs ahead by the others' delay).
+ *   anchors the clock once every play() has settled, so a lane that started first runs ahead by the others' delay);
+ * - within two ticks of a playing lane not in its tail jumping more than `drift_hard_sync_seconds`, the preview waits
+ *   and seeks that lane to the held frame's source time, or the lane is back within that threshold.
  *
  * At the end every element is made healthy and time passes: a preview the user wants playing is not left waiting.
  *
- * The fake element follows the browser: a seek sets `seeking` and HAVE_METADATA until `seeked`, clamped to the
+ * The fake element follows the browser: it starts with readyState 0 and no duration, and ignores currentTime writes,
+ * until its metadata arrives (`loadedmetadata`); a seek sets `seeking` and HAVE_METADATA until `seeked`, clamped to the
  * duration; play() unpauses at once and its promise settles once the element has data (or later, when the run asks),
  * and the element advances only once it has settled;
  * pause() rejects pending play() with AbortError; play() of an ended element seeks to 0; an element reaching its end
@@ -46,7 +51,9 @@ const FPS = 24;
 const PREMOUNT_FRAMES = 48;
 const END_TOLERANCE = 0.001;
 const EPSILON = 1e-6;
-const { resumeSeekSeconds: RESUME_SECONDS, driftSteerSeconds: EARLY_END_SECONDS } = TIMELINE_PREVIEW_DEFAULTS;
+// Room for the drift the playback measures on its continuous clock against the frame the checks read, over one tick.
+const JUMP_MARGIN = 0.1;
+const { resumeSeekSeconds: RESUME_SECONDS, driftHardSyncSeconds: HARD_SYNC_SECONDS } = TIMELINE_PREVIEW_DEFAULTS;
 const TRACKS: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }, { id: 'v2', kind: 'visual', order: 1 }];
 const CLIP_IDS = ['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002'] as const;
 
@@ -80,6 +87,7 @@ interface PendingPlay {
 
 interface Fake {
   clipId: string;
+  spec: LaneSpec;
   skew: number;
   element: HTMLVideoElement;
   facts: Facts;
@@ -99,7 +107,8 @@ type Command =
   | { op: 'recover'; lane: LaneIndex }
   | { op: 'land'; lane: LaneIndex }
   | { op: 'resolve'; lane: LaneIndex }
-  | { op: 'timeupdate'; lane: LaneIndex };
+  | { op: 'timeupdate'; lane: LaneIndex }
+  | { op: 'jump'; lane: LaneIndex; by: number };
 
 interface Snapshot { state: Transport; intent: 'play' | 'pause'; frame: number }
 
@@ -117,7 +126,7 @@ interface RunContext {
 }
 
 /** Runs in which each situation happened at least once, to show the property is not vacuous. */
-const reached = { runs: 0, playing: 0, waiting: 0, tailWhilePlaying: 0, userSeekWhilePlaying: 0, tailSeekWhilePlaying: 0, resumeAfterWait: 0, lateResolve: 0, aheadAtResume: 0 };
+const reached = { runs: 0, playing: 0, waiting: 0, tailWhilePlaying: 0, userSeekWhilePlaying: 0, tailSeekWhilePlaying: 0, resumeAfterWait: 0, lateResolve: 0, aheadAtResume: 0, jumpWhilePlaying: 0 };
 
 let ctx: RunContext = newContext([false]);
 
@@ -255,8 +264,9 @@ function reachEnd(fake: Fake): void {
  */
 function createFake(clipId: string, spec: LaneSpec): Fake {
   const element = document.createElement('video');
-  const facts: Facts = { paused: true, currentTime: 0, duration: spec.fileSeconds, seeking: false, readyState: spec.initialReadyState, playbackRate: 1 };
-  const fake: Fake = { clipId, skew: spec.skew, element, facts, pending: [], seeks: [], ahead: 0 };
+  // As in a browser, a new element knows nothing of its file until its metadata arrives (the first `land`).
+  const facts: Facts = { paused: true, currentTime: 0, duration: Number.NaN, seeking: false, readyState: 0, playbackRate: 1 };
+  const fake: Fake = { clipId, spec, skew: spec.skew, element, facts, pending: [], seeks: [], ahead: 0 };
   for (const key of ['paused', 'duration', 'seeking', 'readyState'] as const) {
     Object.defineProperty(element, key, { configurable: true, get: () => facts[key] });
   }
@@ -268,6 +278,7 @@ function createFake(clipId: string, spec: LaneSpec): Fake {
     get: () => facts.currentTime,
     set: (value: number) => {
       fake.seeks.push(value);
+      if (facts.readyState === 0) return;
       startSeek(fake, value);
     },
   });
@@ -414,11 +425,20 @@ function advance(ms: number): void {
 }
 
 /**
- * Land an element's pending seek: data at the new position, `seeked`, and `ended` when it landed at the end.
+ * Deliver an element's metadata if it has none yet (its duration and first readyState, `loadedmetadata`); otherwise
+ * land its pending seek: data at the new position, `seeked`, and `ended` when it landed at the end.
  * @param fake - The element.
  * @throws {Error} When a handler fails.
  */
 function land(fake: Fake): void {
+  if (fake.facts.readyState === 0) {
+    act(() => {
+      fake.facts.duration = fake.spec.fileSeconds;
+      fake.facts.readyState = fake.spec.initialReadyState;
+      fake.element.dispatchEvent(new Event('loadedmetadata'));
+    });
+    return;
+  }
   if (!fake.facts.seeking) return;
   act(() => {
     fake.facts.seeking = false;
@@ -437,7 +457,7 @@ function land(fake: Fake): void {
  * @throws {Error} When a handler fails.
  */
 function recover(fake: Fake): void {
-  if (fake.facts.seeking) return;
+  if (fake.facts.seeking || fake.facts.readyState === 0) return;
   act(() => {
     fake.facts.readyState = healthyLevel(fake);
     honourPlays(fake, false);
@@ -456,6 +476,20 @@ function resolveLate(fake: Fake): boolean {
   if (play === undefined) return false;
   play.late = false;
   act(() => honourPlays(fake, false));
+  return true;
+}
+
+/**
+ * Make a playing element's decoder skip, as a real one may: its time jumps, clamped to its file.
+ * @param fake - The element.
+ * @param by - The seconds it jumps.
+ * @returns Whether it jumped.
+ * @throws {never} Never.
+ */
+function jump(fake: Fake, by: number): boolean {
+  const { facts } = fake;
+  if (facts.paused || facts.seeking || facts.readyState < 3 || fake.pending.length > 0) return false;
+  facts.currentTime = Math.max(0, Math.min(facts.duration, facts.currentTime + by));
   return true;
 }
 
@@ -518,13 +552,14 @@ const laneArb: fc.Arbitrary<LaneSpec> = fc.record({
   durationFrames: fc.integer({ min: 6, max: 48 }),
   inFrame: fc.integer({ min: 0, max: 24 }),
   long: fc.boolean(),
-  framesInFile: fc.integer({ min: 1, max: 48 }),
+  framesInFile: fc.integer({ min: -12, max: 48 }),
   extra: fc.constantFrom(0, 0.0005, 0.001, 0.013, 1 / 48, 0.03),
   initialReadyState: fc.constantFrom<1 | 4>(1, 4),
   skew: fc.constantFrom(0, 0, 0.01, -0.01, 0.025, -0.025),
 }).map(({ start, durationFrames, inFrame, long, framesInFile, extra, initialReadyState, skew }) => ({
   start, durationFrames, inFrame, initialReadyState, skew,
-  fileSeconds: long ? (inFrame + durationFrames) / FPS + 2 : (inFrame + Math.min(framesInFile, durationFrames)) / FPS + extra,
+  // A short file may end before the clip's first frame, so the lane is in its tail from its start.
+  fileSeconds: long ? (inFrame + durationFrames) / FPS + 2 : Math.max(0.05, (inFrame + Math.min(framesInFile, durationFrames)) / FPS + extra),
 }));
 
 /**
@@ -554,7 +589,31 @@ const commandArb: fc.Arbitrary<Command> = fc.oneof(
   { weight: 3, arbitrary: laneIndexArb.map((lane): Command => ({ op: 'land', lane })) },
   { weight: 2, arbitrary: laneIndexArb.map((lane): Command => ({ op: 'resolve', lane })) },
   { weight: 1, arbitrary: laneIndexArb.map((lane): Command => ({ op: 'timeupdate', lane })) },
+  {
+    weight: 3,
+    arbitrary: fc.tuple(laneIndexArb, fc.double({ min: 0.6, max: 2.5, noNaN: true }), fc.boolean())
+      .map(([lane, size, back]): Command => ({ op: 'jump', lane, by: back ? -size : size })),
+  },
 );
+
+const longLane = (fileSeconds: number): LaneSpec => ({ start: 0, durationFrames: 48, inFrame: 0, fileSeconds, initialReadyState: 4, skew: 0 });
+const metadata: Command[] = [{ op: 'land', lane: 0 }, { op: 'land', lane: 1 }];
+// Runs that always happen. The second lane's play() settles late, so the first lane runs ahead during the resume step:
+// 0.2 s when the preview starts playing; then the same with a stall before, which holds and seeks it back (0.2 s;
+// 0.3 s, at its file end), so it must resume in place.
+const FIXED_RUNS: Array<[[[LaneSpec, LaneSpec], Command[]], boolean[]]> = [
+  [[[longLane(10), longLane(10)], [
+    ...metadata, { op: 'toggle' }, { op: 'advance', ms: 100 }, { op: 'advance', ms: 100 }, { op: 'resolve', lane: 1 },
+  ]], [false, true]],
+  [[[longLane(10), longLane(10)], [
+    ...metadata, { op: 'toggle' }, { op: 'advance', ms: 100 }, { op: 'advance', ms: 100 },
+    { op: 'stall', lane: 1 }, { op: 'recover', lane: 1 }, { op: 'resolve', lane: 1 },
+  ]], [false, true]],
+  [[[longLane(0.3), longLane(10)], [
+    ...metadata, { op: 'toggle' }, { op: 'advance', ms: 120 }, { op: 'advance', ms: 120 }, { op: 'advance', ms: 120 },
+    { op: 'stall', lane: 1 }, { op: 'land', lane: 0 }, { op: 'recover', lane: 1 }, { op: 'resolve', lane: 1 },
+  ]], [false, true]],
+];
 
 describe('useTimelinePlayback over two video lanes (property)', () => {
   it('holds the wait, tail and resume rules and never stays waiting once every lane is healthy (§6.3, §7.3)', async () => {
@@ -576,6 +635,13 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
         const seen = new Set<keyof typeof reached>();
         // Seeks a tail lane got in its current stretch of playing in its tail.
         const tailSeeks = new Map<Fake, number>();
+        // Lanes that jumped past the hard-sync threshold while playing, and how many ticks they have left to be synced.
+        const jumpWatch = new Map<Fake, number>();
+        // Lanes whose drift a tick measured since the preview last started playing or the lane was last sought: only
+        // for those can a check tell a jump (the first check after has no earlier drift to compare with, design §6.3).
+        const measured = new Set<Fake>();
+        // A decoder skip asked for by a `jump` command, made on the next tick while a measured lane plays.
+        let pendingJump: { lane: LaneIndex; by: number } | null = null;
         const fakeOf = (lane: LaneIndex): Fake | undefined => {
           const element = hook.result.current.videoElement(CLIP_IDS[lane]);
           return element === undefined ? undefined : ctx.byElement.get(element);
@@ -586,6 +652,28 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
           const before = snapshot();
           const seekCounts = new Map(ctx.fakes.map((fake) => [fake, fake.seeks.length]));
           const fake = 'lane' in command ? fakeOf(command.lane) : undefined;
+          // The lane that skipped just before this tick, with how far it moved and its drift then.
+          let jumped: { fake: Fake; by: number; drift: number } | null = null;
+          if (command.op === 'advance' && before.state === 'playing' && pendingJump !== null) {
+            const { lane, by } = pendingJump;
+            for (const index of [lane, lane === 0 ? 1 : 0] as const) {
+              const skipping = fakeOf(index);
+              const spec = lanes[index];
+              if (skipping === undefined || !measured.has(skipping) || before.frame < spec.start || before.frame >= spec.start + spec.durationFrames) continue;
+              const from = skipping.facts.currentTime;
+              if (!jump(skipping, by)) continue;
+              const { currentTime, duration } = skipping.facts;
+              const target = targetAt(spec, before.frame);
+              // Judged only well inside the file, where neither the clock nor the element is near the tail.
+              const inside = target + JUMP_MARGIN < duration && currentTime + JUMP_MARGIN < duration;
+              jumped = inside ? { fake: skipping, by: currentTime - from, drift: Math.abs(currentTime - target) } : null;
+              pendingJump = null;
+              break;
+            }
+          }
+          const ticked = command.op === 'advance' && before.state === 'playing'
+            ? ctx.fakes.filter((item) => !item.facts.paused && hasData(item) && item.pending.length === 0)
+            : [];
           if (command.op === 'toggle') act(() => hook.result.current.toggle());
           else if (command.op === 'seek') act(() => hook.result.current.seek(command.at % sequenceEnd));
           else if (command.op === 'advance') advance(command.ms);
@@ -599,7 +687,8 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
             else if (command.op === 'land') land(fake);
             else if (command.op === 'resolve') {
               if (resolveLate(fake)) seen.add('lateResolve');
-            } else act(() => fake.element.dispatchEvent(new Event('timeupdate')));
+            } else if (command.op === 'jump') pendingJump = { lane: command.lane, by: command.by };
+            else act(() => fake.element.dispatchEvent(new Event('timeupdate')));
           }
           await flush();
           const after = snapshot();
@@ -610,6 +699,9 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
           if (after.state === 'playing' && views.some((view) => view.tail)) seen.add('tailWhilePlaying');
           if (command.op === 'seek' && before.state === 'playing') seen.add('userSeekWhilePlaying');
           const user = command.op === 'toggle' || command.op === 'seek';
+          if (user || (before.state !== 'playing' && after.state === 'playing')) measured.clear();
+          if (after.state === 'playing') for (const item of ticked) measured.add(item);
+          for (const item of ctx.fakes) if (item.seeks.length > (seekCounts.get(item) ?? 0)) measured.delete(item);
 
           // Waiting: the clock is held and no visible lane plays, except in the resume step.
           if (before.state === 'waiting' && after.state === 'waiting' && !user) {
@@ -656,12 +748,37 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
             if (before.state === 'waiting') seen.add('resumeAfterWait');
             for (const view of views) {
               const { duration, currentTime } = view.fake.facts;
-              const tail = view.target > duration + EPSILON || (atEnd(view.fake) && duration - view.target <= EARLY_END_SECONDS + EPSILON);
-              if (tail) continue;
+              if (view.target > duration + EPSILON) continue;
               if (view.fake.ahead > 0) seen.add('aheadAtResume');
               const drift = Math.abs(currentTime - view.target);
               expect(drift, `lane ${view.index} resumes ${drift}s off the clock ${where}`).toBeLessThanOrEqual(RESUME_SECONDS + view.fake.ahead + EPSILON);
             }
+          }
+
+          // Jump: within two ticks of a jump past the hard-sync threshold (this one included), the preview waits and seeks
+          // that lane to the held frame's source time, or the lane is back within the threshold. A user seek or
+          // play/pause resyncs anyway; a lane that left the frame, reached its tail or ended is not judged.
+          const hit = jumped;
+          if (hit !== null && Math.abs(hit.by) > HARD_SYNC_SECONDS + JUMP_MARGIN && hit.drift > HARD_SYNC_SECONDS + JUMP_MARGIN) {
+            seen.add('jumpWhilePlaying');
+            jumpWatch.set(hit.fake, 2);
+          }
+          for (const [watched, ticksLeft] of jumpWatch) {
+            const view = views.find((item) => item.fake === watched);
+            if (user || after.state === 'paused' || view === undefined || view.tail || ended(watched)) {
+              jumpWatch.delete(watched);
+              continue;
+            }
+            const fresh = watched.seeks.slice(seekCounts.get(watched) ?? 0);
+            const synced = after.state === 'waiting' && fresh.some((value) => Math.abs(value - view.target) <= END_TOLERANCE);
+            const back = Math.abs(watched.facts.currentTime - view.target) <= HARD_SYNC_SECONDS + JUMP_MARGIN;
+            if (synced || back) {
+              jumpWatch.delete(watched);
+              continue;
+            }
+            const left = command.op === 'advance' ? ticksLeft - 1 : ticksLeft;
+            expect(left, `lane ${view.index} not hard-synced within two ticks of a jump ${where}`).toBeGreaterThan(0);
+            jumpWatch.set(watched, left);
           }
         };
 
@@ -674,6 +791,8 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
             for (const lane of [0, 1] as const) {
               const fake = fakeOf(lane);
               if (fake === undefined) continue;
+              // A lane without metadata gets it first; the seek the playback then starts lands next.
+              if (fake.facts.readyState === 0) await run({ op: 'land', lane });
               if (fake.facts.seeking) await run({ op: 'land', lane });
               if (fake.facts.readyState < healthyLevel(fake)) await run({ op: 'recover', lane });
               while (fake.pending.some((play) => play.late)) await run({ op: 'resolve', lane });
@@ -697,11 +816,62 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
         reached.runs += 1;
         for (const key of seen) reached[key] += 1;
       },
-    ), { seed: 1410, numRuns: 1000 });
+    ), { seed: 1410, numRuns: 1000, examples: FIXED_RUNS });
     // The property is not vacuous: each situation it judges happened in some runs.
     console.warn(`use-timeline-playback property coverage: ${JSON.stringify(reached)}`);
-    for (const key of ['playing', 'waiting', 'tailWhilePlaying', 'userSeekWhilePlaying', 'tailSeekWhilePlaying', 'resumeAfterWait'] as const) {
+    for (const key of ['playing', 'waiting', 'tailWhilePlaying', 'userSeekWhilePlaying', 'tailSeekWhilePlaying', 'resumeAfterWait', 'lateResolve', 'aheadAtResume', 'jumpWhilePlaying'] as const) {
       expect(reached[key], `no run reached ${key}`).toBeGreaterThan(0);
     }
   }, 120_000);
+
+  it('leaves a lane whose held frame is past its file end alone during a hold: no seek beyond its one tail seek (§6.3)', async () => {
+    ctx = newContext([false]);
+    // Lane 0: a 0.49 s file under a 48-frame clip, its decoder 2.5% slow, so the clock reaches the file end first.
+    const lanes: [LaneSpec, LaneSpec] = [
+      { start: 0, durationFrames: 48, inFrame: 0, fileSeconds: 0.49, initialReadyState: 4, skew: -0.025 },
+      { start: 0, durationFrames: 48, inFrame: 0, fileSeconds: 10, initialReadyState: 4, skew: 0 },
+    ];
+    const hook = renderPlayback(timelineDocument(lanes), lanes);
+    ctx.transport = () => hook.result.current.state;
+    const fake = (index: LaneIndex): Fake => ctx.byElement.get(hook.result.current.videoElement(CLIP_IDS[index])!)!;
+    try {
+      land(fake(0));
+      land(fake(1));
+      await flush();
+      act(() => hook.result.current.toggle());
+      await flush();
+      expect(hook.result.current.state).toBe('playing');
+      const a = fake(0);
+      const before = a.seeks.length;
+      while ((a.seeks.length === before || hook.result.current.frame < 12) && hook.result.current.frame < 40) {
+        advance(1000 / FPS);
+        await flush();
+      }
+      // The clock passed the file end while the element lagged: its one tail seek, still in flight.
+      expect(a.seeks.slice(before)).toEqual([0.49]);
+      expect(a.facts.seeking).toBe(true);
+      // Lane 1 stalls before that seek lands; the next tick holds the preview on a frame past lane 0's file end.
+      act(() => {
+        fake(1).facts.readyState = 2;
+        fake(1).element.dispatchEvent(new Event('waiting'));
+      });
+      await flush();
+      advance(1000 / FPS);
+      await flush();
+      expect(hook.result.current.state).toBe('waiting');
+      expect(targetAt(lanes[0], hook.result.current.frame)).toBeGreaterThan(0.49);
+      expect(a.seeks.slice(before)).toEqual([0.49]);
+      land(a);
+      recover(fake(1));
+      await flush();
+      for (let step = 0; step < 4; step += 1) {
+        advance(1000 / FPS);
+        await flush();
+      }
+      expect(hook.result.current.state).toBe('playing');
+      expect(a.seeks.slice(before)).toEqual([0.49]);
+    } finally {
+      hook.unmount();
+    }
+  });
 });
