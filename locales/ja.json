@@ -1417,7 +1417,7 @@
         "current": "現在",
         "currentFrameUnavailable": "現在のフレームを取得できません",
         "cutPoint": "カット位置",
-        "detectScenes": "再検出",
+        "detectScenes": "シーン検出",
         "dialogueAudio": "セリフ音声",
         "dialoguePairs": "人物とセリフ",
         "dialogueStartTime": "開始時間",
@@ -1454,7 +1454,6 @@
         "segmentCount": "{count} セグメント",
         "selectedClipEmpty": "クリップを選択して設定を編集します。",
         "sourceUnavailable": "元の動画を利用できません",
-        "syncMode": "長さの調整",
         "targetPerson": "対象人物",
         "timelineComposition": "合成タイムライン",
         "timelineEmpty": "タイムラインは空です",
@@ -1532,7 +1531,16 @@
         "eraseMismatchNext": "範囲を変えて、もう一度実行してください。",
         "expandRejectedNext": "拡張範囲か説明を変えて、もう一度実行してください。",
         "windowStoppedNext": "ウィンドウ {number} のため停止しました。ウィンドウ {number} の次の手順に従ってください。",
-        "retryFailedItems": "失敗した項目を再試行"
+        "retryFailedItems": "失敗した項目を再試行",
+        "timelineSlotHint": "動画を1つ選ぶと、現在の動画とトランジションでつながります。",
+        "trackingStale": "選択内容が変わりました。再度追跡してください。",
+        "trackingReview": "追跡結果を確認",
+        "sourceDuration": "元の動画の長さ",
+        "clipDuration": "クリップの長さ",
+        "overlapLimit": "最大 {limit}（短い方のクリップの長さの半分）。",
+        "dialogueTimingHint": "動画の先頭からの時間です。各音声内の無音は保持されます。",
+        "noCuts": "カット位置を追加するかシーンを検出してください。",
+        "detectAgain": "再検出"
       }
     },
     "template": {

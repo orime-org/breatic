@@ -1417,7 +1417,7 @@
         "current": "현재 프레임",
         "currentFrameUnavailable": "현재 프레임을 가져올 수 없습니다",
         "cutPoint": "분할 지점",
-        "detectScenes": "다시 감지",
+        "detectScenes": "장면 감지",
         "dialogueAudio": "대사 오디오",
         "dialoguePairs": "인물과 대사",
         "dialogueStartTime": "시작 시간",
@@ -1454,7 +1454,6 @@
         "segmentCount": "{count} 구간",
         "selectedClipEmpty": "클립을 선택하여 설정을 편집하세요.",
         "sourceUnavailable": "원본 비디오를 사용할 수 없습니다",
-        "syncMode": "길이 조정 방식",
         "targetPerson": "대상 인물",
         "timelineComposition": "합성 타임라인",
         "timelineEmpty": "타임라인이 비어 있습니다",
@@ -1532,7 +1531,16 @@
         "eraseMismatchNext": "구간을 바꾼 뒤 다시 실행하세요.",
         "expandRejectedNext": "확장 범위나 설명을 바꾼 뒤 다시 실행하세요.",
         "windowStoppedNext": "창 {number} 때문에 중지되었습니다. 창 {number}의 다음 단계를 따르세요.",
-        "retryFailedItems": "실패한 항목 다시 시도"
+        "retryFailedItems": "실패한 항목 다시 시도",
+        "timelineSlotHint": "동영상 하나를 선택하면 현재 동영상과 전환으로 이어집니다.",
+        "trackingStale": "선택 영역이 변경되었습니다. 다시 추적하세요.",
+        "trackingReview": "추적 결과 확인",
+        "sourceDuration": "원본 길이",
+        "clipDuration": "클립 길이",
+        "overlapLimit": "최대 {limit}(짧은 클립 길이의 절반).",
+        "dialogueTimingHint": "동영상 시작을 기준으로 합니다. 각 오디오의 무음 구간은 유지됩니다.",
+        "noCuts": "절단 지점을 추가하거나 장면을 감지하세요.",
+        "detectAgain": "다시 감지"
       }
     },
     "template": {

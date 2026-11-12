@@ -1417,7 +1417,7 @@
         "current": "Current frame",
         "currentFrameUnavailable": "Current frame unavailable",
         "cutPoint": "Cut point",
-        "detectScenes": "Detect again",
+        "detectScenes": "Detect scenes",
         "dialogueAudio": "Dialogue audio",
         "dialoguePairs": "People and dialogue",
         "dialogueStartTime": "Start time",
@@ -1454,7 +1454,6 @@
         "segmentCount": "{count, plural, one {# segment} other {# segments}}",
         "selectedClipEmpty": "Select a clip to edit its settings.",
         "sourceUnavailable": "Source video unavailable",
-        "syncMode": "Duration mode",
         "targetPerson": "Target person",
         "timelineComposition": "Composition",
         "timelineEmpty": "The timeline is empty",
@@ -1532,7 +1531,16 @@
         "eraseMismatchNext": "Change the range and run again.",
         "expandRejectedNext": "Change the expanded area or the description and run again.",
         "windowStoppedNext": "Stopped because of Window {number}. Follow Window {number}'s next step.",
-        "retryFailedItems": "Retry failed items"
+        "retryFailedItems": "Retry failed items",
+        "timelineSlotHint": "Choose one video; it joins the current video in a transition.",
+        "trackingStale": "The selection changed. Track it again.",
+        "trackingReview": "Review tracking",
+        "sourceDuration": "Source duration",
+        "clipDuration": "Clip duration",
+        "overlapLimit": "At most {limit}, half the length of the shorter clip.",
+        "dialogueTimingHint": "Times refer to the video. Silence within each audio is kept.",
+        "noCuts": "Add a cut or detect scenes.",
+        "detectAgain": "Detect again"
       }
     },
     "template": {

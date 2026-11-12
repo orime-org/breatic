@@ -1008,7 +1008,9 @@ export function renderProductGuide(): string {
       "the target on the video itself. Set the range with " +
       `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}, then ` +
       `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection; the text box above it can describe the ` +
-      "object to track. Once tracked, the box turns green and follows the object frame by frame. A tracking that failed " +
+      "object to track. Once tracked, the box turns green and follows the object frame by frame, and the line under the " +
+      `selection modes reads ${quoted(t("canvas.miniTool.videoUI.trackingReview"))}; after the selection or range changes it reads ` +
+      `${quoted(t("canvas.miniTool.videoUI.trackingStale"))} until the selection is tracked again. A tracking that failed ` +
       `says why under the button, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
       "when that can help. " + eraseRange() + " frame the selection was marked on must lie inside the " +
       "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
@@ -1028,8 +1030,8 @@ export function renderProductGuide(): string {
       "A filled slot shows its truncated filename; hover it to listen in the preview. " +
       `${quoted(t("canvas.miniTool.videoUI.addDialogue"))} adds a row, including another dialogue for the same person. ` +
       "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
-      `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap. ` +
-      "Choose the lip-sync model in the panel; Run stays unavailable, with a toast giving the range, while the result is " +
+      "inside each audio. The bottom row holds the lip-sync model on the left and, on the right, a pill offering Cut off, " +
+      "Silence, Loop, Bounce and Remap for matching the result length. Run stays unavailable, with a toast giving the range, while the result is " +
       "outside the model's duration range or the used part of the video is outside what person tracking takes. " + lipSyncLimits() +
       "A failed run lists one line per person with why it failed and what to do next, " +
       "and a line for a failed shared step; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
@@ -1043,12 +1045,13 @@ export function renderProductGuide(): string {
       "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
       "the row below the modes; click it to move the player there. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
-      "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
+      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}. Drag a cut handle on its filmstrip or edit its seconds ` +
       `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
       "a cut removes it. The segment count reflects the complete split plan" + splitLimit() + ".",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
       `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}; picking another replaces it and resets its trim, ` +
-      "and Run asks for a video while none is picked. Picking a video opens the timeline, and " +
+      "and Run asks for a video while none is picked. Under the slot the panel lists the clips in timeline order with " +
+      "their trimmed lengths. Picking a video opens the timeline, and once a video is picked " +
       `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} opens it again; press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
       "their order; the transition stays between them. Select a clip and edit " +
       `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}, or drag either end of a clip on the track, to trim it. ` +

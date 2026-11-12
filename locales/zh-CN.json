@@ -1417,7 +1417,7 @@
         "current": "当前帧",
         "currentFrameUnavailable": "当前帧不可用",
         "cutPoint": "切点",
-        "detectScenes": "重新检测",
+        "detectScenes": "场景检测",
         "dialogueAudio": "对白音频",
         "dialoguePairs": "人物与对白",
         "dialogueStartTime": "开始时间",
@@ -1454,7 +1454,6 @@
         "segmentCount": "{count} 段",
         "selectedClipEmpty": "选择片段以编辑参数。",
         "sourceUnavailable": "源视频不可用",
-        "syncMode": "时长匹配方式",
         "targetPerson": "目标人物",
         "timelineComposition": "合成时间线",
         "timelineEmpty": "时间线为空",
@@ -1532,7 +1531,16 @@
         "eraseMismatchNext": "换一个区间后重新运行。",
         "expandRejectedNext": "改外扩范围或描述后重新运行。",
         "windowStoppedNext": "因窗口 {number} 停止，按窗口 {number} 的下一步处理。",
-        "retryFailedItems": "重试失败项"
+        "retryFailedItems": "重试失败项",
+        "timelineSlotHint": "选择一个视频，与当前视频组成转场。",
+        "trackingStale": "选区已修改，请重新跟踪。",
+        "trackingReview": "检查跟踪结果",
+        "sourceDuration": "原片时长",
+        "clipDuration": "片段时长",
+        "overlapLimit": "最长 {limit}，即较短片段时长的一半。",
+        "dialogueTimingHint": "时间以视频起点为准，保留每段音频内部的静音。",
+        "noCuts": "添加切点或执行场景检测。",
+        "detectAgain": "重新检测"
       }
     },
     "template": {

@@ -190,3 +190,17 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     expect(last.params.clips[0].transition).toEqual({ kind: 'fade', duration: committed });
   });
 });
+
+describe('the clip settings say the lengths the bounds come from (demo transition-duration-limit state)', () => {
+  it('shows the selected clip\'s source length and trimmed length', () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.5 });
+    open(draftWith('fade', 1), vi.fn());
+    expect(screen.getByTestId('video-clip-lengths').textContent).toBe(`${t('canvas.miniTool.videoUI.sourceDuration')}: 6.00 s${t('canvas.miniTool.videoUI.clipDuration')}: 4.00 s`);
+  });
+
+  it('states the longest transition the clips allow under the duration field', () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.5 });
+    open(draftWith('fade', 1), vi.fn());
+    expect(screen.getByText(t('canvas.miniTool.videoUI.overlapLimit', { limit: '1.50 s' }))).toBeInTheDocument();
+  });
+});

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId } from '@breatic/shared';
-import { planVideoTimelineSeconds, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { planVideoTimelineSeconds, type MiniToolAnalysisRecord, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 /**
  * Creates a complete tool draft bound to the current registered source.
@@ -34,6 +34,23 @@ export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: V
  */
 export function transitionHostInputId(draft: VideoToolDraftById['video.transitions']): string | undefined {
   return draft.inputs.find((input) => input.url === draft.source.canonicalURL && input.sourceNodeId === draft.source.nodeId)?.inputId;
+}
+
+/** What the erase panel says about tracking (canvas design §4 erase row). */
+export type EraseTrackingStatus = 'tracked' | 'stale' | 'draw';
+
+/**
+ * Whether the draft's tracking applies to its current selection, applied to an earlier one, or was never made.
+ * @param state - What the panel knows.
+ * @param state.matched - A completed tracking matches the current selection.
+ * @param state.judged - The draft's records have been judged against the current selection.
+ * @param state.records - The draft's tracking records.
+ * @returns The status to show.
+ * @throws {never} Never.
+ */
+export function eraseTrackingStatus(state: { matched: boolean; judged: boolean; records: readonly Pick<MiniToolAnalysisRecord, 'kind' | 'status' | 'artifactUnavailable'>[] }): EraseTrackingStatus {
+  if (state.matched) return 'tracked';
+  return state.judged && state.records.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) ? 'stale' : 'draw';
 }
 
 /**

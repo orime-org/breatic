@@ -5,6 +5,7 @@ import * as React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { MiniToolAnalysisRecord, VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { t, type ModelEntry } from '@breatic/shared';
 import { VideoToolControls } from '../video/VideoToolControls';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
@@ -14,6 +15,9 @@ const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 
 const base = { analyses: [], frameTable, presentedTime: 0.13, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(),
 };
 
+const lipSyncModel: ModelEntry & { minDurationSeconds: number; maxDurationSeconds: number } = { name: 'sync-lipsync-3', display_name: 'Sync Lipsync 3', modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [], minDurationSeconds: 1, maxDurationSeconds: 300 };
+const lipSync = { models: [lipSyncModel], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } };
+
 describe('approved production video parameter controls', () => {
   it('keeps Free and seven expansion ratios in two rows of four', () => {
     const draft: VideoToolDraftById['video.expand'] = { ...common, params: { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: 'free', prompt: '' } };
@@ -22,10 +26,27 @@ describe('approved production video parameter controls', () => {
     expect(screen.getByTestId('video-expand-ratios').querySelectorAll('button')).toHaveLength(8);
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
-  it('renders all five complete duration policies', () => {
+  // Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right.
+  it('offers all five complete duration policies from the mode pill on the bottom row', () => {
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} lipSync={lipSync} />);
+    const mode = screen.getByTestId('video-sync-mode');
+    expect(mode.textContent).toContain('Cut off');
+    expect(screen.getByTestId('video-lipsync-bottom-row').contains(mode)).toBe(true);
+    expect(screen.getByTestId('video-lipsync-bottom-row').contains(screen.getByTestId('generate-model-trigger'))).toBe(true);
+    fireEvent.click(mode);
+    expect(['cut_off', 'silence', 'loop', 'bounce', 'remap'].map((value) => screen.getByTestId(`video-sync-${value}`).textContent)).toEqual(['Cut off', 'Silence', 'Loop', 'Bounce', 'Remap']);
+  });
+  it('locks the model and the duration mode while the panel is disabled', () => {
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} lipSync={lipSync} disabled />);
+    expect(screen.getByTestId('video-sync-mode')).toBeDisabled();
+    expect(screen.getByTestId('generate-model-trigger')).toBeDisabled();
+  });
+  it('says start times follow the video and silence inside each audio is kept', () => {
     const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
-    expect(['cut_off', 'silence', 'loop', 'bounce', 'remap'].map((mode) => screen.getByTestId(`video-sync-${mode}`).textContent)).toEqual(['Cut off', 'Silence', 'Loop', 'Bounce', 'Remap']);
+    expect(screen.getByText(t('canvas.miniTool.videoUI.dialogueTimingHint'))).toBeInTheDocument();
   });
   it('shows the audio, person and zero-second input on one compact dialogue row', () => {
     const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
@@ -88,5 +109,29 @@ describe('independent progress and reusable people results', () => {
     const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [dialogue], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} analyses={[failed, success]} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
     expect(screen.getByTestId(`video-person-${row.dialogueId}`)).toHaveTextContent('Person 1');
+  });
+});
+
+describe('split scene detection and cut list (approved demo split state)', () => {
+  /** A scene detection of the draft that ran and failed; a run of any outcome means the next press detects again. */
+  const sceneRun: MiniToolAnalysisRecord = {
+    schemaVersion: 1, draftId: common.draftId, revision: common.revision, analysisRunId: '80000000-0000-4000-8000-000000000003', acceptedAt: '2026-10-24T00:00:00.000001Z',
+    binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: source.canonicalURL, kind: 'video', mediaInfo: source.mediaInfo },
+    analysisInput: { schemaVersion: 1, sourceURL: source.canonicalURL, kind: 'scene_cuts', range: { start: 0, end: 5 }, profile: { id: 'scenes', version: '1', weightsHash: null, params: {} } },
+    inputFingerprint: 'b'.repeat(64), kind: 'scene_cuts', status: 'failed', artifactUnavailable: false, error: { code: 'failed' }, usage: [], result: null,
+  };
+  it('reads Detect scenes before any detection and Detect again after one', () => {
+    const { unmount } = render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
+    expect(screen.getByTestId('video-detect-scenes')).toHaveTextContent(t('canvas.miniTool.videoUI.detectScenes'));
+    unmount();
+    render(<VideoToolControls {...base} analyses={[sceneRun]} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
+    expect(screen.getByTestId('video-detect-scenes')).toHaveTextContent(t('canvas.miniTool.videoUI.detectAgain'));
+  });
+  it('says how to add cuts while the list is empty', () => {
+    const { unmount } = render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
+    expect(screen.getByText(t('canvas.miniTool.videoUI.noCuts'))).toBeInTheDocument();
+    unmount();
+    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [0.1] } }} onChange={vi.fn()} />);
+    expect(screen.queryByText(t('canvas.miniTool.videoUI.noCuts'))).toBeNull();
   });
 });

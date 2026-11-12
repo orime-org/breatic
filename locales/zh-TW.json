@@ -1417,7 +1417,7 @@
         "current": "目前影格",
         "currentFrameUnavailable": "目前影格無法使用",
         "cutPoint": "切點",
-        "detectScenes": "重新偵測",
+        "detectScenes": "場景偵測",
         "dialogueAudio": "對白音訊",
         "dialoguePairs": "人物與對白",
         "dialogueStartTime": "開始時間",
@@ -1454,7 +1454,6 @@
         "segmentCount": "{count} 個片段",
         "selectedClipEmpty": "選擇片段以編輯設定。",
         "sourceUnavailable": "來源影片無法使用",
-        "syncMode": "時長匹配方式",
         "targetPerson": "目標人物",
         "timelineComposition": "合成時間線",
         "timelineEmpty": "時間線為空",
@@ -1532,7 +1531,16 @@
         "eraseMismatchNext": "換一個區間後重新執行。",
         "expandRejectedNext": "修改外擴範圍或描述後重新執行。",
         "windowStoppedNext": "因視窗 {number} 停止，請依視窗 {number} 的下一步處理。",
-        "retryFailedItems": "重試失敗項目"
+        "retryFailedItems": "重試失敗項目",
+        "timelineSlotHint": "選擇一部影片，與目前影片組成轉場。",
+        "trackingStale": "選取範圍已修改，請重新追蹤。",
+        "trackingReview": "檢查追蹤結果",
+        "sourceDuration": "原片時長",
+        "clipDuration": "片段時長",
+        "overlapLimit": "最長 {limit}，即較短片段時長的一半。",
+        "dialogueTimingHint": "時間以影片起點為準，保留每段音訊內部的靜音。",
+        "noCuts": "新增切點或執行場景偵測。",
+        "detectAgain": "重新偵測"
       }
     },
     "template": {
