@@ -175,7 +175,7 @@ export async function findWithContent(key: VersionKey): Promise<{ version: Docum
     .where(liveIn(key));
   if (!row) return null;
   const { content, ...rest } = row;
-  return { version: toEntity(rest as Row), content };
+  return { version: toEntity(rest), content };
 }
 
 /**
