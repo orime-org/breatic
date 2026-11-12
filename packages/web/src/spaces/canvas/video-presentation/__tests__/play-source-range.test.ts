@@ -6,7 +6,7 @@
  * preview plays exactly one source range in the node's own player and stops at its end.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { playSourceRange } from '../play-source-range';
 
 /**
@@ -61,5 +61,91 @@ describe('playSourceRange', () => {
   it('rejects when the player refuses to play', async () => {
     const { binding } = fakeBinding(() => Promise.reject(new Error('NotAllowedError')));
     await expect(playSourceRange(binding, 1, 2).done).rejects.toThrow('NotAllowedError');
+  });
+
+  it('settles without failing when a later pause interrupts the pending play (HTML pause rule)', async () => {
+    let pending: ((error: unknown) => void)[] = [];
+    const { binding } = fakeBinding(() => new Promise<void>((_resolve, reject) => { pending.push(reject); }));
+    vi.mocked(binding.pause).mockImplementation(() => {
+      const rejected = pending;
+      pending = [];
+      setTimeout(() => { for (const reject of rejected) reject(new DOMException('interrupted', 'AbortError')); }, 0);
+    });
+    const stopped = playSourceRange(binding, 1, 2);
+    stopped.stop();
+    await expect(stopped.done).resolves.toBeUndefined();
+    const interrupted = playSourceRange(binding, 2, 3);
+    binding.pause();
+    await expect(interrupted.done).resolves.toBeUndefined();
+  });
+});
+
+describe('playSourceRange once playing', () => {
+  let frames: Map<number, FrameRequestCallback>;
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  /**
+   * Replaces the animation frame clock with one the test runs by hand.
+   * @throws {never} Never.
+   */
+  function fakeFrames(): void {
+    frames = new Map();
+    let next = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { next += 1; frames.set(next, callback); return next; });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
+  }
+
+  /**
+   * Runs every animation frame callback pending now.
+   * @throws {never} Never.
+   */
+  function runFrames(): void {
+    const due = [...frames.entries()];
+    frames.clear();
+    for (const [, callback] of due) callback(0);
+  }
+
+  it('keeps one animation frame chain however many time events arrive', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    playSourceRange(binding, 1, 3);
+    await Promise.resolve(); await Promise.resolve();
+    expect(frames.size).toBe(1);
+    for (let index = 0; index < 20; index += 1) {
+      element.currentTime = 1 + index * 0.05;
+      element.dispatchEvent(new Event('timeupdate'));
+    }
+    expect(frames.size).toBe(1);
+    runFrames();
+    expect(frames.size).toBe(1);
+  });
+
+  it('pauses on the end found on an animation frame', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    const playback = playSourceRange(binding, 1, 2);
+    await Promise.resolve(); await Promise.resolve();
+    element.currentTime = 2.01;
+    runFrames();
+    await expect(playback.done).resolves.toBeUndefined();
+    expect(binding.pause).toHaveBeenCalledOnce();
+    expect(binding.seek).toHaveBeenLastCalledWith(2);
+    expect(frames.size).toBe(0);
+  });
+
+  it('ends at the position a seek of the user takes it to, even past the range end', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    const playback = playSourceRange(binding, 1, 2);
+    await Promise.resolve(); await Promise.resolve();
+    element.currentTime = 4;
+    element.dispatchEvent(new Event('seeking'));
+    element.dispatchEvent(new Event('timeupdate'));
+    runFrames();
+    await expect(playback.done).resolves.toBeUndefined();
+    expect(binding.pause).not.toHaveBeenCalled();
+    expect(binding.seek).toHaveBeenCalledTimes(1);
+    expect(element.currentTime).toBe(4);
+    expect(frames.size).toBe(0);
   });
 });

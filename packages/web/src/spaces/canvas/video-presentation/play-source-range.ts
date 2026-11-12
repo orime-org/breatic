@@ -14,7 +14,8 @@ export interface SourceRangePlayback {
 /**
  * Plays exactly one source range in the node's player (canvas design §4 split row preview; demo video-controls.tsx
  * CutEditor previewSegment): seeks to the start, plays, and on reaching the end pauses there. The end is checked on every
- * animation frame as well as on the player's own time events, which come too seldom to stop on the boundary.
+ * animation frame as well as on the player's own time events, which come too seldom to stop on the boundary. A seek the
+ * playback did not make itself (the user moving the player) ends it where the user put the player.
  * @param binding - The node's media binding.
  * @param start - The range start in seconds.
  * @param end - The range end in seconds.
@@ -35,37 +36,46 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
     if (over) return;
     over = true;
     cancelAnimationFrame(frame);
-    element.removeEventListener('timeupdate', check);
-    element.removeEventListener('ended', check);
-    element.removeEventListener('pause', paused);
+    element.removeEventListener('timeupdate', reached);
+    element.removeEventListener('ended', reached);
+    element.removeEventListener('pause', interrupted);
+    element.removeEventListener('seeking', interrupted);
     if (reachedEnd) { binding.pause(); binding.seek(end); }
     settle?.();
   };
   /**
-   * Ends the playback when the clock has reached the range end, otherwise looks again on the next frame.
+   * Ends the playback when the clock has reached the range end.
+   * @returns Whether it ended.
    * @throws {never} Never.
    */
-  function check(): void {
-    if (over) return;
-    if (element.currentTime >= end || element.ended) finish(true);
-    else frame = requestAnimationFrame(check);
+  function reached(): boolean {
+    if (!over && (element.currentTime >= end || element.ended)) finish(true);
+    return over;
   }
   /**
-   * The user paused the player: the playback ends where it is.
+   * The one per-frame look at the clock, rescheduled until the playback ends.
    * @throws {never} Never.
    */
-  function paused(): void { finish(false); }
+  function tick(): void { if (!reached()) frame = requestAnimationFrame(tick); }
+  /**
+   * The user paused or moved the player: the playback ends where it is.
+   * @throws {never} Never.
+   */
+  function interrupted(): void { finish(false); }
   const done = new Promise<void>((resolve, reject) => {
     settle = resolve;
     binding.seek(start);
-    element.addEventListener('timeupdate', check);
-    element.addEventListener('ended', check);
+    element.addEventListener('timeupdate', reached);
+    element.addEventListener('ended', reached);
     binding.play().then(() => {
       if (over) return;
-      // Listened to only once playing, so a pause the start itself caused does not end the playback.
-      element.addEventListener('pause', paused);
-      frame = requestAnimationFrame(check);
+      // Listened to only once playing, so neither the start's own seek nor a pause it caused ends the playback.
+      element.addEventListener('pause', interrupted);
+      element.addEventListener('seeking', interrupted);
+      frame = requestAnimationFrame(tick);
     }, (error: unknown) => {
+      // A later pause or load interrupted the play: the playback ended, it was not refused.
+      if (error instanceof DOMException && error.name === 'AbortError') { finish(false); return; }
       // Rejected first, so the settle inside finish is a no-op.
       reject(error instanceof Error ? error : new Error(String(error)));
       finish(false);
