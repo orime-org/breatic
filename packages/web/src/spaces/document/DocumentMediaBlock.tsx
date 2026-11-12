@@ -369,25 +369,27 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'inside');
   }, [viewport]);
-  // A table clips what reaches past it (its scroller scrolls sideways), so in
-  // a cell the toolbar's layer is placed against the viewport, `fixed`, at
-  // the same place against the media and kept inside the body. It stays in
-  // the block's own elements: React reads a pointer moving between portals
-  // nested in portals as leaving them.
+  // The toolbar's layer is centred against the media and shifted to stay
+  // inside the body, so a toolbar wider than its media keeps both ends on
+  // screen at the body's edges. A table clips what reaches past it (its
+  // scroller scrolls sideways), so in a cell the layer is placed against the
+  // viewport, `fixed`. It stays in the block's own elements: React reads a
+  // pointer moving between portals nested in portals as leaving them.
   const [inCell, setInCell] = React.useState(false);
   React.useLayoutEffect(() => {
     setInCell(host.closest(`[data-node-type='${DOC_TABLE}']`) !== null);
   }, [host]);
   const { refs: layerRefs, floatingStyles: layerStyles } = useFloating({
-    open: inCell,
+    open: toolbarShown,
     placement: 'top',
-    strategy: 'fixed',
+    strategy: inCell ? 'fixed' : 'absolute',
     middleware: [
       offset(side === 'top' ? 0 : ({ rects }) => -rects.floating.height - TOOLBAR_GAP),
       shift({ boundary: viewport ?? undefined }),
     ],
-    // The library runs this whenever both elements are mounted, open or not.
-    whileElementsMounted: inCell ? autoUpdate : undefined,
+    // The library runs this whenever both elements are mounted, open or not;
+    // a hidden toolbar needs no tracking.
+    whileElementsMounted: toolbarShown ? autoUpdate : undefined,
   });
   const { setReference, setFloating } = layerRefs;
   const holdBox = React.useCallback((el: HTMLDivElement | null): void => {
@@ -791,15 +793,14 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           data-media-viewer={type === 'audio' ? undefined : ''}
           onPointerEnter={pointerOn}
           onPointerLeave={pointerOff}
-          style={inCell ? layerStyles : undefined}
+          style={layerStyles}
           className={cn(
             toolbarShown && !floating ? 'pointer-events-auto' : 'pointer-events-none',
-            inCell
-              // Over the table's row and column handles (10), as the
-              // selection bubble bar is: both are summoned by the user's
-              // hand and go when it leaves.
-              ? ['z-20', side === 'top' && 'pb-2']
-              : ['absolute left-1/2 z-10 -translate-x-1/2', side === 'top' ? 'bottom-full pb-2' : 'top-2'],
+            // In a cell, over the table's row and column handles (10), as the
+            // selection bubble bar is: both are summoned by the user's hand
+            // and go when it leaves.
+            inCell ? 'z-20' : 'z-10',
+            side === 'top' && 'pb-2',
           )}
         />
         {/* The media itself, which is what a frame goes around: the caption
