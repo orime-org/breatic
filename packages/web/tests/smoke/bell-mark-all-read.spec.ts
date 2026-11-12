@@ -140,8 +140,10 @@ test('a bell with more notifications than the window holds scrolls them, and the
   await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
   for (let turn = 0; turn < 20; turn += 1) await page.mouse.wheel(0, 400);
   await expect(last).toBeInViewport();
-  const shown = (await last.boundingBox())!;
-  expect(shown.y + shown.height).toBeLessThanOrEqual(box.y + box.height);
+  // Measured again: the first read can land inside the opening zoom.
+  const [shown, panel] = [(await last.boundingBox())!, (await popover.boundingBox())!];
+  expect(shown.y + shown.height).toBeLessThanOrEqual(panel.y + panel.height);
+  expect(panel.y + panel.height).toBeLessThanOrEqual(720);
   await expect(popover.getByTestId('bell-count')).toBeInViewport();
 
   await a.close();
