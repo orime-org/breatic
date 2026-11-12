@@ -126,6 +126,7 @@ async function syncNow(conversationId: string): Promise<void> {
 function attach(conversationId: string): Promise<void> {
   const under = attaching.get(conversationId);
   if (under) return under;
+  let streamed = false;
   const run = (async (): Promise<void> => {
     for (;;) {
       if (!isShowing(conversationId) || isReadingRun(conversationId)) return;
@@ -140,6 +141,7 @@ function attach(conversationId: string): Promise<void> {
       if (!isShowing(conversationId)) return;
       if (layLatestPage(conversationId, read.messages) === 'replaced') conversationRuntime.tookLatestPage(conversationId, read);
       const ended = await readRun(conversationId, () => noteTurnRunning(conversationId));
+      if (ended !== 'none') streamed = true;
       if (ended === 'let-go') return;
       if (ended === 'next') continue;
       if (ended === 'lost' || ended === 'broken') {
@@ -156,8 +158,11 @@ function attach(conversationId: string): Promise<void> {
   });
   attaching.set(conversationId, run);
   // Once a stream is over, however it ended, ask where things stand: a run may
-  // have opened for what waits, here or on another server.
-  void run.then(() => syncNow(conversationId));
+  // have opened for what waits, here or on another server. With no stream to
+  // read, the next sync at its interval asks.
+  void run.then(() => {
+    if (streamed) void syncNow(conversationId);
+  });
   return run;
 }
 

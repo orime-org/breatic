@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ChatSyncAnswer } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import type { ConversationRead, StoredUiMessage } from '@web/data/api/chat';
-import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions, runEndedInError } from '@web/stores/chat-sessions';
 import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import { useChatWaiting } from '@web/stores/chat-waiting';
 import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
@@ -338,5 +338,55 @@ describe('the sync of the conversation on screen', () => {
     chatLive.show('p1', 'c1');
     await settle();
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ pending: [m1], blocked: true, awaiting: false });
+  });
+});
+
+describe('a sync that says a run holds it when no stream is there to read', () => {
+  it('leaves the next ask to the sync at its interval', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValue(RUNNING);
+    wire.noRunNext();
+    wire.noRunNext();
+    chatLive.show('p1', 'c1');
+    await settle(20);
+    expect(vi.mocked(chatApi.sync).mock.calls).toHaveLength(1);
+    expect(order.filter((o) => o === 'stream')).toHaveLength(1);
+  });
+});
+
+describe('a run that carries on the paused reply', () => {
+  /** The reply paused at a card the user answered, as the history holds it. */
+  const PAUSED: StoredUiMessage = {
+    id: 'a1',
+    role: 'assistant',
+    parts: [{ type: 'text', text: 'Which ratio?' }],
+    metadata: { turnIndex: 1 } as never,
+  };
+
+  beforeEach(() => {
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), PAUSED]));
+  });
+
+  it('goes on in that reply', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    chatLive.show('p1', 'c1');
+    await settle();
+    const s = wire.last()!;
+    for (const f of replyOpens('t2')) s.push(f);
+    s.push({ type: 'text-delta', id: 't2', delta: 'Going with 9:16.' });
+    for (const f of replyEnds('t2')) s.push(f);
+    s.close();
+    await settle();
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
+    expect(messages()[1]!.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text)).toEqual(['Which ratio?', 'Going with 9:16.']);
+  });
+
+  it('leaves the reply as it is when no run is there to read', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    wire.noRunNext();
+    chatLive.show('p1', 'c1');
+    await settle();
+    expect(messages()).toEqual([userRow('m1', 1), PAUSED]);
+    expect(useRunningTurns.getState().byConversation.c1).toBeUndefined();
+    expect(runEndedInError('c1')).toBe(false);
   });
 });

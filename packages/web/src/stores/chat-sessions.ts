@@ -152,7 +152,10 @@ function keepOurNames(stream: ReadableStream<UIMessageChunk>): ReadableStream<UI
 /**
  * The transport a conversation's runs are read on. Nothing is sent through
  * it: a message goes out as a request of its own (`stores/chat-live`), and
- * what the run says arrives only by attaching.
+ * what the run says arrives only by attaching. A run that carries on the
+ * last reply (a card was answered) is read through `sendMessages`, the SDK's
+ * path for going on with the last assistant message; every other run through
+ * `reconnectToStream`.
  * @param conversationId - The conversation.
  * @returns The transport.
  */
@@ -169,14 +172,22 @@ function transportFor(conversationId: string): ChatTransport<StoredUiMessage> {
       headers: { 'Accept-Language': getLocale() },
     }),
   });
+  /**
+   * The stream of the run holding the conversation.
+   * @param options - What the SDK asks the stream with.
+   * @param options.chatId - The conversation.
+   * @returns Its frames, or null when no run holds the conversation.
+   */
+  const runStream = async (options: { chatId: string }): Promise<ReadableStream<UIMessageChunk> | null> => {
+    const stream = await wire.reconnectToStream(options);
+    if (stream === null) return null;
+    streamOpened.get(conversationId)?.();
+    return sayWhenItAnswers(keepOurNames(stream), () => clearConsolidating(conversationId));
+  };
   return {
-    sendMessages: () => Promise.reject(new Error('A message is sent by stores/chat-live, not through the transport.')),
-    reconnectToStream: async (options) => {
-      const stream = await wire.reconnectToStream(options);
-      if (stream === null) return null;
-      streamOpened.get(conversationId)?.();
-      return sayWhenItAnswers(keepOurNames(stream), () => clearConsolidating(conversationId));
-    },
+    // Nothing to carry on with leaves the reply as it is.
+    sendMessages: async (options) => (await runStream(options)) ?? new ReadableStream({ start: (c) => c.close() }),
+    reconnectToStream: runStream,
   };
 }
 
@@ -336,7 +347,11 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
     onOpened();
   });
   try {
-    await chat.resumeStream();
+    // A run resumed after a card goes on in the paused reply, the last
+    // message of the history laid first; any other run opens a reply of its
+    // own after the message that opened it.
+    if (chat.messages.at(-1)?.role === 'assistant') await chat.sendMessage();
+    else await chat.resumeStream();
   } finally {
     streamOpened.delete(conversationId);
     reading.delete(conversationId);
