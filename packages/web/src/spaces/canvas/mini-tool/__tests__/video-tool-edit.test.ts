@@ -49,9 +49,9 @@ describe('approved video tool edit boundaries', () => {
     });
     it('an end dragged to the source\'s last frame commits no more than its duration', () => {
       const cut: VideoToolTimelineClip[] = [{ ...pair[0]!, transition: { kind: 'cut', duration: 0 } }, { ...pair[1]!, in: 0 }];
-      // The dialog bounds the end at maxEnd = end + duration - out.
-      const [, second] = trimTimelineClip(cut, cut[1]!.clipId, reported(3), reported(3 + 2.9 + 3.008 - 2.9), 3.008);
-      expect(second!.out).toBeLessThanOrEqual(3.008);
+      // The dialog bounds the end at maxEnd = end + duration - out; a duration between whole milliseconds rounds up past itself.
+      const [, second] = trimTimelineClip(cut, cut[1]!.clipId, reported(3), reported(3 + 2.9 + 3.0086 - 2.9), 3.0086);
+      expect(second!.out).toBeLessThanOrEqual(3.0086);
     });
     it('commits in and out points in whole milliseconds', () => {
       fc.assert(fc.property(fc.integer({ min: 1, max: 280 }), fc.integer({ min: 0, max: 260 }), (inPx, outPx) => {
