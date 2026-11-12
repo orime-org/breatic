@@ -707,7 +707,13 @@ chat.get(
 chat.delete("/conversations/:id", validate("param", idParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
+  await conversationService.assertAccess(conversationId, user.id);
+  // Its queue first, so the run it stops opens no next run on what waited;
+  // then the row; then the stop (inner#1717).
+  const { active } = await chatQueue().peek(conversationId);
+  await chatQueue().clear(conversationId);
   await conversationService.deleteConversation(conversationId, user.id);
+  if (active !== null) await getRedis().publish(stopChannel(active), "stop");
   return c.json({ message: "Conversation deleted" });
 });
 

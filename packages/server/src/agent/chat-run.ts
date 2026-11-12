@@ -235,7 +235,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
      */
     const beforeStream = async (): Promise<void> => {
       try {
-        held.lease = await runningTurnsService.holdRunning(ctx);
+        held.lease = await runningTurnsService.holdRunning({ ...ctx, runId });
       } catch (err) {
         logger.error({ err, ...ctx, runId }, "chat_running_lease_failed");
       }
