@@ -185,6 +185,20 @@ function heldThroughShutdown<T>(ctx: Record<string, unknown>, fn: () => Promise<
 }
 
 /**
+ * Hand back a conversation held for a card's answer that was then refused:
+ * messages sent meanwhile get a run, otherwise the card waits again.
+ * @param conversationId - The conversation.
+ * @param projectId - Its project.
+ * @param userId - Who answered.
+ * @param runId - The run the answer held it for.
+ * @param awaiting - The card that was waiting when it was held.
+ */
+async function handBack(conversationId: string, projectId: string, userId: string, runId: string, awaiting: string | null): Promise<void> {
+  const next = await chatQueue().giveBack(conversationId, runId, awaiting);
+  if (next !== null) startRun({ conversationId, projectId, userId, runId: next, entrance: { kind: "head" } });
+}
+
+/**
  * The answer a card is given while the server shuts down: try again shortly.
  * @param c - The request.
  * @returns The response.
@@ -210,7 +224,7 @@ chat.use("*", requireAuth);
  * behalf, so an id that no longer resolves is refused here rather than
  * quietly replaced with a new conversation the client does not know about.
  * @param c - Hono context with validated `chatMessageSchema` body
- * @returns SSE text/event-stream response
+ * @returns The send's status and the waiting area as JSON
  */
 chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
@@ -264,12 +278,23 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
         : undefined;
   if (card !== undefined) {
     const ctx = { userId: user.id, conversationId: conversation.id, projectId: body.project_id, task: "chat_card_answer" };
-    // The shutdown flag, the answer, the resume and the run's opening stage
+    // The shutdown flag, the resume, the answer and the run's opening stage
     // are one piece of after-reply work: a shutdown that lands anywhere in it
     // waits for the run to write its failed ending before the pools close.
     return heldThroughShutdown(ctx, async () => {
       if (isShuttingDown()) return shuttingDown(c);
-      const taken = await card.take();
+      // The conversation is held before the answer is taken, so an answer
+      // refused as busy leaves the card waiting for the run that holds it.
+      const runId = randomUUID();
+      const resumed = await chatQueue().resume(conversation.id, runId);
+      if (resumed.status === "busy") {
+        return c.json({ error: { code: 409, message: t("server.chat.turn_busy"), reason: "turn_busy" } }, 409);
+      }
+      const taken = await card.take().catch(async (err: unknown) => {
+        await handBack(conversation.id, body.project_id, user.id, runId, resumed.awaiting);
+        throw err;
+      });
+      if (taken.kind !== "answered") await handBack(conversation.id, body.project_id, user.id, runId, resumed.awaiting);
       if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
       if (taken.kind === "mismatch") {
         logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
@@ -282,10 +307,6 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
           { error: { code: 409, message: t("server.chat.ask_already_answered"), call: { status: taken.status, output: taken.output } } },
           409,
         );
-      }
-      const runId = randomUUID();
-      if ((await chatQueue().resume(conversation.id, runId)) === "busy") {
-        return c.json({ error: { code: 409, message: t("server.chat.turn_busy"), reason: "turn_busy" } }, 409);
       }
       const { running } = await startRun({
         conversationId: conversation.id,

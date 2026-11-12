@@ -163,6 +163,7 @@ describe("answering a card", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toEqual({ error: { code: 409, message: expect.any(String), call: { status: "success", output: expect.anything() } } });
     expect("call" in body).toBe(false);
+    expect(await getRedis().exists(keysOf(who.conversationId).active)).toBe(0);
   });
 
   it("answers 404 for a card that is not there (RT-16)", async () => {
@@ -170,13 +171,25 @@ describe("answering a card", () => {
     expect((await answer(who, "no-such-card")).status).toBe(404);
   });
 
-  it("answers turn_busy when a run took the conversation after the answer was taken (RT-19)", async () => {
+  it("hands the conversation back with its card still waiting when the answer is refused", async () => {
+    const who = await stoppedAtCard("ask-5");
+    expect((await answer(who, "not-this-card")).status).toBe(404);
+    expect(await getRedis().exists(keysOf(who.conversationId).active)).toBe(0);
+    expect(await getRedis().get(keysOf(who.conversationId).awaiting)).toBe("ask-5");
+    const card = (await rowsOf(who.conversationId)).flatMap((r) => r.parts).find((p) => p.toolCallId === "ask-5");
+    expect(card?.status).toBe("awaiting");
+  });
+
+  it("answers turn_busy and leaves the card waiting when a run holds the conversation (RT-19)", async () => {
     const who = await stoppedAtCard("ask-3");
     await getRedis().set(keysOf(who.conversationId).active, "R-other");
     const res = await answer(who, "ask-3");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: Record<string, unknown> };
     expect(body.error).toEqual({ code: 409, message: expect.any(String), reason: "turn_busy" });
+    const card = (await rowsOf(who.conversationId)).flatMap((r) => r.parts).find((p) => p.toolCallId === "ask-3");
+    expect(card?.status).toBe("awaiting");
+    expect(await getRedis().get(keysOf(who.conversationId).active)).toBe("R-other");
     await getRedis().del(keysOf(who.conversationId).active);
   });
 });

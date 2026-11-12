@@ -52,7 +52,10 @@ export type RunEnding =
 export interface ChatQueue {
   enqueue(conversationId: string, item: QueueItem): Promise<EnqueueResult>;
   claim(conversationId: string): Promise<ClaimResult>;
-  resume(conversationId: string, runId: string): Promise<"start" | "busy">;
+  /** Take the conversation for a card's answer; `awaiting` is the card that was waiting, for `giveBack`. */
+  resume(conversationId: string, runId: string): Promise<{ status: "start"; awaiting: string | null } | { status: "busy" }>;
+  /** Hand back a conversation `resume` took for an answer that was then refused: to a new run when messages came meanwhile, otherwise freed with the card waiting again. */
+  giveBack(conversationId: string, runId: string, awaiting: string | null): Promise<string | null>;
   head(conversationId: string, runId: string): Promise<QueueItem[]>;
   drain(conversationId: string, runId: string): Promise<QueueItem[]>;
   forget(conversationId: string, runId: string, ids: readonly string[]): Promise<QueueItem[]>;
@@ -96,10 +99,22 @@ return append({'start', ARGV[1]}, KEYS[4])`;
 
 /** KEYS active, awaiting; ARGV runId, leaseMs. */
 const RESUME = `
-if redis.call('exists', KEYS[1]) == 1 then return 'busy' end
+if redis.call('exists', KEYS[1]) == 1 then return {'busy', ''} end
+local card = redis.call('get', KEYS[2]) or ''
 redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
 redis.call('del', KEYS[2])
-return 'start'`;
+return {'start', card}`;
+
+/** KEYS active, awaiting, taken, queue; ARGV runId, card, newRunId, leaseMs. */
+const GIVE_BACK = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return false end
+if redis.call('llen', KEYS[3]) > 0 or redis.call('llen', KEYS[4]) > 0 then
+  redis.call('set', KEYS[1], ARGV[3], 'PX', ARGV[4])
+  return ARGV[3]
+end
+redis.call('del', KEYS[1])
+if ARGV[2] ~= '' then redis.call('set', KEYS[2], ARGV[2]) end
+return false`;
 
 /** KEYS active, taken, queue; ARGV runId. */
 const HEAD = `
@@ -246,7 +261,13 @@ export function createChatQueue(redis: Redis): ChatQueue {
     },
     async resume(c, runId) {
       const k = keysOf(c);
-      return (await redis.eval(RESUME, 2, k.active, k.awaiting, runId, leaseMs())) as "start" | "busy";
+      const [status, card] = (await redis.eval(RESUME, 2, k.active, k.awaiting, runId, leaseMs())) as [string, string];
+      return status === "busy" ? { status: "busy" } : { status: "start", awaiting: card === "" ? null : card };
+    },
+    async giveBack(c, runId, awaiting) {
+      const k = keysOf(c);
+      const next = (await redis.eval(GIVE_BACK, 4, k.active, k.awaiting, k.taken, k.queue, runId, awaiting ?? "", newRunId(), leaseMs())) as string | null;
+      return next ?? null;
     },
     async head(c, runId) {
       const k = keysOf(c);

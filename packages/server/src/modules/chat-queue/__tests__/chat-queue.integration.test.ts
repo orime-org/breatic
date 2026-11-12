@@ -310,18 +310,64 @@ describe("resume", () => {
   it("takes the conversation for a card answer (RQ-15)", async () => {
     const { c, k } = fresh();
     await getRedis().set(k.awaiting, "T1");
-    expect(await q.resume(c, "R2")).toBe("start");
+    expect(await q.resume(c, "R2")).toEqual({ status: "start", awaiting: "T1" });
     expect(await getRedis().get(k.active)).toBe("R2");
     expect(await getRedis().exists(k.awaiting)).toBe(0);
+  });
+
+  it("answers that no card was waiting when none was (RQ-15b)", async () => {
+    const { c } = fresh();
+    expect(await q.resume(c, "R2")).toEqual({ status: "start", awaiting: null });
   });
 
   it("answers busy while a run is going (RQ-16)", async () => {
     const { c, k } = fresh();
     await getRedis().set(k.active, "R1");
     await getRedis().set(k.awaiting, "T1");
-    expect(await q.resume(c, "R2")).toBe("busy");
+    expect(await q.resume(c, "R2")).toEqual({ status: "busy" });
     expect(await getRedis().get(k.active)).toBe("R1");
     expect(await getRedis().get(k.awaiting)).toBe("T1");
+  });
+});
+
+describe("giveBack", () => {
+  it("frees the conversation and puts the card back when nothing waits (RQ-16c)", async () => {
+    const { c, k } = fresh();
+    await getRedis().set(k.awaiting, "T1");
+    await q.resume(c, "R2");
+    expect(await q.giveBack(c, "R2", "T1")).toBeNull();
+    expect(await getRedis().exists(k.active)).toBe(0);
+    expect(await getRedis().get(k.awaiting)).toBe("T1");
+  });
+
+  it("frees the conversation and leaves no card when none was waiting (RQ-16d)", async () => {
+    const { c, k } = fresh();
+    await q.resume(c, "R2");
+    expect(await q.giveBack(c, "R2", null)).toBeNull();
+    expect(await getRedis().exists(k.active)).toBe(0);
+    expect(await getRedis().exists(k.awaiting)).toBe(0);
+  });
+
+  it("hands the conversation to a new run for messages sent meanwhile, and the card stays closed (RQ-16e)", async () => {
+    for (const list of ["queue", "taken"] as const) {
+      const { c, k } = fresh();
+      await getRedis().set(k.awaiting, "T1");
+      await q.resume(c, "R2");
+      await putList(k[list], ["m1"]);
+      const next = await q.giveBack(c, "R2", "T1");
+      expect(next).toEqual(expect.any(String));
+      expect(next).not.toBe("R2");
+      expect(await getRedis().get(k.active)).toBe(next);
+      expect(await getRedis().exists(k.awaiting)).toBe(0);
+    }
+  });
+
+  it("leaves another run's conversation alone (RQ-16f)", async () => {
+    const { c, k } = fresh();
+    await getRedis().set(k.active, "R1");
+    const before = await snapshot(k);
+    expect(await q.giveBack(c, "R2", "T1")).toBeNull();
+    expect(await snapshot(k)).toEqual(before);
   });
 });
 
