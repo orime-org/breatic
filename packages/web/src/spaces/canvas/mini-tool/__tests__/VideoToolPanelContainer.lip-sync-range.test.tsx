@@ -63,16 +63,17 @@ function lipSyncConfig(model: Range, tracking: Range): { models: (Range & { name
 
 /**
  * Commits a lip-sync draft whose one dialogue is bound to an identified person and a 3 s audio, with its people analysis.
+ * @param modelId - The draft's chosen model, absent for the first configured one.
  * @returns Nothing.
  */
-async function seed(): Promise<void> {
+async function seed(modelId?: string): Promise<void> {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   const initial = createVideoToolDraft('video.lip-sync', source);
   const draft: VideoToolDraftById['video.lip-sync'] = {
     ...initial,
     inputs: [{ inputId: audioId, url: 'https://assets.example.test/voice.m4a', mediaInfo: { duration: 3, mimeType: 'audio/mp4' } }],
-    params: { ...initial.params, dialogues: [{ ...initial.params.dialogues[0], personId: 'person-a', analysisRunId: runId, audioInputId: audioId, startTime: 0 }] },
+    params: { ...initial.params, ...(modelId === undefined ? {} : { modelId }), dialogues: [{ ...initial.params.dialogues[0], personId: 'person-a', analysisRunId: runId, audioInputId: audioId, startTime: 0 }] },
   };
   commitVideoToolDraft(doc, nodeId, 'video.lip-sync', draft);
   const analysisInput = projectMiniToolAnalysisInput({ kind: 'people', source, params: draft.params, profile });
@@ -95,10 +96,11 @@ async function seed(): Promise<void> {
  * Mounts the lip-sync panel and waits until the identified person is bound on its row.
  * @param lipSync - The proposed config prop.
  * @param onRunVideo - The execution entry.
+ * @param modelId - The draft's chosen model, absent for the first configured one.
  * @returns The Run button.
  */
-async function mount(lipSync: ReturnType<typeof lipSyncConfig>, onRunVideo: () => Promise<unknown>): Promise<HTMLElement> {
-  await seed();
+async function mount(lipSync: ReturnType<typeof lipSyncConfig>, onRunVideo: () => Promise<unknown>, modelId?: string): Promise<HTMLElement> {
+  await seed(modelId);
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const proposed: object = { lipSync };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.lip-sync' node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} {...proposed} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -152,5 +154,12 @@ describe('lip-sync Run follows the model and tracking duration ranges (§97; can
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     const run = await mount(lipSyncConfig({ minDurationSeconds: 1, maxDurationSeconds: 10 }, { minDurationSeconds: 0.75, maxDurationSeconds: 2.25 }), onRunVideo);
     expectRefused(run, onRunVideo, t('canvas.miniTool.videoUI.lipSyncTrackingRange', { min: 0.75, max: 2.25, length: 3 }));
+  });
+
+  // Canvas design line 98: a model no longer in the configured list asks for another, as the generate panel does.
+  it('refuses a draft whose model is no longer configured and asks for another', async () => {
+    const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
+    const run = await mount(lipSyncConfig({ minDurationSeconds: 1, maxDurationSeconds: 10 }, { minDurationSeconds: 0.5, maxDurationSeconds: 10 }), onRunVideo, 'dropped-model');
+    expectRefused(run, onRunVideo, t('canvas.generatePanel.modelUnavailable'));
   });
 });

@@ -190,8 +190,9 @@ function transitionClipBlock(draft: VideoToolDraftById['video.transitions'], inp
 }
 
 /**
- * Why a complete lip-sync draft cannot run with the chosen model (canvas design §4 lip-sync row, execution design §9.3): its
- * result lasts outside the model's range, or the source range it uses lies outside the tracking model's, as admission judges.
+ * Why a complete lip-sync draft cannot run with the chosen model (canvas design §4 lip-sync row, execution design §9.3): the
+ * chosen model is no longer configured, its result lasts outside the model's range, or the source range it uses lies outside
+ * the tracking model's, as admission judges.
  * @param draft - The draft, every row bound.
  * @param table - The source's presentation table.
  * @param lipSync - The configured models and tracking range.
@@ -201,7 +202,8 @@ function transitionClipBlock(draft: VideoToolDraftById['video.transitions'], inp
  */
 function lipSyncRangeBlock(draft: VideoToolDraftById['video.lip-sync'], table: VideoPresentationTable, lipSync: LipSyncChoices, t: (key: string, params?: Record<string, string | number>) => string): string | undefined {
   const model = lipSync.models.find((entry) => entry.name === (draft.params.modelId ?? lipSync.models[0]?.name));
-  if (model === undefined) return undefined;
+  // A model the list dropped asks for another, as the generate panel does.
+  if (model === undefined) return draft.params.modelId === undefined ? undefined : t('canvas.generatePanel.modelUnavailable');
   const dialogues = draft.params.dialogues.flatMap((row) => {
     const duration = draft.inputs.find((input) => input.inputId === row.audioInputId)?.mediaInfo?.duration;
     return row.personId === null || row.audioInputId === null || duration === undefined ? [] : [{ dialogueId: row.dialogueId, personId: row.personId, audioInputId: row.audioInputId, startTime: row.startTime, duration }];
