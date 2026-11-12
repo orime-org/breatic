@@ -6,6 +6,7 @@ import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle } from '@w
 import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
+import { useTranslation } from '@web/i18n/use-translation';
 
 export interface VideoResultPreviewDialogProps {
   open: boolean;
@@ -22,11 +23,14 @@ export interface VideoResultPreviewDialogProps {
  * @param props - The result.
  * @param props.projectId - The Project.
  * @param props.url - The result's registered original.
- * @returns The player.
- * @throws {never} Read failures stay on the player.
+ * @returns The player, or the media error line when the presentation failed.
+ * @throws {never} A read failure shows as the media error line.
  */
 function ResultPlayer(props: { projectId: string; url: string }): React.JSX.Element {
-  const { source } = useResolvedVideoPresentation(props.projectId, props.url, true);
+  const t = useTranslation();
+  const { source, failure } = useResolvedVideoPresentation(props.projectId, props.url, true);
+  // A failed presentation never yields a source, so the player would wait forever; say so as the video node does.
+  if (failure !== null) return <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>;
   return <div className='overflow-hidden rounded-chrome border border-border' style={checkerboardStyle(1, { x: 0, y: 0 })}>
     <MediaPlayer modality='video' src={props.url} videoSource={source} variant='preview' />
   </div>;
