@@ -1886,7 +1886,8 @@ export function renderProductGuide(): string {
       `(not for a Viewer) and ${quoted(t("spaces.document.versions.exitPreview"))}. Hovering a row shows three dots ` +
       `with ${quoted(t("spaces.document.versions.compareWithShown"))}, ${quoted(t("spaces.document.versions.rename"))} ` +
       `and ${quoted(t("spaces.document.versions.delete"))} (the last two not for a Viewer). A comparison marks added ` +
-      "text green, removed text red and struck through, and changed formatting blue, and folds long unchanged " +
+      "text on a green background, removed text red and struck through, and changed formatting on blue, and " +
+      "folds long unchanged " +
       `stretches into one row that opens on a click; ${quoted(t("spaces.document.versions.exitCompare"))} leaves it. ` +
       `${quoted(t("spaces.document.versions.restore"))} asks first, then replaces the whole body with the snapshot ` +
       "for everyone at once; Cmd/Ctrl+Z takes it back. Comments are kept: those the snapshot had go back where they " +
