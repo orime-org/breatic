@@ -73,7 +73,7 @@ export interface VideoToolPresentation {
   sourceEpoch: number;
   seekEpoch: number;
   onSeek?: (time: number) => void;
-  /** Plays exactly one source range in the node's player (canvas design §4 split row 预览区间). */
+  /** Plays exactly one source range in the node's player (canvas design §4 split row preview). */
   onPlayRange?: (start: number, end: number) => SourceRangePlayback;
   /** Whether the selected version presents with transparency, which erase and expand do not take (execution design §10.4). */
   transparent?: boolean;
@@ -250,7 +250,7 @@ function useInputPresentations(projectId: string, inputs: readonly VideoToolDraf
   return React.useMemo(() => {
     const tableByURL = new Map(read.flatMap(({ url }, at) => { const table = tables[at]?.data; return table === undefined ? [] : [[url, table] as const]; }));
     const refByURL = new Map(read.flatMap(({ url, response }) => (response.presentation === null ? [] : [[url, { toolInputId: response.presentation.toolInputId, planSha256: response.presentation.planSha256 }] as const])));
-    // The selected version's display size and transparency, which the timeline composition takes from the first clip (canvas design §4 转场).
+    // The selected version's display size and transparency, which the timeline composition takes from the first clip (canvas design §4 transitions row).
     const formatByURL = new Map(read.flatMap(({ url, response }) => (response.presentation === null ? [] : [[url, { width: response.presentation.display.width, height: response.presentation.display.height, transparent: response.presentation.playback.kind === 'alpha-packed' }] as const])));
     const stateByURL = new Map(urls.map((url, at) => {
       const response = responses[at]?.data;
@@ -628,7 +628,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     return view === undefined || url === '' ? null : { url, name: 'name' in view.data && typeof view.data.name === 'string' ? view.data.name : '' };
   }, [toolId, doc, nodeId, nodes]);
   const [resultOpen, setResultOpen] = React.useState(false);
-  // A frame the source player's camera menu asked for (tools design §4 相机菜单): applied to the draft once, then dropped.
+  // A frame the source player's camera menu asked for (tools design §4 camera menu): applied to the draft once, then dropped.
   const frameRequest = toolId === 'video.extract-frames' ? session?.params.frameMode : undefined;
   React.useEffect(() => {
     if (frameRequest !== 'first' && frameRequest !== 'last' && frameRequest !== 'current') return;

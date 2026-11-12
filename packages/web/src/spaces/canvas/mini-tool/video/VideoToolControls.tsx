@@ -62,7 +62,7 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   regionSelection?: 'rectangle' | 'point';
   onRegionSelection?: (selection: 'rectangle' | 'point') => void;
   onSeek?: (time: number) => void;
-  /** Plays exactly one source range in the node's player (canvas design §4 split row 预览区间). */
+  /** Plays exactly one source range in the node's player (canvas design §4 split row preview). */
   onPlayRange?: (start: number, end: number) => SourceRangePlayback;
   sourceEpoch?: number;
   seekEpoch?: number;

@@ -12,7 +12,7 @@ export interface SourceRangePlayback {
 }
 
 /**
- * Plays exactly one source range in the node's player (canvas design §4 split row 预览区间; demo video-controls.tsx
+ * Plays exactly one source range in the node's player (canvas design §4 split row preview; demo video-controls.tsx
  * CutEditor previewSegment): seeks to the start, plays, and on reaching the end pauses there. The end is checked on every
  * animation frame as well as on the player's own time events, which come too seldom to stop on the boundary.
  * @param binding - The node's media binding.

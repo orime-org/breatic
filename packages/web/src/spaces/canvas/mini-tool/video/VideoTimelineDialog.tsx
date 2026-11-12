@@ -105,7 +105,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const firstFormat = clips[0] === undefined ? undefined : props.inputFormats?.get(clips[0].inputId);
   const frameWidth = firstFormat?.width ?? firstInput?.mediaInfo?.width;
   const frameHeight = firstFormat?.height ?? firstInput?.mediaInfo?.height;
-  // The output is transparent when either clip is, as export decides (canvas design §4 转场).
+  // The output is transparent when either clip is, as export decides (canvas design §4 transitions row).
   const transparent = clips.some((item) => props.inputFormats?.get(item.inputId)?.transparent === true);
   const format = React.useMemo((): VideoTimelineFormat | null => (frameWidth === undefined || frameHeight === undefined ? null : { width: frameWidth, height: frameHeight, transparent }), [frameWidth, frameHeight, transparent]);
   const compositionText = [format === null ? null : `${format.width} × ${format.height}`, firstTable === undefined ? null : `${fpsText(presentationOutputFps(firstTable))} fps`, `${plan.duration.toFixed(3)} s`].filter((part) => part !== null).join(' · ');

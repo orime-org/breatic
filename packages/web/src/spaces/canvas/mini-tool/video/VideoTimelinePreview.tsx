@@ -15,7 +15,7 @@ import { NativeTimelineDecoder } from '@web/spaces/canvas/mini-tool/video/Native
 import type { VideoTimelineDecoderBinding, VideoTimelineDecoderRenderer, VideoTimelinePresentedFrame } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoPresentationRecoveryError } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 
-/** The composition frame: the first clip's display size, transparent when either clip is (canvas design §4 转场). */
+/** The composition frame: the first clip's display size, transparent when either clip is (canvas design §4 transitions row). */
 export interface VideoTimelineFormat { width: number; height: number; transparent: boolean }
 
 export interface VideoTimelinePreviewProps {
@@ -64,7 +64,7 @@ function decoderKey(clip: VideoPlannedClip, input: VideoToolInput): string { ret
 
 /**
  * Draws a source frame into the composition frame, scaled to fit and centred, the borders black for an opaque output and
- * fully transparent for a transparent one, the rule export uses (canvas design §4 转场; demo timeline-preview.tsx).
+ * fully transparent for a transparent one, the rule export uses (canvas design §4 transitions row; demo timeline-preview.tsx).
  * @param context - The composition-sized drawing context.
  * @param frame - The source frame snapshot.
  * @param format - The composition frame.
