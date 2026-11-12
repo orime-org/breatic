@@ -33,6 +33,10 @@ export const CONTAINER_OPS = [
   "reverb",
   "voice",
   "pitch",
+  // inner#1825: the joins, a video one and an audio one, each reading the
+  // clips after the source.
+  "join",
+  "audio_join",
 ] as const;
 
 /** One of {@link CONTAINER_OPS}. */
@@ -69,6 +73,7 @@ export type MiniToolIcon =
   | "Wand2"
   | "PersonStanding"
   | "Clapperboard"
+  | "Combine"
   | "Gauge"
   | "Scissors"
   | "SlidersHorizontal"
@@ -238,10 +243,16 @@ export interface MiniToolModelParam {
 /** A second piece of media the tool reads, picked from the canvas. */
 export interface MiniToolSlot {
   readonly key: string;
-  /** The pinned model's yaml param it fills. */
+  /**
+   * The pinned model's yaml param it fills, or, on a container tool, the
+   * name of the container operation's input it is sent as (inner#1825).
+   */
   readonly param: string;
   readonly accepts: MiniToolMedium;
-  /** Whether the param is a list; its cap is the yaml param's `max_items`. */
+  /**
+   * Whether the param is a list; its cap is the yaml param's `max_items`, or
+   * for a container tool's input the cap the server hands out with its limits.
+   */
   readonly many: boolean;
   /** The pick banner's text. */
   readonly bannerKey: string;

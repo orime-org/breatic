@@ -132,7 +132,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,avg_frame_rate,r_frame_rate,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -308,6 +308,8 @@ interface RawStream {
   sample_rate?: string;
   channels?: number;
   channel_layout?: string;
+  avg_frame_rate?: string;
+  r_frame_rate?: string;
   start_pts?: string;
   duration_ts?: string;
   time_base?: string;
@@ -325,6 +327,30 @@ function audioFieldsOf(raw: RawStream): { sampleRate?: number; channels?: number
     ...(rate === null || rate <= 0 ? {} : { sampleRate: rate }),
     ...(typeof raw.channels === "number" && raw.channels > 0 ? { channels: raw.channels } : {}),
   };
+}
+
+/**
+ * One frame rate ffprobe wrote as a fraction (`30000/1001`).
+ * @param raw - The field as written.
+ * @returns Frames per second, or null for `0/0` or anything unreadable.
+ */
+function rateOf(raw: string | undefined): number | null {
+  const match = raw === undefined ? null : /^(\d+)\/(\d+)$/.exec(raw);
+  if (match === null) return null;
+  const rate = Number(match[1]) / Number(match[2]);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
+/**
+ * A video stream's frame rate: its average rate, or the base rate when
+ * ffprobe could not average one (it writes `0/0`); left off when it read neither.
+ * @param raw - The stream as ffprobe wrote it.
+ * @returns The field to spread.
+ */
+function frameRateOf(raw: RawStream): { frameRate?: number } {
+  if (raw.codec_type !== "video") return {};
+  const rate = rateOf(raw.avg_frame_rate) ?? rateOf(raw.r_frame_rate);
+  return rate === null ? {} : { frameRate: rate };
 }
 
 /**
@@ -415,6 +441,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
     ...audioFieldsOf(raw),
+    ...frameRateOf(raw),
   }));
   return {
     streams,

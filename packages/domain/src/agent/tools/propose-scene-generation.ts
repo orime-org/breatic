@@ -90,6 +90,8 @@ function violationWords(v: ParamViolation): string {
     case "max_length":
     case "prompt_max_length":
       return `"${v.param}" takes at most ${String(v.max)} characters once cleaned, and this one has ${String(v.length)}.`;
+    case "min_length":
+      return `"${v.param}" takes at least ${String(v.min)} characters once cleaned, and this one has ${String(v.length)}.`;
   }
 }
 

@@ -90,7 +90,9 @@ export function itemCap(descriptor: CappedParam): number | undefined {
  * worker sends only these and the panel counts only these against a floor.
  * @param value - What the run carries for the list; node data, untrusted.
  * @param fields - The fields one entry declares.
- * @returns The complete entries, each holding only its declared fields.
+ * @returns The complete entries, each holding only its declared fields, a
+ *   text field without the spaces around it: the script names a speaker by
+ *   the trimmed name, and the vendor matches the two (inner#1825 design 8.5).
  */
 export function completeEntries(
   value: unknown,
@@ -109,7 +111,12 @@ export function completeEntries(
         ? offered.some((option) => option === v)
         : typeof v === "string" && v.trim() !== "";
     });
-    if (filled) complete.push(Object.fromEntries(names.map((field) => [field, held[field]])));
+    if (filled) {
+      complete.push(Object.fromEntries(names.map((field) => {
+        const v = held[field];
+        return [field, fields[field]?.values === undefined && typeof v === "string" ? v.trim() : v];
+      })));
+    }
   }
   return complete;
 }

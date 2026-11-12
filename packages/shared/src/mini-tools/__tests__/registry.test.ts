@@ -46,6 +46,8 @@ const BATCH_ONE = {
   ],
   video: [
     "video.cut",
+    // inner#1825: each join sits right after its medium's cut.
+    "video.join",
     "video.crop",
     "video.speed",
     "video.adjust",
@@ -65,6 +67,7 @@ const BATCH_ONE = {
     "audio.normalize",
     "audio.speed",
     "audio.cut",
+    "audio.join",
     "audio.eq",
     "audio.compress",
     "audio.pan",
@@ -195,7 +198,8 @@ describe("MINI_TOOLS registry", () => {
         "video.audio-denoise",
         "video.stabilize",
         "video.hdr",
-        ...BATCH_ONE.audio.slice(0, 10),
+        "video.join",
+        ...BATCH_ONE.audio.slice(0, 11),
       ].sort(),
     );
   });
@@ -204,6 +208,7 @@ describe("MINI_TOOLS registry", () => {
 describe("miniToolsFor", () => {
   it("lists a modality's tools in registry order", () => {
     expect(miniToolsFor("image").map((tool) => tool.id)).toEqual(BATCH_ONE.image);
+    expect(miniToolsFor("video").map((tool) => tool.id)).toEqual(BATCH_ONE.video);
     expect(miniToolsFor("audio").map((tool) => tool.id)).toEqual(BATCH_ONE.audio);
   });
 

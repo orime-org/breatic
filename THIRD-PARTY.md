@@ -49,10 +49,10 @@ every new dependency, which is what that review is for.
 | Source | `https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/8623c9968f3fca48863eb9d3a355c2baaba7b20b/community/ffmpeg` for the recipe Alpine built it with |
 
 It reads media numbers, cuts cover frames, and runs the mini-tools' video
-operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
-(`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the audio
-operations: denoise, loudness, speed, cut, equaliser, compressor, pan and
-voice enhance.
+operations: crop, speed, cut, join, colour adjustment, audio denoise,
+stabilisation (`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the
+audio operations: denoise, loudness, speed, cut, join, equaliser, compressor,
+pan and voice enhance.
 
 Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
 `--enable-version3`, and asked directly it answers

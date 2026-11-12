@@ -108,6 +108,15 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     expect(refusalOf({ ...ok, speakersShort: false })).toBeNull();
   });
 
+  it('names the lines when a dialogue has no line with words, in place of the prompt', () => {
+    // On the dialogue side the prompt is the lines written out; none written
+    // is said as lines, the box the user sees (inner#1825 design 8.5).
+    expect(refusalOf({ ...ok, promptText: '', linesEmpty: true })).toBe('lines-empty');
+    expect(refusalOf({ ...ok, linesEmpty: false })).toBeNull();
+    expect(refusalToastKey('lines-empty')).toBe('canvas.generatePanel.refuseExecuteNoLines');
+    expect(isExecuteButtonDisabled('lines-empty')).toBe(false);
+  });
+
   it('ignores the voice for a model that takes none', () => {
     expect(
       refusalOf({ ...ok, voiceRequired: false, voiceChosen: false }),
@@ -390,6 +399,7 @@ describe('evaluateExecute — the sources the run still needs', () => {
       'prompt-too-long',
       'voice-missing',
       'speakers-missing',
+      'lines-empty',
       'source-missing',
       'sources-missing',
       'lyrics-missing',

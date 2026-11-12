@@ -392,6 +392,11 @@ export default [
               reason: 'Only called inside the placeProposalAt batch.',
             },
             {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeDialogueLines',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
               file: 'src/data/yjs/history-step.ts',
               function: 'copyRedone',
               reason: 'Writes only the throwaway copy the undo/redo trial runs on, never a Space document.',

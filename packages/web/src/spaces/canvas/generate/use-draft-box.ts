@@ -9,9 +9,9 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 /** The props a text box takes from {@link useDraftBox}. */
 export interface DraftBoxProps {
   value: string;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   onBlur: () => void;
-  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
 }
 
 /**
@@ -32,14 +32,14 @@ export function useDraftBox(held: string, onCommit: (next: string) => void): Dra
     if (draft !== null && draft !== held) onCommit(draft);
     setDraft(null);
   }, [draft, held, onCommit]);
-  const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
+  const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
     setDraft(event.target.value);
   }, []);
   const onBlur = React.useCallback((): void => {
     whenBlurLeaves(spaceId, commit);
   }, [spaceId, commit]);
   const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
       if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
     },
     [commit],

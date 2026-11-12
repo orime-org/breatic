@@ -66,7 +66,11 @@ interface JobRecord {
 
 /** What one outbound handler is told about its job. */
 interface JobObjects {
-  read: string;
+  /**
+   * The keys the container may read: the source, then a join's further clips
+   * (inner#1825 §6.4). A job started before joins holds the one key as a string.
+   */
+  read: string[] | string;
   writes: Record<string, string>;
 }
 
@@ -158,7 +162,8 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
       writes[output.storageKey] = output.contentType;
       if (output.coverKey !== undefined) writes[output.coverKey] = "image/png";
     }
-    const objects: JobObjects = { read: request.input.storageKey, writes };
+    const extra = request.extra ?? [];
+    const objects: JobObjects = { read: [request.input.storageKey, ...extra.map((input) => input.storageKey)], writes };
     try {
       await this.setOutboundByHosts({
         [MEDIA_OBJECT_HOST]: { method: JOB_OBJECTS, params: objects },
@@ -173,6 +178,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
             op: request.op,
             params: request.params,
             input: mediaObjectUrl(request.input.storageKey),
+            extra: extra.map((input) => mediaObjectUrl(input.storageKey)),
             outputs: request.outputs.map((output) => ({
               url: mediaObjectUrl(output.storageKey),
               key: output.storageKey,
@@ -323,14 +329,20 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
 }
 
 /**
- * Read the job's source, or write one of its outputs.
+ * Read one of the job's inputs, or write one of its outputs.
  * @param request - What the container asked for.
  * @param env - The bindings.
  * @param ctx - The handler's context, carrying the job's keys.
  * @returns The object, a refusal, or the write's acknowledgement.
  */
 async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
-  if (request.method === "GET" || request.method === "HEAD") return serveOneObject(request, env.BUCKET, ctx.params.read);
+  if (request.method === "GET" || request.method === "HEAD") {
+    const { read } = ctx.params;
+    const reads = typeof read === "string" ? [read] : read;
+    const asked = askedKey(request);
+    if (!reads.includes(asked)) return new Response("Not this object", { status: 403 });
+    return serveOneObject(request, env.BUCKET, asked);
+  }
   if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
   const key = askedKey(request);
   const contentType = ctx.params.writes[key];

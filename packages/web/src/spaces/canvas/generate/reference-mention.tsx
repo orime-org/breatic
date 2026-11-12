@@ -10,7 +10,7 @@
  * container's `data-mode` + CSS, so the chip itself never reads the mode.
  */
 
-import { Node, getTextBetween, getTextSerializersFromSchema, mergeAttributes, type Editor } from '@tiptap/core';
+import { Node, getTextBetween, getTextSerializersFromSchema, mergeAttributes, type Editor, type TextSerializer } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
@@ -29,10 +29,11 @@ import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/genera
 import { createReferenceMentionCaret } from '@web/features/reference-mention/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/features/reference-mention/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
+import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
-import type { NodeType } from '@breatic/shared';
+import { dialogueText, type NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/PreviewImg';
 
 /** Options for the {@link ReferenceMention} node. */
@@ -132,7 +133,6 @@ export function serializePromptText(
   blockSeparator = '\n\n',
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
-  const words = chipWordsReader(pool, tokens);
   const { doc } = editor.state;
   // Notes sit above the words and are never sent: reading starts after the
   // last of them, so no block separator is left behind in their place.
@@ -142,15 +142,61 @@ export function serializePromptText(
   });
   return getTextBetween(doc, { from, to: doc.content.size }, {
     blockSeparator,
-    textSerializers: {
-      ...getTextSerializersFromSchema(editor.schema),
-      [REFERENCE_MENTION_NODE]: ({ node }): string =>
-        words(
-          node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
-          node.attrs[MENTION_KIND_ATTR] as string | null,
-        ),
-    },
+    textSerializers: promptSerializers(editor, pool, tokens),
   });
+}
+
+/**
+ * How each node of a prompt reads in the string the model gets: a chip as
+ * {@link chipWordsReader} says, everything else as the schema says.
+ * @param editor - The prompt editor.
+ * @param pool - The current reference pool.
+ * @param tokens - Each media chip's words by pool id.
+ * @returns The serializers.
+ */
+function promptSerializers(
+  editor: Editor,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  tokens: MentionTokens,
+): Record<string, TextSerializer> {
+  const words = chipWordsReader(pool, tokens);
+  return {
+    ...getTextSerializersFromSchema(editor.schema),
+    [REFERENCE_MENTION_NODE]: ({ node }): string =>
+      words(
+        node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
+        node.attrs[MENTION_KIND_ATTR] as string | null,
+      ),
+  };
+}
+
+/**
+ * Serializes a dialogue for the backend (inner#1825 design 8.5): each line's
+ * words, chips read as {@link serializePromptText} reads them, after its
+ * speaker's name, as `dialogueText` writes the script.
+ * @param editor - The prompt editor on the dialogue side.
+ * @param pool - The current reference pool.
+ * @param names - The speakers' names, from speaker 1.
+ * @param tokens - Each media chip's words by pool id.
+ * @returns The script.
+ */
+export function serializeDialogueText(
+  editor: Editor,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  names: readonly string[],
+  tokens: MentionTokens = NO_MENTION_TOKENS,
+): string {
+  const textSerializers = promptSerializers(editor, pool, tokens);
+  const lines: Array<{ speaker: number | null; text: string }> = [];
+  editor.state.doc.forEach((block, offset) => {
+    if (block.type.name !== 'paragraph') return;
+    const speaker = Number(block.attrs[SPEAKER_ATTR]);
+    lines.push({
+      speaker: Number.isInteger(speaker) ? speaker : null,
+      text: getTextBetween(editor.state.doc, { from: offset + 1, to: offset + block.nodeSize - 1 }, { textSerializers }),
+    });
+  });
+  return dialogueText(lines, names.map((speaker) => ({ speaker })));
 }
 
 /**

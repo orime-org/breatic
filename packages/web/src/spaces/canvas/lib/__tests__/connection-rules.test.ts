@@ -81,7 +81,7 @@ describe('canConnect', () => {
     });
   });
 
-  describe('audio input — { text, audio }', () => {
+  describe('audio input — { text, audio, video, image }', () => {
     it('allows text → audio', () => {
       expect(canConnect('text', 'audio')).toBe(true);
     });
@@ -90,9 +90,12 @@ describe('canConnect', () => {
       expect(canConnect('audio', 'audio')).toBe(true);
     });
 
+    it('allows video and image → audio, which scoring, foley and mood-from-picture read (inner#1825)', () => {
+      expect(canConnect('video', 'audio')).toBe(true);
+      expect(canConnect('image', 'audio')).toBe(true);
+    });
+
     it('rejects the modalities audio generation does not read', () => {
-      expect(canConnect('image', 'audio')).toBe(false);
-      expect(canConnect('video', 'audio')).toBe(false);
       expect(canConnect('3d', 'audio')).toBe(false);
     });
   });

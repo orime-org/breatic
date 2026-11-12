@@ -1,8 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { isGenerationNodeType, writtenMark, type ChatAttachedChip, type ModelCatalog } from '@breatic/shared';
+import {
+  dialogueSideOf,
+  dialogueSpeakers,
+  dialogueText,
+  isGenerationNodeType,
+  writtenMark,
+  type ChatAttachedChip,
+  type ModelCatalog,
+} from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
+import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -15,6 +24,7 @@ import {
   chipDisplayText,
   MENTION_KIND_ATTR,
 } from '@web/spaces/canvas/generate/reference-mention';
+import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** The node kinds the chat can be handed; a group comes with its members. */
@@ -40,6 +50,51 @@ function mentionText(element: Y.XmlElement): string | undefined {
   // A note is handed over too: the agent is given everything the node holds.
   if (element.nodeName === PROMPT_NOTE_NODE) return writtenMark({ kind: 'note', label: String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '') });
   return chipDisplayText(element, String(element.getAttribute(MENTION_KIND_ATTR) ?? ''));
+}
+
+/**
+ * A dialogue's prompt read out as the script it sends (inner#1825 design
+ * 8.5): its notes as they are, then each line after its speaker's name.
+ * @param fragment - The prompt.
+ * @param speakers - The speakers, from speaker 1.
+ * @returns The words.
+ */
+function dialogueWords(fragment: Y.XmlFragment, speakers: readonly { speaker: string }[]): string {
+  // One line per block: neither a line nor a note holds a line break.
+  const texts = bodyToPlainText(fragment, mentionText).split('\n');
+  const notes: string[] = [];
+  const lines: Array<{ speaker: number | null; text: string }> = [];
+  fragment.toArray().forEach((block, at) => {
+    const text = texts[at] ?? '';
+    if (!(block instanceof Y.XmlElement) || block.nodeName !== 'paragraph') {
+      notes.push(text);
+      return;
+    }
+    const speaker = Number(block.getAttribute(SPEAKER_ATTR));
+    lines.push({ speaker: Number.isInteger(speaker) ? speaker : null, text });
+  });
+  return [...notes, dialogueText(lines, speakers)].join('\n');
+}
+
+/**
+ * The node's prompts as plain data, its current mode's read as a dialogue
+ * when it is on the dialogue side of its model.
+ * @param node - The node.
+ * @param stored - Its stored data map.
+ * @param catalog - The model catalog.
+ * @returns The prompts, or undefined when the node keeps none.
+ */
+function promptsOf(node: CanvasNodeView, stored: Y.Map<unknown>, catalog: ModelCatalog): unknown {
+  const prompts = stored.get('prompts');
+  const words = plain(prompts);
+  const view = node.data as ContentNodeView;
+  const model = view.model;
+  const fragment = prompts instanceof Y.Map && view.mode !== undefined ? prompts.get(view.mode) : undefined;
+  if (model === undefined || !(fragment instanceof Y.XmlFragment) || typeof words !== 'object' || words === null) return words;
+  const entry = catalogEntryOf(catalog, model);
+  const record = view.paramsByModel?.[model] ?? {};
+  if (!dialogueSideOf(entry, record)) return words;
+  return { ...words, [view.mode as string]: dialogueWords(fragment, dialogueSpeakers(entry, record)) };
 }
 
 /**
@@ -164,6 +219,7 @@ export function snapshotOfPick(
     const data = {
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
+      ...(stored?.has('prompts') === true ? { prompts: promptsOf(node, stored, readers.catalog) } : {}),
     };
     const current = isGenerationNodeType(node.type)
       ? currentGeneration(

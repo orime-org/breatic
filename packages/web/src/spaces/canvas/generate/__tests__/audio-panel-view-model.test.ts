@@ -336,4 +336,28 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     expect(vm.voiceRequired).toBe(false);
     expect(vm.speakersShort).toBe(true);
   });
+
+  it('names the speakers the prompt editor offers per line on the dialogue side, and none reading alone (inner#1825)', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo', voice: 'Puck' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueNames).toEqual(['Ada', 'Bo']);
+    // A stored record with speakers and no switch reads in one voice (design 8.5):
+    // a landing writes the switch, and nothing else counts as one.
+    const unswitched = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
+    expect(unswitched.dialogueNames).toBeNull();
+    // Switched on before any speaker is written: one blank name per speaker
+    // the settings show, so the lines offer both and alternate between them.
+    const unwritten = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: null, _stand_in_on: true } } }) });
+    expect(unwritten.dialogueNames).toEqual(['', '']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueNames).toBeNull();
+  });
+
+  it('gives each speaker its voice beside its name, blank where none is set, and none reading alone', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueVoices).toEqual(['Kore', '']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueVoices).toBeNull();
+  });
 });

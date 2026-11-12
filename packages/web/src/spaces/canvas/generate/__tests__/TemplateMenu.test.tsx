@@ -135,7 +135,20 @@ describe('TemplateMenu', () => {
     expect(screen.getByTestId('generate-template-single-view-refs-scene')).toBeInTheDocument();
   });
 
+  it('lists the sound templates under their goal in an audio panel (inner#1825)', () => {
+    open('audio');
+    const rows = screen.getAllByTestId(/^generate-template-goal-/);
+    expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(
+      templateGoalsFor('audio').map(({ goal }) => `generate-template-goal-${goal}`),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('generate-template-empty')).toBeNull();
+    openGoal('sound');
+    expect(screen.getByTestId('generate-template-underscore-bgm')).toBeInTheDocument();
+  });
+
   it('opens on an empty state where the node type has no templates', () => {
+    vi.mocked(templateGoalsFor).mockReturnValue([]);
     open('audio');
     expect(screen.getByTestId('generate-template-empty')).toHaveTextContent('No templates');
     expect(screen.queryAllByTestId(/^generate-template-goal-/)).toEqual([]);

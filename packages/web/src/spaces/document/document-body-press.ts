@@ -29,6 +29,7 @@ import { MEDIA_CONTROLS } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
+import { isMac } from '@web/lib/is-mac';
 import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
@@ -130,7 +131,7 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
  * @returns True for such a press.
  */
 function contextPress(event: MouseEvent): boolean {
-  return event.button === 2 || (event.button === 0 && event.ctrlKey && /Mac/.test(navigator.platform));
+  return event.button === 2 || (event.button === 0 && event.ctrlKey && isMac());
 }
 
 /**

@@ -62,6 +62,8 @@ const declarationSchema = z.object({
     .optional(),
   // The most characters a text param takes once cleaned (inner#1691).
   max_length: z.number().int().positive().optional(),
+  // The fewest characters a text param takes once cleaned (inner#1825).
+  min_length: z.number().int().positive().optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -139,6 +141,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "when",
   "bounds",
   "max_length",
+  "min_length",
   "modes",
   "note",
   "type",
@@ -316,6 +319,9 @@ function faultsOn(
   // A cap on text counts characters, and only free text has them.
   if (declared.max_length !== undefined && declared.type !== "text") {
     faults.push("max_length counts characters, so this has to declare type: text");
+  }
+  if (declared.min_length !== undefined && declared.type !== "text") {
+    faults.push("min_length counts characters, so this has to declare type: text");
   }
 
   // A label for a value the control does not offer is a label for nothing, and

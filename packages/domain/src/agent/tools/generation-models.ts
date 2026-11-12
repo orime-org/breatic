@@ -14,6 +14,7 @@ import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   STATIC_SHOT,
+  standInOf,
   type GenerationNodeType,
   type ProposalNode,
 } from "@breatic/shared";
@@ -29,6 +30,7 @@ import {
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
+import { proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
 import { gateWords, nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -92,6 +94,18 @@ export function renderPrice(price: CreditEstimate, at = "at its defaults"): stri
     case "per_thousand_chars":
       return `${credits} credits per 1000 characters of prompt`;
   }
+}
+
+/**
+ * What a dialogue asks of a proposal on a model whose speakers stand in for
+ * its voice (inner#1825 design 8.5).
+ * @param model - The model to describe.
+ * @returns A sentence to append to its line, or the empty string for a model reading in one voice.
+ */
+function renderDialogue(model: PricedModelInfo): string {
+  const standIn = standInOf(proposalModelEntry({ model: model.name }));
+  if (standIn === null) return "";
+  return ` Once params ${standIn.name} name the speakers, give lines, one per turn, each { speaker, prompt }: speaker the number of a speaker counted from 1, prompt only the words said, with no name or colon in front; leave prompt out.`;
 }
 
 /**
@@ -221,7 +235,7 @@ function renderModel(model: PricedModelInfo): string {
     model.takesPrompt && !mediaToAt
       ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderDialogue(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

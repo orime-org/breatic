@@ -132,6 +132,7 @@ export type { ParamOptionValue } from "@shared/types/param-values.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
@@ -150,6 +151,7 @@ export {
   markedSegments,
   marksTypedIn,
   proposalMarkSegments,
+  proposalWordRuns,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
