@@ -632,8 +632,17 @@ function searchable(scope: {
   turnIndex: number;
   conversationId?: string;
 }): SQL {
+  const where = sql`
+    c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
+      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
+      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
+      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}`;
+  // A message the user sent while a turn ran is kept inside the reply that
+  // read it, and found as a message of its own: the user's, at the time they
+  // sent it, under its own id, which is what the page's keyset orders by
+  // (inner#1717). The reply's own words leave it out (`searchableWords`).
   return sql`
-    SELECT m.id, m.conversation_id, m.turn_index, m.role, m.created_at, c.title,
+    SELECT m.id, m.conversation_id, m.turn_index, m.role::text AS role, m.created_at, c.title,
            coalesce((
              SELECT string_agg(w.words, ' ' ORDER BY w.ord)
              FROM (
@@ -644,10 +653,21 @@ function searchable(scope: {
            ), '') AS body
     FROM conversation_messages m
     JOIN conversations c ON c.id = m.conversation_id
-    WHERE c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
-      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
-      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
-      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}
+    WHERE ${where}
+    UNION ALL
+    SELECT (u.part->>'id')::uuid AS id, m.conversation_id, m.turn_index, 'user' AS role,
+           (u.part->>'sentAt')::timestamptz AS created_at, c.title,
+           coalesce((
+             SELECT string_agg(w.words, ' ' ORDER BY w.ord)
+             FROM (
+               SELECT q.ord, ${searchableWords(sql`q.part`)} AS words
+               FROM jsonb_array_elements(u.part->'parts') WITH ORDINALITY AS q(part, ord)
+             ) w
+           ), '') AS body
+    FROM conversation_messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m.parts) = 'array' THEN m.parts END) AS u(part)
+    WHERE ${where} AND u.part->>'type' = 'user-message'
   `;
 }
 
