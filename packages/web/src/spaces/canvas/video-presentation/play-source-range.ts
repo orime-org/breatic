@@ -17,7 +17,9 @@ export interface SourceRangePlayback {
  * animation frame as well as on the player's own time events, which come too seldom to stop on the boundary. A seek the
  * playback did not make itself (the user moving the player) ends it where the user put the player. Such a seek is told by
  * where it goes: a seek sets `seeking` and `currentTime` at once (HTML seek algorithm), so a seek in flight to anywhere but
- * the range start is the user's, before its `currentTime` can be mistaken for the range end. The start seek of an earlier
+ * the range start is the user's, before its `currentTime` can be mistaken for the range end. The range start is the value
+ * the player reads back after the start seek, not the one asked for: Chromium stores a seek target in whole microseconds,
+ * so a start such as 31/30 reads back as 1.033333 while that seek is in flight. The start seek of an earlier
  * playback of the same player also lands on this one's events, so seek events are not counted.
  * @param binding - The node's media binding.
  * @param start - The range start in seconds.
@@ -30,6 +32,7 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
   let over = false;
   let frame = 0;
   let settle: (() => void) | undefined;
+  let startRead = start;
   /**
    * Ends the playback once, pausing on the end when it was reached.
    * @param reachedEnd - Whether the clock reached the range end.
@@ -52,7 +55,7 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
    * @throws {never} Never.
    */
   function moved(): boolean {
-    if (!over && element.seeking && element.currentTime !== start) finish(false);
+    if (!over && element.seeking && element.currentTime !== startRead) finish(false);
     return over;
   }
   /**
@@ -82,6 +85,7 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
   const done = new Promise<void>((resolve, reject) => {
     settle = resolve;
     binding.seek(start);
+    startRead = element.currentTime;
     element.addEventListener('seeking', seeking);
     element.addEventListener('timeupdate', reached);
     element.addEventListener('ended', reached);

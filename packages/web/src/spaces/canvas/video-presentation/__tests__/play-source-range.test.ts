@@ -12,7 +12,8 @@ import { playSourceRange } from '../play-source-range';
 /**
  * A stand-in for the node's media binding: a media element whose clock the test moves. As in a browser, a seek moves
  * `currentTime` and sets `seeking` at once, and the element's `seeking` event, which the browser dispatches later, is
- * dispatched by the test by hand; the seek has landed (`seeking` false again) by the time a play resolves.
+ * dispatched by the test by hand; the seek has landed (`seeking` false again) by the time a play resolves. As Chromium does,
+ * the element stores a seek target in whole microseconds, so `currentTime` reads the rounded value back.
  * @param play - What the player's play does.
  * @returns The binding and its element.
  */
@@ -20,7 +21,7 @@ function fakeBinding(play: () => Promise<void> = () => Promise.resolve()): { bin
   const element = Object.assign(new EventTarget(), { currentTime: 0, ended: false, seeking: false });
   const binding = {
     element: element as unknown as HTMLVideoElement,
-    seek: vi.fn((seconds: number) => { element.seeking = true; element.currentTime = seconds; }),
+    seek: vi.fn((seconds: number) => { element.seeking = true; element.currentTime = Math.round(seconds * 1e6) / 1e6; }),
     play: vi.fn(async () => { await play(); element.seeking = false; }),
     pause: vi.fn(),
   };
@@ -203,6 +204,28 @@ describe('playSourceRange once playing', () => {
     expect(binding.seek).toHaveBeenCalledTimes(1);
     expect(element.currentTime).toBe(4);
     expect(frames.size).toBe(0);
+  });
+
+  it('keeps playing a range whose start the player stores rounded, and stops at its end', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    const start = 31 / 30;
+    const playback = playSourceRange(binding, start, 2);
+    let settled = false;
+    void playback.done.then(() => { settled = true; });
+    element.dispatchEvent(new Event('seeking'));
+    await Promise.resolve(); await Promise.resolve();
+    element.seeking = true;
+    element.dispatchEvent(new Event('seeking'));
+    runFrames();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    element.seeking = false;
+    element.currentTime = 2.01;
+    runFrames();
+    await expect(playback.done).resolves.toBeUndefined();
+    expect(binding.pause).toHaveBeenCalledOnce();
+    expect(binding.seek).toHaveBeenLastCalledWith(2);
   });
 
   it('keeps the next segment playing when the seeking event of the previous segment start arrives after it began', async () => {
