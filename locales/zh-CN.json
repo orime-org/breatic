@@ -619,6 +619,14 @@
       "cleared": "已清空 Project 指令",
       "readFailed": "Project 指令读取失败",
       "saveFailed": "Project 指令保存失败"
+    },
+    "waiting": {
+      "title": "等待 Agent 读取（{count}）",
+      "awaitingCard": "回答问卷后继续，或直接发消息",
+      "blocked": "积分不足，请先充值。",
+      "retract": "撤回到输入框",
+      "delete": "删除",
+      "listAria": "等待 Agent 读取的消息"
     }
   },
   "canvas": {

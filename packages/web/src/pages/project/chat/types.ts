@@ -227,6 +227,11 @@ export interface ChatMessage {
   /** The turn was stopped before it finished, so this is as far as it got. */
   interrupted?: true;
   /**
+   * A message the user sent while a reply ran, which that reply took in and
+   * which is drawn inside its turn (inner#1717). Only ever `true`.
+   */
+  takenIn?: true;
+  /**
    * The turn failed and this reply is as much of it as there is.
    *
    * Stored, like {@link ChatMessage.interrupted}: the server records failure

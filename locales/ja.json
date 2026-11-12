@@ -619,6 +619,14 @@
       "cleared": "Project の指示をクリアしました",
       "readFailed": "Project の指示を読み込めませんでした",
       "saveFailed": "Project の指示を保存できませんでした"
+    },
+    "waiting": {
+      "title": "Agent の読み取り待ち（{count}）",
+      "awaitingCard": "アンケートに答えると続きます。そのままメッセージを送ることもできます",
+      "blocked": "クレジットが不足しています。チャージしてください。",
+      "retract": "入力欄に戻す",
+      "delete": "削除",
+      "listAria": "Agent の読み取りを待っているメッセージ"
     }
   },
   "canvas": {

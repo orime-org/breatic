@@ -1626,6 +1626,28 @@ function setDraft(conversationId: string | undefined, text: string): void {
 }
 
 /**
+ * Take a page of history that replaced a conversation's list whole as how far
+ * back the list now reaches (inner#1717): read back before attaching to a run,
+ * it did not join onto the list on screen.
+ * @param conversationId - The conversation.
+ * @param read - The page, and whether anything is older.
+ * @param read.messages - The page, oldest first.
+ * @param read.hasMore - The conversation reaches back further than the page.
+ */
+function tookLatestPage(conversationId: string, read: { messages: readonly StoredUiMessage[]; hasMore: boolean }): void {
+  useStore.setState((s) => {
+    const c = s.conversations[conversationId];
+    if (!c) return s;
+    return {
+      conversations: {
+        ...s.conversations,
+        [conversationId]: { ...c, hasMore: read.hasMore, oldestLoadedTurn: oldestTurnOf(read.messages) },
+      },
+    };
+  });
+}
+
+/**
  * Read back what was half-typed.
  * @param conversationId - The conversation asked about, if one is on screen.
  * @returns What is in its box, empty when nothing was left there.
@@ -1809,6 +1831,7 @@ export const conversationRuntime = {
   remove,
   setDraft,
   draftOf,
+  tookLatestPage,
   setAgentModel,
   askModelListAgain,
 };

@@ -16,6 +16,7 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { chatApi } from '@web/data/api/chat';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { PendingTray } from '@web/pages/project/chat/PendingTray';
 import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
@@ -133,6 +134,9 @@ export function ChatPanel({
     answer,
     shareSpaces,
     abort,
+    stopping,
+    waiting,
+    takeBack,
     conversations,
     hasMoreConversations,
     loadMoreConversations,
@@ -315,11 +319,19 @@ export function ChatPanel({
           />
         </SpaceRequestAnswerContext.Provider>
       </QuestionnaireAnswerContext.Provider>
+      <PendingTray
+        items={waiting.pending}
+        awaiting={waiting.awaiting}
+        blocked={waiting.blocked}
+        busy={waiting.busy}
+        onTakeBack={takeBack}
+      />
       <ChatComposer
         conversationId={currentId ?? null}
         projectId={projectId}
         draft={draft}
         turnPhase={turnPhase}
+        stopping={stopping}
         navigating={navigating}
         onChange={setDraft}
         onSubmit={submit}

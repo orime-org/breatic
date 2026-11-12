@@ -619,6 +619,14 @@
       "cleared": "Project instructions cleared",
       "readFailed": "Couldn't load the Project instructions",
       "saveFailed": "Couldn't save the Project instructions"
+    },
+    "waiting": {
+      "title": "Waiting for the Agent ({count})",
+      "awaitingCard": "Answer the questionnaire to go on, or just send a message",
+      "blocked": "Not enough credits. Add credits to continue.",
+      "retract": "Back to the box",
+      "delete": "Delete",
+      "listAria": "Messages waiting for the Agent"
     }
   },
   "canvas": {
