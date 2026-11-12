@@ -6,12 +6,14 @@ import { Frame } from 'lucide-react';
 
 import type { SceneCaptureConfig } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
+import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
 import { readSpaceViewport } from '@web/lib/project-tabs-storage';
 import { cn } from '@web/lib/utils';
+import { OUTSIDE_DIM } from '@web/spaces/canvas/crop/crop-geometry';
 import { toast } from '@web/lib/toast';
 import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
@@ -44,9 +46,9 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
 };
 // What the chrome around the frame covers, in pixels: the top clears the
 // viewfinder bar (10 + 42 + 10); the bottom keeps the menu under the frame
-// (44 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
+// (66 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
-const INSETS = { top: 62, bottom: 118, side: 20, panel: 340 };
+const INSETS = { top: 62, bottom: 140, side: 20, panel: 340 };
 // The menu sits this far below the frame.
 const MENU_GAP = 8;
 
@@ -299,39 +301,43 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     {trigger}
     {/* Beneath the floating toolbars (z-10), so they stay readable while the scene is dimmed. */}
     <div className='pointer-events-none absolute inset-0 z-[5] overflow-hidden'>
-      <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border shadow-[0_0_0_9999px_var(--color-overlay)]' style={frameStyle}>
+      <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border' style={{ ...frameStyle, boxShadow: `0 0 0 9999px ${OUTSIDE_DIM}` }}>
         {framing ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
-          className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
+          className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
           onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
       </div>
     </div>
-    <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
-      style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
-      {framing ? <React.Fragment key='framing'>
-        <Select value={ratio} onValueChange={changeRatio}>
-          <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-8 w-24 text-xs'><SelectValue /></SelectTrigger>
-          <SelectContent>{VIEWFINDER_RATIOS.map((key: ViewfinderRatio) => <SelectItem key={key} value={key}>{key}</SelectItem>)}</SelectContent>
-        </Select>
-        {size ? <span className='px-1 tabular-nums text-muted-foreground'>{t('spaces.threeD.viewfinder.size', { width: size.width, height: size.height })}</span> : null}
-        <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>
-        <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button>
-      </React.Fragment> : <React.Fragment key='captured'>
-        {shot ? <img src={shot.url} alt='' className='h-8 rounded-sm border border-border' style={{ aspectRatio: `${shot.width} / ${shot.height}` }} /> : null}
-        <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
-        <Popover open={phase === 'picking'} onOpenChange={onListOpen}>
-          <PopoverTrigger asChild>
-            <Button size='sm' variant='outline' loading={sending === 'canvas'} disabled={busy && sending !== 'canvas'}>{t('spaces.threeD.viewfinder.toCanvas')}</Button>
-          </PopoverTrigger>
-          <PopoverContent side='top' align='center' className='w-56 p-1' data-testid='scene-viewfinder-canvas-list'>
-            <p className='px-2 py-1.5 text-xs font-medium'>{t('spaces.threeD.viewfinder.canvasListTitle')}</p>
-            {canvases.length === 0 ? <p className='px-2 py-1.5 text-xs text-muted-foreground'>{t('spaces.threeD.viewfinder.noCanvas')}</p>
-              : canvases.map((canvas) => <Button key={canvas.id} variant='ghost' size='sm' className='w-full justify-start truncate' onClick={() => toCanvas(canvas)}>{canvas.name}</Button>)}
-          </PopoverContent>
-        </Popover>
-        <Button size='sm' variant='outline' loading={sending === 'copy'} disabled={busy || phase === 'picking'} onClick={copy}>{t('spaces.threeD.viewfinder.copy')}</Button>
-        <Button size='sm' variant='outline' disabled={busy || phase === 'picking'} onClick={() => dispatch({ type: 'reframe' })}>{t('spaces.threeD.viewfinder.reframe')}</Button>
-      </React.Fragment>}
-    </div>
+    <Popover open={phase === 'picking'} onOpenChange={onListOpen}>
+      <PopoverAnchor asChild>
+        <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
+          style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
+          {framing ? <React.Fragment key='framing'>
+            <Select value={ratio} onValueChange={changeRatio}>
+              <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-[var(--btn-inline)] w-auto min-w-16 gap-2 px-2 text-xs'><SelectValue /></SelectTrigger>
+              <SelectContent>{VIEWFINDER_RATIOS.map((key: ViewfinderRatio) => <SelectItem key={key} value={key}>{key}</SelectItem>)}</SelectContent>
+            </Select>
+            {size ? <span className='inline-block min-w-[11ch] px-1 text-center tabular-nums text-muted-foreground'>{t('spaces.threeD.viewfinder.size', { width: size.width, height: size.height })}</span> : null}
+            <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>
+            <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button>
+          </React.Fragment> : <React.Fragment key='captured'>
+            {shot ? <img src={shot.url} alt='' className='h-14 rounded-sm shadow' style={{ aspectRatio: `${shot.width} / ${shot.height}` }} /> : null}
+            <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
+            <PopoverTrigger asChild>
+              <Button size='sm' variant='outline' loading={sending === 'canvas'} disabled={busy && sending !== 'canvas'}>{t('spaces.threeD.viewfinder.toCanvas')}</Button>
+            </PopoverTrigger>
+            <Button size='sm' variant='outline' loading={sending === 'copy'} disabled={busy || phase === 'picking'} onClick={copy}>{t('spaces.threeD.viewfinder.copy')}</Button>
+            <span className='mx-1 h-4 border-l border-border' />
+            <Button size='sm' variant='outline' disabled={busy || phase === 'picking'} onClick={() => dispatch({ type: 'reframe' })}>{t('spaces.threeD.viewfinder.reframe')}</Button>
+          </React.Fragment>}
+        </div>
+      </PopoverAnchor>
+      {/* Anchored to the whole menu, so the gap counts from the menu's visible edge. */}
+      <PopoverContent side='top' align='center' className='w-max min-w-40 max-w-72 p-1' data-testid='scene-viewfinder-canvas-list'>
+        <p className='px-2 py-1.5 text-xs font-medium text-muted-foreground'>{t('spaces.threeD.viewfinder.canvasListTitle')}</p>
+        {canvases.length === 0 ? <p className='px-2 py-1.5 text-xs text-muted-foreground'>{t('spaces.threeD.viewfinder.noCanvas')}</p>
+          : canvases.map((canvas) => <Button key={canvas.id} variant='ghost' size='menu-item' className='w-full justify-start truncate' onClick={() => toCanvas(canvas)}>{canvas.name}</Button>)}
+      </PopoverContent>
+    </Popover>
   </>;
 });
