@@ -97,8 +97,11 @@ export function resolveParamsForModel(
     next[key] = resolveParamValue(descriptor, current[key]);
   }
   // Which side of a stand-in is in use is the user's choice, not a catalog
-  // param, so it is kept by name rather than by declaration (stand-in.ts).
-  if (standInOf(model) && current[STAND_IN_ON] === true) next[STAND_IN_ON] = true;
+  // param, so it is kept by name rather than by declaration (stand-in.ts),
+  // either way it is set. A stored record with no switch reads in one voice
+  // (`dialogueSideOf`); only a landing writer (`withStandInOn`) turns the
+  // dialogue on from complete speakers.
+  if (standInOf(model) && typeof current[STAND_IN_ON] === 'boolean') next[STAND_IN_ON] = current[STAND_IN_ON];
   return next;
 }
 

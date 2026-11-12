@@ -41,7 +41,10 @@ vi.mock("@breatic/core", async (importOriginal) => ({
     poll_interval_ms: 1000,
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     classes: { Std1: { instance_type: "standard-1", vcpu: 0.5, memory_gib: 4, disk_gb: 8 } },
-    ops: { cut: { container_class: "Std1", precheck_seconds: 300 } },
+    ops: {
+      cut: { container_class: "Std1", precheck_seconds: 300 },
+      join: { container_class: "Std1", precheck_seconds: 600 },
+    },
   }),
 }));
 
@@ -186,6 +189,37 @@ describe("runContainerJob", () => {
 
     const opened = h.openContainerOutputs.mock.calls[0]![0] as { outputs: unknown[] };
     expect(opened.outputs).toEqual(Array.from({ length: 3 }, () => ({ modality: "video", namePrefix: "PART" })));
+  });
+
+  // inner#1825 §6.4: a join reads the source and then each further clip, in the order the user set.
+  it("submits a join with the clips after the source as extra inputs, in order", async () => {
+    const JOIN = { ...CUT, id: "video.join", run: { kind: "container", op: "join" } } as unknown as MiniToolSpec;
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+
+    await expect(
+      runContainerJob(JOIN, "join", {
+        ...INPUT,
+        params: { crossfade: 0 },
+        extraKeys: ["v/b.mp4", "v/c.mp4"],
+      }),
+    ).rejects.toBeInstanceOf(StillRunning);
+
+    expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({
+      op: "join",
+      input: { storageKey: "v/src.mp4" },
+      extra: [{ storageKey: "v/b.mp4" }, { storageKey: "v/c.mp4" }],
+    });
+  });
+
+  // A job queued before joins existed carries no extra keys, and is submitted as it always was.
+  it("submits a job without extra keys with no extra inputs", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
+
+    expect(h.submitMiniToolJob.mock.calls[0]![2]).not.toHaveProperty("extra");
   });
 
   // Every task has one ceiling, the one the run read off its rows on the canvas.

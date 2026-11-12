@@ -30,15 +30,20 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
 import { describeTemplate } from "../get-generation-template.js";
-import { answerFor, makeProposeCanvasAction, verdictFor } from "../propose-canvas-action.js";
+import { answerFor, makeProposeCanvasAction, verdictFor, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
+import { nodeLabel } from "../proposal-refusals.js";
 
 import {
   agentShape,
+  DOWNSTREAM,
   FIXTURES,
   joined,
   loadFixtureLocales,
+  PLACED_FIXTURES,
   SHEET,
+  SLOTTED,
+  STANDALONE,
   STEPPED,
   withoutEdge,
   withoutNode,
@@ -826,5 +831,133 @@ describe("a template's shots sent as HOW_TO_SEND says (inner#1816)", () => {
   it("accepts a prompt template moved to multi_shot with shots adding up to the duration written", () => {
     const sent = sentWith("game-ui-livestream", "character", { mode: "multi_shot", params: { duration: 10 }, shots: shotsOf([5, 5]) });
     expect(verdictFor(sent)).toEqual({ ok: true });
+  });
+});
+
+describe("an input into a slot, a node downstream and a node beside the anchor (inner#1825 design 4.1, 4.2)", () => {
+  const SONG = "https://resource.example/audio/2026-11-10/1_song.mp3";
+  const MATERIALS: MaterialTable = new Map<string, MaterialFacts>([
+    [SONG, { kind: "audio", media: { coverUrl: null, width: null, height: null, duration: 30, mimeType: "audio/mpeg", size: 1000 } }],
+  ]);
+
+  /**
+   * The verdict over the fixtures with the new places.
+   * @param sent - The proposal.
+   * @param materials - The registration behind each address it names.
+   * @returns The verdict.
+   */
+  function verdictOf(sent: Sent, materials?: MaterialTable): ReturnType<typeof verdictFor> {
+    return verdictFor(sent, materials, PLACED_FIXTURES);
+  }
+
+  /**
+   * The reason of a refusal, or "" when the proposal stands.
+   * @param verdict - The verdict.
+   * @returns The reason.
+   */
+  function reasonOf(verdict: ReturnType<typeof verdictFor>): string {
+    return verdict.ok ? "" : verdict.reason;
+  }
+
+  /**
+   * The standalone fixture's shape with one more outro beside the first.
+   * @param tag - The second outro's tag.
+   * @returns The proposal.
+   */
+  function twoOutros(tag: NonNullable<SentNode["template"]>): Sent {
+    const shape = agentShape(STANDALONE);
+    const outro = shape.sent.nodes[shape.at.get("node:outro") ?? -1] as SentNode;
+    return { ...shape.sent, nodes: [...shape.sent.nodes, { ...outro, name: "Second outro", template: tag }] };
+  }
+
+  it("accepts a node tag carrying the anchor's index", () => {
+    expect(inputSchema.safeParse(agentShape(STANDALONE).sent).success).toBe(true);
+    const sent: Sent = {
+      nodes: [
+        { role: "generate", type: "image", name: "Intro", template: { id: "fixture-standalone" }, prompt: [{ text: "A harbour." }] },
+        { role: "generate", type: "image", name: "Outro", template: { id: "fixture-standalone", key: "outro", anchor: 0 }, prompt: [{ text: "The harbour at night." }] },
+      ],
+      edges: [],
+      rationale: "Two pictures.",
+      groupName: "Harbour",
+    };
+    expect(inputSchema.safeParse(sent).success).toBe(true);
+  });
+
+  it("accepts an input into a slot reached through the fills of the node it feeds, and tags it with its anchor", () => {
+    const shape = agentShape(SLOTTED, { material: new Map([["song", SONG]]) });
+    expect(shape.sent.edges).toEqual([]);
+    expect(verdictOf(shape.sent, MATERIALS)).toEqual({ ok: true });
+    const answer = placedAnswer(answerFor(shape.sent, MATERIALS, PLACED_FIXTURES));
+    const anchor = shape.at.get("node:cover");
+    expect(answer.nodes[anchor ?? -1]?.fills).toEqual({ audio: [shape.at.get("input:song")] });
+    expect(answer.nodes[shape.at.get("input:song") ?? -1]?.templateNode).toEqual({ template: "fixture-slotted", key: "song", input: true, anchor });
+  });
+
+  it("refuses an input wired into another place than the template's slot, naming that slot", () => {
+    const shape = agentShape(SLOTTED);
+    const song = shape.at.get("input:song") ?? -1;
+    const edges = shape.sent.edges.map((edge) => (edge.fromIndex === song ? { ...edge, into: "pool" } : edge));
+    const verdict = verdictOf({ ...shape.sent, edges });
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-input-into" });
+    expect(reasonOf(verdict)).toContain('"audio"');
+    expect(reasonOf(verdict)).toContain('"song"');
+  });
+
+  it("marks the node downstream of the anchor with its key", () => {
+    const shape = agentShape(DOWNSTREAM);
+    const answer = placedAnswer(answerFor(shape.sent, undefined, PLACED_FIXTURES));
+    expect(answer.nodes[shape.at.get("node:restyle") ?? -1]?.templateNode).toEqual({ template: "fixture-downstream", key: "restyle" });
+    expect(answer.nodes[shape.at.get("node:draw") ?? -1]?.templateNode).toBeUndefined();
+  });
+
+  it("marks the node beside the anchor with its key and the anchor's index", () => {
+    const shape = agentShape(STANDALONE);
+    const answer = placedAnswer(answerFor(shape.sent, undefined, PLACED_FIXTURES));
+    expect(answer.nodes[shape.at.get("node:outro") ?? -1]?.templateNode).toEqual({ template: "fixture-standalone", key: "outro", anchor: shape.at.get("node:intro") });
+    expect(answer.nodes[shape.at.get("node:intro") ?? -1]?.templateNode).toBeUndefined();
+  });
+
+  it("refuses a missing downstream node, naming the node it is wired from and how", () => {
+    const shape = withoutNode(agentShape(DOWNSTREAM), "node:restyle");
+    const verdict = verdictOf(shape.sent);
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-key-missing" });
+    const reason = reasonOf(verdict);
+    expect(reason).toContain('"restyle"');
+    expect(reason).toContain(nodeLabel(shape.sent.nodes, shape.at.get("node:draw") ?? -1));
+    expect(reason).toContain('"style_images"');
+    expect(reason).not.toContain('""');
+  });
+
+  it("refuses a node beside the anchor whose tag names no anchor, saying which anchor the tag must point at", () => {
+    const shape = agentShape(STANDALONE);
+    const outro = shape.at.get("node:outro") ?? -1;
+    const nodes = shape.sent.nodes.map((node, i) => (i === outro ? { ...node, template: { id: "fixture-standalone", key: "outro" } } : node));
+    const verdict = verdictOf({ ...shape.sent, nodes });
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-key-missing" });
+    const reason = reasonOf(verdict);
+    expect(reason).toContain('"outro"');
+    expect(reason).toContain("anchor");
+    expect(reason).toContain(nodeLabel(nodes, shape.at.get("node:intro") ?? -1));
+    expect(reason).not.toContain('""');
+  });
+
+  it("refuses two downstream nodes for one key, each wired from the anchor", () => {
+    const shape = agentShape(DOWNSTREAM);
+    const restyle = shape.at.get("node:restyle") ?? -1;
+    const draw = shape.at.get("node:draw") ?? -1;
+    const second = { ...(shape.sent.nodes[restyle] as SentNode), name: "Second restyle" };
+    const sent: Sent = {
+      ...shape.sent,
+      nodes: [...shape.sent.nodes, second],
+      edges: [...shape.sent.edges, { fromIndex: draw, toIndex: shape.sent.nodes.length, into: "style_images" }],
+    };
+    expect(verdictOf(sent)).toMatchObject({ ok: false, refusal: "template-key-repeated", reason: expect.stringContaining('"restyle"') });
+  });
+
+  it("refuses two nodes beside the anchor for one key, each tagged with its index", () => {
+    const anchor = agentShape(STANDALONE).at.get("node:intro") ?? -1;
+    const verdict = verdictOf(twoOutros({ id: "fixture-standalone", key: "outro", anchor }));
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-key-repeated", reason: expect.stringContaining('"outro"') });
   });
 });

@@ -8,13 +8,21 @@
  * an empty one beside the node, wired and @'d, places the generations a
  * template runs first, and picking it again reuses what it placed; a template
  * with a shot list writes its shots, and one whose pictures go into the first
- * and end frame notes which frame each goes into (inner#1816); a panel with no
- * templates says so.
+ * and end frame notes which frame each goes into (inner#1816). The sound
+ * templates (inner#1825) wire an input into a slot instead of the prompt, or
+ * fill that slot with the material already wired in, place a node past the
+ * anchor or nodes beside it wired to nothing, and set a model's own params.
+ *
+ * Every node type now has templates, so the empty state is pinned by the unit
+ * case in `TemplateMenu.test.tsx` alone.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
  *   pnpm --filter @breatic/web test:smoke
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
@@ -105,6 +113,19 @@ async function openGoal(goal: string): Promise<void> {
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   await trigger.click();
   await pointAtGoal(goal);
+}
+
+/**
+ * Close the template menu and its goal submenu the way a user does, one Escape
+ * per level, until neither is on screen: a menu left open takes every press
+ * on the page, the cleanup's included.
+ */
+async function closeTemplateMenu(): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(0, { timeout: 500 });
+    await expect(page.getByTestId('generate-template-trigger')).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
 }
 
 /**
@@ -398,12 +419,236 @@ test('picking the carried-object transition feeds a picture already wired into t
   });
 });
 
-test('a panel with no templates says so', async () => {
+/**
+ * The ids of the templates the open goal submenu lists, in order.
+ * @returns The template ids.
+ */
+async function listedTemplates(): Promise<string[]> {
+  const items = page.locator('[role="menuitem"][data-testid^="generate-template-"]:not([data-testid^="generate-template-goal-"])');
+  await expect(items.first()).toBeVisible();
+  return items.evaluateAll((all) => all.map((el) => (el.getAttribute('data-testid') ?? '').replace('generate-template-', '')));
+}
+
+/**
+ * Seed a node holding a file into the open Space and wire it into another.
+ * @param type - Its node type.
+ * @param name - Its name.
+ * @param content - The file it holds.
+ * @param into - The node it is wired into.
+ * @returns Its id.
+ */
+async function seedWiredMaterial(type: 'image' | 'video', name: string, content: string, into: string): Promise<string> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const id = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, nodeId, kind, label, url, at]: [string, string, string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id: nodeId,
+        type: kind,
+        position: { x: -600, y: 0 },
+        data: { name: label, createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [], content: url, status: 'ready', duration: 8 },
+      });
+    },
+    [projectId, spaceId, id, type, name, content, canvasAt] as [string, string, string, string, string, string, string],
+  );
+  await wire(page, { projectId, spaceId }, id, into);
+  return id;
+}
+
+/**
+ * The open Space's node names by node type, each list sorted.
+ * @returns The names under each type.
+ */
+async function namesByType(): Promise<Record<string, string[]>> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  return page.evaluate(
+    async ([pid, sid, at]: [string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readCanvasGraph: (p: string, s: string) => { nodes: { id: string; type: string; data: { name?: string } }[] };
+      };
+      const out: Record<string, string[]> = {};
+      for (const n of canvas.readCanvasGraph(pid, sid).nodes) (out[n.type] ??= []).push(n.data.name ?? n.id);
+      for (const list of Object.values(out)) list.sort();
+      return out;
+    },
+    [projectId, spaceId, canvasAt] as [string, string, string],
+  );
+}
+
+/**
+ * The id of the open Space's node with a name.
+ * @param name - The name.
+ * @returns Its id.
+ */
+async function nodeIdNamed(name: string): Promise<string> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const id = await page.evaluate(
+    async ([pid, sid, label, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readCanvasGraph: (p: string, s: string) => { nodes: { id: string; data: { name?: string } }[] };
+      };
+      return canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.data.name === label)?.id ?? '';
+    },
+    [projectId, spaceId, name, canvasAt] as [string, string, string, string],
+  );
+  if (id === '') throw new Error(`no node named ${name}`);
+  return id;
+}
+
+test('an audio panel lists the ten sound templates under one goal', async () => {
   await openPanelOnNewNode('audio');
-  await page.getByTestId('generate-template-trigger').click();
-  await expect(page.getByTestId('generate-template-empty')).toHaveText('No templates');
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('generate-template-empty')).toBeHidden();
+  await openGoal('sound');
+  await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(1);
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*10$/);
+  expect(await listedTemplates()).toEqual([
+    'ambience-sfx-bed',
+    'voice-line',
+    'two-voice-dialogue',
+    'underscore-bgm',
+    'voice-from-descriptor',
+    'song-cover',
+    'voice-clone-line',
+    'score-for-my-video',
+    'music-mood-from-image',
+    'section-mapped-score',
+  ]);
+  await closeTemplateMenu();
+});
+
+test('a video panel lists the one sound template, the silent shot with foley', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('sound');
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*1$/);
+  expect(await listedTemplates()).toEqual(['clip-ambience-foley']);
+  await closeTemplateMenu();
+});
+
+test('picking music for your video places the video it asks for, wired into the anchor, and notes to pick it into the Video slot', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-score-for-my-video').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Sonilo', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Your video', 'audio-template'], edges: ['Your video -> audio-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  // The note leads the prompt, and the video goes into the slot, not the prompt.
+  const note = prompt.locator('[data-prompt-note]');
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText('Add your video first, then pick it into the Video slot');
+  // The note is the editor's first block itself.
+  expect(await prompt.locator('.ProseMirror').evaluate((root) => root.firstElementChild?.matches('[data-prompt-note]') === true)).toBe(true);
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-sound-video')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-sound-video-clear')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('score-for-my-video-applied.png') });
+});
+
+test('picking music for your video puts a video already wired in into the Video slot and places nothing new', async () => {
+  await page.route('https://smoke-media.test/**', (route) =>
+    route.fulfill({
+      status: 200,
+      body: readFileSync(join(__dirname, '../fixtures/mini-tools/driving.mp4')),
+      headers: { 'access-control-allow-origin': '*', 'content-type': 'video/mp4' },
+    }),
+  );
+  const nodeId = await openPanelOnNewNode('audio');
+  await seedWiredMaterial('video', 'Ride', 'https://smoke-media.test/ride.mp4', nodeId);
+  await openGoal('sound');
+  await page.getByTestId('generate-template-score-for-my-video').click();
+
+  await expect(page.getByTestId('generate-audio-sound-video-clear')).toBeVisible({ timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2);
+  expect(await graph()).toEqual({ names: ['Ride', 'audio-template'], edges: ['Ride -> audio-template'] });
+  // Nothing is left to do with the video, so no note asks for it.
+  await expect(page.getByTestId('generate-prompt-editor').locator('[data-prompt-note]')).toHaveCount(0);
+});
+
+test('picking the silent shot with foley places a foley node right of the video, wired from it', async () => {
+  const nodeId = await openPanelOnNewNode('video');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-clip-ambience-foley').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Kling', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Foley', 'video-template'], edges: ['video-template -> Foley'] });
+  expect((await namesByType()).audio).toEqual(['Foley']);
+  const foleyId = await nodeIdNamed('Foley');
+  const anchorBox = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).boundingBox();
+  const foleyBox = await visibleSpace(page).locator(`.react-flow__node[data-id="${foleyId}"]`).boundingBox();
+  expect(foleyBox?.x ?? 0).toBeGreaterThanOrEqual((anchorBox?.x ?? 0) + (anchorBox?.width ?? 0));
+});
+
+test('picking the score in four sections places three more sections and a guide, wired to nothing, and picking it again places nothing', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-section-mapped-score').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Mureka', { timeout: 15_000 });
+  await expect.poll(async () => (await namesByType()).audio, { timeout: 15_000 }).toEqual(['Body', 'Outro', 'Reveal', 'audio-template']);
+  const placed = await namesByType();
+  expect(placed.text).toEqual(['Score in four sections']);
+  expect((await graph()).edges).toEqual([]);
+  const count = await visibleSpace(page).locator('.react-flow__node').count();
+  await page.screenshot({ path: test.info().outputPath('section-mapped-score-applied.png') });
+
+  await openGoal('sound');
+  await page.getByTestId('generate-template-section-mapped-score').click();
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveCount(0);
+  await page.waitForTimeout(1_000);
+  expect(await namesByType()).toEqual(placed);
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(count);
+  expect((await graph()).edges).toEqual([]);
+});
+
+test('picking the two-voice dialogue reads it on Gemini with Ava and Leo, and a run sends the speakers, not a voice', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-two-voice-dialogue').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Gemini', { timeout: 15_000 });
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  await expect(pill).toContainText('Dialogue · 2');
+  await pill.click();
+  await expect(page.getByTestId('generate-audio-row-voice_id')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-row-speakers-0')).toContainText('Ava · Kore');
+  await expect(page.getByTestId('generate-audio-row-speakers-1')).toContainText('Leo · Puck');
+  await expect(page.getByTestId('generate-audio-row-speakers-2')).toHaveCount(0);
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(pill).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+
+  // The script is three lines, each picked for its speaker (inner#1825 design 8.5).
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo', 'Ava']);
+  // Written over the way a user does: a typed name and colon picks the speaker.
+  await prompt.locator('.dialogue-line p').first().click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('Ava: You are early today.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Leo: I wanted the first loaf.');
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo']);
+  let sent: { params?: Record<string, unknown> } | null = null;
+  await page.route('**/canvas/tasks', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    sent = route.request().postDataJSON() as { params?: Record<string, unknown> };
+    // A final answer, so the press does not send it again (inner#1490).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }),
+    });
+  });
+  await page.getByTestId('generate-audio-execute').click();
+  await expect.poll(() => sent, { timeout: 15_000 }).not.toBeNull();
+  const params = (sent as { params?: Record<string, unknown> } | null)?.params ?? {};
+  expect((params.speakers as { speaker: string; voice: string }[] | undefined)?.map((s) => `${s.speaker}:${s.voice}`)).toEqual(['Ava:Kore', 'Leo:Puck']);
+  expect(params).not.toHaveProperty('voice_id');
+  expect(params.prompt).toBe('Ava: You are early today.\nLeo: I wanted the first loaf.');
 });
 
 test('a note at the top of a prompt shows in orange, and generation does not get it', async () => {

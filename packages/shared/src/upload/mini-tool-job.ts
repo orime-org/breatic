@@ -40,6 +40,12 @@ export interface MiniToolJobRequest {
   op: ContainerOp;
   params: Record<string, unknown>;
   input: { storageKey: string };
+  /**
+   * The inputs after `input`, in order: a join's clips after the first
+   * (inner#1825). A job without them reads one input, as every job queued
+   * before the join does.
+   */
+  extra?: { storageKey: string }[];
   outputs: MiniToolJobOutput[];
 }
 
@@ -53,6 +59,13 @@ export type MiniToolJobReport =
 export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
 
 /**
+ * The most inputs one container job may read after its first (inner#1825):
+ * a join of `join_max_clips` clips sends all but its source here, and core
+ * refuses to start with a `join_max_clips` above this plus one.
+ */
+export const MINI_TOOL_JOB_MAX_EXTRA_INPUTS = 19;
+
+/**
  * The request as the ingest Worker reads it before believing it. The op's
  * params were validated against the registry by our server; here they are an
  * object and nothing more.
@@ -64,6 +77,7 @@ export const miniToolJobRequestSchema = z.object({
   op: z.enum(CONTAINER_OPS),
   params: z.record(z.string(), z.unknown()),
   input: z.object({ storageKey: z.string().min(1).max(500) }),
+  extra: z.array(z.object({ storageKey: z.string().min(1).max(500) })).max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS).optional(),
   outputs: z
     .array(
       z.object({

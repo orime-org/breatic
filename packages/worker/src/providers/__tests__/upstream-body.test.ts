@@ -10,6 +10,7 @@
 
 import { beforeAll, describe, it, expect } from "vitest";
 import { initCore } from "@breatic/core";
+import { dialogueText, extractPromptText } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -183,6 +184,39 @@ describe("upstreamBody", () => {
     });
   });
 
+  it("cleans each speaker's name as the script is cleaned, so the names the script reads are the names sent (round 3)", () => {
+    const gemini = getFullModelConfig("tts").models.find((m) => m.name === "gemini-3.1-flash-text-to-speech");
+    if (!gemini) throw new Error("gemini-3.1-flash-text-to-speech missing from the tts catalog");
+    const speakers = [{ speaker: "Mary  Ann", voice: "Kore" }, { speaker: "Leo\u200b", voice: "Puck" }];
+    const [, validated] = validateModelParams("tts", gemini.name, { speakers });
+    const script = extractPromptText(dialogueText([{ speaker: 1, text: "hi" }, { speaker: 2, text: "hello" }], speakers));
+    const body = upstreamBody(gemini, validated, script) as { speakers: { speaker: string }[]; text?: string; prompt?: string };
+    const said = (body.text ?? body.prompt ?? "").split("\n").map((line) => line.slice(0, line.indexOf(":")));
+    expect(body.speakers.map((one) => one.speaker)).toEqual(said);
+    expect(body.speakers[1]?.speaker).toBe("Leo");
+  });
+
+  it("cleans each storyboard shot's prompt and keeps its seconds (#2218)", () => {
+    const [, validated] = validateModelParams("video", "kling-v3.0-4k-text-to-video", {
+      multi_prompt: [
+        { prompt: "<b>a boat</b>", duration: 2 },
+        { prompt: "the pond\u200b <!-- x -->", duration: 3 },
+      ],
+    });
+    expect(validated.multi_prompt).toEqual([
+      { prompt: "a boat", duration: 2 },
+      { prompt: "the pond", duration: 3 },
+    ]);
+  });
+
+  it("sends a speaker's name without the spaces around it, the name the script reads (inner#1825 design 8.5)", () => {
+    const script = dialogueText([{ speaker: 1, text: "Hello." }], [{ speaker: "Ava " }]);
+    expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "Ava ", voice: "Kore" }] }, script)).toEqual({
+      speakers: [{ speaker: "Ava", voice: "Kore" }],
+      prompt: "Ava: Hello.",
+    });
+  });
+
   it("wraps each entry of a list under its item_key", () => {
     const krea: FullModelEntry = {
       name: "krea",
@@ -351,6 +385,62 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
   it("refuses a negative prompt over 255 characters and takes one at 255", () => {
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(256) })).toThrow(/negative_prompt.*255|255.*negative_prompt/s);
     expect(() => validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: "a".repeat(255) })).not.toThrow();
+    // Judged on the cleaned text, the one sent.
+    const [, cleaned] = validateModelParams("three_d", "tripo-h3.1-t23d", { negative_prompt: `<p>${"a".repeat(255)}</p><!-- x -->\u200b` });
+    expect(cleaned.negative_prompt).toBe("a".repeat(255));
+  });
+});
+
+/**
+ * Qwen3 TTS Voice Design (inner#1825 §8): a voice described in words. The
+ * description has a neutral English default, so a run that names none still
+ * speaks; one that empties it is refused before any body is sent.
+ */
+describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inner#1825)", () => {
+  beforeAll(() => {
+    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+  });
+
+  /**
+   * The body a run of this model sends for these params.
+   * @param given - The job's params, prompt already lifted out.
+   * @param prompt - The cleaned prompt.
+   * @returns The upstream body.
+   */
+  function bodyFor(given: Record<string, unknown>, prompt: string): Record<string, unknown> {
+    const found = getFullModelConfig("tts").models.find((m) => m.name === "qwen3-tts-voice-design");
+    if (!found) throw new Error("qwen3-tts-voice-design missing from the tts catalog");
+    const [, validated] = validateModelParams("tts", "qwen3-tts-voice-design", given);
+    return upstreamBody(found, validated, prompt);
+  }
+
+  it("sends the voice description cleaned of markup and invisible characters, as every text setting is (round 2)", () => {
+    expect(bodyFor({ voice_description: "<b>An old man, slow</b>\u200b", language: "English" }, "Hi.")).toMatchObject({
+      voice_description: "An old man, slow",
+    });
+  });
+
+  it("never sends a body with the voice description emptied (inner#1825)", () => {
+    expect(() => bodyFor({ voice_description: "", language: "English" }, "The night was long.")).toThrow(/voice_description/);
+  });
+
+  it("sends the line as text, with the described voice and the language", () => {
+    expect(
+      bodyFor({ voice_description: "An old man, slow and gravelly", language: "English" }, "The night was long."),
+    ).toEqual({
+      text: "The night was long.",
+      voice_description: "An old man, slow and gravelly",
+      language: "English",
+    });
+  });
+
+  it("sends the default English description and auto language when the run names neither", () => {
+    const body = bodyFor({}, "Hello there.");
+    expect(body.text).toBe("Hello there.");
+    expect(body.language).toBe("auto");
+    expect(typeof body.voice_description).toBe("string");
+    // English, and long enough to describe a voice.
+    expect(body.voice_description).toMatch(/^[\x20-\x7E]{20,}$/);
   });
 });
 

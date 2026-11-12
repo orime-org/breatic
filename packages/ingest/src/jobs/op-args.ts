@@ -18,7 +18,7 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
-import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
+import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -164,8 +164,11 @@ function audioOut(source: ProbeReport): string[] {
 /** An operation on an audio source that writes audio (inner#1305). */
 type AudioOp = "denoise" | "normalize" | "audio_speed" | "audio_cut" | "eq" | "compress" | "pan" | "reverb" | "voice" | "pitch";
 
-/** An operation on a video source that writes video. */
-export type VideoOp = Exclude<ContainerOp, AudioOp>;
+/** The operations that read further clips after the source (inner#1825 §6.4). */
+type JoinOp = "join" | "audio_join";
+
+/** An operation on a video source that writes video, one input in. */
+export type VideoOp = Exclude<ContainerOp, AudioOp | JoinOp>;
 
 /** The operations whose source is an audio file and whose result is one (inner#1305). */
 const AUDIO_OPS: ReadonlySet<ContainerOp> = new Set<AudioOp>([
@@ -187,10 +190,10 @@ const ON_SOUND: ReadonlySet<ContainerOp> = new Set(["audio_denoise", ...AUDIO_OP
 /**
  * What an operation writes.
  * @param op - The operation.
- * @returns `audio` for the audio operations, `video` for the rest.
+ * @returns `audio` for the audio operations and the audio join, `video` for the rest.
  */
 export function mediumOf(op: ContainerOp): "audio" | "video" {
-  return AUDIO_OPS.has(op) ? "audio" : "video";
+  return AUDIO_OPS.has(op) || op === "audio_join" ? "audio" : "video";
 }
 
 /**
@@ -213,6 +216,42 @@ export function outputFileName(op: ContainerOp): string {
 export function inputRefusal(op: ContainerOp, probe: ProbeReport): ContainerFailure | null {
   if (ON_SOUND.has(op) && !probe.streams.some((stream) => stream.codecType === "audio")) return "no_audio_track";
   return null;
+}
+
+/**
+ * Why a clip cannot go into a join, read off its probe before any run starts
+ * (inner#1825 §6.4): a video join needs a picture in every clip, an audio join
+ * a sound in every clip.
+ * @param op - The operation.
+ * @param probe - The clip's probe.
+ * @returns The failure to report, or null when the clip will do or the operation joins nothing.
+ */
+export function clipRefusal(op: ContainerOp, probe: ProbeReport): ContainerFailure | null {
+  if (op === "join") return realVideoStream(probe) === undefined ? "tool_failed" : null;
+  if (op === "audio_join") return probe.streams.some((stream) => stream.codecType === "audio") ? null : "tool_failed";
+  return null;
+}
+
+/**
+ * The run that reads a whole file through to learn how long it plays, for a
+ * clip whose container states no length (a browser recorder's WebM): its
+ * progress, written to stdout, ends on the time it reached.
+ * @param file - The local file.
+ * @returns The ffmpeg arguments.
+ */
+export function lengthArgs(file: string): string[] {
+  return ["-v", "error", "-nostats", "-i", file, "-map", "0", "-f", "null", "-progress", "pipe:1", "-"];
+}
+
+/**
+ * The length a run of {@link lengthArgs} reached: the last time its progress reports.
+ * @param progress - What the run wrote to stdout.
+ * @returns The seconds, or null when it reported none.
+ */
+export function readProgressLength(progress: string): number | null {
+  const times = [...progress.matchAll(/^out_time_us=(\d+)$/gm)].map((match) => Number(match[1]));
+  const last = times[times.length - 1];
+  return last === undefined || !(last > 0) ? null : last / 1_000_000;
 }
 
 /**
@@ -625,6 +664,165 @@ function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string,
   }
 }
 
+/** One input after the source, as the container downloaded and probed it. */
+export interface ExtraInput {
+  readonly path: string;
+  readonly probe: ProbeReport;
+}
+
+/** The rate and layout a video join writes its sound at. */
+const JOIN_VIDEO_SOUND = "sample_rates=48000:channel_layouts=stereo";
+
+/**
+ * A length in seconds as a filter option takes it, to the millisecond.
+ * @param value - Seconds.
+ * @returns The text.
+ */
+function seconds(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+/**
+ * A clip's probed length, which a crossfade's offset and a silent track need.
+ * @param probe - The clip's probe.
+ * @returns Seconds.
+ * @throws {Error} When the probe read no length.
+ */
+function lengthOf(probe: ProbeReport): number {
+  const length = probe.durationSeconds;
+  if (length === null || !(length > 0)) throw new Error("a clip's length is unknown");
+  return length;
+}
+
+/**
+ * Each neighbour pair's crossfade: the one asked for, held to half the
+ * shorter of the two clips, so no fade reaches past a clip's middle.
+ * @param crossfade - The seconds asked for.
+ * @param lengths - Every clip's length, in joining order.
+ * @returns One fade per pair, in order.
+ */
+function fadesOf(crossfade: number, lengths: readonly number[]): number[] {
+  return lengths.slice(1).map((length, i) => Math.min(crossfade, Math.min(lengths[i]!, length) / 2));
+}
+
+/**
+ * The labelled streams joined end to end: one concat when there is no
+ * crossfade, otherwise each fused into the next with the filter given.
+ * @param labels - Each clip's stream label, in joining order.
+ * @param fades - Each neighbour pair's crossfade, empty for a plain concat.
+ * @param fuse - The filter that fades a pair, given its fade and the pair's index.
+ * @param out - The output label.
+ * @returns The graph's chains.
+ */
+function chainOf(labels: readonly string[], fades: readonly number[], fuse: (fade: number, i: number) => string, out: string): string[] {
+  const chains: string[] = [];
+  let last = labels[0]!;
+  for (let i = 1; i < labels.length; i++) {
+    const next = i === labels.length - 1 ? out : `x${out}${i}`;
+    chains.push(`[${last}][${labels[i]}]${fuse(fades[i - 1]!, i)}[${next}]`);
+    last = next;
+  }
+  return chains;
+}
+
+/**
+ * The run that joins video clips: every clip fitted inside the first one's
+ * frame, centred, at its frame rate, with a sound track of its own length
+ * (silence for a clip without one), then concatenated or crossfaded.
+ * @param params - The crossfade, in seconds.
+ * @param clips - Every clip, the source first.
+ * @param output - The file to write.
+ * @returns The step.
+ * @throws {Error} When the first clip's frame is unknown, or a length a step needs is unknown.
+ */
+function joinVideoSteps(params: Record<string, unknown>, clips: readonly ExtraInput[], output: string): RunStep[] {
+  const first = pickMediaMetadata(clips[0]!.probe);
+  if (first.width === null || first.height === null) throw new Error("the first clip's frame is unknown");
+  const w = even(first.width);
+  const h = even(first.height);
+  // ponytail: a first clip whose rate ffprobe could not read is written at 30.
+  const fps = Math.round((realVideoStream(clips[0]!.probe)?.frameRate ?? 30) * 1_000_000) / 1_000_000;
+  const crossfade = numberOf(params, "crossfade");
+  const graph: string[] = [];
+  clips.forEach((clip, i) => {
+    const length = seconds(lengthOf(clip.probe));
+    // The picture is held on its last frame, then cut, to the clip's length,
+    // the same length its sound is padded or cut to below, so the crossfade
+    // offsets read off that length meet both streams where they end.
+    graph.push(
+      `[${i}:v:0]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,` +
+        `setsar=1,fps=${fps},format=yuv420p,setpts=PTS-STARTPTS,` +
+        `tpad=stop_mode=clone:stop_duration=${length},trim=duration=${length}[v${i}]`,
+    );
+    const sounded = clip.probe.streams.some((stream) => stream.codecType === "audio");
+    graph.push(
+      sounded
+        ? `[${i}:a:0]aformat=${JOIN_VIDEO_SOUND},asetpts=PTS-STARTPTS,apad,atrim=duration=${length}[a${i}]`
+        : `anullsrc=r=48000:cl=stereo,atrim=duration=${length}[a${i}]`,
+    );
+  });
+  const video = clips.map((_, i) => `v${i}`);
+  const sound = clips.map((_, i) => `a${i}`);
+  if (crossfade <= 0) {
+    graph.push(`${clips.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${clips.length}:v=1:a=1[v][a]`);
+  } else {
+    const lengths = clips.map((clip) => lengthOf(clip.probe));
+    const fades = fadesOf(crossfade, lengths);
+    // The i-th fade starts where the joined picture so far ends, less this fade.
+    let end = lengths[0]!;
+    const offsets = fades.map((fade, i) => {
+      const offset = end - fade;
+      end = offset + lengths[i + 1]!;
+      return offset;
+    });
+    graph.push(...chainOf(video, fades, (fade, i) => `xfade=transition=fade:duration=${seconds(fade)}:offset=${seconds(offsets[i - 1]!)}`, "v"));
+    graph.push(...chainOf(sound, fades, (fade) => `acrossfade=d=${seconds(fade)}`, "a"));
+  }
+  const inputs = clips.flatMap((clip) => [...SOURCE, "-i", clip.path]);
+  return [
+    {
+      kind: "run",
+      program: "ffmpeg",
+      args: [...QUIET, ...inputs, "-filter_complex", graph.join(";"), "-map", "[v]", "-map", "[a]", ...H264, ...AAC, ...FASTSTART, output],
+    },
+  ];
+}
+
+/**
+ * The run that joins audio clips: each resampled to the first one's rate and
+ * channels, then concatenated or crossfaded.
+ * @param params - The crossfade, in seconds.
+ * @param clips - Every clip, the source first.
+ * @param output - The file to write.
+ * @returns The step.
+ * @throws {Error} When a crossfade is asked for and a clip's length is unknown.
+ */
+function joinAudioSteps(params: Record<string, unknown>, clips: readonly ExtraInput[], output: string): RunStep[] {
+  const firstSound = clips[0]!.probe.streams.find((stream) => stream.codecType === "audio");
+  const rate = firstSound?.sampleRate ?? 48000;
+  // ponytail: more than two channels are folded to stereo; the probe carries no layout name to keep them by.
+  const layout = firstSound?.channels === 1 ? "mono" : "stereo";
+  const crossfade = numberOf(params, "crossfade");
+  const graph = clips.map(
+    (_, i) => `[${i}:a:0]aresample=${rate},aformat=sample_rates=${rate}:channel_layouts=${layout},asetpts=PTS-STARTPTS[a${i}]`,
+  );
+  const sound = clips.map((_, i) => `a${i}`);
+  if (crossfade <= 0) {
+    graph.push(`${sound.map((label) => `[${label}]`).join("")}concat=n=${clips.length}:v=0:a=1[a]`);
+  } else {
+    const fades = fadesOf(crossfade, clips.map((clip) => lengthOf(clip.probe)));
+    graph.push(...chainOf(sound, fades, (fade) => `acrossfade=d=${seconds(fade)}`, "a"));
+  }
+  const inputs = clips.flatMap((clip) => [...SOURCE, "-i", clip.path]);
+  return [
+    {
+      kind: "run",
+      program: "ffmpeg",
+      args: [...QUIET, ...inputs, "-filter_complex", graph.join(";"), "-map", "[a]", "-vn", ...AUDIO_OUT, output],
+    },
+  ];
+}
+
 /**
  * The steps one operation makes, the last writing `output`: an audio
  * operation's own, or a video operation's runs one after another.
@@ -634,6 +832,7 @@ function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string,
  * @param output - The file the last step writes.
  * @param workDir - A directory the runs may write between them.
  * @param source - The source's probe.
+ * @param extra - The inputs after the source, in order: a join's further clips.
  * @returns The steps.
  * @throws {Error} When a param the operation needs is missing.
  */
@@ -644,7 +843,12 @@ export function opSteps(
   output: string,
   workDir: string,
   source: ProbeReport,
+  extra: readonly ExtraInput[] = [],
 ): RunStep[] {
+  if (op === "join" || op === "audio_join") {
+    const clips = [{ path: input, probe: source }, ...extra];
+    return op === "join" ? joinVideoSteps(params, clips, output) : joinAudioSteps(params, clips, output);
+  }
   if (AUDIO_OPS.has(op)) return audioSteps(op as AudioOp, params, input, output, source);
   return opRuns(op as VideoOp, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
 }

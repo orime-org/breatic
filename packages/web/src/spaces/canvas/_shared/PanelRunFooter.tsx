@@ -31,6 +31,8 @@ export interface PanelRunFooterProps {
   runTestId: string;
   /** Controls set beside the cost, at the other end of the row from Run. */
   children?: React.ReactNode;
+  /** A reading set just before the cost, such as how long the result runs. */
+  beforeCost?: React.ReactNode;
   /**
    * Controls at the row's start; the cost then moves beside Run at the other
    * end (the 3D generation dialog's mode switch, inner#1691).
@@ -51,6 +53,7 @@ export interface PanelRunFooterProps {
  * @param props.creditTestId - Test hook for the cost text.
  * @param props.runTestId - Test hook for Run.
  * @param props.children - Controls beside the cost.
+ * @param props.beforeCost - A reading just before the cost.
  * @param props.leading - Controls at the row's start, before the cost.
  * @param props.divided - Whether a line sets the row off from the panel above.
  * @returns The footer row.
@@ -64,11 +67,13 @@ export function PanelRunFooter({
   creditTestId,
   runTestId,
   children,
+  beforeCost,
   leading,
   divided = true,
 }: PanelRunFooterProps): React.JSX.Element {
   const cost = (
     <div className='flex items-center gap-3'>
+      {beforeCost}
       <span
         data-testid={creditTestId}
         className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'

@@ -27,6 +27,7 @@ export interface ResolvableParam {
   readonly when?: ParamGate;
   readonly bounds?: readonly ParamBound[];
   readonly max_length?: number;
+  readonly min_length?: number;
 }
 
 /** What resolution reads off one model. */
@@ -43,6 +44,7 @@ export type ParamViolation =
   | { readonly param: string; readonly rule: "text"; readonly value: unknown }
   | { readonly param: string; readonly rule: "bounds"; readonly value: number; readonly min?: number; readonly max?: number }
   | { readonly param: string; readonly rule: "max_length" | "prompt_max_length"; readonly length: number; readonly max: number }
+  | { readonly param: string; readonly rule: "min_length"; readonly length: number; readonly min: number }
   | {
       readonly param: string;
       readonly rule: "forced";
@@ -268,9 +270,10 @@ export function checkParamCombination(
       }
       continue;
     }
-    if (typeof value === "string" && spec.max_length !== undefined) {
+    if (typeof value === "string" && (spec.max_length !== undefined || spec.min_length !== undefined)) {
       const length = cleanedLength(value);
-      if (length > spec.max_length) found.push({ param, rule: "max_length", length, max: spec.max_length });
+      if (spec.max_length !== undefined && length > spec.max_length) found.push({ param, rule: "max_length", length, max: spec.max_length });
+      if (spec.min_length !== undefined && length < spec.min_length) found.push({ param, rule: "min_length", length, min: spec.min_length });
     }
   }
   return found;

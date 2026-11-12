@@ -51,6 +51,11 @@ export interface CanvasLimits {
   waveformPeaksRetryMs: number;
   /** How long an open cut band keeps reading peaks not yet written, in ms. */
   waveformPeaksRetryMaxMs: number;
+  /**
+   * The most clips one join takes, its source included (inner#1825 §6.3);
+   * absent from a server that predates the join, which then leaves the list uncapped here.
+   */
+  joinMaxClips?: number;
 }
 
 /**
@@ -141,6 +146,15 @@ export function getCachedWaveformLimits(): WaveformLimits | null {
       peaksRetryMaxMs: limitsCache.waveformPeaksRetryMaxMs,
     }
     : null;
+}
+
+/**
+ * Sync accessor for the join's clip cap, or `null` before the canvas knobs
+ * load; until then the list is not capped here and the server judges it.
+ * @returns The most clips one join takes, its source included, or null before the first fetch.
+ */
+export function getCachedJoinMaxClips(): number | null {
+  return limitsCache?.joinMaxClips ?? null;
 }
 
 /** The cut band's waveform ceilings and how it reads peaks not yet written. */

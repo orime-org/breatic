@@ -1498,3 +1498,19 @@ models:
           base_price: 300000
           formula: '{"total_price": base_price * get_duration(audio_url) / 60}'
           discount_rate: 100
+  qwen3-tts-voice-design:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/qwen3-tts/voice-design
+        prompt_field: text
+        params:
+          voice_description:
+            field: voice_description
+          language:
+            field: language
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": $length(text) < 100 ? base_price * 1.0 : base_price * $length(text) / 100}'
+          discount_rate: 100
