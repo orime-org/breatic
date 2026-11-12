@@ -29,6 +29,15 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
 };
 
 /**
+ * Params the catalog gained after today's code was frozen (inner#1743), by model: today's body never carries them,
+ * so their WaveSpeed field is checked on its own in `body-fixture.test.ts`.
+ */
+export const ADDED_AFTER_FREEZE: Readonly<Record<string, readonly string[]>> = {
+  // MiniMax's language_boost, with the official values (platform.minimax.io speech-t2a-http).
+  "minimax-speech-2.8-hd": ["language_boost"],
+};
+
+/**
  * Values of ours WaveSpeed cannot serve, by model and param: those it refuses with a 400, and
  * a true for a switch it has no field for (probed 2026-11-01; inner#1872, inner#1873). Its
  * bindings keep them out (`supported`, or `drops: [false]`), so a run holding one is never sent to WaveSpeed.

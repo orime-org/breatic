@@ -886,6 +886,7 @@
       "param": {
         "compose_from": "生成のもと",
         "language": "言語",
+        "language_boost": "言語",
         "speakers": "話者",
         "emotion": "感情",
         "pronunciation_dict": "読み方",

@@ -886,6 +886,7 @@
       "param": {
         "compose_from": "생성 기준",
         "language": "언어",
+        "language_boost": "언어",
         "speakers": "화자",
         "emotion": "감정",
         "pronunciation_dict": "발음",

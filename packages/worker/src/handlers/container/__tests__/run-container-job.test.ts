@@ -74,7 +74,7 @@ import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { DeadlinePassed } from "@breatic/shared";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = {

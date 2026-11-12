@@ -54,7 +54,7 @@ describe("prepareRunParams", () => {
   });
 
   it("sends the prompt as it will be sent, the style note included", () => {
-    expect(prepareRunParams(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s"] }, prompt: "Hi." }).prompt).toBe("Hi. Style references: image 2.");
+    expect(prepareRunParams(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s"] }, prompt: "Hi." }).prompt).toBe("Hi. Style references: {{ref:images:2}}.");
   });
 
   it("keeps a prompt not written yet empty", () => {

@@ -314,7 +314,7 @@ describe("the limits a reseller states beyond its schema", () => {
 
   it.each(["fal", "sandbase"])("counts a HappyHorse prompt on %s as it is sent, each reference written the upstream's way", async (upstream) => {
     const reference = { images: ["https://a/1.png"] };
-    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: `${"x".repeat(2490)}<<ref:images:1>>`, params: reference })).toBeUndefined();
+    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: `${"x".repeat(2490)}{{ref:images:1}}`, params: reference })).toBeUndefined();
   });
 
   it("prices each GPT Image 2.5 edit reference on fal at fal's figure for a large image", async () => {

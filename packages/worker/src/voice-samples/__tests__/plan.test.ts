@@ -51,23 +51,24 @@ describe("planVoiceSamples", () => {
       {
         model: "minimax",
         key: "voice-samples/minimax/English_Guy.mp3",
-        body: { text: "Hello.", voice_id: "English_Guy", language_boost: "English" },
+        input: { prompt: "Hello.", params: { voice_id: "English_Guy", language_boost: "English" } },
       },
       {
         model: "minimax",
         key: "voice-samples/minimax/zh/Chinese_Mandarin_Ada.mp3",
-        body: { text: "Ni hao.", voice_id: "Chinese (Mandarin)_Ada", language_boost: "Chinese" },
+        input: { prompt: "Ni hao.", params: { voice_id: "Chinese (Mandarin)_Ada", language_boost: "Chinese" } },
       },
     ]);
   });
 
+  // The params go by our names: which field each becomes on an upstream is provider's.
   it("sends a many-language voice its language under the model's own language param", () => {
     expect(planVoiceSamples([GEMINI], CONFIG)).toEqual([
-      { model: "gemini", key: "voice-samples/gemini/Kore.mp3", body: { text: "Hello.", voice: "Kore" } },
+      { model: "gemini", key: "voice-samples/gemini/Kore.mp3", input: { prompt: "Hello.", params: { voice_id: "Kore" } } },
       {
         model: "gemini",
         key: "voice-samples/gemini/ja/Kore.mp3",
-        body: { text: "Konnichiwa.", voice: "Kore", language: "Japanese (Japan)" },
+        input: { prompt: "Konnichiwa.", params: { voice_id: "Kore", language: "Japanese (Japan)" } },
       },
     ]);
   });
@@ -88,7 +89,7 @@ describe("planVoiceSamples", () => {
       {
         model: "gemini",
         key: "voice-samples/gemini/Kore.mp3",
-        body: { text: "Hello.", voice: "Kore", language: "English (United States)" },
+        input: { prompt: "Hello.", params: { voice_id: "Kore", language: "English (United States)" } },
       },
     ]);
   });

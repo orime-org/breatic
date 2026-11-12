@@ -88,50 +88,58 @@ async function columnsOf(table: string): Promise<string[]> {
 }
 
 describe("studio_upstream_clones", () => {
-  it("answers the id recorded for a source, and nothing for another", async () => {
+  it("answers the live clones of the sources asked about, an element's by its sha256 prefix, on every upstream", async () => {
     const { studioId } = await seedStudio();
+    expect(await upstreamCloneRepo.recordClone(studioId, "wavespeed", "vocal", "sha-a", "vocal-1")).toBe(true);
+    await upstreamCloneRepo.recordClone(studioId, "fal", "vocal", "sha-a", "vocal-fal");
+    await upstreamCloneRepo.recordClone(studioId, "wavespeed", "element", "sha-a:Element 1", "el-1");
+    await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-b", "voice-b");
+    await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-a-longer", "not-a");
 
-    expect(await upstreamCloneRepo.recordClone(studioId, "vocal", "sha-a", "vocal-1")).toBe(true);
+    const live = await upstreamCloneRepo.liveClonesFor(studioId, ["sha-a"]);
 
-    expect(await upstreamCloneRepo.findClone(studioId, "vocal", "sha-a")).toBe("vocal-1");
-    expect(await upstreamCloneRepo.findClone(studioId, "vocal", "sha-b")).toBeNull();
-    expect(await upstreamCloneRepo.findClone(studioId, "voice", "sha-a")).toBeNull();
+    expect(live.map((c) => [c.upstream, c.kind, c.sourceKey, c.upstreamId]).sort()).toEqual([
+      ["fal", "vocal", "sha-a", "vocal-fal"],
+      ["wavespeed", "element", "sha-a:Element 1", "el-1"],
+      ["wavespeed", "vocal", "sha-a", "vocal-1"],
+    ]);
+    expect(await upstreamCloneRepo.liveClonesFor(studioId, [])).toEqual([]);
   });
 
-  it("keeps the first of two clones of the same source", async () => {
+  it("keeps the first of two clones of the same source on one upstream", async () => {
     const { studioId } = await seedStudio();
-    await upstreamCloneRepo.recordClone(studioId, "voice", "sha-a", "first");
+    await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-a", "first");
 
-    expect(await upstreamCloneRepo.recordClone(studioId, "voice", "sha-a", "second")).toBe(false);
-    expect(await upstreamCloneRepo.findClone(studioId, "voice", "sha-a")).toBe("first");
+    expect(await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-a", "second")).toBe(false);
+    expect((await upstreamCloneRepo.liveClonesFor(studioId, ["sha-a"])).map((c) => c.upstreamId)).toEqual(["first"]);
   });
 
   it("does not answer one studio's clone to another", async () => {
     const a = await seedStudio();
     const b = await seedStudio();
-    await upstreamCloneRepo.recordClone(a.studioId, "element", "sha-a:cat", "el-1");
+    await upstreamCloneRepo.recordClone(a.studioId, "wavespeed", "element", "sha-a:cat", "el-1");
 
-    expect(await upstreamCloneRepo.findClone(b.studioId, "element", "sha-a:cat")).toBeNull();
+    expect(await upstreamCloneRepo.liveClonesFor(b.studioId, ["sha-a"])).toEqual([]);
   });
 
-  it("forgets a clone the upstream no longer knows, and takes a new one for that source", async () => {
+  it("forgets a clone the upstream no longer knows, on that upstream alone, and takes a new one for that source", async () => {
     const { studioId } = await seedStudio();
-    await upstreamCloneRepo.recordClone(studioId, "voice", "sha-a", "gone");
+    await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-a", "gone");
+    await upstreamCloneRepo.recordClone(studioId, "fal", "voice", "sha-a", "gone");
 
-    await upstreamCloneRepo.retireClone(studioId, "voice", "gone");
+    await upstreamCloneRepo.retireClone(studioId, "wavespeed", "voice", "gone");
 
-    expect(await upstreamCloneRepo.findClone(studioId, "voice", "sha-a")).toBeNull();
-    expect(await upstreamCloneRepo.recordClone(studioId, "voice", "sha-a", "fresh")).toBe(true);
-    expect(await upstreamCloneRepo.findClone(studioId, "voice", "sha-a")).toBe("fresh");
-    const rows = await sql`SELECT upstream_id, deleted_at FROM studio_upstream_clones WHERE studio_id = ${studioId}`;
+    expect((await upstreamCloneRepo.liveClonesFor(studioId, ["sha-a"])).map((c) => c.upstream)).toEqual(["fal"]);
+    expect(await upstreamCloneRepo.recordClone(studioId, "wavespeed", "voice", "sha-a", "fresh")).toBe(true);
+    const rows = await sql`SELECT upstream_id, deleted_at FROM studio_upstream_clones WHERE studio_id = ${studioId} AND upstream = 'wavespeed'`;
     expect(rows).toHaveLength(2);
   });
 
   it("refuses a kind outside voice, vocal and element", async () => {
     const { studioId } = await seedStudio();
     await expect(
-      sql`INSERT INTO studio_upstream_clones (studio_id, kind, source_key, upstream_id)
-          VALUES (${studioId}, 'song', 'sha', 'x')`,
+      sql`INSERT INTO studio_upstream_clones (studio_id, upstream, kind, source_key, upstream_id)
+          VALUES (${studioId}, 'wavespeed', 'song', 'sha', 'x')`,
     ).rejects.toThrow(/studio_upstream_clones_kind_check/);
   });
 

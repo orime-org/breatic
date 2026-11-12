@@ -5,27 +5,26 @@
  * BullMQ job handlers for task execution.
  *
  * Three execution paths:
- * 1. Mini-tool → direct provider call
+ * 1. Mini-tool → a model run through provider, or a container job
  * 2. Understand → media analysis / ASR
- * 3. AIGC Direct → provider call with explicit params
+ * 3. Generation → a model run through provider
  *
  * Anything else throws.
  */
 
 
 import { DelayedError, type Job } from "bullmq";
-import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
-import type { Cost } from "@breatic/provider";
-import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
+import { costsOf, type Cost } from "@breatic/provider";
+import { failureOutcome, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
+import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
@@ -61,9 +60,24 @@ import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
-import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
+import { abandonedCosts, runModelTask } from "@worker/handlers/model-task.js";
+import { MediaRunFailed, type MediaRunDone } from "@worker/handlers/media-run.js";
+import type { CatalogModality } from "@worker/handlers/model-params.js";
+import {
+  billedCredits,
+  costWaitOf,
+  holdUntil,
+  lastLookup,
+  lookUp,
+  nextLookupAt,
+  openWait,
+  pricedCosts,
+  unanswered,
+  type CostWait,
+  type RecordAs,
+  type WaitingCost,
+} from "@worker/handlers/cost-wait.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
 import {
   isTranscription,
@@ -72,23 +86,36 @@ import {
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
-/**
- * What a provider's figure is worth in credits, by the same conversion every
- * other charge uses.
- * @param costUsd - What the service charged, in US dollars.
- * @returns The credits to deduct.
- */
-function creditsFor(costUsd: number): number {
-  return creditsForUsd(costUsd, env.CREDIT_MULTIPLIER);
+/** The task types that run a catalog model. */
+const MODEL_TASK_TYPES: ReadonlySet<string> = new Set(["image", "audio", "video", "tts", "three_d"]);
+
+/** What a run produced and what it cost, as the completion reads it. */
+export interface RunProduce {
+  /** The outputs and whatever else the run reported. */
+  result: Record<string, unknown>;
+  /** The credits of what is known of its cost. */
+  credits: number;
+  /** Costs no upstream has billed yet; the task waits on them before it is billed. */
+  pending: Extract<Cost, { state: "pending" }>[];
+  /** The upstream that served a model run, which the charge names. */
+  servedBy?: string;
+  /** For a reading: how its pending calls are recorded once looked up. */
+  recordAs?: RecordAs;
 }
 
-const AIGC_TASK_TYPES: Record<string, string> = {
-  image: "image",
-  audio: "audio",
-  video: "video",
-  tts: "tts",
-  three_d: "three_d",
-};
+/**
+ * A finished model run as the completion reads it: each output as an address or as bytes to store.
+ * @param taskId - The task, for the log.
+ * @param model - The model it ran on.
+ * @param done - What provider answered.
+ * @returns The run's outputs and costs.
+ */
+function produced(taskId: string, model: string, done: MediaRunDone): RunProduce {
+  const outputs: PersistedOutput[] = done.outputs.map((output) =>
+    output.kind === "url" ? { url: output.url } : { extra: { buffer: Buffer.from(output.bytes), contentType: output.contentType } },
+  );
+  return { result: { outputs, model }, ...pricedCosts(taskId, done.costs), servedBy: done.servedBy };
+}
 
 
 /** Job data shape from BullMQ. */
@@ -301,6 +328,30 @@ function resolveCanvasDocName(
  * @returns Result dict on success, or a failure status marker
  */
 /**
+ * A run as every way out of it names it, from the job that carries it.
+ * @param data - The job's data.
+ * @param streamRedis - Redis client for the stream DB.
+ * @returns The run.
+ */
+export function runContextOf(data: TaskJobData, streamRedis: ReturnType<typeof getStreamRedis>): RunContext {
+  return {
+    streamRedis,
+    taskId: data.taskId,
+    projectId: data.projectId,
+    spaceId: data.spaceId,
+    canvasDocName: resolveCanvasDocName(data.projectId, data.spaceId),
+    // targetNodeIds from job payload; empty for tasks not bound to any canvas node.
+    nodeIds: data.targetNodeIds ?? [],
+    userId: data.userId,
+    model: data.model,
+    params: data.params,
+    source: data.source,
+    toolId: data.toolId,
+    sceneRowId: data.sceneRowId,
+  };
+}
+
+/**
  * Public entry called by the BullMQ worker.
  *
  * A node carries several tasks at once (#186), so a job claims nothing on
@@ -319,50 +370,16 @@ export async function runTask(
 }
 
 /**
- * Which upstream served a finished generation.
- *
- * The same priority-then-key rule the worker sent the request by, so the name
- * recorded against a charge is the vendor that was actually paid.
- * @param modality - The task type, which is also the catalog directory.
- * @param modelName - The model the generation ran on; absent on a task that
- *   named none.
- * @returns The provider's name, or `unknown` when the catalog cannot say.
- */
-function providerOf(modality: string, modelName: string | undefined): string {
-  try {
-    return resolveActiveProvider(modality, modelName).providerName;
-  } catch {
-    // Reached only by a task type with no model catalog behind it, or by a
-    // catalog edited between the request and this line. Answered rather than
-    // thrown: the generation is already delivered, and a name nobody can look
-    // up must not take the charge down with it.
-    return "unknown";
-  }
-}
-
-/**
  * Note a retry once. A pickup that follows a failed attempt, or a worker that
  * stalled mid-run, is a retry; the pickups after it are the run coming back
  * to its waiting work, and say nothing new. A delayed re-queue moves neither
  * count.
  * @param job - The job, whose data records the attempt last reported.
- * @param run - The run.
- * @param run.taskId - The task.
- * @param run.storedTaskId - The vendor task id a previous attempt stored, if any.
  * @returns Whether this pickup starts a retry.
  */
-async function reportRetryOnce(
-  job: Job<TaskJobData>,
-  run: { taskId: string; storedTaskId: string | null },
-): Promise<boolean> {
+async function reportRetryOnce(job: Job<TaskJobData>): Promise<boolean> {
   const round = job.attemptsMade + job.stalledCounter;
   if (round <= (job.data.retryReported ?? 0)) return false;
-  if (run.storedTaskId) {
-    logger.info(
-      { taskId: run.taskId, providerTaskId: run.storedTaskId, attempt: job.attemptsMade + 1 },
-      "async_resume_stored_provider_task",
-    );
-  }
   await job.updateData({ ...job.data, retryReported: round });
   return true;
 }
@@ -377,29 +394,12 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds, sceneRowId } = job.data;
-  const canvasDocName = resolveCanvasDocName(projectId, spaceId);
-
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, sceneRowId } = job.data;
   const streamRedis = getStreamRedis();
-  // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
-  // Falls back to empty array for tasks not bound to any canvas node.
-  const nodeIds: string[] = targetNodeIds ?? [];
   // What every way out of this run says about itself. Each exit adds the two
   // things only it knows: what to say, and whether this is the last word.
-  const runEnd = {
-    streamRedis,
-    taskId,
-    projectId,
-    spaceId,
-    canvasDocName,
-    nodeIds,
-    userId,
-    model,
-    params,
-    source,
-    toolId,
-    sceneRowId,
-  };
+  const runEnd = runContextOf(job.data, streamRedis);
+  const { canvasDocName, nodeIds } = runEnd;
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
   //
@@ -466,6 +466,11 @@ async function runTaskBody(
         nodeResultsFrom(nodeIds, storedOutputs),
         { rethrowOnRecordFailure: true },
       );
+      // A task billed after waiting on its cost wrote its rows with the part
+      // known then (inner#1743); they carry the billed amount from here on.
+      if (costWaitOf(existing.result) !== null) {
+        await nodeHistoryService.updateGenerationCredits(taskId, existing.billedCredits ?? 0);
+      }
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
@@ -500,6 +505,11 @@ async function runTaskBody(
     }
     return (existing.result ?? { alreadyCompleted: true });
   }
+  // Completed and delivered, waiting on its upstream's bill (inner#1743).
+  const waiting = existing === null ? null : costWaitOf(existing.result);
+  if (existing !== null && waiting !== null) {
+    return await settleCostWait({ job, token, runEnd, taskType, result: existing.result ?? {}, durationMs: existing.durationMs ?? undefined, ...waiting });
+  }
   if (existing?.providerResultUrl) {
     logger.warn(
       { taskId, providerResultUrl: existing.providerResultUrl },
@@ -522,20 +532,15 @@ async function runTaskBody(
   const startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
 
 
-  // ─── Stage 1: Call the provider ───────────────────────────────────
-  // Errors here rethrow → BullMQ retries. For SYNC providers a retry
-  // re-invokes the vendor (accepted policy, #1628: UX over the narrow
-  // duplicate-cost window). For ASYNC providers the resume context below
-  // makes the submit at-most-once: the vendor task id is persisted right
-  // after submit, and every later pickup asks about the stored id. A task
-  // still going is not an error here: it goes back to the queue.
-  let providerResult: Record<string, unknown>;
-  let creditsUsed = 0;
+  // ─── Stage 1: Run the work ────────────────────────────────────────
+  // Errors here rethrow → BullMQ retries. A model run goes ticket by ticket
+  // (inner#1743): every paid send is preceded by a stored ticket and a mark,
+  // so a retry asks about what an upstream already took instead of sending it
+  // again. A run still going is not an error here: it goes back to the queue.
+  let run: RunProduce;
 
-  // #1628: threaded into async transports via provider.generateAsync.
-  const storedTaskId = existing?.providerTaskId ?? null;
   // Each paid call that may repeat writes its own duplicate-cost warning.
-  const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
+  const retryStarting = await reportRetryOnce(job);
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
 
@@ -564,23 +569,15 @@ async function runTaskBody(
   try {
     deadlineAt = await taskDeadline(taskId, existing?.createdAt);
     if (!containerRun) delayUntil = deadlineAt;
-    const resume: ResumeContext = {
-      storedTaskId,
-      persistTaskId: (id: string): Promise<void> =>
-        taskService.recordProviderTaskId(taskId, id),
-      externalTaskId: `breatic-${taskId}`,
-      retryStarting,
-      deadlineAt,
-    };
     if (source === "mini_tool" && toolId) {
-      [providerResult, creditsUsed] = await runMiniTool({
+      run = await runMiniTool({
         toolId,
         params,
         ...(sourceKey !== undefined && { sourceKey }),
         userId,
         projectId,
         taskId,
-        resume,
+        deadlineAt,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -601,19 +598,23 @@ async function runTaskBody(
           "provider_reinvoked_on_retry_potential_duplicate_cost",
         );
       }
-      [providerResult, creditsUsed] = await runUnderstand(
-        params,
-        recorderFor(isTranscription(params) ? "canvas_transcribe" : "canvas_understand"),
-        deadlineAt,
-        { taskId, projectId: projectId ?? undefined, actorUserId: userId },
-      );
-    } else if (taskType in AIGC_TASK_TYPES) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
-        resume,
+      const feature = isTranscription(params) ? "canvas_transcribe" : "canvas_understand";
+      const recorder = recorderFor(feature);
+      const [result, credits] = await runUnderstand(params, recorder, deadlineAt, { taskId, projectId: projectId ?? undefined, actorUserId: userId });
+      // A call whose cost is pending wrote no usage row; the task waits on it and records it once looked up.
+      const pending = recorder.awaitingLookup().map((lookup) => ({ state: "pending" as const, lookup }));
+      run = { result, credits, pending, recordAs: { feature, model: UNDERSTAND_PINS.model } };
+    } else if (MODEL_TASK_TYPES.has(taskType)) {
+      if (!model) throw new Error(`a ${taskType} task names no model`);
+      run = produced(taskId, model, await runModelTask({
         taskId,
-        projectId: projectId ?? undefined,
+        modality: taskType as CatalogModality,
+        model,
+        params,
+        projectId,
         outputCount: 1,
-      });
+        deadlineAt,
+      }));
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
@@ -654,6 +655,8 @@ async function runTaskBody(
     // re-fetches the media up to its ceiling, and a refusal from the service
     // means that call was paid for.
     const settlesNow = isTerminalAttempt(job) || verdictStands(err);
+    // A failed run is not charged; what it cost upstream is logged.
+    await logFailedRunCosts(taskId, thrown, settlesNow);
     await finishFailedRun({
       ...runEnd,
       errorMessage: errorMsg,
@@ -670,7 +673,7 @@ async function runTaskBody(
   // ─── Normalize to unified outputs shape ──────────────────────────
   // Provider and container paths collapse here so the rest of runTask works
   // with a single `{outputs:[{url,cover_url?,extra?}], extras}` view.
-  const unified = toUnifiedOutputs(providerResult);
+  const unified = toUnifiedOutputs(run.result);
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
     logger.error(
       { taskId, toolId, outputs: unified.outputs.length, nodes: nodeIds.length },
@@ -691,9 +694,12 @@ async function runTaskBody(
   // of runTask can detect a duplicate delivery and fail-fast.
   const providerUrlSentinel =
     unified.outputs[0]?.url ??
-    (providerResult.url_original as string | undefined) ??
+    (run.result.url_original as string | undefined) ??
     `buffer://${taskId}`; // sync transports return raw bytes with no URL
   await taskService.recordProviderResult(taskId, providerUrlSentinel);
+  // The send that finished a model run kept its mark until the result was
+  // recorded (inner#1743): a crash before this line resumes the send.
+  await taskRepo.clearSending(taskId);
 
   // ─── Stage 2: Persist to permanent storage ────────────────────────
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
@@ -759,21 +765,46 @@ async function runTaskBody(
 
   // Rounded once, here, so the task row, the node's history, the activity
   // feed and the charge all carry the same whole-cent figure (inner#1666).
-  creditsUsed = toChargeCredits(creditsUsed);
+  const creditsUsed = toChargeCredits(run.credits);
+  const usedModel = (result.model as string | undefined) ?? model;
+  const servedBy = run.servedBy ?? "unknown";
+  const delivery: Delivery = {
+    outputs: persistedOutputs,
+    reportedModel: unified.extras.model as string | undefined,
+    credits: creditsUsed,
+    durationMs,
+  };
+
+  // ─── Stage 3, waiting on the cost: complete, deliver, come back to bill ──
+  // An upstream that has not billed the run yet leaves the task completed and
+  // delivered but unbilled, its credits held, until its own job looks the cost
+  // up (inner#1743).
+  if (run.pending.length > 0) {
+    const now = Date.now();
+    const wait = openWait(creditsUsed, servedBy, now);
+    const pendingCosts: WaitingCost[] = run.pending.map((cost) => ({ lookup: cost.lookup, ...(run.recordAs !== undefined && { recordAs: run.recordAs }) }));
+    const waitingResult = { ...result, costWait: wait, pendingCosts };
+    const wasFirst = await taskService.markCompleted(taskId, waitingResult, durationMs);
+    await creditHoldService.extendHold(taskId, holdUntil(wait, now));
+    if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
+    await deliver(runEnd, taskType, { ...delivery, billingPending: true });
+    const delivered: CostWait = { ...wait, delivered: true };
+    await taskRepo.updateCostWait(taskId, { ...waitingResult, costWait: delivered });
+    logger.info({ taskId, taskType, credits: creditsUsed, pending: run.pending.length, provider: servedBy }, "task_completed_waiting_on_cost");
+    return await comeBackFor(job, token, taskId, delivered, now, waitingResult);
+  }
 
   // ─── Stage 3: Complete the task and record its charge, in one commit ──
   // markCompletedAndBill's WHERE billed_at IS NULL lets only the first
   // attempt complete the task, and only that attempt records the charge
   // request, so the completion and what it owes commit together.
-  const usedModel = (result.model as string | undefined) ?? model;
-  const usedProvider = providerOf(taskType, usedModel);
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs, {
     actorUserId: userId,
     projectId: projectId ?? null,
     amount: creditsUsed,
     description: `Task: ${taskType}`,
     model: usedModel,
-    provider: usedProvider,
+    provider: servedBy,
     releaseHold: taskId,
   });
   if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
@@ -781,21 +812,7 @@ async function runTaskBody(
   // charge follows. Not every modality carries a price yet, and a run whose
   // upstream reports nothing would otherwise leave no trace of the usage at
   // all — the charge below is skipped for exactly those.
-  if (wasFirst) {
-    logger.info(
-      {
-        taskId,
-        taskType,
-        model: usedModel,
-        provider: usedProvider,
-        credits: creditsUsed,
-        durationMs,
-        userId,
-        projectId: projectId ?? null,
-      },
-      "generation_usage",
-    );
-  }
+  if (wasFirst) logGenerationUsage({ taskId, taskType, model: usedModel, provider: servedBy, credits: creditsUsed, durationMs, userId, projectId });
 
   if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; settling only what is pending");
   await settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst, creditsUsed });
@@ -806,6 +823,38 @@ async function runTaskBody(
   // the content lands on the node is decided by the task row's own state — a
   // row already settled some other way keeps the node's content while the
   // result is still recorded to history.
+  await deliver(runEnd, taskType, delivery);
+
+  logger.info(
+    { taskId, taskType, creditsUsed, durationMs, billed: wasFirst },
+    "task_completed",
+  );
+  return result;
+}
+
+/** What a finished run delivers to its nodes, its 3D row and the feed. */
+interface Delivery {
+  outputs: PersistedOutput[];
+  /** The model the result named, when it did. */
+  reportedModel: string | undefined;
+  /** The credits the run was charged, or, while it waits on its cost, what is known so far. */
+  credits: number;
+  durationMs: number | undefined;
+  /** Whether the task still waits on its cost. */
+  billingPending?: boolean;
+}
+
+/**
+ * Deliver a finished run: each node's history row and task row, the 3D Space's row and the feed. A delivery while
+ * the task waits on its cost writes the feed only over a row still pending, so a stale run never covers the billed
+ * amount.
+ * @param end - The run.
+ * @param taskType - What it generated.
+ * @param delivery - What it delivers.
+ * @throws {Error} When a node's history or task row, or the 3D row, could not be written; the job is delivered again.
+ */
+async function deliver(end: RunContext, taskType: string, delivery: Delivery): Promise<void> {
+  const { streamRedis, canvasDocName, projectId, nodeIds, taskId, userId } = end;
   if (canvasDocName && projectId && nodeIds.length > 0) {
     await recordGenerationForNodes(
       streamRedis,
@@ -819,53 +868,271 @@ async function runTaskBody(
         // chip says. The provider reports dollars; the conversion happened
         // where the run was priced, and this is that result.
         metadata: generationMetadata({
-          reportedModel: unified.extras.model as string | undefined,
-          jobModel: model,
-          credits: creditsUsed,
-          durationMs,
-          params,
-          toolId: source === "mini_tool" ? toolId : undefined,
+          reportedModel: delivery.reportedModel,
+          jobModel: end.model,
+          credits: delivery.credits,
+          durationMs: delivery.durationMs,
+          params: end.params,
+          toolId: end.source === "mini_tool" ? end.toolId : undefined,
+          billingPending: delivery.billingPending,
         }),
       },
-      nodeResultsFrom(nodeIds, persistedOutputs),
+      nodeResultsFrom(nodeIds, delivery.outputs),
       { rethrowOnRecordFailure: true },
     );
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
-  if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
+  if (end.sceneRowId !== undefined) {
+    await settleSceneRow(taskId, end.sceneRowId, sceneTaskService.generationOutcome(delivery.outputs), { rethrow: true });
   }
+  if (projectId) await recordDeliveredActivity(end, taskType, delivery);
+}
 
-  if (projectId) {
-    await recordGenerationActivity({
-      projectId,
-      userId,
-      taskId,
-      succeeded: true,
-      spaceId,
-      nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
-      source,
-      toolName: toolId,
-      model: (unified.extras.model as string | undefined) ?? model,
-      outputCount: persistedOutputs.length,
-      // #1622 preview + what the run consumed, taken from the usage the
-      // provider reported. A studio near the bottom of its balance finishes
-      // owing credits, so this parts company with what the pool covered;
-      // this feed answers what the run cost. kind omitted for non-media
-      // (3d) so the payload stays valid; thumbnailUrl only
-      // present for video covers.
-      kind: mediaKindForActivity(taskType),
-      fileUrl: persistedOutputs[0]?.url,
-      thumbnailUrl: persistedOutputs[0]?.cover_url,
-      credits: creditsUsed,
-    });
+/**
+ * The feed row of a delivered run.
+ * @param end - The run.
+ * @param taskType - What it generated.
+ * @param delivery - What it delivered.
+ */
+async function recordDeliveredActivity(end: RunContext, taskType: string, delivery: Delivery): Promise<void> {
+  if (!end.projectId) return;
+  await recordGenerationActivity({
+    projectId: end.projectId,
+    userId: end.userId,
+    taskId: end.taskId,
+    succeeded: true,
+    spaceId: end.spaceId,
+    nodeId: end.nodeIds.length === 1 ? end.nodeIds[0] : null,
+    source: end.source,
+    toolName: end.toolId,
+    model: delivery.reportedModel ?? end.model,
+    outputCount: delivery.outputs.length,
+    // #1622 preview + what the run consumed. A studio near the bottom of its
+    // balance finishes owing credits, so this parts company with what the pool
+    // covered; this feed answers what the run cost. kind omitted for non-media
+    // (3d) so the payload stays valid; thumbnailUrl only present for video
+    // covers.
+    kind: mediaKindForActivity(taskType),
+    fileUrl: delivery.outputs[0]?.url,
+    thumbnailUrl: delivery.outputs[0]?.cover_url,
+    credits: delivery.credits,
+    billingPending: delivery.billingPending,
+  });
+}
+
+/**
+ * One line per billed generation.
+ * @param usage - What it ran on, who served it and what it was charged.
+ * @param usage.taskId - The task.
+ * @param usage.taskType - What it generated.
+ * @param usage.model - The model.
+ * @param usage.provider - The upstream that served it.
+ * @param usage.credits - What it was charged.
+ * @param usage.durationMs - How long it ran.
+ * @param usage.userId - Who started it.
+ * @param usage.projectId - Its project.
+ */
+function logGenerationUsage(usage: {
+  taskId: string;
+  taskType: string;
+  model: string | undefined;
+  provider: string;
+  credits: number;
+  durationMs: number | undefined;
+  userId: string;
+  projectId: string | undefined;
+}): void {
+  logger.info({ ...usage, projectId: usage.projectId ?? null }, "generation_usage");
+}
+
+/**
+ * Log what a failed run cost upstream; the task is not charged for it. A run that ends here on a throw is asked what
+ * its ticket held.
+ * @param taskId - The task.
+ * @param thrown - What ended the attempt.
+ * @param settles - Whether this attempt ends the run.
+ */
+async function logFailedRunCosts(taskId: string, thrown: unknown, settles: boolean): Promise<void> {
+  const costs = thrown instanceof MediaRunFailed ? thrown.costs : costsOf(thrown);
+  // A failed answer carries every cost of the run; any other ending leaves the ticket's own to ask for.
+  if (settles && !(thrown instanceof MediaRunFailed)) costs.push(...(await abandonedCosts(taskId)));
+  if (costs.length > 0) logger.warn({ taskId, costs }, "failed_run_costs");
+}
+
+/**
+ * Send a task waiting on its cost back to the queue until its next lookup.
+ * @param job - The job.
+ * @param token - Its lock token; a call outside the queue has none and ends here.
+ * @param taskId - The task.
+ * @param wait - The wait.
+ * @param now - The clock now.
+ * @param result - The task's result.
+ * @returns The result, for a call outside the queue.
+ * @throws {DelayedError} Always inside the queue: the job waits in the delayed set and spends no attempt.
+ */
+async function comeBackFor(
+  job: Job<TaskJobData>,
+  token: string | undefined,
+  taskId: string,
+  wait: CostWait,
+  now: number,
+  result: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (token === undefined) {
+    logger.error({ taskId }, "cost_wait_without_job_lock");
+    return result;
   }
+  await job.moveToDelayed(nextLookupAt(wait, now), token);
+  throw new DelayedError();
+}
 
-  logger.info(
-    { taskId, taskType, creditsUsed, durationMs, billed: wasFirst },
-    "task_completed",
-  );
-  return result;
+/** A pickup of a task waiting on its cost. */
+interface CostWaitPickup {
+  job: Job<TaskJobData>;
+  token: string | undefined;
+  runEnd: RunContext;
+  taskType: string;
+  /** The task's stored result, carrying the wait. */
+  result: Record<string, unknown>;
+  durationMs: number | undefined;
+  wait: CostWait;
+  pending: WaitingCost[];
+}
+
+/**
+ * Look a waiting task's cost up, and bill it once every cost is answered or the wait is over (inner#1743). A task
+ * not yet delivered (its run crashed after completing) is delivered first.
+ * @param pickup - The task and its wait.
+ * @returns The task's result.
+ * @throws {DelayedError} When a cost is still unanswered and a later lookup is due.
+ */
+async function settleCostWait(pickup: CostWaitPickup): Promise<Record<string, unknown>> {
+  const { job, token, runEnd, taskType, result } = pickup;
+  const { taskId } = runEnd;
+  const now = Date.now();
+  await creditHoldService.extendHold(taskId, holdUntil(pickup.wait, now));
+  const wait = await deliverWaiting(runEnd, taskType, result, pickup.durationMs, pickup.wait);
+  const last = lastLookup(wait, now);
+  const pending = await lookUp(pickup.pending, last);
+  if (!last && pending.some(unanswered)) {
+    const next = { ...wait, attempts: wait.attempts + 1 };
+    const updated = { ...result, costWait: next, pendingCosts: pending };
+    await taskRepo.updateCostWait(taskId, updated);
+    return await comeBackFor(job, token, taskId, next, now, updated);
+  }
+  const final = { ...result, costWait: { ...wait, attempts: wait.attempts + 1 }, pendingCosts: pending };
+  await taskRepo.updateCostWait(taskId, final);
+
+  // #1580 zombie fence, as before every charge.
+  if (!(await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms))) {
+    logger.error({ taskId, jobId: job.id }, "job_lock_lost_zombie_execution_aborting_before_billing");
+    return { failed: true, reason: "job_lock_lost_zombie" };
+  }
+  await billWaitingTask(runEnd, taskType, final, pickup.durationMs, wait, pending);
+  return final;
+}
+
+/**
+ * Deliver a waiting task's result when its run never did, its credits marked as still billing.
+ * @param runEnd - The run.
+ * @param taskType - What it generated.
+ * @param result - The task's stored result.
+ * @param durationMs - How long the run took.
+ * @param wait - The wait.
+ * @returns The wait, delivered.
+ * @throws {Error} When a node's history or task row, or the 3D row, could not be written.
+ */
+export async function deliverWaiting(
+  runEnd: RunContext,
+  taskType: string,
+  result: Record<string, unknown>,
+  durationMs: number | undefined,
+  wait: CostWait,
+): Promise<CostWait> {
+  if (wait.delivered === true) return wait;
+  await deliver(runEnd, taskType, { ...storedDelivery(result, durationMs, wait.credits), billingPending: true });
+  return { ...wait, delivered: true };
+}
+
+/**
+ * What a task's stored result delivers.
+ * @param result - The stored result.
+ * @param durationMs - How long the run took.
+ * @param credits - The credits it carries.
+ * @returns The delivery.
+ */
+function storedDelivery(result: Record<string, unknown>, durationMs: number | undefined, credits: number): Delivery {
+  const stored = result as { model?: string; outputs?: PersistedOutput[] };
+  return { outputs: stored.outputs ?? [], reportedModel: stored.model, credits, durationMs };
+}
+
+/**
+ * Write the usage rows of a reading's calls whose costs were looked up while the task waited; a lookup never
+ * answered is recorded as missing. Written once, by the pickup that billed the task.
+ * @param runEnd - The run.
+ * @param pending - The costs and what their lookups found.
+ */
+async function recordLookedUpCalls(runEnd: RunContext, pending: readonly WaitingCost[]): Promise<void> {
+  const calls = pending.filter((entry): entry is WaitingCost & { recordAs: RecordAs } => entry.recordAs !== undefined);
+  const first = calls[0];
+  if (first === undefined) return;
+  const recorder = createUsageRecorder({
+    operationKey: `task:${runEnd.taskId}`,
+    feature: first.recordAs.feature,
+    actorUserId: runEnd.userId,
+    projectId: runEnd.projectId ?? null,
+    onMissingCost: (row) => logger.error({ row, taskId: runEnd.taskId }, "agent_usage_cost_missing"),
+  });
+  for (const { lookup, cost, recordAs } of calls) {
+    recorder.recordLookedUpCall({ source: "model", model: recordAs.model, upstream: lookup.upstream, cost: cost ?? { state: "pending", lookup } });
+  }
+  // The task is billed; a usage row that fails to land is logged, never the billing undone.
+  await recorder.settle().catch((err: unknown) => logger.error({ err, taskId: runEnd.taskId }, "agent_usage_record_failed"));
+}
+
+/**
+ * Bill a task that waited on its cost: what was known when it finished and what the lookups found, a cost never
+ * answered counting as nothing; then write the billed amount on its history rows and its feed row (inner#1743).
+ * @param runEnd - The run.
+ * @param taskType - What it generated.
+ * @param result - The task's stored result.
+ * @param durationMs - How long the run took.
+ * @param wait - The wait.
+ * @param pending - The costs and what their lookups found.
+ * @returns Whether this call billed it.
+ * @throws {Error} When the billing commit fails; nothing of it is written.
+ */
+export async function billWaitingTask(
+  runEnd: RunContext,
+  taskType: string,
+  result: Record<string, unknown>,
+  durationMs: number | undefined,
+  wait: CostWait,
+  pending: readonly WaitingCost[],
+): Promise<boolean> {
+  const { taskId, userId, projectId } = runEnd;
+  const credits = toChargeCredits(billedCredits(taskId, wait, pending));
+  const delivery = storedDelivery(result, durationMs, credits);
+  const model = delivery.reportedModel ?? runEnd.model;
+  const billed = await taskService.markBilledAndCharge(taskId, credits, {
+    actorUserId: userId,
+    projectId: projectId ?? null,
+    amount: credits,
+    description: `Task: ${taskType}`,
+    model,
+    provider: wait.servedBy,
+    releaseHold: taskId,
+  });
+  if (billed) {
+    logGenerationUsage({ taskId, taskType, model, provider: wait.servedBy, credits, durationMs, userId, projectId });
+    await recordLookedUpCalls(runEnd, pending);
+  }
+  await settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst: billed, creditsUsed: credits });
+  // The rows written while it waited carry the billed amount now.
+  if (runEnd.nodeIds.length > 0) await nodeHistoryService.updateGenerationCredits(taskId, credits);
+  await recordDeliveredActivity(runEnd, taskType, delivery);
+  logger.info({ taskId, taskType, credits, billed }, "task_billed_after_cost_wait");
+  return billed;
 }
 
 // ─── Activity feed emission ─────────────────────────────────────────
@@ -899,6 +1166,8 @@ async function runTaskBody(
  * @param args.fileUrl - Primary output URL, the hover-preview src (#1622; success + media only).
  * @param args.thumbnailUrl - Video cover URL (#1622; video only).
  * @param args.credits - Actual credits deducted for the run (#1622; success only).
+ * @param args.billingPending - Whether the task still waits on its cost: `credits` is what is known so far, and the
+ *   row is written only over one still pending (inner#1743).
  * @returns Nothing.
  */
 async function recordGenerationActivity(args: {
@@ -918,6 +1187,7 @@ async function recordGenerationActivity(args: {
   fileUrl?: string;
   thumbnailUrl?: string;
   credits?: number;
+  billingPending?: boolean;
 }): Promise<void> {
   const payload = {
     source: args.source ?? "task",
@@ -931,6 +1201,7 @@ async function recordGenerationActivity(args: {
     ...(args.fileUrl !== undefined && { fileUrl: args.fileUrl }),
     ...(args.thumbnailUrl !== undefined && { thumbnailUrl: args.thumbnailUrl }),
     ...(args.credits !== undefined && { credits: args.credits }),
+    ...(args.billingPending === true && { billing: "pending" as const }),
   };
   const common = {
     projectId: args.projectId,
@@ -943,12 +1214,13 @@ async function recordGenerationActivity(args: {
   try {
     let changed = false;
     if (args.succeeded) {
-      // Success is authoritative — always lands (overwrites a failed row).
-      await projectActivitiesRepo.upsertGenerationSucceeded({
-        ...common,
-        type: "generation:succeeded",
-      });
-      changed = true;
+      // Success is authoritative — it lands over a failed row; a pending
+      // amount lands only over a row still pending.
+      const written = await projectActivitiesRepo.upsertGenerationSucceeded(
+        { ...common, type: "generation:succeeded" },
+        { whilePending: args.billingPending === true },
+      );
+      changed = written !== null;
     } else {
       // Failure only lands if the task has no row yet.
       const inserted = await projectActivitiesRepo.insertGenerationFailedIfAbsent({
@@ -1160,6 +1432,9 @@ export async function settleSceneRow(
 /** How a failed run's node rows end: out of its two hours, or failed for any other cause. */
 type FailedOutcome = "failed" | "expired";
 
+/** A run, as every way out of it names it. */
+export type RunContext = Omit<FailedRunEnd, "errorMessage" | "outcome" | "settles">;
+
 /** Everything a failed run needs to finish itself. */
 export interface FailedRunEnd {
   streamRedis: ReturnType<typeof getStreamRedis>;
@@ -1276,7 +1551,12 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
  * @param end - The run, and what to say about it.
  */
 export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
-  await taskService.markFailed(end.taskId, end.errorMessage);
+  // A task completed and waiting on its cost is not failed by a stale run:
+  // its result is delivered and its own job bills it (inner#1743).
+  if (!(await taskService.markFailed(end.taskId, end.errorMessage))) {
+    logger.warn({ taskId: end.taskId }, "failed_run_left_a_task_waiting_on_its_cost");
+    return;
+  }
   // A retry resumes from the steps; once the run is over, none will run again.
   if (end.settles) await upstreamStepRepo.failOpenSteps(end.taskId, end.errorMessage);
   // The run is over, so what was held for it is free again (inner#1611). A
@@ -1635,16 +1915,6 @@ export async function persistOutputs(
 
 // ── Execution Path Helpers ───────────────────────────────────────────
 
-/** What a provider call needs to know about the task it runs for. */
-export interface ProviderRun {
-  /** Async-transport resume context for at-most-once vendor submit (#1628). */
-  resume: ResumeContext;
-  taskId: string;
-  projectId: string | undefined;
-  /** How many outputs the run writes to nodes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
-  outputCount: number;
-}
-
 interface RunMiniToolOpts {
   /** The registry id the job names. */
   toolId: string;
@@ -1654,43 +1924,38 @@ interface RunMiniToolOpts {
   userId: string;
   projectId: string | undefined;
   taskId: string;
-  /** Async-transport resume context for at-most-once vendor submit (#1628). */
-  resume: ResumeContext;
+  /** The task's deadline, in epoch milliseconds. */
+  deadlineAt: number;
 }
 
 /**
  * Execution path 1: run a mini-tool the way its registry entry says
  * (inner#888 §6.2). A model tool runs on its pinned model, whatever the
- * params name; a container tool runs as a container job.
+ * params name, through provider; a container tool runs as a container job.
  *
- * Exported for its tests. The model branch carries an invariant nothing else
- * can check — that the user's prompt is lifted out of `params` BEFORE they are
- * validated (#1967) — and reaching it through `runTask` would mean standing up
- * the database, Redis and the credit ledger to assert one argument.
+ * Exported for its tests: the model branch must hand provider the tool's own
+ * model, modality and output count.
  * @param opts - The run.
- * @returns A `[result, credits]` tuple: the outputs and the credits to charge.
+ * @returns What the run produced and what it cost.
  * @throws {Error} When the registry holds no such server-run tool, or the run has no project or source.
  */
-export async function runMiniTool(
-  opts: RunMiniToolOpts,
-): Promise<[Record<string, unknown>, number]> {
-  const { toolId, params, userId, projectId, taskId, resume } = opts;
+export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
+  const { toolId, params, userId, projectId, taskId, deadlineAt } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
   if (isModelTool(spec)) {
     const model = spec.run.model;
-    const provider = await importProvider(spec.outputs[0]!.modality);
-    const cleanParams = { ...params };
-    delete cleanParams.model;
-    const [prompt, , validated] = takePromptAndValidate(cleanParams, model, provider.validateParams);
-    const result = await provider.generateAsync(prompt, model, validated, {
-      resume,
+    const done = await runModelTask({
       taskId,
+      modality: spec.outputs[0]!.modality as CatalogModality,
+      model,
+      params,
       projectId,
       outputCount: spec.outputs.length,
+      deadlineAt,
     });
-    return [result, creditsFor((result.cost as number) ?? 0)];
+    return produced(taskId, model, done);
   }
 
   if (spec.run.kind === "container") {
@@ -1699,14 +1964,15 @@ export async function runMiniTool(
     if (projectId === undefined || opts.sourceKey === undefined) {
       throw new Error(`mini-tool ${toolId} ran with no project or no source key`);
     }
-    return runContainerJob(spec, spec.run.op, {
+    const [result, credits] = await runContainerJob(spec, spec.run.op, {
       taskId,
       userId,
       projectId,
       params,
       sourceKey: opts.sourceKey,
-      deadlineAt: resume.deadlineAt,
+      deadlineAt,
     });
+    return { result, credits, pending: [] };
   }
 
   throw new Error(`mini-tool ${toolId} runs in the browser and never reaches the worker`);
@@ -1724,8 +1990,7 @@ export async function runMiniTool(
  *
  * The task reads the node's source URL and returns text to that node.
  *
- * Exported for the same reason {@link runAigcDirect} is: a test that pins
- * what this path sends has to be able to call it.
+ * Exported so a test that pins what this path sends can call it.
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
  * @param usage - The task's recorder; the call is recorded on it.
  * @param deadlineAt - When the task runs out; every part of the reading gets
@@ -1905,104 +2170,4 @@ function transcriptOf(
   if (answer.finishReason === "length") throw new CutShort();
   if (answer.finishReason !== "stop") throw new StoppedPartWay(answer.finishReason);
   return { outputs: [{ content: answer.text }], finish_reason: answer.finishReason };
-}
-
-/**
- * Execution path 3: run an AIGC provider directly with explicit params.
- * Strips and sanitises the prompt before sending.
- * @param taskType - AIGC task type (image / audio / video / tts / three_d)
- * @param model - Model name to invoke; required for this path
- * @param params - Task params, including the raw prompt/text to sanitise
- * @param run - The task the call runs for, with its resume context (#1628)
- * Exported alongside {@link runMiniTool}, and for the same reason: this is the
- * other half of the pair whose orders drifted apart, so the test that pins one
- * has to be able to pin the other.
- * @returns A `[result, credits]` tuple: the provider result dict and the credits to charge
- * @throws {Error} when `model` is not provided
- */
-export async function runAigcDirect(
-  taskType: string,
-  model: string | undefined,
-  params: Record<string, unknown>,
-  run: ProviderRun,
-): Promise<[Record<string, unknown>, number]> {
-  if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
-
-  // Infra-only fields first, then the one shared step the mini-tool path also
-  // takes (#1966) — two inline copies is how the orders drifted apart.
-  const cleanParams = { ...params };
-  delete cleanParams.node_ids;
-  delete cleanParams.project_id;
-
-  const provider = await importProvider(taskType);
-  const [prompt, , validated] = takePromptAndValidate(
-    cleanParams,
-    model,
-    provider.validateParams,
-  );
-
-  const result = await provider.generateAsync(prompt, model, validated, run);
-  const cost = (result.cost as number) ?? 0;
-  const credits = creditsFor(cost);
-
-  return [result, credits];
-}
-
-/**
- * Dynamic provider import by task type.
- * @param taskType - Task type whose modality selects the provider module to load
- * @returns The provider's `validateParams` / `generateAsync` pair
- * @throws {Error} when the task type maps to an unknown AIGC modality
- */
-async function importProvider(taskType: string): Promise<{
-  validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-  generateAsync: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>;
-}> {
-  const modality = AIGC_TASK_TYPES[taskType] ?? taskType;
-  /**
-   * Normalise a provider module's validate/generate exports into the
-   * common `{ validateParams, generateAsync }` shape used by callers.
-   * @param validate - Provider param validator (model may be undefined)
-   * @param generate - Provider async generation function
-   * @returns The wrapped provider interface with a non-optional model on `validateParams`
-   */
-  const wrap = (
-    validate: (m: string | undefined, p?: Record<string, unknown>) => [string, Record<string, unknown>],
-    generate: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>,
-  ): {
-    validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-    generateAsync: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>;
-  } => ({
-    validateParams: (model: string, params: Record<string, unknown>) => validate(model, params),
-    generateAsync: generate,
-  });
-  switch (modality) {
-    case "image":
-    case "video":
-    case "audio":
-    case "tts":
-    case "three_d": {
-      const { validateModelParams } = await import("@worker/providers/generate.js");
-      const { runCatalogTask } = await import("@worker/providers/run-steps.js");
-      const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
-      return wrap(
-        (model, params) => validateModelParams(modality, model, params),
-        async (prompt, model, params, run) => {
-          const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
-          return {
-            ...(await runCatalogTask(
-              stepDepsFor(studioId, run.resume.deadlineAt),
-              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting },
-              modality,
-              prompt,
-              model,
-              params,
-              run.outputCount,
-            )),
-          };
-        },
-      );
-    }
-    default: throw new Error(`Unknown AIGC task type: ${taskType}`);
-  }
 }

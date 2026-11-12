@@ -5,21 +5,22 @@ import { describe, it, expect, vi } from "vitest";
 import { getFullModelConfig, getVoiceSampleConfig } from "@breatic/domain";
 
 import { planVoiceSamples } from "@worker/voice-samples/plan.js";
+import { SendNotAccepted } from "@breatic/provider";
+import type { MediaAnswer, MediaRunner, MediaTicket } from "@breatic/provider/media";
+
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 import {
   assertUploadsReachSampleAddress,
-  resumablePredict,
   servedFromHead,
   syncVoiceSamples,
+  ticketedPredict,
 } from "@worker/voice-samples/sync.js";
-import { StillRunning } from "@worker/providers/still-running.js";
-
-/** A wait no test in the first case reaches: those runs never report still going. */
-const NO_WAIT = { budgetMs: 1, now: () => 0, sleepUntil: async () => undefined };
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const JOBS = [
-  { model: "m", key: "voice-samples/m/a.mp3", body: {} },
-  { model: "m", key: "voice-samples/m/b.mp3", body: {} },
-  { model: "m", key: "voice-samples/m/c.mp3", body: {} },
+  { model: "m", key: "voice-samples/m/a.mp3", input: { prompt: "Hello.", params: {} } },
+  { model: "m", key: "voice-samples/m/b.mp3", input: { prompt: "Hello.", params: {} } },
+  { model: "m", key: "voice-samples/m/c.mp3", input: { prompt: "Hello.", params: {} } },
 ];
 
 describe("syncVoiceSamples", () => {
@@ -105,171 +106,153 @@ describe("syncVoiceSamples", () => {
   });
 });
 
-describe("resumablePredict", () => {
-  it("polls the task it already submitted on a retry, and submits again after the upstream failed it", async () => {
-    const seen: Array<string | null> = [];
-    let call = 0;
-    const predict = resumablePredict(
-      async (_job, resume) => {
-        call += 1;
-        seen.push(resume.storedTaskId);
-        if (resume.storedTaskId === null) await resume.persistTaskId(`task-${call}`);
-        if (call === 1) throw new Error("poll ran out of time");
-        if (call === 2) throw new Error("upstream failed the task");
-        return "https://out.test/a.mp3";
+describe("ticketedPredict", () => {
+  /** A ticket as provider writes one: a version, a phase and the steps a send state reads. */
+  const ticket = (version: number, phase: "send" | "running"): MediaTicket =>
+    ({ version, phase, steps: [{ kind: "generate", status: phase === "send" ? "pending" : "submitted" }] });
+  const NONE = { clones: [], retiredClones: [], warnings: [] };
+  const send = (t: MediaTicket): MediaAnswer => ({ state: "send", ticket: t, step: { kind: "generate" }, ...NONE });
+  const running = (t: MediaTicket, askAgainAt: number): MediaAnswer => ({ state: "running", ticket: t, askAgainAt, ...NONE });
+  const done: MediaAnswer = { state: "done", outputs: [{ kind: "url", url: "https://out.test/a.mp3" }], costs: [], servedBy: "wavespeed", ...NONE };
+
+  /**
+   * A runner whose answers each case scripts.
+   * @param answers - What each call answers.
+   * @returns The runner.
+   */
+  function runnerOf(answers: Partial<Record<"plan" | "send" | "poll" | "recover", ReturnType<typeof vi.fn>>>): MediaRunner {
+    return {
+      plan: answers.plan ?? vi.fn(),
+      send: answers.send ?? vi.fn(),
+      poll: answers.poll ?? vi.fn(),
+      recover: answers.recover ?? vi.fn(),
+      ticketFromLegacy: vi.fn(),
+      abandon: vi.fn(),
+    };
+  }
+
+  /**
+   * A clock the test moves, and a wait that moves it.
+   * @returns The clock and the waits it was asked for.
+   */
+  function clock(): { waiting: Parameters<typeof ticketedPredict>[1]; waits: number[] } {
+    const waits: number[] = [];
+    let now = 1_000;
+    return {
+      waits,
+      waiting: {
+        budgetMs: 10_000,
+        pollIntervalMs: 3_000,
+        now: () => now,
+        sleepUntil: async (at: number) => {
+          waits.push(at);
+          now = at;
+        },
       },
-      (err) => err instanceof Error && err.message === "upstream failed the task",
-      NO_WAIT,
-    );
-    const job = JOBS[0]!;
-    await expect(predict(job)).rejects.toThrow("poll ran out of time");
-    await expect(predict(job)).rejects.toThrow("upstream failed the task");
-    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
-    expect(seen).toEqual([null, "task-1", null]);
+    };
+  }
+
+  it("plans a sample in our param names and answers where its output is", async () => {
+    const runner = runnerOf({ plan: vi.fn(async () => send(ticket(1, "send"))), send: vi.fn(async () => done) });
+    const predict = ticketedPredict(runner, clock().waiting);
+
+    await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+    expect(runner.plan).toHaveBeenCalledWith("m", JOBS[0]!.input, { mode: "default" }, expect.objectContaining({ idempotencyKey: JOBS[0]!.key }));
   });
 
-  // Table 4.1a, not submitted: the upstream answers failed on the first
-  // question, so the next pass submits a new task.
-  it("submits again after the upstream failed a task it had just been given", async () => {
-    const seen: Array<string | null> = [];
-    let call = 0;
-    const predict = resumablePredict(
-      async (_job, resume) => {
-        call += 1;
-        seen.push(resume.storedTaskId);
-        if (resume.storedTaskId === null) await resume.persistTaskId(`task-${call}`);
-        if (call === 1) throw new Error("upstream failed the task");
-        return "https://out.test/a.mp3";
-      },
-      (err) => err instanceof Error && err.message === "upstream failed the task",
-      NO_WAIT,
-    );
-    const job = JOBS[0]!;
-    await expect(predict(job)).rejects.toThrow("upstream failed the task");
-    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
-    expect(seen).toEqual([null, null]);
+  it("recovers a send that got no answer on the next pass, instead of planning again", async () => {
+    const planned = ticket(1, "send");
+    const runner = runnerOf({
+      plan: vi.fn(async () => send(planned)),
+      send: vi.fn(async () => Promise.reject(new Error("socket hang up"))),
+      recover: vi.fn(async () => done),
+    });
+    const predict = ticketedPredict(runner, clock().waiting);
+
+    await expect(predict(JOBS[0]!)).rejects.toThrow("socket hang up");
+    await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+    expect(runner.plan).toHaveBeenCalledTimes(1);
+    expect(runner.recover).toHaveBeenCalledWith(planned, expect.anything());
   });
 
-  // Table 4.1a, not submitted x other error: the submit failed before an id
-  // was stored, and may still have reached the upstream.
-  it("submits again after a submit that stored no id, and says it may be the upstream's second", async () => {
-    const calls: Array<{ stored: string | null; retryStarting: boolean }> = [];
-    const predict = resumablePredict(
-      async (_job, resume) => {
-        calls.push({ stored: resume.storedTaskId, retryStarting: resume.retryStarting });
-        if (calls.length === 1) throw new Error("socket hang up");
-        return "https://out.test/a.mp3";
-      },
-      () => false,
-      NO_WAIT,
-    );
-    const job = JOBS[0]!;
-    await expect(predict(job)).rejects.toThrow("socket hang up");
-    await expect(predict(job)).resolves.toBe("https://out.test/a.mp3");
-    expect(calls).toEqual([
-      { stored: null, retryStarting: false },
-      { stored: null, retryStarting: true },
-    ]);
+  it("sends the same ticket again after an upstream did not take it", async () => {
+    const planned = ticket(1, "send");
+    const runner = runnerOf({
+      plan: vi.fn(async () => send(planned)),
+      send: vi.fn().mockRejectedValueOnce(new SendNotAccepted("wavespeed", new Error("no slot"))).mockResolvedValueOnce(done),
+    });
+    const predict = ticketedPredict(runner, clock().waiting);
+
+    await expect(predict(JOBS[0]!)).rejects.toBeInstanceOf(SendNotAccepted);
+    await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+    expect(runner.plan).toHaveBeenCalledTimes(1);
+    expect(runner.recover).not.toHaveBeenCalled();
+    expect(runner.send).toHaveBeenNthCalledWith(2, planned, expect.anything());
   });
 
-  it("does not say a sample may be submitted twice after the upstream failed it", async () => {
-    const flags: boolean[] = [];
-    const predict = resumablePredict(
-      async (_job, resume) => {
-        flags.push(resume.retryStarting);
-        if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
-        if (flags.length === 1) throw new Error("upstream failed the task");
-        return "https://out.test/a.mp3";
-      },
-      () => true,
-      NO_WAIT,
-    );
-    const job = JOBS[0]!;
-    await expect(predict(job)).rejects.toThrow();
-    await predict(job);
-    expect(flags).toEqual([false, false]);
+  it("plans again after provider answered the run failed", async () => {
+    const runner = runnerOf({
+      plan: vi.fn(async () => send(ticket(1, "send"))),
+      send: vi.fn()
+        .mockResolvedValueOnce({ state: "failed", reason: new Error("refused"), costs: [], ...NONE })
+        .mockResolvedValueOnce(done),
+    });
+    const predict = ticketedPredict(runner, clock().waiting);
+
+    await expect(predict(JOBS[0]!)).rejects.toBeInstanceOf(MediaRunFailed);
+    await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
+    expect(runner.plan).toHaveBeenCalledTimes(2);
   });
 
   describe("while the upstream is still going", () => {
-    /**
-     * A clock the test moves, and a wait that moves it.
-     * @returns The clock and the waits it was asked for.
-     */
-    function clock(): { waiting: Parameters<typeof resumablePredict>[2]; waits: number[] } {
-      const waits: number[] = [];
-      let now = 1_000;
-      return {
-        waits,
-        waiting: {
-          budgetMs: 10_000,
-          now: () => now,
-          sleepUntil: async (at: number) => {
-            waits.push(at);
-            now = at;
-          },
-        },
-      };
-    }
-
-    it("waits until the time the poll named and asks the same task again, submitting once", async () => {
+    it("waits until the time the answer named and asks the same ticket again, planning once", async () => {
       const { waiting, waits } = clock();
-      const seen: Array<string | null> = [];
-      let call = 0;
-      const predict = resumablePredict(
-        async (_job, resume) => {
-          call += 1;
-          seen.push(resume.storedTaskId);
-          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
-          if (call < 3) throw new StillRunning(waiting.now() + 3_000);
-          return "https://out.test/a.mp3";
-        },
-        () => false,
-        waiting,
-      );
+      const taken = ticket(2, "running");
+      const runner = runnerOf({
+        plan: vi.fn(async () => send(ticket(1, "send"))),
+        send: vi.fn(async () => running(taken, 4_000)),
+        poll: vi.fn().mockResolvedValueOnce(running(taken, 7_000)).mockResolvedValueOnce(done),
+      });
+      const predict = ticketedPredict(runner, waiting);
 
       await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
-      expect(seen).toEqual([null, "task-1", "task-1"]);
+      expect(runner.plan).toHaveBeenCalledTimes(1);
+      expect(runner.poll).toHaveBeenCalledWith(taken, expect.anything());
       expect(waits).toEqual([4_000, 7_000]);
     });
 
-    it("gives the sample up once it has waited the whole budget since it was submitted", async () => {
+    it("gives the sample up once it has waited the whole budget since its first try", async () => {
       const { waiting } = clock();
-      const predict = resumablePredict(
-        async (_job, resume) => {
-          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
-          throw new StillRunning(waiting.now() + 3_000);
-        },
-        () => false,
-        waiting,
-      );
+      const taken = ticket(2, "running");
+      const runner = runnerOf({
+        plan: vi.fn(async () => send(ticket(1, "send"))),
+        send: vi.fn(async () => running(taken, waiting.now() + 3_000)),
+        poll: vi.fn(async () => running(taken, waiting.now() + 3_000)),
+      });
 
-      const err = await predict(JOBS[0]!).catch((e: unknown) => e);
+      const err = await ticketedPredict(runner, waiting)(JOBS[0]!).catch((e: unknown) => e);
 
       expect(err).toBeInstanceOf(Error);
       expect(err).not.toBeInstanceOf(StillRunning);
       expect(waiting.now()).toBeGreaterThanOrEqual(1_000 + 10_000);
     });
 
-    it("keeps the task after giving up, so the next pass asks it again", async () => {
+    it("keeps the ticket after giving up, so the next pass asks it again", async () => {
       const { waiting } = clock();
-      const seen: Array<string | null> = [];
+      const taken = ticket(2, "running");
       let giveUp = true;
-      const predict = resumablePredict(
-        async (_job, resume) => {
-          seen.push(resume.storedTaskId);
-          if (resume.storedTaskId === null) await resume.persistTaskId("task-1");
-          if (giveUp) throw new StillRunning(waiting.now() + 3_000);
-          return "https://out.test/a.mp3";
-        },
-        () => false,
-        waiting,
-      );
+      const runner = runnerOf({
+        plan: vi.fn(async () => send(ticket(1, "send"))),
+        send: vi.fn(async () => running(taken, waiting.now() + 3_000)),
+        poll: vi.fn(async () => (giveUp ? running(taken, waiting.now() + 3_000) : done)),
+      });
+      const predict = ticketedPredict(runner, waiting);
 
       await predict(JOBS[0]!).catch(() => undefined);
       giveUp = false;
 
       await expect(predict(JOBS[0]!)).resolves.toBe("https://out.test/a.mp3");
-      expect(seen.at(-1)).toBe("task-1");
+      expect(runner.plan).toHaveBeenCalledTimes(1);
     });
   });
 });

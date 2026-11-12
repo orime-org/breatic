@@ -9,7 +9,7 @@ import { Aborted, NoAnswer } from "../../http/errors.js";
 import { estimateCost } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
-import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
+import { createMediaRunner, ticketState, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
 import { wavespeedAdapter } from "../wavespeed/adapter.js";
 import { accepted, billedIds, billing, driven, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
@@ -173,6 +173,22 @@ const options = (clones: MediaClone[] = []): PlanOptions => ({
   durations: {},
 });
 const video = { prompt: "a fox in snow", params: { duration: 5, aspect_ratio: "16:9" } };
+
+describe("ticketState", () => {
+  it("reads a stored ticket's phase, and the step a send ticket sends next", async () => {
+    a.answer(() => accepted("p1"));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    expect(ticketState(stored(planned.ticket))).toEqual({ phase: "send", step: "generate" });
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expect(ticketState(stored(running.ticket))).toEqual({ phase: "running" });
+  });
+
+  it("refuses what is not a ticket provider wrote", () => {
+    expect(() => ticketState({ version: 1 })).toThrow(/Not a ticket provider wrote/);
+    expect(() => ticketState({ version: 1, phase: "send", steps: [] })).toThrow(/Not a ticket provider wrote/);
+  });
+});
 
 describe("plan", () => {
   it("sends nothing and answers a send ticket for the model's own call", async () => {

@@ -22,6 +22,10 @@ const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const mockSettleSceneRowById = vi.hoisted(() => vi.fn());
 const mockPublishSpaceTasksChanged = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const mockMarkBilledAndCharge = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
+const mockUpdateGenerationCredits = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => "req-1"));
+const mockSettleCharge = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ billed: true })));
 
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
@@ -57,16 +61,21 @@ vi.mock("@breatic/domain", async () => ({
     settleById: mockSettleSceneRowById,
   },
   creditHoldService: { releaseHold: mockReleaseHold },
+  creditLotService: { pendingChargeRequestId: mockPendingChargeRequestId, settleCharge: mockSettleCharge },
+  creditsForUsd: (usd: number) => usd * 100,
+  toChargeCredits: (credits: number) => credits,
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
     markFailed: vi.fn(),
     markCompletedAndBill: vi.fn(),
+    markBilledAndCharge: mockMarkBilledAndCharge,
     recordProviderResult: vi.fn(),
   },
   nodeHistoryService: {
     recordGenerationSuccess: vi.fn(),
     recordGenerationFailure: vi.fn(),
+    updateGenerationCredits: mockUpdateGenerationCredits,
   },
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
@@ -524,5 +533,65 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+});
+
+describe("a task waiting on its cost whose job died (inner#1743)", () => {
+  const RESULT = {
+    model: "m",
+    outputs: [{ url: "https://cdn/out.png" }],
+    costWait: { credits: 10, attempts: 2, servedBy: "fal", windowEndsAt: 0, delivered: true },
+    pendingCosts: [
+      { lookup: { upstream: "fal", predictionId: "p-1" }, cost: { state: "known", usd: 0.05, source: "billing" } },
+      { lookup: { upstream: "fal", predictionId: "p-2" } },
+    ],
+  };
+  const JOB = jobWith({ projectId: "p1", spaceId: "s1", targetNodeIds: ["n1"], taskType: "image" });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockResolvedValue("activity-1");
+  });
+
+  it("bills what was known and what its lookups found, the unanswered one as nothing, and writes the final amount", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({ userId: "u1", billedAt: null, durationMs: 3_000, result: RESULT } as never);
+
+    await cleanupFailedJobNodes(streamRedis, JOB, "stalled");
+
+    expect(mockMarkBilledAndCharge).toHaveBeenCalledWith("t1", 15, expect.objectContaining({ amount: 15, provider: "fal", releaseHold: "t1" }));
+    expect(mockSettleCharge).toHaveBeenCalledWith("req-1");
+    expect(mockUpdateGenerationCredits).toHaveBeenCalledWith("t1", 15);
+    // The charge releases the hold; the net does not release it first, and the node is not failed over a delivered result.
+    expect(mockReleaseHold).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+    expect(vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent)).not.toHaveBeenCalled();
+  });
+
+  it("delivers a result its run never delivered before billing it", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      userId: "u1",
+      billedAt: null,
+      durationMs: 3_000,
+      result: { ...RESULT, costWait: { ...RESULT.costWait, delivered: false } },
+    } as never);
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockResolvedValue({ id: "h-1" } as never);
+
+    await cleanupFailedJobNodes(streamRedis, JOB, "stalled");
+
+    expect(vi.mocked(nodeHistoryService.recordGenerationSuccess)).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ credits: 10, billing: "pending" }) }),
+    );
+    expect(mockSettleTaskForNode).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.objectContaining({ outcome: "done" }));
+    expect(mockMarkBilledAndCharge).toHaveBeenCalled();
+  });
+
+  it("writes the billed amount on the rows of a task billed after waiting, when the net delivers it again", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({ userId: "u1", billedAt: new Date(), billedCredits: 15, durationMs: 3_000, result: RESULT } as never);
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockResolvedValue({ id: "h-1" } as never);
+
+    await cleanupFailedJobNodes(streamRedis, JOB, "stalled");
+
+    expect(mockUpdateGenerationCredits).toHaveBeenCalledWith("t1", 15);
+    expect(mockMarkBilledAndCharge).not.toHaveBeenCalled();
   });
 });

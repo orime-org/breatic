@@ -36,6 +36,7 @@ import { NO_CONSENT, type TaskFailureReason } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  nodeHistoryService,
   sceneTaskService,
   taskService,
   settleTaskForNode,
@@ -47,12 +48,16 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import {
+  billWaitingTask,
+  deliverWaiting,
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
+  runContextOf,
   settleSceneRow,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
+import { costWaitOf } from "@worker/handlers/cost-wait.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
 
@@ -100,6 +105,27 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
+  let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
+  try {
+    task = await taskService.getByIdInternal(job.data.taskId);
+  } catch (err) {
+    // Best-effort: fall through to the standard failure write-back below.
+    logger.warn({ err, taskId: job.data.taskId }, "crash_net_task_read_failed");
+  }
+
+  // A task completed and waiting on its cost, whose own job will not come back
+  // (inner#1743): delivered if its run never did, then billed on what is known
+  // and what its lookups found so far. Its hold is released by that charge.
+  const waiting = task && !task.billedAt ? costWaitOf(task.result) : null;
+  if (task && waiting !== null) {
+    const run = runContextOf(job.data, streamRedis);
+    const result = task.result ?? {};
+    const durationMs = task.durationMs ?? undefined;
+    const wait = await deliverWaiting(run, job.data.taskType, result, durationMs, waiting.wait);
+    await billWaitingTask(run, job.data.taskType, result, durationMs, wait, waiting.pending);
+    return run.nodeIds.length;
+  }
+
   // The run is over whatever it was, so what was held for it is free again
   // (inner#1611). Released before the canvas checks below, which only decide
   // what the nodes are told. A release that fails leaves the hold to expire.
@@ -118,12 +144,6 @@ export async function cleanupFailedJobNodes(
   // task-row reconcile sweep (#1621) is the final backstop for that infra
   // boundary. The task fetch is wrapped so a lookup error just falls through
   // to the standard failure write-back.
-  let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
-  try {
-    task = await taskService.getByIdInternal(job.data.taskId);
-  } catch {
-    // best-effort — fall through to the standard failure write-back below.
-  }
   const billedResult = task?.billedAt
     ? (task.result as {
         model?: string;
@@ -202,6 +222,15 @@ export async function cleanupFailedJobNodes(
       },
       nodeResultsFrom(nodeIds, outputs),
     );
+    // A task billed after waiting on its cost wrote its rows with the part
+    // known then (inner#1743); they carry the billed amount from here on.
+    if (costWaitOf(task.result) !== null) {
+      try {
+        await nodeHistoryService.updateGenerationCredits(job.data.taskId, task.billedCredits ?? 0);
+      } catch (err) {
+        logger.error({ err, taskId: job.data.taskId }, "crash_net_billed_credits_write_failed");
+      }
+    }
     return nodeIds.length;
   }
 

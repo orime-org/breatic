@@ -86,7 +86,7 @@ describe("delayed internal work does not create user return activity (inner#1893
     await nodeTaskService.open({ projectId: project.projectId, spaceId, nodeId, kind: "generation", action: "generate", startedByUserId: project.userId,
       budgetMs: 120_000, label: "flux-schnell", taskId });
     const result = { url: "https://assets.example.test/completed.png" };
-    await taskService.markCompleted(taskId, result, 0, 1000);
+    await taskService.markCompleted(taskId, result, 1000);
     await recordGenerationForNodes(getStreamRedis(), canvasSpaceDocName(project.projectId, spaceId), {
       projectId: project.projectId, userId: project.userId, taskId, taskType: "image", metadata: { model: "flux-schnell", credits: 0, durationMs: 1000 },
     }, [{ nodeId, content: result.url, mimeType: "image/png", width: 100, height: 100 }], { rethrowOnRecordFailure: true });

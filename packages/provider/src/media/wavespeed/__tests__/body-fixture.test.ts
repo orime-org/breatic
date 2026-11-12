@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catalog, shipped } from "../../../config/__tests__/shipped.js";
 import { buildBody } from "../../body.js";
-import { DEPARTURES, OFF_WAVESPEED } from "./departures.js";
+import { ADDED_AFTER_FREEZE, DEPARTURES, OFF_WAVESPEED } from "./departures.js";
 
 interface BodyFixture {
   cases: { model: string; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
@@ -67,11 +67,23 @@ function carried(value: unknown, absent: unknown): boolean {
   return value !== undefined && value !== null && value !== "" && value !== absent && !(Array.isArray(value) && value.length === 0);
 }
 
+describe("a param the catalog gained after today's code was frozen", () => {
+  it("is sent to WaveSpeed under its own name", () => {
+    const binding = bindings.get("minimax-speech-2.8-hd")!;
+    const body = buildBody(binding, { params: { voice_id: "Wise_Woman", language_boost: "Chinese,Yue" }, prompt: "hello" });
+    expect(body).toMatchObject({ text: "hello", voice_id: "Wise_Woman", language_boost: "Chinese,Yue" });
+  });
+});
+
 describe("the body fixture samples every input the bindings read", () => {
   it("carries every bound param with a value in some case of its model, except those an extra step serves or the comparison omits", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
-      const served = new Set([...(binding.extra_steps ?? []).map((step) => step.for_param), ...(DEPARTURES[model]?.omit ?? [])]);
+      const served = new Set([
+        ...(binding.extra_steps ?? []).map((step) => step.for_param),
+        ...(DEPARTURES[model]?.omit ?? []),
+        ...(ADDED_AFTER_FREEZE[model] ?? []),
+      ]);
       const cases = fixture.cases.filter((c) => c.model === model);
       for (const [name, spec] of Object.entries(binding.params ?? {})) {
         if (served.has(name)) continue;
@@ -85,7 +97,7 @@ describe("the body fixture samples every input the bindings read", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
       for (const name of Object.keys(binding.mentions ?? {})) {
-        if (!fixture.cases.some((c) => c.model === model && c.prompt.includes(`<<ref:${name}:`))) unsampled.push(`${model}.${name}`);
+        if (!fixture.cases.some((c) => c.model === model && c.prompt.includes(`{{ref:${name}:`))) unsampled.push(`${model}.${name}`);
       }
     }
     expect(unsampled).toEqual([]);

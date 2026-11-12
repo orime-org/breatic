@@ -95,7 +95,7 @@ describe.each(cases)("the request bodies of $model on $binding.upstream", ({ mod
     const unshown = Object.keys(binding.mentions ?? {}).filter((param) => {
       const drop = binding.drops?.[param];
       if (Array.isArray(drop) && drop.length === 0) return false;
-      return !sample.runs.some((r) => r.prompt.includes(`<<ref:${param}:`) && r.params[param] !== undefined && r.params[param] !== null);
+      return !sample.runs.some((r) => r.prompt.includes(`{{ref:${param}:`) && r.params[param] !== undefined && r.params[param] !== null);
     });
     expect(unshown).toEqual([]);
   });

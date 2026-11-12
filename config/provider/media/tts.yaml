@@ -205,6 +205,8 @@ models:
         params:
           emotion:
             field: emotion
+          language_boost:
+            field: language_boost
           pronunciation_dict:
             field: pronunciation_dict
             transform: pronunciation_pairs
@@ -226,6 +228,9 @@ models:
         params:
           emotion:
             field: voice_setting.emotion
+          language_boost:
+            field: language_boost
+            supported: ["Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French", "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese", "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian", "Greek", "Czech", "Finnish", "Hindi", "Bulgarian", "Danish", "Hebrew", "Malay", "Slovak", "Swedish", "Croatian", "Hungarian", "Norwegian", "Slovenian", "Catalan", "Nynorsk", "Afrikaans", "auto"]
           pronunciation_dict:
             field: pronunciation_dict.tone_list
             transform: pronunciation_pairs
@@ -724,6 +729,9 @@ models:
         params:
           emotion:
             field: emotion
+          language_boost:
+            field: language_boost
+            supported: ["Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French", "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese", "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian", "Greek", "Czech", "Finnish", "Hindi", "Bulgarian", "Danish", "Hebrew", "Malay", "Slovak", "Swedish", "Croatian", "Hungarian", "Norwegian", "Slovenian", "Catalan", "Nynorsk", "Afrikaans", "auto"]
           speed:
             field: speed
           voice_id:

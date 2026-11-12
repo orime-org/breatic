@@ -243,7 +243,7 @@ describe('buildGeneratePanelViewModel', () => {
       models: editModels,
       atMentionedSourceIds: new Set(['b', 'a']),
     });
-    expect(vm.mentionTokens).toEqual({ a: 'image 1', b: 'image 2' });
+    expect(vm.mentionTokens).toEqual({ a: '{{ref:images:1}}', b: '{{ref:images:2}}' });
   });
 
   it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {

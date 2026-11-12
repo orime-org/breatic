@@ -1407,7 +1407,7 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
       const sent = create.mock.calls[0]![0];
       expect(sent.params.images).toEqual(['https://cdn/a.png', 'https://cdn/c.png']);
-      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*image 2\s+image 1\s*$/);
+      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*{{ref:images:2}}\s+{{ref:images:1}}\s*$/);
     });
 
     it('stays clickable with nothing mentioned, and says what to do', async () => {

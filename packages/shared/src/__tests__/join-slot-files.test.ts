@@ -22,12 +22,12 @@ const gptEdit: Readonly<Record<string, ParamDescriptor>> = {
 };
 
 describe("joinSlotFiles", () => {
-  it("appends the style files after the mentioned references and names them in the prompt", () => {
+  it("appends the style files after the mentioned references and names them in the prompt by neutral reference", () => {
     const out = joinSlotFiles(gptEdit, { images: ["a", "b"], style_images: ["s1", "s2", "s3"] }, "Turn image 1 into a poster.");
     expect(out.params.images).toEqual(["a", "b", "s1", "s2", "s3"]);
     expect(out.params.style_images).toBeUndefined();
     expect(out.prompt).toBe(
-      "Turn image 1 into a poster. Style references: image 3, image 4 and image 5. Apply their style to the result.",
+      "Turn image 1 into a poster. Style references: {{ref:images:3}}, {{ref:images:4}} and {{ref:images:5}}. Apply their style to the result.",
     );
   });
 
@@ -35,20 +35,20 @@ describe("joinSlotFiles", () => {
     const out = joinSlotFiles(gptEdit, { images: ["a", "b", "a"], style_images: ["s"] }, "Put the hat from image 3 on image 2.");
     expect(out.params.images).toEqual(["a", "b", "a", "s"]);
     expect(out.prompt).toBe(
-      "Put the hat from image 3 on image 2. Style references: image 4. Apply their style to the result.",
+      "Put the hat from image 3 on image 2. Style references: {{ref:images:4}}. Apply their style to the result.",
     );
   });
 
   it("names a single style file on its own", () => {
     const out = joinSlotFiles(gptEdit, { images: ["a"], style_images: ["s1"] }, "Edit it.");
     expect(out.params.images).toEqual(["a", "s1"]);
-    expect(out.prompt).toBe("Edit it. Style references: image 2. Apply their style to the result.");
+    expect(out.prompt).toBe("Edit it. Style references: {{ref:images:2}}. Apply their style to the result.");
   });
 
   it("names two style files with and", () => {
     const out = joinSlotFiles(gptEdit, { style_images: ["s1", "s2"] }, "Edit it.");
     expect(out.params.images).toEqual(["s1", "s2"]);
-    expect(out.prompt).toBe("Edit it. Style references: image 1 and image 2. Apply their style to the result.");
+    expect(out.prompt).toBe("Edit it. Style references: {{ref:images:1}} and {{ref:images:2}}. Apply their style to the result.");
   });
 
   it("leaves params and prompt alone when the slot is empty", () => {
@@ -65,7 +65,7 @@ describe("joinSlotFiles", () => {
 
   it("starts the note without a leading space when the prompt is empty", () => {
     const out = joinSlotFiles(gptEdit, { images: ["a"], style_images: ["s1"] }, "");
-    expect(out.prompt).toBe("Style references: image 2. Apply their style to the result.");
+    expect(out.prompt).toBe("Style references: {{ref:images:2}}. Apply their style to the result.");
   });
 
   it("passes a model with no joining slot through untouched", () => {

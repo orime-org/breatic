@@ -223,8 +223,8 @@ const pricingRulesSchema = z.looseObject({ model: z.string(), rejects: z.array(r
 
 const SAMPLE_TEXT = "x".repeat(1000);
 
-/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>`. */
-const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
+/** A neutral reference the application writes into a prompt: `{{ref:{param}:{n}}}`. */
+const REFERENCE = /\{\{ref:([\w-]+):(\d+)\}\}/g;
 
 /**
  * The prompt with each neutral reference written the way an upstream names it; a reference to a param it has no template for stays as it is.

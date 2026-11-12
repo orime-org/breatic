@@ -133,6 +133,21 @@ export interface MediaRunner {
   abandon(ticket: MediaTicket): { costs: Cost[] };
 }
 
+/**
+ * Where a stored ticket stands: waiting to send its next step (and which kind it is, so a caller can take a reading
+ * place before a description), or waiting on an upstream. The rest of a ticket stays provider's.
+ * @param raw - The ticket as stored.
+ * @returns Its phase, and a send ticket's next step.
+ * @throws {Error} When the ticket is not one provider wrote.
+ */
+export function ticketState(raw: MediaTicket): { phase: "send"; step: StepKind } | { phase: "running" } {
+  const ticket = raw as unknown as Partial<Ticket>;
+  if (ticket.phase === "running") return { phase: "running" };
+  const step = ticket.steps?.find((s) => s.status !== "done");
+  if (ticket.phase !== "send" || step === undefined) throw new Error("Not a ticket provider wrote");
+  return { phase: "send", step: step.kind };
+}
+
 /** Limits on the media provider reads itself. */
 export interface MediaRunnerOptions {
   mediaLimits: { maxMediaBytes: number };

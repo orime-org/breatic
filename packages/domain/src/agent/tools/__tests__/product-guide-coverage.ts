@@ -280,6 +280,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.param.enable_web_search": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.horizontal_angle": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.language": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.generatePanel.param.language_boost": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.loop": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.model_mode": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.motion": { excluded: REASONS.MODEL_SETTING_NAME },

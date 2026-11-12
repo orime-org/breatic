@@ -899,6 +899,7 @@
       "param": {
         "compose_from": "Compose from",
         "language": "Language",
+        "language_boost": "Language",
         "speakers": "Speakers",
         "emotion": "Emotion",
         "pronunciation_dict": "Pronunciations",

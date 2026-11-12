@@ -580,7 +580,8 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
-export { joinSlotFiles } from "@shared/join-slot-files.js";
+export { joinSlotFiles, neutralReference } from "@shared/join-slot-files.js";
+export { cameraPrompt, paramsToSend, type SendableModel, type SendableParam, type SendableRun } from "@shared/send-params.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,

@@ -51,7 +51,7 @@ import {
   type WebAnimationJobRequest,
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import {
