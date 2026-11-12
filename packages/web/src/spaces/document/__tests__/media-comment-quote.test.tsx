@@ -39,6 +39,15 @@ describe('MediaCommentQuote', () => {
     expect(line.textContent).toBe('ride');
   });
 
+  it.each(['video', 'audio'] as const)('gives a %s icon the thumbnail\'s 24px place, so every card\'s name starts on one line', (type) => {
+    render(<MediaCommentQuote media={{ blockId: 'b', type, name: 'clip', caption: '', url: 'https://cdn.test/m' }} testId='q' />);
+
+    const lead = screen.getByTestId('q').firstElementChild!;
+    expect(lead.className).toContain('h-6');
+    expect(lead.className).toContain('w-6');
+    expect(lead.querySelector('svg')).not.toBeNull();
+  });
+
   it('names a block with neither name nor caption by its kind', () => {
     render(<MediaCommentQuote media={{ blockId: 'b', type: 'audio', name: '', caption: '', url: 'https://cdn.test/s.mp3' }} testId='q' />);
 

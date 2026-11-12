@@ -412,6 +412,10 @@ html[data-theme='light'] {
   --color-comment-hue: #f1e05a;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 42%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 80%, transparent);
+  /* The 1px line around a media block whose comment is read: a line is too
+     thin for the highlight's pale fill to show on the page, so it takes the
+     dark theme's deeper hue in both themes. */
+  --color-comment-outline: #a08f0e;
   --color-note-foreground: var(--neutral-900);
   /* Recessive text ON the note: the time, the "edited" mark, the drop notice,
      every box's placeholder. `--color-muted-foreground` is tuned against
@@ -622,6 +626,7 @@ html[data-theme='dark'] {
   --color-comment-hue: #a08f0e;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 22%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 46%, transparent);
+  --color-comment-outline: var(--color-comment-hue);
   --color-note-foreground: var(--neutral-900);
   --color-note-foreground-muted: var(--neutral-600);
 

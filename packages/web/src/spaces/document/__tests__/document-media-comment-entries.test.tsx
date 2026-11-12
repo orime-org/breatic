@@ -142,6 +142,12 @@ describe('the media toolbar', () => {
     expect(ids.slice(at, at + 4)).toEqual(['doc-media-download', 'doc-media-add-to-agent', 'doc-media-comment', 'doc-media-delete']);
   });
 
+  it('sets Add to Agent and Comment apart from the file\'s own actions with a rule after Download', () => {
+    const editor = open([PICTURE]);
+
+    expect(within(row(editor, 'pic')).getByTestId('doc-media-download').className).toContain('after:bg-border');
+  });
+
   it('offers both on a picture inside a table cell, and its comment shows there', async () => {
     const editor = open([tableBlock({ rows: [{ cells: ['words', { blocks: [PICTURE] }] }] })]);
 
@@ -199,6 +205,21 @@ describe('the media toolbar', () => {
 });
 
 describe('the comment icon on a media block', () => {
+  it('rides a picture\'s corner and sits just above an audio block, clear of its waveform', async () => {
+    const editor = open([PICTURE, SOUND]);
+    await postOn(editor, 'pic');
+    await postOn(editor, 'snd');
+
+    expect(within(row(editor, 'pic')).getByTestId('doc-media-comment-badge').className).toContain('-top-2');
+    expect(within(row(editor, 'snd')).getByTestId('doc-media-comment-badge').className).toContain('bottom-full');
+  });
+
+  it('outlines the block being read in the comment outline colour', () => {
+    const editor = open([PICTURE]);
+
+    expect(within(row(editor, 'pic')).getByTestId('doc-media-frame').className).toContain('outline-[var(--color-comment-outline)]');
+  });
+
   it('counts the open comments and drops one once resolved', async () => {
     const editor = open([PICTURE]);
     expect(within(row(editor, 'pic')).queryByTestId('doc-media-comment-badge')).toBeNull();

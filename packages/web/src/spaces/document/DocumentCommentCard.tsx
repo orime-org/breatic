@@ -120,7 +120,12 @@ export function MediaCommentQuote({ media, testId }: { media: MediaQuote; testId
     >
       {media.type === 'image'
         ? <PreviewImg src={media.url} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
-        : <Icon className='h-3 w-3 shrink-0' aria-hidden='true' />}
+        : (
+          // The thumbnail's size, so every card's name starts on one line.
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted'>
+            <Icon className='h-3 w-3' aria-hidden='true' />
+          </span>
+        )}
       <span className='truncate'>{mediaNameOf(media, t)}</span>
     </p>
   );
