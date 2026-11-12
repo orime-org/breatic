@@ -85,6 +85,18 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "720p", audio: "a" }, durations: { audio: [200] }, usd: 52.8 },
   ],
   "bytedance/seedream-v4.5/edit": [{ input: { images: ["i"] }, usd: 0.04 }],
+  "bytedance/seedream-v5.5": [
+    { input: { resolution: "1k" }, usd: 0.02 },
+    { input: { resolution: "1.5k" }, usd: 0.02 },
+    { input: { resolution: "2k" }, usd: 0.035 },
+  ],
+  "bytedance/seedream-v5.5/edit": [
+    { input: { resolution: "1k", images: urls(1) }, usd: 0.028 },
+    { input: { resolution: "1k", images: urls(2) }, usd: 0.036 },
+    { input: { resolution: "1k", images: urls(10) }, usd: 0.1 },
+    { input: { resolution: "2k", images: urls(1) }, usd: 0.043 },
+    { input: { resolution: "2k", images: urls(10) }, usd: 0.115 },
+  ],
   "bytedance/seedance-2.5/video-extend": [{ input: { resolution: "480p", video: "v" }, durations: { video: [5] }, usd: 1.1 }],
   "clarity-ai/pro-upscaler": [
     { input: { target_megapixels: 4 }, usd: 0.12 },
@@ -253,7 +265,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 68 endpoints of the finalized catalog", () => {
+  it("covers exactly the 70 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 
