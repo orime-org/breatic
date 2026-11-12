@@ -466,7 +466,8 @@ describe('the lip-sync panel takes its people and dialogue caps from the canvas 
     await mount(false, [dialogue(ROW_A, 'person-a'), dialogue(ROW_B, null)], ['person-a', 'person-b']);
     const user = userEvent.setup();
     await user.click(screen.getByTestId(`video-person-${ROW_B}`));
-    const second = await screen.findByRole('option', { name: 'Person 2' });
+    // The capped person carries the limit after its name (demo lip-sync-controls.tsx personCapReached suffix).
+    const second = await screen.findByRole('option', { name: `Person 2${ui('personCapReached', { count: 1 })}` });
     await waitFor(() => expect(second).toHaveAttribute('aria-disabled', 'true'));
     expect(screen.getByRole('option', { name: 'Person 1' })).not.toHaveAttribute('aria-disabled', 'true');
     await user.click(second);

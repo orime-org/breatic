@@ -1551,7 +1551,10 @@
         "tracked": "已跟踪",
         "clearSelection": "清除选区",
         "resetSelection": "重置选区",
-        "timeRange": "作用区间"
+        "timeRange": "作用区间",
+        "retryPeople": "重试识别",
+        "personCapReached": "最多 {count} 个人物",
+        "dialogueStartInvalid": "请输入大于或等于 0 秒的时间。"
       }
     },
     "template": {

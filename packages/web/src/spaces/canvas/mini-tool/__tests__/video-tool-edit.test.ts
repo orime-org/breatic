@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { VIDEO_TOOL_IDS, videoToolDraftSchema, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
-import { createVideoToolDraft, resetDialoguePeople, editDialogue, trimTimelineClip } from '../video/video-tool-edit';
+import { VIDEO_TOOL_IDS, videoToolDraftSchema, type MiniToolAnalysisRecord, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { createVideoToolDraft, currentPeopleResult, resetDialoguePeople, editDialogue, trimTimelineClip } from '../video/video-tool-edit';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const rows: VideoToolDialogueRow[] = [0, 1, 2].map((index) => ({ dialogueId: `20000000-0000-4000-8000-00000000000${index}`, personId: 'person-a', analysisRunId: '30000000-0000-4000-8000-000000000001', audioInputId: `40000000-0000-4000-8000-00000000000${index}`, startTime: [0, 1.25, 3][index] }));
@@ -66,5 +66,28 @@ describe('approved video tool edit boundaries', () => {
       const result = editDialogue(rows, rows[1].dialogueId, { startTime });
       expect(result).toEqual([rows[0], { ...rows[1], startTime }, rows[2]]);
     }));
+  });
+});
+
+// Demo lip-sync-controls.tsx redetectPatch and failure branch (E6): the people shown are those of the newest identification
+// only; while a newer one runs or after it failed, there are none, even though an older one found people.
+describe('currentPeopleResult', () => {
+  const record = (analysisRunId: string, status: 'completed' | 'failed' | 'running', acceptedAt: string, artifactUnavailable = false): MiniToolAnalysisRecord => ({
+    analysisRunId, acceptedAt, kind: 'people', status, artifactUnavailable, error: null,
+    result: status === 'completed' ? { kind: 'people', analysisRunId, anchor: { frameIndex: 0, pts: 0 }, people: [] } : null,
+  }) as unknown as MiniToolAnalysisRecord;
+  const done = record('run-a', 'completed', '2026-11-01T00:00:00Z');
+
+  it('returns the newest completed identification', () => {
+    expect(currentPeopleResult([done])?.analysisRunId).toBe('run-a');
+  });
+  it.each(['failed', 'running'] as const)('returns none while the newest identification is %s', (status) => {
+    expect(currentPeopleResult([done, record('run-b', status, '2026-11-02T00:00:00Z')])).toBeUndefined();
+  });
+  it('returns none when the newest identification lost its artifacts', () => {
+    expect(currentPeopleResult([done, record('run-b', 'completed', '2026-11-02T00:00:00Z', true)])).toBeUndefined();
+  });
+  it('ignores records of other kinds', () => {
+    expect(currentPeopleResult([done, { ...record('run-c', 'failed', '2026-11-03T00:00:00Z'), kind: 'scene_cuts' } as MiniToolAnalysisRecord])?.analysisRunId).toBe('run-a');
   });
 });

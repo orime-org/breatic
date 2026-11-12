@@ -104,3 +104,18 @@ describe('the selection status chip (D5)', () => {
     expect(chip.querySelector('svg') !== null).toBe(check);
   });
 });
+
+// Demo lip-sync-controls.tsx FaceOverlay; canvas design line 98: only the box of the person bound to the active dialogue row
+// is drawn in the selected style, every other person's box is neutral.
+describe('person boxes follow the active dialogue row (E1)', () => {
+  const people = { kind: 'people' as const, analysisRunId: 'run-a', anchor: { frameIndex: 0, pts: 0 }, people: ['person-a', 'person-b'].map((personId, index) => ({ personId, faceBox: { x: index * 0.5, y: 0, width: 0.2, height: 0.2 }, artifactRefs: [] })) } as unknown as NonNullable<React.ComponentProps<typeof VideoToolNodeOverlay>['people']>;
+
+  it('draws only the active row\'s person in the selected style', () => {
+    render(<VideoToolNodeOverlay {...props} region={undefined} people={people} activePersonId='person-b' />);
+    const [first, second] = screen.getAllByRole('button', { pressed: undefined }).filter((button) => button.hasAttribute('aria-pressed'));
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+    expect(second!.className).toContain('border-status-selected');
+    expect(first!.className).not.toContain('status-selected');
+    expect(first!.className).toContain('border-border');
+  });
+});

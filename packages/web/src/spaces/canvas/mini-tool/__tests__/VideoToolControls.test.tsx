@@ -102,13 +102,16 @@ function peopleRecord(runId: string, acceptedAt: string, failed = false): MiniTo
 }
 
 describe('independent progress and reusable people results', () => {
-  it('keeps the valid person visible after a later identification fails', () => {
+  // Demo lip-sync-controls.tsx redetectPatch and failure branch (E6): a failed re-detect leaves no people to choose, so the
+  // earlier identification's person is no longer shown on the row.
+  it('stops showing the earlier person after a later identification fails', () => {
     const success = peopleRecord('80000000-0000-4000-8000-000000000001', '2026-10-24T00:00:00.000001Z');
     const failed = peopleRecord('80000000-0000-4000-8000-000000000002', '2026-10-24T00:00:00.000002Z', true);
     const dialogue = { ...row, personId: 'person-a', analysisRunId: success.analysisRunId };
     const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [dialogue], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} analyses={[failed, success]} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
-    expect(screen.getByTestId(`video-person-${row.dialogueId}`)).toHaveTextContent('Person 1');
+    expect(screen.getByTestId(`video-person-${row.dialogueId}`)).not.toHaveTextContent('Person 1');
+    expect(screen.getByTestId(`video-person-${row.dialogueId}`)).toBeDisabled();
   });
 });
 

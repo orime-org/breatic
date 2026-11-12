@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { newId } from '@breatic/shared';
-import { planVideoTimelineSeconds, type MiniToolAnalysisRecord, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
+import { planVideoTimelineSeconds, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type VideoToolDraftById, type VideoToolId, type VideoToolSourceRef, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 /**
  * Creates a complete tool draft bound to the current registered source.
@@ -53,6 +54,18 @@ export type EraseTrackingStatus = 'tracked' | 'stale' | 'draw';
 export function eraseTrackingStatus(state: { selected: boolean; matched: boolean; judged: boolean; records: readonly Pick<MiniToolAnalysisRecord, 'kind' | 'status' | 'artifactUnavailable'>[] }): EraseTrackingStatus {
   if (state.matched) return 'tracked';
   return state.selected && state.judged && state.records.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) ? 'stale' : 'draw';
+}
+
+/**
+ * The people of the newest identification, which the panel and the node show; while a newer one runs, after it failed or
+ * once its artifacts are gone there are none, even if an older one found people (demo lip-sync-controls.tsx redetectPatch).
+ * @param records - The draft's analysis records.
+ * @returns The newest identification's result, or undefined.
+ * @throws {never} Never.
+ */
+export function currentPeopleResult(records: readonly MiniToolAnalysisRecord[]): Extract<MiniToolAnalysisResult, { kind: 'people' }> | undefined {
+  const latest = latestMiniToolAnalysis(records.filter((record) => record.kind === 'people'));
+  return latest?.status === 'completed' && !latest.artifactUnavailable && latest.result?.kind === 'people' ? latest.result : undefined;
 }
 
 /**

@@ -1551,7 +1551,10 @@
         "tracked": "Tracked",
         "clearSelection": "Clear selection",
         "resetSelection": "Reset selection",
-        "timeRange": "Time range"
+        "timeRange": "Time range",
+        "retryPeople": "Retry identification",
+        "personCapReached": "Person limit: {count}",
+        "dialogueStartInvalid": "Enter a time of 0 seconds or later."
       }
     },
     "template": {

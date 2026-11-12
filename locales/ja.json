@@ -1551,7 +1551,10 @@
         "tracked": "追跡済み",
         "clearSelection": "選択をクリア",
         "resetSelection": "選択をリセット",
-        "timeRange": "適用範囲"
+        "timeRange": "適用範囲",
+        "retryPeople": "検出を再試行",
+        "personCapReached": "人物は最大 {count} 人です",
+        "dialogueStartInvalid": "0 秒以上の時間を入力してください。"
       }
     },
     "template": {

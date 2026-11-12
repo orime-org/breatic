@@ -1551,7 +1551,10 @@
         "tracked": "추적됨",
         "clearSelection": "선택 지우기",
         "resetSelection": "선택 초기화",
-        "timeRange": "적용 구간"
+        "timeRange": "적용 구간",
+        "retryPeople": "감지 재시도",
+        "personCapReached": "인물은 최대 {count}명입니다",
+        "dialogueStartInvalid": "0초 이상의 시간을 입력하세요."
       }
     },
     "template": {

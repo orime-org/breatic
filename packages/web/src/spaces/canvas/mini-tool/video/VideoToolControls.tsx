@@ -23,7 +23,7 @@ import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PreviewImg } from '@web/components/PreviewImg';
 import { PARAM_OPTION_CLASS } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { editDialogue, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { currentPeopleResult, editDialogue, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -145,10 +145,11 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   useFollowCanvasViewport(open);
   const record = latestMiniToolAnalysis(props.analyses.filter((item) => item.kind === 'people'));
-  const successful = latestMiniToolAnalysis(props.analyses.filter((item) => item.kind === 'people' && item.status === 'completed' && !item.artifactUnavailable));
-  const result = successful?.result?.kind === 'people' ? successful.result : undefined;
+  // Only the newest identification counts: a running or failed re-detect hides the earlier people (demo redetectPatch).
+  const result = currentPeopleResult(props.analyses);
   const people = result?.people ?? [];
-  const ready = successful !== null;
+  const ready = result !== undefined;
+  const failed = record?.status === 'failed';
   const rows = draft.params.dialogues;
   const maxPeople = props.lipSync?.maxPeople;
   const maxDialogues = props.lipSync?.maxDialogues;
@@ -171,17 +172,31 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
     const referenced = new Set(next.map((row) => row.audioInputId));
     props.onChange({ ...draft, inputs: draft.inputs.filter((input) => referenced.has(input.inputId)), params: { ...draft.params, dialogues: next } });
   }
+  // The start fields whose text is not a time of 0 s or later, each said under its own row (demo DialogueStartTime).
+  const [invalidStarts, setInvalidStarts] = React.useState<ReadonlySet<string>>(new Set());
+  const { onInvalidChange } = props;
+  /**
+   * Records a start field's validity for its row and reports it to the panel.
+   * @param key - The field's test id.
+   * @param invalid - Whether its text is invalid.
+   * @throws {never} Never.
+   */
+  const startInvalidChange = React.useCallback((key: string, invalid: boolean): void => {
+    setInvalidStarts((before) => before.has(key) === invalid ? before : new Set(invalid ? [...before, key] : [...before].filter((item) => item !== key)));
+    onInvalidChange?.(key, invalid);
+  }, [onInvalidChange]);
   return <section className='grid min-w-0 gap-2.5' data-testid='video-lip-sync-controls'>
     <div className='flex items-center justify-between gap-3'>
-      <span className='text-xs font-medium'>{t('canvas.miniTool.videoUI.dialoguePairs')}</span>
-      <Button variant='outline' size='compact' data-testid='video-identify-people' loading={props.analysing} disabled={props.disabled || props.analysing} icon={<RefreshCw className='size-3' />} onClick={() => props.onAnalyse('people')}>{t('canvas.miniTool.videoUI.redetectPeople')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button>
+      <span className='flex items-center gap-1.5 text-xs font-medium'><Users className='size-3.5' aria-hidden='true' />{t('canvas.miniTool.videoUI.dialoguePairs')}</span>
+      <Button variant='outline' size='compact' data-testid='video-identify-people' loading={props.analysing} disabled={props.disabled || props.analysing} icon={<RefreshCw className='size-3' />} onClick={() => props.onAnalyse('people')}>{t(failed ? 'canvas.miniTool.videoUI.retryPeople' : 'canvas.miniTool.videoUI.redetectPeople')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button>
     </div>
-    {ready && people.length > 0 && !props.analysing && record?.status !== 'failed' ? null : <p className={`rounded-chrome border p-2.5 text-xs ${record?.status === 'failed' ? 'border-status-error text-status-error-foreground' : 'border-border text-muted-foreground'}`}>{props.analysing ? t('canvas.miniTool.videoUI.identifyingPeople') : record?.status === 'failed' ? t('canvas.miniTool.videoUI.peopleIdentificationFailed') : ready ? t('canvas.miniTool.videoUI.peopleEmpty') : t('canvas.miniTool.videoUI.peopleIdle')}</p>}
+    {ready && people.length > 0 && !props.analysing ? null : <p className={`rounded-chrome border p-2.5 text-xs ${failed && !props.analysing ? 'border-status-error text-status-error-foreground' : 'border-border text-muted-foreground'}`}>{props.analysing ? t('canvas.miniTool.videoUI.identifyingPeople') : failed ? t('canvas.miniTool.videoUI.peopleIdentificationFailed') : ready ? t('canvas.miniTool.videoUI.peopleEmpty') : t('canvas.miniTool.videoUI.peopleIdle')}</p>}
     <div className='grid grid-cols-[max-content_minmax(0,1fr)_8ch_24px] items-center gap-x-2 gap-y-1.5'>
       <span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.targetPerson')}</span><span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueAudio')}</span><span className='whitespace-nowrap text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueStartTime')}</span><span />
       {rows.map((row, index) => {
         const input = draft.inputs.find((item) => item.inputId === row.audioInputId);
         const selected = row.analysisRunId === result?.analysisRunId ? people.find((person) => person.personId === row.personId) : undefined;
+        const startKey = `video-start-${row.dialogueId}`;
         const thumbnail = selected?.artifactRefs.find((artifact) => artifact.role === 'thumbnail')?.canonicalURL;
         const slotKey = `dialogue:${row.dialogueId}`;
         return <div key={row.dialogueId} className='col-span-4 grid grid-cols-subgrid items-center gap-x-2 gap-y-1.5' data-testid={`video-dialogue-${row.dialogueId}`} onFocusCapture={() => props.onActiveDialogue?.(row.dialogueId)}>
@@ -190,24 +205,31 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
             changeRows(editDialogue(rows, row.dialogueId, { personId, analysisRunId: result?.analysisRunId ?? null }));
           }}>
             <SelectTrigger data-testid={`video-person-${row.dialogueId}`} className='w-auto gap-1.5 px-2 text-xs'><span className='relative size-5 shrink-0 overflow-hidden rounded-content-xs bg-muted'>{thumbnail === undefined ? <Users className='size-5 text-muted-foreground' /> : <img src={thumbnail} alt='' className='size-full object-cover' />}</span><span className='min-w-0 truncate'><SelectValue placeholder={t('canvas.miniTool.videoUI.choosePerson')} /></span></SelectTrigger>
-            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => <SelectItem key={person.personId} value={person.personId} aria-disabled={overPeople(row.dialogueId, person.personId) ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}</SelectItem>)}</SelectContent>
+            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => { const capped = overPeople(row.dialogueId, person.personId); return <SelectItem key={person.personId} value={person.personId} aria-disabled={capped ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}{capped ? <span className='ml-2 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.personCapReached', { count: maxPeople ?? 0 })}</span> : null}</SelectItem>; })}</SelectContent>
           </Select>
           <div className={'min-w-0 [&>div]:min-w-0 [&>div>button:first-child]:h-[var(--control-height)] [&>div>button:first-child]:w-full [&>div>button:first-child]:min-w-0 [&>div>button:first-child]:flex-row [&>div>button:first-child]:justify-start [&>div>button:first-child]:gap-1.5 [&>div>button:first-child]:pr-6 [&>div>button:first-child>span]:truncate [&>div>button[aria-pressed=false]]:border-border [&>div>button[aria-pressed=true]]:border-active-border [&>div>button[aria-pressed=true]]:bg-accent [&>div>button[aria-pressed=true]]:text-foreground' + (input === undefined ? '' : ' [&>div>button:first-child>svg]:hidden [&>div>button:first-child]:pl-2')}>
             <SlotTool testId={`video-audio-${row.dialogueId}`} thumbnailTestId={`video-audio-thumbnail-${row.dialogueId}`} clearTestId={`video-audio-clear-${row.dialogueId}`} Icon={AudioLines} onPick={() => props.onPick(slotKey)} active={props.pickingSlot === slotKey} pick={input === undefined ? undefined : { kind: 'audio', url: input.url }} disabled={props.disabled} onClear={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(editDialogue(rows, row.dialogueId, { audioInputId: null })); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.chooseDialogueAudio') : props.inputNames.get(input.inputId) ?? input.url.split('/').at(-1) ?? ''} tip={t('canvas.miniTool.videoUI.pickAudio')} />
           </div>
-          <div className='flex min-w-0 items-center gap-1'><VideoNumericInput value={row.startTime} label={`${t('canvas.miniTool.videoUI.dialogueStartTime')} ${index + 1}`} testId={`video-start-${row.dialogueId}`} min={0} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(startTime) => changeRows(editDialogue(rows, row.dialogueId, { startTime }))} /><span className='text-xs text-muted-foreground'>s</span></div>
+          <div className='flex min-w-0 items-center gap-1'><VideoNumericInput value={row.startTime} label={`${t('canvas.miniTool.videoUI.dialogueStartTime')} ${index + 1}`} testId={startKey} min={0} disabled={props.disabled} onInvalidChange={startInvalidChange} onChange={(startTime) => changeRows(editDialogue(rows, row.dialogueId, { startTime }))} /><span className='text-xs text-muted-foreground'>s</span></div>
           <Button variant='ghost' size='compact' className='size-6 px-0' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeDialogue')} onClick={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(rows.length > 1 ? rows.filter((item) => item.dialogueId !== row.dialogueId) : [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]); }}><Trash2 className='size-3.5' /></Button>
+          {invalidStarts.has(startKey) ? <p className='col-span-4 text-right text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.dialogueStartInvalid')}</p> : null}
         </div>;
       })}
     </div>
     <Button variant='outline' size='compact' className='w-fit aria-disabled:opacity-50' disabled={props.disabled || props.analysing || !ready || people.length === 0} aria-disabled={rowsFull ? true : undefined} onClick={() => {
       if (rowsFull) { toast.warning(t('server.mini_tool.lipSyncTooManyDialogues', { max: maxDialogues })); return; }
-      changeRows([...rows, { dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]);
+      const dialogueId = newId();
+      changeRows([...rows, { dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]);
+      // The new row is the active one, so the next box pressed on the node fills it (demo addDialogue).
+      props.onActiveDialogue?.(dialogueId);
     }} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
     <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueTimingHint')}</p>
+    {/* Demo lip-sync-controls.tsx: the source's playback strip, on which people are identified, above the model row. */}
+    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek} />
     {/* Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right. */}
     <div data-testid='video-lipsync-bottom-row' className='flex items-center gap-1.5'>{props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0].name} disabled={props.disabled} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} />}<ModeToggle value={draft.params.syncMode} options={SYNC_MODES} triggerTestId='video-sync-mode' disabled={props.disabled} onChange={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} /></div>
-    {props.lipSyncFailure ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} retryIntent={props.retryIntent} onRedetect={() => props.onAnalyse('people')} /> : null}
+    {/* Hidden while identification restarts, as the demo's re-detect clears the failure (main.tsx person-failure-redetect). */}
+    {props.lipSyncFailure && !props.analysing ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} retryIntent={props.retryIntent} onRedetect={() => props.onAnalyse('people')} /> : null}
   </section>;
 }
 

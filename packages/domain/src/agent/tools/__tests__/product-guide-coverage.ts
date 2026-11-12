@@ -83,6 +83,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.trackingPrompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.transparentOutput": { described: /keeps the transparent source available for download and downstream tools/ },
   "canvas.miniTool.videoUI.invalidNumber": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "canvas.miniTool.videoUI.dialogueStartInvalid": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "canvas.miniTool.videoUI.retryPeople": { described: /after a failed identification the same button offers to retry it/ },
+  "canvas.miniTool.videoUI.personCapReached": { described: /other people are dimmed in the person dropdown with the limit beside them/ },
   "canvas.miniTool.videoUI.video": { excluded: REASONS.FILLS_A_VALUE },
   // Batch-six video tools (inner#1306): transitions, the lip-sync failure lines, range toasts and the tracking cost.
   "canvas.miniTool.videoUI.addVideoSlot": { described: /one video picked under/ },
