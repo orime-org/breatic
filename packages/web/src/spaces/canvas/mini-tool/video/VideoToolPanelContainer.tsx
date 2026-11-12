@@ -380,7 +380,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const matchingRecords = React.useMemo(() => selection.key === dependencyKey ? selection.records : [], [selection, dependencyKey]);
   // An erase runs on the tracking made for the current selection, the one its Run waits for and its box follows (§10.3).
   const tracking = toolId === 'video.erase' ? latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable)) ?? undefined : undefined;
-  const trackingStatus = toolId === 'video.erase' ? eraseTrackingStatus({ matched: tracking !== undefined, judged: selection.key === dependencyKey, records }) : undefined;
+  const trackingStatus = toolId === 'video.erase' ? eraseTrackingStatus({ selected: current !== null && ((current as VideoToolDraftById['video.erase']).params.region.box !== null || (current as VideoToolDraftById['video.erase']).params.region.points.length > 0), matched: tracking !== undefined, judged: selection.key === dependencyKey, records }) : undefined;
   // Every footer shows the server's quote of the planned request the Run sends (§97 D26-1, D27-1; frames-split §10.8, billing).
   const frameTable = presentation?.frameTable ?? null;
   const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
@@ -721,6 +721,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
       if (id !== undefined) change({ ...draft, params: { ...draft.params, dialogues: draft.params.dialogues.map((row) => row.dialogueId === id ? { ...row, personId, analysisRunId: visiblePeople.analysisRunId } : row) } });
     }}
     trackedBox={toolId === 'video.erase' ? trackedBox : undefined}
+    tracked={trackingStatus === 'tracked'}
     disabled={disabled || !currentFrame}
     revision={current.revision} sourceEpoch={binding.sourceEpoch} seekEpoch={binding.getSeekEpoch()}
   />, overlayTarget) : null;

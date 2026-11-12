@@ -1469,7 +1469,6 @@
         "invalidNumber": "Enter a valid number.",
         "sourceChanged": "The source changed.",
         "useCurrentSource": "Use current source",
-        "selection": "Selection",
         "rectangle": "Rectangle",
         "point": "Point",
         "swapClips": "Swap order",
@@ -1548,7 +1547,11 @@
         "segmentPreview": "Preview · {start} – {end}",
         "stopPreview": "Stop preview",
         "detectionError": "Detection failed. Try detecting scenes again.",
-        "outputCapExceeded": "Up to {cap} outputs; this plan makes {count}"
+        "outputCapExceeded": "Up to {cap} outputs; this plan makes {count}",
+        "tracked": "Tracked",
+        "clearSelection": "Clear selection",
+        "resetSelection": "Reset selection",
+        "timeRange": "Time range"
       }
     },
     "template": {

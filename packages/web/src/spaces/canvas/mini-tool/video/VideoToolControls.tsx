@@ -5,13 +5,12 @@ import * as React from 'react';
 import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { ArrowUpRight, AudioLines, Check, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { ArrowUpRight, AudioLines, Check, Film, MousePointer2, Plus, RefreshCw, RotateCcw, Scan, Square, Trash2, Users } from 'lucide-react';
 import { newId, type ModelEntry } from '@breatic/shared';
 import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVideoSplit, type LipsyncFailureReason, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import { secondsLabel, VideoPlaybackStrip } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
 import type { SourceRangePlayback } from '@web/spaces/canvas/video-presentation/play-source-range';
 import { Textarea } from '@web/components/ui/textarea';
@@ -22,7 +21,7 @@ import { toast } from '@web/lib/toast';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PreviewImg } from '@web/components/PreviewImg';
-import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { PARAM_OPTION_CLASS } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { editDialogue, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
@@ -286,7 +285,37 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
       const tracking = latestMiniToolAnalysis(props.analyses.filter((record) => record.kind === 'tracked_mask'));
       const code = tracking?.status === 'failed' ? tracking.error?.code : undefined;
       const trackingFailure = typeof code === 'string' ? TRACKING_FAILURES.find((known) => known === code) ?? 'failed' : null;
-      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.selection')} value={props.regionSelection ?? 'rectangle'} options={[{ value: 'rectangle', label: t('canvas.miniTool.videoUI.rectangle'), disabled: props.disabled }, { value: 'point', label: t('canvas.miniTool.videoUI.point'), disabled: props.disabled }]} testIdPrefix='video-region-selection' onSelect={(value) => props.onRegionSelection?.(value as 'rectangle' | 'point')} /><div data-testid='video-tracking-status' className='flex items-center gap-2 text-xs text-muted-foreground'><span aria-hidden='true' className={`size-2 shrink-0 rounded-full ${props.trackingStatus === 'tracked' ? 'bg-status-success' : 'bg-muted-foreground'}`} /><span>{t(props.trackingStatus === 'tracked' ? 'canvas.miniTool.videoUI.trackingReview' : props.trackingStatus === 'stale' ? 'canvas.miniTool.videoUI.trackingStale' : 'canvas.miniTool.videoUI.drawBox')}</span></div><div className='relative h-12 overflow-hidden rounded-chrome border border-border'><FilmStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} /></div><div className='grid grid-cols-2 gap-2'><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={draft.params.range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={draft.params.range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < draft.params.range.end) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, start } } }); }} /></label><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={draft.params.range.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={draft.params.range.start} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => { if (end > draft.params.range.start) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, end } } }); }} /></label></div><Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} /><div className='flex items-center gap-2'><Button variant='outline' size='sm' loading={props.analysing} aria-disabled={props.trackBlockedReason === undefined ? undefined : true} disabled={props.disabled || props.analysing || (draft.params.region.box === null && draft.params.region.points.length === 0)} className='aria-disabled:opacity-50' onClick={() => { if (props.trackBlockedReason !== undefined) toast.warning(props.trackBlockedReason); else props.onAnalyse('tracked_mask'); }}>{t('canvas.miniTool.videoUI.trackObject')}</Button>{props.analysisActualCreditText !== undefined ? <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingActual', { credits: props.analysisActualCreditText })}</span> : props.analysisCreditText === undefined ? null : <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingEstimate', { credits: props.analysisCreditText })}</span>}</div>{trackingFailure === null ? null : <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t(`canvas.miniTool.videoUI.trackingFailure.${trackingFailure}`)}</span>{trackedMaskRetryable(trackingFailure) ? <Button variant='outline' size='compact' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onRetryTracking?.(tracking!)}>{t('canvas.miniTool.videoUI.retryTracking')}</Button> : null}</div>}</>;
+      const range = draft.params.range;
+      const hasSelection = draft.params.region.box !== null || draft.params.region.points.length > 0;
+      /**
+       * Commits a new range.
+       * @param next - The range.
+       * @throws {Error} When the edited draft fails its schema.
+       */
+      const setRange = (next: typeof range): void => { props.onChange({ ...draft, params: { ...draft.params, range: next } }); };
+      // Demo main.tsx erase branch: the range strip, the tracking status, one row with the selection modes and clear on the
+      // left and the tracking cost and Track selection on the right, then the prompt.
+      return <>
+        <VideoPlaybackStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek}
+          range={range} onRangeChange={setRange} rangeLabel={t('canvas.miniTool.videoUI.timeRange')} disabled={props.disabled} />
+        <div className='grid grid-cols-2 gap-2'>
+          <label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < range.end) setRange({ ...range, start }); }} /></label>
+          <label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={range.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={range.start} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => { if (end > range.start) setRange({ ...range, end }); }} /></label>
+        </div>
+        <div data-testid='video-tracking-status' className='flex items-center gap-2 text-xs text-muted-foreground'><span aria-hidden='true' className={`size-2 shrink-0 rounded-full ${props.trackingStatus === 'tracked' ? 'bg-status-success' : 'bg-muted-foreground'}`} /><span>{t(props.trackingStatus === 'tracked' ? 'canvas.miniTool.videoUI.trackingReview' : props.trackingStatus === 'stale' ? 'canvas.miniTool.videoUI.trackingStale' : 'canvas.miniTool.videoUI.drawBox')}</span></div>
+        <div data-testid='video-selection-row' className='flex items-center justify-between gap-2'>
+          <div className='flex items-center gap-1'>
+            {([['rectangle', Square], ['point', MousePointer2]] as const).map(([mode, Icon]) => <Button key={mode} variant={null} size={null} data-testid={`video-region-selection-${mode}`} aria-current={(props.regionSelection ?? 'rectangle') === mode} disabled={props.disabled} className={`${PARAM_OPTION_CLASS} gap-1`} onClick={() => props.onRegionSelection?.(mode)}><Icon className='size-3' aria-hidden='true' />{t(`canvas.miniTool.videoUI.${mode}`)}</Button>)}
+            <Button variant='ghost' size='compact' aria-label={t('canvas.miniTool.videoUI.clearSelection')} disabled={props.disabled || !hasSelection} onClick={() => props.onChange({ ...draft, params: { ...draft.params, region: { box: null, points: [] } } })}><RotateCcw className='size-3.5' /></Button>
+          </div>
+          <div className='flex items-center gap-2'>
+            {props.analysisActualCreditText !== undefined ? <span className='whitespace-nowrap text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingActual', { credits: props.analysisActualCreditText })}</span> : props.analysisCreditText === undefined ? null : <span className='whitespace-nowrap text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingEstimate', { credits: props.analysisCreditText })}</span>}
+            <Button variant='outline' size='sm' loading={props.analysing} icon={<Scan className='size-3.5' />} aria-disabled={props.trackBlockedReason === undefined ? undefined : true} disabled={props.disabled || props.analysing || !hasSelection} className='aria-disabled:opacity-50' onClick={() => { if (props.trackBlockedReason !== undefined) toast.warning(props.trackBlockedReason); else props.onAnalyse('tracked_mask'); }}>{t('canvas.miniTool.videoUI.trackObject')}</Button>
+          </div>
+        </div>
+        {trackingFailure === null ? null : <div data-testid='video-tracking-failure' className='flex items-center justify-between gap-3 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground'><span>{t(`canvas.miniTool.videoUI.trackingFailure.${trackingFailure}`)}</span>{trackedMaskRetryable(trackingFailure) ? <Button variant='outline' size='compact' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onRetryTracking?.(tracking!)}>{t('canvas.miniTool.videoUI.retryTracking')}</Button> : null}</div>}
+        <Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} />
+      </>;
     }
     case 'video.remove-bg': {
       const draft = props.draft as VideoToolDraftById['video.remove-bg'];

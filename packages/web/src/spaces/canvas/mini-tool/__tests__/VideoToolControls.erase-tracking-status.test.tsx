@@ -36,14 +36,17 @@ describe('the erase tracking status line', () => {
 describe('eraseTrackingStatus', () => {
   const done = { kind: 'tracked_mask' as const, status: 'completed' as const, artifactUnavailable: false };
   it('is tracked while a tracking matches the current selection', () => {
-    expect(eraseTrackingStatus({ matched: true, judged: true, records: [done] })).toBe('tracked');
+    expect(eraseTrackingStatus({ selected: true, matched: true, judged: true, records: [done] })).toBe('tracked');
   });
   it('is stale once the draft was tracked but no tracking matches the current selection', () => {
-    expect(eraseTrackingStatus({ matched: false, judged: true, records: [done] })).toBe('stale');
+    expect(eraseTrackingStatus({ selected: true, matched: false, judged: true, records: [done] })).toBe('stale');
   });
   it('asks to draw while the draft was never tracked, or failed, or is still being judged', () => {
-    expect(eraseTrackingStatus({ matched: false, judged: true, records: [] })).toBe('draw');
-    expect(eraseTrackingStatus({ matched: false, judged: true, records: [{ ...done, status: 'failed' }] })).toBe('draw');
-    expect(eraseTrackingStatus({ matched: false, judged: false, records: [done] })).toBe('draw');
+    expect(eraseTrackingStatus({ selected: true, matched: false, judged: true, records: [] })).toBe('draw');
+    expect(eraseTrackingStatus({ selected: true, matched: false, judged: true, records: [{ ...done, status: 'failed' }] })).toBe('draw');
+    expect(eraseTrackingStatus({ selected: true, matched: false, judged: false, records: [done] })).toBe('draw');
+  });
+  it('asks to draw once the selection is cleared, whatever was tracked before (demo SelectionOverlay reset)', () => {
+    expect(eraseTrackingStatus({ selected: false, matched: false, judged: true, records: [done] })).toBe('draw');
   });
 });

@@ -1469,7 +1469,6 @@
         "invalidNumber": "請輸入有效數值。",
         "sourceChanged": "來源素材已變更。",
         "useCurrentSource": "使用目前素材",
-        "selection": "選區",
         "rectangle": "矩形",
         "point": "點選",
         "swapClips": "交換順序",
@@ -1548,7 +1547,11 @@
         "segmentPreview": "預覽 · {start} – {end}",
         "stopPreview": "停止預覽",
         "detectionError": "場景偵測失敗，請重新偵測。",
-        "outputCapExceeded": "最多 {cap} 個產物，目前 {count} 個"
+        "outputCapExceeded": "最多 {cap} 個產物，目前 {count} 個",
+        "tracked": "已追蹤",
+        "clearSelection": "清除選取範圍",
+        "resetSelection": "重設選取範圍",
+        "timeRange": "作用區間"
       }
     },
     "template": {

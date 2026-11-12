@@ -1469,7 +1469,6 @@
         "invalidNumber": "请输入有效数值。",
         "sourceChanged": "源素材已更改。",
         "useCurrentSource": "使用当前素材",
-        "selection": "选区",
         "rectangle": "矩形",
         "point": "点选",
         "swapClips": "交换顺序",
@@ -1548,7 +1547,11 @@
         "segmentPreview": "预览 · {start} – {end}",
         "stopPreview": "停止预览",
         "detectionError": "场景检测失败，请重新检测。",
-        "outputCapExceeded": "最多 {cap} 个产物，当前 {count} 个"
+        "outputCapExceeded": "最多 {cap} 个产物，当前 {count} 个",
+        "tracked": "已跟踪",
+        "clearSelection": "清除选区",
+        "resetSelection": "重置选区",
+        "timeRange": "作用区间"
       }
     },
     "template": {

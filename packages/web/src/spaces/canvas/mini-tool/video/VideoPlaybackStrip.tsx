@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { Slider } from '@web/components/ui/slider';
 
 export interface VideoPlaybackStripProps {
   /** The source video. */
@@ -15,8 +16,14 @@ export interface VideoPlaybackStripProps {
   presentedTime: number | null;
   /** Seeks the source player; without it the strip only shows. */
   onSeek?: (time: number) => void;
-  /** A range to highlight: outside it is dimmed, inside it is outlined. */
+  /** A range to highlight: outside it is dimmed, inside it is outlined, and the row below reads its ends and length. */
   range?: { start: number; end: number };
+  /** Edits the range with a two-thumb slider under the strip, committed once a thumb is released. */
+  onRangeChange?: (range: { start: number; end: number }) => void;
+  /** Names the range in the row below and on the slider. */
+  rangeLabel?: string;
+  /** Whether the range slider takes edits. */
+  disabled?: boolean;
   /** Marks drawn on the strip above the filmstrip, such as split's cut handles. */
   children?: React.ReactNode;
 }
@@ -50,8 +57,12 @@ function percent(seconds: number, duration: number): string {
  * @throws {never} Never.
  */
 export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.Element {
-  const { src, duration, aspect, presentedTime, onSeek, range, children } = props;
+  const { src, duration, aspect, presentedTime, onSeek, onRangeChange, rangeLabel, children } = props;
   const track = React.useRef<HTMLDivElement>(null);
+  // A thumb being dragged is shown locally and committed once on release, so a drag is one edit.
+  const [dragged, setDragged] = React.useState<{ start: number; end: number } | null>(null);
+  React.useEffect(() => setDragged(null), [props.range?.start, props.range?.end]);
+  const range = dragged ?? props.range;
   /**
    * Seeks to the pressed place on the strip as it is laid out on screen.
    * @param event - The press.
@@ -74,8 +85,10 @@ export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.El
       {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
       {children}
     </div>
+    {range === undefined || onRangeChange === undefined ? null : <Slider aria-label={rangeLabel} value={[range.start, range.end]} min={0} max={duration} step={0.01} minStepsBetweenThumbs={1} disabled={props.disabled}
+      onValueChange={([start, end]) => setDragged({ start: start!, end: end! })} onValueCommit={([start, end]) => { setDragged(null); onRangeChange({ start: start!, end: end! }); }} />}
     <div data-testid='video-playback-times' className='flex justify-between text-xs tabular-nums text-muted-foreground'>
-      <span>{secondsLabel(range?.start ?? 0)}</span><span>{presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>
+      <span>{secondsLabel(range?.start ?? 0)}</span><span>{range !== undefined ? [rangeLabel, secondsLabel(range.end - range.start)].filter((part) => part !== undefined).join(' · ') : presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>
     </div>
   </div>;
 }

@@ -1006,15 +1006,18 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Retry stays busy until current source facts have refreshed; closing the panel does not cancel accepted work. " +
       `Unsupported content shows ${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without Retry.`,
-    `In ${quoted(t("canvas.miniTool.video.erase.label"))}, choose ${quoted(t("canvas.miniTool.videoUI.rectangle"))} or ` +
-      `${quoted(t("canvas.miniTool.videoUI.point"))} under ${quoted(t("canvas.miniTool.videoUI.selection"))} and mark ` +
-      "the target on the video itself. Set the range with " +
-      `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}, then ` +
-      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection; the text box above it can describe the ` +
-      "object to track. Once tracked, the box turns green and follows the object frame by frame, and the line under the " +
+    `In ${quoted(t("canvas.miniTool.video.erase.label"))}, the filmstrip at the top dims what lies outside the range and ` +
+      "pressing it moves the playhead; set the range by dragging the two handles under it or with " +
+      `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}. Choose ` +
+      `${quoted(t("canvas.miniTool.videoUI.rectangle"))} or ${quoted(t("canvas.miniTool.videoUI.point"))} and mark ` +
+      "the target on the video itself; the round arrow after them in the panel, or the one at the top right of the video, " +
+      `clears the selection. ${quoted(t("canvas.miniTool.videoUI.trackObject"))}, at the right of that row, tracks the ` +
+      "selection; the text box at the bottom can describe the object to track. Once tracked, the box turns green and " +
+      "follows the object frame by frame, and can still be moved or resized, which changes the selection; the chip at " +
+      `the bottom left of the video reads ${quoted(t("canvas.miniTool.videoUI.tracked"))} and the line above the ` +
       `selection modes reads ${quoted(t("canvas.miniTool.videoUI.trackingReview"))}; after the selection or range changes it reads ` +
       `${quoted(t("canvas.miniTool.videoUI.trackingStale"))} until the selection is tracked again. A tracking that failed ` +
-      `says why under the button, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
+      `says why under that row, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
       "when that can help. " + eraseRange() + " frame the selection was marked on must lie inside the " +
       "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
       "expansion lists on its output node what failed, by step or by window, and what to do next; " +

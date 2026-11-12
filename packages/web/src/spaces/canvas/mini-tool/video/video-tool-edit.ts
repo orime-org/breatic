@@ -40,17 +40,19 @@ export function transitionHostInputId(draft: VideoToolDraftById['video.transitio
 export type EraseTrackingStatus = 'tracked' | 'stale' | 'draw';
 
 /**
- * Whether the draft's tracking applies to its current selection, applied to an earlier one, or was never made.
+ * Whether the draft's tracking applies to its current selection, applied to an earlier one, or was never made; a cleared
+ * selection asks to draw again, as the demo's reset does.
  * @param state - What the panel knows.
+ * @param state.selected - The draft has a selection.
  * @param state.matched - A completed tracking matches the current selection.
  * @param state.judged - The draft's records have been judged against the current selection.
  * @param state.records - The draft's tracking records.
  * @returns The status to show.
  * @throws {never} Never.
  */
-export function eraseTrackingStatus(state: { matched: boolean; judged: boolean; records: readonly Pick<MiniToolAnalysisRecord, 'kind' | 'status' | 'artifactUnavailable'>[] }): EraseTrackingStatus {
+export function eraseTrackingStatus(state: { selected: boolean; matched: boolean; judged: boolean; records: readonly Pick<MiniToolAnalysisRecord, 'kind' | 'status' | 'artifactUnavailable'>[] }): EraseTrackingStatus {
   if (state.matched) return 'tracked';
-  return state.judged && state.records.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) ? 'stale' : 'draw';
+  return state.selected && state.judged && state.records.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) ? 'stale' : 'draw';
 }
 
 /**

@@ -1469,7 +1469,6 @@
         "invalidNumber": "有効な数値を入力してください。",
         "sourceChanged": "元の素材が変更されました。",
         "useCurrentSource": "現在の素材を使用",
-        "selection": "選択範囲",
         "rectangle": "矩形",
         "point": "ポイント",
         "swapClips": "順序を入れ替え",
@@ -1548,7 +1547,11 @@
         "segmentPreview": "プレビュー · {start} – {end}",
         "stopPreview": "プレビューを停止",
         "detectionError": "シーン検出に失敗しました。再度検出してください。",
-        "outputCapExceeded": "最大 {cap} 件、現在 {count} 件"
+        "outputCapExceeded": "最大 {cap} 件、現在 {count} 件",
+        "tracked": "追跡済み",
+        "clearSelection": "選択をクリア",
+        "resetSelection": "選択をリセット",
+        "timeRange": "適用範囲"
       }
     },
     "template": {

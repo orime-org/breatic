@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { Check, RotateCcw } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolAnalysisResult, VideoToolDraftById } from '@breatic/shared/mini-tools';
@@ -15,8 +16,10 @@ export interface VideoToolNodeOverlayProps {
   people?: Extract<MiniToolAnalysisResult, { kind: 'people' }>;
   activePersonId?: string | null;
   onPerson?: (personId: string) => void;
-  /** The box following the tracked object on the presented frame; it replaces the selection box while present (§10.3). */
+  /** The box following the tracked object on the presented frame; the selection box is drawn there while present (§10.3). */
   trackedBox?: TrackedBox | null;
+  /** Whether the tracking applies to the current selection, which the chip on the video says. */
+  tracked?: boolean;
   disabled: boolean;
   revision: string;
   sourceEpoch: number;
@@ -45,6 +48,11 @@ export function VideoToolNodeOverlay(props: VideoToolNodeOverlayProps): React.JS
   const latest = React.useRef(props);
   latest.current = props;
   const region = preview ?? props.region;
+  // After tracking the selection box is drawn where the object is on the presented frame, in the success colour, and an
+  // edit starts from there (execution design §10.3; demo SelectionOverlay); a preview is the user's edit in progress.
+  const following = preview === null && props.trackedBox != null;
+  const shownBox = following ? props.trackedBox! : region?.box ?? null;
+  const selected = props.region !== undefined && (props.region.box !== null || props.region.points.length > 0);
   React.useEffect(() => { gesture.current = null; setPreview(null); }, [props.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
   React.useEffect(() => {
     /**
@@ -77,7 +85,7 @@ export function VideoToolNodeOverlay(props: VideoToolNodeOverlayProps): React.JS
     root.current?.focus();
     const at = point(event);
     if (mode === 'draw' && props.selection === 'point') { props.onRegion({ ...props.region, points: [...props.region.points, { ...at, label: event.altKey ? 'negative' : 'positive' }] }); return; }
-    gesture.current = { pointerId: event.pointerId, ...at, region: props.region, mode, latest: null, revision: props.revision, sourceEpoch: props.sourceEpoch, seekEpoch: props.seekEpoch };
+    gesture.current = { pointerId: event.pointerId, ...at, region: mode === 'draw' || shownBox === null ? props.region : { ...props.region, box: shownBox }, mode, latest: null, revision: props.revision, sourceEpoch: props.sourceEpoch, seekEpoch: props.seekEpoch };
     root.current?.setPointerCapture(event.pointerId);
   }
   /**
@@ -119,7 +127,7 @@ export function VideoToolNodeOverlay(props: VideoToolNodeOverlayProps): React.JS
   return <div ref={root} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} role='group' tabIndex={props.disabled ? undefined : 0} onKeyDown={(event) => {
     if (props.disabled || props.region === undefined || props.onRegion === undefined) return;
     if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); props.onRegion({ box: null, points: [] }); return; }
-    const box = props.region.box;
+    const box = shownBox;
     if (box === null || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault(); event.stopPropagation();
     const delta = event.shiftKey ? 0.02 : 0.005;
@@ -136,9 +144,10 @@ export function VideoToolNodeOverlay(props: VideoToolNodeOverlayProps): React.JS
     }
   }} className='nodrag nopan nokey nowheel pointer-events-none absolute inset-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' data-testid='video-tool-node-overlay'>
     {props.region === undefined ? null : <div data-testid='video-tool-region-gesture' role='presentation' className='pointer-events-auto absolute inset-0 cursor-crosshair' onPointerDown={(event) => begin(event, 'draw')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />}
-    {props.trackedBox == null ? null : <div data-testid='video-tool-tracked-box' className='pointer-events-none absolute border border-status-success bg-status-success/10' style={{ left: `${props.trackedBox.x * 100}%`, top: `${props.trackedBox.y * 100}%`, width: `${props.trackedBox.width * 100}%`, height: `${props.trackedBox.height * 100}%` }} />}
-    {props.trackedBox != null || region?.box === null || region?.box === undefined ? null : <div data-testid='video-tool-region-box' className='pointer-events-auto absolute cursor-move border border-status-selected bg-status-selected/10' style={{ left: `${region.box.x * 100}%`, top: `${region.box.y * 100}%`, width: `${region.box.width * 100}%`, height: `${region.box.height * 100}%` }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>{['nw', 'ne', 'sw', 'se'].map((handle) => <Button key={handle} data-region-handle={handle} variant={null} size={null} disabled={props.disabled} className='absolute size-2 rounded-none border border-status-selected bg-popover' style={{ left: handle.includes('w') ? 0 : '100%', top: handle.includes('n') ? 0 : '100%', transform: 'translate(-50%,-50%)', cursor: `${handle}-resize` }} onPointerDown={(event) => begin(event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />)}</div>}
+    {shownBox === null ? null : <div data-testid='video-tool-region-box' className={`pointer-events-auto absolute cursor-move border ${following ? 'border-status-success bg-status-success/10' : 'border-status-selected bg-status-selected/10'}`} style={{ left: `${shownBox.x * 100}%`, top: `${shownBox.y * 100}%`, width: `${shownBox.width * 100}%`, height: `${shownBox.height * 100}%` }} onPointerDown={(event) => begin(event, 'move')} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>{['nw', 'ne', 'sw', 'se'].map((handle) => <Button key={handle} data-region-handle={handle} variant={null} size={null} disabled={props.disabled} className={`absolute size-2 rounded-none border bg-popover ${following ? 'border-status-success' : 'border-status-selected'}`} style={{ left: handle.includes('w') ? 0 : '100%', top: handle.includes('n') ? 0 : '100%', transform: 'translate(-50%,-50%)', cursor: `${handle}-resize` }} onPointerDown={(event) => begin(event, handle)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} />)}</div>}
     {region?.points.map((at, index) => <Button key={index} variant={null} size={null} disabled={props.disabled} className='pointer-events-auto absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-status-selected bg-popover' style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} onClick={() => props.onRegion?.({ ...region, points: region.points.filter((_, position) => position !== index) })}>{at.label === 'positive' ? '+' : '−'}</Button>)}
+    {props.region === undefined ? null : <span data-testid='video-tool-selection-status' className='pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 rounded-chrome bg-popover px-2 py-1 text-xs'>{props.tracked === true ? <Check className='size-3 text-status-success' aria-hidden='true' /> : null}{t(props.tracked === true ? 'canvas.miniTool.videoUI.tracked' : props.selection === 'point' ? 'canvas.miniTool.videoUI.point' : 'canvas.miniTool.videoUI.drawBox')}</span>}
+    {selected ? <Button variant='outline' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.resetSelection')} className='pointer-events-auto absolute right-2 top-2' onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); props.onRegion?.({ box: null, points: [] }); }}><RotateCcw className='size-3' /></Button> : null}
     {props.people?.people.map((person, index) => <Button key={person.personId} variant={null} size={null} disabled={props.disabled} aria-pressed={props.activePersonId === person.personId} className='pointer-events-auto absolute border border-dashed border-status-selected bg-status-selected/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring' style={{ left: `${person.faceBox.x * 100}%`, top: `${person.faceBox.y * 100}%`, width: `${person.faceBox.width * 100}%`, height: `${person.faceBox.height * 100}%` }} onClick={(event) => { event.stopPropagation(); props.onPerson?.(person.personId); }}><span className='absolute left-0 top-full mt-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs'>{t('canvas.miniTool.videoUI.personNumber', { number: index + 1 })}</span></Button>)}
   </div>;
 }

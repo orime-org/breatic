@@ -1469,7 +1469,6 @@
         "invalidNumber": "올바른 숫자를 입력하세요.",
         "sourceChanged": "원본 소스가 변경되었습니다.",
         "useCurrentSource": "현재 소스 사용",
-        "selection": "선택 영역",
         "rectangle": "사각형",
         "point": "포인트",
         "swapClips": "순서 바꾸기",
@@ -1548,7 +1547,11 @@
         "segmentPreview": "미리 보기 · {start} – {end}",
         "stopPreview": "미리보기 정지",
         "detectionError": "장면 감지에 실패했습니다. 다시 감지해 주세요.",
-        "outputCapExceeded": "최대 {cap}개, 현재 {count}개"
+        "outputCapExceeded": "최대 {cap}개, 현재 {count}개",
+        "tracked": "추적됨",
+        "clearSelection": "선택 지우기",
+        "resetSelection": "선택 초기화",
+        "timeRange": "적용 구간"
       }
     },
     "template": {

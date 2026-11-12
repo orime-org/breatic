@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { t } from '@breatic/shared';
 import { VideoToolNodeOverlay } from '../video/VideoToolNodeOverlay';
 
 const region = { box: null, points: [] };
@@ -37,24 +38,69 @@ describe('source selection gesture ownership', () => {
   });
 });
 
-// Execution design §10.3 overlay paragraph: a finished tracking draws the box that follows the object in the success
-// colour in place of the user's selection; without one (outside the range, stale) the user's selection is shown.
-describe('the tracked box', () => {
+// Execution design §10.3 overlay paragraph and line 1020, demo video-controls.tsx SelectionOverlay: once tracked, the
+// selection box itself turns the success colour and follows the object, keeping its move cursor and four resize handles;
+// editing it edits the selection. Without a tracked box (outside the range, stale) the user's selection is shown.
+describe('the tracked selection box (D6)', () => {
   const selected = { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] };
+  const tracked = { x: 0.5, y: 0.25, width: 0.25, height: 0.5 };
 
-  it('draws the tracked box in the success colour instead of the selection', () => {
-    const proposed: object = { trackedBox: { x: 0.5, y: 0.25, width: 0.25, height: 0.5 } };
-    render(<VideoToolNodeOverlay {...props} region={selected} {...proposed} />);
-    const box = screen.getByTestId('video-tool-tracked-box');
+  it('draws the selection box at the tracked place in the success colour, with its move cursor and four handles', () => {
+    render(<VideoToolNodeOverlay {...props} region={selected} trackedBox={tracked} />);
+    const box = screen.getByTestId('video-tool-region-box');
     expect(box.className).toContain('border-status-success');
+    expect(box.className).toContain('cursor-move');
     expect(box.style).toMatchObject({ left: '50%', top: '25%', width: '25%', height: '50%' });
-    expect(screen.queryByTestId('video-tool-region-box')).toBeNull();
+    expect(box.querySelectorAll('[data-region-handle]')).toHaveLength(4);
   });
 
-  it('shows the user\'s selection when there is no tracked box', () => {
-    const proposed: object = { trackedBox: null };
-    render(<VideoToolNodeOverlay {...props} region={selected} {...proposed} />);
-    expect(screen.queryByTestId('video-tool-tracked-box')).toBeNull();
-    expect(screen.getByTestId('video-tool-region-box')).toBeInTheDocument();
+  it('moves the box from where it is shown, which edits the selection', () => {
+    const onRegion = vi.fn();
+    render(<VideoToolNodeOverlay {...props} region={selected} trackedBox={tracked} onRegion={onRegion} />);
+    const root = screen.getByTestId('video-tool-node-overlay');
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, top: 0, left: 0, right: 100, bottom: 100, width: 100, height: 100, toJSON: () => ({}) });
+    const box = screen.getByTestId('video-tool-region-box');
+    fireEvent.pointerDown(box, { button: 0, pointerId: 1, clientX: 60, clientY: 50 });
+    fireEvent.pointerMove(box, { pointerId: 1, clientX: 50, clientY: 40 });
+    fireEvent.pointerUp(box, { pointerId: 1 });
+    expect(onRegion).toHaveBeenCalledExactlyOnceWith({ box: { x: 0.4, y: 0.15000000000000002, width: 0.25, height: 0.5 }, points: [] });
+  });
+
+  it('shows the user\'s selection in the selection colour when there is no tracked box', () => {
+    render(<VideoToolNodeOverlay {...props} region={selected} trackedBox={null} />);
+    const box = screen.getByTestId('video-tool-region-box');
+    expect(box.className).toContain('border-status-selected');
+    expect(box.style).toMatchObject({ left: '10%', top: '10%' });
+  });
+});
+
+// Demo video-controls.tsx SelectionOverlay: a reset button at the top right of the video while a selection exists.
+describe('the reset button on the video (D4)', () => {
+  it('clears the selection', () => {
+    const onRegion = vi.fn();
+    render(<VideoToolNodeOverlay {...props} region={{ box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] }} onRegion={onRegion} />);
+    fireEvent.click(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.resetSelection') }));
+    expect(onRegion).toHaveBeenCalledExactlyOnceWith({ box: null, points: [] });
+  });
+
+  it('shows for a point selection too, and not without a selection', () => {
+    const { rerender } = render(<VideoToolNodeOverlay {...props} region={{ box: null, points: [{ x: 0.5, y: 0.5, label: 'positive' }] }} onRegion={vi.fn()} />);
+    expect(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.resetSelection') })).toBeInTheDocument();
+    rerender(<VideoToolNodeOverlay {...props} region={region} onRegion={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.resetSelection') })).toBeNull();
+  });
+});
+
+// Demo video-controls.tsx SelectionOverlay: the chip at the bottom left of the video.
+describe('the selection status chip (D5)', () => {
+  it.each([
+    [{ tracked: true, selection: 'rectangle' as const }, 'tracked', true],
+    [{ tracked: false, selection: 'point' as const }, 'point', false],
+    [{ tracked: false, selection: 'rectangle' as const }, 'drawBox', false],
+  ])('reads %o as %s', (state, key, check) => {
+    render(<VideoToolNodeOverlay {...props} {...state} />);
+    const chip = screen.getByTestId('video-tool-selection-status');
+    expect(chip.textContent).toBe(t(`canvas.miniTool.videoUI.${key}`));
+    expect(chip.querySelector('svg') !== null).toBe(check);
   });
 });
