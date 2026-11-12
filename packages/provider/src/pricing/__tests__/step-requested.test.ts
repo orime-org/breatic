@@ -7,7 +7,7 @@ import { createProvider } from "../../provider.js";
 import { estimateCost, parsePricingRules, type EstimateInput } from "../estimate.js";
 
 // A step's param asks for the step when it carries something and is not a switch
-// turned off: `false` is priced as no step, as shared's stepRequested reads it (inner#1692).
+// turned off: `false` is priced as no step (inner#1692).
 
 const flat = (base_price: number): { kind: "formula"; base_price: number; formula: string; discount_rate: number } => ({ kind: "formula", base_price, formula: "", discount_rate: 100 });
 

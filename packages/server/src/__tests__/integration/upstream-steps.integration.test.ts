@@ -47,6 +47,16 @@ afterAll(async () => {
 });
 
 /**
+ * Put a step in the state an upstream submission from before provider left it.
+ * @param stepId - The step.
+ * @param predictionId - The upstream's prediction id.
+ * @returns Nothing.
+ */
+async function markSubmitted(stepId: string, predictionId: string): Promise<void> {
+  await sql`UPDATE task_upstream_steps SET status = 'submitted', prediction_id = ${predictionId} WHERE id = ${stepId}`;
+}
+
+/**
  * A user and the studio they created.
  * @returns Both ids.
  */
@@ -192,7 +202,7 @@ describe("task_upstream_steps", () => {
     const { userId } = await seedStudio();
     const taskId = await seedTask(userId);
     const first = await upstreamStepRepo.ensureSteps(taskId, PLAN);
-    await upstreamStepRepo.markSubmitted(first[0]!.id, "pred-1");
+    await markSubmitted(first[0]!.id, "pred-1");
 
     const again = await upstreamStepRepo.ensureSteps(taskId, [PLAN[2]]);
 
@@ -235,7 +245,7 @@ describe("task_upstream_steps", () => {
     const taskId = await seedTask(userId);
     const [done, submitted, pending] = await upstreamStepRepo.ensureSteps(taskId, PLAN);
     await upstreamStepRepo.markDone(done!.id, { reference_id: "163346078760961" });
-    await upstreamStepRepo.markSubmitted(submitted!.id, "pred-2");
+    await markSubmitted(submitted!.id, "pred-2");
 
     await upstreamStepRepo.failOpenSteps(taskId, "upstream refused");
 
@@ -252,7 +262,7 @@ describe("task_upstream_steps", () => {
     const { userId } = await seedStudio();
     const taskId = await seedTask(userId);
     const [, submitted] = await upstreamStepRepo.ensureSteps(taskId, PLAN);
-    await upstreamStepRepo.markSubmitted(submitted!.id, "pred-2");
+    await markSubmitted(submitted!.id, "pred-2");
 
     await taskService.markFailed(taskId, "poll timed out");
 

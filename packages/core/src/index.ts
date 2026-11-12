@@ -107,7 +107,6 @@ export type {
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
-export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
