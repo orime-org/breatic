@@ -156,6 +156,14 @@ describe('A7 the ruler reads seconds (demo getScaleRender)', () => {
     render(<>{scale(2)}</>);
     expect(screen.getByText('2s')).toBeInTheDocument();
   });
+
+  it('draws one more scale after the last label, and the editor is wide enough to hold it', () => {
+    // The two clips run 4 s + 2.5 s = 6.5 s, so the last label is 7s and one more scale follows it.
+    open();
+    expect(track.props?.minScaleCount).toBe(9);
+    expect(track.props?.maxScaleCount).toBe(9);
+    expect((track.props?.style as { width: number }).width).toBe(9 * 100 + 32);
+  });
 });
 
 describe('A8 a first non-Cut transition starts at 0.4 s within its bounds (demo timeline-editor.tsx:48)', () => {
