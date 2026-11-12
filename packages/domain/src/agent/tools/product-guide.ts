@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { getAgentConfig } from "@breatic/core";
+import { getAgentConfig, getSceneConfig } from "@breatic/core";
 import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
@@ -1554,7 +1554,7 @@ export function renderProductGuide(): string {
       "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
       "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
       "The view still turns and zooms, and objects can still be selected and moved. " +
-      "Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is 2048), " +
+      `Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is ${String(getSceneConfig().capture.long_edge_px)}), ` +
       `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
       `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
       `Then the menu shows the still's thumbnail, ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +

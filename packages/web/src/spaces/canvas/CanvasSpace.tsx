@@ -2968,6 +2968,9 @@ function CanvasSpaceInner({
     if (at === undefined) return;
     const width = internal?.measured?.width ?? EMPTY_NODE_SIZE.width;
     const height = internal?.measured?.height ?? EMPTY_NODE_SIZE.height;
+    // A canvas opened with no stored camera still has its opening fit queued; it would frame
+    // every node after this move, the same as for a landed proposal.
+    rfStoreApi.setState({ fitViewQueued: false });
     void setCenter(at.x + width / 2, at.y + height / 2, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS, interpolate: 'linear' });
     setSelectAfterCreate([id]);
   }, [getInternalNode, nodes, setCenter, rfStoreApi]);

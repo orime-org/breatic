@@ -116,9 +116,11 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
     if (continuing !== undefined) marks.answer(spaceId, nodeId, continuing);
     return { sent: undefined, outcome: Promise.resolve({ status: 'failed', toasted: true }) };
   }
-  if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) {
+  const added = checkAdd(docName.canvasSpace(projectId, spaceId));
+  if (!added.ok) {
     if (continuing !== undefined) marks.fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
-    return { sent: undefined, outcome: Promise.resolve({ status: 'failed', toasted: false }) };
+    // The gate says every refusal but a rebuild in progress in its own warning.
+    return { sent: undefined, outcome: Promise.resolve({ status: 'failed', toasted: added.reason !== 'resyncing' }) };
   }
   const markOp = continuing ?? marks.begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
   /**

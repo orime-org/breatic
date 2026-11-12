@@ -41,6 +41,8 @@ vi.mock('@web/data/upload/upload-status', async (importOriginal) => ({
 
 import { BytesNotDelivered } from '@web/data/upload/finish-upload';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { clearAllDocSizes, setDocSize, startDocResync } from '@web/data/yjs/doc-size';
+import { P_FULL } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import { getRetryUpload } from '@web/spaces/canvas/upload-retry-files';
 import { uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -79,7 +81,7 @@ beforeEach(() => {
   h.reportNodeTaskFailure.mockResolvedValue({});
   placeNode();
 });
-afterEach(() => { _resetForTests(); });
+afterEach(() => { clearAllDocSizes(); _resetForTests(); });
 
 describe('uploadIntoNode', () => {
   it('reports uploaded once the server registered the bytes, and holds the leave guard while sending', async () => {
@@ -97,6 +99,20 @@ describe('uploadIntoNode', () => {
     await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: true });
     expect(h.toast.warning).toHaveBeenCalledOnce();
     expect(h.requestUploadTicket).not.toHaveBeenCalled();
+  });
+
+  it('reports the size-gate warning it showed when the canvas is full, and sends nothing', async () => {
+    setDocSize(docName.canvasSpace('p1', 's1'), { type: 'doc:size', seq: 1, ...P_FULL });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: true });
+    expect(h.toast.warning).toHaveBeenCalledOnce();
+    expect(h.requestUploadTicket).not.toHaveBeenCalled();
+  });
+
+  it('reports no toast while the canvas is being rebuilt, when the gate shows none', async () => {
+    setDocSize(docName.canvasSpace('p1', 's1'), { type: 'doc:size', seq: 1, ...P_FULL });
+    startDocResync(docName.canvasSpace('p1', 's1'));
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: false });
+    expect(h.toast.warning).not.toHaveBeenCalled();
   });
 
   it('says a refusal before the server answered on the node only', async () => {

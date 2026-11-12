@@ -9,6 +9,7 @@ import {
   captureSize,
   captureViewOffset,
   largestFrame,
+  menuCentre,
   refitFrame,
   resizeFrame,
   viewfinderRatioValue,
@@ -112,28 +113,66 @@ describe('dragging a corner', () => {
 });
 
 describe('refitting to a new safe area', () => {
-  it('scales about the frame centre and keeps a fixed ratio', () => {
+  it('scales a fixed ratio about its relative centre, keeping the ratio', () => {
     const frame = largestFrame(16 / 9, SAFE);
     const narrower = { x: 40, y: 60, width: 500, height: 400 };
-    const next = refitFrame(frame, SAFE, narrower);
+    const next = refitFrame(frame, SAFE, narrower, 16 / 9);
     expect(next.width / next.height).toBeCloseTo(16 / 9);
     expect(inside(next, narrower)).toBe(true);
   });
 
-  it('keeps a frame that still fits at its size, moved to the same relative place', () => {
+  it('keeps a fixed-ratio frame the same size when only one side of the area grows', () => {
     const frame = { x: 140, y: 110, width: 200, height: 150 };
     const wider = { x: 40, y: 60, width: 1600, height: 400 };
-    const next = refitFrame(frame, SAFE, wider);
+    const next = refitFrame(frame, SAFE, wider, 4 / 3);
     expect(next.width).toBe(200);
     expect(next.height).toBe(150);
     expect(next.x + 100 - wider.x).toBeCloseTo(((frame.x + 100 - SAFE.x) / SAFE.width) * wider.width);
   });
 
+  it('maps a Free frame to the same relative position and shape', () => {
+    const narrower = { x: 40, y: 60, width: 600, height: 400 };
+    expect(refitFrame(SAFE, SAFE, narrower, null)).toEqual(narrower);
+    const frame = { x: 140, y: 110, width: 200, height: 100 };
+    const next = refitFrame(frame, SAFE, narrower, null);
+    expect(next.width).toBeCloseTo(150);
+    expect(next.height).toBeCloseTo(100);
+    expect(next.x).toBeCloseTo(40 + 100 * 0.75);
+  });
+
+  it('gives back the original frame after the area shrinks and grows back', () => {
+    const narrower = { x: 40, y: 60, width: 520, height: 400 };
+    for (const ratio of [null, 16 / 9, 1]) {
+      const frame = ratio === null ? { x: 100, y: 90, width: 500, height: 250 } : largestFrame(ratio, SAFE);
+      const back = refitFrame(refitFrame(frame, SAFE, narrower, ratio), narrower, SAFE, ratio);
+      expect(back.x).toBeCloseTo(frame.x);
+      expect(back.y).toBeCloseTo(frame.y);
+      expect(back.width).toBeCloseTo(frame.width);
+      expect(back.height).toBeCloseTo(frame.height);
+    }
+  });
+
   it('always lands inside the new area', () => {
-    fc.assert(fc.property(fc.integer({ min: 200, max: 2000 }), fc.integer({ min: 150, max: 1200 }), (width, height) => {
-      const to = { x: 40, y: 60, width, height };
-      expect(inside(refitFrame(largestFrame(4 / 3, SAFE), SAFE, to), to)).toBe(true);
-    }));
+    fc.assert(fc.property(fc.integer({ min: 200, max: 2000 }), fc.integer({ min: 150, max: 1200 }), fc.constantFrom<number | null>(null, 4 / 3, 9 / 16),
+      (width, height, ratio) => {
+        const to = { x: 40, y: 60, width, height };
+        expect(inside(refitFrame(largestFrame(ratio ?? 4 / 3, SAFE), SAFE, to, ratio), to)).toBe(true);
+      }));
+  });
+});
+
+describe('the menu under the frame', () => {
+  it('centres under the frame', () => {
+    expect(menuCentre({ x: 300, y: 0, width: 200, height: 100 }, 300, 1000, 20)).toBe(400);
+  });
+
+  it('stays inside the Space when the frame sits near a side', () => {
+    expect(menuCentre({ x: 20, y: 0, width: 120, height: 120 }, 420, 1000, 20)).toBe(230);
+    expect(menuCentre({ x: 860, y: 0, width: 120, height: 120 }, 420, 1000, 20)).toBe(770);
+  });
+
+  it('centres in the Space when the menu is wider than it', () => {
+    expect(menuCentre({ x: 20, y: 0, width: 120, height: 120 }, 900, 600, 20)).toBe(300);
   });
 });
 

@@ -103,25 +103,51 @@ export function resizeFrame(
 }
 
 /**
- * Put the frame back after the safe area changed: scale it about its relative
- * centre only as much as it must shrink, then keep it inside.
+ * Put the frame back after the safe area changed (design 3.2). Free keeps its
+ * position and shape relative to the area; a fixed ratio keeps its ratio and
+ * its size relative to the largest frame of that ratio, about its relative
+ * centre. Both map back exactly when the area returns to what it was.
  * @param frame - The frame.
  * @param from - The safe area it was placed in.
  * @param to - The new safe area.
- * @returns The refitted frame; its ratio is unchanged.
+ * @param ratio - The width/height it keeps, or null for Free.
+ * @returns The refitted frame, inside the new area.
  */
-export function refitFrame(frame: ViewfinderRect, from: ViewfinderRect, to: ViewfinderRect): ViewfinderRect {
-  const k = Math.min(1, to.width / frame.width, to.height / frame.height);
-  const cx = to.x + ((frame.x + frame.width / 2 - from.x) / (from.width || 1)) * to.width;
-  const cy = to.y + ((frame.y + frame.height / 2 - from.y) / (from.height || 1)) * to.height;
-  const width = frame.width * k;
-  const height = frame.height * k;
+export function refitFrame(frame: ViewfinderRect, from: ViewfinderRect, to: ViewfinderRect, ratio: number | null): ViewfinderRect {
+  const sx = to.width / (from.width || 1);
+  const sy = to.height / (from.height || 1);
+  if (ratio === null) {
+    return { x: to.x + (frame.x - from.x) * sx, y: to.y + (frame.y - from.y) * sy, width: frame.width * sx, height: frame.height * sy };
+  }
+  const share = frame.width / (largestFrame(ratio, from).width || 1);
+  const width = Math.min(largestFrame(ratio, to).width * share, to.width);
+  const height = Math.min(width / ratio, to.height);
+  const fitted = height * ratio;
+  const cx = to.x + (frame.x + frame.width / 2 - from.x) * sx;
+  const cy = to.y + (frame.y + frame.height / 2 - from.y) * sy;
   return {
-    x: Math.min(Math.max(cx - width / 2, to.x), to.x + to.width - width),
+    x: Math.min(Math.max(cx - fitted / 2, to.x), to.x + to.width - fitted),
     y: Math.min(Math.max(cy - height / 2, to.y), to.y + to.height - height),
-    width,
+    width: fitted,
     height,
   };
+}
+
+/**
+ * Where the menu under the frame is centred: under the frame, kept inside the
+ * Space so none of its buttons is cut off.
+ * @param frame - The frame.
+ * @param menuWidth - The menu's width.
+ * @param stageWidth - The Space's width.
+ * @param inset - The gap kept from each side of the Space.
+ * @returns The menu's horizontal centre.
+ */
+export function menuCentre(frame: ViewfinderRect, menuWidth: number, stageWidth: number, inset: number): number {
+  const half = menuWidth / 2;
+  const low = half + inset;
+  const high = stageWidth - half - inset;
+  if (low > high) return stageWidth / 2;
+  return Math.min(Math.max(frame.x + frame.width / 2, low), high);
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   VIEWFINDER_RATIOS,
   captureSize,
   largestFrame,
+  menuCentre,
   refitFrame,
   resizeFrame,
   viewfinderRatioValue,
@@ -129,11 +130,38 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     const from = placedIn.current;
     placedIn.current = safe;
     if (phase === 'off' || (from.width === safe.width && from.height === safe.height && from.x === safe.x && from.y === safe.y)) return;
-    if (frame.width > 0 && frame.height > 0) dispatch({ type: 'frame', frame: refitFrame(frame, from, safe) });
-  }, [safe, phase, frame, dispatch]);
+    if (frame.width > 0 && frame.height > 0) dispatch({ type: 'frame', frame: refitFrame(frame, from, safe, ratioValue) });
+  }, [safe, phase, frame, ratioValue, dispatch]);
+
+  // The menu's width, so it can be kept inside the Space (it changes with the state and the locale).
+  const [menuWidth, setMenuWidth] = React.useState(0);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const setMenu = React.useCallback((element: HTMLDivElement | null): void => { menuRef.current = element; }, []);
+  React.useLayoutEffect(() => {
+    const element = menuRef.current;
+    if (!element) return;
+    /**
+     * Read the menu's laid-out width.
+     * @returns Nothing.
+     */
+    const measure = (): void => setMenuWidth(element.offsetWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [phase]);
+
+  // The phase as of the last press, ahead of the next render: a second press that lands before
+  // React re-renders reads it here, so one press starts one send.
+  const pressed = React.useRef(phase);
+  pressed.current = phase;
+  // Changes each time the viewfinder opens; a capture is kept only by the opening that started it.
+  const opening = React.useRef(0);
+  const capturing = React.useRef(false);
 
   const toggle = React.useCallback((): void => {
     if (phase !== 'off') { dispatch({ type: 'close' }); return; }
+    opening.current += 1;
     placedIn.current = safe;
     dispatch({ type: 'open', frame: largestFrame(ratioValue, safe) });
   }, [phase, safe, ratioValue, dispatch]);
@@ -155,7 +183,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   }, [frame, config]);
   const onCornerMove = React.useCallback((event: React.PointerEvent<HTMLSpanElement>): void => {
     const gesture = drag.current;
-    if (gesture === null || config === undefined) return;
+    // A drag the viewfinder closed during never got its pointerup; a move without the button held ends it.
+    if (gesture === null || config === undefined || (event.buttons & 1) === 0) { drag.current = null; return; }
     const { corner, start, origin } = gesture;
     const at = { x: (corner.includes('e') ? start.x + start.width : start.x) + event.clientX - origin.x,
       y: (corner.includes('s') ? start.y + start.height : start.y) + event.clientY - origin.y };
@@ -165,15 +194,20 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
 
   const confirm = React.useCallback(async (): Promise<void> => {
     if (modelsLoading) { toast.warning(t('spaces.threeD.viewfinder.modelsLoading')); return; }
-    if (capture === null || config === undefined) return;
+    if (capture === null || config === undefined || capturing.current) return;
+    capturing.current = true;
+    const started = opening.current;
     try {
       const size = captureSize(frame, config.longEdgePx);
       const blob = await encodeCapturePng(await capture(frame, size));
+      if (opening.current !== started || pressed.current !== 'framing') return;
       const file = new File([blob], captureFileName(spaceName), { type: 'image/png' });
       dispatch({ type: 'captured', shot: { file, url: URL.createObjectURL(blob), ...size } });
     } catch (err) {
       console.warn('viewfinder capture failed', err);
       toast.error(t('spaces.threeD.viewfinder.captureFailed'));
+    } finally {
+      capturing.current = false;
     }
   }, [modelsLoading, capture, config, frame, spaceName, dispatch, t]);
 
@@ -189,6 +223,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
    * @param run - The send, answering how the viewfinder goes on.
    */
   const send = React.useCallback((target: ViewfinderTarget, run: () => Promise<ViewfinderOutcome>): void => {
+    if (pressed.current !== (target === 'canvas' ? 'picking' : 'captured')) return;
+    pressed.current = 'sending';
     const session = state.session;
     dispatch({ type: 'send', target });
     void run().then((outcome) => dispatch({ type: 'settle', session, outcome }));
@@ -270,8 +306,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
           onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
       </div>
     </div>
-    <div data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
-      style={{ left: frame.x + frame.width / 2, top: menuTop }}>
+    <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
+      style={{ left: menuCentre(frame, menuWidth, stage.width, INSETS.side), top: menuTop }}>
       {framing ? <React.Fragment key='framing'>
         <Select value={ratio} onValueChange={changeRatio}>
           <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-8 w-24 text-xs'><SelectValue /></SelectTrigger>

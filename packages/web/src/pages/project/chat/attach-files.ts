@@ -7,7 +7,7 @@ import {
   checkFileAdmission,
   fileToNodeSpec,
   uploadAcceptFor,
-  refusedFormatParams,
+  mediaFormatNotice,
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
 import { pickExtractor, textExtractAccept } from '@web/spaces/canvas/text-extract';
@@ -57,15 +57,6 @@ export function attachAccept(): string {
 interface Accepted {
   file: File;
   item: TrayItem;
-}
-
-/**
- * Describe a media file refused for its format.
- * @param file - The file whose medium determines the supported formats.
- * @returns The notice rendered through the attachment tray's toast entry.
- */
-function mediaFormatNotice(file: Pick<File, 'name' | 'type'>): TrayNotice {
-  return { key: 'unsupportedMedia', filename: file.name, ...refusedFormatParams(file) };
 }
 
 /**

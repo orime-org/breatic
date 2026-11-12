@@ -33,6 +33,17 @@ describe('routing a "View" press to its canvas (#1411 design 5.4)', () => {
     expect(useCanvasRevealStore.getState().request).not.toBeNull();
   });
 
+  it('opens the canvas once, and drops the request when the user moves to another tab after it came to the front', () => {
+    const open = vi.fn();
+    const { rerender } = renderHook(({ active }) => useCanvasRevealRouting(SPACES, active, open, true), { initialProps: { active: 'd1' as string | null } });
+    act(() => useCanvasRevealStore.getState().reveal('c1', 'gone-node'));
+    expect(open).toHaveBeenCalledTimes(1);
+    rerender({ active: 'c1' });
+    rerender({ active: 'd1' });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(useCanvasRevealStore.getState().request).toBeNull();
+  });
+
   it('drops a request for a Space that is gone or is not a canvas', () => {
     const open = vi.fn();
     renderHook(() => useCanvasRevealRouting(SPACES, null, open, true));

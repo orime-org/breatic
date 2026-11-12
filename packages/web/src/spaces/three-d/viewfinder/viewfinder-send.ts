@@ -3,20 +3,11 @@
 
 import { newId } from '@breatic/shared';
 import { assetsApi } from '@web/data/api';
-import { checkFileAdmission, refusedFormatParams } from '@web/spaces/canvas/canvas-upload';
+import { checkFileAdmission, mediaFormatNotice } from '@web/spaces/canvas/canvas-upload';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { openTray, uploadTrayItem } from '@web/stores/attach-to-chat';
-import { chatAttachments, type TrayItem, type TrayNotice } from '@web/stores/chat-attachments';
+import { chatAttachments, type TrayItem } from '@web/stores/chat-attachments';
 import { useUIStore } from '@web/stores/ui';
-
-/**
- * What the tray says about a media file turned away for its format.
- * @param file - The file.
- * @returns The notice.
- */
-function mediaFormatNotice(file: File): TrayNotice {
-  return { key: 'unsupportedMedia', filename: file.name, ...refusedFormatParams(file) };
-}
 
 /**
  * Put a capture into the Agent tray the way a picked image is (#1411 design

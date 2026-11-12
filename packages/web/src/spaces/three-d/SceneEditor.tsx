@@ -98,8 +98,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
   const [viewfinder, dispatchViewfinder] = React.useReducer(viewfinderReducer, INITIAL_VIEWFINDER);
   const framing = viewfinder.phase !== 'off';
-  const framingRef = React.useRef(framing);
-  framingRef.current = framing;
   const viewfinderPhase = React.useRef(viewfinder.phase);
   viewfinderPhase.current = viewfinder.phase;
   const [frameCapture, setFrameCapture] = React.useState<SceneFrameCapture | null>(null);
@@ -412,7 +410,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
       keepTasksPanel.current = false;
-    } else if (framingRef.current) {
+    } else if (viewfinderPhase.current !== 'off') {
       // While framing, the panel follows only its own buttons, so the frame does not move with a selection (#1411 design 3.2).
     } else if (snapshot.selectedIds.length > 0 && !importOpen) {
       // An open import dialog keeps the overlay slot; a collaborator's change to the selection must not close it.
@@ -568,7 +566,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
                   onCapture={onCapture} viewLocked={viewfinder.phase !== 'off' && viewfinder.phase !== 'framing'} />
               </React.Suspense>}
-      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%-6rem)] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
+      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}

@@ -9,8 +9,9 @@
 
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
-import { openSmokeProject } from '../helpers/project';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { seedImageNode } from '../helpers/tab-restore';
 
 /**
  * Open the viewfinder, drag the bottom-right corner inward and capture.
@@ -42,6 +43,8 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
   await openSmokeProject(page);
   const canvasName = `viewfinder-target-${Date.now()}`;
   const canvasId = await createSpace(page, 'canvas', canvasName);
+  // A node far from where the capture lands, so a canvas opening on everything would not centre on the capture.
+  await seedImageNode(page, smokeProjectId(), canvasId, { x: 1600, y: 1200 });
   const sceneId = await createSpace(page, '3d', `viewfinder-${Date.now()}`);
   try {
     const space = visibleSpace(page);
@@ -62,7 +65,29 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
     await expect(page.locator('[data-testid^="chat-chip-"][data-status="ready"]').filter({ hasText: '3D-' })).toHaveCount(1);
     await expect(space.getByTestId('scene-map')).toBeVisible();
 
-    // Canvas: the list names the canvas; View opens it with the new node selected.
+    // Canvas: the list names the canvas; View opens it, never opened in this browser, with the new
+    // node selected in the middle of the view.
+    const canvasTab = page.getByTestId(`space-tab-${canvasId}`);
+    await canvasTab.hover();
+    await canvasTab.getByRole('button', { name: 'Close Space tab' }).click();
+    await expect(canvasTab).toHaveCount(0);
+    await page.evaluate((id) => {
+      const raw = localStorage.getItem('breatic.projectTabs');
+      if (raw === null) return;
+      /**
+       * Drop the stored camera of one Space wherever it is kept.
+       * @param value - Part of the stored record.
+       */
+      const strip = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return;
+        const entry = value as Record<string, unknown>;
+        if (entry.spaceId === id) delete entry.viewport;
+        Object.values(entry).forEach(strip);
+      };
+      const record = JSON.parse(raw) as unknown;
+      strip(record);
+      localStorage.setItem('breatic.projectTabs', JSON.stringify(record));
+    }, canvasId);
     await frameAndCapture(page);
     await space.getByTestId('scene-viewfinder-menu').getByRole('button', { name: 'Add to Canvas', exact: true }).click();
     const list = page.getByTestId('scene-viewfinder-canvas-list');
@@ -74,6 +99,11 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
     await expect(page.getByTestId(`space-tab-${canvasId}`)).toHaveAttribute('aria-selected', 'true');
     const node = visibleSpace(page).locator('.react-flow__node.selected');
     await expect(node).toHaveCount(1, { timeout: 30_000 });
+    const pane = await visibleSpace(page).locator('.react-flow').boundingBox();
+    await expect.poll(async () => {
+      const box = await node.boundingBox();
+      return box && pane ? Math.abs(box.x + box.width / 2 - (pane.x + pane.width / 2)) : Infinity;
+    }, { timeout: 5_000 }).toBeLessThan(40);
     await expect(node.locator('img')).toHaveAttribute('src', /^https?:/, { timeout: 60_000 });
     // The node may draw a thumbnail; the stored original is what must be 2048 on its long edge.
     const src = await node.locator('img').getAttribute('src');

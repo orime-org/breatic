@@ -22,6 +22,7 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
+import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useUIStore } from '@web/stores/ui';
 
 const h = vi.hoisted(() => ({
@@ -201,6 +202,20 @@ describe('framing (acceptance 2)', () => {
     expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument();
   });
 
+  it('forgets a corner drag the viewfinder was closed during', async () => {
+    await setup();
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    fireEvent.click(trigger());
+    const corner = screen.getByTestId('scene-viewfinder-corner-se');
+    fireEvent.pointerDown(corner, { pointerId: 1, buttons: 1, clientX: 900, clientY: 600 });
+    fireEvent.keyDown(screen.getByTestId('scene-native-boundary'), { key: 'Escape' });
+    expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
+    fireEvent.click(trigger());
+    const before = screen.getByTestId('scene-viewfinder-frame').getAttribute('style');
+    fireEvent.pointerMove(screen.getByTestId('scene-viewfinder-corner-se'), { pointerId: 1, buttons: 0, clientX: 700, clientY: 450 });
+    expect(screen.getByTestId('scene-viewfinder-frame').getAttribute('style')).toBe(before);
+  });
+
   it('closes on the button and on Escape, keeping the selection', async () => {
     const { session } = await setup();
     fireEvent.click(trigger());
@@ -268,6 +283,15 @@ describe('the destinations (acceptance 5 to 8)', () => {
     expect(h.add).toHaveBeenCalledWith('conv', [expect.objectContaining({ type: 'image', status: 'uploading' })], { maxItems: 5, maxChars: 1000 });
     expect(h.uploadTrayItem).toHaveBeenCalledOnce();
     expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
+  });
+
+  it('keeps Add to Agent unavailable while the chat switches conversations, and gives it back after', async () => {
+    await setup();
+    await capture();
+    act(() => useConversationRuntime.setState({ navigatingByProject: { project: true } }));
+    expect(button('toAgent')).toBeDisabled();
+    act(() => useConversationRuntime.setState({ navigatingByProject: {} }));
+    expect(button('toAgent')).toBeEnabled();
   });
 
   it('stays on the captured shot when the Agent upload fails', async () => {
