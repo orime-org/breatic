@@ -32,7 +32,7 @@ export function assertServable(model: string, displayName: string, route?: Route
  * @throws {ValidationError} When the route names an upstream the model has no route on.
  */
 export function assertLlmServable(model: string, use: "call" | "understand", route?: Route): void {
-  refuseUnservable(route === undefined ? llmServability(model, use) : llmServability(model, use, route), model);
+  refuseUnservable(llmServability(model, use, route), model);
 }
 
 /**

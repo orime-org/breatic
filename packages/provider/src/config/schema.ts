@@ -437,6 +437,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
         for (const step of binding.extra_steps ?? []) {
           if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
           if (step.kind === "speak" && (binding.reused_by === undefined || step.at !== "after")) problems.push(`${model}: the binding to "${upstream}" has a speak step that does not follow its own voice call (it needs reused_by and at: after)`);
+          if (step.kind === "rig" && step.at !== "after") problems.push(`${model}: the binding to "${upstream}" has a rig step before its own call, which makes the model it rigs (it needs at: after)`);
         }
       }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);

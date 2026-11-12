@@ -172,6 +172,11 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain(key);
   });
 
+  it("refuses a rig step before the model's own call, which has not made the model yet, naming model and upstream", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [{ ...rigStep, at: "before" }] } as unknown as Partial<MediaBinding>)]));
+    expect(problems).toEqual([expect.stringMatching(/seedance.*"wavespeed".*rig/)]);
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);
