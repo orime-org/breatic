@@ -3749,7 +3749,7 @@ function CanvasSpaceInner({
         modality,
         ...(tag !== undefined && { tag }),
         ...(continuing !== undefined && { continuing }),
-      }).sent,
+      }),
     [projectId, spaceId],
   );
   // Fill a browser tool's result nodes with its export in one batch upload

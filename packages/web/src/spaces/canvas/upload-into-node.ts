@@ -65,12 +65,6 @@ export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spa
   if (plan.keepFileFor !== undefined) stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
 }
 
-/** A started upload into a node: the send the leave guard waits on. */
-export interface StartedUploadIntoNode {
-  /** Ends when the bytes are on their way or the fill stopped; undefined when it never started. */
-  sent: Promise<void> | undefined;
-}
-
 /**
  * Fill an existing canvas node from a file and wait until its bytes are on
  * their way; how the upload ends shows on the node.
@@ -80,7 +74,7 @@ export interface StartedUploadIntoNode {
  * @returns Once the bytes are on their way or the fill stopped.
  */
 export function uploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): Promise<void> {
-  return startUploadIntoNode(target, file, options).sent ?? Promise.resolve();
+  return startUploadIntoNode(target, file, options) ?? Promise.resolve();
 }
 
 /**
@@ -94,9 +88,9 @@ export function uploadIntoNode(target: UploadTarget, file: File, options: Upload
  * @param target - The node.
  * @param file - The file.
  * @param options - Modality, tool tag and a continuing mark.
- * @returns The send.
+ * @returns The send the leave guard waits on, ending when the bytes are on their way or the fill stopped; undefined when it never started.
  */
-export function startUploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): StartedUploadIntoNode {
+export function startUploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): Promise<void> | undefined {
   const { projectId, spaceId, nodeId } = target;
   const { tag, continuing } = options;
   const modality = options.modality ?? fileToNodeSpec(file).nodeType;
@@ -105,12 +99,12 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
   if (gateBlock) {
     warnNodeGate(t(gateBlock.toastKey));
     if (continuing !== undefined) marks.answer(spaceId, nodeId, continuing);
-    return { sent: undefined };
+    return undefined;
   }
   const added = checkAdd(docName.canvasSpace(projectId, spaceId));
   if (!added.ok) {
     if (continuing !== undefined) marks.fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
-    return { sent: undefined };
+    return undefined;
   }
   const markOp = continuing ?? marks.begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
   const work = (async (): Promise<void> => {
@@ -147,5 +141,5 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
   const ops = useSpaceOperationsStore.getState();
   ops.register(spaceId, nodeId);
   void work.finally(() => ops.unregister(spaceId, nodeId));
-  return { sent: work };
+  return work;
 }

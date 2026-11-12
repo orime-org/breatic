@@ -5,7 +5,7 @@
  * Uploading a file into an existing canvas node, the picker and Retry path
  * lifted out of `CanvasSpace` so a 3D capture can use it too (#1411 design
  * 5.3): the same gates, marks, reports and toasts; the caller only learns
- * when it ended, and the node shows how.
+ * when the bytes are on their way, and the node shows how the upload ends.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,6 +92,12 @@ describe('uploadIntoNode', () => {
     expect(busyWhileSending).toBe(true);
     expect(busy()).toBe(false);
     expect(mark()).toBeUndefined();
+  });
+
+  it('ends once the bytes are sent even while the server has not registered them yet', async () => {
+    h.waitForUploadEnding.mockReturnValue(new Promise(() => undefined));
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
+    expect(busy()).toBe(false);
   });
 
   it('refuses a locked node with the node-gate warning and sends nothing', async () => {
