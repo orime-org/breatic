@@ -7,7 +7,7 @@ import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentat
 import { Skeleton } from '@web/components/ui/skeleton';
 import { ArrowUpRight, AudioLines, Check, Film, MousePointer2, Plus, RefreshCw, RotateCcw, Scan, Square, Trash2, Users } from 'lucide-react';
 import { newId, type ModelEntry } from '@breatic/shared';
-import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVideoSplit, type LipsyncFailureReason, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVideoSplit, type LipsyncFailureReason, presentationCoveringFrame, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -404,8 +404,8 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const duration = presentationVideoEnd(table);
   const cuts = React.useMemo(() => splitCuts(duration, draft.params.cuts), [duration, draft.params.cuts]);
   const segments = React.useMemo(() => planVideoSplit(table, cuts), [table, cuts]);
-  // Each handle sits on the frame start its cut splits at.
-  const snapped = React.useMemo(() => cuts.map((cut) => presentationFrameAt(table, planVideoFrames(table, { mode: 'current', currentTime: cut })[0]!.frameIndex).pts), [table, cuts]);
+  // Each handle sits on the frame start its cut splits at, by the rule planVideoSplit snaps with.
+  const snapped = React.useMemo(() => cuts.map((cut) => presentationFrameAt(table, presentationCoveringFrame(table, cut)).pts), [table, cuts]);
   const [dragging, setDragging] = React.useState<{ index: number; time: number; moved: boolean } | null>(null);
   const gesture = React.useRef<string | null>(null);
   React.useEffect(() => { gesture.current = null; setDragging(null); }, [draft.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
