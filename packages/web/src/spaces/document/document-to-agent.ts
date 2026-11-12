@@ -30,7 +30,7 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { cellsBlocks, tableClippedBlocks } from '@web/spaces/document/document-table-copy';
+import { cellsBlocks, storedTableRange, tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /**
@@ -113,14 +113,16 @@ function holdsContentBetween(node: PMNode, from: number, to: number): boolean {
 
 /**
  * Whether a selection holds something to hand the Agent. A selection leaving
- * a table hands the table whole (`tableClippedBlocks`), so that wider range
- * is what is read.
+ * a table hands the table whole, and one reaching into a stored (legacy) table
+ * the stored table whole (`tableClippedBlocks`, in that order), so that wider
+ * range is what is read; the stored branch goes with #1362's conversion of
+ * stored tables, as the copy's does.
  * @param doc - The document.
  * @param selection - The selection.
  * @returns True when it does.
  */
 export function selectionHoldsContent(doc: PMNode, selection: Selection): boolean {
-  const held = heldRange(selection);
+  const held = storedTableRange(selection) ?? heldRange(selection);
   if (held !== null) return holdsContentBetween(doc, held.from, held.to);
   return selection.ranges.some((range) => holdsContentBetween(doc, range.$from.pos, range.$to.pos));
 }

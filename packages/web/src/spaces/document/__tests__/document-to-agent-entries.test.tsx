@@ -151,6 +151,25 @@ describe('the bubble bar entry', () => {
     expect(addToAgentTool.canRun(editor as never)).toBe(true);
   });
 
+  it('hands a drag from a stored table\'s empty cell out to a line of spaces, which takes the stored table whole', () => {
+    const editor = openWith([{ type: 'paragraph', content: '  ' }]);
+    const view = editor.prosemirrorView!;
+    const { schema } = view.state;
+    const cell = (words: string): ReturnType<typeof schema.node> =>
+      schema.nodes['tableCell']!.create(null, [schema.nodes['tableParagraph']!.create(null, words === '' ? [] : [schema.text(words)])]);
+    const table = schema.nodes['table']!.create(null, [schema.nodes['tableRow']!.create(null, [cell('old a'), cell('')])]);
+    view.dispatch(view.state.tr.insert(1, schema.nodes['blockContainer']!.create({ id: 'legacy' }, [table])));
+    let lastCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableParagraph') lastCell = pos;
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, lastCell + 1, view.state.doc.content.size - 3)));
+
+    expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('old a') });
+    expect(addToAgentTool.canRun(editor as never)).toBe(true);
+  });
+
   it('is unavailable over a selection of spaces over a picture still uploading', () => {
     const editor = openWith([
       { type: 'paragraph', content: '  ' },
