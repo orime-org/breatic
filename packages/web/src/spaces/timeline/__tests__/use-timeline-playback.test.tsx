@@ -500,7 +500,7 @@ describe('useTimelinePlayback', () => {
     expect(media.play).toHaveBeenCalledTimes(0);
   });
 
-  it('resumes an already playing buffered seek from current media properties', async () => {
+  it('pauses a playing lane for a user seek and plays it again once the seek lands (§6.3)', async () => {
     const media = mediaFixture();
     const hook = renderPlayback(media);
     act(() => hook.result.current.toggle());
@@ -509,10 +509,12 @@ describe('useTimelinePlayback', () => {
     act(() => hook.result.current.seek(48));
     expect(hook.result.current.state).toBe('waiting');
     expect(media.facts.currentTime).toBe(2);
-    expect(media.pause).toHaveBeenCalledTimes(0);
-    mediaEvent(media, 'seeked', { seeking: false, paused: false, readyState: 4 });
+    expect(media.pause).toHaveBeenCalledTimes(1);
+    expect(media.facts.paused).toBe(true);
+    mediaEvent(media, 'seeked', { seeking: false, readyState: 4 });
+    expect(media.play).toHaveBeenCalledTimes(2);
+    await settle();
     expect(hook.result.current.state).toBe('playing');
-    expect(media.play).toHaveBeenCalledTimes(1);
     tick(250);
     expect(hook.result.current.frame).toBe(54);
   });
@@ -866,6 +868,32 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.frame).toBe(48);
     expect(a.facts.paused).toBe(false);
     expect(a.pause).toHaveBeenCalledTimes(pauses);
+  });
+
+  it('pauses a lane at once when its layer fails while playing, and keeps it paused through another lane\'s wait (§6.2)', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    const playsB = b.play.mock.calls.length;
+    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'failed' } });
+    expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
+    expect(b.facts.paused).toBe(true);
+    expect(a.facts.paused).toBe(false);
+    tick(2000);
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('playing');
+    expect(hook.result.current.frame).toBe(48);
+    expect(b.facts.paused).toBe(true);
+    // The main lane runs dry: the wait and the resume after it leave the failed lane alone.
+    mediaEvent(a, 'waiting', { currentTime: 1.9, readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(a.facts.paused).toBe(false);
+    expect(b.facts.paused).toBe(true);
+    expect(b.play).toHaveBeenCalledTimes(playsB);
   });
 
   it('pauses a hidden Space and keeps it paused when shown again', async () => {
@@ -1566,6 +1594,47 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(54);
   });
 
+  it('pauses every lane at a user seek while playing, holds a lane that landed first, and plays all once every seek has landed (§6.3)', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    // Frame 96 samples 4 s: both lanes are about 3 s off and must seek.
+    act(() => hook.result.current.seek(96));
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.seeks).toEqual([4]);
+    expect(b.seeks).toEqual([4]);
+    expect(a.facts.paused).toBe(true);
+    expect(b.facts.paused).toBe(true);
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.facts.paused).toBe(true);
+    expect(a.play).toHaveBeenCalledTimes(1);
+    tick(2000);
+    expect(hook.result.current.frame).toBe(96);
+    expect(a.facts.currentTime).toBe(4);
+    const pending = deferredPlay();
+    b.play.mockReturnValueOnce(pending.promise);
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(a.play).toHaveBeenCalledTimes(2);
+    expect(b.play).toHaveBeenCalledTimes(2);
+    // The clock anchors only once every play() has settled.
+    expect(hook.result.current.state).toBe('waiting');
+    tick(2500);
+    expect(hook.result.current.frame).toBe(96);
+    await act(async () => {
+      b.facts.paused = false;
+      pending.resolve();
+      await pending.promise;
+    });
+    expect(hook.result.current.state).toBe('playing');
+    tick(2750);
+    expect(hook.result.current.frame).toBe(102);
+  });
+
   it('after a user pause brings every lane within half a frame of the paused frame, seeking only those beyond it', async () => {
     const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
@@ -1902,6 +1971,41 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     expect(a.play).toHaveBeenCalledTimes(plays);
     expect(b.pause).toHaveBeenCalledTimes(pausesB);
+  });
+
+  it('keeps playing while the one tail seek is in flight even when the element drops to readyState 1 during it (§6.3)', async () => {
+    const a = mediaFixture({ duration: 1 });
+    const b = mediaFixture();
+    const hook = renderPlayback(a, {
+      document: timelineDocument([TAIL_CLIP, LANE_B], [TAIL_SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[TAIL_CLIP.id, a], [LANE_B.id, b]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    // The element lags 30 ms behind the clock, so it has not ended yet.
+    tick(1000, () => Object.assign(a.facts, { currentTime: 0.97, ended: false, paused: false }));
+    const plays = a.play.mock.calls.length;
+    const pausesB = b.pause.mock.calls.length;
+    // The clock samples 1.02 s, past the 1 s file; the element is 10 ms short of its end and seeks there once.
+    at(1020, [[a, 0.99]]);
+    expect(a.seeks).toHaveLength(1);
+    expect(Math.abs((a.seeks[0] ?? 0) - 1)).toBeLessThanOrEqual(0.001);
+    expect(a.facts.ended).toBe(false);
+    // Real browsers lower readyState while a seek is in flight, and announce it with `seeking`.
+    mediaEvent(a, 'seeking', { seeking: true, readyState: 1 });
+    expect(hook.result.current.state).toBe('playing');
+    expect(b.facts.paused).toBe(false);
+    tick(1040);
+    tick(1060);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.state).toBe('playing');
+    mediaEvent(a, 'seeked', { seeking: false, ended: true, readyState: 2 });
+    tick(1080);
+    expect(hook.result.current.state).toBe('playing');
+    expect(a.seeks).toHaveLength(1);
+    expect(a.play).toHaveBeenCalledTimes(plays);
+    expect(b.pause).toHaveBeenCalledTimes(pausesB);
+    expect(b.facts.paused).toBe(false);
   });
 
   it('resumes after a stall in one lane while another holds its tail, without play() on the held lane', async () => {

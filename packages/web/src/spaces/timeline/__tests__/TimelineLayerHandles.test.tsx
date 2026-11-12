@@ -15,8 +15,9 @@
  * - During a gesture `onOverride(transform)` reports the live value in canvas pixels (and the proxy follows it);
  *   `onOverride(null)` clears it. On release the value is converted, clamped, normalised and rounded (§3.1) and
  *   handed to `onCommit` once, only when it differs from the stored one. Esc, a window blur and unmounting cancel
- *   without committing. `onDraggingChange` is true from the press to the end or cancel of a gesture. A press that does
- *   not move hands its input event to `onPick` for the topmost hit test.
+ *   without committing. `onDraggingChange` is true from the first move of a gesture to its end or cancel (design §7.1:
+ *   press and move); a press that never moves reports nothing and hands its input event to `onPick` for the topmost hit
+ *   test.
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -127,8 +128,9 @@ describe('TimelineLayerHandles move (§4.3, §7.2)', () => {
   it('follows the drag locally without committing, then commits the canvas-pixel position once on release', () => {
     const { onOverride, onCommit, onDraggingChange } = showHandles();
     gesture.dragStart();
-    expect(onDraggingChange).toHaveBeenLastCalledWith(true);
+    expect(onDraggingChange).not.toHaveBeenCalled();
     const last = gesture.drag([100, 50]);
+    expect(onDraggingChange.mock.calls).toEqual([[true]]);
     expect(onOverride).toHaveBeenLastCalledWith({ x: 200, y: 100, scaleX: 1, scaleY: 1, rotation: 0 });
     expect(proxyTransform()).toMatch(layerCss(100, 50, 0, 1, 1));
     expect(onCommit).not.toHaveBeenCalled();
@@ -155,12 +157,24 @@ describe('TimelineLayerHandles move (§4.3, §7.2)', () => {
     expect(onDraggingChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('commits nothing and ends the gesture for a press that never moved', () => {
+  it('commits nothing and reports no drag for a press that never moved', () => {
     const { onCommit, onDraggingChange } = showHandles();
     gesture.dragStart();
     gesture.dragEnd();
     expect(onCommit).not.toHaveBeenCalled();
-    expect(onDraggingChange).toHaveBeenLastCalledWith(false);
+    expect(onDraggingChange).not.toHaveBeenCalled();
+  });
+
+  it('reports dragging on the first move only, once, and its end on release', () => {
+    const { onDraggingChange } = showHandles();
+    gesture.dragStart();
+    expect(onDraggingChange).not.toHaveBeenCalled();
+    gesture.drag([10, 0]);
+    expect(onDraggingChange.mock.calls).toEqual([[true]]);
+    const last = gesture.drag([20, 0]);
+    expect(onDraggingChange.mock.calls).toEqual([[true]]);
+    gesture.dragEnd(last);
+    expect(onDraggingChange.mock.calls).toEqual([[true], [false]]);
   });
 });
 
@@ -264,6 +278,14 @@ describe('TimelineLayerHandles click without movement (§4.2)', () => {
     const event = gesture.click(720, 135);
     expect(onPick).toHaveBeenCalledTimes(1);
     expect(onPick.mock.calls[0]?.[0]).toBe(event);
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('never reports dragging for a click, though Moveable starts and ends a drag around it', () => {
+    const { onCommit, onDraggingChange, onPick } = showHandles();
+    gesture.click(720, 135);
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(onDraggingChange).not.toHaveBeenCalled();
     expect(onCommit).not.toHaveBeenCalled();
   });
 });

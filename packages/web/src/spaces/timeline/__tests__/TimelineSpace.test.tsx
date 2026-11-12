@@ -35,6 +35,7 @@ import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
+import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -3058,5 +3059,82 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     await waitFor(() => expect(localCalls).toBe(2));
     await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl));
     expect(selectedOnTrack(CLIP.id)).toBe('true');
+  });
+
+  /**
+   * Seed the full-frame CLIP (the default asset) on the main track and the picture-in-picture X (LOCAL_ASSET) above it.
+   * @param withClip - Whether CLIP is there under X.
+   * @throws {Error} When the fixture is invalid.
+   */
+  function seedPipOwnAsset(withClip = true): void {
+    const pip = clipAt(X, 'v2', 0, 24, { sourceId: SOURCE_B.id, transform: PIP });
+    const server = seededDoc(timeline(withClip ? [clipAt(CLIP.id, MAIN, 0, 48), pip] : [pip], [track(MAIN, 0), track('v2', 1)], [SOURCE, SOURCE_B]));
+    try { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider'); } finally { server.destroy(); }
+  }
+
+  it('picks the lower ready layer, not an upper video whose asset read failed, and gives the failed one no handles (§4.2)', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
+      if (assetId === LOCAL_ASSET.assetId) throw new Error('unreachable');
+      return ASSET;
+    });
+    seedPipOwnAsset();
+    showTimeline();
+    await waitFor(() => expect(previewVideo(CLIP.id)).toHaveAttribute('src', ASSET.fileUrl));
+    await waitFor(() => screen.getByTestId('timeline-video-retry-' + X));
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(selectedOnTrack(X)).toBe('false');
+    await handlesShown();
+    // Selected from its track, the failed layer still gets no handles.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
+  it('selects nothing for a click on a video whose asset is still loading, and gives it no handles (§4.2)', async () => {
+    const pending = deferred<ProjectRegisteredAsset>();
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? pending.promise : ASSET);
+    seedPipOwnAsset(false);
+    showTimeline();
+    const notes = await screen.findByTestId('timeline-preview-notes');
+    await waitFor(() => within(notes).getByTestId('timeline-web-note-' + X));
+    clickPreview(PIP_CENTRE);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(selectedOnTrack(X)).toBe('false');
+    expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
+  it('gives the preview frame its own stacking context, so layer z-indexes stay under the operation and note layers (§4.1)', async () => {
+    seedPip();
+    showTimeline();
+    await waitFor(() => previewVideo(X));
+    expect(screen.getByTestId('timeline-preview')).toHaveClass('isolate');
+  });
+
+  it('keeps a video ready, with no unavailable note, when a refetch of its asset fails while its data is cached (§6.2)', async () => {
+    let localCalls = 0;
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
+      if (assetId !== LOCAL_ASSET.assetId) return ASSET;
+      localCalls += 1;
+      if (localCalls === 1) return LOCAL_ASSET;
+      throw new Error('unreachable');
+    });
+    seedPipOwnAsset();
+    const { client } = showTimeline();
+    await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl));
+    const key = timelineAssetKey(PROJECT, LOCAL_ASSET.assetId);
+    await act(async () => { await client.refetchQueries({ queryKey: key }); });
+    expect(localCalls).toBe(2);
+    expect(client.getQueryState(key)?.status).toBe('error');
+    expect(client.getQueryData(key)).toEqual(LOCAL_ASSET);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(screen.queryByTestId('timeline-web-note-' + X)).toBe(null);
+    expect(screen.queryByTestId('timeline-video-retry-' + X)).toBe(null);
+    expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl);
   });
 });

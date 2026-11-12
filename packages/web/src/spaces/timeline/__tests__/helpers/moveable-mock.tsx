@@ -248,12 +248,15 @@ export const gesture = {
    */
   rotateEnd(lastEvent?: Record<string, unknown>): void { emit('onRotateEnd', end(lastEvent)); },
   /**
-   * A press inside the selected box that did not move, at these client coordinates.
+   * A press inside the selected box that did not move, at these client coordinates. Moveable 0.56 starts a drag on the
+   * press and ends it on release (`isDrag` false, no `lastEvent`) before it calls `onClick`, so this replays all three.
    * @param clientX - Its x.
    * @param clientY - Its y.
    * @returns The input event Moveable reports.
    */
   click(clientX: number, clientY: number): MouseEvent {
+    emit('onDragStart', start());
+    emit('onDragEnd', end(undefined));
     const event = input('click', clientX, clientY);
     const proxy = target();
     emit('onClick', { target: proxy, currentTarget: null, inputEvent: event, inputTarget: proxy, moveableTarget: proxy, isTarget: true, containsTarget: true, isDouble: false });
