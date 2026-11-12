@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { TIMELINE_PREVIEW_DEFAULTS, t, type TimelineDocumentV1, type TimelinePreviewSyncLimits } from '@breatic/shared';
-import { timelineTrackRank } from '@web/data/yjs/timeline-order';
+import { nextTimelinePlaybackBoundary } from '@web/data/yjs/timeline-layers';
 import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { toast } from '@web/lib/toast';
 import { timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
@@ -12,8 +12,6 @@ import {
   type TimelineVideoLayer, type TimelineVideoLayerState, type VideoLane,
 } from '@web/spaces/timeline/video-layer-controller';
 import { createWebAnimationHost, type TimelineWebLayer, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
-
-export type { TimelineWebLayer };
 
 const NO_WEB_LAYERS: readonly TimelineWebLayer[] = [];
 const NO_VIDEO_LAYERS: readonly TimelineVideoLayer[] = [];
@@ -396,12 +394,12 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     }
 
     /**
-     * Freeze the preview on the current frame: every lane pauses, the awaited lanes seek to the frame, and the other
-     * lanes seek too when further off than the resume threshold (#1410 design §6.3, Remotion `get-media-sync-action.ts:126-137`).
-     * @param awaited - The lanes the wait is for.
+     * Hold the preview on the current frame (#1410 design §6.3, Remotion `get-media-sync-action.ts:126-137`): the clock
+     * stops, every visible lane pauses, and a lane further off the frame than the resume threshold seeks back to it. Every
+     * wait goes through here, so no lane plays on while the preview waits.
      * @throws {never} Never.
      */
-    function freeze(awaited: readonly VideoLane[]): void {
+    function hold(): void {
       cancelFrame();
       anchor = null;
       boundaryAnchor = null;
@@ -409,16 +407,24 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const lanes = activeLanes();
       stop(lanes);
       for (const lane of lanes) {
+        if (inTail(lane) || lane.awaitingSeek) continue;
         const target = targetOf(lane);
-        if (target === null) continue;
-        if (awaited.includes(lane)) place(lane, target, 0);
-        else if (!inTail(lane) && !lane.awaitingSeek) place(lane, target, limits().resumeSeekSeconds);
+        if (target !== null) place(lane, target, limits().resumeSeekSeconds);
       }
-      for (const lane of awaited) if (!lanes.includes(lane)) {
+      for (const lane of lanes) advanceSeek(lane);
+    }
+
+    /**
+     * Hold the preview for lanes that must land exactly on the current frame: they seek to it, the others as `hold` says.
+     * @param awaited - The lanes the wait is for.
+     * @throws {never} Never.
+     */
+    function freeze(awaited: readonly VideoLane[]): void {
+      for (const lane of awaited) {
         const target = targetOf(lane);
         if (target !== null) place(lane, target, 0);
       }
-      for (const lane of lanes) advanceSeek(lane);
+      hold();
     }
 
     /**
@@ -484,15 +490,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
       const { document, readyClipIds } = latest.current;
-      const rank = timelineTrackRank(document.tracks);
-      let boundary = end;
-      for (const clip of Object.values(document.clips)) {
-        if (!rank.has(clip.trackId) || !readyClipIds.has(clip.id)) continue;
-        // The clock stops where a ready clip starts and where a showing web copy ends, since its instance can pass to
-        // another copy there; where only videos end, the lanes left go on.
-        const at = clip.startFrame > position.current ? clip.startFrame : clip.kind === 'web-animation' ? clip.startFrame + clip.durationFrames : end;
-        if (at > position.current) boundary = Math.min(boundary, at);
-      }
+      const boundary = nextTimelinePlaybackBoundary(document, readyClipIds, position.current, end);
       const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));
@@ -575,12 +573,11 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         schedule();
         return;
       }
-      publish('play', 'waiting');
-      if (!webReady) {
-        stop(lanes);
+      if (!webReady || waiting.length > 0) {
+        hold();
         return;
       }
-      if (waiting.length > 0) return;
+      publish('play', 'waiting');
       for (const lane of lanes) if (!inTail(lane) && lane.element.paused) requestPlay(lane);
       if (lanes.every(started)) {
         anchor = { frame: position.current, at: performance.now() };
@@ -617,10 +614,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       showFrame(Math.max(0, Math.min(Math.max(0, sequenceEnd() - 1), frame)));
       repositionWeb();
       placeAll();
-      const intent = state.current.intent;
-      // The whole preview waits for the seek: every lane pauses and all play again once each has landed (#1410 design §6.3).
-      if (intent === 'play') stop(activeLanes());
-      publish(intent, intent === 'play' ? 'waiting' : 'paused');
+      // The whole preview waits for the seek and plays on once every lane has landed (#1410 design §6.3).
+      if (state.current.intent === 'play') hold();
+      else publish('pause', 'paused');
       evaluate();
     }
 

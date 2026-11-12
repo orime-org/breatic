@@ -32,8 +32,9 @@ export function visibleTimelineClipsAt(document: TimelineDocumentV1, readyClipId
 }
 
 /**
- * The next frame after `frame` where what the preview shows changes: the earliest end of a clip visible now, or start of
- * a ready clip after now.
+ * The next frame after `frame` where play must check its layers (#1410 design §6.3): the start of a ready clip after
+ * now, or the end of a web copy showing now, since its instance can pass to another copy there. Where only videos end,
+ * the layers left go on, as nothing below them is hidden.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The current Timeline frame.
@@ -46,9 +47,8 @@ export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, ready
   let next = endFrame;
   for (const clip of Object.values(document.clips)) {
     if (!rank.has(clip.trackId) || !readyClipIds.has(clip.id)) continue;
-    const end = clip.startFrame + clip.durationFrames;
-    if (clip.startFrame > frame) next = Math.min(next, clip.startFrame);
-    else if (frame < end) next = Math.min(next, end);
+    const at = clip.startFrame > frame ? clip.startFrame : clip.kind === 'web-animation' ? clip.startFrame + clip.durationFrames : endFrame;
+    if (at > frame) next = Math.min(next, at);
   }
   return next;
 }
