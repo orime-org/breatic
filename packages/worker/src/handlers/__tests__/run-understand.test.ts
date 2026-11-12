@@ -97,7 +97,6 @@ function recorder(): UsageRecorder {
     actorUserId: "u-1",
     projectId: "p-1",
     pricing: {
-      models: {},
       services: {
         brave_web_search: { per_request: 0.005 },
         brave_image_search: { per_request: 0.005 },

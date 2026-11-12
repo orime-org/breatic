@@ -1,5 +1,7 @@
-# Models of this modality, every one run on WaveSpeed. Within a mode the first
-# model listed is the one a panel opens on, so entries are ordered by how the
+# Models of this modality, in our own param names; which upstreams serve each
+# model, what its params are sent as and what a run costs are in
+# config/provider/media/audio.yaml. Within a mode the first model listed is the
+# one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
 #   model.display_name   — the vendor's name for the model, never the mode it
@@ -18,17 +20,9 @@
 #                          sentence here the catalog or the panel can prove wrong
 #                          is a promise nothing keeps. Guarded by domain's
 #                          guides-name-what-the-model-takes test.
-#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
-#                          not `prompt` (`text`, `text_prompt`).
 #   model.source_groups  — per mode, params of which at least one has to carry
 #                          material, for inputs the upstream schema leaves
 #                          optional one by one but refuses all empty.
-#   model.extra_steps    — upstream calls a run makes besides the model's own
-#                          endpoint, each priced by its own WaveSpeed contract;
-#                          `at` says whether it runs before or after that call.
-#   param.upstream       — the upstream field this param is sent as, when the
-#                          names differ. The one mapping the request builder,
-#                          the price estimate and the voice-sample planner read.
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
@@ -45,10 +39,6 @@
 #   param.absent_value   — the value that is sent as nothing: holding it
 #                          leaves the param out of the request (`auto` lets
 #                          the upstream decide).
-#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
-#                          base_price (1,000,000 = 1 USD), the JSONata formula
-#                          (empty means base_price per call) and discount_rate
-#                          in percent. The price estimate evaluates it.
 #   generation_time      — max generation time in seconds (worst case)
 
 models:
@@ -83,7 +73,6 @@ models:
         default: null
         fill: "editor"
       melody:
-        upstream: "melody_id"
         description: "Melody to follow"
         default: null
         accepts: "audio"
@@ -92,7 +81,6 @@ models:
         when: { equals: { compose_from: "melody" } }
         fill: "canvas"
       song:
-        upstream: "reference_id"
         description: "Reference song"
         default: null
         accepts: "audio"
@@ -101,7 +89,6 @@ models:
         when: { equals: { compose_from: "references" } }
         fill: "canvas"
       vocal:
-        upstream: "vocal_id"
         description: "Voice to sing with"
         default: null
         accepts: "audio"
@@ -109,37 +96,6 @@ models:
         modes: ["a2m"]
         when: { equals: { compose_from: "references" } }
         fill: "canvas"
-    extra_steps:
-      - endpoint: "mureka-ai/create-upload-id"
-        at: "before"
-        for_param: "song"
-        pricing:
-          base_price: 10000
-          formula: ""
-          discount_rate: 100
-      - endpoint: "mureka-ai/create-upload-id"
-        at: "before"
-        for_param: "melody"
-        pricing:
-          base_price: 10000
-          formula: ""
-          discount_rate: 100
-      - endpoint: "mureka-ai/vocal-clone"
-        at: "before"
-        for_param: "vocal"
-        reused: true
-        pricing:
-          base_price: 7500000
-          formula: ""
-          discount_rate: 100
-    providers:
-      - name: "wavespeed"
-        model_id: "mureka-ai/mureka-v9.5/generate-song"
-        priority: 1
-        pricing:
-          base_price: 225000
-          formula: ""
-          discount_rate: 100
 
   - name: "mureka-v9.5-generate-bgm"
     display_name: "Mureka V9.5"
@@ -152,14 +108,6 @@ models:
     generation_time: 300
     icon: "mureka"
     params: {}
-    providers:
-      - name: "wavespeed"
-        model_id: "mureka-ai/mureka-v9.5/generate-bgm"
-        priority: 1
-        pricing:
-          base_price: 225000
-          formula: ""
-          discount_rate: 100
 
   - name: "lyria-3-pro-music"
     display_name: "Lyria 3 Pro"
@@ -177,14 +125,6 @@ models:
         accepts: "image"
         optional: true
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/lyria-3-pro/music"
-        priority: 1
-        pricing:
-          base_price: 80000
-          formula: ""
-          discount_rate: 100
 
   - name: "minimax-music-cover"
     display_name: "MiniMax Music Cover"
@@ -201,14 +141,6 @@ models:
         default: null
         accepts: "audio"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/music-cover"
-        priority: 1
-        pricing:
-          base_price: 150000
-          formula: ""
-          discount_rate: 100
 
   - name: "sonilo-video-to-music"
     display_name: "Sonilo Video to Music"
@@ -225,20 +157,11 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "sonilo/video-to-music"
-        priority: 1
-        pricing:
-          base_price: 9000
-          formula: "{\"total_price\": base_price * $max([10, $min([$ceil(get_duration(video)), 360])])}"
-          discount_rate: 100
 
   - name: "sfx-1.6-text-to-audio"
     display_name: "Mirelo SFX 1.6"
     mode: "sfx"
     takes_prompt: true
-    prompt_upstream: "text_prompt"
     tier: "recommended"
     description: "Foley-grade effects, seamless loops"
     guide: "Text input — one effect per take, with ambience that loops seamlessly."
@@ -247,7 +170,6 @@ models:
     max_input_chars: 5000
     params:
       loop:
-        upstream: "ambience"
         description: "Loops seamlessly end to start"
         label: "Seamless loop"
         default: false
@@ -270,14 +192,6 @@ models:
         default: 1
         fill: "none"
         note: "pinned: one generation lands one result"
-    providers:
-      - name: "wavespeed"
-        model_id: "mirelo-ai/sfx-1.6/text-to-audio"
-        priority: 1
-        pricing:
-          base_price: 10000
-          formula: "{\"total_price\": base_price * duration * num_samples}"
-          discount_rate: 100
 
   - name: "sonilo-sfx-v1"
     display_name: "Sonilo Text to SFX"
@@ -300,14 +214,6 @@ models:
         values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
         default: 5
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "sonilo/v1/text-to-sfx"
-        priority: 1
-        pricing:
-          base_price: 2000
-          formula: "{\"total_price\": base_price * $max([3, $min([duration, 180])])}"
-          discount_rate: 100
 
   - name: "hunyuan-video-foley"
     display_name: "HunyuanVideo-Foley"
@@ -324,14 +230,6 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/hunyuan-video-foley"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: ""
-          discount_rate: 100
 
   - name: "vocal-remover"
     display_name: "Vocal Remover"
@@ -348,14 +246,6 @@ models:
         default: null
         accepts: "audio"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/audio-vocal-isolator"
-        priority: 1
-        pricing:
-          base_price: 1000
-          formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
-          discount_rate: 100
 
   # inner#1305: the audio enhance mini-tool. Verified against the WaveSpeed
   # page on 2026-10-21: up to 30 minutes and 512 MB, a 0–1 strength, a target
@@ -396,12 +286,4 @@ models:
         default: "wav"
         fill: "none"
         note: "output container, fixed to one the asset pipeline takes"
-    providers:
-      - name: "wavespeed"
-        model_id: "veed/clean-audio"
-        priority: 1
-        pricing:
-          base_price: 14000
-          formula: "{\"total_price\": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}"
-          discount_rate: 100
 

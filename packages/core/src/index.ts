@@ -84,7 +84,6 @@ export {
   getUsagePricing,
   parseUsagePricing,
   type UsagePricing,
-  type ModelPrice,
 } from "@core/config/usage-pricing.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {

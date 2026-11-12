@@ -225,6 +225,17 @@ module.exports = {
       },
     },
     {
+      name: "vendor-sdk-only-in-provider",
+      comment:
+        "Every model call goes through @breatic/provider (inner#1743), so a vendor's own SDK " +
+        "is imported only there; web's `ai` and `@ai-sdk/react` drive the chat UI and are " +
+        "not vendor SDKs.",
+      severity: "error",
+      from: { pathNot: "^packages/provider/" },
+      // A package the importer does not declare stays unresolved, so its bare name is matched too.
+      to: { path: "(^|node_modules/)(@ai-sdk/(anthropic|google|openai|deepseek|fal)|@openrouter/|@fal-ai/)" },
+    },
+    {
       name: "provider-messages-ingest-only",
       comment:
         "The Messages relay serves the web-animation container's model calls from the ingest " +

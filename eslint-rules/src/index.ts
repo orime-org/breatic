@@ -7,6 +7,7 @@ import { noBorrowedProject } from "#rules/rules/no-borrowed-project";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDeployedHost } from "#rules/rules/no-deployed-host";
+import { noUpstreamLiteral } from "#rules/rules/no-upstream-literal";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noHardcodedRequestTtl } from "#rules/rules/no-hardcoded-request-ttl";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
@@ -55,6 +56,7 @@ import { spaceDocWriteGateway } from "#rules/rules/space-doc-write-gateway";
  * configs previously restated shared rules by hand.
  */
 export { FFMPEG_BINDING_WORDS } from "#rules/rules/no-ffmpeg-bindings";
+export { upstreamLiteralOptions } from "#rules/upstream-literal-options";
 
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
@@ -66,6 +68,7 @@ export const breaticPlugin = {
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-deployed-host": noDeployedHost,
+    "no-upstream-literal": noUpstreamLiteral,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-hardcoded-request-ttl": noHardcodedRequestTtl,
     "no-inline-scrollbar": noInlineScrollbar,

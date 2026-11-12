@@ -12,7 +12,6 @@ import { describe, it, expect } from "vitest";
 import { createUsageRecorder, type UsageRow } from "@domain/credit/usage-recorder.js";
 
 const PRICING = {
-  models: {},
   services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
 };
 

@@ -1,8 +1,8 @@
-# Tripo H3.1 on WaveSpeed: text to 3D, one picture to 3D, and two to four
+# Tripo H3.1: text to 3D, one picture to 3D, and two to four
 # views to 3D (inner#1691). The 3D Space's generation dialog shows one Tripo
 # H3.1 and sends the single-image entry when only the front view is filled,
 # the multi-view entry otherwise; the agent sees both variants.
-# What all three share (settings, forced values, the price formula) is written
+# What all three share (settings and forced values) is written
 # once on the text entry, and the image settings once on the single-image
 # entry; the other entries refer to them through YAML anchors.
 # Guidelines are the image, video and audio catalogs' (see their headers);
@@ -27,14 +27,12 @@
 # Field names and value spellings are WaveSpeed's own pages:
 # https://wavespeed.ai/models/tripo3d/h3.1/text-to-3d,
 # https://wavespeed.ai/models/tripo3d/h3.1/image-to-3d and
-# https://wavespeed.ai/models/tripo3d/h3.1/multiview-to-3d. The formula is
-# written from the price table on those pages: the base is geometry only,
-# texture adds by quality, and parts are priced on geometry only.
+# https://wavespeed.ai/models/tripo3d/h3.1/multiview-to-3d. Where the runs go
+# and what they cost are in config/provider/media/three_d.yaml.
 # Two upstream options are not offered, because their results cannot be
 # placed in a 3D Space: quad, which outputs FBX, and the extreme texture
 # quality, whose 8K maps exceed the scene's texture budget
-# (config/scene.yaml max_texture_bytes). The formula still prices the extreme
-# quality as the upstream does; it has no term for quad.
+# (config/scene.yaml max_texture_bytes).
 
 models:
 
@@ -76,7 +74,6 @@ models:
         value_labels: {"v3.0": "v3.0", "v3.5": "v3.5"}
         fill: "panel"
         when: { flag_on: "texture" }
-        upstream_values: {"v3.0": "v3.0-20250812", "v3.5": "v3.5-20260815"}
       delight: &tripo_delight
         description: "Remove baked-in lighting from the texture"
         label: "Remove lighting"
@@ -174,14 +171,6 @@ models:
         when: { flag_on: "texture", equals: { texture_quality: "fast" } }
         set: { texture_version: "v3.5" }
         lock: true
-    providers:
-      - name: "wavespeed"
-        model_id: "tripo3d/h3.1/text-to-3d"
-        priority: 1
-        pricing:
-          base_price: 120000
-          formula: &tripo_formula "{\"total_price\": base_price + (((texture or pbr) and generate_parts != true) ? (texture_quality = \"detailed\" ? 240000 : (texture_quality = \"extreme\" ? 360000 : 120000)) : 0) + (geometry_quality = \"detailed\" ? 240000 : 0) + (smart_low_poly ? 120000 : 0) + (generate_parts ? 240000 : 0)}"
-          discount_rate: 100
 
   - name: "tripo-h3.1-i23d"
     display_name: "Tripo H3.1"
@@ -233,14 +222,6 @@ models:
         values: [true, false]
         fill: "panel"
     forces: *tripo_forces
-    providers:
-      - name: "wavespeed"
-        model_id: "tripo3d/h3.1/image-to-3d"
-        priority: 1
-        pricing:
-          base_price: 240000
-          formula: *tripo_formula
-          discount_rate: 100
 
   - name: "tripo-h3.1-multiview"
     display_name: "Tripo H3.1"
@@ -277,11 +258,3 @@ models:
       orientation: *tripo_orientation
       enable_image_autofix: *tripo_image_autofix
     forces: *tripo_forces
-    providers:
-      - name: "wavespeed"
-        model_id: "tripo3d/h3.1/multiview-to-3d"
-        priority: 1
-        pricing:
-          base_price: 240000
-          formula: *tripo_formula
-          discount_rate: 100

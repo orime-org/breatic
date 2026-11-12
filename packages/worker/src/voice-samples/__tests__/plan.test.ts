@@ -19,7 +19,6 @@ const CONFIG: VoiceSampleConfig = {
 const MINIMAX = {
   name: "minimax",
   takes_prompt: true,
-  prompt_upstream: "text",
   params: { voice_id: { fill: "remote", remote_source: "voices" } },
   voices: [
     { id: "English_Guy", name: "Guy", sample_key: "voice-samples/minimax/English_Guy.mp3" },
@@ -30,10 +29,9 @@ const MINIMAX = {
 const GEMINI = {
   name: "gemini",
   takes_prompt: true,
-  prompt_upstream: "text",
   params: {
     language: { fill: "panel", values: ["English (United States)", "Japanese (Japan)"], value_locales: ["en-US", "ja-JP"] },
-    voice_id: { fill: "remote", remote_source: "voices", upstream: "voice" },
+    voice_id: { fill: "remote", remote_source: "voices" },
   },
   voices: [
     {

@@ -199,12 +199,10 @@ export type { Instructions } from "@domain/agent/instructions.js";
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
 export { estimateTaskCredits, llmServability, sendsUntakenPrompt, servability, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig, type Servability } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
-export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+export type { FullModalityConfig, FullModelEntry, FullParamSpec } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
 // the worker sends the generation, the voice endpoint lists voices in that
 // same upstream's value domain.
-export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
-export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";

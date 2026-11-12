@@ -12,7 +12,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // flatConfigs.recommended entry is used unchanged.
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import jsdoc from 'eslint-plugin-jsdoc';
-import { breaticPlugin } from '@breatic/eslint-rules';
+import { breaticPlugin, upstreamLiteralOptions } from '@breatic/eslint-rules';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -362,6 +362,9 @@ export default [
       // written above — a rule that lives only there governs nothing in this
       // package, which is exactly how the two rules above went unenforced.
       'breatic/no-naked-fetch': 'error',
+      // Only provider names an upstream (inner#1743); the same rule as in the
+      // root config, for the reason written above.
+      'breatic/no-upstream-literal': ['error', upstreamLiteralOptions(fileURLToPath(new URL('../..', import.meta.url)))],
     },
   },
   {

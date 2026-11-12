@@ -48,13 +48,6 @@ describe("planCameraPreviews", () => {
     ]);
   });
 
-  // Which field each becomes on an upstream is provider's.
-  it("names each default by our param name, whatever an upstream calls it", () => {
-    const named = { ...entry("h3-t2v", ["t2v"], COMMANDS), params: { duration: { ...PARAMS.duration, upstream: "length" } } } as unknown as FullModelEntry;
-    const [job] = planCameraPreviews([named]);
-    expect(job?.input).toEqual({ prompt: `${CAMERA_PREVIEW_SCENE} [Pan left]`, params: { duration: 5 } });
-  });
-
   it("refuses commands no text-to-video entry can make, naming the key", () => {
     expect(() => planCameraPreviews([entry("h3-i2v", ["i2v"], COMMANDS)])).toThrow(/camera-previews\/h3\/pan-left\.mp4/);
   });

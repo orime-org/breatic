@@ -87,7 +87,7 @@ export function openRouterPrices(endpoints, ids, quantizations, levels, backends
  * The direct prices whose off-peak holidays run out: a model whose price in effect at `now`, or one taking effect later,
  * has an off-peak discount whose holidays list no date in the current UTC year or after it, or, from 1 December, none
  * in the next year or after it, since the vendor's holidays are announced a year at a time, by the end of the year
- * before. The dates belong in the migration, which rewrites llm.yaml's `prices`.
+ * before. The dates are written by hand in llm.yaml.
  * @param {Readonly<Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
  * @param {number} now - The run's moment, in epoch ms.
  * @returns {string[]} A problem for each such model.
@@ -99,7 +99,7 @@ export function offPeakHolidayProblems(prices, now) {
     .filter(([, entries]) => entries
       .filter((e, i) => i + 1 === entries.length || Date.parse(entries[i + 1].from) > now)
       .some((e) => e.off_peak !== undefined && !(e.off_peak.holidays ?? []).some((d) => Number(d.slice(0, 4)) >= year)))
-    .map(([model]) => `${model}: off-peak holidays list no date in ${year} (add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)`);
+    .map(([model]) => `${model}: off-peak holidays list no date in ${year} (add them to its off_peak.holidays in config/provider/llm.yaml)`);
 }
 
 /**

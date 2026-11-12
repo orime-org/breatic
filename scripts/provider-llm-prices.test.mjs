@@ -184,7 +184,7 @@ test("asks for the current year's off-peak holidays, and from 1 December for the
     listed: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak(["2027-01-01"]) }],
     plain: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2 }],
   };
-  const where = "(add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)";
+  const where = "(add them to its off_peak.holidays in config/provider/llm.yaml)";
   assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-06-01T00:00:00Z")), []);
   assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-11-30T23:59:59Z")), []);
   assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-12-01T00:00:00Z")), [`listed: off-peak holidays list no date in 2028 ${where}`]);
@@ -197,7 +197,7 @@ test("asks a December run with a stale list once per model, for the next year on
     empty: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak([]) }],
     old: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak(["2025-10-01"]) }],
   };
-  const where = "(add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)";
+  const where = "(add them to its off_peak.holidays in config/provider/llm.yaml)";
   assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2026-12-05T00:00:00Z")), [
     `empty: off-peak holidays list no date in 2027 ${where}`,
     `old: off-peak holidays list no date in 2027 ${where}`,
@@ -210,11 +210,11 @@ test("reads only the prices in effect now or later for off-peak holidays", () =>
     superseded: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak(["2026-10-01"]) }, { from: "2027-01-01T00:00:00Z", input_cache_miss_per_mtok: 1, output_per_mtok: 2 }],
     coming: [{ input_cache_miss_per_mtok: 1, output_per_mtok: 2 }, { from: "2028-01-01T00:00:00Z", input_cache_miss_per_mtok: 1, output_per_mtok: 2, off_peak: offPeak([]) }],
   };
-  assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-06-01T00:00:00Z")), ["coming: off-peak holidays list no date in 2027 (add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)"]);
+  assert.deepEqual(offPeakHolidayProblems(prices, Date.parse("2027-06-01T00:00:00Z")), ["coming: off-peak holidays list no date in 2027 (add them to its off_peak.holidays in config/provider/llm.yaml)"]);
 });
 
 test("reports the off-peak holidays among the sync's problems", async () => {
   const text = "prices:\n  m:\n    - input_cache_miss_per_mtok: 1\n      output_per_mtok: 2\n      off_peak:\n        factor: 0.5\n        peak_utc:\n          - days: [1]\n            from: \"01:00\"\n            to: \"04:00\"\n        holidays: []\n";
   const synced = await syncedLlmYaml(text, (raw) => ({ vendor_ids: {}, openrouter_backends: {}, openrouter_quantizations: ["fp8"], ...raw }), levels, async () => [endpoint("kept/fp8", "0.000001", "0.000002")], Date.parse("2026-11-08T00:00:00Z"));
-  assert.deepEqual(synced.problems, ["m: off-peak holidays list no date in 2026 (add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)"]);
+  assert.deepEqual(synced.problems, ["m: off-peak holidays list no date in 2026 (add them to its off_peak.holidays in config/provider/llm.yaml)"]);
 });

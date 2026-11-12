@@ -62,7 +62,7 @@ describe("the 3D model catalog", () => {
     expect(stale).toEqual([]);
   });
 
-  it("gives each entry its mode, variant and WaveSpeed endpoint", () => {
+  it("gives each entry its mode and variant", () => {
     expect(
       [T23D, I23D, MULTIVIEW].map((name) => {
         const m = declared(name);
@@ -71,18 +71,16 @@ describe("the 3D model catalog", () => {
           display_name: m.display_name,
           mode: m.mode,
           variant: m.variant,
-          endpoint: m.providers?.find((p) => p.name === "wavespeed")?.model_id,
         };
       }),
     ).toEqual([
-      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined, endpoint: "tripo3d/h3.1/text-to-3d" },
-      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image", endpoint: "tripo3d/h3.1/image-to-3d" },
+      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined },
+      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image" },
       {
         name: MULTIVIEW,
         display_name: "Tripo H3.1",
         mode: "i23d",
         variant: "Multi-view",
-        endpoint: "tripo3d/h3.1/multiview-to-3d",
       },
     ]);
   });

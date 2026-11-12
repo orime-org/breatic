@@ -115,9 +115,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       actual.createUsageRecorder({
         ...options,
         pricing: {
-          models: {
-            "test/model": { input_cache_hit_per_mtok: 1, input_cache_miss_per_mtok: 1, output_per_mtok: 1 },
-          },
           services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
         },
         multiplier: 1,

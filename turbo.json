@@ -53,7 +53,9 @@
       "dependsOn": ["build"],
       "cache": false
     },
-    "lint": {},
+    "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/config/provider/upstreams.yaml"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

@@ -47,30 +47,6 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
  */
 export type RemoteParamSource = "voices";
 
-/** An endpoint's WaveSpeed pricing contract, as the catalog yaml writes it. */
-export interface PricingContract {
-  /** Price basis in millionths of a US dollar. */
-  readonly base_price: number;
-  /** JSONata formula WaveSpeed publishes; empty means `base_price` per call. */
-  readonly formula: string;
-  /** Percent of the formula's price actually charged. */
-  readonly discount_rate: number;
-}
-
-/** An upstream call a run of this model makes besides the model's own. */
-export interface ExtraStep {
-  readonly endpoint: string;
-  /** Whether the call runs before or after the model's own endpoint. */
-  readonly at: "before" | "after";
-  readonly pricing: PricingContract;
-  /** The param whose value makes the run take this step; absent means every run does. */
-  readonly for_param?: string;
-  /** One call per item of `for_param`. */
-  readonly per_item?: boolean;
-  /** Skipped when the same source was sent through it before. */
-  readonly reused?: boolean;
-}
-
 /** Params of which at least one has to carry material in one mode. */
 export interface SourceGroup {
   readonly mode: string;

@@ -11,14 +11,13 @@
  * nothing, and every browser-side test still passes.
  */
 
-import { initCore } from "@breatic/core";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { getFullModelConfig, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
+import { getFullModelConfig, getModelCatalog, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
+import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
-beforeAll(() => {
-  initCore(process.env);
-});
+beforeAll(useFullCatalog);
+afterAll(restoreProcessEnv);
 
 /**
  * The audio bucket's entry for a model name.
@@ -44,18 +43,13 @@ describe("Mureka V9.5 Song", () => {
   });
 
   // Reference song, melody and vocal are three audio slots of Reference to
-  // Music, each sent to the upstream under its own id field.
-  it.each([
-    ["song", "reference_id"],
-    ["melody", "melody_id"],
-    ["vocal", "vocal_id"],
-  ])("takes %s as an optional audio slot of a2m, sent as %s", (param, upstream) => {
+  // Music; each upstream's binding names the field it is sent as.
+  it.each(["song", "melody", "vocal"])("takes %s as an optional audio slot of a2m", (param) => {
     expect(song().params?.[param]).toMatchObject({
       fill: "canvas",
       accepts: "audio",
       optional: true,
       modes: ["a2m"],
-      upstream,
     });
   });
 
@@ -74,14 +68,14 @@ describe("Lyria 3 Pro", () => {
   });
 });
 
-describe("every music model runs on WaveSpeed", () => {
-  it("lists WaveSpeed and nothing else", () => {
-    const music = getFullModelConfig("audio").models.filter((m) =>
+describe("every music model runs on WaveSpeed first", () => {
+  it("puts WaveSpeed before every other upstream", () => {
+    const music = getModelCatalog().audio.filter((m) =>
       (Array.isArray(m.mode) ? m.mode : [m.mode]).some((x) => x === "t2m" || x === "a2m"),
     );
     expect(music.length).toBeGreaterThan(0);
     for (const model of music) {
-      expect((model.providers ?? []).map((p) => p.name), model.name).toEqual(["wavespeed"]);
+      expect(model.availability.upstreams[0]?.upstream, model.name).toBe("wavespeed");
     }
   });
 });

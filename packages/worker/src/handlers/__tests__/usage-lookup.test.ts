@@ -68,7 +68,7 @@ function recorderIntoRows(
 ): ReturnType<typeof createUsageRecorder> {
   return createUsageRecorder({
     ...options,
-    pricing: { models: {}, services: { brave_web_search: { per_request: 0 }, brave_image_search: { per_request: 0 } } },
+    pricing: { services: { brave_web_search: { per_request: 0 }, brave_image_search: { per_request: 0 } } },
     multiplier: 1,
     write: async (row) => void rows.push(row),
   });
@@ -84,7 +84,7 @@ function recorderThatCannotWrite(
 ): ReturnType<typeof createUsageRecorder> {
   return createUsageRecorder({
     ...options,
-    pricing: { models: {}, services: { brave_web_search: { per_request: 0 }, brave_image_search: { per_request: 0 } } },
+    pricing: { services: { brave_web_search: { per_request: 0 }, brave_image_search: { per_request: 0 } } },
     multiplier: 1,
     write: async () => {
       throw new Error("agent_usage_records insert failed");

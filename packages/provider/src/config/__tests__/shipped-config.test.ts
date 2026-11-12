@@ -21,6 +21,19 @@ describe("the shipped provider configuration", () => {
     expect(off.map(([name]) => name)).toEqual([]);
   });
 
+  it("runs Voice Cloning's speech after the clone on WaveSpeed, and every other extra call first", () => {
+    const { models } = parseProviderConfig(shipped());
+    const at = (name: string): string[] =>
+      (models[name]?.find((b) => b.upstream === "wavespeed")?.extra_steps ?? []).map((step) => `${step.endpoint}@${step.at}`);
+    expect(at("minimax-voice-clone")).toEqual(["minimax/speech-2.8-hd@after"]);
+    expect(at("kling-video-o3-4k-image-to-video")).toEqual(["kwaivgi/kling-elements@before"]);
+    expect(at("mureka-v9.5-generate-song")).toEqual([
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/vocal-clone@before",
+    ]);
+  });
+
   it("reaches each vendor at the address its SDK answers on", () => {
     const { upstreams } = shipped();
     expect(upstreams.deepseek?.base_url).toBe("https://api.deepseek.com");

@@ -86,8 +86,6 @@ export type {
   ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
-  PricingContract,
-  ExtraStep,
   SourceGroup,
   ItemField,
   ModelCatalog,

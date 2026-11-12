@@ -9,7 +9,7 @@
  * @module
  */
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
@@ -34,7 +34,6 @@ import {
 import { assertCameraAngle, shipCameraAngle } from "@domain/model-catalog/camera-angle.js";
 import type {
   CameraAngleParams,
-  ExtraStep,
   ModelCatalog,
   ModelEntry,
   ModelTier,
@@ -42,7 +41,6 @@ import type {
   ParamDescriptor,
   ParamForce,
   ParamGate,
-  PricingContract,
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
@@ -81,10 +79,6 @@ export interface FullParamSpec {
   replaces?: string;
   /** The value that is sent as nothing: holding it leaves the param out. */
   absent_value?: string | number | boolean;
-  /** The upstream field this param is sent as, when it is not the param's name. */
-  upstream?: string;
-  /** What a value is sent as upstream, keyed by the value's string form. */
-  upstream_values?: Record<string, string>;
   /** The template each entry of a list is written into the prompt with. */
   into_prompt?: string;
   /** How the param's value reaches the run. */
@@ -101,16 +95,6 @@ export interface FullParamSpec {
    * `ParamDescriptor` unchanged.
    */
   remote_source?: RemoteParamSource;
-  [extra: string]: unknown;
-}
-
-/** One provider endpoint on a model with every yaml field preserved (backend-only). */
-export interface FullProviderEndpoint {
-  name: string;
-  model_id: string;
-  priority?: number;
-  /** The endpoint's WaveSpeed pricing contract. */
-  pricing?: PricingContract;
   [extra: string]: unknown;
 }
 
@@ -133,12 +117,6 @@ export interface FullModelEntry {
    * error, so the wire type (`ModelEntry.takes_prompt`) can be non-optional.
    */
   takes_prompt?: boolean;
-  /** The upstream field the prompt is sent as, when it is not `prompt`. */
-  prompt_upstream?: string;
-  /** Upstream calls a run makes besides the model's own. */
-  extra_steps?: ExtraStep[];
-  /** The param whose source, once sent, lets later runs skip the model's own call. */
-  reused_by?: string;
   /** Per mode, params of which at least one has to carry material. */
   source_groups?: SourceGroup[];
   /**
@@ -167,7 +145,6 @@ export interface FullModelEntry {
   /** The three params that together set one camera pose (inner#830). */
   camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
-  providers?: FullProviderEndpoint[];
   /**
    * The voices a tts model writes inline, for a deployment behind a gateway
    * with no voice endpoint of its own (#1960). `sample_url` may be null: yaml
@@ -190,22 +167,9 @@ export interface FullModelEntry {
   [extra: string]: unknown;
 }
 
-/**
- * Connection config for one provider from providers.yaml. Carries secrets
- * plumbing (api_key_env) and vendor endpoints — backend-only; must never be
- * projected into `@breatic/shared` or any web-facing response.
- */
-export interface ProviderConnectionConfig {
-  base_url?: string;
-  api_key_env?: string;
-  max_concurrency?: number;
-  [extra: string]: unknown;
-}
-
-/** Full config for one modality: all models plus provider connection configs. */
+/** Full config for one modality: all its models. */
 export interface FullModalityConfig {
   models: FullModelEntry[];
-  providers: Record<string, ProviderConnectionConfig>;
 }
 
 const _fullConfigCache = new Map<string, FullModalityConfig>();
@@ -214,11 +178,11 @@ const _fullConfigCache = new Map<string, FullModalityConfig>();
  * Load the complete, unprojected model config for one modality.
  *
  * Domain is the single config/models YAML reader (#1672): the catalog
- * projections below and the worker's resolveModel/validateParams all
+ * projections below and the worker's param validation all
  * consume this accessor instead of parsing YAML themselves. Results are
  * cached per modality; {@link resetModelCatalog} clears the cache.
  * @param modality - Modality directory name (e.g. "image"); unknown values yield an empty config
- * @returns Models with every yaml field plus provider connection configs
+ * @returns Models with every yaml field
  * @throws {Error} when a yaml file is malformed (fail-fast; the application boot path logs)
  */
 export function getFullModelConfig(modality: string): FullModalityConfig {
@@ -229,12 +193,12 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   let files: string[];
   try {
     files = readdirSync(dir)
-      .filter((f) => extname(f) === ".yaml" && f !== "providers.yaml")
+      .filter((f) => extname(f) === ".yaml")
       .sort();
   } catch {
     // Unknown modality / missing directory — an empty config lets callers
     // fail with their own "model not found" semantics.
-    return { models: [], providers: {} };
+    return { models: [] };
   }
 
   const models: FullModelEntry[] = [];
@@ -264,22 +228,14 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   assertCameraCommands(modality, models);
   assertCameraAngle(modality, models);
 
-  let providers: Record<string, ProviderConnectionConfig> = {};
-  const providersPath = resolve(dir, "providers.yaml");
-  if (existsSync(providersPath)) {
-    providers =
-      (parse(readFileSync(providersPath, "utf-8")) as Record<string, ProviderConnectionConfig>) ??
-      {};
-  }
-
-  const config = { models, providers };
+  const config = { models };
   _fullConfigCache.set(modality, config);
   return config;
 }
 
 /**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
- * dropping `note` (it is for whoever ships the yaml) and what goes upstream,
+ * dropping `note` (it is for whoever ships the yaml),
  * with provider's availability and pricing rules of the model.
  * @param m - Full model entry from {@link getFullModelConfig}.
  * @param modality - Modality the entry belongs to (stamped onto the projection).
@@ -303,7 +259,7 @@ function projectModelEntry(m: FullModelEntry, modality: Modality): ModelEntry {
     // declaration has no control, which is for whoever ships the yaml.
     params: Object.fromEntries(
       Object.entries(m.params ?? {}).map(([name, spec]) => {
-        const { note: _note, upstream: _upstream, upstream_values: _values, item_key: _itemKey, ...rest } = spec;
+        const { note: _note, ...rest } = spec;
         return [name, rest as unknown as ParamDescriptor];
       }),
     ),

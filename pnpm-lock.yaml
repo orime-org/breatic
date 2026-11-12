@@ -317,6 +317,10 @@ importers:
         version: 2.9.0
 
   eslint-rules:
+    dependencies:
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

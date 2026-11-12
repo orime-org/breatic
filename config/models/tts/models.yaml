@@ -1,5 +1,7 @@
-# Models of this modality, every one run on WaveSpeed. Within a mode the first
-# model listed is the one a panel opens on, so entries are ordered by how the
+# Models of this modality, in our own param names; which upstreams serve each
+# model, what its params are sent as and what a run costs are in
+# config/provider/media/tts.yaml. Within a mode the first model listed is the
+# one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
 #   model.display_name   — the vendor's name for the model, never the mode it
@@ -18,17 +20,9 @@
 #                          sentence here the catalog or the panel can prove wrong
 #                          is a promise nothing keeps. Guarded by domain's
 #                          guides-name-what-the-model-takes test.
-#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
-#                          not `prompt` (`text`, `text_prompt`).
 #   model.source_groups  — per mode, params of which at least one has to carry
 #                          material, for inputs the upstream schema leaves
 #                          optional one by one but refuses all empty.
-#   model.extra_steps    — upstream calls a run makes besides the model's own
-#                          endpoint, each priced by its own WaveSpeed contract;
-#                          `at` says whether it runs before or after that call.
-#   param.upstream       — the upstream field this param is sent as, when the
-#                          names differ. The one mapping the request builder,
-#                          the price estimate and the voice-sample planner read.
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
@@ -45,10 +39,6 @@
 #   param.absent_value   — the value that is sent as nothing: holding it
 #                          leaves the param out of the request (`auto` lets
 #                          the upstream decide).
-#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
-#                          base_price (1,000,000 = 1 USD), the JSONata formula
-#                          (empty means base_price per call) and discount_rate
-#                          in percent. The price estimate evaluates it.
 #   generation_time      — max generation time in seconds (worst case)
 
 models:
@@ -57,7 +47,6 @@ models:
     display_name: "Inworld Realtime TTS-2"
     mode: "tts"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "recommended"
     description: "Most natural single-voice read here"
     guide: "The straight read — one narrator, the most human-sounding output the catalog can reach."
@@ -262,7 +251,6 @@ models:
         sample_key: "voice-samples/realtime-tts-2/ar/Omar.mp3"
     params:
       speed:
-        upstream: "speaking_rate"
         description: "Speaking speed"
         default: 1
         min: 0.5
@@ -274,20 +262,11 @@ models:
         default: "Dennis"
         remote_source: "voices"
         fill: "remote"
-    providers:
-      - name: "wavespeed"
-        model_id: "inworld/realtime-tts-2"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: "{\"total_price\": $ceil(base_price * $length(text) / 1000)}"
-          discount_rate: 100
 
   - name: "gemini-3.1-flash-text-to-speech"
     display_name: "Gemini 3.1 Flash TTS"
     mode: "tts"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "optional"
     description: "Two named speakers, one dialogue pass"
     guide: "A scene between named characters, rendered in one pass with a voice per name."
@@ -1161,25 +1140,15 @@ models:
             values: ["Achernar", "Achird", "Algenib", "Algieba", "Alnilam", "Aoede", "Autonoe", "Callirrhoe", "Charon", "Despina", "Enceladus", "Erinome", "Fenrir", "Gacrux", "Iapetus", "Kore", "Laomedeia", "Leda", "Orus", "Puck", "Pulcherrima", "Rasalgethi", "Sadachbia", "Sadaltager", "Schedar", "Sulafat", "Umbriel", "Vindemiatrix", "Zephyr", "Zubenelgenubi"]
         fill: "panel"
       voice_id:
-        upstream: "voice"
         description: "Voice"
         default: "Kore"
         remote_source: "voices"
         fill: "remote"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/gemini-3.1-flash/text-to-speech"
-        priority: 1
-        pricing:
-          base_price: 200000
-          formula: "{\"total_price\": $max([10000, $ceil(base_price * $length(text) / 1000)])}"
-          discount_rate: 100
 
   - name: "minimax-speech-2.8-hd"
     display_name: "MiniMax Speech 2.8 HD"
     mode: "tts"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "optional"
     description: "Custom pronunciation, named emotions"
     guide: "The line said exactly your way — you supply the pronunciations and name the emotion."
@@ -2648,20 +2617,11 @@ models:
         max: 10
         step: 0.1
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/speech-2.8-hd"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\":base_price * $length(text) / 1000}"
-          discount_rate: 100
 
   - name: "elevenlabs-v3"
     display_name: "ElevenLabs Eleven v3"
     mode: "tts"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "optional"
     description: "Dial steady vs expressive per take"
     guide: "A take you can dial between a steady read and a loose, expressive one."
@@ -2858,20 +2818,11 @@ models:
         remote_source: "voices"
         default: "Alicia"
         fill: "remote"
-    providers:
-      - name: "wavespeed"
-        model_id: "elevenlabs/eleven-v3"
-        priority: 1
-        pricing:
-          base_price: 200000
-          formula: "{\"total_price\": $ceil(base_price * $length(text) / 1000)}"
-          discount_rate: 100
 
   - name: "minimax-voice-clone"
     display_name: "MiniMax Voice Clone"
     mode: "voice_clone"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "recommended"
     description: "One voice ID reused across shots"
     guide: "One character's voice, minted once and reused by ID across every shot in the project."
@@ -2900,28 +2851,11 @@ models:
         default: true
         fill: "none"
         note: "our default: cleaner clone"
-    extra_steps:
-      - endpoint: "minimax/speech-2.8-hd"
-        at: "after"
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\":base_price * $length(text) / 1000}"
-          discount_rate: 100
-    reused_by: "audio"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/voice-clone"
-        priority: 1
-        pricing:
-          base_price: 1600000
-          formula: ""
-          discount_rate: 100
 
   - name: "omnivoice-voice-clone"
     display_name: "OmniVoice"
     mode: "voice_clone"
     takes_prompt: true
-    prompt_upstream: "text"
     tier: "optional"
     description: "Clones into 600+ languages"
     guide: "The only way to clone into a language the commercial models have never heard of."
@@ -2940,14 +2874,6 @@ models:
         max: 5
         step: 0.1
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/omnivoice/voice-clone"
-        priority: 1
-        pricing:
-          base_price: 5000
-          formula: "{\"total_price\": $length(text) < 100 ? base_price * 1.0 : base_price * $length(text) / 100}"
-          discount_rate: 100
 
   - name: "elevenlabs-voice-changer"
     display_name: "ElevenLabs Voice Changer"
@@ -3137,11 +3063,3 @@ models:
         default: "Alicia"
         remote_source: "voices"
         fill: "remote"
-    providers:
-      - name: "wavespeed"
-        model_id: "elevenlabs/voice-changer"
-        priority: 1
-        pricing:
-          base_price: 4000
-          formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 300]) * base_price}"
-          discount_rate: 100

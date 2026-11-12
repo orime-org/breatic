@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
 import drizzle from "eslint-plugin-drizzle";
-import { breaticPlugin } from "@breatic/eslint-rules";
+import { breaticPlugin, upstreamLiteralOptions } from "@breatic/eslint-rules";
 import ts from "typescript";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -642,6 +642,25 @@ export default tseslint.config(
     ],
     rules: {
       "breatic/no-naked-fetch": "error",
+    },
+  },
+  {
+    // Only provider names an upstream (inner#1743): its addresses, names and
+    // key variables, read from config/provider/upstreams.yaml. web declares
+    // the same rule in its own config. The env schema is where the key
+    // variables are declared, so it is exempt.
+    files: [
+      "packages/{collab,core,domain,integration-tests,server,shared,worker,ingest}/src/**/*.{ts,tsx}",
+      "packages/ingest/container/**/*.ts",
+    ],
+    ignores: [
+      "packages/core/src/config/schema.ts",
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+    ],
+    rules: {
+      "breatic/no-upstream-literal": ["error", upstreamLiteralOptions(fileURLToPath(new URL(".", import.meta.url)))],
     },
   },
   {

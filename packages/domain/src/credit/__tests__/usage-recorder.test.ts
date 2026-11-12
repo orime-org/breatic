@@ -6,13 +6,6 @@ import { describe, it, expect } from "vitest";
 import { createUsageRecorder, type UsageRow } from "@domain/credit/usage-recorder.js";
 
 const PRICING = {
-  models: {
-    "deepseek/deepseek-v4-pro": {
-      input_cache_hit_per_mtok: 0.044,
-      input_cache_miss_per_mtok: 1.32,
-      output_per_mtok: 3.96,
-    },
-  },
   services: {
     brave_web_search: { per_request: 0.005 },
     brave_image_search: { per_request: 0.005 },

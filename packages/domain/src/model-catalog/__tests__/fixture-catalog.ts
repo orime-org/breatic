@@ -28,20 +28,6 @@ export interface FixtureCatalog {
 }
 
 /**
- * The provider connection every fixture directory shares.
- *
- * The variable name is one the real catalog uses: `useFullCatalog` sets every
- * `api_key_env` it reads to a non-empty value, and that goes through core's
- * schema, which drops a name it does not know -- leaving every model
- * unavailable and the catalog empty again.
- */
-const PROVIDERS = [
-  "wavespeed:",
-  '  base_url: "https://example.invalid"',
-  "  api_key_env: WAVESPEED_API_KEY",
-].join("\n");
-
-/**
  * The catalog currently mounted, read afresh on every call.
  *
  * Held here rather than closed over, so a test can revise it without mounting
@@ -66,7 +52,7 @@ function fsDouble(real: typeof NodeFs): Record<string, unknown> {
       // The loader reads a failed directory listing as "no such modality",
       // which is the right answer for the modalities a fixture leaves out.
       if (!bucketOf(String(path))) throw new Error("no such modality");
-      return ["fixture.yaml", "providers.yaml"];
+      return ["fixture.yaml"];
     },
     statSync: (path: string): { isDirectory: () => boolean } => ({
       isDirectory: () => !String(path).endsWith(".md") && !String(path).endsWith(".json"),
@@ -80,7 +66,6 @@ function fsDouble(real: typeof NodeFs): Record<string, unknown> {
       if (ofProvider(path)) return real.readFileSync(path, "utf8");
       const at = String(path);
       if (at.endsWith("modes.yaml")) return fixture().modes;
-      if (at.endsWith("providers.yaml")) return PROVIDERS;
       return fixture().buckets[bucketOf(at) ?? ""] ?? "";
     },
   };

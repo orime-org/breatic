@@ -182,7 +182,7 @@ jobs:
         run: node --import tsx --test scripts/__tests__/backfill-project-media-options.test.ts scripts/__tests__/activity-coverage-options.test.ts
 
       - name: Test provider scripts
-        run: node --test scripts/provider-config-merge.test.mjs scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
+        run: node --test scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
 
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)

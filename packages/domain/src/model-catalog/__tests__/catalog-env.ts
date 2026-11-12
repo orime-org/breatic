@@ -18,31 +18,15 @@ import { createProvider } from "@breatic/provider";
 import { initProvider } from "../../provider/instance.js";
 import { readProviderConfig } from "../../provider/provider-config-loader.js";
 
-import {
-  getFullModelConfig,
-  getModelCatalog,
-  resetModelCatalog,
-  MODALITIES,
-} from "../model-catalog.js";
+import { getModelCatalog, resetModelCatalog } from "../model-catalog.js";
 
 /**
- * 目录里每个 provider 声明的那个环境变量名。
- *
- * 从配置读而不是写死一份清单：加一个 provider 就多一个变量名，写死的那份会在
- * 没人注意的时候漏掉它，而漏掉的后果正是这个模块要防的（那个 provider 的模型
- * 被过滤掉，依赖它的测试悄悄改走逃生分支）。
- * @returns 全部 provider 的 `api_key_env` 变量名，去重。
+ * The key variable of every upstream provider's configuration names, read from that configuration rather than a list
+ * written here: an upstream added there would be missed by a written list, and its models would read as unconfigured.
+ * @returns Every upstream's `key_env`, once each.
  */
 export function allProviderKeyNames(): string[] {
-  const names = new Set<string>();
-  for (const modality of MODALITIES) {
-    for (const config of Object.values(getFullModelConfig(modality).providers)) {
-      if (config.api_key_env) names.add(config.api_key_env);
-    }
-  }
-  // provider's own upstreams, the keys the catalog's availability is now read from.
-  for (const upstream of Object.values(readProviderConfig().upstreams)) names.add(upstream.key_env);
-  return [...names];
+  return [...new Set(Object.values(readProviderConfig().upstreams).map((upstream) => upstream.key_env))];
 }
 
 /**
