@@ -84,7 +84,7 @@ beforeEach(() => {
 afterEach(() => { clearAllDocSizes(); _resetForTests(); });
 
 describe('uploadIntoNode', () => {
-  it('ends once the server registered the bytes, and holds the leave guard while sending', async () => {
+  it('ends once the bytes are on their way, and holds the leave guard while sending', async () => {
     let busyWhileSending = false;
     h.sendFileAndFinish.mockImplementation(async () => { busyWhileSending = busy(); return { storageKey: TICKET.storageKey }; });
     await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();

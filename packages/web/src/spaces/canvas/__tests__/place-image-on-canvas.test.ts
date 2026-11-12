@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   acquired: [] as Array<{ name: string; doc: unknown }>,
   released: [] as Array<{ name: string; doc: unknown }>,
   uploadIntoNode: vi.fn(),
+  failCreate: false,
 }));
 vi.mock('@web/data/yjs/collab-socket', async (importOriginal) => ({
   ...await importOriginal<typeof import('@web/data/yjs/collab-socket')>(),
@@ -34,7 +35,16 @@ vi.mock('@web/data/yjs/collab-socket', async (importOriginal) => ({
   subscribeProjectSync: (_projectId: string, listener: Listener) => { h.syncListeners.push(listener); return () => { h.syncListeners.splice(h.syncListeners.indexOf(listener), 1); }; },
 }));
 vi.mock('@web/spaces/canvas/upload-into-node', () => ({ uploadIntoNode: h.uploadIntoNode }));
+vi.mock('@web/spaces/canvas/node-factory', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/canvas/node-factory')>();
+  return { ...actual, createEmptyNode: (...args: Parameters<typeof actual.createEmptyNode>) => {
+    if (h.failCreate) throw new Error('create failed');
+    return actual.createEmptyNode(...args);
+  } };
+});
 
+import { clearAllDocSizes, setDocSize } from '@web/data/yjs/doc-size';
+import { P_FULL } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { readNodePlacements } from '@web/data/yjs/canvas-space';
 import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
@@ -58,6 +68,8 @@ beforeEach(() => {
   h.uploadIntoNode.mockReset().mockResolvedValue(undefined);
   useUploadMarksStore.setState({ marks: {} });
   useSpaceOperationsStore.setState({ operations: {} });
+  h.failCreate = false;
+  clearAllDocSizes();
 });
 afterEach(() => { vi.useRealTimers(); _resetForTests(); });
 
@@ -108,7 +120,7 @@ describe('placeImageOnCanvas', () => {
     expect(busy()).toBe(false);
   });
 
-  it('does not upload, clears the mark and lets go when the document was rebuilt before its receipt', async () => {
+  it('does not upload, says the Space is full on the node and lets go when the document was rebuilt before its receipt', async () => {
     const pending = placeImageOnCanvas(REQUEST);
     sync();
     await expect(pending).resolves.toMatchObject({ status: 'placed' });
@@ -116,7 +128,40 @@ describe('placeImageOnCanvas', () => {
     confirm('gone');
     await vi.waitFor(() => expect(h.released).toHaveLength(1));
     expect(h.uploadIntoNode).not.toHaveBeenCalled();
-    expect(markOf(nodeId)).toBeUndefined();
+    // A rebuilt document may still hold the node collab already took; it then says why it stayed empty.
+    expect(markOf(nodeId)).toMatchObject({ state: 'failed', message: { key: 'spaces.sizeCap.reason' } });
+    expect(busy()).toBe(false);
+  });
+
+  it('writes nothing, leaves no mark and lets go when the size gate refuses the node', async () => {
+    setDocSize(NAME, { type: 'doc:size', seq: 1, ...P_FULL });
+    const pending = placeImageOnCanvas(REQUEST);
+    sync();
+    await expect(pending).resolves.toEqual({ status: 'refused' });
+    expect(readNodePlacements('p1', 'c1')).toHaveLength(0);
+    expect(useUploadMarksStore.getState().marks).toEqual({});
+    expect(h.released).toEqual([{ name: NAME, doc: h.acquired[0]?.doc }]);
+    expect(busy()).toBe(false);
+  });
+
+  it('lets go of the document and the leave guard when writing the node throws', async () => {
+    h.failCreate = true;
+    const pending = placeImageOnCanvas(REQUEST);
+    sync();
+    await expect(pending).rejects.toThrow('create failed');
+    expect(h.released).toHaveLength(1);
+    expect(busy()).toBe(false);
+  });
+
+  it('marks the node failed and lets go when the background upload throws', async () => {
+    h.uploadIntoNode.mockImplementation(() => { throw new Error('upload threw'); });
+    const pending = placeImageOnCanvas(REQUEST);
+    sync();
+    await pending;
+    const nodeId = readNodePlacements('p1', 'c1')[0]?.id;
+    confirm();
+    await vi.waitFor(() => expect(h.released).toHaveLength(1));
+    expect(markOf(nodeId)?.state).toBe('failed');
     expect(busy()).toBe(false);
   });
 
