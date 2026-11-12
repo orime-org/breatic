@@ -4,9 +4,9 @@
 /**
  * Which lane a generation's output takes into R2 (#181, design §2 and §4.5).
  *
- * Where the bytes are decides it. A synchronous transport answers with a
- * buffer this process is holding, so this process sends it; an async provider
- * answers with a temporary link, and the ingest Worker pulls that where R2
+ * Where the bytes are decides it. An upstream that answers a file inline leaves
+ * its bytes in this process, so this process sends them; when an upstream
+ * answers with a temporary link, the ingest Worker pulls it where R2
  * already is. Downloading it here and uploading it again would move every byte
  * twice, which is the one thing lane ③ exists to avoid.
  *

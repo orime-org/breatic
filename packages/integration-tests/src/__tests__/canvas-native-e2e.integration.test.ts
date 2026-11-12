@@ -46,7 +46,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 // network, so this suite needs no API key and the SDK stays out of its
 // module graph. Of the four stubbed exports,
 // @breatic/domain's agent modules import generateText, streamText and tool;
-// the worker providers import stepCountIs. @breatic/core imports none of
+// the worker's prompt rewrite imports stepCountIs. @breatic/core imports none of
 // them — it does not reach the SDK at all.
 
 vi.mock("ai", () => ({

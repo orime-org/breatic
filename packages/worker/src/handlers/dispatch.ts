@@ -1774,8 +1774,8 @@ const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
  * Put every output of a generation into R2, through the ingest Worker.
  *
  * Which lane an output takes is decided by where its bytes are (#181 §2):
- * a buffer a synchronous transport answered with is ours to send, while a
- * provider's temporary link is handed to the Worker to pull — the bytes behind
+ * the bytes of a file an upstream answered inline are ours to send, while an
+ * upstream's temporary link is handed to the Worker to pull — the bytes behind
  * it never enter this process, because downloading and re-uploading them would
  * move every one of them twice.
  *
@@ -1842,8 +1842,8 @@ export async function persistOutputs(
     const next: PersistedOutput = { ...out };
     const extra = next.extra ?? {};
 
-    // Lane ②: raw bytes from a sync transport. They live in extra.buffer /
-    // extra.contentType, where `toUnifiedOutputs` put them.
+    // Lane ②: the bytes of a file a model run answered with itself. They live
+    // in extra.buffer / extra.contentType, where `produced` put them.
     if (Buffer.isBuffer(extra.buffer)) {
       try {
         const buf = extra.buffer;
@@ -1854,7 +1854,7 @@ export async function persistOutputs(
           uploadContext(extra.contentType as string | undefined),
         );
         Object.assign(next, storedAsOutput(stored));
-        logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
+        logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted inline output bytes");
       } finally {
         delete extra.buffer;
         delete extra.contentType;
