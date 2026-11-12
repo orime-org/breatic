@@ -120,6 +120,8 @@ export interface StreamConfig {
   spaceReadTimeoutMs: number;
   /** How often an open conversation list asks which conversations are running, in milliseconds (#1394). */
   runningPollIntervalMs: number;
+  /** How often the conversation on screen asks where it stands until a sync says otherwise, in milliseconds (inner#1717). */
+  syncIntervalMs: number;
 }
 
 /**

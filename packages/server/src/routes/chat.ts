@@ -805,6 +805,7 @@ chat.get("/stream-config", (c) => {
       spaceListMaxItems: config.space_list_max_items,
       spaceReadTimeoutMs: config.space_read_timeout_ms,
       runningPollIntervalMs: config.running_poll_interval_ms,
+      syncIntervalMs: config.chat_sync_interval_ms,
     },
   });
 });

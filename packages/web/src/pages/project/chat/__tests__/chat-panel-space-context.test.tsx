@@ -85,7 +85,7 @@ beforeEach(() => {
     currentSpaceMaxChars: 100_000,
     spaceListMaxItems: 200,
     spaceReadTimeoutMs: 20_000,
-    runningPollIntervalMs: 5000,
+    runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
   });
 });
 

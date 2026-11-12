@@ -34,6 +34,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       current_space_max_chars: 4321,
       space_list_max_items: 12,
       running_poll_interval_ms: 6543,
+      chat_sync_interval_ms: 3456,
     }),
   };
 });
@@ -84,6 +85,7 @@ describe("GET /chat/stream-config", () => {
       "runningPollIntervalMs",
       "spaceListMaxItems",
       "spaceReadTimeoutMs",
+      "syncIntervalMs",
     ]);
   });
 
@@ -105,5 +107,11 @@ describe("GET /chat/stream-config", () => {
     const { data } = await askForStreamConfig();
 
     expect(data.runningPollIntervalMs).toBe(6543);
+  });
+
+  it("answers how often the conversation on screen asks where it stands, from config (inner#1717)", async () => {
+    const { data } = await askForStreamConfig();
+
+    expect(data.syncIntervalMs).toBe(3456);
   });
 });
