@@ -1493,6 +1493,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "food": "Food",
         "social-hooks": "Social hooks",
         "sound": "Sound, music & voice"
       },
@@ -1595,6 +1596,39 @@
           "reference": {
             "name": "Character",
             "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "Food money shot",
+        "description": "A close-up build to the dish's most tempting moment",
+        "prompt": "A vertical close-up food video of [📎 Dish]: the same food, plating and tableware as in the picture, nothing else taken from it. 0–2 s hook: a slow-motion macro shot already moving, {✏️ the first detail, e.g. steam rising off the melted cheese}. 2–5 s: the camera slowly pushes in across its texture, the crust, gloss and crumbs sharp. 5–8 s money shot: {✏️ the most tempting moment, e.g. a slice lifted with a long cheese pull}, held at its peak. Light from behind and to the side so the steam and the gloss shine, one warm light source. Sound in place of taste: close sounds of the food itself, {✏️ e.g. sizzling and a crisp crunch}, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish or drink first, then generate."
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "Recipe process montage",
+        "description": "A dish made step by step from one fixed camera",
+        "prompt": "A vertical cooking video that ends with [📎 Dish], the same food, plating and tableware as in the picture. Throughout: one fixed camera {✏️ the angle, e.g. top-down over the counter}, the same counter, the same cookware and the same pair of hands, nothing else changes. Each state only moves forward: what is cut stays cut, what is cooked stays cooked. 0–3 s: {✏️ step 1, e.g. dough pressed out into a round}. 3–6 s: {✏️ step 2, e.g. tomato sauce spread to the edge}. 6–9 s: {✏️ step 3, e.g. mozzarella torn over the top}. 9–12 s: {✏️ step 4, e.g. it slides out of the oven, bubbling}. 12–15 s: the finished dish is served and a hand takes the first piece, a lived-in moment. Daylight from one window. Sound: the live sounds of each step, chopping, sizzling and pouring, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a photo of the finished dish first, then generate."
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "Dish hero still",
+        "description": "A casual dish photo reshot as a studio menu picture",
+        "prompt": "A studio menu photo of [📎 Dish]: exactly the same food, ingredients, plating and tableware as in the picture, only the photography changes. Warm key light from 45 degrees in front, back light making the steam and the gloss glow, side light bringing out the texture. Colours vivid but natural, nothing oversaturated. Surface and background: {✏️ e.g. a dark slate table with a linen napkin}. The background softly out of focus, the dish itself sharp from front to back. Real photo, not illustrated. No text.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish first, then generate."
           }
         }
       },
