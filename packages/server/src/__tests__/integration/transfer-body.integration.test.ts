@@ -430,6 +430,50 @@ describe("§4.1 the main path", () => {
     expect(read.calls).toEqual([[key, Math.min(transferConfig().route_max_bytes.chat_message, file.length)]]);
   });
 
+  it("T55b / RT-07: a chat message through a transfer waits in the queue as the original body", async () => {
+    const w = await world();
+    const conversationId = await seedConversation(sql, w.a.id, w.projectId);
+    const body = {
+      id: crypto.randomUUID(),
+      message: "m".repeat(200),
+      project_id: w.projectId,
+      conversation_id: conversationId,
+      attached_chips: [{ id: "file-1", type: "text", name: "notes.txt", data_snapshot: { text: "中".repeat(150_000) } }],
+      current_space: {
+        id: "space-1",
+        name: "Doc",
+        kind: "document",
+        state: "loaded",
+        content: "中".repeat(50_000),
+        total_chars: 50_000,
+        blocks: [{ id: "b1", type: "paragraph", text: "中".repeat(50_000), lossy: false, partial: false }],
+      },
+      spaces: [{ id: "space-1", name: "Doc", kind: "document" }],
+      spaces_total: 1,
+    };
+    const file = enc(body);
+    const key = await grant(w, file.length);
+    read.answer = async () => file;
+    // A run holds the conversation, so the message waits where the next step reads it.
+    await getRedis().set(`chat:active:${conversationId}`, "R-held");
+    try {
+      const res = await post(app, CHAT, w.a.cookie, ref(key));
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { data: { status: string } }).data.status).toBe("queued");
+      const [raw] = await getRedis().lrange(`chat:queue:${conversationId}`, 0, -1);
+      const item = JSON.parse(raw!) as Record<string, unknown>;
+      expect(item).toMatchObject({
+        id: body.id,
+        message: body.message,
+        attached_chips: body.attached_chips,
+        current_space: body.current_space,
+        spaces: body.spaces,
+      });
+    } finally {
+      await getRedis().del(`chat:active:${conversationId}`, `chat:queue:${conversationId}`, `chat:queue-ids:${conversationId}`);
+    }
+  });
+
   it("T56: validate sees the original body; a body that fails it still used the transfer", async () => {
     const w = await world();
     const file = enc({ project_id: w.projectId, node_id: w.node });
