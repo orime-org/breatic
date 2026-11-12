@@ -29,7 +29,7 @@ web_animation:
   font_set_version: 3
   preview_token_ttl_ms: 3600000
   player_load_timeout_ms: 15000
-  # The preview loads a web copy's page this far ahead of its first visible frame, hidden.
+  # The preview loads a video clip's element or a web copy's page this far ahead of its first visible frame, hidden.
   preview_premount_ms: 2000
   # Loaded preview pages no copy uses that are kept for reuse; beyond this the oldest is unloaded.
   preview_idle_instances_max: 8
@@ -42,3 +42,14 @@ web_animation:
     vcpu: 1
     memory_gib: 6
     disk_gb: 12
+# Multi-video preview sync (#1410), in seconds except the steer rate.
+preview:
+  # Drift past which a lane's playback rate is steered by drift_steer_rate.
+  drift_steer_seconds: 0.04
+  # Drift, or a drift jump, past which a lane is hard-synced and the preview waits for it.
+  drift_hard_sync_seconds: 0.5
+  # Drift past which a lane is hard-synced however gradually it grew.
+  drift_catastrophic_seconds: 3
+  # When a wait ends, lanes not waited for are sought only when further off than this.
+  resume_seek_seconds: 0.15
+  drift_steer_rate: 0.03

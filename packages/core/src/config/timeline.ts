@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@breatic/shared";
+import { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const positiveInt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -33,7 +33,7 @@ const webAnimationSchema = z.object({
   preview_token_ttl_ms: positiveInt.default(3_600_000),
   /** How long the preview waits for a page's bridge-ready before it shows the copy unavailable. */
   player_load_timeout_ms: positiveInt.default(15_000),
-  /** How far ahead of a web copy's first visible frame the preview loads its page, hidden (inner#1711 design §7.4). */
+  /** How far ahead of its first visible frame the preview loads a video clip's element or a web copy's page, hidden (inner#1711 design §7.4, #1410). */
   preview_premount_ms: positiveInt.default(2000),
   /** How many loaded preview pages no copy uses that the preview keeps for reuse before unloading the oldest. */
   preview_idle_instances_max: positiveInt.default(8),
@@ -60,6 +60,17 @@ const webAnimationSchema = z.object({
   }
 });
 
+const positiveSeconds = z.number().positive().finite();
+
+/** Multi-video preview sync thresholds (#1410 design §6.4); the defaults are the shared constant web falls back to. */
+const previewSchema = z.object({
+  drift_steer_seconds: positiveSeconds.default(TIMELINE_PREVIEW_DEFAULTS.driftSteerSeconds),
+  drift_hard_sync_seconds: positiveSeconds.default(TIMELINE_PREVIEW_DEFAULTS.driftHardSyncSeconds),
+  drift_catastrophic_seconds: positiveSeconds.default(TIMELINE_PREVIEW_DEFAULTS.driftCatastrophicSeconds),
+  resume_seek_seconds: positiveSeconds.default(TIMELINE_PREVIEW_DEFAULTS.resumeSeekSeconds),
+  drift_steer_rate: z.number().positive().lt(1).default(TIMELINE_PREVIEW_DEFAULTS.driftSteerRate),
+});
+
 /** Runtime creation defaults and Project media parameters for Timeline. */
 export const timelineConfigSchema = z.object({
   defaults: z.object({
@@ -76,6 +87,7 @@ export const timelineConfigSchema = z.object({
     backfill_batch_size: z.number().int().positive().default(200),
   }).prefault({}),
   web_animation: webAnimationSchema.prefault({}),
+  preview: previewSchema.prefault({}),
 }).superRefine((config, ctx) => {
   if (config.assets.page_size > config.assets.page_max) ctx.addIssue({ code: "custom", path: ["assets", "page_size"], message: "page_size exceeds page_max" });
 });

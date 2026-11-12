@@ -505,8 +505,15 @@ export type {
 // module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
 export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
 export type { TimelineFraction } from "@shared/timeline/time.js";
-export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
-export type { TimelineClientLimits } from "@shared/timeline/api.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared/timeline/api.js";
+export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
+export {
+  TIMELINE_LAYER_TRANSFORM_LIMITS,
+  timelineLayerBase,
+  timelineLayerCorners,
+  timelineLayerCss,
+} from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerPoint, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
 
 export {
   DOCUMENT_SCHEMA,
