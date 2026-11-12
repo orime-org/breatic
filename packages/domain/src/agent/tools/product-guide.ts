@@ -1032,6 +1032,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.choosePerson"))} and ${quoted(t("canvas.miniTool.videoUI.chooseDialogueAudio"))}. ` +
       `${quoted(t("canvas.miniTool.videoUI.redetectPeople"))} identifies people again (after a failed identification the same button offers to retry it); choose a person for each row. ` +
       "Once a run's people limit is reached, other people are dimmed in the person dropdown with the limit beside them. " +
+      "Once people are identified, each is outlined on the video node with its number; pressing an outline puts that person in the row " +
+      "being edited (the first row, the row last focused, or a newly added row), only that row's person is drawn selected, " +
+      "and a person over the limit is dimmed there too. " +
       "Pick an audio slot, then an audio node on the canvas. Pressing the same slot again leaves selection; " +
       "Escape also leaves selection, keeping its current audio, and the top-right X clears that audio. " +
       "A filled slot shows its truncated filename; hover it to listen in the preview. " +
