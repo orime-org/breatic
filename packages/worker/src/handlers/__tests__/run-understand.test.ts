@@ -32,6 +32,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       release: async () => undefined,
     })),
     advanceLongMediaSegmentation: vi.fn(),
+    handOffLookups: vi.fn(async () => undefined),
     assetRepo: { ...actual.assetRepo, findLiveByKeyInStudio: vi.fn() },
     assetService: { ...actual.assetService, resolveOwnerStudioId: vi.fn() },
   };
@@ -60,6 +61,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import {
   createUsageRecorder,
+  handOffLookups,
   MediaUnavailable,
   UnderstandRefused,
   understandMediaAt,
@@ -539,5 +541,53 @@ describe("running one transcription", () => {
     await expect(
       runUnderstand({ source_type: "image", source_url: "https://assets.invalid/image/a.png" }, recorder(), DEADLINE_AT),
     ).rejects.toBeInstanceOf(UnderstandRefused);
+  });
+});
+
+describe("a reading that fails after an answer it could not price", () => {
+  const LOOKUP = { upstream: "openrouter", generationId: "gen-failed" };
+
+  /**
+   * Have the reading billed a pending answer, then end as `then` says.
+   * @param then - What the reading does after it was billed.
+   */
+  function billedPendingThen(then: () => unknown): void {
+    vi.mocked(understandMediaAt).mockImplementation((async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+      request.onBilled({ state: "pending", lookup: LOOKUP }, "openrouter");
+      return then();
+    }) as never);
+  }
+
+  it("hands the answer to the lookup to be recorded, not charged, when the call fails", async () => {
+    vi.mocked(handOffLookups).mockClear();
+    billedPendingThen(() => {
+      throw new Error("stream broke");
+    });
+
+    await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow("stream broke");
+
+    expect(handOffLookups).toHaveBeenCalledWith(
+      [{ lookup: LOOKUP, source: "model", model: expect.any(String) }],
+      expect.objectContaining({ operationKey: "task:t-1" }),
+      expect.objectContaining({ charge: false }),
+    );
+  });
+
+  it("hands it over when the reading answered nothing", async () => {
+    vi.mocked(handOffLookups).mockClear();
+    billedPendingThen(() => ({ text: "", finishReason: "stop", kind: "image", kinds: ["image"] }));
+
+    await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow();
+
+    expect(handOffLookups).toHaveBeenCalledWith([expect.objectContaining({ lookup: LOOKUP })], expect.anything(), expect.objectContaining({ charge: false }));
+  });
+
+  it("leaves a reading that succeeded to the task, which waits on the lookup", async () => {
+    vi.mocked(handOffLookups).mockClear();
+    billedPendingThen(() => ({ text: "A cat.", finishReason: "stop", kind: "image", kinds: ["image"] }));
+
+    await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
+
+    expect(handOffLookups).not.toHaveBeenCalled();
   });
 });

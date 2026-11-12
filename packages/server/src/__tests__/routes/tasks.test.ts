@@ -179,6 +179,33 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).not.toHaveBeenCalled();
     });
 
+    it("hands the worker the route the run was checked, priced and held on", async () => {
+      mockQueueAdd.mockClear();
+      const route = { mode: "upstream", upstream: "fal" };
+      const res = await createApp().request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "video",
+          params: { duration: 10, prompt: "a slow pan" },
+          model: "test-model",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+          route,
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(domain.estimateTaskCredits).toHaveBeenCalledWith("test-model", expect.anything(), route);
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        "execute-task",
+        expect.objectContaining({ params: { duration: 10, prompt: "a slow pan", route } }),
+        expect.anything(),
+      );
+    });
+
     it("rejects an i2i/edit model with no source image BEFORE enqueue (#1675) — no task, no bill", async () => {
       // The model needs a source image but params.images is empty. The gate
       // must fire before taskService.create + enqueue (billing is post-worker),

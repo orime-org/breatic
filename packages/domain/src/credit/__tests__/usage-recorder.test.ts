@@ -201,12 +201,18 @@ describe("the usage recorder", () => {
     expect(landed).toHaveLength(2);
   });
 
-  it("settles to the next whole cent while each row keeps its exact credits (inner#1666)", async () => {
+  it("charges the next whole cent while each row keeps its exact credits (inner#1666)", async () => {
     const { recorder, rows } = recorderWithRows();
     // 0.00041 dollars at a multiplier of 2 is 0.082 credits.
     recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
-    expect(await recorder.settle()).toBe(0.09);
+    expect((await recorder.settleForCharge()).credits).toBe(0.09);
     expect(rows[0]!.credits).toBeCloseTo(0.082, 10);
+  });
+
+  it("settles to the exact credits, so a caller that adds what a lookup finds rounds the sum once", async () => {
+    const { recorder } = recorderWithRows();
+    recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
+    expect(await recorder.settle()).toBeCloseTo(0.082, 10);
   });
 
   it("does not round floating-point residue in the total up a cent", async () => {
@@ -215,7 +221,7 @@ describe("the usage recorder", () => {
     for (let i = 0; i < 3; i++) {
       recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.0005 });
     }
-    expect(await recorder.settle()).toBe(0.3);
+    expect((await recorder.settleForCharge()).credits).toBe(0.3);
   });
 
   it("holds a write that failed before settle, and fails settle with it", async () => {
@@ -251,7 +257,7 @@ describe("the usage recorder", () => {
 });
 
 describe("settleForCharge", () => {
-  it("answers the same credits settle does when every write lands", async () => {
+  it("charges what settle answers, rounded up to the cent once, when every write lands", async () => {
     const first = recorderWithRows();
     const second = recorderWithRows();
     for (const { recorder } of [first, second]) {
@@ -259,8 +265,8 @@ describe("settleForCharge", () => {
       recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
     }
     const settled = await first.recorder.settle();
-    expect(await second.recorder.settleForCharge()).toEqual({ credits: settled, writeFailures: [] });
-    expect(settled).toBe(1.09);
+    expect(settled).toBeCloseTo(1.082, 10);
+    expect(await second.recorder.settleForCharge()).toEqual({ credits: 1.09, writeFailures: [] });
   });
 
   it("still answers what to charge when a row could not be written, and hands back the failure", async () => {

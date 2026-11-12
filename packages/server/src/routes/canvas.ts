@@ -325,14 +325,15 @@ canvas.post(
     // mail about storage.
     await assertStorageAllowance(projectId, "generate");
 
+    // The run is held, priced and served on one route: the task row and the job both carry the one the estimate used.
+    const runParams = body.route === undefined ? body.params : { ...body.params, route: body.route };
     task = await admitGeneration(
       user.id,
       projectId,
       spaceId,
       body.task_type,
       mode,
-      // The run is held, priced and served on one route: the task carries the one the estimate used.
-      body.route === undefined ? body.params : { ...body.params, route: body.route },
+      runParams,
       body.model,
       body.source,
       taskId,
@@ -384,7 +385,7 @@ canvas.post(
         spaceId,
         taskType: body.task_type,
         model: body.model,
-        params: body.params,
+        params: runParams,
         source: body.source,
         targetNodeIds: targetNodeId ? [targetNodeId] : [],
         mode,

@@ -54,7 +54,7 @@ vi.mock("@breatic/domain", async () => ({
 
 const { runUnderstand } = await import("@worker/handlers/dispatch.js");
 
-const usage = { recordServiceCall: vi.fn(), settle: vi.fn(async () => 0) };
+const usage = { recordServiceCall: vi.fn(), settle: vi.fn(async () => 0), awaitingLookup: () => [] };
 
 beforeEach(() => {
   h.understandMediaAt.mockReset();

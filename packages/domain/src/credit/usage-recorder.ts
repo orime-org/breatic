@@ -127,10 +127,13 @@ export interface UsageRecorder {
   recordLookedUpCall(call: LookedUpCall): void;
   /** The lookups of the pending costs, each with its call's source and model, for the caller to queue. */
   awaitingLookup(): readonly AwaitedLookup[];
-  /** Wait for every row, then answer what to charge: their credits rounded up to whole cents. Each row keeps its exact figure. */
+  /**
+   * Wait for every row, then answer their exact credits, unrounded: a caller that adds what a lookup finds rounds the
+   * sum once, when it charges.
+   */
   settle(): Promise<number>;
   /**
-   * Wait for every row, then answer what to charge and which row writes failed.
+   * Wait for every row, then answer what to charge, rounded up to the cent once, and which row writes failed.
    * The credits are counted before a row is written, so a failed write leaves
    * the figure whole: the caller charges it and logs the failures.
    */
@@ -284,7 +287,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     async settle() {
       await Promise.all(pending);
       if (failures.length > 0) throw failures[0];
-      return toChargeCredits(credits);
+      return credits;
     },
     async settleForCharge() {
       await Promise.all(pending);

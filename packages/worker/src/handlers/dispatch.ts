@@ -30,6 +30,7 @@ import {
   assetRepo,
   assetService,
   createUsageRecorder,
+  handOffLookups,
   settleTaskForNode,
   readingLimitsUntil,
   understandMediaAt,
@@ -1975,8 +1976,8 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
  * @param execution.taskId - The durable task identifier.
  * @param execution.projectId - The owning project, when the task has one.
  * @param execution.actorUserId - The user who initiated the task.
- * @returns A `[result, credits, servedBy]` tuple: one output holding the text, the credits to charge, and the
- *   upstream that billed the reading (none when nothing was billed).
+ * @returns A `[result, credits, servedBy]` tuple: one output holding the text, the credits of what is known, unrounded
+ *   (the charge rounds them once), and the upstream that billed the reading (none when nothing was billed).
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
  * @throws {StillRunning} when the Container is still producing registered segments or every reading place is taken.
@@ -2007,6 +2008,16 @@ export async function runUnderstand(
     : understandQuestion(params.prompt, sourceType, userLocale);
 
   let servedBy: string | undefined;
+  /**
+   * Hand the lookups of the answers a failed reading was billed for to be recorded; the failed task charges nothing.
+   * @returns Nothing once they are queued, or the failure to queue them logged.
+   */
+  const recordUnpriced = async (): Promise<void> => {
+    const lookups = usage.awaitingLookup();
+    if (lookups.length === 0) return;
+    await handOffLookups(lookups, usage.operation, { description: "Task: understand", charge: false })
+      .catch((err: unknown) => logger.error({ err, operationKey: usage.operation.operationKey }, "usage_lookup_enqueue_failed"));
+  };
   /**
    * Record one billed answer of this run.
    * @param cost - What it cost.
@@ -2105,6 +2116,7 @@ export async function runUnderstand(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
+    await recordUnpriced();
     // A 403 is a key, a budget or a content block; only the upstream's own
     // word says which. A block was measured once in three sends of the same
     // audio, so a transcription takes it as one worth asking again.
@@ -2114,14 +2126,19 @@ export async function runUnderstand(
     throw err;
   }
   const credits = await usage.settle();
-  if (transcribing) return [transcriptOf(answer), credits, servedBy];
+  try {
+    if (transcribing) return [transcriptOf(answer), credits, servedBy];
 
-  // A run that answered nothing finished having put nothing on the node.
-  // Writing it would replace what the user had with an empty node while
-  // the count says the run succeeded, so it fails instead and the row says
-  // so. The call was still paid for — the media was the prompt — and its row
-  // above says what it cost; a run that fails charges nothing.
-  if (answer.text === "") throw new AnsweredNothing();
+    // A run that answered nothing finished having put nothing on the node.
+    // Writing it would replace what the user had with an empty node while
+    // the count says the run succeeded, so it fails instead and the row says
+    // so. The call was still paid for — the media was the prompt — and its row
+    // above says what it cost; a run that fails charges nothing.
+    if (answer.text === "") throw new AnsweredNothing();
+  } catch (err) {
+    await recordUnpriced();
+    throw err;
+  }
 
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
