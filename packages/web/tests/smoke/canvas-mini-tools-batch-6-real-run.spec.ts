@@ -404,6 +404,33 @@ test('split: two cut points give three videos that add up to the source @needs-i
       await atCursor.click();
       await expect(c.page.getByTestId(`video-cut-${String(index)}`)).toBeVisible();
     }
+    // While the source plays, the panel strip's playhead follows it.
+    const media = nodeOf(c, 'clip6.mp4').getByTestId('media-element');
+    const head = c.page.getByTestId('video-playback-head');
+    const headAt = (): Promise<string> => head.evaluate((el) => (el as HTMLElement).style.left);
+    const before = await headAt();
+    await media.evaluate((el: HTMLMediaElement) => { el.muted = true; void el.play(); });
+    await expect.poll(headAt, { timeout: 5_000 }).not.toBe(before);
+    await media.evaluate((el: HTMLMediaElement) => { el.pause(); });
+    // A plain click on a cut handle focuses it and leaves the cut where it is.
+    const firstCut = c.page.getByTestId('video-cut-0');
+    const cutBefore = await firstCut.inputValue();
+    const handleBox = (await c.page.getByTestId('video-cut-handle-0').boundingBox())!;
+    await c.page.mouse.click(handleBox.x + handleBox.width / 2 + 8, handleBox.y + handleBox.height / 2);
+    await expect(c.page.getByTestId('video-cut-handle-0')).toBeFocused();
+    expect(await firstCut.inputValue()).toBe(cutBefore);
+    // A typed cut keeps exactly what was typed while typing.
+    const secondCut = c.page.getByTestId('video-cut-1');
+    await secondCut.fill('');
+    await secondCut.pressSequentially('4.55');
+    await expect(secondCut).toHaveValue('4.55');
+    // Pressing a second segment while the first is still starting previews the second one.
+    await c.page.evaluate(() => {
+      for (const id of ['video-segment-0', 'video-segment-1']) (document.querySelector(`[data-testid="${id}"]`) as HTMLElement).click();
+    });
+    await expect(c.page.getByTestId('video-segment-preview')).toBeVisible();
+    await expect(c.page.getByText('Media unavailable')).toHaveCount(0);
+    await c.page.getByRole('button', { name: 'Stop preview' }).click();
     const made = await run(c, 3);
     await c.page.keyboard.press('Escape');
     const parts = await stored(c, made);
@@ -513,6 +540,39 @@ test('transitions: two videos and a crossfade give one video as long as both les
     const [joined] = await stored(c, made);
     const b = duration(await contentOf(c, 'clip3b.mp4'));
     expect(Math.abs(duration(joined!.content) - (firstLength + b - finalOverlap))).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('transitions: the preview plays two videos of different sizes, before and after Swap order @needs-ingest @needs-storage', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions-preview');
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  try {
+    await upload(c, 'driving3.mp4', 'clip3b.mp4');
+    await presented(c, 'driving3.mp4');
+    await presented(c, 'clip3b.mp4');
+    await openTool(c, 'driving3.mp4', 'video.transitions');
+    await c.page.getByTestId('video-timeline-input').click();
+    await nodeOf(c, 'clip3b.mp4').click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    const readout = dialog.getByText(/^\d+\.\d{3} \/ \d+\.\d{3} s$/);
+    const played = async (): Promise<number> => Number((await readout.textContent())!.split(' / ')[0]);
+    // The 1280 x 720 clip first: each frame costs the most here, where the preview once failed within a second.
+    for (const step of ['before swap', 'after swap'] as const) {
+      if (step === 'after swap') {
+        await dialog.getByRole('button', { name: 'Swap order' }).click();
+        await dialog.getByRole('button', { name: 'Back to start' }).click();
+        await expect.poll(played).toBe(0);
+      }
+      await dialog.getByRole('button', { name: 'Preview', exact: true }).click();
+      await expect.poll(played, { message: step, timeout: 15_000 }).toBeGreaterThan(1.5);
+      await expect(dialog.getByText('Preview unavailable. Try again.'), step).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Pause' }).click();
+    }
+    expect(pageErrors).toEqual([]);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
