@@ -48,7 +48,7 @@ describe("parseConfig — regions", () => {
 
   it("refuses a non-global region without a global API address", () => {
     expect(() =>
-      parseConfig(baseEnv({ REGION: "sg", GLOBAL_REGION: "us-west" })),
+      parseConfig(baseEnv({ REGION: "sg", GLOBAL_REGION: "us-west", IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}' })),
     ).toThrow(/GLOBAL_API_URL/);
   });
 
@@ -58,6 +58,7 @@ describe("parseConfig — regions", () => {
         REGION: "sg",
         GLOBAL_REGION: "us-west",
         GLOBAL_API_URL: "http://10.0.0.5:3002",
+        IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}',
       }),
     );
     expect(config.REGION).toBe("sg");
@@ -66,5 +67,45 @@ describe("parseConfig — regions", () => {
 
   it("refuses a region code with characters outside letters, digits and '-'", () => {
     expect(() => parseConfig(baseEnv({ REGION: "us west" }))).toThrow(/REGION/);
+  });
+});
+
+describe("parseConfig — identity token keys", () => {
+  it("signs nothing and holds no public keys when none are set", () => {
+    const config = parseConfig(baseEnv());
+    expect(config.IDENTITY_SIGNING_KEY).toBe("");
+    expect(config.IDENTITY_SIGNING_KEY_ID).toBe("");
+    expect(config.IDENTITY_PUBLIC_KEYS).toEqual({});
+    expect(config.IDENTITY_COOKIE_DOMAIN).toBe("");
+  });
+
+  it("parses the public keys by kid", () => {
+    const config = parseConfig(baseEnv({ IDENTITY_PUBLIC_KEYS: '{"k1":"PEM-ONE","k2":"PEM-TWO"}' }));
+    expect(config.IDENTITY_PUBLIC_KEYS).toEqual({ k1: "PEM-ONE", k2: "PEM-TWO" });
+  });
+
+  it("refuses a signing key without the kid it signs under", () => {
+    expect(() => parseConfig(baseEnv({ IDENTITY_SIGNING_KEY: "PEM" }))).toThrow(/IDENTITY_SIGNING_KEY_ID/);
+  });
+
+  it("refuses a signing key outside the global region", () => {
+    expect(() =>
+      parseConfig(
+        baseEnv({
+          REGION: "sg",
+          GLOBAL_REGION: "us-west",
+          GLOBAL_API_URL: "http://10.0.0.5:3002",
+          IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}',
+          IDENTITY_SIGNING_KEY: "PEM",
+          IDENTITY_SIGNING_KEY_ID: "k1",
+        }),
+      ),
+    ).toThrow(/IDENTITY_SIGNING_KEY/);
+  });
+
+  it("refuses a non-global region with no public key to check tokens with", () => {
+    expect(() =>
+      parseConfig(baseEnv({ REGION: "sg", GLOBAL_REGION: "us-west", GLOBAL_API_URL: "http://10.0.0.5:3002" })),
+    ).toThrow(/IDENTITY_PUBLIC_KEYS/);
   });
 });
