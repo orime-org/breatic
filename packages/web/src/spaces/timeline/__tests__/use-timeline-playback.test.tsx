@@ -2135,6 +2135,78 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(30);
   });
 
+  it('holds a lane that ended 20 ms ahead of a clock still inside its file on its last picture, without seek, play() or waiting', async () => {
+    const a = mediaFixture({ duration: 1 });
+    const b = mediaFixture();
+    const hook = renderPlayback(a, {
+      document: timelineDocument([TAIL_CLIP, LANE_B], [TAIL_SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[TAIL_CLIP.id, a], [LANE_B.id, b]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(960);
+    const plays = a.play.mock.calls.length;
+    const pausesB = b.pause.mock.calls.length;
+    // The clock samples 0.98 s, inside the 1 s file; the element already played to its end, 0.02 s ahead of it.
+    tick(980, () => Object.assign(a.facts, { currentTime: 1, ended: true, paused: true, readyState: 2 }));
+    mediaEvent(a, 'ended');
+    tick(990);
+    expect(hook.result.current.state).toBe('playing');
+    expect(a.seeks).toEqual([]);
+    expect(a.play).toHaveBeenCalledTimes(plays);
+    expect(a.facts.currentTime).toBe(1);
+    expect(b.pause).toHaveBeenCalledTimes(pausesB);
+    expect(b.facts.paused).toBe(false);
+    tick(1060);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.state).toBe('playing');
+    expect(a.seeks).toEqual([]);
+    expect(a.play).toHaveBeenCalledTimes(plays);
+  });
+
+  // A's 1.030 s file under TAIL_CLIP; B starts at frame 25 (1.0417 s), the first frame whose source time is past A's end.
+  it.each([
+    ['an animation frame lands between the file end and the boundary', [1000, 1035, 1045]],
+    ['no animation frame lands between the file end and the boundary', [1000, 1025, 1045]],
+  ] as const)('crosses into a lane\'s tail at a boundary frame without waiting when %s: one seek to the file end, the new lane starts (§6.3)', async (_name, times) => {
+    const a = mediaFixture({ duration: 1.03 });
+    const b = mediaFixture();
+    const upper: TimelineVideoClip = { ...LANE_B, startFrame: 25, durationFrames: 48 };
+    const hook = renderPlayback(a, {
+      document: timelineDocument([TAIL_CLIP, upper], [TAIL_SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[TAIL_CLIP.id, a], [upper.id, b]]),
+    });
+    await settle();
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    const plays = a.play.mock.calls.length;
+    for (const time of times) {
+      // A lags the clock by 20 ms, inside the 0.04 s steering band, and has not reached its end.
+      tick(time, () => {
+        if (!a.facts.ended) a.facts.currentTime = Math.min(1.03, (time - 20) / 1000);
+      });
+      await settle();
+    }
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.state).toBe('playing');
+    expect(b.facts.paused).toBe(false);
+    expect(b.play).toHaveBeenCalledTimes(1);
+    expect(a.seeks).toHaveLength(1);
+    expect(Math.abs((a.seeks[0] ?? 0) - 1.03)).toBeLessThanOrEqual(0.001);
+    expect(a.facts.paused).toBe(true);
+    mediaEvent(a, 'seeked', { seeking: false, currentTime: 1.03, ended: true, readyState: 2 });
+    await settle();
+    // Off a frame edge, so float rounding at the boundary anchor cannot decide the frame.
+    tick(1260);
+    expect(hook.result.current.frame).toBe(30);
+    expect(hook.result.current.state).toBe('playing');
+    expect(b.facts.paused).toBe(false);
+    expect(a.seeks).toHaveLength(1);
+    expect(a.play).toHaveBeenCalledTimes(plays);
+  });
+
   it('makes the whole preview wait for a lane retried while playing, and goes on with every lane once it is ready', async () => {
     const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
@@ -2338,6 +2410,92 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(126);
     expect(Math.abs(a.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
     expect(Math.abs(b.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
+  });
+
+  it('seeks a lane that ran to its file end during a wait back to the held frame inside its file, and plays every lane on once it lands (§6.3)', async () => {
+    // A's file ends at 5.2 s; frame 120 samples 5.0 s, 0.2 s before that end and beyond the 0.15 s resume threshold.
+    const a = mediaFixture({ duration: 5.2 });
+    const b = mediaFixture();
+    const hook = renderPlayback(a, {
+      document: timelineDocument([CLIP, LANE_B], [SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[CLIP.id, a], [LANE_B.id, b]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    const pending = deferredPlay();
+    b.play.mockReturnValueOnce(pending.promise);
+    act(() => hook.result.current.seek(120));
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    expect(a.seeks).toEqual([5]);
+    // A plays 0.5 s while B's play() is pending and reaches its 5.2 s end; then B stalls.
+    tick(1500);
+    expect(hook.result.current.frame).toBe(120);
+    expect(a.facts.ended).toBe(true);
+    mediaEvent(a, 'ended');
+    mediaEvent(b, 'waiting', { readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(b, 'canplay', { readyState: 4 });
+    await settle();
+    // The held frame's source time is inside A's file: A is sought back to 5 s and the preview waits for it to land.
+    expect(a.seeks).toEqual([5, 5]);
+    expect(hook.result.current.state).toBe('waiting');
+    tick(2000);
+    expect(hook.result.current.frame).toBe(120);
+    mediaEvent(a, 'seeked', { seeking: false, ended: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(Math.abs(a.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
+    tick(2100);
+    expect(hook.result.current.frame).toBe(122);
+    expect(Math.abs(a.facts.currentTime - 122 / 24)).toBeLessThan(ONE_FRAME);
+    expect(Math.abs(b.facts.currentTime - 122 / 24)).toBeLessThan(ONE_FRAME);
+  });
+
+  it('leaves a lane at its file end 0.1 s ahead of the held frame unsought through a wait, never calls play() on it, and resumes the preview (§6.3)', async () => {
+    // A's file ends at 5.1 s; frame 120 samples 5.0 s: 0.1 s ahead, beyond the 0.04 s lead and within the 0.15 s threshold.
+    const a = mediaFixture({ duration: 5.1 });
+    const b = mediaFixture();
+    const hook = renderPlayback(a, {
+      document: timelineDocument([CLIP, LANE_B], [SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[CLIP.id, a], [LANE_B.id, b]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    const pending = deferredPlay();
+    b.play.mockReturnValueOnce(pending.promise);
+    act(() => hook.result.current.seek(120));
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    // A reaches its end while the clock is held, then B stalls.
+    mediaEvent(a, 'ended', { currentTime: 5.1, ended: true, paused: true, readyState: 2 });
+    const plays = a.play.mock.calls.length;
+    mediaEvent(b, 'waiting', { readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    await act(async () => {
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(b, 'canplay', { readyState: 4 });
+    await settle();
+    expect(a.seeks).toEqual([5]);
+    expect(a.play).toHaveBeenCalledTimes(plays);
+    expect(hook.result.current.state).toBe('playing');
+    tick(1250);
+    expect(hook.result.current.state).toBe('playing');
+    expect(hook.result.current.frame).toBe(126);
+    expect(a.play).toHaveBeenCalledTimes(plays);
   });
 });
 
