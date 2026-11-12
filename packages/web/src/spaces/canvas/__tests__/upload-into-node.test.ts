@@ -4,8 +4,8 @@
 /**
  * Uploading a file into an existing canvas node, the picker and Retry path
  * lifted out of `CanvasSpace` so a 3D capture can use it too (#1411 design
- * 5.3): the same gates, marks, reports and toasts, and an outcome the caller
- * can read.
+ * 5.3): the same gates, marks, reports and toasts; the caller only learns
+ * when it ended, and the node shows how.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -84,10 +84,10 @@ beforeEach(() => {
 afterEach(() => { clearAllDocSizes(); _resetForTests(); });
 
 describe('uploadIntoNode', () => {
-  it('reports uploaded once the server registered the bytes, and holds the leave guard while sending', async () => {
+  it('ends once the server registered the bytes, and holds the leave guard while sending', async () => {
     let busyWhileSending = false;
     h.sendFileAndFinish.mockImplementation(async () => { busyWhileSending = busy(); return { storageKey: TICKET.storageKey }; });
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'uploaded' });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.requestUploadTicket).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', spaceId: 's1', nodeId: 'n1' }), undefined);
     expect(busyWhileSending).toBe(true);
     expect(busy()).toBe(false);
@@ -96,28 +96,37 @@ describe('uploadIntoNode', () => {
 
   it('refuses a locked node with the node-gate warning and sends nothing', async () => {
     placeNode(true);
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: true });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.toast.warning).toHaveBeenCalledOnce();
     expect(h.requestUploadTicket).not.toHaveBeenCalled();
   });
 
-  it('reports the size-gate warning it showed when the canvas is full, and sends nothing', async () => {
+  it('shows the size-gate warning when the canvas is full, and sends nothing', async () => {
     setDocSize(docName.canvasSpace('p1', 's1'), { type: 'doc:size', seq: 1, ...P_FULL });
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: true });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.toast.warning).toHaveBeenCalledOnce();
     expect(h.requestUploadTicket).not.toHaveBeenCalled();
   });
 
-  it('reports no toast while the canvas is being rebuilt, when the gate shows none', async () => {
+  it('shows no toast while the canvas is being rebuilt, when the gate shows none', async () => {
     setDocSize(docName.canvasSpace('p1', 's1'), { type: 'doc:size', seq: 1, ...P_FULL });
     startDocResync(docName.canvasSpace('p1', 's1'));
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: false });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('writes the refusal on the node when a continued mark meets a canvas being rebuilt', async () => {
+    setDocSize(docName.canvasSpace('p1', 's1'), { type: 'doc:size', seq: 1, ...P_FULL });
+    startDocResync(docName.canvasSpace('p1', 's1'));
+    const op = useUploadMarksStore.getState().begin('s1', 'n1', 'upload');
+    await expect(uploadIntoNode(TARGET, FILE, { continuing: op })).resolves.toBeUndefined();
+    expect(mark()).toMatchObject({ state: 'failed', message: { key: 'spaces.sizeCap.reason' } });
+    expect(h.requestUploadTicket).not.toHaveBeenCalled();
   });
 
   it('says a refusal before the server answered on the node only', async () => {
     h.requestUploadTicket.mockRejectedValue(new Error('403'));
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: false });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(mark()).toMatchObject({ state: 'failed' });
     expect(h.toast.error).not.toHaveBeenCalled();
     expect(h.toast.warning).not.toHaveBeenCalled();
@@ -125,21 +134,21 @@ describe('uploadIntoNode', () => {
 
   it('says a file over the upload cap on the node only', async () => {
     h.fetchUploadConfig.mockResolvedValue({ ...CFG, maxUploadBytes: 1 });
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: false });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(mark()).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.tooLarge' } });
     expect(h.requestUploadTicket).not.toHaveBeenCalled();
   });
 
   it('reports bytes that never reached the edge to the server and keeps the file for Retry', async () => {
     h.sendFileAndFinish.mockRejectedValue(new BytesNotDelivered(new Error('offline')));
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: false });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.reportNodeTaskFailure).toHaveBeenCalledWith('task-1');
     expect(getRetryUpload('p1', 's1', 'task-1')?.file).toBe(FILE);
   });
 
-  it('toasts a finish the server recorded as failed, and says so in the outcome', async () => {
+  it('toasts a finish the server recorded as failed', async () => {
     h.waitForUploadEnding.mockResolvedValue({ key: TICKET.storageKey, state: 'failed', reason: 'storage_error' });
-    await expect(uploadIntoNode(TARGET, FILE)).resolves.toEqual({ status: 'failed', toasted: true });
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.toast.error).toHaveBeenCalledOnce();
   });
 });

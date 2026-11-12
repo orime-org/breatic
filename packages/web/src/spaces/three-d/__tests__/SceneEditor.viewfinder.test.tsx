@@ -139,7 +139,7 @@ beforeEach(() => {
   h.modelState = 'ready';
   h.capture.mockReset().mockResolvedValue({ width: 2048, height: 1152, pixels: new Uint8Array(4) });
   h.spaces = [{ id: 'c2', name: 'Second', type: 'canvas', createdAt: 2 }, { id: 'd1', name: 'Notes', type: 'document', createdAt: 1 }, { id: 'c1', name: 'First', type: 'canvas', createdAt: 1 }];
-  h.placeImageOnCanvas.mockReset().mockResolvedValue({ status: 'uploaded', nodeId: 'n1' });
+  h.placeImageOnCanvas.mockReset().mockResolvedValue({ status: 'placed', nodeId: 'n1' });
   h.openTray.mockReset().mockResolvedValue({ conversationId: 'conv', limits: { maxItems: 5, maxChars: 1000 } });
   h.uploadTrayItem.mockReset().mockResolvedValue('ready');
   h.add.mockReset().mockReturnValue('added');
@@ -147,7 +147,6 @@ beforeEach(() => {
   h.clipboardWrite.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: h.clipboardWrite } });
   (globalThis as unknown as { ClipboardItem: unknown }).ClipboardItem = class { constructor(readonly items: Record<string, Blob>) {} };
-  URL.createObjectURL = vi.fn(() => 'blob:shot');
   URL.revokeObjectURL = vi.fn();
   useCanvasRevealStore.setState({ request: null });
 });
@@ -309,14 +308,31 @@ describe('the destinations (acceptance 5 to 8)', () => {
     expect(button('toAgent')).toBeEnabled();
   });
 
-  it('stays on the captured shot when the Agent upload fails', async () => {
-    h.uploadTrayItem.mockResolvedValue('failed');
+  it('closes once the still is in the tray, while its upload is still running there', async () => {
+    h.uploadTrayItem.mockReturnValue(new Promise(() => undefined));
+    await setup();
+    await capture();
+    fireEvent.click(button('toAgent'));
+    await waitFor(() => expect(h.toast.success).toHaveBeenCalledWith(t('spaces.threeD.viewfinder.addedToAgent')));
+    expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
+  });
+
+  it('stays on the captured shot when the tray takes nothing', async () => {
+    h.add.mockReturnValue('full');
     await setup();
     await capture();
     fireEvent.click(button('toAgent'));
     await waitFor(() => expect(button('toAgent')).toBeEnabled());
     expect(h.toast.success).not.toHaveBeenCalled();
+    expect(h.uploadTrayItem).not.toHaveBeenCalled();
     expect(screen.getByTestId('scene-viewfinder-frame')).toBeInTheDocument();
+  });
+
+  it('shows no thumbnail once captured: the frame is the still', async () => {
+    await setup();
+    await capture();
+    expect(within(menu()).queryByRole('img')).toBeNull();
+    expect(menu().querySelector('img')).toBeNull();
   });
 
   it('lists every canvas in creation order even when there is one, and places on the one clicked', async () => {
@@ -347,28 +363,26 @@ describe('the destinations (acceptance 5 to 8)', () => {
     expect(within(list).queryAllByRole('button')).toHaveLength(0);
   });
 
-  it.each([
-    { outcome: { status: 'unreachable' }, key: 'canvasUnreachable', stays: true },
-    { outcome: { status: 'lost' }, key: 'canvasLost', stays: true },
-    { outcome: { status: 'upload_failed', nodeId: 'n1', toasted: false }, key: 'canvasUploadFailed', stays: false },
-  ])('tells a canvas $outcome.status and stays only when nothing was placed', async ({ outcome, key, stays }) => {
-    h.placeImageOnCanvas.mockResolvedValue(outcome);
+  it('says it cannot reach a canvas and stays on the still', async () => {
+    h.placeImageOnCanvas.mockResolvedValue({ status: 'unreachable' });
     await setup();
     await capture();
     fireEvent.click(button('toCanvas'));
     fireEvent.click(within(await screen.findByTestId('scene-viewfinder-canvas-list')).getByRole('button', { name: 'First' }));
-    await waitFor(() => expect(h.toast.error).toHaveBeenCalledWith(t(`spaces.threeD.viewfinder.${key}`, { name: 'First' })));
-    expect(screen.queryByTestId('scene-viewfinder-frame') !== null).toBe(stays);
+    await waitFor(() => expect(h.toast.error).toHaveBeenCalledWith(t('spaces.threeD.viewfinder.canvasUnreachable', { name: 'First' })));
+    expect(screen.getByTestId('scene-viewfinder-frame')).toBeInTheDocument();
   });
 
-  it('says nothing more when a failed canvas upload already told the user', async () => {
-    h.placeImageOnCanvas.mockResolvedValue({ status: 'upload_failed', nodeId: 'n1', toasted: true });
+  it('stays on the still without a word of its own when the size gate refused the node', async () => {
+    h.placeImageOnCanvas.mockResolvedValue({ status: 'refused' });
     await setup();
     await capture();
     fireEvent.click(button('toCanvas'));
     fireEvent.click(within(await screen.findByTestId('scene-viewfinder-canvas-list')).getByRole('button', { name: 'First' }));
-    await waitFor(() => expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull());
+    await waitFor(() => expect(button('toCanvas')).toBeEnabled());
     expect(h.toast.error).not.toHaveBeenCalled();
+    expect(h.toast.success).not.toHaveBeenCalled();
+    expect(screen.getByTestId('scene-viewfinder-frame')).toBeInTheDocument();
   });
 
   it('copies the PNG and closes, or stays when the browser refuses', async () => {

@@ -11,7 +11,7 @@ import {
 
 const FRAME = { x: 40, y: 60, width: 640, height: 360 };
 const SMALL = { x: 100, y: 100, width: 320, height: 180 };
-const SHOT = { file: new File(['png'], 'shot.png', { type: 'image/png' }), url: 'blob:shot', width: 2048, height: 1152 };
+const SHOT = { file: new File(['png'], 'shot.png', { type: 'image/png' }), width: 2048, height: 1152 };
 
 /**
  * Apply actions in order.
@@ -78,12 +78,11 @@ describe('the viewfinder states (design 6.1)', () => {
     expect(viewfinderReducer(sending, { type: 'pick' })).toBe(sending);
   });
 
-  it('closes on success, returns to captured on a failure that wrote nothing, and closes on a failure after the node was placed', () => {
+  it('closes once handed over and returns to captured when the hand-over failed', () => {
     const sending = run([{ type: 'pick' }, { type: 'send', target: 'canvas' }], captured);
     expect(sending.phase).toBe('sending');
     expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'done' }).phase).toBe('off');
     expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'retry' })).toMatchObject({ phase: 'captured', sending: null, shot: SHOT });
-    expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'close' }).phase).toBe('off');
   });
 
   it('closes mid-send on Esc or the button, and the detached result then changes nothing', () => {

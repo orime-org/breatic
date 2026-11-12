@@ -97,7 +97,6 @@ beforeEach(() => {
   h.capture.mockReset().mockResolvedValue(PIXELS);
   h.placeImageOnCanvas.mockReset().mockReturnValue(new Promise(() => undefined));
   Object.values(h.toast).forEach((fn) => fn.mockReset());
-  URL.createObjectURL = vi.fn(() => 'blob:shot');
   URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => {
@@ -120,7 +119,7 @@ describe('repeated presses in the viewfinder', () => {
     expect(h.placeImageOnCanvas).toHaveBeenCalledTimes(1);
   });
 
-  it('captures once when Capture is pressed twice, and makes one preview address', async () => {
+  it('captures once when Capture is pressed twice', async () => {
     let finish: (value: typeof PIXELS) => void = () => undefined;
     h.capture.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     await setup();
@@ -129,7 +128,6 @@ describe('repeated presses in the viewfinder', () => {
     await act(async () => { finish(PIXELS); await Promise.resolve(); });
     await within(menu()).findByRole('button', { name: t('spaces.threeD.viewfinder.toAgent') });
     expect(h.capture).toHaveBeenCalledTimes(1);
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
 
   it('drops a capture that finishes after the viewfinder was closed and reopened', async () => {
@@ -142,6 +140,5 @@ describe('repeated presses in the viewfinder', () => {
     fireEvent.click(trigger());
     await act(async () => { finish(PIXELS); await Promise.resolve(); await Promise.resolve(); });
     expect(button('confirm')).toBeInTheDocument();
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });

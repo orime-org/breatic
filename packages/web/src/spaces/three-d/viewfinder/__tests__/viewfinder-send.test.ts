@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Adding a 3D capture to the Agent tray (#1411 design 3.4 and 5.2): every way
- * it stops says what the tray says for a picked file and adds nothing.
+ * Adding a 3D capture to the Agent tray (#1411 design 3.4 and 5.2): the still
+ * is handed over once it is in the tray, and the tray's upload runs on in the
+ * background; every way it stops before that says what the tray says for a
+ * picked file and adds nothing.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,7 +45,8 @@ beforeEach(() => {
 });
 
 describe('sendCaptureToAgent', () => {
-  it('brings the chat column into view and adds the still uploading, then ready', async () => {
+  it('brings the chat column into view and hands over once the still is in the tray, uploading', async () => {
+    h.uploadTrayItem.mockReturnValue(new Promise(() => undefined));
     await expect(sendCaptureToAgent(WHERE, FILE)).resolves.toBe(true);
     expect(useUIStore.getState().chatPanelCollapsed).toBe(false);
     expect(h.add).toHaveBeenCalledWith('c1', [expect.objectContaining({ name: '3D-Room.png', type: 'image', status: 'uploading' })], TRAY.limits);
@@ -69,9 +72,14 @@ describe('sendCaptureToAgent', () => {
     expect(h.uploadTrayItem).not.toHaveBeenCalled();
   });
 
-  it('says the format was refused when the server turns the upload away', async () => {
+  it('has handed over even when the upload later fails', async () => {
+    h.uploadTrayItem.mockResolvedValue('failed');
+    await expect(sendCaptureToAgent(WHERE, FILE)).resolves.toBe(true);
+  });
+
+  it('still says the format was refused when the server turns the upload away after the hand-over', async () => {
     h.uploadTrayItem.mockResolvedValue('unsupported');
-    await expect(sendCaptureToAgent(WHERE, FILE)).resolves.toBe(false);
-    expect(h.say).toHaveBeenCalledWith(expect.objectContaining({ key: 'unsupportedMedia', filename: '3D-Room.png' }));
+    await expect(sendCaptureToAgent(WHERE, FILE)).resolves.toBe(true);
+    await vi.waitFor(() => expect(h.say).toHaveBeenCalledWith(expect.objectContaining({ key: 'unsupportedMedia', filename: '3D-Room.png' })));
   });
 });
