@@ -34,7 +34,7 @@ const row: DocumentVersion = {
 };
 
 /** A storage over a shown record the test controls. */
-function storage(shown: ShownVersion | null = null, apply = vi.fn((): 'written' | 'refused' => 'written'), report = vi.fn()) {
+function storage(shown: ShownVersion | null = null, apply = vi.fn((): 'applied' | 'refused' => 'applied'), report = vi.fn()) {
   const ref = { current: shown };
   return { storage: createDocumentVersionStorage({ scope, shown: ref, apply, report }), apply, report, ref };
 }
@@ -79,7 +79,7 @@ describe('createDocumentVersionStorage', () => {
   it.each([
     [refused(404), { type: 'not-found' }],
     [refused(403), { type: 'forbidden' }],
-    [refused(409), { type: 'conflict' }],
+    [refused(409), { type: 'server', status: 409 }],
     [refused(0, true), { type: 'network' }],
     [refused(500), { type: 'server', status: 500 }],
   ])('returns a refusal as a typed failure (%#)', async (thrown, error) => {
@@ -137,7 +137,7 @@ describe('createDocumentVersionStorage', () => {
   });
 
   it('fails a restore the Space refused, without reporting it, so the controller keeps the panel', async () => {
-    const { storage: s, report } = storage({ id: 'v1', content: { type: 'doc' } }, vi.fn((): 'written' | 'refused' => 'refused'));
+    const { storage: s, report } = storage({ id: 'v1', content: { type: 'doc' } }, vi.fn((): 'applied' | 'refused' => 'refused'));
 
     expect(await s.restore!('v1')).toEqual({ ok: false, error: { type: 'conflict' } });
 

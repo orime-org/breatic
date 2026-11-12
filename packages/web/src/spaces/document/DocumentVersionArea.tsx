@@ -162,7 +162,7 @@ export default function DocumentVersionArea({
         });
         if (typeof result === 'string') {
           outcome.current = result;
-          return 'written';
+          return 'applied';
         }
         const message = spaceRefusalMessage('add', result.reason);
         if (message !== null) toast.warning(message);
@@ -338,9 +338,8 @@ export default function DocumentVersionArea({
     const ended = await run('restore', () => controller.restore(id), t('spaces.document.versions.restoreFailed'));
     setRestoring(false);
     // Refused by the Space's size: the body and the panel are as they were.
-    if (ended === 'refused') setConfirmingRestore(false);
+    if (ended === 'done' || ended === 'refused') setConfirmingRestore(false);
     if (ended !== 'done') return;
-    setConfirmingRestore(false);
     closePanel();
     // Back in the body once it is on screen again.
     requestAnimationFrame(() => viewOf(editor)?.focus());

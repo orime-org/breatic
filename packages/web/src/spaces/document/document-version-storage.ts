@@ -46,7 +46,6 @@ function failure(err: unknown): { ok: false; error: VersionError } {
   if (err.network) return { ok: false, error: { type: 'network' } };
   if (err.status === 404) return { ok: false, error: { type: 'not-found' } };
   if (err.status === 403) return { ok: false, error: { type: 'forbidden' } };
-  if (err.status === 409) return { ok: false, error: { type: 'conflict' } };
   return { ok: false, error: { type: 'server', status: err.status } };
 }
 
@@ -79,14 +78,14 @@ function toSnapshot(row: DocumentVersion): VersionSnapshot {
  * @param options - The document and the restore's two hooks.
  * @param options.scope - The document.
  * @param options.shown - What the preview shows now.
- * @param options.apply - Writes a snapshot into the live body, or says the Space refused it (having told the user why); it throws when it cannot.
+ * @param options.apply - Applies a snapshot to the live body (written, or already equal), or says the Space refused it (having told the user why); it throws when it cannot.
  * @param options.report - Reports a write that threw.
  * @returns The storage.
  */
 export function createDocumentVersionStorage(options: {
   scope: DocumentScope;
   shown: ShownRef;
-  apply: (content: Json) => 'written' | 'refused';
+  apply: (content: Json) => 'applied' | 'refused';
   report: (err: unknown) => void;
 }): VersionStorage<Json> {
   const { scope } = options;
