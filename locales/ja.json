@@ -3213,6 +3213,7 @@
     "close": "閉じる",
     "indexLabel": "クレジットの項目",
     "unit": "クレジット",
+    "billingPending": "課金処理中",
     "loadFailed": "読み込めませんでした。閉じてから開き直してください。",
     "listEnd": "これ以上ありません",
     "listPageFailed": "このページを読み込めませんでした。スクロールで再試行。",

@@ -3213,6 +3213,7 @@
     "close": "Close",
     "indexLabel": "Credit sections",
     "unit": "credits",
+    "billingPending": "Billing",
     "loadFailed": "Could not load. Close and open again.",
     "listEnd": "No more",
     "listPageFailed": "Could not load this page. Scroll to retry.",

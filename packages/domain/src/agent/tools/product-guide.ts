@@ -394,7 +394,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.drawer.action.rename"))}.`,
     `The third, a pulse line, opens ${quoted(t("activity.header"))}: the project's uploads, generations and ` +
       "changes to spaces and members, newest first. Each finished generation shows the credits it used, a star " +
-      "with a number; a failed one shows a red exclamation mark; picture, video and sound entries have a " +
+      "with a number; one whose cost is still being billed shows the part known so far as a lower bound, " +
+      `≥ and a number, with ${quoted(t("credits.billingPending"))} beside it, until the final amount replaces it; ` +
+      "a failed one shows a red exclamation mark; picture, video and sound entries have a " +
       "thumbnail that shows a larger preview when hovered. The project's owner sees " +
       `${quoted(t("activity.action.restore"))} on a deleted space's entry, which brings the space back into ` +
       `${quoted(t("spaces.drawer.title"))}, not as a tab: open it from there. Afterwards that entry shows ` +

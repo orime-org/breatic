@@ -3213,6 +3213,7 @@
     "close": "닫기",
     "indexLabel": "크레딧 항목",
     "unit": "크레딧",
+    "billingPending": "정산 중",
     "loadFailed": "불러오지 못했습니다. 닫았다가 다시 열어 주세요.",
     "listEnd": "더 없습니다",
     "listPageFailed": "이 페이지를 불러오지 못했습니다. 스크롤하여 다시 시도하세요.",

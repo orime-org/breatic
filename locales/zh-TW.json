@@ -3213,6 +3213,7 @@
     "close": "關閉",
     "indexLabel": "點數內容",
     "unit": "點數",
+    "billingPending": "計費中",
     "loadFailed": "無法載入，請關閉後重新開啟。",
     "listEnd": "沒有更多了",
     "listPageFailed": "這一頁未能載入，捲動重試。",

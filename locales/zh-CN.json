@@ -3213,6 +3213,7 @@
     "close": "关闭",
     "indexLabel": "积分内容",
     "unit": "积分",
+    "billingPending": "计费中",
     "loadFailed": "无法加载，请关闭后重新打开。",
     "listEnd": "没有更多了",
     "listPageFailed": "这一页没能加载，滚动重试。",
