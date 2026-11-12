@@ -147,6 +147,8 @@ beforeEach(() => {
   h.clipboardWrite.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: h.clipboardWrite } });
   (globalThis as unknown as { ClipboardItem: unknown }).ClipboardItem = class { constructor(readonly items: Record<string, Blob>) {} };
+  let stills = 0;
+  URL.createObjectURL = vi.fn(() => `blob:still-${(stills += 1)}`);
   URL.revokeObjectURL = vi.fn();
   useCanvasRevealStore.setState({ request: null });
 });
@@ -295,6 +297,32 @@ describe('capturing (acceptance 3 and 4)', () => {
     fireEvent.click(button('reframe'));
     expect(button('confirm')).toBeInTheDocument();
     expect(h.viewport?.viewLocked).toBe(false);
+  });
+
+  it('fills the frame with the captured still and gives the live scene back on Reframe and on close', async () => {
+    await setup();
+    await capture();
+    const still = within(screen.getByTestId('scene-viewfinder-frame')).getByTestId('scene-viewfinder-still');
+    expect(still).toHaveAttribute('src', 'blob:still-1');
+    const [file] = vi.mocked(URL.createObjectURL).mock.calls[0] as [File];
+    expect(file.name).toMatch(/^3D-.*\.png$/);
+    fireEvent.click(button('reframe'));
+    expect(screen.queryByTestId('scene-viewfinder-still')).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:still-1');
+    fireEvent.click(button('confirm'));
+    await within(menu()).findByRole('button', { name: t('spaces.threeD.viewfinder.toAgent') });
+    expect(screen.getByTestId('scene-viewfinder-still')).toHaveAttribute('src', 'blob:still-2');
+    fireEvent.click(trigger());
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:still-2');
+  });
+
+  it('puts the object toolbar away from Capture until Reframe', async () => {
+    const { session } = await setup();
+    act(() => session.select(ID, false));
+    await capture();
+    expect(screen.queryByTestId('scene-object-menu')).toBeNull();
+    fireEvent.click(button('reframe'));
+    expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument();
   });
 });
 

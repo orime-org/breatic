@@ -97,6 +97,7 @@ beforeEach(() => {
   h.capture.mockReset().mockResolvedValue(PIXELS);
   h.placeImageOnCanvas.mockReset().mockReturnValue(new Promise(() => undefined));
   Object.values(h.toast).forEach((fn) => fn.mockReset());
+  URL.createObjectURL = vi.fn(() => 'blob:still');
   URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => {
