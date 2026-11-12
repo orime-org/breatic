@@ -36,6 +36,7 @@ import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-d
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
+import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
@@ -44,8 +45,10 @@ import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
+import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
+import { PHOTO_PAPER_DIORAMA } from "@shared/canvas/templates/photo-paper-diorama.js";
 import { POV_CONTINUOUS_SHOT } from "@shared/canvas/templates/pov-continuous-shot.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
@@ -66,7 +69,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "posters", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -198,6 +201,9 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   TRAVEL_CITY_WALK,
   TWIST_COMEDY_SKIT,
   VERTICAL_15S_QUICK_TIP,
+  NAME_AS_WORLD_TYPOGRAPHY,
+  DESTINATION_FESTIVAL_POSTER,
+  PHOTO_PAPER_DIORAMA,
   AMBIENCE_SFX_BED,
   VOICE_LINE,
   TWO_VOICE_DIALOGUE,
