@@ -1440,7 +1440,7 @@
         "peopleIdle": "识别人物后选择目标。",
         "personNumber": "人物 {number}",
         "pickAudio": "在 Canvas 上选择一个音频节点。",
-        "pickVideo": "点击视频节点填入槽位，按 Escape 结束选择。",
+        "pickVideo": "点击一个视频节点填入槽位，按 Escape 结束选择。",
         "preview": "预览",
         "previewUnavailable": "预览不可用，请重试。",
         "rangeEnd": "结束",
@@ -1554,7 +1554,10 @@
         "timeRange": "作用区间",
         "retryPeople": "重试识别",
         "personCapReached": "最多 {count} 个人物",
-        "dialogueStartInvalid": "请输入大于或等于 0 秒的时间。"
+        "dialogueStartInvalid": "请输入大于或等于 0 秒的时间。",
+        "outputCount": "{count} 个产物",
+        "viewerMode": "Viewer 模式",
+        "connectionUnavailable": "连接不可用"
       }
     },
     "template": {

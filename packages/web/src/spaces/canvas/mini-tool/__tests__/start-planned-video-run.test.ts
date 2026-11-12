@@ -147,6 +147,28 @@ describe('a transitions result is linked from both of its videos', () => {
   });
 });
 
+// Canvas design §3 inputs row (sourceNodeId gives the edge relation): a lip-sync result is linked from each dialogue audio
+// node it uses that is still on the canvas, as a transitions result is from its picked video.
+describe('a lip-sync result is linked from its dialogue audio nodes', () => {
+  const AUDIO_NODE = '10000000-0000-4000-8000-000000000008';
+  const GONE_NODE = '10000000-0000-4000-8000-000000000009';
+  const AUDIO = '80000000-0000-4000-8000-000000000003'; const GONE = '80000000-0000-4000-8000-000000000004';
+  const lipSync: VideoToolDraftById['video.lip-sync'] = { ...COMMON,
+    inputs: [{ inputId: AUDIO, url: 'https://assets.example.test/a.mp3', mediaInfo: { duration: 1 }, sourceNodeId: AUDIO_NODE }, { inputId: GONE, url: 'https://assets.example.test/b.mp3', mediaInfo: { duration: 1 }, sourceNodeId: GONE_NODE }],
+    params: { anchor: { frameIndex: 0, pts: 0 }, syncMode: 'cut_off', dialogues: [
+      { dialogueId: '90000000-0000-4000-8000-000000000021', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: AUDIO, startTime: 0 },
+      { dialogueId: '90000000-0000-4000-8000-000000000022', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: GONE, startTime: 0 },
+    ] } } as VideoToolDraftById['video.lip-sync'];
+
+  it('F27 adds an edge from the host and from each dialogue audio node still on the canvas', async () => {
+    addNode(PROJECT, SPACE, { id: AUDIO_NODE, type: 'audio', position: { x: 0, y: 400 }, data: { content: 'https://assets.example.test/a.mp3', name: 'A', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.lip-sync', draft: lipSync }));
+    const output = body!.outputs[0]!.nodeId;
+    expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => `${edge.source}>${edge.target}:${edge.toolId}`).sort())
+      .toEqual([`${AUDIO_NODE}>${output}:video.lip-sync`, `${SOURCE}>${output}:video.lip-sync`].sort());
+  });
+});
+
 describe('planned video press: independent frozen body and original graph', () => {
   it('F05 prepares one distinct video destination and a strict complete public request without touching its source', async () => {
     const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));

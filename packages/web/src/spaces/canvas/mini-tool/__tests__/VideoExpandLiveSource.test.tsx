@@ -61,6 +61,17 @@ describe('approved live-source video expansion structure', () => {
       session.setMiniToolSourceSize({ width: 480, height: 480 });
       session.setExpand({ frame: { x: -373 / 960, y: 0, width: 853 / 480, height: 1 }, ratio: 'free' });
     });
-    expect(screen.getByText(/^\d+ × \d+$/).textContent).toBe('854 × 480');
+    expect(screen.getByText(/× \d+$/).textContent).toBe('Free · 854 × 480');
+  });
+
+  // Demo outpaint-controls.tsx: the label names the ratio in use, Free while none holds, before the size.
+  it('names the ratio in use before the size', () => {
+    openLiveVideo();
+    act(() => {
+      const session = canvasSessions.of('').getState();
+      session.setMiniToolSourceSize({ width: 480, height: 480 });
+      session.setExpand({ frame: { x: -1 / 6, y: 0, width: 4 / 3, height: 1 }, ratio: '4:3' });
+    });
+    expect(screen.getByText(/× \d+$/).textContent).toBe('4:3 · 640 × 480');
   });
 });

@@ -26,6 +26,13 @@ describe('approved production video parameter controls', () => {
     expect(screen.getByTestId('video-expand-ratios').querySelectorAll('button')).toHaveLength(8);
     expect(screen.getByRole('textbox')).toHaveValue('');
   });
+  // Demo outpaint-controls.tsx: the ratio grid sits under its heading, the image Expand panel's own.
+  it('heads the expansion ratios with the image Expand panel\'s heading', () => {
+    const draft: VideoToolDraftById['video.expand'] = { ...common, params: { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: 'free', prompt: '' } };
+    render(<VideoToolControls {...base} toolId='video.expand' draft={draft} onChange={vi.fn()} />);
+    const heading = screen.getByText(t('canvas.miniTool.param.aspect.label'));
+    expect(heading.nextElementSibling).toBe(screen.getByTestId('video-expand-ratios'));
+  });
   // Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right.
   it('offers all five complete duration policies from the mode pill on the bottom row', () => {
     const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };

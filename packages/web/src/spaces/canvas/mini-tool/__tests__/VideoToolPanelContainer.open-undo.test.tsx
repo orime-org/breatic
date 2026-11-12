@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@web/lib/toast', () => ({
@@ -24,7 +24,8 @@ import type { VideoToolId } from '@breatic/shared/mini-tools';
 import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { CanvasContext } from '../../canvas-context';
 import { addNode, getCanvasUndoManager, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { createVideoToolDraft } from '../video/video-tool-edit';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -41,7 +42,7 @@ const name = docName.canvasSpace(projectId, spaceId);
  * @param toolId - The tool.
  * @returns The undo stack's depth before the panel opened.
  */
-function open(toolId: VideoToolId): number {
+function open(toolId: VideoToolId, onRunVideo = vi.fn()): number {
   const doc = getDoc(name);
   const undo = getCanvasUndoManager(doc, name);
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
@@ -50,7 +51,7 @@ function open(toolId: VideoToolId): number {
   const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
     presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={vi.fn()} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   return before;
 }
 
@@ -69,5 +70,24 @@ describe('opening a video tool leaves the canvas undo stack alone', () => {
     const before = open('video.lip-sync');
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     expect(getCanvasUndoManager(getDoc(name), name).undoStack).toHaveLength(before);
+  });
+});
+
+// Canvas design §3.3 undo row: a run's created nodes and edges are one undo batch, so the time Current freezes at the press
+// is no undo step of its own.
+describe('running extract frames in Current mode', () => {
+  it('freezes the presented time without an undo step of its own', async () => {
+    const onRunVideo = vi.fn().mockResolvedValue(undefined);
+    const doc = getDoc(name);
+    addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+    const seeded = createVideoToolDraft('video.extract-frames', { nodeId, canonicalURL: sourceURL, mediaInfo });
+    commitVideoToolDraft(doc, nodeId, 'video.extract-frames', { ...seeded, params: { mode: 'current', currentTime: 1 } }, false);
+    const before = open('video.extract-frames', onRunVideo);
+    const run = screen.getByTestId('mini-tool-run');
+    await waitFor(() => expect(run).not.toBeDisabled());
+    fireEvent.click(run);
+    await waitFor(() => expect(onRunVideo).toHaveBeenCalledOnce());
+    expect((onRunVideo.mock.calls[0]![2] as { params: { currentTime: number } }).params.currentTime).toBe(0);
+    expect(getCanvasUndoManager(doc, name).undoStack).toHaveLength(before);
   });
 });

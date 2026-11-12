@@ -54,6 +54,7 @@ import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import {
   BLOCKING_REFUSALS,
   aspectRatioOf,
@@ -76,6 +77,10 @@ export interface MiniToolPanelProps {
   customBody?: React.ReactNode;
   /** Whether the approved controls need the wide panel. */
   customWide?: boolean;
+  /** Whether the title starts with the tool's icon (demo 2026-10-23-1306 main.tsx, the video tool panels). */
+  titleIcon?: boolean;
+  /** A count beside the title, such as the outputs a run plans. */
+  aside?: React.ReactNode;
   /** A model tool's controls, read from its pinned model. */
   modelControls: readonly ModelControl[] | undefined;
   /** The pinned model's catalog entry, for a model tool. */
@@ -332,6 +337,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     onClose,
   } = props;
   const t = useTranslation();
+  const TitleIcon = MINI_TOOL_ICONS[spec.icon];
   const blocked = BLOCKING_REFUSALS.has(refusal);
   // A prompt that may stay empty is an addition, drawn last across the panel;
   // one that holds Run back is the tool's main input, drawn before the params.
@@ -473,10 +479,12 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   return (
     <CanvasPanel
       title={
-        <span data-testid='mini-tool-panel-title' className='text-sm font-semibold'>
+        <span data-testid='mini-tool-panel-title' className={props.titleIcon === true ? 'flex items-center gap-2 text-sm font-semibold' : 'text-sm font-semibold'}>
+          {props.titleIcon === true ? <TitleIcon className='size-4' aria-hidden='true' /> : null}
           {t(spec.labelKey)}
         </span>
       }
+      aside={props.aside}
       closeLabel={t('canvas.miniTool.panel.close')}
       closeTestId='mini-tool-panel-close'
       onClose={onClose}

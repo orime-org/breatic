@@ -1440,7 +1440,7 @@
         "peopleIdle": "Detect people to select a target.",
         "personNumber": "Person {number}",
         "pickAudio": "Choose an audio node on the Canvas.",
-        "pickVideo": "Click video nodes to fill the slot. Press Escape to finish.",
+        "pickVideo": "Click a video node to fill the slot. Press Escape to finish.",
         "preview": "Preview",
         "previewUnavailable": "Preview unavailable. Try again.",
         "rangeEnd": "End",
@@ -1554,7 +1554,10 @@
         "timeRange": "Time range",
         "retryPeople": "Retry identification",
         "personCapReached": "Person limit: {count}",
-        "dialogueStartInvalid": "Enter a time of 0 seconds or later."
+        "dialogueStartInvalid": "Enter a time of 0 seconds or later.",
+        "outputCount": "{count, plural, one {# output} other {# outputs}}",
+        "viewerMode": "Viewer mode",
+        "connectionUnavailable": "Connection unavailable"
       }
     },
     "template": {

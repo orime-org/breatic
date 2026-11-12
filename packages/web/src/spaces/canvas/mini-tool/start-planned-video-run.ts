@@ -167,10 +167,12 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   });
   const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], frameTable: run.frameTable },
     nodes.map((node) => node.id));
-  // A transitions result is also linked from its picked input's node while that node is still on the canvas (canvas design §4).
+  // A transitions or lip-sync result is also linked from each input node it uses (the picked video, each dialogue audio)
+  // while that node is still on the canvas (canvas design §3 inputs row: sourceNodeId gives the edge relation, §4).
   const doc = getDoc(docName.canvasSpace(run.projectId, run.spaceId));
+  const linksInputs = run.toolId === 'video.transitions' || run.toolId === 'video.lip-sync';
   const linked = [source.id, ...new Set(held.inputs.flatMap((input) =>
-    input.sourceNodeId !== undefined && input.sourceNodeId !== source.id && run.toolId === 'video.transitions' && nodeDataMap(doc, input.sourceNodeId) !== null ? [input.sourceNodeId] : []))];
+    linksInputs && input.sourceNodeId !== undefined && input.sourceNodeId !== source.id && nodeDataMap(doc, input.sourceNodeId) !== null ? [input.sourceNodeId] : []))];
   runCanvasUndoBatch(run.projectId, run.spaceId, () => {
     for (const node of nodes) {
       addNode(run.projectId, run.spaceId, node);

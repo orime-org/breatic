@@ -1440,7 +1440,7 @@
         "peopleIdle": "人物を検出して対象を選択します。",
         "personNumber": "人物 {number}",
         "pickAudio": "Canvas 上の音声ノードを選択してください。",
-        "pickVideo": "動画ノードをクリックしてスロットに追加します。Escape で終了します。",
+        "pickVideo": "動画ノードを1つクリックしてスロットに入れます。Escape で終了します。",
         "preview": "プレビュー",
         "previewUnavailable": "プレビューを利用できません。再試行してください。",
         "rangeEnd": "終了",
@@ -1554,7 +1554,10 @@
         "timeRange": "適用範囲",
         "retryPeople": "検出を再試行",
         "personCapReached": "人物は最大 {count} 人です",
-        "dialogueStartInvalid": "0 秒以上の時間を入力してください。"
+        "dialogueStartInvalid": "0 秒以上の時間を入力してください。",
+        "outputCount": "{count} 出力",
+        "viewerMode": "Viewer モード",
+        "connectionUnavailable": "接続できません"
       }
     },
     "template": {

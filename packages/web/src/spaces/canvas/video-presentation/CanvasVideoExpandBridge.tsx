@@ -8,6 +8,7 @@ import { nodeDataMap } from '@web/data/yjs/canvas-space';
 import { useVideoToolDraft } from '@web/data/yjs/use-video-tool-draft';
 import { readVideoToolDraft, commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { useConnectionLost } from '@web/data/yjs/space-connection';
 import { ExpandFrameOverlay, type ExpandFrameOverlayProps } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import type { ExpandFrame, ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -27,7 +28,10 @@ interface CanvasVideoExpandBridgeProps {
  * @throws {Error} When a supposedly supported draft fails validation on write.
  */
 export function CanvasVideoExpandBridge(props: CanvasVideoExpandBridgeProps): React.JSX.Element {
-  const { projectId, spaceId, readOnly } = useCanvasContext();
+  const { projectId, spaceId, readOnly: viewer } = useCanvasContext();
+  // Offline the frame takes no edit, as the panel takes none (canvas design §4).
+  const offline = useConnectionLost();
+  const readOnly = viewer || offline;
   const reading = useVideoToolDraft(projectId, spaceId, props.nodeId, 'video.expand');
   const draft = reading.state === 'supported' ? reading.draft : null;
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
