@@ -11,7 +11,7 @@
 
 import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import type { MiniToolAnalysisRecord, VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
@@ -350,5 +350,54 @@ describe('stepping a handle that is not on a frame start', () => {
     render(<StatefulSplit cuts={[2.5]} changes={changes} />);
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
     expect(changes.at(-1)![0]).toBeCloseTo(2.52, 6);
+  });
+});
+
+describe('Add at cursor while the source plays', () => {
+  let frames: Map<number, FrameRequestCallback>;
+  let nextFrame: number;
+  beforeEach(() => {
+    frames = new Map();
+    nextFrame = 1;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { const id = nextFrame++; frames.set(id, callback); return id; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn((id: number) => { frames.delete(id); }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  /**
+   * Runs the pending animation frames once.
+   */
+  function tick(): void {
+    const pending = [...frames.values()];
+    frames.clear();
+    act(() => { for (const callback of pending) callback(0); });
+  }
+
+  /**
+   * A playing source element.
+   * @returns The element.
+   */
+  function playingElement(): HTMLVideoElement {
+    const element = document.createElement('video');
+    Object.defineProperty(element, 'paused', { configurable: true, get: () => false });
+    return element;
+  }
+
+  it('stores the live time at the press, not the stale panel time', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[1, 3]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => 3.2 }} changes={changes} />);
+    tick();
+    fireEvent.click(screen.getByTestId('video-add-cut'));
+    expect(changes.at(-1)).toEqual([1, 3, 3.2]);
+  });
+
+  it('becomes available once the shown time moves past 0', () => {
+    let now = 0;
+    render(<StatefulSplit cuts={[]} presentedTime={0} liveClock={{ element: playingElement(), read: () => now }} />);
+    tick();
+    expect(screen.getByTestId('video-add-cut')).toBeDisabled();
+    now = 0.5;
+    tick();
+    expect(screen.getByTestId('video-add-cut')).toBeEnabled();
   });
 });

@@ -67,7 +67,7 @@ function percent(seconds: number, duration: number): string {
  * @returns The time to show, null while no frame is shown.
  * @throws {never} Never.
  */
-function useShownTime(clock: VideoPlaybackLiveClock | undefined, presentedTime: number | null): number | null {
+export function useShownTime(clock: VideoPlaybackLiveClock | undefined, presentedTime: number | null): number | null {
   // undefined while not following playback.
   const [live, setLive] = React.useState<number | null | undefined>(undefined);
   React.useEffect(() => {

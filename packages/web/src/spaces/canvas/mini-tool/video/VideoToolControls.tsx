@@ -11,7 +11,7 @@ import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVid
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { secondsLabel, VideoPlaybackStrip, type VideoPlaybackLiveClock } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
+import { secondsLabel, useShownTime, VideoPlaybackStrip, type VideoPlaybackLiveClock } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
 import type { SourceRangePlayback } from '@web/spaces/canvas/video-presentation/play-source-range';
 import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -485,8 +485,8 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
     next.done.then(() => { if (playback.current === next) { playback.current = null; setPreviewing(null); } },
       () => { if (playback.current === next) { playback.current = null; setPreviewing(null); setPlayFailed(true); } });
   };
-  const cursor = props.presentedTime;
-  const addable = cursor !== null && cursor > 0 && cursor < duration && planVideoSplit(table, [...cuts, cursor]).length > segments.length;
+  const { onChange } = props;
+  const add = React.useCallback((time: number): void => { onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, [...cuts, time]) } }); }, [onChange, draft, duration, cuts]);
   return <div className='grid gap-2' data-testid='video-cut-editor'>
     <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
       {cuts.map((_, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : snapped[index]!) * 100 / duration}%` }}
@@ -516,13 +516,37 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
     </VideoPlaybackStrip>
-    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !addable} onClick={() => { if (cursor !== null) commit([...cuts, cursor]); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div>
+    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton table={table} cuts={cuts} segmentCount={segments.length} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
     {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(index, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => { setTyping(null); commit(rows.filter((_, at) => at !== index)); }}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
     {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
   </div>;
 }
+
+interface AddCutButtonProps { table: VideoPresentationTable; cuts: readonly number[]; segmentCount: number; presentedTime: number | null; liveClock?: VideoPlaybackLiveClock; disabled: boolean; onAdd: (time: number) => void }
+
+/**
+ * Add at cursor, available by the time the strip's head shows; a press reads the live clock, so a cut added while the
+ * source plays lands where the head is, not at the time the panel last rendered with.
+ * @param props - The frame table, the normalized cuts, the clock and the add command.
+ * @returns The button.
+ * @throws {z.ZodError} When the frame table is malformed.
+ */
+const AddCutButton = React.memo(function AddCutButton(props: AddCutButtonProps): React.JSX.Element {
+  const t = useTranslation();
+  const { table, cuts, segmentCount } = props;
+  const duration = presentationVideoEnd(table);
+  /**
+   * Whether a cut at this time would make a new segment.
+   * @param time - The time, null while no frame is shown.
+   * @returns True when it splits a segment.
+   * @throws {z.ZodError} When the frame table is malformed.
+   */
+  const makesCut = (time: number | null): time is number => time !== null && time > 0 && time < duration && planVideoSplit(table, [...cuts, time]).length > segmentCount;
+  const shown = useShownTime(props.liveClock, props.presentedTime);
+  return <Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !makesCut(shown)} onClick={() => { const time = props.liveClock?.read() ?? props.presentedTime; if (makesCut(time)) props.onAdd(time); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button>;
+});
 
 interface FrameCardsProps { source: VideoPresentationSource | null; frames: readonly { frameIndex: number; pts: number; displayEnd: number }[]; aspect: number; onSeek?: (time: number) => void }
 
