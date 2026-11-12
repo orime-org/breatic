@@ -16,7 +16,7 @@
  * background. The whole run is after-reply work, from its first line, so a
  * shutdown waits for it before closing the pools it needs.
  */
-import { env, getAgentConfig, logger, runWithContext, runWithLocale } from "@breatic/core";
+import { env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale } from "@breatic/core";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
 import type { UIMessageChunk } from "ai";
@@ -174,8 +174,15 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     conversation = await conversationService.assertWritable(conversationId, userId, projectId);
     await projectService.assertAccess(projectId, userId, "editor");
   } catch (err) {
-    logger.warn({ err, ...ctx, runId }, "chat_run_refused");
-    await queue.clear(conversationId);
+    // Gone, or no longer the owner's to run: what waits can never run. Any
+    // other failure says nothing about that, so what waits stays for a sync.
+    if (err instanceof NotFoundError || err instanceof ForbiddenError) {
+      logger.warn({ err, ...ctx, runId }, "chat_run_refused");
+      await queue.clear(conversationId);
+    } else {
+      logger.error({ err, ...ctx, runId }, "chat_run_check_failed");
+      await queue.settle(conversationId, runId, { kind: "unsaved" });
+    }
     return;
   }
   try {
@@ -277,7 +284,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       },
       ...(operationKey === undefined ? {} : { operationKey }),
     };
-    const running =
+    const started =
       entrance.kind === "card"
         ? runWithLocale(entrance.locale, () =>
           agent.answer(entrance.toolCallId, entrance.output, entrance.turnIndex, stop.signal, entrance.timeZone, entrance.space, entrance.modelId, hooks),
@@ -293,20 +300,22 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
             { ...hooks, messageId: opening!.id, alsoTaken },
           ),
         );
+    // A shutdown read before the running stage ends the run here. A card's
+    // answer is in the store, so its turn ends failed for the shutdown; a
+    // message's opening has no reply yet, so it stays taken, unacked, for
+    // the next process to answer.
+    const running = started.catch(async (err: unknown) => {
+      if (!(err instanceof RunNotOpened)) throw err;
+      if (entrance.kind !== "card") return SILENT();
+      await storeShutdownEnding(conversationId, entrance.turnIndex);
+      ended = { exit: "failed", stored: true, shutdown: true };
+      return shutdownFrames();
+    });
     turnReady(running);
     await running;
     await wireEnded;
   } catch (err) {
-    if (err instanceof RunNotOpened) {
-      if (entrance.kind === "card") {
-        await storeShutdownEnding(conversationId, entrance.turnIndex);
-        turnReady(Promise.resolve(shutdownFrames()));
-      } else {
-        turnReady(SILENT());
-      }
-      ended = { exit: "failed", stored: true, shutdown: true };
-      await wireEnded;
-    } else if (!streamOpened) {
+    if (!streamOpened) {
       logger.error({ err, ...ctx, runId }, "chat_run_open_failed");
       turnReady(SILENT());
       await queue.settle(conversationId, runId, { kind: "unsaved" });
