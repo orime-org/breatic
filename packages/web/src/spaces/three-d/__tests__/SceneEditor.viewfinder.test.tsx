@@ -201,13 +201,24 @@ describe('framing (acceptance 2)', () => {
     expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument();
   });
 
-  it('keeps the menu clear of an open right panel', async () => {
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
-    HTMLElement.prototype.setPointerCapture = vi.fn();
+  it('closes an open right panel when it opens, and leaves it closed after', async () => {
     await setup();
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
     await screen.findByTestId('scene-right-panel');
     fireEvent.click(trigger());
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+    fireEvent.click(button('cancel'));
+    expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
+    expect(screen.queryByTestId('scene-right-panel')).toBeNull();
+  });
+
+  it('keeps the menu clear of a right panel opened while framing', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    await setup();
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByTestId('scene-objects-trigger'));
+    await screen.findByTestId('scene-right-panel');
     const corner = screen.getByTestId('scene-viewfinder-corner-sw');
     fireEvent.pointerDown(corner, { pointerId: 1, buttons: 1, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(corner, { pointerId: 1, buttons: 1, clientX: 5000, clientY: -5000 });
