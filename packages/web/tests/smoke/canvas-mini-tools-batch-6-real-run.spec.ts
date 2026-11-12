@@ -452,22 +452,25 @@ test('transitions: two videos and a crossfade give one video as long as both les
     const shadowOf = (target: Locator): Promise<string> => target.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(await shadowOf(firstClip)).toContain('inset');
     expect(await shadowOf(secondClip)).toBe('none');
-    // Where the clips overlap, the selected clip is drawn on top, so its whole range stays visible.
-    const firstBox = (await firstClip.boundingBox())!;
-    const secondBox = (await secondClip.boundingBox())!;
-    const overlapMiddle = [(secondBox.x + firstBox.x + firstBox.width) / 2, firstBox.y + 4];
-    expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), overlapMiddle)).toBe(true);
-    // The other clip's resize handle still sits above the selected clip, so its in point can be dragged there.
-    const otherHandle = (await secondClip.locator('.timeline-editor-action-left-stretch').boundingBox())!;
-    const otherHandleMiddle = [otherHandle.x + otherHandle.width / 2, otherHandle.y + otherHandle.height / 2];
-    expect(await secondClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), otherHandleMiddle)).toBe(true);
+    // Where the clips overlap, the selected clip is drawn on top, so its whole range stays visible; the other clip's left
+    // resize handle and the first clip's right one both stay above the clip they overlap, so either end can be dragged there.
+    // Each box and its hit test are read in one page evaluation, so a track redraw between them cannot move the clips.
+    const hits = (): Promise<Record<string, boolean>> => dialog.evaluate((root) => {
+      const [first, second] = [...root.querySelectorAll('.timeline-editor-action')];
+      const at = (el: Element, x: number, y: number): boolean => el.contains(document.elementFromPoint(x, y));
+      const middle = (el: Element): [number, number] => { const box = el.getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2]; };
+      const [a, b] = [first!.getBoundingClientRect(), second!.getBoundingClientRect()];
+      return {
+        overlap: at(first!, (b.x + a.x + a.width) / 2, a.y + 4),
+        otherHandle: at(second!, ...middle(second!.querySelector('.timeline-editor-action-left-stretch')!)),
+        ownHandle: at(first!, ...middle(first!.querySelector('.timeline-editor-action-right-stretch')!)),
+      };
+    });
+    await expect.poll(hits).toEqual({ overlap: true, otherHandle: true, ownHandle: true });
     // The track's scroll grids have no keyboard use, so Tab never stops on them.
     expect(await dialog.locator('.ReactVirtualized__Grid').evaluateAll((grids) => grids.filter((grid) => (grid as HTMLElement).tabIndex >= 0).length)).toBe(0);
-    // The first clip's right resize handle stays above the second clip where they overlap, and dragging it trims the first clip.
-    const handle = await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox();
-    expect(handle).not.toBeNull();
-    const [x, y] = [handle!.x + handle!.width / 2, handle!.y + handle!.height / 2];
-    expect(await firstClip.evaluate((el, [px, py]) => el.contains(document.elementFromPoint(px!, py!)), [x, y])).toBe(true);
+    const handle = (await firstClip.locator('.timeline-editor-action-right-stretch').boundingBox())!;
+    const [x, y] = [handle.x + handle.width / 2, handle.y + handle.height / 2];
     const outField = dialog.getByTestId('video-clip-out');
     const outBefore = Number(await outField.inputValue());
     // Dragging that end past the clip's other end stops at a clip that still has length, with no page error.
