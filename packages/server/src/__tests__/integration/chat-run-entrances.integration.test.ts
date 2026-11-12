@@ -34,6 +34,20 @@ const gate = vi.hoisted(() => ({
   addUser: undefined as undefined | (() => Promise<void> | void),
 }));
 
+/** The runs that took a place in the running list, in order. */
+const leases = vi.hoisted(() => ({ held: [] as string[] }));
+
+vi.mock("@server/modules/conversation/running-turns.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof RunningTurnsModule>();
+  return {
+    ...actual,
+    holdRunning: async (...args: Parameters<typeof actual.holdRunning>) => {
+      leases.held.push(args[0].runId);
+      return actual.holdRunning(...args);
+    },
+  };
+});
+
 /** The error log, watched; every other level goes to the real logger. */
 const logged = vi.hoisted(() => ({ error: [] as unknown[][] }));
 
@@ -139,6 +153,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", async (impo
 });
 
 import type * as CoreModule from "@breatic/core";
+import type * as RunningTurnsModule from "@server/modules/conversation/running-turns.service.js";
 import type * as DomainModule from "@breatic/domain";
 import type * as ModulesModule from "@server/modules";
 import type * as MessageRepoModule from "@server/modules/conversation/conversation-message.repo.js";
@@ -189,6 +204,7 @@ afterEach(() => {
   gate.take = undefined;
   gate.addUser = undefined;
   logged.error = [];
+  leases.held = [];
 });
 
 /**
@@ -561,6 +577,8 @@ describe("a check the opening stage refuses", () => {
     expect((await rowsOf(conversationId)).map((r) => r.id)).not.toContain(m2);
     expect((await sync(app, who)).status).toBe(403);
     expect(await getRedis().exists(keysOf(conversationId).active)).toBe(0);
+    // The refused run never took a place in the running list (LS-05).
+    expect(leases.held).toHaveLength(1);
   });
 
   it("keeps what waits when the balance cannot pay, for the next sync to report (SR-06)", async () => {
@@ -578,6 +596,8 @@ describe("a check the opening stage refuses", () => {
     expect((await rowsOf(who.conversationId)).map((r) => r.id)).not.toContain(m2);
     const body = (await (await sync(app, who)).json()) as { data: { blocked?: string; running: boolean } };
     expect(body.data).toMatchObject({ blocked: "credits", running: false });
+    // The refused run never took a place in the running list (LS-05).
+    expect(leases.held).toHaveLength(1);
   });
 
   it("keeps what waits and opens no run after an error nobody expected (SR-15)", async () => {
@@ -595,6 +615,8 @@ describe("a check the opening stage refuses", () => {
       expect.objectContaining({ err: expect.objectContaining({ message: "database connection lost" }), conversationId: who.conversationId }),
       expect.any(String),
     ]);
+    // The refused run never took a place in the running list (LS-05).
+    expect(leases.held).toEqual([]);
   });
 });
 
@@ -705,6 +727,60 @@ describe("what a run opens with", () => {
     const rows = await rowsOf(who.conversationId);
     expect(rows.filter((r) => r.role === "user").map((r) => r.id)).toEqual([m0]);
     expect(rows.find((r) => r.role === "assistant")!.parts.filter((p) => p.type === "user-message").map((p) => p.id)).toEqual([m1]);
+  });
+});
+
+describe("the end of a run with a message waiting", () => {
+  it("opens the next run for it after the run failed, and says so on the failed run's stream (PS-07)", async () => {
+    const who = await seedOwner(sql, app);
+    const model = held();
+    script.hold = model.promise;
+    script.calls = [() => [{ type: "error", error: new Error("provider down") }]];
+    await send(app, who, { message: "first" });
+    await until(() => script.count >= 1);
+    const m2 = crypto.randomUUID();
+    await send(app, who, { id: m2, message: "second" });
+    const reading = attach(app, who);
+    await new Promise((r) => setTimeout(r, 50));
+    script.hold = undefined;
+    model.release();
+    const { frames } = await reading;
+    expect(frames.some((f) => f.type === "data-failed")).toBe(true);
+    expect(frames.some((f) => f.type === "data-next-run")).toBe(true);
+    await untilIdle(who.conversationId);
+    const rows = await rowsOf(who.conversationId);
+    expect(rows.find((r) => r.id === m2)?.role).toBe("user");
+  });
+
+  it("keeps it waiting while the run stops at a card, and the answer's run takes it in at its first step (PS-08)", async () => {
+    const card = CARDS[0];
+    const who = await seedOwner(sql, app);
+    const model = held();
+    script.hold = model.promise;
+    script.calls = [card.asks("ps8")];
+    await send(app, who, { message: "ask me" });
+    await until(() => script.count >= 1);
+    const m2 = crypto.randomUUID();
+    await send(app, who, { id: m2, message: "by the way" });
+    const reading = attach(app, who);
+    await new Promise((r) => setTimeout(r, 50));
+    script.hold = undefined;
+    model.release();
+    const { frames } = await reading;
+    expect(frames.some((f) => f.type === "data-next-run")).toBe(false);
+    await untilIdle(who.conversationId);
+    const k = keysOf(who.conversationId);
+    expect(await getRedis().get(k.awaiting)).toBe("ps8");
+    expect(await idsIn(k.queue)).toEqual([m2]);
+    script.calls = [];
+    script.count = 0;
+    script.prompts = [];
+    await answerCard(who, card, "ps8");
+    await untilIdle(who.conversationId);
+    expect(JSON.stringify(script.prompts[0])).toContain("by the way");
+    const reply = (await rowsOf(who.conversationId)).filter((r) => r.role === "assistant").at(-1)!;
+    expect(reply.parts.filter((p) => p.type === "user-message").map((p) => p.id)).toEqual([m2]);
+    expect(await idsIn(k.queue)).toEqual([]);
   });
 });
 
