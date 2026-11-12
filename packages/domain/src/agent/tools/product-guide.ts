@@ -431,9 +431,20 @@ export function renderProductGuide(): string {
       "clicking one puts its words in the message box without sending them. The empty box reads " +
       `${quoted(t("chat.composer.placeholder"))}. Enter sends the message and Shift+Enter starts a new line. The ` +
       `dark square button with an upward arrow at the right of the box (hovering it shows ` +
-      `${quoted(t("chat.composer.send"))}) sends too. A message goes only when the box has some words, no reply ` +
-      "is being written and every attachment has finished uploading; otherwise Enter does nothing and the button " +
-      "is greyed. While a reply is being written the button becomes a red square, which stops the reply. A " +
+      `${quoted(t("chat.composer.send"))}) sends too. A message goes only when the box has some words and every ` +
+      "attachment has finished uploading; otherwise Enter does nothing and the button is greyed. While a message " +
+      "is on its way the box cannot be changed and a spinner stands in place of the button; once it has gone the " +
+      "box empties. While a reply is being written the user can go on writing and sending: a red square left of " +
+      "the send button stops the reply, and a message sent meanwhile is read by the Agent at its next step, " +
+      "inside the reply being written, where it then shows as the user's message. Until the Agent reads it, it " +
+      `waits in a list above the box headed ${quoted(t("chat.waiting.title", { count: 1 }))}, the same on every ` +
+      "tab and device; hovering the two buttons on its row shows " +
+      `${quoted(t("chat.waiting.retract"))}, which puts its words and attachments back in the box, and ` +
+      `${quoted(t("chat.waiting.delete"))}. While a questionnaire or Space request waits for an answer the list ` +
+      `adds ${quoted(t("chat.waiting.awaitingCard"))}, and the messages go on once it is answered. With no ` +
+      `credits the list adds ${quoted(t("chat.waiting.blocked"))} The messages go on once credits are added. ` +
+      "Switching to another conversation or " +
+      "leaving the page does not stop a reply: it goes on, and coming back shows it caught up. A " +
       `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a short message at the top ` +
       "of the screen says so, and again for each key the full box turns away.",
     "Left of that button, the name of the model that answers this conversation shows with a small downward " +
@@ -563,8 +574,11 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
       `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
-      "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
-      `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
+      "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. A message that " +
+      "cannot reach the server is sent again by itself until it does; when that never gets an answer, a short " +
+      `message at the top of the screen says ${quoted(t("common.runOnce.unknownResult"))} When the connection to ` +
+      `a reply drops, such a message says ${quoted(t("chat.error.network"))} and the reply picks up again once the ` +
+      "page reaches it. A message the server turns away stays in the box, and such a message says why, such as " +
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +

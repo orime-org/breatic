@@ -566,7 +566,18 @@ describe("what the guide says", () => {
     expect(box).toContain("else wiring.onEnter();");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
-    expect(chat).toMatch(/red square, which stops the reply/);
+    expect(chat).toMatch(/the user can go on writing and sending: a red square left of\s+the send button stops the reply/);
+    expect(chat).toMatch(/Switching to another conversation or leaving the page does not stop a reply/);
+  });
+
+  it("says a message sent while a reply runs waits above the box, and how to take it back", () => {
+    const composer = webSource("pages/project/chat/ChatComposer.tsx");
+    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*\) : null\}\s*<Button/);
+    expect(webSource("pages/project/chat/ChatPanel.tsx")).toMatch(/<PendingTray[\s\S]*<ChatComposer/);
+    const chat = section("The chat panel");
+    expect(chat).toMatch(/read by the Agent at its next step,\s+inside the reply being written/);
+    expect(chat).toMatch(/waits in a list above the box headed/);
+    expect(chat).toMatch(/puts its words and attachments back in the box/);
   });
 
   it("says how @ references an attachment", () => {
@@ -857,7 +868,8 @@ describe("what the guide says about each surface", () => {
   it("says the send button is a dark square and when a message can go", () => {
     const chat = section("The chat panel");
     expect(chat).toMatch(/dark square button with an upward arrow/);
-    expect(chat).toMatch(/only when the box has some words, no reply is being written and every attachment has finished uploading/);
+    expect(chat).toMatch(/only when the box has some words and every\s+attachment has finished uploading/);
+    expect(chat).toMatch(/While a message\s+is on its way the box cannot be changed and a spinner stands in place of the button/);
     expect(chat).not.toMatch(/a Sources button/);
   });
 
