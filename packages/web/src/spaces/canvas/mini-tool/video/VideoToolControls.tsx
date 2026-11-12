@@ -387,8 +387,27 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
  * @returns The normalized cuts.
  * @throws {never} Never.
  */
-function splitCuts(duration: number, cuts: readonly number[]): number[] {
+export function splitCuts(duration: number, cuts: readonly number[]): number[] {
   return [...new Set(cuts.filter((cut) => cut > 0 && cut < duration))].sort((a, b) => a - b);
+}
+
+/** One cut row, its id kept while the row lives so the row's input and handle keep their element. */
+interface CutRow { id: string; value: number }
+
+/**
+ * Gives each value the id of the first unused earlier row with that value, and a new id otherwise, so a row keeps its
+ * element when the rows are reordered or merged.
+ * @param previous - The rows shown before.
+ * @param values - The values to show.
+ * @returns The rows.
+ * @throws {never} Never.
+ */
+function withRowIds(previous: readonly CutRow[], values: readonly number[]): CutRow[] {
+  const free = [...previous];
+  return values.map((value) => {
+    const at = free.findIndex((row) => row.value === value);
+    return { id: at < 0 ? newId() : free.splice(at, 1)[0]!.id, value };
+  });
 }
 
 /**
@@ -408,10 +427,15 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const segments = React.useMemo(() => planVideoSplit(table, cuts), [table, cuts]);
   // Each handle sits on the frame start its cut splits at, by the rule planVideoSplit snaps with.
   const snapped = React.useMemo(() => cuts.map((cut) => presentationFrameAt(table, presentationCoveringFrame(table, cut)).pts), [table, cuts]);
-  // The rows while one is typed: written back in place so the typed text stays on its row (web AGENTS "Inputs send what
-  // they show"); ordered and merged only when the field is left.
-  const [typing, setTyping] = React.useState<number[] | null>(null);
-  const rows = typing ?? cuts;
+  // The rows while one is typed (`id`): written back in place so the typed text stays on its row (web AGENTS "Inputs send
+  // what they show"). Leaving the field writes nothing: every reader normalizes, so the rows then show the ordered cuts.
+  const [typing, setTyping] = React.useState<{ rows: CutRow[]; id: string } | null>(null);
+  // The rows last shown, or those an edit just wrote, whose ids the next rows take by value so an edited row (a stepped or
+  // dragged handle) keeps its element and focus.
+  const shown = React.useRef<CutRow[]>([]);
+  const rows = React.useMemo(() => typing?.rows ?? withRowIds(shown.current, cuts), [typing, cuts]);
+  React.useLayoutEffect(() => { shown.current = rows; }, [rows]);
+  const handles = React.useMemo(() => withRowIds(rows, cuts), [rows, cuts]);
   // A bin press keeps the focus where it is (its mousedown is prevented), so leaving a typed row does not reorder the rows
   // under the pointer before the click removes one.
   const [dragging, setDragging] = React.useState<{ index: number; time: number; moved: boolean } | null>(null);
@@ -422,11 +446,22 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const playback = React.useRef<SourceRangePlayback | null>(null);
   React.useEffect(() => () => playback.current?.stop(), []);
   /**
-   * Commits edited cuts, normalized.
-   * @param next - The edited cuts.
+   * Commits edited rows, their cuts normalized, keeping each row's id for the rows that follow.
+   * @param next - The edited rows.
    * @throws {never} Never.
    */
-  const commit = (next: readonly number[]): void => { props.onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, next) } }); };
+  const commit = (next: CutRow[]): void => {
+    shown.current = next;
+    props.onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, next.map((row) => row.value)) } });
+  };
+  /**
+   * The handles with one cut moved.
+   * @param index - The handle.
+   * @param value - Its new cut.
+   * @returns The rows.
+   * @throws {never} Never.
+   */
+  const moveTo = (index: number, value: number): CutRow[] => handles.map((row, position) => position === index ? { id: row.id, value } : row);
   /**
    * The source time under the pointer on the strip a handle sits on, kept inside the video.
    * @param event - The pointer event on a handle.
@@ -439,24 +474,30 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   };
   /**
    * Writes a typed row in place, unsorted and not merged, so the typed text stays on the row being typed.
-   * @param index - The typed row.
+   * @param id - The typed row.
    * @param value - The typed number.
    * @throws {never} Never.
    */
-  const type = (index: number, value: number): void => {
-    const next = rows.map((item, at) => at === index ? value : item);
-    setTyping(next);
-    props.onChange({ ...draft, params: { ...draft.params, cuts: next } });
+  const type = (id: string, value: number): void => {
+    const next = rows.map((row) => row.id === id ? { id, value } : row);
+    setTyping({ rows: next, id });
+    props.onChange({ ...draft, params: { ...draft.params, cuts: next.map((row) => row.value) } });
   };
   /**
-   * Orders and merges the typed rows once the field is left.
+   * Ends typing once the field is left; the rows then show the ordered cuts.
    * @throws {never} Never.
    */
-  const settle = (): void => {
-    if (typing === null) return;
-    setTyping(null);
-    const normal = splitCuts(duration, typing);
-    if (normal.length !== typing.length || normal.some((cut, at) => cut !== typing[at])) commit(normal);
+  const settle = (): void => { setTyping(null); };
+  /**
+   * Removes a row; the row being typed, when it is another one, stays typed with its focus.
+   * @param id - The removed row.
+   * @throws {never} Never.
+   */
+  const remove = (id: string): void => {
+    const next = rows.filter((row) => row.id !== id);
+    shown.current = next;
+    setTyping(typing !== null && typing.id !== id ? { rows: next, id: typing.id } : null);
+    props.onChange({ ...draft, params: { ...draft.params, cuts: next.map((row) => row.value) } });
   };
   /**
    * Moves a cut one frame back or forward from the frame it splits at, keeping it inside the video.
@@ -467,7 +508,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const step = (index: number, backwards: boolean): void => {
     const neighbour = presentationCoveringFrame(table, cuts[index]!) + (backwards ? -1 : 1);
     const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? presentationFrameAt(table, neighbour).pts : undefined;
-    if (pts !== undefined && pts > 0 && pts < duration) commit(cuts.map((cut, position) => position === index ? pts : cut));
+    if (pts !== undefined && pts > 0 && pts < duration) commit(moveTo(index, pts));
   };
   /**
    * Plays one segment in the node's player and shows it until it ends; a refused play says the media is unavailable.
@@ -486,10 +527,14 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
       () => { if (playback.current === next) { playback.current = null; setPreviewing(null); setPlayFailed(true); } });
   };
   const { onChange } = props;
-  const add = React.useCallback((time: number): void => { onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, [...cuts, time]) } }); }, [onChange, draft, duration, cuts]);
+  const add = React.useCallback((time: number): void => {
+    const next = [...handles, { id: newId(), value: time }];
+    shown.current = next;
+    onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(duration, next.map((row) => row.value)) } });
+  }, [onChange, draft, duration, handles]);
   return <div className='grid gap-2' data-testid='video-cut-editor'>
     <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
-      {cuts.map((_, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : snapped[index]!) * 100 / duration}%` }}
+      {handles.map(({ id }, index) => <Button key={id} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : snapped[index]!) * 100 / duration}%` }}
         onPointerDown={(event) => {
           if (event.button !== 0 || props.disabled) return;
           // Prevented so the press neither seeks the strip nor selects; focused by hand, so the keys then act on this handle.
@@ -507,17 +552,17 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           const { time, moved } = dragging;
           const current = gesture.current === draft.revision && !props.disabled;
           gesture.current = null; setDragging(null);
-          if (moved && current && time > 0 && time < duration) commit(cuts.map((value, position) => position === index ? time : value));
+          if (moved && current && time > 0 && time < duration) commit(moveTo(index, time));
         }}
         onPointerCancel={() => { gesture.current = null; setDragging(null); }}
         onKeyDown={(event) => {
           if (props.disabled) return;
-          if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); commit(cuts.filter((_, position) => position !== index)); }
+          if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); commit(handles.filter((_, position) => position !== index)); }
           else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
     </VideoPlaybackStrip>
     <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton table={table} cuts={cuts} segmentCount={segments.length} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
-    {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(index, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => { setTyping(null); commit(rows.filter((_, at) => at !== index)); }}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
+    {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
     {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}

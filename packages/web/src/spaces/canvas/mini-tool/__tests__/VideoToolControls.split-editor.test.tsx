@@ -270,7 +270,7 @@ describe('a failed scene detection (canvas design §4; demo main.tsx run-error)'
 });
 
 /**
- * The split panel over a draft that takes every change, as the panel container does.
+ * The split panel over a draft that takes every change under a new revision, as the panel container does.
  * @param props - The starting cuts, the presented time and the live clock.
  * @param props.cuts - The starting cuts.
  * @param props.presentedTime - The panel's presented time.
@@ -280,12 +280,12 @@ describe('a failed scene detection (canvas design §4; demo main.tsx run-error)'
  */
 function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; liveClock?: VideoPlaybackLiveClock; changes?: number[][] }): React.JSX.Element {
   const [draft, setDraft] = React.useState(draftWith(props.cuts));
-  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft(split); }} analyses={[]} frameTable={frameTable} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
+  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} frameTable={frameTable} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
 }
 
 describe('typing a cut row in place (web AGENTS "Inputs send what they show")', () => {
-  it('keeps every typed key in the typed row and the other row unchanged, then orders the rows on blur', () => {
+  it('keeps every typed key in the typed row and the other row unchanged, then shows the rows ordered on blur without a write', () => {
     const changes: number[][] = [];
     render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
     const row = screen.getByTestId('video-cut-1') as HTMLInputElement;
@@ -297,10 +297,43 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
       expect(screen.getByTestId('video-cut-1')).toHaveFocus();
     }
     expect(changes.at(-1)).toEqual([3, 1.5]);
+    const written = changes.length;
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).blur());
     expect(screen.getByTestId('video-cut-0')).toHaveValue('1.5');
     expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
-    expect(changes.at(-1)).toEqual([1.5, 3]);
+    expect(changes).toHaveLength(written);
+  });
+
+  it('commits a handle drag pressed right after typing a row that needs reordering', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    layOutTrack();
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
+    const handle = screen.getByTestId('video-cut-handle-0');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 160, pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('50%');
+    fireEvent.pointerUp(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
+    expect(changes.at(-1)).toEqual([2.5, 3]);
+  });
+
+  it('keeps the focus and the typed text on the typed row when the bin of another row is pressed', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[1.5, 3, 4.5]} changes={changes} />);
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '3.3' } });
+    const bin = screen.getAllByRole('button', { name: 'Remove' })[0]!;
+    expect(fireEvent.mouseDown(bin)).toBe(false);
+    fireEvent.click(bin);
+    const focused = document.activeElement as HTMLInputElement;
+    expect(focused).toBe(screen.getByTestId('video-cut-0'));
+    expect(focused).toHaveValue('3.3');
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('4.5');
+    expect(changes.at(-1)).toEqual([3.3, 4.5]);
+    fireEvent.change(focused, { target: { value: '3.35' } });
+    expect(changes.at(-1)).toEqual([3.35, 4.5]);
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('4.5');
   });
 
   it('keeps both rows and the focus while a row is typed equal to another, and merges them on blur', () => {
@@ -343,6 +376,20 @@ describe('stepping a handle that is not on a frame start', () => {
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowLeft' });
     expect(changes.at(-1)![0]).toBeCloseTo(2.44, 6);
     expect(parseFloat(screen.getByTestId('video-cut-handle-0').style.left)).toBeCloseTo(48.8, 6);
+  });
+
+  it('keeps the focus on a handle stepped or dragged, so the next key moves it again', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[1, 3]} changes={changes} />);
+    layOutTrack();
+    act(() => screen.getByTestId('video-cut-handle-0').focus());
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
+    expect(screen.getByTestId('video-cut-handle-0')).toHaveFocus();
+    fireEvent.pointerDown(screen.getByTestId('video-cut-handle-1'), { button: 0, clientX: 220, pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId('video-cut-handle-1'), { clientX: 260, pointerId: 1 });
+    fireEvent.pointerUp(screen.getByTestId('video-cut-handle-1'), { clientX: 260, pointerId: 1 });
+    expect(changes.at(-1)![1]).toBe(4);
+    expect(screen.getByTestId('video-cut-handle-1')).toHaveFocus();
   });
 
   it('steps forward to the next frame start', () => {

@@ -39,15 +39,16 @@ const name = docName.canvasSpace(projectId, spaceId);
  * Mounts a tool panel on a video node.
  * @param toolId - The tool.
  * @param cuts - Split cuts to seed.
+ * @param table - The presentation's frame table, null while it is not usable.
  */
-function open(toolId: VideoToolId, cuts?: number[]): void {
+function open(toolId: VideoToolId, cuts?: number[], table: typeof frameTable | null = frameTable): void {
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   if (cuts !== undefined) {
     const seeded = createVideoToolDraft('video.split', { nodeId, canonicalURL: sourceURL, mediaInfo });
     commitVideoToolDraft(getDoc(name), nodeId, 'video.split', { ...seeded, params: { cuts } }, false);
   }
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
-  const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
+  const presentation = { frameTable: table, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
     presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={vi.fn()} costs={{ execution: '1' }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -65,6 +66,11 @@ describe('a video tool panel header', () => {
 
   it('counts one output per planned split segment', async () => {
     open('video.split', [1, 2]);
+    await waitFor(() => expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 3 }))).toBeInTheDocument());
+  });
+
+  it('counts the normalized cuts while the frame table is not usable', async () => {
+    open('video.split', [2, 1, 1, 0, 7], null);
     await waitFor(() => expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 3 }))).toBeInTheDocument());
   });
 

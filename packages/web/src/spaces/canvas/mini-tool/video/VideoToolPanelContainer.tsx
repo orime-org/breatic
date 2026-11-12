@@ -25,7 +25,7 @@ import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { expandDrop, isExpanded, type PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { createVideoToolDraft, currentPeopleResult, eraseTrackingStatus, overPeopleLimit, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
-import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
+import { splitCuts, VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
 import { VideoResultPreviewDialog } from '@web/spaces/canvas/mini-tool/video/VideoResultPreviewDialog';
@@ -703,7 +703,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const splitOverCap = splitCount !== null && maxOutputs !== undefined && splitCount > maxOutputs;
   // The header counts the outputs a run plans (demo main.tsx): one per split segment, one for every other tool; the
   // expand panel keeps the image Expand panel's header (demo outpaint-controls.tsx).
-  const outputCount = toolId === 'video.split' ? splitCount ?? (current as VideoToolDraftById['video.split']).params.cuts.length + 1 : 1;
+  const outputCount = toolId === 'video.split' ? splitCount ?? splitCuts(current.source.mediaInfo.duration, (current as VideoToolDraftById['video.split']).params.cuts).length + 1 : 1;
   const header = toolId === 'video.expand' ? undefined : <span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.outputCount', { count: outputCount })}</span>;
   const runBlockedReason = awaitingInput ? t('canvas.generatePanel.errorNoSourceVideo') : !canRun ? undefined
     : toolId === 'video.lip-sync' ? (lipSync !== undefined && presentation.frameTable !== null ? lipSyncRangeBlock(current as VideoToolDraftById['video.lip-sync'], presentation.frameTable, lipSync, t) : undefined)
