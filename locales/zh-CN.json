@@ -182,7 +182,10 @@
       "ask_not_found": "这条会话里没有这张问题卡片。",
       "ask_already_answered": "这张问题卡片已经回答过了。",
       "model_unavailable": "所选模型已不可用。",
-      "answer_mismatch": "这些答案和卡片上的问题对不上。"
+      "answer_mismatch": "这些答案和卡片上的问题对不上。",
+      "queue_full": "等待中的消息太多了。等 Agent 读完，或撤回一条。",
+      "turn_busy": "Agent 还在处理这个会话，等它完成后再试。",
+      "shutting_down": "服务器正在重启，请稍后再试。"
     },
     "mail": {
       "studio_invite": {

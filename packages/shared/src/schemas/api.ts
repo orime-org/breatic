@@ -418,6 +418,13 @@ export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
 ]);
 
 export const chatMessageSchema = z.object({
+  /**
+   * The message's id, made by the page when the user pressed send and sent
+   * again unchanged on a resend (inner#1717): the queue answers a resend it
+   * has seen as a duplicate, and the user row is written under it. Required
+   * on a new message; a card's answer carries none.
+   */
+  id: z.string().uuid().optional(),
   /** What the user wrote; empty when the request carries `answer` instead. */
   message: z.string(),
   project_id: z.string().uuid(),
@@ -472,6 +479,9 @@ export const chatMessageSchema = z.object({
 }).superRefine((value, ctx) => {
   if (value.answer === undefined && value.shared_spaces === undefined && value.message.length === 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
+  }
+  if (value.answer === undefined && value.shared_spaces === undefined && value.id === undefined) {
+    ctx.addIssue({ code: "custom", path: ["id"], message: "A new message carries its id.", params: REQUEST_SHAPE_PARAMS });
   }
   if (value.answer !== undefined && value.message.length > 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });

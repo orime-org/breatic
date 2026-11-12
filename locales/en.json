@@ -182,7 +182,10 @@
       "ask_not_found": "This question card is not in this conversation.",
       "ask_already_answered": "This question card has already been answered.",
       "model_unavailable": "The selected model is no longer available.",
-      "answer_mismatch": "These answers do not fit the questions on the card."
+      "answer_mismatch": "These answers do not fit the questions on the card.",
+      "queue_full": "Too many messages are waiting. Wait for the Agent to read them, or take one back.",
+      "turn_busy": "The Agent is still working on this conversation. Try again once it finishes.",
+      "shutting_down": "The server is restarting. Try again in a moment."
     },
     "mail": {
       "studio_invite": {
