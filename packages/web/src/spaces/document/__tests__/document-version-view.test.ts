@@ -58,7 +58,7 @@ function open(blocks: unknown[]) {
   const storage = createDocumentVersionStorage({
     scope: { projectId: 'p', spaceId: 's' },
     shown,
-    apply: (content) => restoreSnapshot({ editor: live, undoManager: manager, content, threads: null, space: null }),
+    apply: (content) => (typeof restoreSnapshot({ editor: live, undoManager: manager, content, threads: null, space: null }) === 'string' ? 'written' : 'refused'),
     report: vi.fn(),
   });
   const preview = mount(buildVersionPreview({ live: () => live.prosemirrorState.doc, storage, shown, onShow }));

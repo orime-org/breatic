@@ -193,13 +193,25 @@ describe('the snapshot panel', () => {
       await user.click(await screen.findByTestId('doc-version-restore-confirm'));
 
       await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(spaceRefusalMessage('add', 'full')));
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      expect(toast.error).not.toHaveBeenCalled();
       expect(screen.queryByTestId('doc-version-restore-confirm')).toBeNull();
-      expect(screen.getByTestId('doc-version-panel')).toBeInTheDocument();
       expect(text()).toBe('live words');
       expect(toast.success).not.toHaveBeenCalled();
+      // The panel goes on as it was: the snapshot still shown, its row selected, the preview read-only.
+      expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('snapshot words');
+      expect(screen.getByTestId('doc-version-row-v1')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByTestId('doc-version-preview-body').querySelector('[contenteditable="true"]')).toBeNull();
     } finally {
       clearAllDocSizes();
     }
+
+    // Once the Space takes content again, the same restore goes through.
+    await user.click(screen.getByTestId('doc-version-restore'));
+    await user.click(await screen.findByTestId('doc-version-restore-confirm'));
+    await waitFor(() => expect(screen.queryByTestId('doc-version-panel')).toBeNull());
+    expect(text()).toBe('snapshot words');
+    expect(toast.success).toHaveBeenCalledTimes(1);
   });
 
   it('says who saved a snapshot and when, in its row and its banner, without repeating an unnamed one’s time', async () => {

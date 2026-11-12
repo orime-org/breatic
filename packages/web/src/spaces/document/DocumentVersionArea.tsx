@@ -143,7 +143,7 @@ export default function DocumentVersionArea({
 }: DocumentVersionAreaProps): React.JSX.Element {
   const t = useTranslation();
   const host = React.useRef<HTMLDivElement>(null);
-  const outcome = React.useRef<ReturnType<typeof restoreSnapshot>>('restored');
+  const outcome = React.useRef<'restored' | 'unchanged'>('restored');
   const [shownNow, setShownNow] = React.useState<{ comparing: boolean } | null>(null);
 
   // One preview per opening of the panel.
@@ -153,13 +153,20 @@ export default function DocumentVersionArea({
       scope,
       shown,
       apply: (content) => {
-        outcome.current = restoreSnapshot({
+        const result = restoreSnapshot({
           editor,
           undoManager: undoOf(editor),
           content,
           threads: commentsOn(editor)?.threadStore.getThreads() ?? null,
           space: docName.documentSpace(scope.projectId, scope.spaceId),
         });
+        if (typeof result === 'string') {
+          outcome.current = result;
+          return 'written';
+        }
+        const message = spaceRefusalMessage('add', result.reason);
+        if (message !== null) toast.warning(message);
+        return 'refused';
       },
       report: (err) => captureException(err, { tags: { area: 'document_version_restore' } }),
     });
@@ -210,12 +217,14 @@ export default function DocumentVersionArea({
     action: PanelAction,
     operation: () => Promise<VersionOperationResult>,
     failure: string | null,
-  ): Promise<'done' | 'gone' | 'failed' | 'dropped'> => {
+  ): Promise<'done' | 'gone' | 'refused' | 'failed' | 'dropped'> => {
     setBusy((now) => new Set(now).add(action));
     try {
       const result = await operation();
       if (result.status === 'done') return 'done';
       if (result.status !== 'error') return 'dropped';
+      // Only a restore the Space's size refused: its storage has told the user why.
+      if (result.error.type === 'conflict') return 'refused';
       // Only an operation on one snapshot finds it gone; a page is the list's.
       if (result.error.type === 'not-found' && failure !== null) {
         toast.warning(t('spaces.document.versions.gone'));
@@ -328,19 +337,14 @@ export default function DocumentVersionArea({
     setRestoring(true);
     const ended = await run('restore', () => controller.restore(id), t('spaces.document.versions.restoreFailed'));
     setRestoring(false);
+    // Refused by the Space's size: the body and the panel are as they were.
+    if (ended === 'refused') setConfirmingRestore(false);
     if (ended !== 'done') return;
     setConfirmingRestore(false);
-    const result = outcome.current;
-    if (typeof result !== 'string') {
-      // The body is as it was, and so is the panel.
-      const message = spaceRefusalMessage('add', result.reason);
-      if (message !== null) toast.warning(message);
-      return;
-    }
     closePanel();
     // Back in the body once it is on screen again.
     requestAnimationFrame(() => viewOf(editor)?.focus());
-    if (result === 'unchanged') toast.info(t('spaces.document.versions.unchanged'));
+    if (outcome.current === 'unchanged') toast.info(t('spaces.document.versions.unchanged'));
     else toast.success(t('spaces.document.versions.restored'));
   }, [closePanel, controller, editor, open, run, setRestoring, t]);
 

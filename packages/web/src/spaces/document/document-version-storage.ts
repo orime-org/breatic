@@ -79,14 +79,14 @@ function toSnapshot(row: DocumentVersion): VersionSnapshot {
  * @param options - The document and the restore's two hooks.
  * @param options.scope - The document.
  * @param options.shown - What the preview shows now.
- * @param options.apply - Writes a snapshot into the live body; it throws when it cannot.
+ * @param options.apply - Writes a snapshot into the live body, or says the Space refused it (having told the user why); it throws when it cannot.
  * @param options.report - Reports a write that threw.
  * @returns The storage.
  */
 export function createDocumentVersionStorage(options: {
   scope: DocumentScope;
   shown: ShownRef;
-  apply: (content: Json) => unknown;
+  apply: (content: Json) => 'written' | 'refused';
   report: (err: unknown) => void;
 }): VersionStorage<Json> {
   const { scope } = options;
@@ -103,7 +103,9 @@ export function createDocumentVersionStorage(options: {
       const shown = options.shown.current;
       if (shown?.id !== id) return { ok: false, error: { type: 'not-found' } };
       try {
-        options.apply(shown.content);
+        // Refused is a failure to the controller, which then keeps the panel's
+        // session; success would close it.
+        if (options.apply(shown.content) === 'refused') return { ok: false, error: { type: 'conflict' } };
         return { ok: true, value: undefined };
       } catch (err) {
         options.report(err);

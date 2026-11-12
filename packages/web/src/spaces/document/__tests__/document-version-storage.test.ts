@@ -34,7 +34,7 @@ const row: DocumentVersion = {
 };
 
 /** A storage over a shown record the test controls. */
-function storage(shown: ShownVersion | null = null, apply = vi.fn(() => 'restored' as const), report = vi.fn()) {
+function storage(shown: ShownVersion | null = null, apply = vi.fn((): 'written' | 'refused' => 'written'), report = vi.fn()) {
   const ref = { current: shown };
   return { storage: createDocumentVersionStorage({ scope, shown: ref, apply, report }), apply, report, ref };
 }
@@ -134,6 +134,14 @@ describe('createDocumentVersionStorage', () => {
     expect(await storage(null).storage.restore!('v1')).toEqual({ ok: false, error: { type: 'not-found' } });
 
     expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('fails a restore the Space refused, without reporting it, so the controller keeps the panel', async () => {
+    const { storage: s, report } = storage({ id: 'v1', content: { type: 'doc' } }, vi.fn((): 'written' | 'refused' => 'refused'));
+
+    expect(await s.restore!('v1')).toEqual({ ok: false, error: { type: 'conflict' } });
+
+    expect(report).not.toHaveBeenCalled();
   });
 
   it('keeps the panel when the write throws, reporting it once', async () => {
