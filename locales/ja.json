@@ -1426,7 +1426,6 @@
         "expandPrompt": "補う内容を入力。空欄なら動画に合わせて自然に広げます",
         "export": "書き出し",
         "first": "最初",
-        "frameCount": "{count} フレーム",
         "identifyingPeople": "人物を検出中…",
         "inPoint": "イン点",
         "last": "最後",

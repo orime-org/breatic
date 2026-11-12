@@ -1426,7 +1426,6 @@
         "expandPrompt": "채울 내용을 입력하세요. 비워 두면 비디오에 맞게 자연스럽게 넓힙니다",
         "export": "내보내기",
         "first": "첫 프레임",
-        "frameCount": "{count} 프레임",
         "identifyingPeople": "인물 감지 중…",
         "inPoint": "시작 지점",
         "last": "마지막 프레임",

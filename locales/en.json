@@ -1426,7 +1426,6 @@
         "expandPrompt": "Describe what to fill in, or leave it empty to extend the video naturally",
         "export": "Export",
         "first": "First frame",
-        "frameCount": "{count, plural, one {# frame} other {# frames}}",
         "identifyingPeople": "Detecting people…",
         "inPoint": "In point",
         "last": "Last frame",

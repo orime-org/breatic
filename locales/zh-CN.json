@@ -1426,7 +1426,6 @@
         "expandPrompt": "写要补画什么，留空就按视频内容自然外扩",
         "export": "导出",
         "first": "首帧",
-        "frameCount": "{count} 帧",
         "identifyingPeople": "正在识别人物…",
         "inPoint": "入点",
         "last": "尾帧",

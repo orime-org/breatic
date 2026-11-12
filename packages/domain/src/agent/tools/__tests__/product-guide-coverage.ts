@@ -61,7 +61,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.resetSelection": { excluded: REASONS.SCREEN_READER, look: /the one at the top right of the video/ },
   "canvas.miniTool.videoUI.timeRange": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.miniTool.videoUI.expandPrompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
-  "canvas.miniTool.videoUI.frameCount": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.miniTool.videoUI.connectionUnavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.viewerMode": { excluded: REASONS.VIEWERS_ONLY },
   "canvas.miniTool.videoUI.identifyingPeople": { excluded: REASONS.PASSING },

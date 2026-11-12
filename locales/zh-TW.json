@@ -1426,7 +1426,6 @@
         "expandPrompt": "寫下要補畫什麼，留空就依影片內容自然外擴",
         "export": "匯出",
         "first": "首影格",
-        "frameCount": "{count} 個影格",
         "identifyingPeople": "正在辨識人物…",
         "inPoint": "入點",
         "last": "末影格",

@@ -37,6 +37,18 @@ describe('extract frames layout (canvas design §4 frames row)', () => {
     expect(container.querySelectorAll('p')).toHaveLength(0);
   });
 
+  it('puts the frame preview directly under the modes with no frame-count line', () => {
+    const { container } = render(<VideoToolControls {...common} frameTable={table} />);
+    expect(container.querySelectorAll('p')).toHaveLength(0);
+    expect(screen.getByTestId('video-frame-mode-first').parentElement!.nextElementSibling).toBe(screen.getByTestId('video-frame-previews'));
+  });
+
+  it('says the current frame is unavailable above the preview while Current has no shown frame', () => {
+    const current = { ...draft, params: { mode: 'current', currentTime: 0 } } as unknown as VideoToolDraftById['video.extract-frames'];
+    render(<VideoToolControls {...common} draft={current} presentedTime={null} frameTable={table} />);
+    expect(screen.getByText('Current frame unavailable').nextElementSibling).toBe(screen.getByTestId('video-frame-previews'));
+  });
+
   it('keeps the modes usable while the frame table is not usable', () => {
     render(<VideoToolControls {...common} frameTable={null} />);
     for (const mode of ['first', 'last', 'current']) expect(screen.getByTestId(`video-frame-mode-${mode}`)).not.toBeDisabled();
