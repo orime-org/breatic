@@ -161,13 +161,12 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
   it('C07 cut stepping and split planning use the exact table supplied through Canvas', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /at cursor/i }));
-    const slider = screen.getAllByRole('slider')[0];
-    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
     const reading = readVideoToolDraft(getDoc(docName.canvasSpace(PROJECT, SPACE)), SOURCE, 'video.split');
     expect(reading.state).toBe('supported');
     if (reading.state !== 'supported') throw new Error('Expected the persisted split draft');
     expect(reading.draft.params).toEqual({ cuts: [2.75] });
-    expect(screen.getByText('2 segments')).toBeInTheDocument();
+    expect(screen.getByTestId('video-cut-count')).toHaveTextContent('1 cut point · 2 segments');
   });
   it('C08 the lip-sync anchor is the current compact-table frame, not registry FPS', async () => {
     const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));

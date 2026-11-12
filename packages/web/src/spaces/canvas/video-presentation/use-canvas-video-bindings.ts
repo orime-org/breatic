@@ -8,6 +8,7 @@ import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
 import type { VideoToolPresentation } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import { playSourceRange } from '@web/spaces/canvas/video-presentation/play-source-range';
 
 /** Optional authoritative table supplied by the source-frame owner. */
 export interface CanonicalVideoFrameTable { sourceKey: string; table: VideoPresentationTable }
@@ -173,10 +174,11 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         return frame && frame.sourceKey === binding!.sourceKey && frame.sourceEpoch === binding!.sourceEpoch && frame.seekEpoch === binding!.getSeekEpoch() ? frame : null;
       }
       const frame = actualFrame();
+      const live = binding;
       // The version the page shows is its runtime source key's third part (§3.3, §7.12 step 3).
       const resourceVersionId = snapshot?.status === 'ready' ? shownVersionOf(binding.sourceKey) : null;
       const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, resourceVersionId, table: frameTable, tableStatus: facts.tableStatus, retrying: facts.retrying });
-      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable !== null && panelState === 'usable' ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek,
+      presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, frameTable: frameTable !== null && panelState === 'usable' ? frameTable.table : null, getPresentedFrame: actualFrame, onSeek: binding.seek, onPlayRange: (start, end) => playSourceRange(live, start, end),
         ...(facts === undefined ? {} : { panelState, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
         // A transparent source plays as an alpha-packed version (execution design §10.4 transparent source row).
         ...(facts?.response?.presentation ? { presentationRef: { source: { toolInputId: facts.response.presentation.toolInputId, planSha256: facts.response.presentation.planSha256 } },

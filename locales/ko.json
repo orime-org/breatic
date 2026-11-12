@@ -1450,7 +1450,6 @@
         "removeCut": "제거",
         "removeDialogue": "대사 제거",
         "retryPreview": "미리보기 다시 시도",
-        "segmentCount": "{count} 구간",
         "selectedClipEmpty": "클립을 선택하여 설정을 편집하세요.",
         "sourceUnavailable": "원본 비디오를 사용할 수 없습니다",
         "targetPerson": "대상 인물",
@@ -1544,7 +1543,12 @@
         "rewind": "처음으로",
         "transitionBetween": "클립 사이 전환",
         "preserveAudio": "오디오 유지",
-        "resultsReady": "결과 준비 완료"
+        "resultsReady": "결과 준비 완료",
+        "cutSummary": "{cuts} 절단 지점 · {segments} 구간",
+        "segmentPreview": "미리 보기 · {start} – {end}",
+        "stopPreview": "미리보기 정지",
+        "detectionError": "장면 감지에 실패했습니다. 다시 감지해 주세요.",
+        "outputCapExceeded": "최대 {cap}개, 현재 {count}개"
       }
     },
     "template": {

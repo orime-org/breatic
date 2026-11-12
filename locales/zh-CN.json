@@ -1450,7 +1450,6 @@
         "removeCut": "移除",
         "removeDialogue": "移除对白",
         "retryPreview": "重试预览",
-        "segmentCount": "{count} 段",
         "selectedClipEmpty": "选择片段以编辑参数。",
         "sourceUnavailable": "源视频不可用",
         "targetPerson": "目标人物",
@@ -1544,7 +1543,12 @@
         "rewind": "回到开头",
         "transitionBetween": "中间转场",
         "preserveAudio": "保留音轨",
-        "resultsReady": "产物已就绪"
+        "resultsReady": "产物已就绪",
+        "cutSummary": "{cuts} 个切点 · {segments} 段",
+        "segmentPreview": "预览 · {start} – {end}",
+        "stopPreview": "停止预览",
+        "detectionError": "场景检测失败，请重新检测。",
+        "outputCapExceeded": "最多 {cap} 个产物，当前 {count} 个"
       }
     },
     "template": {

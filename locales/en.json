@@ -1450,7 +1450,6 @@
         "removeCut": "Remove",
         "removeDialogue": "Remove dialogue",
         "retryPreview": "Retry preview",
-        "segmentCount": "{count, plural, one {# segment} other {# segments}}",
         "selectedClipEmpty": "Select a clip to edit its settings.",
         "sourceUnavailable": "Source video unavailable",
         "targetPerson": "Target person",
@@ -1544,7 +1543,12 @@
         "rewind": "Back to start",
         "transitionBetween": "Transition",
         "preserveAudio": "Keep audio",
-        "resultsReady": "Results ready"
+        "resultsReady": "Results ready",
+        "cutSummary": "{cuts, plural, one {# cut point} other {# cut points}} · {segments, plural, one {# segment} other {# segments}}",
+        "segmentPreview": "Preview · {start} – {end}",
+        "stopPreview": "Stop preview",
+        "detectionError": "Detection failed. Try detecting scenes again.",
+        "outputCapExceeded": "Up to {cap} outputs; this plan makes {count}"
       }
     },
     "template": {

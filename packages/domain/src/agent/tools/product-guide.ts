@@ -88,7 +88,7 @@ function lipSyncLimits(): string {
  */
 function splitLimit(): string {
   const split = getMiniToolsConfig().executions["video.split"];
-  return split === undefined ? "" : `; one run makes up to ${String(split.max_outputs)} segments, and with more Run says the limit instead of running`;
+  return split === undefined ? "" : `; one run makes up to ${String(split.max_outputs)} segments, and with more the panel says the limit in red and Run says it instead of running`;
 }
 
 /**
@@ -1048,9 +1048,15 @@ export function renderProductGuide(): string {
       "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
       "the row below the modes; click it to move the player there. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
-      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}. Drag a cut handle on its filmstrip or edit its seconds ` +
-      `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
-      "a cut removes it. The segment count reflects the complete split plan" + splitLimit() + ".",
+      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows a ` +
+      "line saying so with a button to detect again. Below the button, once the video's frames are read, each cut is a numbered " +
+      "handle on the filmstrip: drag it, or click it and move it one frame with the arrow keys or remove it with Delete; " +
+      "clicking the strip elsewhere moves the player there. Under the strip a line counts the cut points and segments, " +
+      `${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds a cut at the player cursor (greyed where one already is), each cut's ` +
+      "seconds can be edited in its own numbered row, and the bin beside a cut removes it. A bar below has one numbered " +
+      "button per segment, as wide as its share of the video; clicking one plays exactly that segment in the node's player, " +
+      `with ${quoted(t("canvas.miniTool.videoUI.stopPreview"))} beside its range while it plays. ` +
+      "The segment count reflects the complete split plan" + splitLimit() + ".",
     `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
       `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}; picking another replaces it and resets its trim, ` +
       "and Run asks for a video while none is picked. Under the slot the panel lists the clips in timeline order with " +

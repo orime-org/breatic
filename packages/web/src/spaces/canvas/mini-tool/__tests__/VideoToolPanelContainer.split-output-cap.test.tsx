@@ -82,4 +82,16 @@ describe('the split output cap on Run (frames-split §10.7 产物上限)', () =>
     expect(toast.warning).toHaveBeenCalledExactlyOnceWith(t('canvas.miniTool.videoUI.tooManyOutputs', { max: 3 }));
     expect(onRunVideo).not.toHaveBeenCalled();
   });
+
+  // frames-split §10.7 "displays the cap"; demo main.tsx output-cap line.
+  it('says the cap and the planned count in the panel only while the plan exceeds it', () => {
+    mount([1, 2, 3], 3);
+    expect(screen.getByTestId('video-output-cap')).toHaveTextContent(t('canvas.miniTool.videoUI.outputCapExceeded', { cap: 3, count: 4 }));
+    expect(screen.getByTestId('video-output-cap')).toHaveTextContent('Up to 3 outputs; this plan makes 4');
+  });
+
+  it('shows no cap line when the plan fits', () => {
+    mount([1, 2], 3);
+    expect(screen.queryByTestId('video-output-cap')).toBeNull();
+  });
 });

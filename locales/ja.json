@@ -1450,7 +1450,6 @@
         "removeCut": "削除",
         "removeDialogue": "セリフを削除",
         "retryPreview": "プレビューを再試行",
-        "segmentCount": "{count} セグメント",
         "selectedClipEmpty": "クリップを選択して設定を編集します。",
         "sourceUnavailable": "元の動画を利用できません",
         "targetPerson": "対象人物",
@@ -1544,7 +1543,12 @@
         "rewind": "先頭に戻る",
         "transitionBetween": "クリップ間のトランジション",
         "preserveAudio": "音声を保持",
-        "resultsReady": "結果の準備完了"
+        "resultsReady": "結果の準備完了",
+        "cutSummary": "{cuts} カット位置 · {segments} 区間",
+        "segmentPreview": "プレビュー · {start} – {end}",
+        "stopPreview": "プレビューを停止",
+        "detectionError": "シーン検出に失敗しました。再度検出してください。",
+        "outputCapExceeded": "最大 {cap} 件、現在 {count} 件"
       }
     },
     "template": {

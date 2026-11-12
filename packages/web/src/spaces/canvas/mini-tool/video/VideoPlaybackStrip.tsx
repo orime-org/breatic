@@ -17,6 +17,8 @@ export interface VideoPlaybackStripProps {
   onSeek?: (time: number) => void;
   /** A range to highlight: outside it is dimmed, inside it is outlined. */
   range?: { start: number; end: number };
+  /** Marks drawn on the strip above the filmstrip, such as split's cut handles. */
+  children?: React.ReactNode;
 }
 
 /**
@@ -25,7 +27,7 @@ export interface VideoPlaybackStripProps {
  * @returns The label.
  * @throws {never} Never.
  */
-function secondsLabel(seconds: number): string {
+export function secondsLabel(seconds: number): string {
   return `${Math.max(0, seconds).toFixed(2)} s`;
 }
 
@@ -48,7 +50,7 @@ function percent(seconds: number, duration: number): string {
  * @throws {never} Never.
  */
 export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.Element {
-  const { src, duration, aspect, presentedTime, onSeek, range } = props;
+  const { src, duration, aspect, presentedTime, onSeek, range, children } = props;
   const track = React.useRef<HTMLDivElement>(null);
   /**
    * Seeks to the pressed place on the strip as it is laid out on screen.
@@ -70,6 +72,7 @@ export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.El
         <span data-testid='video-playback-range' className='pointer-events-none absolute inset-y-0 border border-status-selected' style={{ left: percent(range.start, duration), width: percent(range.end - range.start, duration) }} />
       </>}
       {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
+      {children}
     </div>
     <div data-testid='video-playback-times' className='flex justify-between text-xs tabular-nums text-muted-foreground'>
       <span>{secondsLabel(range?.start ?? 0)}</span><span>{presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>

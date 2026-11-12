@@ -55,7 +55,7 @@ interface Excluded {
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.analysisFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "canvas.miniTool.videoUI.cutPoint": { excluded: REASONS.SCREEN_READER, look: /edit its seconds below/ },
+  "canvas.miniTool.videoUI.cutPoint": { excluded: REASONS.SCREEN_READER, look: /each cut's seconds can be edited in its own numbered row/ },
   "canvas.miniTool.videoUI.drawBox": { described: /mark the target on the video itself/ },
   "canvas.miniTool.videoUI.expandPrompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.frameCount": { excluded: REASONS.FILLS_A_VALUE },
@@ -70,7 +70,10 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.rewind": { excluded: REASONS.SCREEN_READER, look: /the round arrow before it goes back to the start/ },
   "canvas.miniTool.videoUI.removeCut": { excluded: REASONS.SCREEN_READER, look: /the bin beside a cut removes it/ },
   "canvas.miniTool.videoUI.removeDialogue": { excluded: REASONS.SCREEN_READER, look: /The bin at the end of a dialogue row removes it/ },
-  "canvas.miniTool.videoUI.segmentCount": { excluded: REASONS.FILLS_A_VALUE },
+  "canvas.miniTool.videoUI.cutSummary": { described: /a line counts the cut points and segments/ },
+  "canvas.miniTool.videoUI.segmentPreview": { described: /beside its range while it plays/ },
+  "canvas.miniTool.videoUI.detectionError": { described: /a detection that failed shows a line saying so with a button to detect again/ },
+  "canvas.miniTool.videoUI.outputCapExceeded": { described: /with more the panel says the limit in red/ },
   "canvas.miniTool.videoUI.selectedClipEmpty": { excluded: REASONS.EMPTY_OR_SEARCH },
   "canvas.miniTool.videoUI.timelineEmpty": { excluded: REASONS.EMPTY_OR_SEARCH },
   "canvas.miniTool.videoUI.timelineInstructions": { described: /or drag either end of a clip on the track, to trim it/ },

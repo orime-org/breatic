@@ -11,9 +11,9 @@ import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVid
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { Slider } from '@web/components/ui/slider';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
-import { VideoPlaybackStrip } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
+import { secondsLabel, VideoPlaybackStrip } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
+import type { SourceRangePlayback } from '@web/spaces/canvas/video-presentation/play-source-range';
 import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
@@ -63,6 +63,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   regionSelection?: 'rectangle' | 'point';
   onRegionSelection?: (selection: 'rectangle' | 'point') => void;
   onSeek?: (time: number) => void;
+  /** Plays exactly one source range in the node's player (canvas design §4 split row 预览区间). */
+  onPlayRange?: (start: number, end: number) => SourceRangePlayback;
   sourceEpoch?: number;
   seekEpoch?: number;
   /** The lip-sync models to choose from and the tracking range. */
@@ -318,57 +320,131 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
         {input === undefined ? null : <Button variant='outline' size='sm' onClick={props.onEditTimeline}>{t('canvas.miniTool.videoUI.editTimeline')}</Button>}</>;
     }
     case 'video.split': {
-      const draft = props.draft as VideoToolDraftById['video.split'];
-      const planned = props.frameTable === null ? [] : planVideoSplit(props.frameTable, draft.params.cuts);
-      return <><VideoCutStrip {...props} /><Button variant='outline' size='sm' data-testid='video-detect-scenes' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onAnalyse('scene_cuts')}>{t(props.analyses.some((record) => record.kind === 'scene_cuts') ? 'canvas.miniTool.videoUI.detectAgain' : 'canvas.miniTool.videoUI.detectScenes')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button><div className='flex items-center justify-between gap-2'><span className='text-xs text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : t('canvas.miniTool.videoUI.segmentCount', { count: planned.length })}</span><Button variant='outline' size='compact' disabled={props.disabled || props.frameTable === null || props.presentedTime === null || props.presentedTime <= 0 || props.presentedTime >= (props.frameTable === null ? 0 : presentationVideoEnd(props.frameTable))} onClick={() => { if (props.presentedTime !== null) props.onChange({ ...draft, params: { ...draft.params, cuts: [...new Set([...draft.params.cuts, props.presentedTime])].sort((a, b) => a - b) } }); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div>{draft.params.cuts.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{draft.params.cuts.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} max={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.map((item, at) => at === index ? value : item) } })} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onClick={() => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.filter((_, at) => at !== index) } })}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}</>;
+      // Demo main.tsx split branch: Detect, then the cut editor once the frame table is usable (frames-split §10.6: until then
+      // only the ledger line the container draws), then a failed detection's row with Retry.
+      const failed = latestMiniToolAnalysis(props.analyses.filter((record) => record.kind === 'scene_cuts'))?.status === 'failed';
+      return <><Button variant='outline' size='sm' data-testid='video-detect-scenes' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onAnalyse('scene_cuts')}>{t(props.analyses.some((record) => record.kind === 'scene_cuts') ? 'canvas.miniTool.videoUI.detectAgain' : 'canvas.miniTool.videoUI.detectScenes')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button>
+        {props.frameTable === null ? null : <VideoCutEditor {...props} table={props.frameTable} />}
+        {failed ? <div data-testid='video-detection-error' className='flex items-center justify-between gap-3 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.detectionError')}</span><Button variant='outline' size='compact' disabled={props.disabled || props.analysing} onClick={() => props.onAnalyse('scene_cuts')}>{t('canvas.task.action.retry')}</Button></div> : null}</>;
     }
   }
 }
 
 /**
- * Edits cut positions on the shared source clock with one atomic gesture commit.
- * @param props - The authoritative frame set, current draft and seek command.
- * @returns The source filmstrip and exact cut handles.
- * @throws {Error} When the supplied frame table is malformed.
+ * The cuts as the plan uses them (canvas design §4 split row): snapped to frame starts, sorted, unique and inside the video;
+ * a stored cut at or past the presentation's end is left out rather than refused.
+ * @param table - The source's presentation table.
+ * @param cuts - The stored or edited cuts.
+ * @returns The normalized cuts.
+ * @throws {z.ZodError} When the table is malformed.
  */
-function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
+function splitCuts(table: VideoPresentationTable, cuts: readonly number[]): number[] {
+  const end = presentationVideoEnd(table);
+  return planVideoSplit(table, cuts.filter((cut) => cut < end)).slice(1).map((segment) => segment.start);
+}
+
+/**
+ * Edits split cuts on the source clock (demo video-controls.tsx CutEditor and PlaybackStrip cuts): numbered handles on the
+ * filmstrip that drag (committed once on release), step one frame with the arrow keys and go with Delete; the count with
+ * Add at cursor; one row per cut; and one button per segment that plays exactly that range in the node's player.
+ * @param props - The panel props and the usable frame table.
+ * @returns The cut editor.
+ * @throws {z.ZodError} When the frame table is malformed.
+ */
+function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentationTable }): React.JSX.Element {
+  const t = useTranslation();
+  const { table } = props;
   const draft = props.draft as VideoToolDraftById['video.split'];
-  const [temporary, setTemporary] = React.useState<number[] | null>(null);
+  const duration = presentationVideoEnd(table);
+  const cuts = React.useMemo(() => splitCuts(table, draft.params.cuts), [table, draft.params.cuts]);
+  const segments = React.useMemo(() => planVideoSplit(table, cuts), [table, cuts]);
+  const [dragging, setDragging] = React.useState<{ index: number; time: number } | null>(null);
   const gesture = React.useRef<string | null>(null);
-  const latest = React.useRef(props);
-  latest.current = props;
-  React.useEffect(() => { gesture.current = null; setTemporary(null); }, [draft.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
-  const normalized = props.frameTable === null ? draft.params.cuts : planVideoSplit(props.frameTable, draft.params.cuts).slice(1).map((segment) => segment.start);
-  const cuts = temporary ?? normalized;
-  const duration = props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable);
-  return <div className='grid gap-2'>
-    <div className='relative h-14 overflow-hidden rounded-chrome border border-border'>
-      <FilmStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} />
-      {props.presentedTime === null ? null : <div className='absolute bottom-0 top-0 border-l border-status-selected' style={{ left: `${props.presentedTime / duration * 100}%` }} />}
-    </div>
-    <Slider value={cuts} min={0} max={duration} step={0.001} disabled={props.disabled || props.frameTable === null} onKeyDownCapture={(event) => {
-      if (props.disabled || props.frameTable === null || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      const index = [...event.currentTarget.querySelectorAll('[role=slider]')].indexOf(target);
-      const at = normalized[index];
-      if (at === undefined) return;
-      event.preventDefault(); event.stopPropagation();
-      const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowDown';
-      const covering = planVideoFrames(props.frameTable, { mode: 'current', currentTime: at })[0];
-      const neighbour = backwards ? (covering.pts < at ? covering.frameIndex : covering.frameIndex - 1) : (covering.pts > at ? covering.frameIndex : covering.frameIndex + 1);
-      const pts = neighbour >= 0 && neighbour < presentationFrameCount(props.frameTable) ? presentationFrameAt(props.frameTable, neighbour).pts : undefined;
-      const next = pts !== undefined && pts > 0 && pts < duration ? pts : undefined;
-      if (next !== undefined) props.onChange({ ...draft, params: { ...draft.params, cuts: normalized.map((pts, position) => position === index ? next : pts) } });
-    }} onPointerDownCapture={() => { gesture.current = draft.revision; }} onValueChange={(values) => setTemporary(values)} onValueCommit={(values) => {
-      const current = latest.current.draft as VideoToolDraftById['video.split'];
-      if (gesture.current !== current.revision || latest.current.disabled || latest.current.frameTable === null) { setTemporary(null); return; }
-      gesture.current = null;
-      const segments = planVideoSplit(latest.current.frameTable, values);
-      props.onChange({ ...current, params: { ...current.params, cuts: segments.slice(1).map((segment) => segment.start) } });
-      setTemporary(null);
-    }} />
-    <Slider value={props.presentedTime === null ? [] : [props.presentedTime]} min={0} max={duration} step={0.001} disabled={props.onSeek === undefined || props.presentedTime === null} onValueChange={(values) => { if (values[0] !== undefined) props.onSeek?.(values[0]); }} />
+  React.useEffect(() => { gesture.current = null; setDragging(null); }, [draft.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
+  const [previewing, setPreviewing] = React.useState<{ start: number; end: number } | null>(null);
+  const [playFailed, setPlayFailed] = React.useState(false);
+  const playback = React.useRef<SourceRangePlayback | null>(null);
+  React.useEffect(() => () => playback.current?.stop(), []);
+  /**
+   * Commits edited cuts, normalized as the plan uses them.
+   * @param next - The edited cuts.
+   * @throws {z.ZodError} When the table is malformed.
+   */
+  const commit = (next: readonly number[]): void => { props.onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(table, next) } }); };
+  /**
+   * The source time under the pointer on the strip a handle sits on, kept inside the video.
+   * @param event - The pointer event on a handle.
+   * @returns The time in seconds.
+   * @throws {never} Never.
+   */
+  const timeAt = (event: React.PointerEvent<HTMLElement>): number => {
+    const box = event.currentTarget.parentElement?.getBoundingClientRect();
+    return box === undefined || box.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration;
+  };
+  /**
+   * Moves a cut one frame back or forward from where it is, keeping it inside the video.
+   * @param index - The cut.
+   * @param backwards - Whether to step back.
+   * @throws {z.ZodError} When the table is malformed.
+   */
+  const step = (index: number, backwards: boolean): void => {
+    const at = cuts[index]!;
+    const covering = planVideoFrames(table, { mode: 'current', currentTime: at })[0]!;
+    const neighbour = backwards ? (covering.pts < at ? covering.frameIndex : covering.frameIndex - 1) : (covering.pts > at ? covering.frameIndex : covering.frameIndex + 1);
+    const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? presentationFrameAt(table, neighbour).pts : undefined;
+    if (pts !== undefined && pts > 0 && pts < duration) commit(cuts.map((cut, position) => position === index ? pts : cut));
+  };
+  /**
+   * Plays one segment in the node's player and shows it until it ends; a refused play says the media is unavailable.
+   * @param start - The segment start.
+   * @param end - The segment end.
+   * @throws {never} A refused play is shown.
+   */
+  const preview = (start: number, end: number): void => {
+    playback.current?.stop();
+    const next = props.onPlayRange?.(start, end);
+    if (next === undefined) return;
+    playback.current = next;
+    setPreviewing({ start, end });
+    setPlayFailed(false);
+    next.done.then(() => { if (playback.current === next) { playback.current = null; setPreviewing(null); } },
+      () => { if (playback.current === next) { playback.current = null; setPreviewing(null); setPlayFailed(true); } });
+  };
+  const cursor = props.presentedTime;
+  const addable = cursor !== null && cursor > 0 && cursor < duration && splitCuts(table, [...cuts, cursor]).length > cuts.length;
+  return <div className='grid gap-2' data-testid='video-cut-editor'>
+    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek}>
+      {cuts.map((cut, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : cut) * 100 / duration}%` }}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || props.disabled) return;
+          // Prevented so the press neither seeks the strip nor selects; focused by hand, so the keys then act on this handle.
+          event.stopPropagation(); event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          gesture.current = draft.revision;
+          setDragging({ index, time: cut });
+        }}
+        onPointerMove={(event) => { if (dragging?.index !== index) return; event.stopPropagation(); setDragging({ index, time: timeAt(event) }); }}
+        onPointerUp={(event) => {
+          if (dragging?.index !== index) return;
+          event.stopPropagation();
+          const time = timeAt(event);
+          const current = gesture.current === draft.revision && !props.disabled;
+          gesture.current = null; setDragging(null);
+          if (current && time > 0 && time < duration) commit(cuts.map((value, position) => position === index ? time : value));
+        }}
+        onPointerCancel={() => { gesture.current = null; setDragging(null); }}
+        onKeyDown={(event) => {
+          if (props.disabled) return;
+          if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); commit(cuts.filter((_, position) => position !== index)); }
+          else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
+        }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
+    </VideoPlaybackStrip>
+    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: cuts.length, segments: cuts.length + 1 })}</span><Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !addable} onClick={() => { if (cursor !== null) commit([...cuts, cursor]); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div>
+    {cuts.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{cuts.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => commit(cuts.map((item, at) => at === index ? value : item))} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onClick={() => commit(cuts.filter((_, at) => at !== index))}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
+    <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
+    {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
+    {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
   </div>;
 }
 
