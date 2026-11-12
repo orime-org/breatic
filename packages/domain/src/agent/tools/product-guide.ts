@@ -1079,8 +1079,8 @@ export function renderProductGuide(): string {
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Removing a video's background keeps the transparent source available for download and downstream tools. Its panel shows " +
       "a filmstrip of the video with the player's position on it; clicking the strip moves the player there. " +
-      `${quoted(t("canvas.miniTool.videoUI.preserveAudio"))} is always on, and once its newest result is ready ` +
-      `${quoted(t("canvas.miniTool.videoUI.resultsReady"))} opens that result on a checkerboard to play and seek.`,
+      `${quoted(t("canvas.miniTool.videoUI.preserveAudio"))} is always on, and once any of its results is ready ` +
+      `${quoted(t("canvas.miniTool.videoUI.resultsReady"))} opens the newest ready result on a checkerboard to play and seek.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +

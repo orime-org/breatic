@@ -34,6 +34,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 
 const projectId = 'rb-project'; const spaceId = 'rb-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const resultId = '10000000-0000-4000-8000-000000000002'; const olderId = '10000000-0000-4000-8000-000000000003';
+const failedId = '10000000-0000-4000-8000-000000000004';
 const sourceURL = 'https://assets.example.test/canonical.mp4'; const resultURL = 'https://assets.example.test/alpha.webm';
 const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
 const TABLE = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 10, step: 50, duration: 50 }] };
@@ -111,8 +112,24 @@ describe('the newest remove-background result (canvas design §4 remove-backgrou
     expect(dialog.querySelector('[data-testid="seek"]')).not.toBeNull();
   });
 
-  it('offers nothing while the newest result is still pending', () => {
+  it('still offers the older ready result while the newest run is pending', () => {
     output(olderId, 'https://assets.example.test/old.webm', 1);
+    output(resultId, '', 2);
+    mount('video.remove-bg', facts(true));
+    fireEvent.click(screen.getByRole('button', { name: /Results ready/ }));
+    expect(screen.getByTestId('video-result-preview').textContent).toContain('BG-1');
+  });
+
+  it('still offers the older ready result when the newest run failed and its node never got a result', () => {
+    output(olderId, 'https://assets.example.test/old.webm', 1);
+    output(resultId, '', 2);
+    output(failedId, '', 3);
+    mount('video.remove-bg', facts(true));
+    fireEvent.click(screen.getByRole('button', { name: /Results ready/ }));
+    expect(screen.getByTestId('video-result-preview').textContent).toContain('BG-1');
+  });
+
+  it('offers nothing while no result is ready', () => {
     output(resultId, '', 2);
     mount('video.remove-bg', facts(true));
     expect(screen.queryByRole('button', { name: /Results ready/ })).toBeNull();

@@ -629,15 +629,16 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     setInvalidFields((before) => { const next = new Set(before); if (invalid) next.add(key); else next.delete(key); return next.size === before.size && [...next].every((value) => before.has(value)) ? before : next; });
   }, []);
   useEscapeInSpace(pick === null && !timelineOpen, close);
-  // The newest remove-background result of this source, by its edge (canvas design §4 remove-background row); its button
-  // shows once that result has landed.
+  // The newest ready remove-background result of this source, by its edge (canvas design §4 remove-background row): a newer
+  // run still pending or failed has no content yet and must not hide an older result that is ready.
   const removeBgResult = React.useMemo(() => {
     if (toolId !== 'video.remove-bg') return null;
-    const newest = readEdges(doc).filter((edge) => edge.source === nodeId && edge.toolId === 'video.remove-bg' && nodes.some((candidate) => candidate.id === edge.target))
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
-    const view = newest === undefined ? undefined : nodes.find((candidate) => candidate.id === newest.target);
-    const url = view !== undefined && 'content' in view.data && typeof view.data.content === 'string' ? view.data.content : '';
-    return view === undefined || url === '' ? null : { url, name: 'name' in view.data && typeof view.data.name === 'string' ? view.data.name : '' };
+    const newest = readEdges(doc).filter((edge) => edge.source === nodeId && edge.toolId === 'video.remove-bg')
+      .map((edge) => ({ createdAt: edge.createdAt ?? 0, view: nodes.find((candidate) => candidate.id === edge.target) }))
+      .map(({ createdAt, view }) => ({ createdAt, view, url: view !== undefined && 'content' in view.data && typeof view.data.content === 'string' ? view.data.content : '' }))
+      .filter(({ url }) => url !== '')
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    return newest?.view === undefined ? null : { url: newest.url, name: 'name' in newest.view.data && typeof newest.view.data.name === 'string' ? newest.view.data.name : '' };
   }, [toolId, doc, nodeId, nodes]);
   const [resultOpen, setResultOpen] = React.useState(false);
   // A frame the source player's camera menu asked for (tools design §4 camera menu): applied to the draft once, then dropped.
