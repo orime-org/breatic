@@ -65,8 +65,8 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
     await expect(page.locator('[data-testid^="chat-chip-"][data-status="ready"]').filter({ hasText: '3D-' })).toHaveCount(1);
     await expect(space.getByTestId('scene-map')).toBeVisible();
 
-    // Canvas: the list names the canvas; View opens it, never opened in this browser, with the new
-    // node selected in the middle of the view.
+    // Canvas: the list names the canvas; View opens it, its tab closed and its stored camera removed,
+    // with the new node selected in the middle of the view.
     const canvasTab = page.getByTestId(`space-tab-${canvasId}`);
     await canvasTab.hover();
     await canvasTab.getByRole('button', { name: 'Close Space tab' }).click();

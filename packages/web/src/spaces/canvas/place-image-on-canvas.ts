@@ -27,8 +27,8 @@ export interface PlaceImageRequest {
 
 /**
  * How placing ended: `uploaded`; `unreachable` when the canvas never synced and
- * nothing was written; `refused` when the canvas had no room (the size gate
- * said so); `lost` when the document was rebuilt or torn down before collab
+ * nothing was written; `refused` when the size gate refused the add (the
+ * canvas is full or is being rebuilt; the gate warns except while rebuilding); `lost` when the document was rebuilt or torn down before collab
  * confirmed the node, so nothing was uploaded; `upload_failed` when the node
  * is there but its upload did not finish, `toasted` saying whether the user
  * was already told.

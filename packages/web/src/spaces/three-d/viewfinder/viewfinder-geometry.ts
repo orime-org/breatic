@@ -106,7 +106,8 @@ export function resizeFrame(
  * Put the frame back after the safe area changed (design 3.2). Free keeps its
  * position and shape relative to the area; a fixed ratio keeps its ratio and
  * its size relative to the largest frame of that ratio, about its relative
- * centre. Both map back exactly when the area returns to what it was.
+ * centre. Both map back exactly when the area returns to what it was, unless
+ * a fixed-ratio frame had to be pushed back inside a smaller area.
  * @param frame - The frame.
  * @param from - The safe area it was placed in.
  * @param to - The new safe area.

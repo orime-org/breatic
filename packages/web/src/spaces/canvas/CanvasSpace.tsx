@@ -2488,9 +2488,10 @@ function CanvasSpaceInner({
   // both the nodes a drop makes and the Group it wraps them in.
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
 
-  // Where a failed upload ONTO A NODE is presented, for every entry that has
-  // one: dropping onto the canvas, filling an existing node (double-click /
-  // Upload menu / Retry / reset-to-empty), and the video-with-cover path. What
+  // Where a failed upload ONTO A NODE is presented for the entries that run in
+  // this component: dropping onto the canvas, the video-with-cover path and a
+  // browser tool's batch export. Filling an existing node goes through
+  // `startUploadIntoNode`, which calls `failUploadIntoNode` itself. What
   // each reason needs (the Retry stash and the wording) is decided in
   // `failUploadIntoNode`. The focus crop is the one upload with no node to
   // write to: its failures are toast-only and it has its own sink further up.

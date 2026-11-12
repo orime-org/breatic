@@ -1649,7 +1649,8 @@ export function renderProductGuide(): string {
     "With the Space holding keyboard focus and no text box being edited, Cmd/Ctrl+D duplicates, Delete or Backspace deletes, " +
       "Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z redoes, and Ctrl+Y also redoes on Windows. F focuses the selection. " +
       "Escape in a property box cancels its draft; outside a box each press does the first of these that applies: cancel an active handle or joint drag, " +
-      "turn joint adjustment off, close an open panel, clear the selection. Losing focus, hiding the scene " +
+      "turn joint adjustment off, close an open panel, leave the viewfinder (from a still back to framing, from framing closed; an open Canvas list closes first), " +
+      "clear the selection. Losing focus, hiding the scene " +
       "or losing editing access cancels an unfinished handle gesture. A Viewer can browse and select, but cannot change shared objects.",
     `A refused scene connection says ${quoted(t("spaces.threeD.refused"))} ` +
       "The scene uses the same live collaborative document while its tab stays open, including across Space switches and reconnects. " +

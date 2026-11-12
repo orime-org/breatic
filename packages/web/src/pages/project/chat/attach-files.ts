@@ -125,7 +125,7 @@ function sortPicked(
 async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: AttachDeps): Promise<void> {
   const { file, item } = picked;
   if (item.type !== 'text') {
-    // The item says it failed, which is what the user acts on: take it out
+    // When the upload fails the item says so, which is what the user acts on: take it out
     // and pick the file again, after a while when it was uploading too often.
     const outcome = await uploadTrayItem(tray, item, file, (f) => deps.upload(f, projectId));
     if (outcome === 'unsupported') chatAttachments.say(mediaFormatNotice(file));

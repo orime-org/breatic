@@ -61,7 +61,7 @@ export interface SceneViewfinderProps {
   /** The viewport's capture, while it lives. */
   capture: SceneFrameCapture | null;
   modelsLoading: boolean;
-  /** A Viewer cannot capture. */
+  /** The button is unavailable: a Viewer, or a scene that is not ready yet. */
   disabled: boolean;
   /** The chat is switching conversations; nothing can be added to it meanwhile. */
   chatSwitching: boolean;
