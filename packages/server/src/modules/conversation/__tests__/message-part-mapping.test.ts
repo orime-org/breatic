@@ -21,6 +21,7 @@
  */
 import { LEGACY_FAILURE_LINES, NEVER_RAN, TURNED_AWAY } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import type { UIMessage } from "ai";
 import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
@@ -577,5 +578,54 @@ describe("a questionnaire waiting for the user (inner#1542)", () => {
     expect(parts).toEqual([
       { type: "tool-ask_user", toolCallId: "ask-2", input: { questions: [] }, state: "output-available", output: { repliedInChat: true } },
     ]);
+  });
+});
+
+describe("a message taken in while the turn ran (inner#1717)", () => {
+  const CHIP_A = { kind: "file", name: "brief.pdf", assetId: "a-1" } as never;
+  const CHIP_B = { kind: "file", name: "moodboard.png", assetId: "a-2" } as never;
+  const WIRE = {
+    type: "data-user-message",
+    data: { id: "m-2", words: "Make it blue", chips: [CHIP_A, CHIP_B], sentAt: "2026-11-12T08:00:00.000Z" },
+  } as unknown as UIMessage["parts"][number];
+
+  it("is stored as one part holding its attachments and words, and read back as it came (PT-01)", () => {
+    const stored = toStoredParts([WIRE]);
+    expect(stored).toEqual([
+      {
+        type: "user-message",
+        id: "m-2",
+        sentAt: "2026-11-12T08:00:00.000Z",
+        parts: [
+          { type: "attachment", chip: CHIP_A },
+          { type: "attachment", chip: CHIP_B },
+          { type: "text", text: "Make it blue" },
+        ],
+      },
+    ]);
+    expect(toUiParts(stored)).toEqual([WIRE]);
+  });
+
+  it("survives the round trip for any words and attachments (PT-02)", () => {
+    const chip = fc.record({ kind: fc.constant("file"), name: fc.string(), assetId: fc.uuid() });
+    fc.assert(
+      fc.property(
+        fc.uuid(),
+        fc.oneof(fc.string(), fc.constantFrom("", "改成蓝色\n第二行", "line\r\nbreak")),
+        fc.array(chip, { maxLength: 5 }),
+        fc.date({ noInvalidDate: true }).map((d) => d.toISOString()),
+        (id, words, chips, sentAt) => {
+          const wire = { type: "data-user-message", data: { id, words, chips, sentAt } } as unknown as UIMessage["parts"][number];
+          expect(toUiParts(toStoredParts([wire]))).toEqual([wire]);
+        },
+      ),
+    );
+  });
+
+  it("keeps a shutdown as the reason a turn failed (PT-03)", () => {
+    const wire = { type: "data-failed", data: { reason: "shutdown" } } as unknown as UIMessage["parts"][number];
+    const stored = toStoredParts([wire]);
+    expect(stored).toEqual([{ type: "failed", reason: "shutdown" }]);
+    expect(toUiParts(stored)).toEqual([wire]);
   });
 });

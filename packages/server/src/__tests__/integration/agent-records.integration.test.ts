@@ -1003,3 +1003,64 @@ describe("whatever the data, the user reads only their own, live conversations i
     );
   });
 });
+
+describe("messages the user sent while a turn ran (inner#1717)", () => {
+  /**
+   * A reply holding two messages the user sent mid-turn, every piece with the word.
+   * @param word - The word in all three.
+   * @param at - When the reply was stored.
+   * @returns The parts and the two send times.
+   */
+  function midTurnReply(word: string, at: Date): { parts: unknown[]; sent: [string, string] } {
+    const first = new Date(at.getTime() - 20_000).toISOString();
+    const second = new Date(at.getTime() - 10_000).toISOString();
+    return {
+      parts: [
+        said(`the ${word} sky`),
+        { type: "user-message", id: crypto.randomUUID(), sentAt: first, parts: [said(`make it ${word}`)] },
+        { type: "user-message", id: crypto.randomUUID(), sentAt: second, parts: [said(`a darker ${word}`)] },
+      ],
+      sent: [first, second],
+    };
+  }
+
+  it("finds each one as a hit of the user's at the time it was sent (PT-07)", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const at = new Date("2026-11-12T08:00:00.000Z");
+    const reply = midTurnReply("蓝", at);
+    await seedMessage(other, turn.userId, { role: "assistant", turn: 1, parts: reply.parts, at: at.toISOString() });
+
+    const page = await recordsFor(turn).searchMessages(["蓝"], {});
+
+    expect(page.total).toBe(3);
+    expect(page.hits.filter((h) => h.role === "assistant")).toHaveLength(1);
+    expect(page.hits.filter((h) => h.role === "user").map((h) => h.createdAt).sort()).toEqual([...reply.sent].sort());
+  });
+
+  it("pages through those hits with none lost or repeated (PT-08)", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const size = getAgentConfig().records_page_size;
+    const rows = Math.ceil((size + 1) / 3) + 1;
+    for (let i = 0; i < rows; i += 1) {
+      const at = new Date(Date.UTC(2026, 10, 12, 8, i));
+      await seedMessage(other, turn.userId, { role: "assistant", turn: i + 1, parts: midTurnReply("teal", at).parts, at: at.toISOString() });
+    }
+    const records = recordsFor(turn);
+
+    const first = await records.searchMessages(["teal"], {});
+    const all = await allPages(
+      async () => ({ items: first.hits, nextCursor: first.nextCursor }),
+      async (cursor) => {
+        const page = await records.searchMessages(["teal"], { cursor });
+        return { items: page.hits, nextCursor: page.nextCursor };
+      },
+    );
+
+    expect(first.total).toBe(rows * 3);
+    expect(all).toHaveLength(rows * 3);
+    const keys = all.map((h) => `${String(h.turnIndex)}|${h.role}|${h.createdAt}`);
+    expect(new Set(keys).size).toBe(rows * 3);
+  });
+});
