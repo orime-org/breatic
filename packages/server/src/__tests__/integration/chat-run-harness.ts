@@ -14,6 +14,8 @@ import crypto from "node:crypto";
 import type postgres from "postgres";
 import type { Hono } from "hono";
 import { getRedis, sessionCookieName, setSession } from "@breatic/core";
+import { runObservers } from "@server/agent/chat-run.js";
+import { runStreams } from "@server/agent/run-stream.js";
 
 /** One signed-in owner and their open conversation. */
 export interface Seeded {
@@ -183,4 +185,76 @@ export async function until(check: () => Promise<boolean> | boolean, ms = 10_000
  */
 export async function untilIdle(c: string): Promise<void> {
   await until(async () => (await getRedis().exists(keysOf(c).active)) === 0);
+}
+
+/** What a send answered, and every frame of the run it opened. */
+export interface SentAndRead {
+  status: number;
+  /** The JSON body; for a refusal, the error envelope. */
+  json: Record<string, unknown> | null;
+  /** Each frame of the run the send opened or joined, in order; empty when it opened none. */
+  chunks: Record<string, unknown>[];
+}
+
+/**
+ * Send to `POST /chat/message` and read the run it opens, the way a page now
+ * does: the send answers as JSON, and the run's frames come from its stream
+ * (inner#1717). A new message is given an id when the case gave none. The run
+ * is attached to as soon as its stream exists, so every frame is read however
+ * fast the run is; the call returns once the run has ended.
+ * @param app - The server app.
+ * @param cookie - The signed-in session.
+ * @param body - What is sent.
+ * @param headers - Extra headers.
+ * @returns The answer and the run's frames.
+ */
+export async function sendAndRead(
+  app: Hono,
+  cookie: string,
+  body: Record<string, unknown>,
+  headers: Record<string, string> = {},
+): Promise<SentAndRead> {
+  const conversationId = String(body.conversation_id ?? "");
+  const isCard = body.answer !== undefined || body.shared_spaces !== undefined;
+  const sent = isCard || body.id !== undefined ? body : { id: crypto.randomUUID(), ...body };
+  let reading: Promise<Record<string, unknown>[]> | undefined;
+  const observe = async (run: { conversationId: string; runId: string }): Promise<void> => {
+    if (run.conversationId !== conversationId || reading !== undefined) return;
+    const stream = await runStreams().resumeExistingStream(run.runId);
+    reading = stream ? framesOfText(stream) : Promise.resolve([]);
+  };
+  runObservers.push(observe);
+  try {
+    const res = await app.request("/api/v1/chat/message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, ...headers },
+      body: JSON.stringify(sent),
+    });
+    const text = await res.text();
+    const json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    const chunks = reading === undefined ? [] : await reading;
+    if (conversationId !== "") await untilIdle(conversationId);
+    return { status: res.status, json, chunks };
+  } finally {
+    runObservers.splice(runObservers.indexOf(observe), 1);
+  }
+}
+
+/**
+ * Read a run's stream of SSE text to its end and parse its frames.
+ * @param stream - The stream.
+ * @returns Each frame's chunk, in order.
+ */
+async function framesOfText(stream: ReadableStream<string>): Promise<Record<string, unknown>[]> {
+  let text = "";
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += value;
+  }
+  return text
+    .split("\n\n")
+    .filter((block) => block.startsWith("data: "))
+    .map((block) => JSON.parse(block.slice("data: ".length)) as Record<string, unknown>);
 }

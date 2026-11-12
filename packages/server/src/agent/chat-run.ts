@@ -58,6 +58,13 @@ export interface RunStart {
 }
 
 /**
+ * Called once a run's stream exists and before its turn runs, and awaited.
+ * Nothing in the server watches; a test attaches to the run here, so it reads
+ * every frame however fast the run is.
+ */
+export const runObservers: Array<(run: { conversationId: string; runId: string }) => Promise<void>> = [];
+
+/**
  * The channel a run's stop is published on.
  * @param runId - The run.
  * @returns The channel.
@@ -257,6 +264,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       void produced?.cancel().catch(() => {});
       streamOpened = true;
       open(true);
+      for (const observe of runObservers) await observe({ conversationId, runId });
       if (isShuttingDown()) throw new RunNotOpened();
     };
     const agent = new MainAgent();
