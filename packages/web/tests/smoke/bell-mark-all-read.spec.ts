@@ -101,3 +101,48 @@ test('mark all read clears the news and keeps the request waiting on A', async (
   await a.close();
   await b.close();
 });
+
+test('a bell with more notifications than the window holds scrolls them, and the last one can be read', async ({ browser }) => {
+  const a = await browser.newContext();
+  const page = await a.newPage();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const at = new Date(Date.now() - 5 * 60_000).toISOString();
+  const items = Array.from({ length: 20 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    userId: 'u-self',
+    type: 'studio.invite_accepted',
+    payload: {},
+    projectId: null,
+    readAt: null,
+    expiresAt: null,
+    createdAt: at,
+    updatedAt: at,
+    deletedAt: null,
+  }));
+  await page.route(/\/api\/v1\/users\/me\/notifications\?unread=true/, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ data: { items, resolved: { users: {}, studios: {}, projects: {} } } }),
+  }));
+
+  await page.goto('/studio');
+  await page.getByTestId('bell-trigger').click();
+  const popover = page.getByTestId('bell-popover');
+  const last = popover.getByTestId(`bell-notification-${items[19]!.id}`);
+  await expect(last).toHaveCount(1, { timeout: 15_000 });
+  // The panel ends inside the window, with its title still on top.
+  const box = (await popover.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(720);
+  await expect(popover.getByTestId('bell-count')).toBeInViewport();
+
+  // The wheel over the list brings the last notification into view.
+  const first = (await popover.getByTestId(`bell-notification-${items[0]!.id}`).boundingBox())!;
+  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2);
+  for (let turn = 0; turn < 20; turn += 1) await page.mouse.wheel(0, 400);
+  await expect(last).toBeInViewport();
+  const shown = (await last.boundingBox())!;
+  expect(shown.y + shown.height).toBeLessThanOrEqual(box.y + box.height);
+  await expect(popover.getByTestId('bell-count')).toBeInViewport();
+
+  await a.close();
+});
