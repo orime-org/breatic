@@ -23,7 +23,7 @@ import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
-import { INITIAL_VIEWFINDER, viewfinderReducer } from '@web/spaces/three-d/viewfinder/viewfinder-state';
+import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
@@ -428,6 +428,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     setRightOpen(false);
   }, [setRightOpen]);
   /**
+   * Run a viewfinder action; opening it closes the right panel so the frame has the whole view.
+   * @param action - The action.
+   */
+  const viewfinderAction = React.useCallback((action: ViewfinderAction): void => {
+    if (action.type === 'open') setRightOpen(false);
+    dispatchViewfinder(action);
+  }, [setRightOpen]);
+  /**
    * Switch a right panel while recording a valid keyboard return target.
    * @param next - The requested right panel.
    * @throws {never} Never directly.
@@ -585,7 +593,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
       onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} />
-    <SceneViewfinder state={viewfinder} dispatch={dispatchViewfinder} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
+    <SceneViewfinder state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
       spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces} />
     {selected.length > 0 ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
