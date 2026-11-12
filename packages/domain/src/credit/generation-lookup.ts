@@ -14,6 +14,7 @@ import { createQueue, getAgentConfig } from "@breatic/core";
 import type { CostLookup } from "@breatic/provider";
 
 import type {
+  AwaitedLookup,
   RecordedOperation,
   UsageFeature,
   UsageSource,
@@ -63,22 +64,21 @@ async function enqueueUsageLookup(job: UsageLookupCall & { lookup: CostLookup; u
 }
 
 /**
- * Queue the later lookup of each call an operation could not price.
- * @param lookups - provider's lookups of the pending costs.
+ * Queue the later lookup of each call an operation could not price, under the source and model of that call.
+ * @param lookups - provider's lookups of the pending costs, each with its call's source and model; each lookup names
+ *   the upstream that served its call.
  * @param operation - The operation they belong to.
- * @param call - The model they called, what a ledger row says the charge was for, and whether it is charged; each
- *   lookup names the upstream that served its call.
- * @param call.model - The model id.
+ * @param call - What a ledger row says the charge was for, and whether it is charged.
  * @param call.description - What the ledger row says the charge was for.
  * @param call.charge - Whether the operation is charged.
  * @returns Nothing once every job is queued.
  */
 export async function handOffLookups(
-  lookups: readonly CostLookup[],
+  lookups: readonly AwaitedLookup[],
   operation: RecordedOperation,
-  call: { model: string; description: string; charge: boolean },
+  call: { description: string; charge: boolean },
 ): Promise<void> {
-  for (const lookup of lookups) {
-    await enqueueUsageLookup({ ...operation, ...call, lookup, upstream: lookup.upstream, source: "model" });
+  for (const { lookup, source, model } of lookups) {
+    await enqueueUsageLookup({ ...operation, ...call, model, source, lookup, upstream: lookup.upstream });
   }
 }

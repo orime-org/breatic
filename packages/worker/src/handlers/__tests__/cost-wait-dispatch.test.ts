@@ -192,6 +192,20 @@ describe("a generation that finishes before its upstream billed it", () => {
     expect(h.settleCharge).not.toHaveBeenCalled();
   });
 
+  it("keeps the known part unrounded in the wait, so the bill is rounded once, while the delivery shows it rounded", async () => {
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: URL }],
+      costs: [{ state: "known", usd: 0.00004, source: "reported" }, { state: "pending", lookup: LOOKUP }],
+      servedBy: "fal",
+    });
+
+    await expect(runTask(jobOf(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
+
+    const [, result] = h.markCompleted.mock.calls[0]! as [string, { costWait: { credits: number } }];
+    expect(result.costWait.credits).toBeCloseTo(0.004, 10);
+    expect(h.recordGenerationSuccess).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ credits: 0.01 }) }));
+  });
+
   it("keeps the credits held past the wait, and comes back for the first lookup", async () => {
     await expect(runTask(jobOf(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
 
@@ -255,6 +269,15 @@ describe("a pickup of a task waiting on its cost", () => {
     expect(h.info).toHaveBeenCalledWith(expect.objectContaining({ provider: "fal", credits: 18 }), "generation_usage");
     expect(h.moveToDelayed).not.toHaveBeenCalled();
     expect(result).toMatchObject({ pendingCosts: [{ lookup: LOOKUP, cost: { state: "known", usd: 0.055 } }] });
+  });
+
+  it("rounds the known part and what the lookup found once, together", async () => {
+    h.getByIdInternal.mockResolvedValue(waitingRow({ credits: 0.004 }));
+    h.lookup.mockResolvedValue({ state: "known", usd: 0.00004, source: "billing" });
+
+    await runTask(jobOf(), "lock-token");
+
+    expect(h.markBilledAndCharge).toHaveBeenCalledExactlyOnceWith("task-1", 0.01, expect.objectContaining({ amount: 0.01 }));
   });
 
   it("bills on what is known once the last lookup still finds nothing, saying so", async () => {

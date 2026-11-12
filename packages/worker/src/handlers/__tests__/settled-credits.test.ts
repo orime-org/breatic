@@ -52,7 +52,7 @@ const h = vi.hoisted(() => {
     request: { id: null as string | null },
     error: vi.fn(),
     readingCredits: { value: 0 },
-    readingLookups: { value: [] as { upstream: string }[] },
+    readingLookups: { value: [] as { lookup: { upstream: string }; source: string; model: string }[] },
     markCompleted: vi.fn(async () => true),
     extendHold: vi.fn(),
     updateCostWait: vi.fn(),
@@ -331,7 +331,7 @@ describe("who a charge names", () => {
 describe("a reading whose call's cost is still pending (inner#1743)", () => {
   it("is delivered and waits on the cost, its lookup kept with how its usage row is written", async () => {
     LANES[1]!.costs(2);
-    h.readingLookups.value = [{ upstream: "openrouter", generationId: "gen-1" } as { upstream: string }];
+    h.readingLookups.value = [{ lookup: { upstream: "openrouter", generationId: "gen-1" } as { upstream: string }, source: "model", model: "google/gemini-3.8-flash" }];
 
     await expect(runTask(LANES[1]!.job(), "lock-token")).rejects.toThrow();
 

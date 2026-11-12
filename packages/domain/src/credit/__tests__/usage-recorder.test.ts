@@ -130,7 +130,14 @@ describe("the usage recorder", () => {
     expect(await recorder.settle()).toBe(0);
     expect(rows).toEqual([]);
     expect(missing).toEqual([]);
-    expect(recorder.awaitingLookup()).toEqual([lookup]);
+    expect(recorder.awaitingLookup()).toEqual([{ lookup, source: "model", model: "google/gemini-2.5-flash" }]);
+  });
+
+  it("keeps each pending call's source and model beside its lookup, so a tool's call is looked up as the tool's", () => {
+    const { recorder } = recorderWithRows();
+    const lookup = { upstream: "openrouter", generationId: "gen-tool" };
+    recorder.recordModelCall({ source: "tool:understand_media", model: "google/gemini-3.8-flash", upstream: "openrouter", cost: { state: "pending", lookup } });
+    expect(recorder.awaitingLookup()).toEqual([{ lookup, source: "tool:understand_media", model: "google/gemini-3.8-flash" }]);
   });
 
   it("keeps one lookup per generation, however often it is recorded", () => {

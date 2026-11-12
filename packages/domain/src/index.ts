@@ -35,6 +35,7 @@ export {
 } from "@domain/credit/container-cost.js";
 export {
   createUsageRecorder,
+  type AwaitedLookup,
   type RecordedOperation,
   type UsageRecorder,
   type UsageRow,

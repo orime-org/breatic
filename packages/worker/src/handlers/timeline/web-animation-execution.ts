@@ -30,7 +30,7 @@ import {
   type TimelineExecutionEvent,
   type TimelineExecutionJobData,
 } from "@breatic/core";
-import { costSchema, NoUpstreamAvailable, type Cost, type CostLookup } from "@breatic/provider";
+import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
 import {
   containerCostUsd,
   createUsageRecorder,
@@ -41,6 +41,7 @@ import {
   timelineOperationKey,
   toChargeCredits,
   webAnimationSourceRepo,
+  type AwaitedLookup,
 } from "@breatic/domain";
 import { t, type TimelineExecution } from "@breatic/shared";
 import {
@@ -330,7 +331,7 @@ async function validated(pickup: Pickup, report: EndedReport): Promise<ValidResu
  * @returns The lookups of the pending costs and the operation they belong to, once every row is written.
  * @throws {Error} When a write fails.
  */
-async function recordUsage(pickup: Pickup, report: EndedReport): Promise<{ lookups: readonly CostLookup[]; operation: ReturnType<typeof createUsageRecorder>["operation"] }> {
+async function recordUsage(pickup: Pickup, report: EndedReport): Promise<{ lookups: readonly AwaitedLookup[]; operation: ReturnType<typeof createUsageRecorder>["operation"] }> {
   const { row, step } = pickup;
   const recorder = createUsageRecorder({
     operationKey: timelineOperationKey(row.id),
@@ -446,7 +447,7 @@ async function settle(pickup: Pickup, report: EndedReport, end: RunEnd): Promise
   await bill(pickup, report);
   // Queued once the charge is decided, whether or not this writer made it: the charge sums only the rows already
   // written, each lookup charges its own call, and a second hand-off of a call is the same job.
-  await handOffLookups(lookups, operation, { model: pickup.step.request.model, description: "timeline_web_animation", charge: true });
+  await handOffLookups(lookups, operation, { description: "timeline_web_animation", charge: true });
   if (!(await owns(pickup))) return;
   await move(row, event);
 }

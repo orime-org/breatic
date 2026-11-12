@@ -63,7 +63,7 @@ vi.mock("@breatic/domain", async () => ({
   creditHoldService: { releaseHold: mockReleaseHold },
   creditLotService: { pendingChargeRequestId: mockPendingChargeRequestId, settleCharge: mockSettleCharge },
   creditsForUsd: (usd: number) => usd * 100,
-  toChargeCredits: (credits: number) => credits,
+  toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),
@@ -105,7 +105,7 @@ import {
 } from "@worker/handlers/failed-job-cleanup.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 import { taskService, nodeHistoryService } from "@breatic/domain";
-import { projectActivitiesRepo } from "@breatic/core";
+import { logger, projectActivitiesRepo } from "@breatic/core";
 
 const streamRedis = {} as never;
 
@@ -606,6 +606,49 @@ describe("a task waiting on its cost whose job died (inner#1743)", () => {
     );
     expect(mockSettleTaskForNode).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.objectContaining({ outcome: "done" }));
     expect(mockMarkBilledAndCharge).toHaveBeenCalled();
+  });
+
+  it("still bills when delivering a result its run never delivered fails, and says so", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      userId: "u1",
+      billedAt: null,
+      durationMs: 3_000,
+      result: { ...RESULT, costWait: { ...RESULT.costWait, delivered: false } },
+    } as never);
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockRejectedValueOnce(new Error("db down"));
+
+    await cleanupFailedJobNodes(streamRedis, JOB, "stalled");
+
+    expect(mockMarkBilledAndCharge).toHaveBeenCalledWith("t1", 15, expect.anything());
+    expect(mockSettleCharge).toHaveBeenCalledWith("req-1");
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1" }), "crash_net_waiting_delivery_failed");
+  });
+
+  it("does every write after the charge however one of them fails, saying which", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({ userId: "u1", billedAt: null, durationMs: 3_000, result: RESULT } as never);
+    mockUpdateGenerationCredits.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(cleanupFailedJobNodes(streamRedis, JOB, "stalled")).resolves.toBe(1);
+
+    expect(mockSettleCharge).toHaveBeenCalledWith("req-1");
+    expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalled();
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", write: "history_credits" }), "waiting_task_write_failed");
+  });
+
+  it("delivers the known part rounded to the cent while it is still billing", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      userId: "u1",
+      billedAt: null,
+      durationMs: 3_000,
+      result: { ...RESULT, costWait: { ...RESULT.costWait, credits: 0.004, delivered: false } },
+    } as never);
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockResolvedValue({ id: "h-1" } as never);
+
+    await cleanupFailedJobNodes(streamRedis, JOB, "stalled");
+
+    expect(vi.mocked(nodeHistoryService.recordGenerationSuccess)).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ credits: 0.01, billing: "pending" }) }),
+    );
   });
 
   it("writes the billed amount on the rows of a task billed after waiting, when the net delivers it again", async () => {

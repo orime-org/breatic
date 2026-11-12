@@ -27,7 +27,7 @@ const USAGE = {
 
 const OPERATION = { operationKey: "turn:c1:2", feature: "chat_turn" as const, actorUserId: "u-1", projectId: "p-1" };
 const CALL = { model: "google/gemini-2.5-flash", description: "Agent chat" };
-const HANDED_OFF = { ...CALL, charge: true };
+const HANDED_OFF = { description: CALL.description, charge: true };
 const LOOKUP = { upstream: "openrouter", generationId: "gen-8" };
 
 /**
@@ -35,7 +35,7 @@ const LOOKUP = { upstream: "openrouter", generationId: "gen-8" };
  * @param awaiting - What it says is waiting for the lookup.
  * @returns The recorder.
  */
-function recorder(awaiting: { upstream: string; [key: string]: unknown }[] = []): UsageRecorder & { recordModelCall: ReturnType<typeof vi.fn> } {
+function recorder(awaiting: ReturnType<UsageRecorder["awaitingLookup"]> = []): UsageRecorder & { recordModelCall: ReturnType<typeof vi.fn> } {
   return {
     operation: OPERATION,
     recordModelCall: vi.fn(),
@@ -72,13 +72,14 @@ describe("watching a stream's model calls", () => {
     expect(watchModelCalls(recorder(), CALL, () => []).served()).toBeUndefined();
   });
 
-  it("hands off what the recorder could not price, and each call cut off before it ended", async () => {
+  it("hands off what the recorder could not price under each call's own source and model, and each call cut off before it ended", async () => {
     const cutOff: PendingCost = { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-9" } };
-    const watch = watchModelCalls(recorder([LOOKUP]), CALL, () => [cutOff]);
+    const read = { lookup: LOOKUP, source: "tool:understand_media" as const, model: "google/gemini-3.8-flash" };
+    const watch = watchModelCalls(recorder([read]), CALL, () => [cutOff]);
 
     await watch.handOff();
 
-    expect(handOffLookups).toHaveBeenCalledWith([LOOKUP, cutOff.lookup], OPERATION, HANDED_OFF);
+    expect(handOffLookups).toHaveBeenCalledWith([read, { lookup: cutOff.lookup, source: "model", model: CALL.model }], OPERATION, HANDED_OFF);
   });
 
   it("records a cut-off call nothing can look up as missing, under the upstream that billed it", async () => {

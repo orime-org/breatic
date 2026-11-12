@@ -18,7 +18,7 @@ type PendingCost = Extract<Cost, { state: "pending" }>;
 
 /** The wait, as the task's result carries it. */
 export interface CostWait {
-  /** The credits of what was known when the run finished. */
+  /** The credits of what was known when the run finished, unrounded: the bill rounds the sum once (inner#1666). */
   credits: number;
   /** How many lookups have run. */
   attempts: number;

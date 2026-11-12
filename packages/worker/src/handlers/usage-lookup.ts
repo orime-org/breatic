@@ -10,6 +10,7 @@
  * answers, a missing figure included, so every call handed here leaves a row.
  */
 
+import { createHash } from "node:crypto";
 import type { Job } from "bullmq";
 import { logger } from "@breatic/core";
 import type { Cost, CostLookup } from "@breatic/provider";
@@ -60,10 +61,11 @@ export async function runUsageLookup(
   if (amount === 0 || !data.charge) return;
 
   // The charge request is recorded before the settlement, so a settlement that fails waits pending for the sweep
-  // (inner#1617). A call looked up by its generation keeps the key it was charged under before lookups named their
-  // upstream, so a job queued across a deploy is charged once.
-  const generationId = typeof lookup?.generationId === "string" ? lookup.generationId : undefined;
-  const refKey = generationId === undefined ? `${data.operationKey}:lookup:${JSON.stringify(lookup)}` : `${data.operationKey}:gen:${generationId}`;
+  // (inner#1617). A job queued before lookups named their upstream keeps the key it was charged under then, so one
+  // queued across a deploy is charged once; any other is charged under its lookup's hash, its queued job's id.
+  const refKey = "lookup" in data
+    ? `${data.operationKey}:lookup:${createHash("sha256").update(JSON.stringify(data.lookup)).digest("hex")}`
+    : `${data.operationKey}:gen:${data.generationId}`;
   try {
     const outcome = await creditLotService.chargeOnce("operation", refKey, {
       projectId: data.projectId,

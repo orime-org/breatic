@@ -180,6 +180,9 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
   let pending = "";
   let started = false;
   let messageId: string | undefined;
+  // message_start states the input and cache counts, message_delta the final ones it repeats or adds (Anthropic sends
+  // only the output there, OpenRouter every count); the call completed once message_delta arrived, usage or none.
+  let startUsage: Record<string, unknown> = {};
   let usage: Record<string, unknown> | undefined;
   let ended = false;
 
@@ -234,12 +237,13 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
     dropNullCounters(event["usage"]);
     if (event["type"] === "message_start" && !started) {
       started = true;
+      if (isObject(message) && isObject(message["usage"])) startUsage = { ...message["usage"] };
       if (isObject(message) && typeof message["id"] === "string") {
         messageId = message["id"];
         await options.onStarted(candidate.upstream, messageId);
       }
     }
-    if (event["type"] === "message_delta" && isObject(event["usage"])) usage = event["usage"];
+    if (event["type"] === "message_delta") usage = { ...startUsage, ...(isObject(event["usage"]) ? event["usage"] : {}) };
     return `data: ${JSON.stringify(event)}${carriage}`;
   };
 

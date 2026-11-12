@@ -342,9 +342,9 @@ describe("a run cut off before the model reported its cost", () => {
     await run();
 
     expect(handOffLookups).toHaveBeenCalledWith(
-      [{ upstream: "openrouter", generationId: "gen-42" }],
+      [{ lookup: { upstream: "openrouter", generationId: "gen-42" }, source: "model", model: "openai/gpt-4o-mini" }],
       { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: PROJECT },
-      { model: "openai/gpt-4o-mini", description: "Text tool: generate", charge: true },
+      { description: "Text tool: generate", charge: true },
     );
   });
 

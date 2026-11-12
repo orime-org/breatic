@@ -609,7 +609,7 @@ async function runTaskBody(
       const recorder = recorderFor(feature);
       const [result, credits, servedBy] = await runUnderstand(params, recorder, deadlineAt, { taskId, projectId: projectId ?? undefined, actorUserId: userId });
       // A call whose cost is pending wrote no usage row; the task waits on it and records it once looked up.
-      const pending = recorder.awaitingLookup().map((lookup) => ({ state: "pending" as const, lookup }));
+      const pending = recorder.awaitingLookup().map(({ lookup }) => ({ state: "pending" as const, lookup }));
       run = { result, credits, pending, recordAs: { feature, model: UNDERSTAND_PINS.model }, ...(servedBy !== undefined && { servedBy }) };
     } else if (MODEL_TASK_TYPES.has(taskType)) {
       if (!model) throw new Error(`a ${taskType} task names no model`);
@@ -790,7 +790,8 @@ async function runTaskBody(
   // up (inner#1743).
   if (run.pending.length > 0) {
     const now = Date.now();
-    const wait = openWait(creditsUsed, servedBy, now);
+    // The wait keeps the known part unrounded: the bill adds what the lookups find and rounds the sum once.
+    const wait = openWait(run.credits, servedBy, now);
     const pendingCosts: WaitingCost[] = run.pending.map((cost) => ({ lookup: cost.lookup, ...(run.recordAs !== undefined && { recordAs: run.recordAs }) }));
     const waitingResult = { ...result, costWait: wait, pendingCosts };
     const wasFirst = await taskService.markCompleted(taskId, waitingResult, durationMs);
@@ -1061,7 +1062,7 @@ export async function deliverWaiting(
   wait: CostWait,
 ): Promise<CostWait> {
   if (wait.delivered === true) return wait;
-  await deliver(runEnd, taskType, { ...storedDelivery(result, durationMs, wait.credits), billingPending: true });
+  await deliver(runEnd, taskType, { ...storedDelivery(result, durationMs, toChargeCredits(wait.credits)), billingPending: true });
   return { ...wait, delivered: true };
 }
 
@@ -1110,8 +1111,10 @@ async function recordLookedUpCalls(runEnd: RunContext, pending: readonly Waiting
  * @param durationMs - How long the run took.
  * @param wait - The wait.
  * @param pending - The costs and what their lookups found.
+ * @param writes - What a failed write after the billing commit does: `retried` throws, so the queue delivers the
+ *   job again; `last`, for the failed-job net no retry follows, logs it and goes on to the next write.
  * @returns Whether this call billed it.
- * @throws {Error} When the billing commit fails; nothing of it is written.
+ * @throws {Error} When the billing commit fails, nothing of it written; or, `retried`, when a write after it fails.
  */
 export async function billWaitingTask(
   runEnd: RunContext,
@@ -1120,6 +1123,7 @@ export async function billWaitingTask(
   durationMs: number | undefined,
   wait: CostWait,
   pending: readonly WaitingCost[],
+  writes: "retried" | "last" = "retried",
 ): Promise<boolean> {
   const { taskId, userId, projectId } = runEnd;
   const credits = toChargeCredits(billedCredits(taskId, wait, pending));
@@ -1134,14 +1138,27 @@ export async function billWaitingTask(
     provider: wait.servedBy,
     releaseHold: taskId,
   });
+  /**
+   * Run one write after the billing commit, as `writes` says.
+   * @param name - Which write, for the log.
+   * @param work - The write.
+   * @returns Nothing once it ran.
+   */
+  const write = async (name: string, work: () => Promise<unknown>): Promise<void> => {
+    if (writes === "retried") {
+      await work();
+      return;
+    }
+    await work().catch((err: unknown) => logger.error({ err, taskId, write: name }, "waiting_task_write_failed"));
+  };
   if (billed) {
     logGenerationUsage({ taskId, taskType, model, provider: wait.servedBy, credits, durationMs, userId, projectId });
-    await recordLookedUpCalls(runEnd, pending);
+    await write("usage_rows", () => recordLookedUpCalls(runEnd, pending));
   }
-  await settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst: billed, creditsUsed: credits });
+  await write("charge", () => settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst: billed, creditsUsed: credits }));
   // The rows written while it waited carry the billed amount now.
-  if (runEnd.nodeIds.length > 0) await nodeHistoryService.updateGenerationCredits(taskId, credits);
-  await recordDeliveredActivity(runEnd, taskType, delivery);
+  if (runEnd.nodeIds.length > 0) await write("history_credits", () => nodeHistoryService.updateGenerationCredits(taskId, credits));
+  await write("activity", () => recordDeliveredActivity(runEnd, taskType, delivery));
   logger.info({ taskId, taskType, credits, billed }, "task_billed_after_cost_wait");
   return billed;
 }

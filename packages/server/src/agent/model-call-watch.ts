@@ -10,8 +10,8 @@
  */
 
 import type { LanguageModelUsage, ProviderMetadata } from "ai";
-import type { CostLookup, PendingCost } from "@breatic/provider";
-import { handOffLookups, provider, type UsageRecorder } from "@breatic/domain";
+import type { PendingCost } from "@breatic/provider";
+import { handOffLookups, provider, type AwaitedLookup, type UsageRecorder } from "@breatic/domain";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {
@@ -53,10 +53,10 @@ export function watchModelCalls(
     },
     served: () => served,
     async handOff() {
-      const cutOff: CostLookup[] = [];
+      const cutOff: AwaitedLookup[] = [];
       for (const pending of pendingCosts()) {
         if (pending.state === "pending") {
-          cutOff.push(pending.lookup);
+          cutOff.push({ lookup: pending.lookup, source: "model", model: call.model });
           served ??= pending.lookup.upstream;
           continue;
         }
@@ -66,7 +66,7 @@ export function watchModelCalls(
       }
       const lookups = [...usage.awaitingLookup(), ...cutOff];
       if (lookups.length === 0) return;
-      await handOffLookups(lookups, usage.operation, { model: call.model, description: call.description, charge: true });
+      await handOffLookups(lookups, usage.operation, { description: call.description, charge: true });
     },
   };
 }

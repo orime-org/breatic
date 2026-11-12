@@ -71,7 +71,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 const LOOKUP = { upstream: "openrouter", generationId: "gen-5" };
 const llm = vi.hoisted(() => ({
-  prepare: vi.fn((id: string) => ({ model: { modelId: id }, options: { providerOptions: {}, maxRetries: 0, temperature: 0 } })),
+  prepare: vi.fn((id: string) => ({ model: { modelId: id }, options: { providerOptions: {}, maxRetries: 0, temperature: 0 }, pendingCosts: llm.pendingCosts })),
+  // The billed answers the prepared call could not hand over in a finish.
+  pendingCosts: vi.fn((): unknown[] => []),
   // Known, with the tokens the call reported: the recorder double counts a credit per token.
   costOf: vi.fn((finished: { usage: { inputTokens?: number; outputTokens?: number } }): unknown => ({
     state: "known",
@@ -222,6 +224,7 @@ beforeEach(() => {
   // `clearAllMocks` forgets calls, not implementations: a case that made one
   // of these reject would otherwise leave it rejecting for every case after.
   chargeOnce.mockResolvedValue(null);
+  llm.pendingCosts.mockReturnValue([]);
 });
 
 describe("a consolidation that works", () => {
@@ -395,7 +398,7 @@ describe("a consolidation that works", () => {
       recordModelCall,
       recordServiceCall: vi.fn(),
       recordLookedUpCall: vi.fn(),
-      awaitingLookup: () => [LOOKUP],
+      awaitingLookup: () => [{ lookup: LOOKUP, source: "model" as const, model: CONSOLIDATION_MODEL }],
       settle: async () => 0,
       settleForCharge: async () => ({ credits: 0, writeFailures: [] }),
     });
@@ -409,7 +412,7 @@ describe("a consolidation that works", () => {
       cost: { state: "pending", lookup: LOOKUP },
     });
     expect(mocks.handOffLookups).toHaveBeenCalledWith(
-      [LOOKUP],
+      [{ lookup: LOOKUP, source: "model", model: CONSOLIDATION_MODEL }],
       operation,
       expect.objectContaining({ description: "Memory consolidation", charge: true }),
     );
@@ -489,6 +492,45 @@ describe("a consolidation that fails", () => {
     expect(commitConsolidation).not.toHaveBeenCalled();
     expect(chargeOnce).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("hands the lookup of an answer the failed call was billed for, under a key of this fold's own", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    const cut = { upstream: "openrouter", generationId: "gen-cut" };
+    generateTextRetry.mockRejectedValue(new Error("stream cut mid-body"));
+    llm.pendingCosts.mockReturnValue([{ state: "pending", lookup: cut }]);
+
+    expect(await consolidate()).toBe("failed");
+
+    expect(mocks.handOffLookups).toHaveBeenCalledWith(
+      [{ lookup: cut, source: "model", model: CONSOLIDATION_MODEL }],
+      expect.objectContaining({ operationKey: expect.stringMatching(new RegExp(`^consolidate:${CONVERSATION}:7:${FOLD_ID}:cut$`)) }),
+      expect.objectContaining({ description: "Memory consolidation", charge: true }),
+    );
+    expect(chargeOnce).not.toHaveBeenCalled();
+  });
+
+  it("records an answer the call was billed for at no known cost when the user left during it", async () => {
+    const controller = new AbortController();
+    generateTextRetry.mockImplementation(async () => {
+      controller.abort();
+      throw new Error("aborted");
+    });
+    llm.pendingCosts.mockReturnValue([{ state: "missing", reason: "no generation id", upstream: "deepseek" }]);
+    const recorded: unknown[] = [];
+    vi.mocked(createUsageRecorder).mockImplementationOnce((options) => ({
+      operation: { ...options },
+      recordModelCall: (call: unknown) => recorded.push(call),
+      recordServiceCall: vi.fn(),
+      recordLookedUpCall: vi.fn(),
+      awaitingLookup: () => [],
+      settle: async () => 0,
+      settleForCharge: async () => ({ credits: 0, writeFailures: [] }),
+    }));
+
+    expect(await consolidate({ signal: controller.signal })).toBe("aborted");
+
+    expect(recorded).toEqual([{ source: "model", model: CONSOLIDATION_MODEL, upstream: "deepseek", cost: { state: "missing", reason: "no generation id" } }]);
   });
 
   it("fails without sending a smaller window when the call is turned away as too long", async () => {

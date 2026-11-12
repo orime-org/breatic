@@ -314,6 +314,29 @@ describe("relayMessages: what reaches the harness, and how the call ends", () =>
     expect(ended[0]!.cost).toEqual({ state: "known", usd, source: "price_table", tokens: { input: 169, cachedInput: 128, output: 6, reasoning: 3 } });
   });
 
+  // Anthropic's own stream states the input and cache counts on message_start and only the output on message_delta,
+  // which may also carry no usage at all (https://platform.claude.com/docs/en/build-with-claude/streaming).
+  it("reads the input and cache counts of a direct upstream's message_start under the output its message_delta states", async () => {
+    const start = { ...MESSAGE_START, message: { ...MESSAGE_START.message, usage: { input_tokens: 25, cache_read_input_tokens: 100, output_tokens: 1 } } };
+    fakes.deepseek.answer(() => stream([start, CONTENT_DELTA, { ...MESSAGE_DELTA, usage: { output_tokens: 15 } }, MESSAGE_STOP]));
+    const { ended } = await relay({ model: "m", candidates: [candidates().deepseek] });
+    const usd = (25 * 1.32 + 100 * 0.044 + 15 * 3.96) / 1_000_000;
+    expect(ended).toEqual([{
+      outcome: "completed",
+      upstream: "deepseek",
+      tokens: { input: 25, output: 15, reasoning: 0, cacheRead: 100 },
+      cost: { state: "known", usd, source: "price_table", tokens: { input: 125, cachedInput: 100, output: 15, reasoning: 0 } },
+    }]);
+  });
+
+  it("ends a call whose message_delta carries no usage as completed, on message_start's counts", async () => {
+    const start = { ...MESSAGE_START, message: { ...MESSAGE_START.message, usage: { input_tokens: 25, output_tokens: 1 } } };
+    const { usage: _none, ...bare } = MESSAGE_DELTA;
+    fakes.deepseek.answer(() => stream([start, CONTENT_DELTA, bare, MESSAGE_STOP]));
+    const { ended } = await relay({ model: "m", candidates: [candidates().deepseek] });
+    expect(ended[0]).toMatchObject({ outcome: "completed", tokens: { input: 25, output: 1, reasoning: 0, cacheRead: 0 } });
+  });
+
   it("costs a direct upstream's call as missing when the plan carries no price", async () => {
     fakes.deepseek.answer(() => stream(COMPLETE));
     const { prices: _dropped, ...unpriced } = candidates().deepseek;

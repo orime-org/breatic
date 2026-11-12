@@ -116,13 +116,25 @@ export async function cleanupFailedJobNodes(
   // A task completed and waiting on its cost, whose own job will not come back
   // (inner#1743): delivered if its run never did, then billed on what is known
   // and what its lookups found so far. Its hold is released by that charge.
+  // Nothing comes after this net, so a delivery that fails is logged and the
+  // task is billed all the same, and each write after the charge is tried.
   const waiting = task && !task.billedAt ? costWaitOf(task.result) : null;
   if (task && waiting !== null) {
     const run = runContextOf(job.data, streamRedis);
     const result = task.result ?? {};
     const durationMs = task.durationMs ?? undefined;
-    const wait = await deliverWaiting(run, job.data.taskType, result, durationMs, waiting.wait);
-    await billWaitingTask(run, job.data.taskType, result, durationMs, wait, waiting.pending);
+    let wait = waiting.wait;
+    try {
+      wait = await deliverWaiting(run, job.data.taskType, result, durationMs, waiting.wait);
+    } catch (err) {
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_waiting_delivery_failed");
+    }
+    try {
+      await billWaitingTask(run, job.data.taskType, result, durationMs, wait, waiting.pending, "last");
+    } catch (err) {
+      // The billing commit itself failed: the task stays unbilled and its hold expires.
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_waiting_billing_failed");
+    }
     return run.nodeIds.length;
   }
 

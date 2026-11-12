@@ -100,6 +100,13 @@ export interface LookedUpCall {
   cost: Cost;
 }
 
+/** A pending call's lookup, with what made the call and the model it called, which its row is written under. */
+export interface AwaitedLookup {
+  lookup: CostLookup;
+  source: UsageSource;
+  model: string;
+}
+
 /** The operation a recorder writes its rows under. */
 export interface RecordedOperation {
   operationKey: string;
@@ -118,8 +125,8 @@ export interface UsageRecorder {
   recordModelCall(call: RecordedModelCall): void;
   recordServiceCall(call: ServiceCall): void;
   recordLookedUpCall(call: LookedUpCall): void;
-  /** The lookups of the pending costs, for the caller to queue. */
-  awaitingLookup(): readonly CostLookup[];
+  /** The lookups of the pending costs, each with its call's source and model, for the caller to queue. */
+  awaitingLookup(): readonly AwaitedLookup[];
   /** Wait for every row, then answer what to charge: their credits rounded up to whole cents. Each row keeps its exact figure. */
   settle(): Promise<number>;
   /**
@@ -190,7 +197,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   // surfaces as an unhandled rejection; `settle` throws the first one.
   const failures: unknown[] = [];
   let credits = 0;
-  const lookups = new Map<string, CostLookup>();
+  const lookups = new Map<string, AwaitedLookup>();
 
   const base = {
     operationKey: options.operationKey,
@@ -243,7 +250,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     operation: base,
     recordModelCall(call) {
       if (call.cost.state === "pending") {
-        lookups.set(JSON.stringify(call.cost.lookup), call.cost.lookup);
+        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model });
         return;
       }
       appendCall(call, call.cost, call.requests ?? null, call.costIdentity ?? null);

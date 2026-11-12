@@ -8,6 +8,7 @@
  * usage row that cannot be written does not stop the charge.
  */
 
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Job } from "bullmq";
 
@@ -40,6 +41,8 @@ import { logger } from "@breatic/core";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 
 const LOOKUP = { upstream: "openrouter", generationId: "gen-9" };
+/** The key a lookup's charge goes under: the operation's, then the lookup's hash, as its queued job's id is. */
+const LOOKUP_KEY = `turn:c1:4:lookup:${createHash("sha256").update(JSON.stringify(LOOKUP)).digest("hex")}`;
 
 const DATA: UsageLookupJob = {
   lookup: LOOKUP,
@@ -130,9 +133,20 @@ describe("looking up a model call whose cost was not in hand", () => {
     ]);
     expect(chargeOnce).toHaveBeenCalledExactlyOnceWith(
       "operation",
-      "turn:c1:4:gen:gen-9",
+      LOOKUP_KEY,
       expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3, provider: "openrouter" }),
     );
+  });
+
+  it("charges a lookup of any shape under a key the ledger takes", async () => {
+    costLookup.mockResolvedValue(KNOWN);
+    const lookup = { upstream: "anthropic", request: { id: "msg 01/ä", at: [1, 2] } };
+
+    await runUsageLookup(jobAt(0, { ...DATA, lookup, upstream: "anthropic" }), recorderIntoRows);
+
+    const refKey = (chargeOnce.mock.calls[0] as unknown as [string, string])[1];
+    expect(refKey).toBe(`turn:c1:4:lookup:${createHash("sha256").update(JSON.stringify(lookup)).digest("hex")}`);
+    expect(refKey).toMatch(/^[A-Za-z0-9_:.-]{1,255}$/);
   });
 
   it("logs a charge whose readers could not be told", async () => {
@@ -212,7 +226,7 @@ describe("looking up a model call whose cost was not in hand", () => {
 
     expect(rows).toHaveLength(1);
     const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
-    expect(refKey).toBe("turn:c1:4:gen:gen-9");
+    expect(refKey).toBe(LOOKUP_KEY);
     expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
       expect.objectContaining({ lookup: LOOKUP, refKey, actorUserId: "u-1", amount: charged.amount }),
       "credit_charge_settle_failed",
@@ -228,7 +242,7 @@ describe("looking up a model call whose cost was not in hand", () => {
 
     expect(chargeOnce).toHaveBeenCalledExactlyOnceWith(
       "operation",
-      "turn:c1:4:gen:gen-9",
+      LOOKUP_KEY,
       expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3 }),
     );
     expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
