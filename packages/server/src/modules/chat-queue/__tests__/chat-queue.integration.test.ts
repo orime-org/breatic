@@ -37,8 +37,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import crypto from "node:crypto";
-import type { Redis } from "ioredis";
-import { createRedisClient, env, getRedis, initCore } from "@breatic/core";
+import { createRedisClient, env, getRedis, initCore, type Redis } from "@breatic/core";
 import { createChatQueue, type ChatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 
 beforeAll(() => {
@@ -86,7 +85,7 @@ function item(id: string): QueueItem {
     acceptLanguage: "ja",
     message: `words of ${id}`,
     attached_chips: [],
-  } as unknown as QueueItem;
+  };
 }
 
 /**
@@ -146,7 +145,11 @@ async function snapshot(k: Keys): Promise<Record<string, unknown>> {
   return out;
 }
 
-const q: ChatQueue = createChatQueue(getRedis());
+let q: ChatQueue;
+
+beforeAll(() => {
+  q = createChatQueue(getRedis());
+});
 
 describe("enqueue", () => {
   it("opens a run when nothing is running, and records the id (RQ-01)", async () => {
