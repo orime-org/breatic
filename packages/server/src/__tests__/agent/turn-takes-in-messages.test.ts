@@ -71,7 +71,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       new MockLanguageModelV4({
         doStream: async (asked) => {
           const i = call++;
-          script.prompts.push(asked.prompt as unknown[]);
+          script.prompts.push(asked.prompt);
           script.onCall[i]?.();
           const parts = (script.calls[i] ?? script.calls.at(-1)!)() as ModelStreamPart[];
           return {

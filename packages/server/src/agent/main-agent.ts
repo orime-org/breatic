@@ -61,6 +61,7 @@ import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
 import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
+import type { TakenMessage, TurnHooks } from "@server/agent/taken-message.js";
 
 /**
  * What opened a segment of a turn: the user's message, or the user's
@@ -83,6 +84,12 @@ type Opening =
       /** The call's output as the store now holds it. */
       output: unknown;
     };
+
+/**
+ * What a stream returns when the user sent something during its last step and
+ * the same reply goes on with another stream (inner#1717).
+ */
+const CARRY_ON = Symbol("carry on");
 
 /** What a waiting card is settled with when the user writes a message instead. */
 const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
@@ -123,6 +130,7 @@ export class MainAgent {
    * @param timeZone - The zone the user's browser reported, if any.
    * @param space - The project's Spaces and the one the user has open.
    * @param modelId - The model the route resolved for this turn (#1363); the default when absent.
+   * @param hooks - What the run lends the turn: the messages it takes in, its charge key, how it hears the end (inner#1717).
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
@@ -132,8 +140,9 @@ export class MainAgent {
     timeZone?: string,
     space: ChatSpaceContext = {},
     modelId?: string,
+    hooks: TurnHooks = {},
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal, timeZone, space, modelId);
+    return this.runTurn(userMessage, attached, signal, timeZone, space, modelId, hooks);
   }
 
   /**
@@ -144,6 +153,7 @@ export class MainAgent {
    * @param timeZone - The zone the user's browser reported, if any
    * @param space - The project's Spaces and the one the user has open
    * @param modelId - The model the route resolved for this turn
+   * @param hooks - What the run lends the turn.
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
@@ -153,6 +163,7 @@ export class MainAgent {
     timeZone: string | undefined,
     space: ChatSpaceContext,
     modelId: string | undefined,
+    hooks: TurnHooks,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -205,7 +216,7 @@ export class MainAgent {
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, hooks);
   }
 
   /**
@@ -223,6 +234,7 @@ export class MainAgent {
    * @param timeZone - The zone the user's browser reported, if any.
    * @param space - The project's Spaces and the one the user has open.
    * @param modelId - The model the turn started on, as the route resolved it (#1363).
+   * @param hooks - What the run lends the turn (inner#1717).
    * @returns The segment, as the SDK's own message chunks.
    */
   async answer(
@@ -233,6 +245,7 @@ export class MainAgent {
     timeZone?: string,
     space: ChatSpaceContext = {},
     modelId?: string,
+    hooks: TurnHooks = {},
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
       kind: "answer",
@@ -241,7 +254,7 @@ export class MainAgent {
       toolCallId,
       output,
     };
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, hooks);
   }
 
   /**
@@ -285,6 +298,7 @@ export class MainAgent {
    *   proposal goes to, or null when none can be read.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @param requestedModel - The model the route resolved for this turn (#1363).
+   * @param hooks - What the run lends the turn (inner#1717).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -294,6 +308,7 @@ export class MainAgent {
     openDocument: OpenDocument | null,
     signal?: AbortSignal,
     requestedModel?: string,
+    hooks: TurnHooks = {},
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
@@ -364,9 +379,10 @@ export class MainAgent {
       // charge below is taken once per key, and the segment that asked has
       // already settled under the turn's.
       operationKey:
-        opening.kind === "answer"
+        hooks.operationKey ??
+        (opening.kind === "answer"
           ? `turn:${conversationId}:${String(turnIndex)}:answer:${opening.toolCallId}`
-          : `turn:${conversationId}:${String(turnIndex)}`,
+          : `turn:${conversationId}:${String(turnIndex)}`),
       feature: "chat_turn",
       actorUserId: userId,
       projectId,
@@ -434,6 +450,67 @@ export class MainAgent {
     // The turn ended because its request could not be made to fit.
     let tooLong = false;
 
+    // The messages the user sent while the turn ran, each with the user
+    // message the model was given for it and the step it was read at: the
+    // number of steps the turn had finished, across every stream of it
+    // (inner#1717). The one record every reader of the turn's messages goes
+    // by -- the requests, the folds, the stored reply and its replayed copy.
+    const takenIn: Array<{ item: TakenMessage; message: ModelMessage; position: number }> = [];
+    // Taken with the opening, read in the first step.
+    let alsoTaken = hooks.alsoTaken ?? [];
+    // The history the turn was assembled from, and the open Spaces this turn
+    // has sent in full, by Space, so a message taken in sends its Space again
+    // only when it changed since the last time it was sent whole.
+    let historyRows: Parameters<typeof lastFullSnapshotKey>[0] = [];
+    const sentInFull = new Map<string, string>();
+
+    /**
+     * The user messages taken in at a step.
+     * @param position - The step.
+     * @returns The messages, in the order they were taken.
+     */
+    const takenAt = (position: number): ModelMessage[] =>
+      takenIn.filter((t) => t.position === position).map((t) => t.message);
+
+    /**
+     * Finished steps with the messages taken in before each, in the order the
+     * model read them; with `andNext`, the ones taken for the step after.
+     * @param stepList - The steps' messages.
+     * @param andNext - Whether to add what was taken for the next step.
+     * @returns The messages.
+     */
+    const withTaken = (stepList: readonly ModelMessage[][], andNext = true): ModelMessage[] => [
+      ...stepList.flatMap((step, i) => [...takenAt(i), ...step]),
+      ...(andNext ? takenAt(stepList.length) : []),
+    ];
+
+    /**
+     * Take messages in: make each the user message the model is given, keep
+     * it in the record and say it on the wire, before the step that reads it.
+     * @param writer - The stream the turn is written to.
+     * @param items - What the run handed over.
+     * @returns The user messages, in order.
+     */
+    const takeIn = (writer: UIMessageStreamWriter, items: readonly TakenMessage[]): ModelMessage[] =>
+      items.map((item) => {
+        const turn: UserTurn = { ...item.space, chips: item.chips, message: item.message };
+        const open = openSpaceKey(item.space.current_space);
+        const lastSent = open === undefined ? undefined : sentInFull.get(open.spaceId) ?? lastFullSnapshotKey(historyRows, open.spaceId);
+        const unchanged = open !== undefined && lastSent === open.key;
+        if (open !== undefined && !unchanged) sentInFull.set(open.spaceId, open.key);
+        const message: ModelMessage = {
+          role: "user",
+          content: userMessageForModel(userClockNote(new Date(item.sentAt), item.timeZone), turn, unchanged),
+        };
+        pageLinks?.addUserMessage(message);
+        takenIn.push({ item, message, position: steps.length });
+        writer.write({
+          type: "data-user-message",
+          data: { id: item.id, words: item.message, chips: item.chips, sentAt: item.sentAt },
+        });
+        return message;
+      });
+
     /**
      * The reply's durable protocol facts: the finished steps, the step
      * the turn ended inside, and a note when it did not end on its own.
@@ -457,7 +534,8 @@ export class MainAgent {
       if (sent === undefined) return undefined;
       // A partial step nothing carried on is rebuilt from what reached the user.
       const sentOn = lastStepUnsent ? steps.slice(0, -1) : steps;
-      const collected = sentOn.flat();
+      // The messages taken in go back where the model read them (inner#1717).
+      const collected = withTaken(sentOn);
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
         try {
@@ -609,6 +687,8 @@ export class MainAgent {
       const space = opening.kind === "message" ? opening.turn : opening.space;
       const open = openSpaceKey(space.current_space);
       const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
+      historyRows = history;
+      if (open !== undefined && !unchanged) sentInFull.set(open.spaceId, open.key);
       const userMessage: ModelMessage = {
         role: "user",
         content:
@@ -726,7 +806,7 @@ export class MainAgent {
      * @param assembly - The reassembled request.
      * @returns The messages.
      */
-    const carriedOn = (assembly: Assembly): ModelMessage[] => [...assembly.messages, ...stripThinking(steps.flat())];
+    const carriedOn = (assembly: Assembly): ModelMessage[] => [...assembly.messages, ...withTaken(steps.map((step) => stripThinking(step)))];
 
     /**
      * Ask the model, once everything it needs has been read, and carry the
@@ -780,9 +860,11 @@ export class MainAgent {
           studioId,
         });
         if (turnedAway === undefined) return;
+        // What the user sent during the last step: the same reply goes on.
+        if (turnedAway === CARRY_ON) continue;
 
         overflowFolds += 1;
-        const folded = await fold(writer, stripThinking(steps.flat()), {
+        const folded = await fold(writer, withTaken(steps.map((step) => stripThinking(step))), {
           kind: "overflow",
           overflow: turnedAway.overflow,
           known: lastCallTotal,
@@ -839,8 +921,12 @@ export class MainAgent {
         watch: ModelCallWatch;
         studioId: string;
       },
-    ): Promise<{ error: unknown; overflow: ContextOverflow } | undefined> => {
+    ): Promise<{ error: unknown; overflow: ContextOverflow } | typeof CARRY_ON | undefined> => {
       const { watch, studioId } = run;
+      // Whether this stream ended its last step with nothing left to run,
+      // under the step ceiling, so what the user sent meanwhile is read in
+      // one more stream of the same reply instead of waiting for the next run.
+      let mayCarryOn = false;
       // Set from the stream's own error callback, which has run for every
       // error chunk by the time the user sees the stream end, and before the
       // stream's end callback.
@@ -870,7 +956,7 @@ export class MainAgent {
           // until the next call reports, so two folds always have a call
           // between them.
           if (steps.length > 0) {
-            const folded = await fold(writer, stripThinking(steps.flat()), {
+            const folded = await fold(writer, withTaken(steps.map((step) => stripThinking(step))), {
               kind: "precheck",
               at: "step",
               known: lastCallTotal,
@@ -883,6 +969,18 @@ export class MainAgent {
               logical = carriedOn(next);
               instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
             }
+          }
+          // What the user sent meanwhile goes at the end of this step's request,
+          // one user message each, unless this is the turn's last step: what is
+          // left then opens the next run (inner#1717). The messages taken before
+          // ride in the request the SDK carries from step to step.
+          if (alsoTaken.length > 0) {
+            logical = [...logical, ...takeIn(writer, alsoTaken)];
+            alsoTaken = [];
+          }
+          if (hooks.drain !== undefined && steps.length < agentCfg.max_tool_iterations - 1) {
+            const got = await hooks.drain();
+            if (got.length > 0) logical = [...logical, ...takeIn(writer, got)];
           }
           const current = sent!;
           const { agentConfig } = current;
@@ -998,7 +1096,8 @@ export class MainAgent {
         },
         onStepFinish: (step) => {
           const own = opening.kind === "answer" ? sent!.userKept.messages.length : 0;
-          const messageStart = own + steps.flat().length;
+          // The messages taken in up to and with this step sit ahead of it.
+          const messageStart = own + steps.flat().length + takenIn.filter((t) => t.position <= steps.length).length;
           generationSteps.push({ messageStart, messageEnd: messageStart + step.response.messages.length, prefixHash: generationPrefix });
           steps.push(step.response.messages);
           lastStepUnsent = step.finishReason === "error";
@@ -1082,6 +1181,12 @@ export class MainAgent {
         // this is said on it.
         onFinish: ({ finishReason, toolCalls }) => {
           if (seen.turnedAway !== undefined) return;
+          // Said its piece with steps to spare: the end is decided once what
+          // waits has been looked at, below.
+          if (finishReason === "stop" && seen.failed !== true && hooks.drain !== undefined && steps.length < agentCfg.max_tool_iterations) {
+            mayCarryOn = true;
+            return;
+          }
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
@@ -1145,6 +1250,14 @@ export class MainAgent {
         writer.write(value);
       }
       if (seen.turnedAway !== undefined) return seen.turnedAway;
+      if (mayCarryOn && failed === undefined && signal?.aborted !== true) {
+        const got = await hooks.drain!();
+        if (got.length > 0) {
+          takeIn(writer, got);
+          return CARRY_ON;
+        }
+        sayThoughtFor(writer);
+      }
       if (failed !== undefined) {
         if (signal?.aborted !== true) sayThoughtFor(writer);
         writer.write(failed);
@@ -1213,7 +1326,7 @@ export class MainAgent {
         // reaches it. This exit runs however the turn ended.
         closeThinking();
 
-        const replyParts = toStoredParts(responseMessage.parts);
+        const replyParts = toStoredParts(withTakenParts(responseMessage.parts, takenIn));
         if (thoughtForMs > 0 && !replyParts.some((p) => p.type === "thinking-time")) {
           replyParts.push({ type: "thinking-time", ms: thoughtForMs });
         }
@@ -1360,6 +1473,12 @@ export class MainAgent {
           },
         });
 
+        hooks.onEnded?.({
+          exit,
+          stored: !failures.some((f) => f.step === "persist"),
+          ...(awaitingCall === undefined ? {} : { awaitingCall }),
+        });
+
         // The finalizer does not log -- it is in domain, which has no
         // logger. This is the layer that knows the user and the
         // conversation.
@@ -1463,6 +1582,36 @@ export class MainAgent {
     const { userId, conversationId } = this.ctx;
     logger.error({ err, userId, conversationId }, "agent_turn_failed");
   }
+}
+
+/**
+ * The reply's parts with every message taken in present once, at the step it
+ * was read at. A stop can land after a step took a message and before the
+ * frame saying so was read off the stream (inner#1717).
+ * @param parts - The reply's parts, as the SDK assembled them.
+ * @param taken - The messages the turn took in, with the step each was read at.
+ * @returns The parts, any missing message put back before its step.
+ */
+function withTakenParts(
+  parts: UIMessage["parts"],
+  taken: ReadonlyArray<{ item: TakenMessage; position: number }>,
+): UIMessage["parts"] {
+  const present = new Set(
+    parts.flatMap((p) => (p.type === "data-user-message" ? [((p as { data?: { id?: unknown } }).data?.id)] : [])),
+  );
+  const out = [...parts];
+  for (const t of taken) {
+    if (present.has(t.item.id)) continue;
+    const part = {
+      type: "data-user-message",
+      data: { id: t.item.id, words: t.item.message, chips: t.item.chips, sentAt: t.item.sentAt },
+    } as UIMessage["parts"][number];
+    let seenSteps = -1;
+    const at = out.findIndex((p) => p.type === "step-start" && ++seenSteps === t.position);
+    if (at === -1) out.push(part);
+    else out.splice(at, 0, part);
+  }
+  return out;
 }
 
 /**
