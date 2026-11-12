@@ -144,6 +144,17 @@ describe("templates in proposals", () => {
     expect(lineOf("retro-found-footage")).not.toContain("It also fits when");
   });
 
+  // inner#1809: the poster goal; the photo collage has no case for when it also fits.
+  it("indexes the three poster templates under their goal, the photo collage alone with no case for when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["name-as-world-typography", "destination-festival-poster", "photo-paper-diorama"]) {
+      const line = lines.find((one) => one.includes(`${id} (posters,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      if (id === "photo-paper-diorama") expect(line, id).not.toContain("It also fits when");
+      else expect(line, id).toContain("It also fits when");
+    }
+  });
+
   // inner#1808: the food goal, each of its templates with a case for when it also fits.
   it("indexes the three food templates under their goal, each saying when it also fits", () => {
     const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
