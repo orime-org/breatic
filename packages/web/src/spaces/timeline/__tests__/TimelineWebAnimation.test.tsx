@@ -858,7 +858,7 @@ describe('preview of web copies', () => {
     const placeholder = '30000000-0000-4000-8000-000000000103';
     seed([webClip(placeholder, 'v2', 0, 48, waitingFor(EXEC_RUNNING))]);
     showTimeline();
-    const note = await screen.findByTestId(`timeline-web-note-${placeholder}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${placeholder}`);
     // The sentence is chosen by the raw status, so each language words the whole note itself.
     expect(note).toHaveTextContent(t('timeline.webAnimation.preview.pending', { track: t('timeline.track', { index: 2 }), status: 'running' }));
     expect(note).toHaveTextContent('creating web animation');
@@ -870,7 +870,7 @@ describe('preview of web copies', () => {
     const failed = '30000000-0000-4000-8000-000000000108';
     seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
     showTimeline();
-    const note = await screen.findByTestId(`timeline-web-note-${failed}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${failed}`);
     await waitFor(() => expect(note).toHaveTextContent(t('timeline.webAnimation.preview.failed', { track: t('timeline.track', { index: 2 }), status: 'failed' })));
     expect(note).toHaveTextContent('web animation failed');
   });
@@ -882,9 +882,9 @@ describe('preview of web copies', () => {
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
     // The copy notes it is loading while its address is fetched, then that it is unavailable once the fetch fails.
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${copy}`))
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${copy}`))
       .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
-    const note = screen.getByTestId(`timeline-web-note-${copy}`);
+    const note = screen.getByTestId(`timeline-preview-note-${copy}`);
     await userEvent.click(within(note).getByTestId(`timeline-web-retry-${copy}`));
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
@@ -902,12 +902,12 @@ describe('preview of web copies', () => {
     // The creation control shows once the Timeline limits, and so the idle cap, have arrived.
     await screen.findByTestId('timeline-create-web-animation');
     const unavailable = t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) });
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable));
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable));
     const seek = screen.getByRole('slider', { name: t('timeline.seek') });
     // While its copy stays, the instance keeps its note and Retry and asks nothing more.
     fireEvent.keyDown(seek, { key: 'ArrowRight' });
     await act(async () => { await Promise.resolve(); });
-    expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable);
+    expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable);
     expect(screen.getByTestId(`timeline-web-retry-${first}`)).toBeInTheDocument();
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
 
@@ -998,7 +998,7 @@ describe('play holds for a web copy that has just become visible', () => {
     vi.mocked(timelineApi.previewUrl).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    await screen.findByTestId(`timeline-web-note-${COPY}`);
+    await screen.findByTestId(`timeline-preview-note-${COPY}`);
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1));
 
     await userEvent.click(screen.getByTestId('timeline-play'));
@@ -1028,7 +1028,7 @@ describe('play holds for a web copy that has just become visible', () => {
     vi.mocked(timelineApi.previewUrl).mockRejectedValue(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
     seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${COPY}`))
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${COPY}`))
       .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
     await userEvent.click(screen.getByTestId('timeline-play'));
     await waitFor(() => expect(screen.getByText(transport('playing'))).toBeInTheDocument());

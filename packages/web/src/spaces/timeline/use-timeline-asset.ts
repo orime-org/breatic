@@ -45,6 +45,13 @@ export function useTimelineAssets(projectId: string, assetIds: readonly string[]
     queryKey: timelineAssetKey(projectId, assetId),
     queryFn: ({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal),
   })), [projectId, assetIds]);
-  const results = useQueries({ queries });
-  return React.useMemo(() => new Map(assetIds.map((assetId, index) => [assetId, results[index]!] as const)), [assetIds, results]);
+  /**
+   * Key the results by asset; `useQueries` runs it again only when a result changed, so the map keeps its identity.
+   * @param results - The queries' results, in order.
+   * @returns Each asset's query, by asset id.
+   * @throws {never} Never.
+   */
+  const combine = React.useCallback((results: TimelineAssetQuery[]): ReadonlyMap<string, TimelineAssetQuery> =>
+    new Map(assetIds.map((assetId, index) => [assetId, results[index]!] as const)), [assetIds]);
+  return useQueries({ queries, combine });
 }

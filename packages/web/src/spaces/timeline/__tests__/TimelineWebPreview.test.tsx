@@ -119,7 +119,7 @@ describe('Timeline preview of a web copy', () => {
     expect(element).toHaveAttribute('src', PREVIEW_URL);
     expect(element).toHaveAttribute('data-web-state', state ?? 'loading');
     expect(element.style.opacity).toBe('0');
-    expect(await screen.findByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
+    expect(await screen.findByTestId(`timeline-preview-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
   });
 
   it('gives the player a transparent background, so the layers beneath show through its page', async () => {
@@ -133,12 +133,12 @@ describe('Timeline preview of a web copy', () => {
     next('ready');
     expect(element).toHaveAttribute('data-web-state', 'ready');
     expect(element.style.opacity).not.toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     next('waiting');
     expect(await player()).toBe(element);
     expect(element).toHaveAttribute('data-web-state', 'waiting');
     expect(element.style.opacity).not.toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
   });
 
   it('hides a reloaded copy and notes it loading again until its page answers', async () => {
@@ -148,21 +148,21 @@ describe('Timeline preview of a web copy', () => {
     next('loading');
     expect(element).toHaveAttribute('data-web-state', 'loading');
     expect(element.style.opacity).toBe('0');
-    expect(await screen.findByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
+    expect(await screen.findByTestId(`timeline-preview-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
     next('waiting');
     expect(element.style.opacity).toBe('0');
-    expect(screen.getByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
+    expect(screen.getByTestId(`timeline-preview-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
     next('ready');
     expect(element).toHaveAttribute('data-web-state', 'ready');
     expect(element.style.opacity).not.toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
   });
 
   it('keeps the unavailable note with its retry, not the loading note, for a failed copy', async () => {
     showPreview('failed');
     const element = await player();
     expect(element).toHaveAttribute('data-web-state', 'failed');
-    const note = await screen.findByTestId(`timeline-web-note-${COPY}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${COPY}`);
     await waitFor(() => expect(note).toHaveTextContent(`${TRACK}: web animation unavailable`));
     expect(note).not.toHaveTextContent(LOADING_NOTE);
     expect(within(note).getByTestId(`timeline-web-retry-${COPY}`)).toBeInTheDocument();
@@ -195,7 +195,7 @@ describe('Timeline preview of a web copy', () => {
       <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={ENTRIES} states={new Map()} onPlayer={onPlayer} onRetry={vi.fn()} />
     </div>);
     await waitFor(() => expect(playerModule.imports).toBe(1));
-    const note = await screen.findByTestId(`timeline-web-note-${COPY}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${COPY}`);
     await waitFor(() => expect(note).toHaveTextContent(`${TRACK}: web animation unavailable`));
     expect(note).not.toHaveTextContent(LOADING_NOTE);
     expect(onPlayer).not.toHaveBeenCalled();
@@ -206,7 +206,7 @@ describe('Timeline preview of a web copy', () => {
     // Once the module is in, the player is handed to the playback and the copy waits for its page like any other.
     const element = await player();
     await waitFor(() => expect(onPlayer).toHaveBeenCalledWith(KEY, element));
-    expect(screen.getByTestId(`timeline-web-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
+    expect(screen.getByTestId(`timeline-preview-note-${COPY}`)).toHaveTextContent(LOADING_NOTE);
   });
 });
 
@@ -246,14 +246,14 @@ describe('Timeline preview of premounted and idle instances (inner#1711 design Â
     const element = await player();
     expect(element.style.opacity).toBe('0');
     expect(element.style.pointerEvents).toBe('none');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     next(role, 'loading');
     expect(element.style.opacity).toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     next(role, 'failed');
     await act(async () => { await Promise.resolve(); });
     expect(element.style.opacity).toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
   });
 
   it('keeps the same player element, and so the loaded page, as its instance moves between visible, premount and idle', async () => {
@@ -270,7 +270,7 @@ describe('Timeline preview of premounted and idle instances (inner#1711 design Â
     next('premount', 'waiting');
     expect(await player()).toBe(element);
     expect(element.style.opacity).toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     expect(element).toHaveAttribute('src', PREVIEW_URL);
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
   });
@@ -289,14 +289,14 @@ describe('Timeline preview of premounted and idle instances (inner#1711 design Â
     rerender(view('visible', 'idle', 'loading'));
     await act(async () => { await Promise.resolve(); });
     expect(await player()).toBe(element);
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     rerender(view('visible', 'premount', 'waiting'));
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     expect(element.style.opacity).toBe('0');
     rerender(view('visible', 'visible', 'ready'));
     expect(await player()).toBe(element);
     expect(element.style.opacity).not.toBe('0');
-    expect(screen.queryByTestId(`timeline-web-note-${COPY}`)).toBeNull();
+    expect(screen.queryByTestId(`timeline-preview-note-${COPY}`)).toBeNull();
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
   });
 });

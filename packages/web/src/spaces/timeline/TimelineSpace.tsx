@@ -6,14 +6,14 @@ import type * as Y from 'yjs';
 import { ArrowRightToLine, Code, Copy, Film, Link2, ListChecks, Magnet, Pause, Play, Plus, Redo2, Scissors, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, timelineLayerContains, timelineLayerCorners, timelineLayerCss,
+  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
   type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionRow, type TimelineLayerBox, type TimelineLayerTransform, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { TimelineExecutionCreateInputSchema, timelineExecutionEnded, timelineExecutionFailed, webAnimationDurationFrames } from '@breatic/shared/space-content';
 import { resolveTimelineArrangement, timelineClipSource, timelineWebSourceOf, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
 import { isTimelineSizeRefusal, removeTimelineClip } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
-import { visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
+import { timelineStackOrder, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips, timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 import { CountChip } from '@web/components/CountChip';
@@ -55,7 +55,7 @@ import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-ti
 import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationDialog } from '@web/spaces/timeline/TimelineWebAnimationDialog';
-import { TimelineWebPreview, WebNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
+import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 import { useTimelineLimits, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
@@ -298,17 +298,6 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // The live value of a layer being dragged in the preview; it is never written to the document.
   const [override, setOverride] = React.useState<{ clipId: string; transform: TimelineLayerTransform } | null>(null);
   const transformOf = React.useCallback((clip: TimelineClip): TimelineLayerTransform => override?.clipId === clip.id ? override.transform : clip.transform, [override]);
-  /**
-   * A layer's box and transform in display pixels.
-   * @param base - Its base box in canvas pixels.
-   * @param transform - Its transform.
-   * @returns The CSS.
-   * @throws {never} Never.
-   */
-  const layerStyle = React.useCallback((base: TimelineLayerBox, transform: TimelineLayerTransform): React.CSSProperties => ({
-    left: base.left * factor, top: base.top * factor, width: base.width * factor, height: base.height * factor,
-    transform: timelineLayerCss(transform, factor), transformOrigin: 'center',
-  }), [factor]);
   const rowsBy = React.useMemo(() => {
     const bySource = new Map<string, TimelineExecutionRow>();
     const byId = new Map<string, TimelineExecutionRow>();
@@ -362,7 +351,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const track = labels.nameOf(clip.trackId) ?? clip.trackId;
       const status = clip.contentBinding.operationId === null ? null : web.executions[clip.contentBinding.operationId]?.status ?? null;
       if (assignment === undefined || resolved === undefined) return [{ clip, track, z: index + 1, instance: null, status }];
-      const box = layerStyle(timelineLayerBase(canvas, resolved.viewport), transformOf(clip));
+      const box = timelineLayerStyle(timelineLayerBase(canvas, resolved.viewport), transformOf(clip), factor);
       return [{ clip, track, z: index + 1, instance: { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: 'visible' }, status, box }];
     });
     // Premounted and idle instances stay mounted, hidden; an idle one keeps the copy it last showed.
@@ -371,11 +360,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const resolved = web.sources[assignment.sourceVersionId];
       if (assignment.role === 'visible' || clip === undefined || resolved === undefined) return [];
       const instance = { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: assignment.role };
-      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, status: null, box: layerStyle(timelineLayerBase(canvas, resolved.viewport), clip.transform),
+      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, status: null, box: timelineLayerStyle(timelineLayerBase(canvas, resolved.viewport), clip.transform, factor),
         instance: assignment.targetFrame === null ? instance : { ...instance, targetFrame: assignment.targetFrame } }];
     });
     return [...shown, ...hidden];
-  }, [visible, web, labels, pool, layerStyle, canvas, transformOf]);
+  }, [visible, web, labels, pool, factor, canvas, transformOf]);
   const [players, setPlayers] = React.useState<ReadonlyMap<string, WebAnimationPlayerElement>>(() => new Map());
   const registerPlayer = React.useCallback((key: string, player: WebAnimationPlayerElement | null): void => setPlayers((current) => {
     if ((current.get(key) ?? null) === player) return current;
@@ -411,14 +400,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const rank = React.useMemo(() => timelineTrackRank(document.tracks), [document.tracks]);
   const videoClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'video' && readyIds.has(clip.id) && rank.has(clip.trackId)
     && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - premountFrames ? [clip] : [])
-    .sort((a, b) => (rank.get(a.trackId) ?? 0) - (rank.get(b.trackId) ?? 0) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)), [clips, readyIds, rank, frame, premountFrames]);
+    .sort(timelineStackOrder(rank)), [clips, readyIds, rank, frame, premountFrames]);
   const assetSignature = [...new Set(videoClips.flatMap((clip) => document.sources[clip.sourceId]?.assetId ?? []))].sort().join(' ');
   const videoAssetIds = React.useMemo(() => (assetSignature === '' ? [] : assetSignature.split(' ')), [assetSignature]);
   const assets = useTimelineAssets(projectId, videoAssetIds);
   const assetOf = React.useCallback((clip: TimelineClip) => clip.kind === 'video' ? assets.get(document.sources[clip.sourceId]?.assetId ?? '') : undefined, [assets, document.sources]);
   const videoSpecs = videoClips.map((clip) => {
     const asset = assetOf(clip);
-    const state = asset?.isError === true ? 'failed' as const : asset?.data === undefined ? 'loading' as const : 'ready' as const;
+    // Cached data stays usable when a refetch fails; only a read that never returned data fails the layer (#1410 design §6.2).
+    const state = asset?.data !== undefined ? 'ready' as const : asset?.isError === true ? 'failed' as const : 'loading' as const;
     return { clipId: clip.id, fileUrl: state === 'ready' ? asset?.data?.fileUrl ?? null : null, coverUrl: asset?.data?.coverUrl ?? null, state };
   });
   const videoSignature = JSON.stringify(videoSpecs);
@@ -449,11 +439,17 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     }
     return null;
   }, [assetOf, canvas, sourceOf, web.sources]);
-  // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source.
-  const pickable = React.useMemo(() => visible.flatMap((clip) => {
-    const base = baseOf(clip);
-    return base === null ? [] : [{ clip, base }];
-  }), [visible, baseOf]);
+  // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source (#1410
+  // design §4.2).
+  // A video's asset state is read in this render; its element's error arrives through `videoStates`.
+  const pickable = React.useMemo(() => {
+    const assetStates = new Map(videoLayers.map((layer) => [layer.clipId, layer.state]));
+    return visible.flatMap((clip) => {
+      const unready = clip.kind === 'video' && (assetStates.get(clip.id) !== 'ready' || videoStates.get(clip.id) === 'failed');
+      const base = unready ? null : baseOf(clip);
+      return base === null ? [] : [{ clip, base }];
+    });
+  }, [visible, baseOf, videoLayers, videoStates]);
   // Each video element sits in the frame on its base box with its transform, stacked by track; a premounted one waits
   // there hidden.
   const videoHost = React.useRef<HTMLDivElement>(null);
@@ -465,10 +461,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       if (element === undefined) continue;
       if (element.parentElement !== host) host.append(element);
       const index = visible.indexOf(clip);
-      const base = baseOf(clip) ?? timelineLayerBase(canvas, { width: null, height: null });
+      const base = baseOf(clip);
+      if (base === null) continue;
       Object.assign(element.style, {
-        position: 'absolute', left: `${base.left * factor}px`, top: `${base.top * factor}px`, width: `${base.width * factor}px`, height: `${base.height * factor}px`,
-        transform: timelineLayerCss(transformOf(clip), factor), transformOrigin: 'center', objectFit: 'contain', pointerEvents: 'none',
+        ...timelineLayerStyle(base, transformOf(clip), factor), position: 'absolute', objectFit: 'contain', pointerEvents: 'none',
         zIndex: String(index + 1), visibility: index < 0 ? 'hidden' : '',
       });
     }
@@ -851,7 +847,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         {/* The frame clips the layers; the operation layer above it does not, so handles outside the frame stay reachable;
             the note layer is on top and lets clicks through except on its notes (#1410 design §4.1). */}
         <div className='relative max-h-full w-full max-w-4xl' style={previewStyle}>
-          <div ref={setFrameBox} data-testid='timeline-preview' className='absolute inset-0 flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background'>
+          <div ref={setFrameBox} data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background'>
             <div ref={videoHost} className='pointer-events-none absolute inset-0' />
             <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} notes={notesLayer} />
             {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
@@ -866,10 +862,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           </div>}
           <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-0' style={NOTE_LAYER_STYLE}>
             <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
-              {videoNotes.map((note) => <WebNote key={note.clipId} clipId={note.clipId} z={note.z}
+              {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
                 text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
                 {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
-              </WebNote>)}
+              </PreviewNote>)}
             </div>
           </div>
         </div>

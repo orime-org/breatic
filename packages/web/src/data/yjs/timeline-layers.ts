@@ -6,8 +6,18 @@ import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
+ * The preview's stacking order: bottom-up by track rank; ties on one rank put the smaller id on top.
+ * @param rank - Each track's rank, from `timelineTrackRank`.
+ * @returns The comparator.
+ * @throws {never} Never.
+ */
+export function timelineStackOrder(rank: ReadonlyMap<string, number>): (a: TimelineClip, b: TimelineClip) => number {
+  return (a, b) => (rank.get(a.trackId) ?? 0) - (rank.get(b.trackId) ?? 0) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+}
+
+/**
  * Every ready clip the preview stacks at a frame, bottom-up by track rank (#1410 design §6.1). Each layer is placed by
- * its own transform, so a video no longer hides the layers below it; ties on one rank put the smaller id on top.
+ * its own transform, so a video no longer hides the layers below it.
  * @param document - The current document.
  * @param readyClipIds - Clips the arrangement resolved as ready.
  * @param frame - The Timeline frame.
@@ -18,7 +28,7 @@ export function visibleTimelineClipsAt(document: TimelineDocumentV1, readyClipId
   const rank = timelineTrackRank(document.tracks);
   return Object.values(document.clips)
     .filter((clip) => rank.has(clip.trackId) && readyClipIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames)
-    .sort((a, b) => (rank.get(a.trackId) ?? 0) - (rank.get(b.trackId) ?? 0) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+    .sort(timelineStackOrder(rank));
 }
 
 /**

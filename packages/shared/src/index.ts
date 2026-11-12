@@ -511,14 +511,13 @@ export {
   TIMELINE_LAYER_TRANSFORM_LIMITS,
   clampTimelineScale,
   normalizeTimelineLayerTransform,
-  normalizeTimelineRotation,
   sameTimelineLayerTransform,
   timelineLayerBase,
   timelineLayerContains,
   timelineLayerCorners,
-  timelineLayerCss,
+  timelineLayerStyle,
 } from "@shared/timeline/layer-geometry.js";
-export type { TimelineLayerBox, TimelineLayerPoint, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
 
 export {
   DOCUMENT_SCHEMA,

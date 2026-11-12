@@ -122,9 +122,9 @@ interface WebInstanceProps {
  * @returns The note.
  * @throws {never} Never.
  */
-export function WebNote({ clipId, z, text, children }: { clipId: string; z: number; text: string; children?: React.ReactNode }): React.JSX.Element {
+export function PreviewNote({ clipId, z, text, children }: { clipId: string; z: number; text: string; children?: React.ReactNode }): React.JSX.Element {
   const style = React.useMemo(() => ({ order: -z }), [z]);
-  return <div data-testid={`timeline-web-note-${clipId}`} style={style} className='flex items-center gap-2 rounded-chrome border border-border bg-background px-2 py-1 text-xs text-foreground'>
+  return <div data-testid={`timeline-preview-note-${clipId}`} style={style} className='flex items-center gap-2 rounded-chrome border border-border bg-background px-2 py-1 text-xs text-foreground'>
     <span>{text}</span>{children}
   </div>;
 }
@@ -188,10 +188,10 @@ const WebInstance = React.memo(function WebInstance({ projectId, entry, state, d
   return <>
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play=''
       data-instance-key={key} data-clip-id={entry.clip.id} data-web-state={state ?? 'loading'} className={cn('absolute bg-transparent', entry.box === undefined && 'inset-0 size-full')} style={style} />}
-    {loading && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.loading', { track: entry.track })} />, notes)}
-    {unavailable && notes !== null && createPortal(<WebNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.unavailable', { track: entry.track })}>
+    {loading && notes !== null && createPortal(<PreviewNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.loading', { track: entry.track })} />, notes)}
+    {unavailable && notes !== null && createPortal(<PreviewNote clipId={entry.clip.id} z={entry.z} text={t('timeline.webAnimation.preview.unavailable', { track: entry.track })}>
       <Button data-testid={`timeline-web-retry-${entry.clip.id}`} variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
-    </WebNote>, notes)}
+    </PreviewNote>, notes)}
   </>;
 });
 
@@ -245,10 +245,10 @@ export function TimelineWebPreview({ projectId, entries, states, sharing, onPlay
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status ?? '';
         const ended = entry.status !== null && timelineExecutionFailed(entry.status);
-        return <WebNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
+        return <PreviewNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
           text={t(ended ? 'timeline.webAnimation.preview.failed' : 'timeline.webAnimation.preview.pending', { track: entry.track, status })} />;
       })}
-      {uploadNotes.map((note) => <WebNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text} />)}
+      {uploadNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text} />)}
     </>, notes)}
   </>;
 }

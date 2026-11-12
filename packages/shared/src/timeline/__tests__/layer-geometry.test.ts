@@ -8,7 +8,7 @@ import {
   TIMELINE_LAYER_TRANSFORM_LIMITS,
   timelineLayerBase,
   timelineLayerCorners,
-  timelineLayerCss,
+  timelineLayerStyle,
 } from "@shared/index.js";
 
 const CANVAS = { width: 1920, height: 1080 };
@@ -50,14 +50,14 @@ describe("timelineLayerBase: the source contained and centred in the canvas (#14
   });
 });
 
-describe("timelineLayerCss: translate rotate scale, translation in display pixels (#1410 design §2)", () => {
+describe("timelineLayerStyle: translate rotate scale, translation in display pixels (#1410 design §2)", () => {
   it("scales the canvas-pixel offset by the display factor and keeps rotation and scale as stored", () => {
-    expect(timelineLayerCss({ x: 40, y: -20, scaleX: 1.5, scaleY: 0.5, rotation: 30 }, 0.5))
+    expect(timelineLayerStyle(timelineLayerBase(CANVAS, { width: null, height: null }), { x: 40, y: -20, scaleX: 1.5, scaleY: 0.5, rotation: 30 }, 0.5).transform)
       .toBe("translate(20px, -10px) rotate(30deg) scale(1.5, 0.5)");
   });
 
   it("writes the default transform as no movement, so the element stays on its contained base box", () => {
-    expect(timelineLayerCss(IDENTITY, 0.25)).toBe("translate(0px, 0px) rotate(0deg) scale(1, 1)");
+    expect(timelineLayerStyle(timelineLayerBase(CANVAS, { width: null, height: null }), IDENTITY, 0.25).transform).toBe("translate(0px, 0px) rotate(0deg) scale(1, 1)");
   });
 });
 

@@ -233,7 +233,7 @@ async function playUntil(page: Page, until: number, nominal: number, videoClipId
         marked: (player.iframeElement as (HTMLIFrameElement & { smokeMark?: boolean }) | null | undefined)?.smokeMark === true,
       }));
       const video = preview.querySelector<HTMLVideoElement>(`video[data-clip-id="${videoClipId}"]`);
-      seen.push({ frame, at: performance.now(), paused: video?.paused ?? true, time: video?.currentTime ?? -1, players, notes: notes?.querySelectorAll('[data-testid^="timeline-web-note-"]').length ?? -1 });
+      seen.push({ frame, at: performance.now(), paused: video?.paused ?? true, time: video?.currentTime ?? -1, players, notes: notes?.querySelectorAll('[data-testid^="timeline-preview-note-"]').length ?? -1 });
       if (frame >= until) {
         document.querySelector<HTMLElement>('[data-testid="timeline-play"]')?.click();
         break;
@@ -407,7 +407,7 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect(playerOf(copies[0])).toHaveCSS('opacity', '0');
       // A copy notes that it is loading until its page first answers.
       await copiesAnswered(preview);
-      await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
+      await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-preview-note-"]')).toHaveCount(0);
     });
 
     await test.step('Viewer: no create button; the list shows the finished row and its result without actions', async () => {
@@ -541,7 +541,7 @@ test('one real web animation is created, reused as three copies over a video, se
           return iframe?.smokeMark === true ? iframe.smokeLoads ?? 0 : -1;
         });
         expect(await loadsOf(), 'the copy after the cut must show a page loaded before it, without reloading it').toBe(0);
-        await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
+        await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-preview-note-"]')).toHaveCount(0);
 
         // Play from before the cut to past it, still before the overlapping copy starts.
         await stepSlider(slider, to, from);

@@ -49,6 +49,9 @@ export function timelineLayerBase(
   return { left: (canvas.width - width) / 2, top: (canvas.height - height) / 2, width, height };
 }
 
+/** A placed layer's style in display pixels, for an absolutely positioned element in the preview frame. */
+export interface TimelineLayerStyle { left: string; top: string; width: string; height: string; transform: string; transformOrigin: string }
+
 /**
  * The CSS transform of an element placed on its base box with `transform-origin: center`.
  * @param transform - The stored placement.
@@ -56,8 +59,23 @@ export function timelineLayerBase(
  * @returns The CSS `transform` value.
  * @throws {never} Never.
  */
-export function timelineLayerCss(transform: TimelineLayerTransform, factor: number): string {
+function timelineLayerCss(transform: TimelineLayerTransform, factor: number): string {
   return `translate(${transform.x * factor}px, ${transform.y * factor}px) rotate(${transform.rotation}deg) scale(${transform.scaleX}, ${transform.scaleY})`;
+}
+
+/**
+ * A layer's box and transform in display pixels.
+ * @param base - Its base box in canvas pixels.
+ * @param transform - Its stored or live placement.
+ * @param factor - Display pixels per canvas pixel.
+ * @returns The style.
+ * @throws {never} Never.
+ */
+export function timelineLayerStyle(base: TimelineLayerBox, transform: TimelineLayerTransform, factor: number): TimelineLayerStyle {
+  return {
+    left: `${base.left * factor}px`, top: `${base.top * factor}px`, width: `${base.width * factor}px`, height: `${base.height * factor}px`,
+    transform: timelineLayerCss(transform, factor), transformOrigin: "center",
+  };
 }
 
 /**
@@ -99,7 +117,7 @@ function roundTo(value: number, step: number): number {
  * @returns The normalised angle.
  * @throws {never} Never.
  */
-export function normalizeTimelineRotation(degrees: number): number {
+function normalizeTimelineRotation(degrees: number): number {
   const turned = ((degrees % 360) + 360) % 360;
   return turned > 180 ? turned - 360 : turned;
 }

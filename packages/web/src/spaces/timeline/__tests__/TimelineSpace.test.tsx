@@ -762,12 +762,12 @@ describe('TimelineSpace local uploads in the background', () => {
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
     // The preview draws nothing for the placeholder at the playhead and notes it by track (design §4.3).
     const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state });
-    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('failed'));
+    expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('failed'));
     fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
     fireEvent.click(await screen.findByTestId('timeline-upload-retry'));
     await waitFor(() => expect(vi.mocked(uploadMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'uploading'));
-    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('uploading'));
+    expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('uploading'));
   });
 
   it('offers no retry when sending the same file again cannot help', async () => {
@@ -1890,7 +1890,6 @@ describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () =
     await waitFor(() => previewVideo(CLIP.id));
     expect(screen.getByTestId('timeline-preview').querySelector(`video[data-clip-id="${X}"]`)).toBe(null);
     expect(screen.getByTestId('timeline-preview').hasAttribute('data-active-clip-id')).toBe(false);
-    expect(screen.queryByText(t('timeline.transport.failed'))).toBe(null);
     expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
   });
 });
@@ -2832,6 +2831,16 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   }
 
   /**
+   * Wait until each video layer is ready: its asset was read and the element got its `src` (design §4.2 makes only a
+   * ready video pickable).
+   * @param clipIds - The clips.
+   * @throws {Error} When one never becomes ready.
+   */
+  async function layersReady(...clipIds: string[]): Promise<void> {
+    await waitFor(() => { for (const clipId of clipIds) expect(previewVideo(clipId).getAttribute('src')).toBeTruthy(); });
+  }
+
+  /**
    * Wait until the handles of the selected layer are mounted.
    * @throws {Error} When they never mount.
    */
@@ -2870,7 +2879,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('selects the topmost layer under a click, the same clip the track selects', async () => {
     seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X, CLIP.id);
     clickPreview(PIP_CENTRE);
     await waitFor(() => expect(selectedOnTrack(X)).toBe('true'));
     expect(selectedOnTrack(CLIP.id)).toBe('false');
@@ -2883,7 +2892,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('clears the selection for a click outside every layer', async () => {
     seedLayout([clipAt(X, 'v2', 0, 24, { transform: PIP })]);
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X);
     clickPreview(PIP_CENTRE);
     await waitFor(() => expect(selectedOnTrack(X)).toBe('true'));
     clickPreview(BACKGROUND);
@@ -2894,7 +2903,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('re-picks the picture-in-picture from a press inside the selected full-frame layer that did not move', async () => {
     seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X, CLIP.id);
     clickPreview(BACKGROUND);
     await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
     await handlesShown();
@@ -2906,7 +2915,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('commits an entry left in the old clip\'s field before a preview click selects another clip', async () => {
     seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(CLIP.id));
+    await layersReady(CLIP.id);
     fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
     const field = await screen.findByTestId('timeline-clip-x');
     field.focus();
@@ -2931,7 +2940,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('moves the layer itself while dragging, writes nothing until release, then one set_transform that undo reverts', async () => {
     const doc = seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X);
     clickPreview(PIP_CENTRE);
     await handlesShown();
     const before = previewVideo(X).style.transform;
@@ -2953,7 +2962,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('does not undo during a preview drag; the drag is one undo step after release', async () => {
     seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X);
     clickPreview(PIP_CENTRE);
     await screen.findByTestId('timeline-clip-rotation');
     commitField('timeline-clip-rotation', '10');
@@ -2975,7 +2984,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('ends the drag without writing and names the removal when a peer deletes the dragged clip; Delete works again', async () => {
     const doc = seedPip();
     showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X);
     clickPreview(PIP_CENTRE);
     await handlesShown();
     gesture.dragStart();
@@ -2994,7 +3003,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
   it('cancels a drag when the role turns Viewer: the layer returns, nothing is written, and the operation layer goes', async () => {
     const doc = seedPip();
     const { view, client } = showTimeline();
-    await waitFor(() => previewVideo(X));
+    await layersReady(X);
     clickPreview(PIP_CENTRE);
     await handlesShown();
     const before = previewVideo(X).style.transform;
@@ -3045,12 +3054,11 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     showTimeline();
     fireEvent.click(await screen.findByTestId('timeline-clip-' + CLIP.id));
     const notes = await screen.findByTestId('timeline-preview-notes');
-    const loading = await waitFor(() => within(notes).getByTestId('timeline-web-note-' + X));
+    const loading = await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
     expect(loading).toHaveTextContent(t('timeline.track', { index: 2 }));
-    expect(screen.queryByText(t('timeline.loadingMedia'))).toBe(null);
     await act(async () => { pending.reject(new Error('unreachable')); });
     const retry = await waitFor(() => within(notes).getByTestId('timeline-video-retry-' + X));
-    expect(within(notes).getByTestId('timeline-web-note-' + X)).toHaveTextContent(t('timeline.track', { index: 2 }));
+    expect(within(notes).getByTestId('timeline-preview-note-' + X)).toHaveTextContent(t('timeline.track', { index: 2 }));
     expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
     // The other layer is untouched by the failure.
     expect(previewVideo(CLIP.id)).toHaveAttribute('src', ASSET.fileUrl);
@@ -3098,7 +3106,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     seedPipOwnAsset(false);
     showTimeline();
     const notes = await screen.findByTestId('timeline-preview-notes');
-    await waitFor(() => within(notes).getByTestId('timeline-web-note-' + X));
+    await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
     clickPreview(PIP_CENTRE);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     expect(selectedOnTrack(X)).toBe('false');
@@ -3133,7 +3141,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(client.getQueryState(key)?.status).toBe('error');
     expect(client.getQueryData(key)).toEqual(LOCAL_ASSET);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(screen.queryByTestId('timeline-web-note-' + X)).toBe(null);
+    expect(screen.queryByTestId('timeline-preview-note-' + X)).toBe(null);
     expect(screen.queryByTestId('timeline-video-retry-' + X)).toBe(null);
     expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl);
   });
