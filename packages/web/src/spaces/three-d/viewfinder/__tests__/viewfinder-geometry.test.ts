@@ -7,7 +7,6 @@ import {
   DEFAULT_VIEWFINDER_RATIO,
   VIEWFINDER_RATIOS,
   captureSize,
-  captureViewOffset,
   largestFrame,
   menuCentre,
   refitFrame,
@@ -181,13 +180,5 @@ describe('the captured image size', () => {
     expect(captureSize({ x: 0, y: 0, width: 320, height: 180 }, 2048)).toEqual({ width: 2048, height: 1152 });
     expect(captureSize({ x: 0, y: 0, width: 180, height: 320 }, 2048)).toEqual({ width: 1152, height: 2048 });
     expect(captureSize({ x: 0, y: 0, width: 333, height: 217 }, 2048)).toEqual({ width: 2048, height: 1335 });
-  });
-
-  it('maps the frame to a camera view offset at the output scale', () => {
-    const frame = { x: 100, y: 50, width: 400, height: 225 };
-    const size = captureSize(frame, 2048);
-    expect(captureViewOffset(frame, { width: 1000, height: 600 }, size)).toEqual({
-      fullWidth: 5120, fullHeight: 3072, x: 512, y: 256, width: 2048, height: 1152,
-    });
   });
 });

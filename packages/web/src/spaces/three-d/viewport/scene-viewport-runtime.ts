@@ -15,9 +15,8 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
+import { captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import type { CapturedPixels, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
-import { captureViewOffset } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 interface NativeHandleObservation {
   name: string;

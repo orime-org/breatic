@@ -162,30 +162,3 @@ export function captureSize(frame: ViewfinderRect, longEdge: number): { width: n
     ? { width: longEdge, height: Math.round((longEdge * frame.height) / frame.width) }
     : { width: Math.round((longEdge * frame.width) / frame.height), height: longEdge };
 }
-
-/**
- * The camera view offset that renders exactly the frame at the capture size.
- * @param frame - The frame, in viewport pixels.
- * @param viewport - The viewport size.
- * @param viewport.width - Its width.
- * @param viewport.height - Its height.
- * @param size - The capture size.
- * @param size.width - Its width.
- * @param size.height - Its height.
- * @returns The arguments for `PerspectiveCamera.setViewOffset`.
- */
-export function captureViewOffset(
-  frame: ViewfinderRect,
-  viewport: { width: number; height: number },
-  size: { width: number; height: number },
-): { fullWidth: number; fullHeight: number; x: number; y: number; width: number; height: number } {
-  const k = size.width / frame.width;
-  return {
-    fullWidth: viewport.width * k,
-    fullHeight: viewport.height * k,
-    x: frame.x * k,
-    y: frame.y * k,
-    width: size.width,
-    height: size.height,
-  };
-}
