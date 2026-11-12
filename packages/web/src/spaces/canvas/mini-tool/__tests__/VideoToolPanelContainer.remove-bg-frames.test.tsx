@@ -31,6 +31,7 @@ import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-to
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 
 const projectId = 'rb-project'; const spaceId = 'rb-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const resultId = '10000000-0000-4000-8000-000000000002'; const olderId = '10000000-0000-4000-8000-000000000003';
@@ -60,8 +61,9 @@ function seedSource(): void {
  * @param toolId - The tool.
  * @param presentation - The source's presentation facts.
  * @param params - The session params the panel opens with.
+ * @param binding - The source player's transport, when the test drives it.
  */
-function mount(toolId: VideoToolId, presentation: VideoToolPresentation, params: Record<string, unknown> = {}): void {
+function mount(toolId: VideoToolId, presentation: VideoToolPresentation, params: Record<string, unknown> = {}, binding?: MediaSurfaceBinding): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   seedSource();
   commitVideoToolDraft(doc, nodeId, toolId, createVideoToolDraft(toolId, { nodeId, canonicalURL: sourceURL, mediaInfo }));
@@ -69,7 +71,7 @@ function mount(toolId: VideoToolId, presentation: VideoToolPresentation, params:
   // The panel reads the source's size from its view, as the canvas hands it over.
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const nodes = [node, ...readNodes(doc).filter((candidate) => candidate.id !== nodeId)];
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={nodes} presentation={presentation} onRunVideo={vi.fn().mockResolvedValue(undefined)} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={nodes} presentation={presentation} binding={binding} onRunVideo={vi.fn().mockResolvedValue(undefined)} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
 }
 
 /**
@@ -155,5 +157,27 @@ describe('extract frames while the frame table waits', () => {
     act(() => canvasSessions.of(spaceId).getState().setMiniToolParam('frameMode', 'current'));
     const again = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.extract-frames');
     expect(again.state === 'supported' && (again.draft as VideoToolDraftById['video.extract-frames']).params).toMatchObject({ mode: 'current', currentTime: 1 });
+  });
+});
+
+describe('the playback strip follows the source while it plays (FM5)', () => {
+  it('moves the head from the live presented frame without the panel re-rendering', () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => frames.push(callback)));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const element = document.createElement('video');
+    let paused = true;
+    Object.defineProperty(element, 'paused', { configurable: true, get: () => paused });
+    let mediaTime = 1;
+    const getPresentedFrame = (): ReturnType<MediaSurfaceBinding['getPresentedFrame']> => ({ sourceKey: 'source', sourceEpoch: 1, seekEpoch: 0, mediaTime, surface: element });
+    const binding = { sourceKey: 'source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: { width: 960, height: 540, duration: 5 },
+      getSeekEpoch: () => 0, getPresentedFrame, seek: vi.fn(), play: vi.fn(), pause: vi.fn() } satisfies MediaSurfaceBinding;
+    mount('video.remove-bg', { ...facts(true), getPresentedFrame }, {}, binding);
+    expect(screen.getByTestId('video-playback-head').style.left).toBe('20%');
+    paused = false;
+    fireEvent(element, new Event('play'));
+    mediaTime = 2.5;
+    act(() => { for (const callback of frames.splice(0)) callback(0); });
+    expect(screen.getByTestId('video-playback-head').style.left).toBe('50%');
   });
 });

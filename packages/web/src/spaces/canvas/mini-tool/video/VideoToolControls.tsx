@@ -11,7 +11,7 @@ import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVid
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { secondsLabel, VideoPlaybackStrip } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
+import { secondsLabel, VideoPlaybackStrip, type VideoPlaybackLiveClock } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
 import type { SourceRangePlayback } from '@web/spaces/canvas/video-presentation/play-source-range';
 import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -44,6 +44,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   previewSource?: VideoPresentationSource | null;
   frameTable: VideoPresentationTable | null;
   presentedTime: number | null;
+  /** The source player's live clock, which the playback strip follows while the source plays. */
+  liveClock?: VideoPlaybackLiveClock;
   disabled: boolean;
   pickingSlot: string | null;
   inputNames: ReadonlyMap<string, string>;
@@ -225,7 +227,8 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
     }} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
     <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueTimingHint')}</p>
     {/* Demo lip-sync-controls.tsx: the source's playback strip, on which people are identified, above the model row. */}
-    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek} />
+    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height}
+      presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek} />
     {/* Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right. */}
     <div data-testid='video-lipsync-bottom-row' className='flex items-center gap-1.5'>{props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0].name} disabled={props.disabled} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} />}<ModeToggle value={draft.params.syncMode} options={SYNC_MODES} triggerTestId='video-sync-mode' disabled={props.disabled} onChange={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} /></div>
     {/* Hidden while identification restarts, as the demo's re-detect clears the failure (main.tsx person-failure-redetect). */}
@@ -319,7 +322,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
       // Demo main.tsx erase branch: the range strip, the tracking status, one row with the selection modes and clear on the
       // left and the tracking cost and Track selection on the right, then the prompt.
       return <>
-        <VideoPlaybackStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek}
+        <VideoPlaybackStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}
           range={range} onRangeChange={setRange} rangeLabel={t('canvas.miniTool.videoUI.timeRange')} disabled={props.disabled} />
         <div className='grid grid-cols-2 gap-2'>
           <label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < range.end) setRange({ ...range, start }); }} /></label>
@@ -343,7 +346,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     case 'video.remove-bg': {
       const draft = props.draft as VideoToolDraftById['video.remove-bg'];
       // Canvas design §4 remove-background row: the source preview, the fixed kept audio and transparent output, and the newest ready result.
-      return <><VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek} /><div className='flex items-center justify-between text-xs'><span>{t('canvas.miniTool.videoUI.preserveAudio')}</span><Check className='size-3.5 text-status-success' aria-hidden='true' /></div><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>{props.onOpenResult === undefined ? null : <Button variant='outline' size='sm' className='gap-1.5' onClick={props.onOpenResult}>{t('canvas.miniTool.videoUI.resultsReady')}<ArrowUpRight className='size-3.5' aria-hidden='true' /></Button>}</>;
+      return <><VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek} /><div className='flex items-center justify-between text-xs'><span>{t('canvas.miniTool.videoUI.preserveAudio')}</span><Check className='size-3.5 text-status-success' aria-hidden='true' /></div><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>{props.onOpenResult === undefined ? null : <Button variant='outline' size='sm' className='gap-1.5' onClick={props.onOpenResult}>{t('canvas.miniTool.videoUI.resultsReady')}<ArrowUpRight className='size-3.5' aria-hidden='true' /></Button>}</>;
     }
     case 'video.extract-frames': {
       const draft = props.draft as VideoToolDraftById['video.extract-frames'];
@@ -465,7 +468,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   const cursor = props.presentedTime;
   const addable = cursor !== null && cursor > 0 && cursor < duration && splitCuts(table, [...cuts, cursor]).length > cuts.length;
   return <div className='grid gap-2' data-testid='video-cut-editor'>
-    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek}>
+    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
       {cuts.map((cut, index) => <Button key={index} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : cut) * 100 / duration}%` }}
         onPointerDown={(event) => {
           if (event.button !== 0 || props.disabled) return;
