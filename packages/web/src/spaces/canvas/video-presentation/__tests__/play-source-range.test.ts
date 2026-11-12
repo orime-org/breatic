@@ -8,17 +8,22 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { playSourceRange } from '../play-source-range';
+import { createPresentedFrameClock } from '../presented-frame-clock';
 
 /**
- * A stand-in for the node's media binding: a media element whose clock the test moves.
+ * A stand-in for the node's media binding: a media element whose clock the test moves. Like the real binding, a seek moves
+ * `currentTime` and the seek epoch at once, and the element's `seeking` event, which the browser dispatches later and the test
+ * dispatches by hand, moves the epoch again through the real frame clock.
  * @param play - What the player's play does.
  * @returns The binding and its element.
  */
 function fakeBinding(play: () => Promise<void> = () => Promise.resolve()): { binding: Parameters<typeof playSourceRange>[0]; element: EventTarget & { currentTime: number; ended: boolean } } {
-  const element = Object.assign(new EventTarget(), { currentTime: 0, ended: false });
+  const element = Object.assign(new EventTarget(), { currentTime: 0, ended: false, seeking: false });
+  const clock = createPresentedFrameClock(element as unknown as HTMLVideoElement, element as unknown as HTMLVideoElement, 'source', 1);
   const binding = {
     element: element as unknown as HTMLVideoElement,
-    seek: vi.fn((seconds: number) => { element.currentTime = seconds; }),
+    getSeekEpoch: clock.getSeekEpoch,
+    seek: vi.fn((seconds: number) => { clock.invalidate(); element.currentTime = seconds; }),
     play: vi.fn(play),
     pause: vi.fn(),
   };
@@ -124,6 +129,7 @@ describe('playSourceRange once playing', () => {
     fakeFrames();
     const { binding, element } = fakeBinding();
     const playback = playSourceRange(binding, 1, 2);
+    element.dispatchEvent(new Event('seeking'));
     await Promise.resolve(); await Promise.resolve();
     element.currentTime = 2.01;
     runFrames();
@@ -133,10 +139,62 @@ describe('playSourceRange once playing', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('ends at the position a seek of the user takes it to, even past the range end', async () => {
+  it('keeps playing through the seeking event of its own start seek, even one that arrives after the play started', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    let settled = false;
+    const playback = playSourceRange(binding, 1, 2);
+    void playback.done.then(() => { settled = true; });
+    await Promise.resolve(); await Promise.resolve();
+    element.dispatchEvent(new Event('seeking'));
+    element.currentTime = 1.5;
+    element.dispatchEvent(new Event('timeupdate'));
+    runFrames();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(frames.size).toBe(1);
+    expect(binding.seek).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends at the position a user seek past the range end takes it to, before the seeking event arrives', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    const playback = playSourceRange(binding, 0, 3);
+    element.dispatchEvent(new Event('seeking'));
+    await Promise.resolve(); await Promise.resolve();
+    binding.seek(5.4);
+    runFrames();
+    await expect(playback.done).resolves.toBeUndefined();
+    element.dispatchEvent(new Event('seeking'));
+    expect(binding.pause).not.toHaveBeenCalled();
+    expect(binding.seek).toHaveBeenCalledTimes(2);
+    expect(element.currentTime).toBe(5.4);
+    expect(frames.size).toBe(0);
+  });
+
+  it('ends at the position a user seek made while the play is pending takes it to', async () => {
+    fakeFrames();
+    let started: () => void = () => {};
+    const { binding, element } = fakeBinding(() => new Promise<void>((resolve) => { started = resolve; }));
+    const playback = playSourceRange(binding, 0, 3);
+    binding.seek(4.8);
+    element.dispatchEvent(new Event('seeking'));
+    element.dispatchEvent(new Event('seeking'));
+    started();
+    await expect(playback.done).resolves.toBeUndefined();
+    runFrames();
+    element.dispatchEvent(new Event('timeupdate'));
+    expect(binding.pause).not.toHaveBeenCalled();
+    expect(binding.seek).toHaveBeenCalledTimes(2);
+    expect(element.currentTime).toBe(4.8);
+    expect(frames.size).toBe(0);
+  });
+
+  it('ends at the position a seek of the user from the native controls takes it to', async () => {
     fakeFrames();
     const { binding, element } = fakeBinding();
     const playback = playSourceRange(binding, 1, 2);
+    element.dispatchEvent(new Event('seeking'));
     await Promise.resolve(); await Promise.resolve();
     element.currentTime = 4;
     element.dispatchEvent(new Event('seeking'));
