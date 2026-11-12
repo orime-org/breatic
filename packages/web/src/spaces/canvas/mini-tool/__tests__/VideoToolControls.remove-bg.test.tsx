@@ -59,6 +59,11 @@ describe('remove background panel (canvas design §4 remove-background row)', ()
     fireEvent.click(screen.getByRole('button', { name: /Results ready/ }));
     expect(onOpenResult).toHaveBeenCalledOnce();
   });
+
+  it('spaces the trailing arrow of Results ready from its label', () => {
+    render(<VideoToolControls {...common} presentedTime={0} onOpenResult={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Results ready/ }).className.split(' ')).toContain('gap-1.5');
+  });
 });
 
 describe('the shared playback strip range (for erase)', () => {
