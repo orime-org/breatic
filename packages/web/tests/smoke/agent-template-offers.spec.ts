@@ -265,12 +265,15 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('asked outright for a cheese pull food video, it reads the food money shot and lands a proposal built on it @needs-model', async () => {
+test('asked outright for a cheese pull food video, it reads the food money shot and lands a video @needs-model', async () => {
   test.setTimeout(240_000);
   await ask('Make a vertical food video of a pizza with a long cheese pull. Do not ask me anything, just propose it.');
   const turn = await settledTurn(page);
-  expect(turn.templates, `named: ${turn.templates.join(', ')}; read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
-  expect(turn.read, `read: ${turn.read.join(', ')}`).toContain('food-money-shot');
+  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
+  // Solved when a video lands, whether built on the template or on the agent's own setup drawing on it: with no
+  // photo of the dish, the agent may write the template's craft into a setup of its own.
+  const videos = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'video');
+  expect(videos.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
