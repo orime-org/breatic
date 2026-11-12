@@ -37,6 +37,8 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { DocumentScope } from '@web/data/api/documents';
+import { docName } from '@web/data/yjs/manager';
+import { spaceRefusalMessage } from '@web/data/yjs/space-write';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { toast } from '@web/lib/toast';
@@ -141,7 +143,7 @@ export default function DocumentVersionArea({
 }: DocumentVersionAreaProps): React.JSX.Element {
   const t = useTranslation();
   const host = React.useRef<HTMLDivElement>(null);
-  const outcome = React.useRef<'restored' | 'unchanged'>('restored');
+  const outcome = React.useRef<ReturnType<typeof restoreSnapshot>>('restored');
   const [shownNow, setShownNow] = React.useState<{ comparing: boolean } | null>(null);
 
   // One preview per opening of the panel.
@@ -156,6 +158,7 @@ export default function DocumentVersionArea({
           undoManager: undoOf(editor),
           content,
           threads: commentsOn(editor)?.threadStore.getThreads() ?? null,
+          space: docName.documentSpace(scope.projectId, scope.spaceId),
         });
       },
       report: (err) => captureException(err, { tags: { area: 'document_version_restore' } }),
@@ -327,10 +330,17 @@ export default function DocumentVersionArea({
     setRestoring(false);
     if (ended !== 'done') return;
     setConfirmingRestore(false);
+    const result = outcome.current;
+    if (typeof result !== 'string') {
+      // The body is as it was, and so is the panel.
+      const message = spaceRefusalMessage('add', result.reason);
+      if (message !== null) toast.warning(message);
+      return;
+    }
     closePanel();
     // Back in the body once it is on screen again.
     requestAnimationFrame(() => viewOf(editor)?.focus());
-    if (outcome.current === 'unchanged') toast.info(t('spaces.document.versions.unchanged'));
+    if (result === 'unchanged') toast.info(t('spaces.document.versions.unchanged'));
     else toast.success(t('spaces.document.versions.restored'));
   }, [closePanel, controller, editor, open, run, setRestoring, t]);
 

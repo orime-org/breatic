@@ -18,6 +18,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { asOneUndoStep, type UndoBoundary } from '@web/spaces/document/document-proposal-landing';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 
@@ -124,7 +125,8 @@ export interface Restorable {
  * @param input.undoManager - The body's undo manager.
  * @param input.content - The snapshot's JSON.
  * @param input.threads - The document's comment threads now, or null when the body has no thread store.
- * @returns `restored`, or `unchanged` when the body already equals the snapshot and nothing was written.
+ * @param input.space - The Space document's canonical name, whose size state may refuse the write; null when it has none.
+ * @returns `restored`; `unchanged` when the body already equals the snapshot; or why the Space's size refused it. Nothing is written but on `restored`.
  * @throws {Error} When the body is not mounted or its schema cannot hold the snapshot; nothing is written then.
  */
 export function restoreSnapshot(input: {
@@ -132,7 +134,8 @@ export function restoreSnapshot(input: {
   undoManager: UndoBoundary | null;
   content: Json;
   threads: ReadonlyMap<string, ThreadState> | null;
-}): 'restored' | 'unchanged' {
+  space: string | null;
+}): 'restored' | 'unchanged' | SpaceRefusal {
   const view = input.editor.prosemirrorView;
   if (!view) throw new Error('document body is not mounted');
   const json = input.threads === null ? input.content : withThreadsNow(input.content, input.threads);
@@ -141,6 +144,12 @@ export function restoreSnapshot(input: {
   snapshot.check();
   const { doc } = view.state;
   if (snapshot.eq(doc)) return 'unchanged';
+  // A restore writes new content: an add, asked quietly before writing, as a
+  // proposal landing asks; the caller says why it was refused.
+  if (input.space !== null) {
+    const allowed = checkAdd(input.space, { notify: false });
+    if (!allowed.ok) return allowed;
+  }
   const tr = view.state.tr.replaceWith(0, doc.content.size, snapshot.content);
   asOneUndoStep(input.undoManager, () => view.dispatch(tr));
   return 'restored';

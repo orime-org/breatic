@@ -15,6 +15,9 @@ import fc from 'fast-check';
 import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName } from '@web/data/yjs/manager';
+import { enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { restoreSnapshot, snapshotOf } from '@web/spaces/document/document-version-restore';
@@ -25,8 +28,11 @@ type Json = Record<string, unknown>;
 type Threads = ReadonlyMap<string, { resolved?: boolean; deletedAt?: unknown }>;
 
 const mounted: Editor[] = [];
+/** A Space document name the size state can refuse. */
+const SPACE = docName.documentSpace('p1', 'd1');
 
 afterEach(() => {
+  clearAllDocSizes();
   for (const editor of mounted.splice(0)) editor.unmount();
   document.body.innerHTML = '';
 });
@@ -96,7 +102,7 @@ describe('restoreSnapshot', () => {
     const { content } = snapshotOf(saved.prosemirrorState.doc);
     const { editor, undo } = open([{ type: 'paragraph', content: 'something else' }]);
 
-    expect(restoreSnapshot({ editor, undoManager: undo, content, threads: NO_THREADS })).toBe('restored');
+    expect(restoreSnapshot({ editor, undoManager: undo, space: null, content, threads: NO_THREADS })).toBe('restored');
 
     expect(json(editor)).toEqual(json(saved));
   });
@@ -106,7 +112,7 @@ describe('restoreSnapshot', () => {
     const { content } = snapshotOf(open([{ type: 'paragraph', content: 'snap' }]).editor.prosemirrorState.doc);
     type(editor, ' typed');
 
-    restoreSnapshot({ editor, undoManager: undo, content, threads: NO_THREADS });
+    restoreSnapshot({ editor, undoManager: undo, space: null, content, threads: NO_THREADS });
     type(editor, '!');
 
     expect(text(editor)).toBe('snap!');
@@ -116,11 +122,36 @@ describe('restoreSnapshot', () => {
     expect(text(editor)).toBe('before typed');
   });
 
+  it.each([
+    ['F', 'full'],
+    ['O', 'over_ceiling'],
+    ['Z', 'resyncing'],
+  ] as const)('writes nothing and says why when the Space\'s size state %s refuses an add', (code, reason) => {
+    const { editor, undo } = open([{ type: 'paragraph', content: 'live' }]);
+    const { content } = snapshotOf(open([{ type: 'paragraph', content: 'snap' }]).editor.prosemirrorState.doc);
+    const before = json(editor);
+    enterSize(SPACE, code);
+
+    expect(restoreSnapshot({ editor, undoManager: undo, space: SPACE, content, threads: NO_THREADS })).toEqual({ ok: false, reason });
+
+    expect(json(editor)).toEqual(before);
+    expect(undo.undoStack.length).toBe(0);
+  });
+
+  it('restores while the Space only warns that it is nearly full', () => {
+    const { editor, undo } = open([{ type: 'paragraph', content: 'live' }]);
+    const { content } = snapshotOf(open([{ type: 'paragraph', content: 'snap' }]).editor.prosemirrorState.doc);
+    enterSize(SPACE, 'W');
+
+    expect(restoreSnapshot({ editor, undoManager: undo, space: SPACE, content, threads: NO_THREADS })).toBe('restored');
+    expect(text(editor)).toBe('snap');
+  });
+
   it('writes nothing when the body already equals the snapshot', () => {
     const { editor, undo } = open([{ type: 'paragraph', content: 'same' }]);
     const before = json(editor);
 
-    expect(restoreSnapshot({ editor, undoManager: undo, content: snapshotOf(editor.prosemirrorState.doc).content, threads: NO_THREADS })).toBe('unchanged');
+    expect(restoreSnapshot({ editor, undoManager: undo, space: null, content: snapshotOf(editor.prosemirrorState.doc).content, threads: NO_THREADS })).toBe('unchanged');
 
     expect(json(editor)).toEqual(before);
     expect(undo.undoStack.length).toBe(0);
@@ -142,7 +173,7 @@ describe('restoreSnapshot', () => {
       ['added-later', {}],
     ]);
 
-    restoreSnapshot({ editor, undoManager: undo, content, threads });
+    restoreSnapshot({ editor, undoManager: undo, space: null, content, threads });
 
     expect(marks(editor)).toEqual([
       { threadId: 'resolved-later', text: 'alpha', orphan: true },
@@ -159,7 +190,7 @@ describe('restoreSnapshot', () => {
     const orphaned = JSON.parse(JSON.stringify(content).replace('"threadId":"reopened","orphan":false', '"threadId":"reopened","orphan":true')) as Json;
     editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'x' }] as never);
 
-    restoreSnapshot({ editor, undoManager: undo, content: orphaned, threads: new Map([['reopened', {}]]) });
+    restoreSnapshot({ editor, undoManager: undo, space: null, content: orphaned, threads: new Map([['reopened', {}]]) });
 
     expect(marks(editor).map((m) => [m.threadId, m.orphan])).toEqual([['gone', true], ['reopened', false]]);
   });
@@ -169,8 +200,8 @@ describe('restoreSnapshot', () => {
     const before = json(editor);
     const foreign = { type: 'doc', content: [{ type: 'blockGroup', content: [{ type: 'notABlock' }] }] };
 
-    expect(() => restoreSnapshot({ editor, undoManager: undo, content: foreign, threads: NO_THREADS })).toThrow();
-    expect(() => restoreSnapshot({ editor, undoManager: undo, content: { type: 'doc', content: [] }, threads: NO_THREADS })).toThrow();
+    expect(() => restoreSnapshot({ editor, undoManager: undo, space: null, content: foreign, threads: NO_THREADS })).toThrow();
+    expect(() => restoreSnapshot({ editor, undoManager: undo, space: null, content: { type: 'doc', content: [] }, threads: NO_THREADS })).toThrow();
 
     expect(json(editor)).toEqual(before);
     expect(undo.undoStack.length).toBe(0);
@@ -193,7 +224,7 @@ describe('restoreSnapshot', () => {
       const { editor, undo } = open(from);
       const before = json(editor);
 
-      const result = restoreSnapshot({ editor, undoManager: undo, content, threads: new Map([['t', {}]]) });
+      const result = restoreSnapshot({ editor, undoManager: undo, space: null, content, threads: new Map([['t', {}]]) });
 
       expect(json(editor)).toEqual(json(saved));
       if (result === 'restored') {

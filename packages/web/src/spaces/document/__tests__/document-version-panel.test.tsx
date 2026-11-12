@@ -17,6 +17,10 @@ import { deriveId, getLocale, type DocumentVersion } from '@breatic/shared';
 
 import { documentsApi } from '@web/data/api/documents';
 import { ApiException } from '@web/data/api/types';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName } from '@web/data/yjs/manager';
+import { spaceRefusalMessage } from '@web/data/yjs/space-write';
+import { enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { selectThreads } from '@web/spaces/document/document-comment-selection';
@@ -174,6 +178,28 @@ describe('the snapshot panel', () => {
     expect(toast.success).toHaveBeenCalledTimes(1);
     act(() => handle.editor.undo());
     expect(text()).toBe('live words');
+  });
+
+  it('refuses a restore while the Space is full, says why, and leaves the body and the panel as they were', async () => {
+    const user = userEvent.setup();
+    show();
+    await openPanel(user);
+    await user.click(await screen.findByTestId('doc-version-row-v1'));
+    await waitFor(() => expect(screen.getByTestId('doc-version-preview-body')).toHaveTextContent('snapshot words'));
+    const name = docName.documentSpace(SCOPE.projectId, SCOPE.spaceId);
+    enterSize(name, 'F');
+    try {
+      await user.click(screen.getByTestId('doc-version-restore'));
+      await user.click(await screen.findByTestId('doc-version-restore-confirm'));
+
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(spaceRefusalMessage('add', 'full')));
+      expect(screen.queryByTestId('doc-version-restore-confirm')).toBeNull();
+      expect(screen.getByTestId('doc-version-panel')).toBeInTheDocument();
+      expect(text()).toBe('live words');
+      expect(toast.success).not.toHaveBeenCalled();
+    } finally {
+      clearAllDocSizes();
+    }
   });
 
   it('says who saved a snapshot and when, in its row and its banner, without repeating an unnamed one’s time', async () => {
