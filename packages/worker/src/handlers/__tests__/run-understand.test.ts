@@ -241,6 +241,14 @@ describe("running one understand task", () => {
     expect(understandMediaAt).not.toHaveBeenCalled();
   });
 
+  it("names the upstream that billed the reading, which the charge names", async () => {
+    billedThen(0.001, () => ({ text: "A cat.", finishReason: "stop", kind: "image", kinds: ["image"] }));
+
+    const [, , servedBy] = await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
+
+    expect(servedBy).toBe("openrouter");
+  });
+
   it("carries the text back as the content one node gets", async () => {
     const [result] = await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
 

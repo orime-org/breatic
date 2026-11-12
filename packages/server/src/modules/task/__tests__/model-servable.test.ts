@@ -64,6 +64,14 @@ describe("assertLlmServable", () => {
     expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call");
   });
 
+  it("asks on the route a resumed turn stays on", () => {
+    llmServability.mockReturnValue({ servable: false, reason: "unconfigured", envVars: ["DEEPSEEK_API_KEY"] });
+    expect(() => assertLlmServable("deepseek/deepseek-v4.1-flash-1017", "call", { mode: "upstream", upstream: "deepseek" })).toThrow(
+      expect.objectContaining({ statusCode: 503, message: expect.stringContaining("DEEPSEEK_API_KEY") }),
+    );
+    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", { mode: "upstream", upstream: "deepseek" });
+  });
+
   it("lets a servable call through", () => {
     llmServability.mockReturnValue({ servable: true });
     expect(() => assertLlmServable("google/gemini-3.8-flash", "understand")).not.toThrow();

@@ -607,10 +607,10 @@ async function runTaskBody(
       }
       const feature = isTranscription(params) ? "canvas_transcribe" : "canvas_understand";
       const recorder = recorderFor(feature);
-      const [result, credits] = await runUnderstand(params, recorder, deadlineAt, { taskId, projectId: projectId ?? undefined, actorUserId: userId });
+      const [result, credits, servedBy] = await runUnderstand(params, recorder, deadlineAt, { taskId, projectId: projectId ?? undefined, actorUserId: userId });
       // A call whose cost is pending wrote no usage row; the task waits on it and records it once looked up.
       const pending = recorder.awaitingLookup().map((lookup) => ({ state: "pending" as const, lookup }));
-      run = { result, credits, pending, recordAs: { feature, model: UNDERSTAND_PINS.model } };
+      run = { result, credits, pending, recordAs: { feature, model: UNDERSTAND_PINS.model }, ...(servedBy !== undefined && { servedBy }) };
     } else if (MODEL_TASK_TYPES.has(taskType)) {
       if (!model) throw new Error(`a ${taskType} task names no model`);
       run = produced(taskId, model, await runModelTask({
@@ -2016,7 +2016,8 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
  * @param execution.taskId - The durable task identifier.
  * @param execution.projectId - The owning project, when the task has one.
  * @param execution.actorUserId - The user who initiated the task.
- * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
+ * @returns A `[result, credits, servedBy]` tuple: one output holding the text, the credits to charge, and the
+ *   upstream that billed the reading (none when nothing was billed).
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
  * @throws {StillRunning} when the Container is still producing registered segments or every reading place is taken.
@@ -2031,7 +2032,7 @@ export async function runUnderstand(
   usage: UsageRecorder,
   deadlineAt: number,
   execution?: { taskId: string; projectId?: string; actorUserId: string },
-): Promise<[Record<string, unknown>, number]> {
+): Promise<[Record<string, unknown>, number, string | undefined]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
   // A transcription is the same reading with its own question and allowance
@@ -2046,12 +2047,14 @@ export async function runUnderstand(
     ? transcribeQuestion(sourceType, params.keep_fillers !== false, userLocale)
     : understandQuestion(params.prompt, sourceType, userLocale);
 
+  let servedBy: string | undefined;
   /**
    * Record one billed answer of this run.
    * @param cost - What it cost.
    * @param upstream - The upstream that billed it.
    */
   const record = (cost: Cost, upstream: string): void => {
+    servedBy = upstream;
     usage.recordModelCall({ source: "model", model: UNDERSTAND_PINS.model, upstream, cost, requests: 1 });
   };
 
@@ -2152,7 +2155,7 @@ export async function runUnderstand(
     throw err;
   }
   const credits = await usage.settle();
-  if (transcribing) return [transcriptOf(answer), credits];
+  if (transcribing) return [transcriptOf(answer), credits, servedBy];
 
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the user had with an empty node while
@@ -2164,6 +2167,7 @@ export async function runUnderstand(
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
     credits,
+    servedBy,
   ];
 }
 

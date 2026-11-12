@@ -328,8 +328,9 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     resumed === undefined
       ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
-  // A deployment with no upstream for the model refuses before the card's answer is taken, saying what it is missing.
-  assertLlmServable(modelId, "call");
+  // A deployment with no upstream for the model, or none for the upstream a resumed turn stays on, refuses before
+  // the card's answer is taken, saying what it is missing.
+  assertLlmServable(modelId, "call", upstream === undefined ? undefined : { mode: "upstream", upstream });
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }

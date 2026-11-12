@@ -404,24 +404,32 @@ export type Servability =
  * @returns Servable, or why not.
  */
 export function servability(model: string, route: Route = { mode: "default" }): Servability {
-  const { upstreams } = provider().availability(model);
+  return servabilityOn(provider().availability(model).upstreams, route);
+}
+
+/**
+ * Whether a language model's calls of one use can be served here on a route: one upstream of the routes that use
+ * takes, and the route may use, has its key.
+ * @param model - Our model id.
+ * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
+ * @param route - How the call chooses its upstream; the weights when left out.
+ * @returns Servable, or why not.
+ */
+export function llmServability(model: string, use: "call" | "understand", route: Route = { mode: "default" }): Servability {
+  return servabilityOn(provider().llm.availability(model, use).upstreams, route);
+}
+
+/**
+ * Whether a route can be served by the upstreams a model is offered on.
+ * @param upstreams - Each upstream, and whether its key is set.
+ * @param route - How the run chooses its upstream.
+ * @returns Servable, or why not.
+ */
+function servabilityOn(upstreams: readonly { upstream: string; configured: boolean; envVar: string }[], route: Route): Servability {
   const pool = route.mode === "upstream" ? upstreams.filter((u) => u.upstream === route.upstream) : upstreams;
   if (route.mode === "upstream" && pool.length === 0) return { servable: false, reason: "unbound", upstream: route.upstream };
   if (pool.some((u) => u.configured)) return { servable: true };
   return { servable: false, reason: "unconfigured", envVars: pool.map((u) => u.envVar) };
-}
-
-/**
- * Whether a language model's calls of one use can be served here: one upstream of the routes that use takes has its
- * key.
- * @param model - Our model id.
- * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
- * @returns Servable, or the environment variables none of those upstreams has.
- */
-export function llmServability(model: string, use: "call" | "understand"): Servability {
-  const { upstreams } = provider().llm.availability(model, use);
-  if (upstreams.some((u) => u.configured)) return { servable: true };
-  return { servable: false, reason: "unconfigured", envVars: upstreams.map((u) => u.envVar) };
 }
 
 /**

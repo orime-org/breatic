@@ -215,7 +215,7 @@ export function ticketedPredict(runner: MediaRunner, waiting: PredictionWaiting)
     runner,
     tickets,
     clones: NO_CLONES,
-    sourceKeyOf: async () => null,
+    sourceOf: async () => null,
     legacy: async () => ({}),
     readingPlace: (work) => work(),
     pollIntervalMs: waiting.pollIntervalMs,
@@ -228,6 +228,7 @@ export function ticketedPredict(runner: MediaRunner, waiting: PredictionWaiting)
           taskId: job.key,
           studioId: null,
           model: job.model,
+          displayName: job.model,
           input: async () => job.input,
           route: { mode: "default" },
           // A maintainer's run: each sample gets its own two hours.

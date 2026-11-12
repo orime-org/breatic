@@ -12,8 +12,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@breatic/core", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 
-import { DeadlinePassed } from "@breatic/shared";
-import { DeadlinePassed as ProviderDeadlinePassed, SendNotAccepted, UpstreamTaskFailed, type Cost } from "@breatic/provider";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { DeadlinePassed, setLocale, setLocaleMessages } from "@breatic/shared";
+import { BilledAnswerLost, costsOf, DeadlinePassed as ProviderDeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamTaskFailed, type Cost } from "@breatic/provider";
 import type { MediaAnswer, MediaRunner, MediaTicket } from "@breatic/provider/media";
 import { logger } from "@breatic/core";
 
@@ -112,7 +115,7 @@ function setup(held: Partial<Held> = {}, runner: Partial<MediaRunner> = {}, lega
         retired.push(args);
       },
     },
-    sourceKeyOf: async (url) => (url === "https://cdn/a.mp3" ? "sha-a" : null),
+    sourceOf: async (url) => (url === "https://cdn/a.mp3" ? { sha256: "sha-a", durationSeconds: 12.5 } : null),
     legacy: async () => legacy,
     readingPlace: slot as MediaRunDeps["readingPlace"],
     pollIntervalMs: 1_000,
@@ -121,6 +124,7 @@ function setup(held: Partial<Held> = {}, runner: Partial<MediaRunner> = {}, lega
     taskId: "task-1",
     studioId: "studio-1",
     model: "voice-model",
+    displayName: "Voice Model",
     input: vi.fn(async () => INPUT),
     route: { mode: "default" },
     deadlineAt: LATER,
@@ -150,10 +154,31 @@ describe("a new task", () => {
       idempotencyKey: "task-1",
       sourceKeys: { "https://cdn/a.mp3": "sha-a" },
       clones: [{ upstream: "wavespeed", kind: "voice", sourceKey: "sha-a", upstreamId: "v-1" }],
-      durations: {},
+      durations: { audio: [12.5] },
     });
     expect(store.log).toEqual(["store 1", "mark", "store 2", "clear"]);
     expect(store.ticket).toEqual(sent);
+  });
+
+  it("plans with each source's length, a list's only when every entry's is known", async () => {
+    const lengths: Record<string, number | null> = { "https://cdn/a.mp4": 4, "https://cdn/b.mp4": 6, "https://cdn/c.mp4": null };
+    const { run, deps } = setup({}, { plan: vi.fn(async () => send(ticket(1, "send"))), send: vi.fn(async () => running(ticket(2, "running"))) });
+    deps.sourceOf = async (url) => (url in lengths ? { sha256: `sha-${url.slice(-5, -4)}`, durationSeconds: lengths[url]! } : null);
+    const input = {
+      prompt: "",
+      params: {
+        video: "https://cdn/a.mp4",
+        clips: ["https://cdn/a.mp4", "https://cdn/b.mp4"],
+        mixed: ["https://cdn/a.mp4", "https://cdn/c.mp4"],
+        unknown: "https://cdn/c.mp4",
+        theirs: "https://elsewhere/x.mp4",
+        speed: 1,
+      },
+    };
+
+    await expect(runMedia({ ...run, input: vi.fn(async () => input) }, deps)).rejects.toBeInstanceOf(StillRunning);
+
+    expect(vi.mocked(deps.runner.plan).mock.calls[0]![3].durations).toEqual({ video: [4], clips: [4, 6] });
   });
 
   it("goes back to the queue until the time the running answer names", async () => {
@@ -314,6 +339,16 @@ describe("how a run ends", () => {
     await expect(runMedia(run, deps)).rejects.toBeInstanceOf(DeadlinePassed);
   });
 
+  it("keeps what the deadline cut, so a billed answer it lost still reaches the failed run's costs", async () => {
+    const cut = new ProviderDeadlinePassed(LATER, new BilledAnswerLost("read timed out"));
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async () => Promise.reject(cut)) });
+
+    const ended = await runMedia(run, deps).catch((e: unknown) => e);
+
+    expect(ended).toBeInstanceOf(DeadlinePassed);
+    expect(costsOf(ended)).toEqual([{ state: "missing", reason: "read timed out" }]);
+  });
+
   it("keeps the mark when the send got no answer, so the next pickup recovers", async () => {
     const lost = new Error("socket hang up");
     const { run, deps, store } = setup({ ticket: ticket(3, "send") }, { send: vi.fn(async () => Promise.reject(lost)) });
@@ -341,6 +376,31 @@ describe("how a run ends", () => {
     const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
 
     await expect(runMedia(run, deps)).rejects.toMatchObject({ message: reason.message });
+  });
+
+  it("says which variables the deployment is missing when no upstream has its key, in the server's words", async () => {
+    setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+    setLocale("en");
+    const reason = new NoUpstreamAvailable("voice-model", [
+      { upstream: "wavespeed", kind: "missing_key", envVar: "WAVESPEED_API_KEY" },
+      { upstream: "fal", kind: "missing_key", envVar: "FAL_KEY" },
+    ]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({
+      reason,
+      message: "Voice Model is not set up on this deployment: it needs WAVESPEED_API_KEY, FAL_KEY.",
+    });
+  });
+
+  it("keeps provider's words when an upstream that had its key failed too", async () => {
+    const reason = new NoUpstreamAvailable("voice-model", [
+      { upstream: "wavespeed", kind: "missing_key", envVar: "WAVESPEED_API_KEY" },
+      { upstream: "fal", kind: "failed", failure: "http_status", status: 503 },
+    ]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({ message: "No upstream can serve voice-model" });
   });
 
   it("writes back every clone an answer made or retired, and logs its warnings", async () => {

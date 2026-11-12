@@ -163,8 +163,8 @@ describe("the cache key of a clone source", () => {
       VALUES (${a.studioId}, ${a.userId}, 'sha-vocal', ${key}, ${`https://example.test/${key}`}, 'audio/mpeg', 'audio', 'upload', 10)
     `;
 
-    expect(await assetRepo.findHashByStorageKey(key)).toBe("sha-vocal");
-    expect(await assetRepo.findHashByStorageKey(`audio/2026-09-28/${crypto.randomUUID()}.mp3`)).toBeNull();
+    expect((await assetRepo.findLiveByStorageKey(key))?.contentHash).toBe("sha-vocal");
+    expect(await assetRepo.findLiveByStorageKey(`audio/2026-09-28/${crypto.randomUUID()}.mp3`)).toBeNull();
   });
 });
 

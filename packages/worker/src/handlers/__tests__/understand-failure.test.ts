@@ -202,7 +202,7 @@ describe("which refusals a second attempt would only repeat", () => {
 
   // provider answered the run failed; asking again reads the same answer.
   it("stands by a run provider answered failed", () => {
-    expect(verdictStands(new MediaRunFailed(new UpstreamTaskFailed("wavespeed", "prompt refused"), []))).toBe(true);
+    expect(verdictStands(new MediaRunFailed(new UpstreamTaskFailed("wavespeed", "prompt refused"), [], "Some Model"))).toBe(true);
   });
 
   // Whatever broke on our side is not a judgement about this media.

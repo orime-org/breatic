@@ -136,7 +136,7 @@ vi.mock("@breatic/domain", async () => ({
   readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
   MediaUnavailable: class extends Error {},
   UnderstandRefused: class extends Error {},
-  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), awaitingLookup: () => h.readingLookups.value, settle: async () => h.readingCredits.value }),
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), recordModelCall: vi.fn(), awaitingLookup: () => h.readingLookups.value, settle: async () => h.readingCredits.value }),
   UNDERSTAND_PINS: { model: "google/gemini-3.8-flash" },
   extractPromptText: vi.fn(),
 }));
@@ -317,10 +317,14 @@ describe("who a charge names", () => {
     expect(h.warn).toHaveBeenCalledWith({ taskId: "task-1", reason: "no billing" }, "cost_unavailable");
   });
 
-  it("names no upstream for a reading, which records each call's upstream itself", async () => {
+  it("names the upstream that billed a reading", async () => {
     LANES[1]!.costs(2);
+    h.understandMediaAt.mockImplementation(async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+      request.onBilled({ state: "known", usd: 2, source: "reported" }, "openrouter");
+      return { text: "a cat", finishReason: "stop" };
+    });
     await runTask(LANES[1]!.job(), "lock-token");
-    expect(chargeArg()).toEqual(expect.objectContaining({ provider: "unknown" }));
+    expect(chargeArg()).toEqual(expect.objectContaining({ provider: "openrouter" }));
   });
 });
 

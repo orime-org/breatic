@@ -27,10 +27,12 @@ export function assertServable(model: string, displayName: string, route?: Route
  * Refuse a language model call this deployment cannot serve.
  * @param model - Our model id, which is also what the user knows it as.
  * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
- * @throws {AppError} 503 when no upstream of that use has its key, naming the variables they read.
+ * @param route - How the call chooses its upstream; the weights when left out.
+ * @throws {AppError} 503 when no upstream of that use the route may use has its key, naming the variables they read.
+ * @throws {ValidationError} When the route names an upstream the model has no route on.
  */
-export function assertLlmServable(model: string, use: "call" | "understand"): void {
-  refuseUnservable(llmServability(model, use), model);
+export function assertLlmServable(model: string, use: "call" | "understand", route?: Route): void {
+  refuseUnservable(route === undefined ? llmServability(model, use) : llmServability(model, use, route), model);
 }
 
 /**

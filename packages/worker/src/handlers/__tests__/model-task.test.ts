@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
   getByIdInternal: vi.fn(),
   listSteps: vi.fn(),
   resolveOwnerStudioId: vi.fn(),
-  findHashByStorageKey: vi.fn(),
+  findLiveByStorageKey: vi.fn(),
   getProviderTicket: vi.fn(),
   withUnderstandSlot: vi.fn((read: () => Promise<unknown>) => read()),
 }));
@@ -36,7 +36,7 @@ vi.mock("@breatic/domain", () => ({
   upstreamStepRepo: { listSteps: h.listSteps },
   upstreamCloneRepo: { name: "upstreamCloneRepo" },
   assetService: { resolveOwnerStudioId: h.resolveOwnerStudioId },
-  assetRepo: { findHashByStorageKey: h.findHashByStorageKey },
+  assetRepo: { findLiveByStorageKey: h.findLiveByStorageKey },
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({ ...(await importOriginal<typeof sharedModule>()) }));
 vi.mock("@breatic/provider/media", () => ({ createMediaRunner: h.createMediaRunner }));
@@ -62,6 +62,7 @@ const MODELS: Record<string, { name: string; takes_prompt: boolean; params: Reco
   },
 };
 
+import type { MediaRunDeps } from "@worker/handlers/media-run.js";
 import { runModelTask, type ModelTask } from "@worker/handlers/model-task.js";
 
 const TASK: ModelTask = {
@@ -100,6 +101,8 @@ describe("runModelTask", () => {
 
     expect(input).toEqual({ prompt: "a drone shot", params: { image: "https://cdn/x.png", duration: 5 } });
     expect(run).toMatchObject({ taskId: "task-1", studioId: "studio-1", model: "kling-o3-pro", outputCount: 1, deadlineAt: TASK.deadlineAt, lastAttempt: true });
+    // An entry that declares no display name is known by its name.
+    expect(run).toMatchObject({ displayName: "kling-o3-pro" });
   });
 
   it("runs on the route the estimate used, and on the default one when the task names none", async () => {
@@ -116,14 +119,15 @@ describe("runModelTask", () => {
     expect(h.resolveOwnerStudioId).not.toHaveBeenCalled();
   });
 
-  it("keys a source by its asset's hash, and a url that is not ours by nothing", async () => {
-    h.findHashByStorageKey.mockResolvedValue("sha-1");
+  it("reads a source's hash and length off its asset, and nothing for a url that is not ours", async () => {
+    h.findLiveByStorageKey.mockResolvedValueOnce({ contentHash: "sha-1", durationSeconds: 7.5 }).mockResolvedValueOnce(null);
     await runModelTask(TASK);
-    const deps = h.runMedia.mock.calls[0]![1] as { sourceKeyOf(url: string): Promise<string | null> };
+    const deps = h.runMedia.mock.calls[0]![1] as MediaRunDeps;
 
-    expect(await deps.sourceKeyOf("https://assets/k/a.png")).toBe("sha-1");
-    expect(h.findHashByStorageKey).toHaveBeenCalledWith("k/a.png");
-    expect(await deps.sourceKeyOf("https://elsewhere/a.png")).toBeNull();
+    expect(await deps.sourceOf("https://assets/k/a.mp3")).toEqual({ sha256: "sha-1", durationSeconds: 7.5 });
+    expect(h.findLiveByStorageKey).toHaveBeenCalledWith("k/a.mp3");
+    expect(await deps.sourceOf("https://assets/k/gone.mp3")).toBeNull();
+    expect(await deps.sourceOf("https://elsewhere/a.png")).toBeNull();
   });
 
   // The description a video element is created with is a reading of media like a canvas one (inner#1337 §3.3).

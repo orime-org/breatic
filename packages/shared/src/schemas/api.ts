@@ -511,6 +511,17 @@ export type SpaceRequestAnswer = z.infer<typeof spaceRequestAnswerSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
+/**
+ * Refuse a run's params that carry `route`: the worker reads the route the server wrote there from the request's
+ * own field, after checking, pricing and holding against it, so one a caller put there itself would skip all three.
+ * @param params - The run's params.
+ * @param ctx - The refinement context.
+ */
+function refuseRouteInParams(params: Readonly<Record<string, unknown>>, ctx: z.RefinementCtx): void {
+  if (!("route" in params)) return;
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a run's route is its own field, not a param", path: ["params", "route"], params: REQUEST_SHAPE_PARAMS });
+}
+
 export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
@@ -561,6 +572,7 @@ export const taskCreateSchema = z
     route: routeSchema.optional(),
   })
   .superRefine((val, ctx) => {
+    refuseRouteInParams(val.params, ctx);
     if (val.mode === "overwrite" && !val.target_node_id) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1016,7 +1028,7 @@ export const sceneGenerationBodySchema = z.object({
   // its rule, said with its name when broken; the cap here only bounds work.
   image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
   origin: z.enum(SCENE_GENERATION_ORIGINS),
-});
+}).superRefine((val, ctx) => refuseRouteInParams(val.params, ctx));
 
 /** A submission, as {@link sceneGenerationBodySchema} describes it. */
 export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;

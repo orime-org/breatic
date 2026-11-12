@@ -57,14 +57,15 @@ export function mediaRunner(): MediaRunner {
 }
 
 /**
- * The asset's sha256 behind one of our storage urls, whichever studio registered it: a node pasted from another
- * studio keeps the url.
+ * The asset behind one of our storage urls, whichever studio registered it (a node pasted from another studio keeps
+ * the url): its sha256 and its length.
  * @param url - A source url.
- * @returns The hash, or null for a url that is not one of our assets.
+ * @returns Its hash and length, or null for a url that is not ours or that no live asset is stored under.
  */
-async function sourceKeyOf(url: string): Promise<string | null> {
+async function sourceOf(url: string): Promise<{ sha256: string; durationSeconds: number | null } | null> {
   const key = (await getStorageAdapter()).keyFromUrl(url);
-  return key === null ? null : assetRepo.findHashByStorageKey(key);
+  const asset = key === null ? null : await assetRepo.findLiveByStorageKey(key);
+  return asset === null ? null : { sha256: asset.contentHash, durationSeconds: asset.durationSeconds };
 }
 
 /**
@@ -107,7 +108,8 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const own = { ...task.params };
   for (const field of TASK_FIELDS) delete own[field];
   const [prompt, , validated] = takePromptAndValidate(own, task.model, (model, params) => validateModelParams(task.modality, model, params));
-  const entry = entryOf(task.modality, task.model) as unknown as SendableModel;
+  const declared = entryOf(task.modality, task.model);
+  const entry = declared as unknown as SendableModel;
   const route: Route = task.params.route === undefined ? { mode: "default" } : routeSchema.parse(task.params.route);
   const studioId = task.projectId === undefined ? null : await assetService.resolveOwnerStudioId(task.projectId);
 
@@ -126,7 +128,7 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
     runner: mediaRunner(),
     tickets: taskRepo,
     clones: upstreamCloneRepo,
-    sourceKeyOf,
+    sourceOf,
     legacy: legacyRows,
     readingPlace: withUnderstandSlot,
     pollIntervalMs: getWorkerConfig().poll_interval,
@@ -135,6 +137,7 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
     taskId: task.taskId,
     studioId,
     model: entry.name,
+    displayName: declared.display_name ?? declared.name,
     input,
     route,
     deadlineAt: task.deadlineAt,

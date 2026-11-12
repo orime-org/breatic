@@ -13,8 +13,15 @@
  */
 
 import { logger } from "@breatic/core";
-import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
-import { DeadlinePassed as ProviderDeadlinePassed, SendNotAccepted, UpstreamTaskFailed, type Cost, type Route } from "@breatic/provider";
+import { assertBeforeDeadline, DeadlinePassed, t } from "@breatic/shared";
+import {
+  DeadlinePassed as ProviderDeadlinePassed,
+  NoUpstreamAvailable,
+  SendNotAccepted,
+  UpstreamTaskFailed,
+  type Cost,
+  type Route,
+} from "@breatic/provider";
 import { ticketState, type LegacyRows, type MediaAnswer, type MediaInput, type MediaOutput, type MediaRunner, type MediaTicket } from "@breatic/provider/media";
 import type { taskRepo, upstreamCloneRepo } from "@breatic/domain";
 
@@ -33,6 +40,8 @@ export interface MediaRun {
    */
   input(legacy: LegacyRows): Promise<MediaInput>;
   route: Route;
+  /** What the user knows the model as, for a failure that names it. */
+  displayName: string;
   /** The task's deadline, in epoch milliseconds. */
   deadlineAt: number;
   /** How many outputs the task writes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
@@ -47,10 +56,11 @@ export interface MediaRunDeps {
   tickets: Pick<typeof taskRepo, "getProviderTicket" | "storeTicket" | "markSending" | "clearSending">;
   clones: Pick<typeof upstreamCloneRepo, "liveClonesFor" | "recordClone" | "retireClone">;
   /**
-   * The sha256 of the asset behind one of our storage urls, or null for a url that is not ours.
+   * The asset behind one of our storage urls: its sha256 and its length in seconds when it has one; null for a url
+   * that is not ours.
    * @param url - A source url.
    */
-  sourceKeyOf(url: string): Promise<string | null>;
+  sourceOf(url: string): Promise<{ sha256: string; durationSeconds: number | null } | null>;
   /**
    * What a task from before the provider layer left behind.
    * @param taskId - The task.
@@ -80,21 +90,36 @@ export interface MediaRunDone {
 }
 
 /**
- * A run provider answered failed: an upstream refused or failed it, or no upstream can take it. Its message is what
- * the task row and the node show: an upstream's failure reads as it did before provider, its own words after the
- * upstream's name.
+ * What the task row and the node say about a failed run: an upstream's failure as it read before provider, its own
+ * words after the upstream's name; a model none of whose upstreams has its key in the sentence the server refuses
+ * such a run with, naming the variables; anything else in provider's words.
+ * @param reason - provider's reason.
+ * @param displayName - What the user knows the model as.
+ * @returns The sentence.
  */
+function failureMessage(reason: Error, displayName: string): string {
+  if (reason instanceof UpstreamTaskFailed) return `${reason.upstream} task failed: ${reason.upstreamError}`;
+  if (reason instanceof NoUpstreamAvailable && reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "missing_key")) {
+    const envVars = reason.reasons.map((r) => (r.kind === "missing_key" ? r.envVar : ""));
+    return t("server.model.not_configured", { model: displayName, envVars: envVars.join(", ") });
+  }
+  return reason.message;
+}
+
+/** A run provider answered failed: an upstream refused or failed it, or no upstream can take it. */
 export class MediaRunFailed extends Error {
   /**
    * Record why, and what the run cost before it failed.
    * @param reason - provider's reason.
    * @param costs - What the billed answers cost.
+   * @param displayName - What the user knows the model as.
    */
   constructor(
     readonly reason: Error,
     readonly costs: Cost[],
+    displayName: string,
   ) {
-    super(reason instanceof UpstreamTaskFailed ? `${reason.upstream} task failed: ${reason.upstreamError}` : reason.message, { cause: reason });
+    super(failureMessage(reason, displayName), { cause: reason });
     this.name = "MediaRunFailed";
   }
 }
@@ -115,6 +140,23 @@ function sourceUrls(params: Readonly<Record<string, unknown>>): string[] {
 }
 
 /**
+ * Each source param's lengths, as the panel's estimate passes them: a list's only when every entry's length is known,
+ * so a param left out is priced and checked as one of unknown length.
+ * @param params - The run's params.
+ * @param lengths - The length in seconds of each source url that has one.
+ * @returns The lengths by param.
+ */
+function durationsOf(params: Readonly<Record<string, unknown>>, lengths: ReadonlyMap<string, number>): Record<string, number[]> {
+  const durations: Record<string, number[]> = {};
+  for (const [param, value] of Object.entries(params)) {
+    const urls = Array.isArray(value) ? value : [value];
+    const known = urls.map((url) => (typeof url === "string" ? lengths.get(url) : undefined));
+    if (known.length > 0 && known.every((seconds) => seconds !== undefined)) durations[param] = known;
+  }
+  return durations;
+}
+
+/**
  * The first answer of a task with no ticket: a ticket from what an older task left, or a fresh plan.
  * @param run - The run.
  * @param deps - Its dependencies.
@@ -124,13 +166,16 @@ async function open(run: MediaRun, deps: MediaRunDeps): Promise<MediaAnswer> {
   const legacy = await deps.legacy(run.taskId);
   const input = await run.input(legacy);
   const sourceKeys: Record<string, string> = {};
+  const lengths = new Map<string, number>();
   for (const url of sourceUrls(input.params)) {
-    const sha = await deps.sourceKeyOf(url);
-    if (sha !== null) sourceKeys[url] = sha;
+    const source = await deps.sourceOf(url);
+    if (source === null) continue;
+    sourceKeys[url] = source.sha256;
+    if (source.durationSeconds !== null) lengths.set(url, source.durationSeconds);
   }
   const shas = [...new Set(Object.values(sourceKeys))];
   const clones = run.studioId === null ? [] : await deps.clones.liveClonesFor(run.studioId, shas);
-  const options = { idempotencyKey: run.taskId, sourceKeys, clones, durations: {} };
+  const options = { idempotencyKey: run.taskId, sourceKeys, clones, durations: durationsOf(input.params, lengths) };
   const left = (legacy.providerTaskId ?? null) !== null || (legacy.steps ?? []).length > 0;
   return left
     ? deps.runner.ticketFromLegacy(run.model, input, run.route, options, legacy)
@@ -233,7 +278,7 @@ export async function runMedia(run: MediaRun, deps: MediaRunDeps): Promise<Media
           };
         case "failed":
           await unmark();
-          throw new MediaRunFailed(answer.reason, answer.costs);
+          throw new MediaRunFailed(answer.reason, answer.costs, run.displayName);
         case "running":
           await store(run, deps, answer.ticket, storedVersion);
           await unmark();
@@ -263,7 +308,8 @@ export async function runMedia(run: MediaRun, deps: MediaRunDeps): Promise<Media
     // unanswered keeps its mark, so the next pickup recovers it.
     if (error instanceof SendNotAccepted) await deps.tickets.clearSending(run.taskId);
     // provider's deadline is the task's: the run ends the way every call on the task's chain ends there.
-    if (error instanceof ProviderDeadlinePassed) throw new DeadlinePassed();
+    // Its cause is kept: a billed answer the deadline cut still reaches the failed run's costs.
+    if (error instanceof ProviderDeadlinePassed) throw new DeadlinePassed(error);
     throw error;
   }
 }
