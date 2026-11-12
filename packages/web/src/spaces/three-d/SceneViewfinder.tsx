@@ -307,7 +307,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
       </div>
     </div>
     <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
-      style={{ left: menuCentre(frame, menuWidth, stage.width, INSETS.side), top: menuTop }}>
+      style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
       {framing ? <React.Fragment key='framing'>
         <Select value={ratio} onValueChange={changeRatio}>
           <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-8 w-24 text-xs'><SelectValue /></SelectTrigger>

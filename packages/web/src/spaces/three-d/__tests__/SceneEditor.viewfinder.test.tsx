@@ -202,6 +202,21 @@ describe('framing (acceptance 2)', () => {
     expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument();
   });
 
+  it('keeps the menu clear of an open right panel', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
+    HTMLElement.prototype.setPointerCapture = vi.fn();
+    await setup();
+    fireEvent.click(screen.getByTestId('scene-objects-trigger'));
+    await screen.findByTestId('scene-right-panel');
+    fireEvent.click(trigger());
+    const corner = screen.getByTestId('scene-viewfinder-corner-sw');
+    fireEvent.pointerDown(corner, { pointerId: 1, buttons: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(corner, { pointerId: 1, buttons: 1, clientX: 5000, clientY: -5000 });
+    fireEvent.pointerUp(corner, { pointerId: 1 });
+    // Stage 1200 wide; the open panel ends the safe area at 1200 - 340 = 860; a 400-wide menu centres at most at 660.
+    expect(parseFloat(menu().style.left)).toBeLessThanOrEqual(660);
+  });
+
   it('forgets a corner drag the viewfinder was closed during', async () => {
     await setup();
     HTMLElement.prototype.setPointerCapture = vi.fn();
