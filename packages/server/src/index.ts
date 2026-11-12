@@ -90,24 +90,11 @@ try {
   await exitProcess(1);
 }
 
-// Same preflight for config/models/*.yaml (#1966). Every model must declare
-// `takes_prompt`, and the catalog is as lazy as the configs above — lazy here
-// means a missing declaration surfaces on the first `GET /api/v1/models`,
-// which under the readiness gate is every user's Generate panel refusing to
-// open while the process stays up and healthz stays green. Loading it here
-// puts that in front of whoever edited the file.
-try {
-  modelCatalog.getModelCatalog();
-} catch (err) {
-  logger.error({ err }, "model_catalog_invalid");
-  await exitProcess(1);
-}
-
-// And config/agent.yaml, which rejects a memory reserve at or above
-// memory_keep_tokens — a fold would have no line to run down to. Lazy like
-// the rest, so without this the first person to say something is the one
-// who finds out, mid-request, with a 500 and a healthy-looking process
-// behind it.
+// And config/agent.yaml, which provider reads its retry count from, and
+// which rejects a memory reserve at or above memory_keep_tokens — a fold
+// would have no line to run down to. Lazy like the rest, so without this the
+// first person to say something is the one who finds out, mid-request, with
+// a 500 and a healthy-looking process behind it.
 try {
   getAgentConfig();
 } catch (err) {
@@ -118,10 +105,25 @@ try {
 // Every model call goes through provider (inner#1743); its configuration is
 // checked whole when it is built, so a bad upstream, route or binding fails
 // here, naming every problem, instead of inside the first call that needs it.
+// Built before the catalog below, whose entries carry provider's availability
+// and pricing rules.
 try {
   initProvider();
 } catch (err) {
   logger.error({ err }, "provider_config_invalid");
+  await exitProcess(1);
+}
+
+// Same preflight for config/models/*.yaml (#1966). Every model must declare
+// `takes_prompt`, and the catalog is as lazy as the configs above — lazy here
+// means a missing declaration surfaces on the first `GET /api/v1/models`,
+// which under the readiness gate is every user's Generate panel refusing to
+// open while the process stays up and healthz stays green. Loading it here
+// puts that in front of whoever edited the file.
+try {
+  modelCatalog.getModelCatalog();
+} catch (err) {
+  logger.error({ err }, "model_catalog_invalid");
   await exitProcess(1);
 }
 
