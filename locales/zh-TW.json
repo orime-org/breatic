@@ -337,6 +337,9 @@
       "view_not_image": "第 {index} 個視圖槽（{slot, select, front {正面} left {左側} back {背面} right {右側} other {多餘}}）：這個檔案是{kind, select, video {影片} audio {音訊} other {模型或其他檔案}}，不是圖片。",
       "still_running": "這次生成還在收尾，可能還會出結果，請稍後再試。",
       "has_result": "這次生成已經出了結果，結果已回到任務列表。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
     }
   },
   "chat": {
@@ -2322,7 +2325,6 @@
         "label": "整個 Document 的命令",
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
-        "notOpenYet": "未開放",
         "comments": "批註",
         "commentsUnresolved": "{count} 條未解決",
         "commentsNone": "無"
@@ -2408,6 +2410,49 @@
         "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。",
         "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
+      },
+      "versions": {
+        "title": "快照",
+        "close": "關閉快照",
+        "current": "目前內容",
+        "empty": "還沒有快照",
+        "loadMore": "載入更多",
+        "loadFailed": "快照列表沒有載入。",
+        "retry": "重試",
+        "more": "更多",
+        "compareWithShown": "與正在查看的對比",
+        "rename": "重新命名",
+        "delete": "刪除",
+        "viewing": "正在查看快照：{name}",
+        "comparing": "對比：{from} → {to}",
+        "legendInsert": "新增",
+        "legendDelete": "刪除",
+        "legendFormat": "格式變化",
+        "compareWithCurrent": "和目前內容對比",
+        "restore": "找回",
+        "exitPreview": "退出預覽",
+        "exitCompare": "退出對比",
+        "renameTitle": "快照重新命名",
+        "namePlaceholder": "名稱（可不填）",
+        "save": "儲存",
+        "restoreTitle": "找回這張快照？",
+        "restoreBody": "目前正文會變成這張快照的內容，所有協作者會立即看到。可以按 Cmd/Ctrl+Z 復原。",
+        "deleteTitle": "刪除這張快照？",
+        "deleteBody": "「{name}」刪除後找不回來。",
+        "saved": "快照已儲存",
+        "renamed": "已重新命名",
+        "restored": "已找回快照。按 Cmd/Ctrl+Z 可以復原。",
+        "unchanged": "正文已經和這張快照相同。",
+        "restoreFailed": "沒能找回快照。",
+        "deleted": "快照已刪除",
+        "leftOut": "{count, plural, other {# 個圖片、影片或音訊還沒上傳完成，沒有存進這張快照。}}",
+        "contentFailed": "快照內容沒有載入。",
+        "gone": "這張快照已經不在了。",
+        "saveFailed": "快照沒有儲存。",
+        "renameFailed": "沒能重新命名。",
+        "deleteFailed": "沒能刪除快照。",
+        "folded": "{count, plural, other {# 個區塊未變動 · 展開}}",
+        "unavailable": "快照載入失敗，重新整理頁面後可用"
       }
     },
     "readOnlyReconnect": "重新連線",

@@ -390,7 +390,7 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
     // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
     expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
-    expect(doc).toMatch(/The three dots are hidden while the comments panel is open/);
+    expect(doc).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {

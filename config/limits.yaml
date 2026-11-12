@@ -12,6 +12,13 @@ canvas_reference_pool_cap: 50
 #   frontend via GET /canvas/limits alongside canvas_reference_pool_cap.
 node_history_page_size: 20
 
+# ── Document snapshots ─────────────────────────────────
+# document_versions_max_per_space: how many live snapshots one document may
+#   hold (inner#1129). A save past it is refused; nothing is deleted for room.
+# document_versions_page_size: snapshots per page of GET /documents/versions.
+document_versions_max_per_space: 100
+document_versions_page_size: 30
+
 # ── Activity feed paging ───────────────────────────────
 # Keyset page size for GET /projects/:id/activities.
 #   activity_feed_page_default: page size when the client omits ?limit
@@ -71,7 +78,7 @@ storage_notice_window_seconds: 86400
 # ── Request body ───────────────────────────────────
 # request_body_max_bytes: the largest request body any public API route
 #   reads (inner#1006). Larger bodies are refused with 413 before a route
-#   runs. The three routes that can legitimately carry more move the body
+#   runs. The four routes that can legitimately carry more move the body
 #   through a transfer upload instead (config/storage.yaml `transfer:`).
 #   docker/breatic-locations.conf `client_max_body_size` must equal it.
 request_body_max_bytes: 1048576

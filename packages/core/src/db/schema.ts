@@ -2359,6 +2359,39 @@ export const timelineWebAnimationSources = pgTable(
 );
 
 /**
+ * A snapshot a user keeps of a document Space's body (0124, inner#1129).
+ *
+ * `content` is the editor's ProseMirror JSON with comment marks, so a restore
+ * puts comments back where they stood. `space_id` has no foreign key: Spaces
+ * live in Yjs. The list index is declared in 0124, which is what runs.
+ */
+export const documentVersions = pgTable(
+  "document_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name"),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    contentBytes: integer("content_bytes").notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [
+    index("document_versions_space_list_idx")
+      .on(table.projectId, table.spaceId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+/**
  * Which Projects may resolve and preview an execution's result (0120, inner#1711).
  *
  * One live row per execution and Project; duplicating a Project copies every

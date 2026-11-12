@@ -17,6 +17,8 @@
  */
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { EditorState } from '@tiptap/pm/state';
+import { yUndoPluginKey } from 'y-prosemirror';
 import { occurrences, type DocumentProposal } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
@@ -343,6 +345,17 @@ export function keepWritable(blocks: readonly WrittenBlock[], ourPrefix: string 
 /** What `stopCapturing` is called on: the body's undo manager. */
 export interface UndoBoundary {
   stopCapturing: () => void;
+}
+
+/**
+ * The body's undo manager, read off its plugin state.
+ * @param editor - The body's editor.
+ * @param editor.prosemirrorState - Its state.
+ * @returns The manager, or null for a body with none.
+ */
+export function undoOf(editor: { readonly prosemirrorState: EditorState }): UndoBoundary | null {
+  const state = yUndoPluginKey.getState(editor.prosemirrorState) as { undoManager?: UndoBoundary } | undefined;
+  return state?.undoManager ?? null;
 }
 
 /**

@@ -338,6 +338,11 @@ export {
   understandSchema,
   transcribeSchema,
   nodeHistorySnapshotSchema,
+  DOCUMENT_VERSION_NAME_MAX_CHARS,
+  documentVersionSaveSchema,
+  documentVersionRenameSchema,
+  documentVersionListQuerySchema,
+  documentVersionScopeSchema,
   canvasPasteSchema,
   pastePairSchema,
   pasteHistoryItemSchema,
@@ -1165,5 +1170,5 @@ export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpene
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion,
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";

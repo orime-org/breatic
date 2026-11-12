@@ -92,6 +92,11 @@ web-fetch:      { max: 10,  window_seconds: 60 }
 # edits fits well inside 60/60s.
 node-history-snapshot: { max: 60,  window_seconds: 60 }
 
+# Document snapshots (inner#1129, post-auth, user-keyed). A save writes one
+# row carrying a whole document body; renames and deletes share one budget.
+document-version-save: { max: 60,  window_seconds: 60 }
+document-version-edit: { max: 60,  window_seconds: 60 }
+
 # Pasting or duplicating canvas nodes (inner#1349, post-auth, user-keyed).
 # One call registers every resource a copy names and writes a history row per
 # copy; a person pastes a handful of times a minute.

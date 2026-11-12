@@ -210,7 +210,7 @@ export async function allRefKeys(): Promise<string[]> {
 
 /** The transfer section of the storage config. */
 export function transferConfig(): {
-  route_max_bytes: { chat_message: number; canvas_paste: number; node_history_snapshot: number };
+  route_max_bytes: { chat_message: number; canvas_paste: number; node_history_snapshot: number; document_version_save: number };
   reference_ttl_seconds: number;
   read_lock_seconds: number;
 } {

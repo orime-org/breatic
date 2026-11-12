@@ -337,6 +337,9 @@
       "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
+    },
+    "document": {
+      "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
   },
   "chat": {
@@ -2322,7 +2325,6 @@
         "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
-        "notOpenYet": "Not open yet",
         "comments": "Comments",
         "commentsUnresolved": "{count} unresolved",
         "commentsNone": "None"
@@ -2408,6 +2410,49 @@
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
+      },
+      "versions": {
+        "title": "Snapshots",
+        "close": "Close snapshots",
+        "current": "Current content",
+        "empty": "No snapshots yet",
+        "loadMore": "Load more",
+        "loadFailed": "The snapshot list did not load.",
+        "retry": "Retry",
+        "more": "More",
+        "compareWithShown": "Compare with the one shown",
+        "rename": "Rename",
+        "delete": "Delete",
+        "viewing": "Viewing snapshot: {name}",
+        "comparing": "Comparing: {from} → {to}",
+        "legendInsert": "Added",
+        "legendDelete": "Removed",
+        "legendFormat": "Formatting changed",
+        "compareWithCurrent": "Compare with current content",
+        "restore": "Restore",
+        "exitPreview": "Exit preview",
+        "exitCompare": "Exit comparison",
+        "renameTitle": "Rename snapshot",
+        "namePlaceholder": "Name (optional)",
+        "save": "Save",
+        "restoreTitle": "Restore this snapshot?",
+        "restoreBody": "The current text will become this snapshot, and everyone in the document will see it at once. Press Cmd/Ctrl+Z to undo.",
+        "deleteTitle": "Delete this snapshot?",
+        "deleteBody": "“{name}” cannot be recovered once deleted.",
+        "saved": "Snapshot saved",
+        "renamed": "Renamed",
+        "restored": "Snapshot restored. Press Cmd/Ctrl+Z to undo.",
+        "unchanged": "The text already matches this snapshot.",
+        "restoreFailed": "The snapshot could not be restored.",
+        "deleted": "Snapshot deleted",
+        "leftOut": "{count, plural, one {# image, video or audio has not finished uploading and was not saved in this snapshot.} other {# images, videos or audio have not finished uploading and were not saved in this snapshot.}}",
+        "contentFailed": "The snapshot did not load.",
+        "gone": "This snapshot is no longer there.",
+        "saveFailed": "The snapshot was not saved.",
+        "renameFailed": "The snapshot was not renamed.",
+        "deleteFailed": "The snapshot was not deleted.",
+        "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
+        "unavailable": "Snapshots could not load. Refresh the page to use them."
       }
     },
     "readOnlyReconnect": "Reconnect",

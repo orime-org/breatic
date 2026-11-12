@@ -26,6 +26,11 @@ catalog:
   # are GPL-3.0 and are never installed.
   "@blocknote/core": 0.56.0
   "@blocknote/react": 0.56.0
+  # Optional peers of @blocknote/core used only by its DiffVersioningExtension
+  # (document snapshot comparison, loaded lazily). Pre-releases, so pinned
+  # exactly; move them with @blocknote/core.
+  "@y/prosemirror": 2.0.0-15
+  "@y/y": 14.0.0-rc.26
   "@tiptap/core": 3.31.4
   "@tiptap/extension-collaboration": 3.31.4
   "@tiptap/extension-collaboration-caret": 3.31.4
