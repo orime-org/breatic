@@ -15,21 +15,21 @@ export interface SourceRangePlayback {
  * Plays exactly one source range in the node's player (canvas design §4 split row preview; demo video-controls.tsx
  * CutEditor previewSegment): seeks to the start, plays, and on reaching the end pauses there. The end is checked on every
  * animation frame as well as on the player's own time events, which come too seldom to stop on the boundary. A seek the
- * playback did not make itself (the user moving the player) ends it where the user put the player; it is told by the
- * binding's seek epoch, which a seek moves at once, before its `currentTime` can be mistaken for the range end.
+ * playback did not make itself (the user moving the player) ends it where the user put the player. Such a seek is told by
+ * where it goes: a seek sets `seeking` and `currentTime` at once (HTML seek algorithm), so a seek in flight to anywhere but
+ * the range start is the user's, before its `currentTime` can be mistaken for the range end. The start seek of an earlier
+ * playback of the same player also lands on this one's events, so seek events are not counted.
  * @param binding - The node's media binding.
  * @param start - The range start in seconds.
  * @param end - The range end in seconds.
  * @returns The playback.
  * @throws {never} A refused play rejects `done`.
  */
-export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | 'getSeekEpoch' | 'seek' | 'play' | 'pause'>, start: number, end: number): SourceRangePlayback {
+export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | 'seek' | 'play' | 'pause'>, start: number, end: number): SourceRangePlayback {
   const { element } = binding;
   let over = false;
   let frame = 0;
   let settle: (() => void) | undefined;
-  let seekEpoch = 0;
-  let ownSeekEchoed = false;
   /**
    * Ends the playback once, pausing on the end when it was reached.
    * @param reachedEnd - Whether the clock reached the range end.
@@ -47,12 +47,12 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
     settle?.();
   };
   /**
-   * Ends the playback where the user put the player when anyone but the playback itself has seeked.
+   * Ends the playback where the user put the player when a seek in flight goes anywhere but the range start.
    * @returns Whether it ended.
    * @throws {never} Never.
    */
   function moved(): boolean {
-    if (!over && binding.getSeekEpoch() !== seekEpoch) finish(false);
+    if (!over && element.seeking && element.currentTime !== start) finish(false);
     return over;
   }
   /**
@@ -65,13 +65,10 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
     return over;
   }
   /**
-   * The frame clock moves the seek epoch on every `seeking` event too; the first one after the start seek is that seek's own.
+   * A seek event, the playback's own start seek's or a later one, ends it only when it goes elsewhere.
    * @throws {never} Never.
    */
-  function seeking(): void {
-    if (!ownSeekEchoed) { ownSeekEchoed = true; seekEpoch += 1; }
-    moved();
-  }
+  function seeking(): void { moved(); }
   /**
    * The one per-frame look at the clock, rescheduled until the playback ends.
    * @throws {never} Never.
@@ -85,7 +82,6 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
   const done = new Promise<void>((resolve, reject) => {
     settle = resolve;
     binding.seek(start);
-    seekEpoch = binding.getSeekEpoch();
     element.addEventListener('seeking', seeking);
     element.addEventListener('timeupdate', reached);
     element.addEventListener('ended', reached);

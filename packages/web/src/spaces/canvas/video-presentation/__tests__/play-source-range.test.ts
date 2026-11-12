@@ -8,23 +8,20 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { playSourceRange } from '../play-source-range';
-import { createPresentedFrameClock } from '../presented-frame-clock';
 
 /**
- * A stand-in for the node's media binding: a media element whose clock the test moves. Like the real binding, a seek moves
- * `currentTime` and the seek epoch at once, and the element's `seeking` event, which the browser dispatches later and the test
- * dispatches by hand, moves the epoch again through the real frame clock.
+ * A stand-in for the node's media binding: a media element whose clock the test moves. As in a browser, a seek moves
+ * `currentTime` and sets `seeking` at once, and the element's `seeking` event, which the browser dispatches later, is
+ * dispatched by the test by hand; the seek has landed (`seeking` false again) by the time a play resolves.
  * @param play - What the player's play does.
  * @returns The binding and its element.
  */
-function fakeBinding(play: () => Promise<void> = () => Promise.resolve()): { binding: Parameters<typeof playSourceRange>[0]; element: EventTarget & { currentTime: number; ended: boolean } } {
+function fakeBinding(play: () => Promise<void> = () => Promise.resolve()): { binding: Parameters<typeof playSourceRange>[0]; element: EventTarget & { currentTime: number; ended: boolean; seeking: boolean } } {
   const element = Object.assign(new EventTarget(), { currentTime: 0, ended: false, seeking: false });
-  const clock = createPresentedFrameClock(element as unknown as HTMLVideoElement, element as unknown as HTMLVideoElement, 'source', 1);
   const binding = {
     element: element as unknown as HTMLVideoElement,
-    getSeekEpoch: clock.getSeekEpoch,
-    seek: vi.fn((seconds: number) => { clock.invalidate(); element.currentTime = seconds; }),
-    play: vi.fn(play),
+    seek: vi.fn((seconds: number) => { element.seeking = true; element.currentTime = seconds; }),
+    play: vi.fn(async () => { await play(); element.seeking = false; }),
     pause: vi.fn(),
   };
   return { binding, element };
@@ -196,6 +193,7 @@ describe('playSourceRange once playing', () => {
     const playback = playSourceRange(binding, 1, 2);
     element.dispatchEvent(new Event('seeking'));
     await Promise.resolve(); await Promise.resolve();
+    element.seeking = true;
     element.currentTime = 4;
     element.dispatchEvent(new Event('seeking'));
     element.dispatchEvent(new Event('timeupdate'));
@@ -205,5 +203,25 @@ describe('playSourceRange once playing', () => {
     expect(binding.seek).toHaveBeenCalledTimes(1);
     expect(element.currentTime).toBe(4);
     expect(frames.size).toBe(0);
+  });
+
+  it('keeps the next segment playing when the seeking event of the previous segment start arrives after it began', async () => {
+    fakeFrames();
+    const { binding, element } = fakeBinding();
+    const first = playSourceRange(binding, 0, 2);
+    first.stop();
+    let settled = false;
+    const second = playSourceRange(binding, 2, 4);
+    void second.done.then(() => { settled = true; });
+    // The browser dispatches both seeks' events only now: the first segment's, then the second's.
+    element.dispatchEvent(new Event('seeking'));
+    element.dispatchEvent(new Event('seeking'));
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    element.currentTime = 2.5;
+    element.dispatchEvent(new Event('timeupdate'));
+    runFrames();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(frames.size).toBe(1);
   });
 });
