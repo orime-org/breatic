@@ -118,7 +118,16 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     const rows: React.ComponentProps<typeof Timeline>['editorData'] = [{ id: 'video', actions: plan.clips.map((item) => ({ id: item.clipId, start: item.start, end: item.end, effectId: 'video', selected: item.clipId === selectedId, minStart: Math.max(0, item.start - item.in), maxEnd: item.end + (draft.inputs.find((asset) => asset.inputId === item.inputId)?.mediaInfo?.duration ?? item.out) - item.out, flexible: !props.disabled, movable: false })) }];
     return { key: `${draft.revision}:${cancelledGesture}`, editorData: structuredClone(rows) };
   }, [plan.clips, selectedId, draft.inputs, draft.revision, props.disabled, cancelledGesture]);
-  React.useEffect(() => { setPlaying(false); setCursor((value) => Math.min(value, plan.duration)); }, [draft.revision, plan.duration]);
+  // Read through a ref so the effect below runs per mount and duration, not per frame.
+  const cursorNow = React.useRef(cursor);
+  cursorNow.current = cursor;
+  // A new mount's playhead starts at 0 and the editor has no initial-time prop, so setTime is how it reaches the cursor.
+  React.useEffect(() => {
+    const clamped = Math.min(cursorNow.current, plan.duration);
+    setPlaying(false);
+    setCursor(clamped);
+    timeline.current?.setTime(clamped);
+  }, [track.key, plan.duration]);
   // The cursor reaches the track's own clock as it moves, never through an effect on every frame.
   const moveCursor = React.useCallback((time: number): void => { setCursor(time); timeline.current?.setTime(time); }, []);
   React.useEffect(() => {

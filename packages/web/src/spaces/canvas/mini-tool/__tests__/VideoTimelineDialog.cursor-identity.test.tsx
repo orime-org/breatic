@@ -14,7 +14,8 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
-const track: { props: Record<string, unknown> | null; setTime: ReturnType<typeof vi.fn> } = { props: null, setTime: vi.fn() };
+// Each Timeline mount takes the next number, and its setTime reports (mount, time): the library has no initial-time prop.
+const track: { props: Record<string, unknown> | null; mounts: number; setTime: ReturnType<typeof vi.fn> } = { props: null, mounts: 0, setTime: vi.fn() };
 const preview: { onCursorChange: ((time: number) => void) | null } = { onCursorChange: null };
 
 vi.mock('@web/lib/toast', () => ({
@@ -25,7 +26,8 @@ vi.mock('@xzdarcy/react-timeline-editor', async () => {
   const react = await import('react');
   return {
     Timeline: react.forwardRef((props: Record<string, unknown>, ref) => {
-      react.useImperativeHandle(ref, () => ({ setTime: track.setTime }));
+      const [mount] = react.useState(() => ++track.mounts);
+      react.useImperativeHandle(ref, () => ({ setTime: (time: number) => track.setTime(mount, time) }), [mount]);
       track.props = props;
       return null;
     }),
@@ -73,7 +75,7 @@ function editorData(): unknown {
   return track.props?.editorData;
 }
 
-beforeEach(() => { vi.clearAllMocks(); track.props = null; preview.onCursorChange = null; });
+beforeEach(() => { vi.clearAllMocks(); track.props = null; track.mounts = 0; preview.onCursorChange = null; });
 
 describe('the track data keeps its reference while only the cursor moves', () => {
   it('hands the editor the same data across preview cursor moves, and each time reaches the track clock', () => {
@@ -82,7 +84,7 @@ describe('the track data keeps its reference while only the cursor moves', () =>
     expect(first).toBeDefined();
     for (const time of [0.1, 0.2, 0.3]) act(() => { preview.onCursorChange!(time); });
     expect(editorData()).toBe(first);
-    expect(track.setTime.mock.calls.map((call) => call[0])).toEqual(expect.arrayContaining([0.1, 0.2, 0.3]));
+    expect(track.setTime.mock.calls.map((call) => call[1])).toEqual(expect.arrayContaining([0.1, 0.2, 0.3]));
   });
 
   it('hands the editor new data after a draft edit', () => {
@@ -97,5 +99,23 @@ describe('the track data keeps its reference while only the cursor moves', () =>
     const first = editorData();
     act(() => { window.dispatchEvent(new Event('blur')); });
     expect(editorData()).not.toBe(first);
+  });
+});
+
+describe('a remounted track starts at the cursor', () => {
+  it('moves the playhead of the mount a cancelled drag brings to the cursor', () => {
+    render(dialog(draft));
+    act(() => { preview.onCursorChange!(3); });
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    expect(track.mounts).toBe(2);
+    expect(track.setTime).toHaveBeenLastCalledWith(2, 3);
+  });
+
+  it('moves the playhead of the mount an edit brings to the new end when the edit shortens the composition below the cursor', () => {
+    const { rerender } = render(dialog(draft));
+    act(() => { preview.onCursorChange!(6); });
+    rerender(dialog({ ...draft, revision: '30000000-0000-4000-8000-000000000002', params: { clips: [{ ...hostClip, out: 2 }, pickedClip] } }));
+    expect(track.mounts).toBe(2);
+    expect(track.setTime).toHaveBeenLastCalledWith(2, 3.5);
   });
 });
