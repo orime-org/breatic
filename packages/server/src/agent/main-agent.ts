@@ -62,6 +62,7 @@ import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } fr
 import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
 import type { TakenMessage, TurnHooks } from "@server/agent/taken-message.js";
+import { stoppedByShutdown } from "@server/agent/shutdown-flag.js";
 
 /**
  * What opened a segment of a turn: the user's message, or the user's
@@ -185,6 +186,7 @@ export class MainAgent {
         ],
       },
       (toolCallId, toolName) => ({ output: REPLIED_IN_CHAT, forModel: askResultForModel(toolCallId, REPLIED_IN_CHAT, toolName) }),
+      hooks.messageId === undefined ? {} : { messageId: hooks.messageId },
     );
 
     // A conversation takes its name from the first thing said in it, so this
@@ -216,6 +218,7 @@ export class MainAgent {
       turn: { ...space, chips: attached, message: said },
       closedAsks,
     };
+    await hooks.beforeStream?.(turnIndex);
     return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, hooks);
   }
 
@@ -254,6 +257,7 @@ export class MainAgent {
       toolCallId,
       output,
     };
+    await hooks.beforeStream?.(turnIndex);
     return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, hooks);
   }
 
@@ -1260,6 +1264,7 @@ export class MainAgent {
       }
       if (failed !== undefined) {
         if (signal?.aborted !== true) sayThoughtFor(writer);
+        writer.write({ type: "data-failed", data: {} });
         writer.write(failed);
       }
       if (finished !== undefined) writer.write(finished);
@@ -1285,13 +1290,30 @@ export class MainAgent {
           // Before a model stream exists, the SDK cannot emit its own abort.
           // Pass the same stop through its wire protocol; ordinary failures
           // still reach the single application error logger below.
-          if (signal?.aborted === true && err === signal.reason) writer.write({ type: "abort" });
-          else throw err;
+          if (signal?.aborted === true && err === signal.reason) {
+            if (!stoppedByShutdown(signal)) writer.write({ type: "abort" });
+          } else {
+            // Said before the error frame the SDK writes for this throw: the
+            // page draws a failed reply only from this mark (inner#1717).
+            sayThoughtFor(writer);
+            writer.write({ type: "data-failed", data: {} });
+            throw err;
+          }
         } finally {
           // Whatever ended the turn without saying it: a throw of our own,
           // which the SDK turns into the error frame after this. Not on a
           // stop, as on any stop.
           if (signal?.aborted !== true) sayThoughtFor(writer);
+          // The user's stop, said on the wire as the mark it is stored as, so
+          // every attached page draws the reply as stopped (inner#1717).
+          if (signal?.aborted === true && !stoppedByShutdown(signal)) writer.write({ type: "data-interrupted", data: {} });
+          // A shutdown is not the user's stop: the turn failed, and every
+          // attached page is told so before the error frame (inner#1717).
+          if (stoppedByShutdown(signal)) {
+            sayThoughtFor(writer);
+            writer.write({ type: "data-failed", data: { reason: "shutdown" } });
+            writer.write({ type: "error", errorText: FAILED_TEXT });
+          }
         }
       },
       // The one place a failed turn is noticed, whichever way it failed: the
@@ -1305,7 +1327,10 @@ export class MainAgent {
         return FAILED_TEXT;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
-        const exit = isAborted
+        const shutdown = stoppedByShutdown(signal);
+        const exit = shutdown
+          ? "failed"
+          : isAborted
           ? "aborted"
           : failure !== undefined
             ? "failed"
@@ -1335,8 +1360,10 @@ export class MainAgent {
         // them a stopped turn and a failed one read back as a turn that
         // simply had little to say, and a reload would show either as a
         // finished answer.
-        if (exit === "aborted") replyParts.push({ type: "interrupted" });
-        if (exit === "failed") replyParts.push({ type: "failed" });
+        if (exit === "aborted" && !replyParts.some((p) => p.type === "interrupted")) replyParts.push({ type: "interrupted" });
+        if (exit === "failed" && !replyParts.some((p) => p.type === "failed")) {
+          replyParts.push(shutdown ? { type: "failed", reason: "shutdown" } : { type: "failed" });
+        }
 
         // Put the reasons back. What came off the wire says only that
         // something went wrong, and that sentence is what the model would
@@ -1477,6 +1504,7 @@ export class MainAgent {
           exit,
           stored: !failures.some((f) => f.step === "persist"),
           ...(awaitingCall === undefined ? {} : { awaitingCall }),
+          ...(shutdown ? { shutdown: true } : {}),
         });
 
         // The finalizer does not log -- it is in domain, which has no

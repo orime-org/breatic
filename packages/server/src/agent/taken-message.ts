@@ -21,6 +21,10 @@ export interface TakenMessage {
   space: ChatSpaceContext;
   /** The zone the user's browser reported, if any. */
   timeZone?: string;
+  /** The language the page asked in, which the turn speaks to the user in. */
+  locale?: string;
+  /** The model the user had picked, if any. */
+  model?: string;
 }
 
 /** How a turn ended, once its reply is written down or has failed to be. */
@@ -45,8 +49,11 @@ export interface TurnHooks {
   drain?: () => Promise<TakenMessage[]>;
   /** The charge key, when it is not the turn's own. */
   operationKey?: string;
-  /** Raised when the server is shutting down; the turn ends as failed with reason `shutdown`. */
-  shutdown?: AbortSignal;
+  /**
+   * Runs once the opening row is written and before the model is asked
+   * anything: the rest of the run's opening stage. A throw ends the turn there.
+   */
+  beforeStream?: (turnIndex: number) => Promise<void>;
   /** Told how the turn ended, after its reply was written down or failed to be. */
   onEnded?: (ended: TurnEnded) => void;
 }

@@ -61,6 +61,10 @@ export interface ChatQueue {
   settle(conversationId: string, runId: string, ending: RunEnding): Promise<string | null>;
   renew(conversationId: string, runId: string): Promise<boolean>;
   clear(conversationId: string): Promise<void>;
+  /** The messages waiting, in order. */
+  pending(conversationId: string): Promise<QueueItem[]>;
+  /** Whether a run holds the conversation, a card waits, and whether there is work a claim would start a run for. */
+  peek(conversationId: string): Promise<{ active: string | null; awaiting: boolean; work: boolean }>;
 }
 
 /** Appends a list's items to a reply table. Shared head of every script that answers with the queue. */
@@ -288,6 +292,19 @@ export function createChatQueue(redis: Redis): ChatQueue {
     async clear(c) {
       const k = keysOf(c);
       await redis.del(k.active, k.queue, k.taken, k.ids, k.awaiting);
+    },
+    async pending(c) {
+      return items(await redis.lrange(keysOf(c).queue, 0, -1));
+    },
+    async peek(c) {
+      const k = keysOf(c);
+      const [active, awaiting, queued, taken] = await Promise.all([
+        redis.get(k.active),
+        redis.exists(k.awaiting),
+        redis.llen(k.queue),
+        redis.llen(k.taken),
+      ]);
+      return { active, awaiting: awaiting === 1, work: queued + taken > 0 };
     },
   };
 }

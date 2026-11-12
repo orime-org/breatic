@@ -12,7 +12,8 @@ import { accountActivityRepo } from "@breatic/core";
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
+import { randomUUID } from "node:crypto";
+import { runAfterReply } from "@server/utils/after-reply.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -31,6 +32,9 @@ import {
   chatRunningQuerySchema,
   idParamSchema,
   attachmentParamSchema,
+  chatProjectBodySchema,
+  chatStopSchema,
+  chatQueueParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
@@ -42,11 +46,13 @@ import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
 import { SMALLEST_CREDIT } from "@breatic/domain";
-import { MainAgent } from "@server/agent/main-agent.js";
+import { startRun, stopChannel } from "@server/agent/chat-run.js";
+import { runStreams } from "@server/agent/run-stream.js";
+import { isShuttingDown } from "@server/agent/shutdown-flag.js";
+import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
-import type { UIMessageChunk } from "ai";
-import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
-import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
+import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
+import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 
 /**
@@ -139,136 +145,52 @@ function assertSayable(
   }
 }
 
-/**
- * One chunk, as the protocol puts it on the wire.
- *
- * Every frame is a `data:` line holding the chunk as JSON, and the chunk
- * names itself in a `type` field. There is no `event:` line: the SDK's own
- * serialiser writes the payload and nothing else, and a client reading this
- * stream is written against that.
- * @param chunk - What to send.
- * @returns The frame, terminator included.
- */
-function frame(chunk: UIMessageChunk): string {
-  return `data: ${JSON.stringify(chunk)}\n\n`;
+/** One waiting message, as a page shows it in the waiting area (inner#1717). */
+interface PendingItem {
+  id: string;
+  sentAt: string;
+  words: string;
+  chips: ChatAttachedChip[];
 }
 
 /**
- * Stream one turn to the client, whichever entrance asked for it.
- *
- * Both entrances owe the client the same things — the same context to run
- * against, the same headers, the same way out, the same proof the connection
- * is alive — and differ only in which of the agent's two methods produces the
- * turn. Written once so a fix to any of those is a fix to both; the last time
- * they were written twice, one of them was missing the way out.
- * @param c - The request being answered.
- * @param turn - Who is speaking, and where. All of it already checked.
- * @param turn.userId - The authenticated user.
- * @param turn.conversationId - Their conversation, confirmed writable.
- * @param turn.projectId - The project it belongs to, confirmed theirs.
- * @param turnStream - Starts the turn. Called inside the request context, and
- *   handed the signal that is raised when the client goes away.
- * @returns The SSE response.
+ * The waiting area: the queue, as much of each message as a page draws.
+ * @param queue - The queue's items.
+ * @returns The items a page is given.
  */
-async function streamTurn(
-  c: Context<{ Variables: AuthVariables }>,
-  turn: { userId: string; conversationId: string; projectId: string },
-  turnStream: (signal: AbortSignal) => Promise<ReadableStream<UIMessageChunk>>,
-): Promise<Response> {
-  // `stopped` is the first ring of the stop chain, and the only one that can
-  // hear the client leave. It cannot be inferred from the writes:
-  // `StreamingApi.write` catches and discards the error a dead socket
-  // produces, so a loop that only watched its writes would stream into
-  // nothing for as long as the model kept talking.
-  return streamUntilClientLeaves(c, async (s, stopped) => {
-    // Say the connection is alive on a schedule, because a turn that is
-    // thinking looks exactly like a turn that is dead: an open socket with
-    // nothing on it. Not awaited — a beat is worth nothing late, and waiting
-    // on it would put the model's own output behind it. Interleaving is not a
-    // risk: `write` encodes the whole frame and hands it over in one call, so
-    // a beat cannot land inside a chunk.
-    /** Say it once. */
-    const sayAlive = (): void => {
-      // Transient, so the client hears it and nothing keeps it: the SDK hands
-      // such a chunk to `onData` and stops there, short of the parts that get
-      // stored and rendered. A beat carries no meaning of its own -- its
-      // arrival is the whole message -- so anything that kept it would be
-      // keeping rubbish.
-      void s.write(frame({ type: "data-heartbeat", transient: true, data: {} }));
-    };
-    // The turn's place in the running list other tabs and devices read
-    // (#1394). Held before the first beat and renewed on every beat after
-    // it, so it lasts exactly as long as a browser would keep waiting. A
-    // lease that cannot be written costs only the mark elsewhere; the turn
-    // goes on.
-    /**
-     * Log a lease that could not be held, renewed or released.
-     * @param err - What Redis threw.
-     */
-    const leaseFailed = (err: unknown): void => {
-      logger.error(
-        { err, userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
-        "chat_running_lease_failed",
-      );
-    };
-    let lease: runningTurnsService.RunningLease | null = null;
-    try {
-      lease = await runningTurnsService.holdRunning(turn);
-    } catch (err) {
-      leaseFailed(err);
-    }
-    // Once as soon as there is a socket to say it on, before the schedule
-    // starts. The user's browser began counting at the press, and the
-    // network and the two checks before this made no sound on that clock; a
-    // first beat one whole interval later spends the client's whole budget
-    // on the work this turn does before it can speak, and a turn that is
-    // doing fine gets killed for it.
-    sayAlive();
-    const beat = setInterval(() => {
-      sayAlive();
-      lease?.renew().catch(leaseFailed);
-    }, getAgentConfig().sse_heartbeat_interval_ms);
-
-    try {
-      await runWithContext(
-        { userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
-        async () => {
-          const turn = await turnStream(stopped);
-          for await (const chunk of turn) {
-            await s.write(frame(chunk));
-          }
-        },
-      );
-    } catch (err) {
-      // A turn can die before it says anything -- storing the message, reading
-      // the memories and the history, assembling the agent. Left to
-      // the framework, that ends the stream cleanly: the browser cannot tell it
-      // from a turn that finished, so it leaves an empty reply on screen with
-      // nothing to explain it, and the log gets a bare stack trace with no user
-      // and no conversation on it.
-      logger.error(
-        {
-          err,
-          userId: turn.userId,
-          conversationId: turn.conversationId,
-          projectId: turn.projectId,
-        },
-        "chat_turn_failed",
-      );
-      // What the client does with this is show one line and let the user
-      // press send again. The sentence is not read: the browser writes its own.
-      await s.write(
-        frame({ type: "error", errorText: "The turn could not be run." }),
-      );
-    } finally {
-      // However the turn ended. A timer left running holds the process open
-      // and writes to a stream nobody is reading.
-      clearInterval(beat);
-      // Awaited here, inside the stream, so the mark is gone before the
-      // browser hears the turn end and asks again.
-      await lease?.release().catch(leaseFailed);
-    }
+function pendingOf(queue: readonly QueueItem[]): PendingItem[] {
+  return queue.map((item) => {
+    const body = item as QueueItem & { message?: string; attached_chips?: ChatAttachedChip[] };
+    return { id: item.id, sentAt: item.sentAt, words: body.message ?? "", chips: body.attached_chips ?? [] };
   });
+}
+
+/**
+ * Run work as after-reply work while the request waits for it, so a shutdown
+ * waits for it too before it closes the pools (inner#1717).
+ * @param ctx - Log context naming the work.
+ * @param fn - The work.
+ * @returns What the work returned.
+ */
+function heldThroughShutdown<T>(ctx: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    runAfterReply(ctx, async () => {
+      try {
+        resolve(await fn());
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/**
+ * The answer a card is given while the server shuts down: try again shortly.
+ * @param c - The request.
+ * @returns The response.
+ */
+function shuttingDown(c: Context<{ Variables: AuthVariables }>): Response {
+  return c.json({ error: { code: 503, message: t("server.chat.shutting_down"), reason: "shutting_down" } }, 503);
 }
 
 const chat = new Hono<{ Variables: AuthVariables }>();
@@ -276,10 +198,14 @@ const chat = new Hono<{ Variables: AuthVariables }>();
 chat.use("*", requireAuth);
 
 /**
- * `POST /chat/message` — send a message and receive an SSE stream.
+ * `POST /chat/message` — send a message, or answer the card a turn waits at.
  *
- * Takes the conversation the client names, instantiates the MainAgent, and
- * streams SSE events from `agent.chat()` to the client. It never creates one:
+ * A message joins the conversation's queue (inner#1717). When no run holds
+ * the conversation it opens one, and the answer waits for that run's opening
+ * stage, so the page finds the message in the history and the run's stream to
+ * attach to; otherwise the running run reads it at its next step. The answer
+ * is the status and the waiting area as JSON; the run's frames are read from
+ * `GET /chat/conversations/:id/stream`. It never creates a conversation:
  * `POST /chat/open` is the single place a conversation appears on the user's
  * behalf, so an id that no longer resolves is refused here rather than
  * quietly replaced with a new conversation the client does not know about.
@@ -337,39 +263,202 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
         }
         : undefined;
   if (card !== undefined) {
-    const taken = await card.take();
-    if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
-    if (taken.kind === "mismatch") {
-      logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
-      throw new ValidationError(t("server.chat.answer_mismatch"));
-    }
-    if (taken.kind === "settled") {
-      // The error envelope, plus how the call now stands, so the card that
-      // sent this draws what the store holds.
-      return c.json(
-        {
-          error: { code: 409, message: t("server.chat.ask_already_answered") },
-          call: { status: taken.status, output: taken.output },
+    const ctx = { userId: user.id, conversationId: conversation.id, projectId: body.project_id, task: "chat_card_answer" };
+    // The shutdown flag, the answer, the resume and the run's opening stage
+    // are one piece of after-reply work: a shutdown that lands anywhere in it
+    // waits for the run to write its failed ending before the pools close.
+    return heldThroughShutdown(ctx, async () => {
+      if (isShuttingDown()) return shuttingDown(c);
+      const taken = await card.take();
+      if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
+      if (taken.kind === "mismatch") {
+        logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
+        throw new ValidationError(t("server.chat.answer_mismatch"));
+      }
+      if (taken.kind === "settled") {
+        // How the call now stands rides in the error envelope, where the
+        // page's API client reads it, so the card draws what the store holds.
+        return c.json(
+          { error: { code: 409, message: t("server.chat.ask_already_answered"), call: { status: taken.status, output: taken.output } } },
+          409,
+        );
+      }
+      const runId = randomUUID();
+      if ((await chatQueue().resume(conversation.id, runId)) === "busy") {
+        return c.json({ error: { code: 409, message: t("server.chat.turn_busy"), reason: "turn_busy" } }, 409);
+      }
+      const { running } = await startRun({
+        conversationId: conversation.id,
+        projectId: body.project_id,
+        userId: user.id,
+        runId,
+        entrance: {
+          kind: "card",
+          toolCallId: card.toolCallId,
+          output: taken.output,
+          turnIndex: taken.turnIndex,
+          ...(body.time_zone === undefined ? {} : { timeZone: body.time_zone }),
+          space: body,
+          ...(modelId === undefined ? {} : { modelId }),
+          locale: getActiveLocale(),
         },
-        409,
-      );
-    }
-    return streamTurn(
-      c,
-      { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-      (signal) =>
-        new MainAgent().answer(card.toolCallId, taken.output, taken.turnIndex, signal, body.time_zone, body, modelId),
-    );
+      }).opened;
+      return c.json({ data: { status: "start", pending: pendingOf(await chatQueue().pending(conversation.id)), running } });
+    });
   }
 
   await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
-  return streamTurn(
-    c,
-    { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) =>
-      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body, modelId),
-  );
+  const { project_id: _project, conversation_id: _conversation, ...said } = body;
+  const item: QueueItem = {
+    ...said,
+    id: body.id!,
+    sentAt: new Date().toISOString(),
+    userId: user.id,
+    acceptLanguage: getActiveLocale(),
+  };
+  const queued = await chatQueue().enqueue(conversation.id, item);
+  if (queued.status === "full") {
+    return c.json({ error: { code: 409, message: t("server.chat.queue_full"), reason: "queue_full" } }, 409);
+  }
+  if (queued.status === "start") {
+    const { running } = await startRun({
+      conversationId: conversation.id,
+      projectId: body.project_id,
+      userId: user.id,
+      runId: queued.runId,
+      entrance: { kind: "head" },
+    }).opened;
+    return c.json({ data: { status: "start", pending: pendingOf(await chatQueue().pending(conversation.id)), running } });
+  }
+  const { active } = await chatQueue().peek(conversation.id);
+  return c.json({ data: { status: queued.status, pending: pendingOf(queued.queue), running: active !== null } });
 });
+
+/**
+ * `POST /chat/conversations/:id/sync` — where the conversation stands, opening
+ * a run for what waits when none holds it (inner#1717).
+ *
+ * The page shown in the Agent column asks every `next_sync_ms`. A run is opened
+ * here for what a run that died, or a run refused for credits, left behind;
+ * the credit check runs only when a run would open, so a conversation with
+ * nothing waiting is never told it is out of credits.
+ * @param c - Hono context with the conversation id and `{ project_id }`
+ * @returns The waiting area, whether a run is running, whether a card waits,
+ *   why a run could not open, and when to ask again.
+ */
+chat.post(
+  "/conversations/:id/sync",
+  rateLimitFor("chat-sync", "user"),
+  validate("param", idParamSchema),
+  validate("json", chatProjectBodySchema),
+  async (c) => {
+    const user = c.get("user");
+    const { project_id: projectId } = c.req.valid("json");
+    await projectService.assertAccess(projectId, user.id, "editor");
+    const conversation = await conversationService.assertWritable(c.req.param("id"), user.id, projectId);
+    const queue = chatQueue();
+    const next_sync_ms = getAgentConfig().chat_sync_interval_ms;
+    const seen = await queue.peek(conversation.id);
+    if (seen.active === null && !seen.awaiting && seen.work && !isShuttingDown()) {
+      try {
+        await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
+      } catch (err) {
+        if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
+        return c.json({
+          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", next_sync_ms },
+        });
+      }
+      const claimed = await queue.claim(conversation.id);
+      if (claimed.status === "start") {
+        const { running } = await startRun({
+          conversationId: conversation.id,
+          projectId,
+          userId: user.id,
+          runId: claimed.runId,
+          entrance: { kind: "head" },
+        }).opened;
+        return c.json({ data: { pending: pendingOf(await queue.pending(conversation.id)), running, awaiting: false, next_sync_ms } });
+      }
+    }
+    const now = await queue.peek(conversation.id);
+    return c.json({
+      data: { pending: pendingOf(await queue.pending(conversation.id)), running: now.active !== null, awaiting: now.awaiting, next_sync_ms },
+    });
+  },
+);
+
+/**
+ * `GET /chat/conversations/:id/stream` — attach to the run that holds the
+ * conversation, from its first frame (inner#1717).
+ *
+ * Read-only, so it is checked as reading the conversation is. Every frame the
+ * run has written is replayed, then the rest as it comes; 204 when no run
+ * holds the conversation or its stream cannot be read, and the page leaves it
+ * to the next sync.
+ * @param c - Hono context with the conversation id
+ * @returns The run's SSE stream, or 204.
+ */
+chat.get("/conversations/:id/stream", validate("param", idParamSchema), async (c) => {
+  const user = c.get("user");
+  const conversationId = c.req.param("id");
+  await conversationService.assertAccess(conversationId, user.id);
+  const { active } = await chatQueue().peek(conversationId);
+  if (active === null) return c.body(null, 204);
+  let stream: ReadableStream<string> | null | undefined;
+  try {
+    stream = await runStreams().resumeExistingStream(active);
+  } catch (err) {
+    // Most often the run's producer is gone (`Timeout waiting for ack`); a
+    // Redis failure lands here too. The page asks again at its next sync.
+    logger.error({ err, userId: user.id, conversationId, runId: active }, "chat_stream_attach_failed");
+    return c.body(null, 204);
+  }
+  if (stream === null || stream === undefined) return c.body(null, 204);
+  return new Response(stream.pipeThrough(new TextEncoderStream()), {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+  });
+});
+
+/**
+ * `POST /chat/stop` — stop the run that holds the conversation (inner#1717).
+ *
+ * The one way a run is stopped: published to the run, on whichever instance it
+ * runs; the run ends as stopped and every attached page reads the mark.
+ * @param c - Hono context with `{ conversation_id, project_id }`
+ * @returns Whether a run was there to stop.
+ */
+chat.post("/stop", rateLimitFor("chat-stop", "user"), validate("json", chatStopSchema), async (c) => {
+  const user = c.get("user");
+  const { conversation_id: conversationId, project_id: projectId } = c.req.valid("json");
+  await projectService.assertAccess(projectId, user.id, "editor");
+  await conversationService.assertWritable(conversationId, user.id, projectId);
+  const { active } = await chatQueue().peek(conversationId);
+  if (active === null) return c.json({ data: { stopped: false } });
+  await getRedis().publish(stopChannel(active), "stop");
+  return c.json({ data: { stopped: true } });
+});
+
+/**
+ * `DELETE /chat/conversations/:id/queue/:messageId` — take a waiting message
+ * back (inner#1717).
+ * @param c - Hono context with the ids and `{ project_id }`
+ * @returns `removed` when it was still waiting, `taken` when a run has read
+ *   it, `gone` when it is nowhere (another page took it back).
+ */
+chat.delete(
+  "/conversations/:id/queue/:messageId",
+  rateLimitFor("chat-queue-remove", "user"),
+  validate("param", chatQueueParamSchema),
+  validate("json", chatProjectBodySchema),
+  async (c) => {
+    const user = c.get("user");
+    const { id, messageId } = c.req.valid("param");
+    const { project_id: projectId } = c.req.valid("json");
+    await projectService.assertAccess(projectId, user.id, "editor");
+    await conversationService.assertWritable(id, user.id, projectId);
+    return c.json({ data: { status: await chatQueue().remove(id, messageId) } });
+  },
+);
 
 /**
  * `GET /chat/conversations` — list conversations for the current user.

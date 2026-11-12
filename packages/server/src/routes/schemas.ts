@@ -191,4 +191,13 @@ export const designationSchema = z.object({
  */
 export const idParamSchema = z.object({ id: z.string().uuid() });
 
+/** The project a conversation request is made in (inner#1717). */
+export const chatProjectBodySchema = z.object({ project_id: z.string().uuid() });
+
+/** Which conversation's run to stop, in which project (inner#1717). */
+export const chatStopSchema = z.object({ conversation_id: z.string().uuid(), project_id: z.string().uuid() });
+
+/** A waiting message of a conversation (inner#1717). */
+export const chatQueueParamSchema = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
+
 export { creditAmountFormatQuerySchema } from "@breatic/shared";
