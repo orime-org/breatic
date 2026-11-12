@@ -23,15 +23,21 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 // The track editor and the GL preview are not under test; jsdom cannot draw either.
 vi.mock('@xzdarcy/react-timeline-editor', async () => ({ Timeline: (await import('react')).forwardRef(() => null) }));
 vi.mock('@web/spaces/canvas/mini-tool/video/VideoTimelinePreview', () => ({ VideoTimelinePreview: () => null }));
-// Picked videos whose nodes store no length: one whose registered source has one, one with no length anywhere, one unreadable.
+// Picked videos whose nodes store no length: one whose registered source has one, one with no length anywhere, one unreadable,
+// one still being prepared on its first read, and one whose first read fails in transport.
+const reads = vi.hoisted(() => ({ count: new Map<string, number>() }));
 vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/canvas/video-presentation/video-presentation-query')>();
   const lengths: Record<string, number | null> = { 'https://assets.example.test/registered.webm': 6, 'https://assets.example.test/unknown.webm': null };
+  const answer = (duration: number | null, pollAfterMs: number | null): object => ({ sourceBinding: { mediaInfo: { width: null, height: null, duration, mimeType: 'video/webm' } }, presentation: null, preparation: null, ledger: null, pollAfterMs });
   return { ...actual, videoPresentationQuery: (input: { projectId: string; canonicalURL: string; active: boolean }) => {
     const options = actual.videoPresentationQuery(input);
+    const read = (): number => { const count = (reads.count.get(input.canonicalURL) ?? 0) + 1; reads.count.set(input.canonicalURL, count); return count; };
     if (input.canonicalURL === 'https://assets.example.test/broken.webm') return { ...options, queryFn: async () => { throw new Error('unreadable'); } };
+    if (input.canonicalURL === 'https://assets.example.test/preparing.webm') return { ...options, queryFn: async () => (read() === 1 ? answer(null, 20) : answer(7, null)) };
+    if (input.canonicalURL === 'https://assets.example.test/flaky.webm') return { ...options, queryFn: async () => { if (read() === 1) throw new Error('offline'); return answer(5, null); } };
     const length = lengths[input.canonicalURL];
-    return length === undefined ? options : { ...options, queryFn: async () => ({ sourceBinding: { mediaInfo: { width: null, height: null, duration: length, mimeType: 'video/webm' } }, presentation: null, preparation: null, ledger: null, pollAfterMs: null }) };
+    return length === undefined ? options : { ...options, queryFn: async () => answer(length, null) };
   } };
 });
 
@@ -93,7 +99,7 @@ function pick(url: string, duration: number, nodeId?: string): void {
   act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url, duration, ...(nodeId === undefined ? {} : { nodeId }) }, false));
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); reads.count.clear(); });
 afterEach(() => { destroyDoc(name); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
 
 describe('the transitions input slot (canvas design §4, §28)', () => {
@@ -161,6 +167,30 @@ describe('the transitions input slot (canvas design §4, §28)', () => {
     act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: 'https://assets.example.test/broken.webm' }, false));
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.videoUI.mediaError')));
     expect(held().params.clips).toEqual(before.params.clips);
+  });
+
+  it('keeps a picked video held while its source is still being prepared, then places it once its length arrives', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 3, in: 1, out: 2.5 });
+    const host = held().params.clips[0]!;
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: 'https://assets.example.test/preparing.webm' }, false));
+    await waitFor(() => expect(reads.count.get('https://assets.example.test/preparing.webm')).toBe(1));
+    expect(canvasSessions.of(spaceId).getState().miniTool?.slots?.timeline).toBeDefined();
+    expect(toast.warning).not.toHaveBeenCalled();
+    await waitFor(() => expect(held().inputs.map((input) => input.url)).toEqual([sourceURL, 'https://assets.example.test/preparing.webm']));
+    expect(held().params.clips).toEqual([host, expect.objectContaining({ in: 0, out: 7 })]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('reads a picked video again on a re-pick after its first read failed in transport', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 3, in: 1, out: 2.5 });
+    const flaky = 'https://assets.example.test/flaky.webm';
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: flaky }, false));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.videoUI.mediaError')));
+    expect(canvasSessions.of(spaceId).getState().miniTool?.slots?.timeline).toBeUndefined();
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: flaky }, false));
+    await waitFor(() => expect(held().inputs.map((input) => input.url)).toEqual([sourceURL, flaky]));
+    expect(held().params.clips[1]).toMatchObject({ in: 0, out: 5 });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 
   it('turns a junction transition the re-picked input is too short for into a Cut (inner#1306 #15)', async () => {

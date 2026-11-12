@@ -7,7 +7,7 @@ import { VideoToolNodeOverlay } from '@web/spaces/canvas/mini-tool/video/VideoTo
 import type { PresentedMediaFrame, MediaSurfaceBinding, VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { deriveVideoToolPanelState, worstVideoToolPanelState, type VideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { useStore } from '@xyflow/react';
-import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { anchorInTrackingRange, canonicalMiniToolValue, eraseRangeCheck, fingerprintMiniToolAnalysisInput, videoExpandLayout, lipsyncTimeline, lipsyncUsedSourceRange, planVideoFrames, planVideoSplit, presentationFrameAt, timelineClipLacksOutputFrame, presentationOutputFps, presentationVideoEnd, fitTransitions, type LipsyncFailureReason, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type MiniToolSlotValue, type TrackingAnchor, type TrackingTimeRange, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
@@ -480,15 +480,26 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   }, [expanded, displaySize, store]);
   const slots = session?.slots;
   // A picked video whose node stores no length takes it from its source as the current video does: registered, then presented.
-  const [pickedLengths, setPickedLengths] = React.useState<ReadonlyMap<string, number | 'none' | 'failed'>>(new Map());
-  const lengthReads = React.useRef(new Set<string>());
-  const readPickedLength = React.useCallback((url: string): void => {
-    if (lengthReads.current.has(url)) return;
-    lengthReads.current.add(url);
-    void queryClient.ensureQueryData(videoPresentationQuery({ projectId, canonicalURL: url, active: true })).then(
-      (response) => response.sourceBinding.mediaInfo.duration ?? response.presentation?.original.duration ?? 'none' as const, () => 'failed' as const,
-    ).then((length) => { lengthReads.current.delete(url); setPickedLengths((known) => new Map(known).set(url, length)); });
-  }, [queryClient, projectId]);
+  // Only settled answers are kept: a length, or 'none' once the server says no later read can change it.
+  const [pickedLengths, setPickedLengths] = React.useState<ReadonlyMap<string, number | 'none'>>(new Map());
+  const timelineSlot = slots?.timeline;
+  const unmeasured = toolId === 'video.transitions' && current !== null && !disabled && timelineSlot !== undefined && !Array.isArray(timelineSlot) && (timelineSlot as MiniToolSlotValue).duration === undefined ? (timelineSlot as MiniToolSlotValue).url : null;
+  const measuring = unmeasured !== null && !pickedLengths.has(unmeasured) ? unmeasured : null;
+  // The held source is observed rather than read once, so an answer still being prepared keeps polling until it settles.
+  const lengthReading = useQuery(videoPresentationQuery({ projectId, canonicalURL: measuring ?? '', active: measuring !== null }));
+  React.useEffect(() => {
+    if (measuring === null) return;
+    if (lengthReading.isError) {
+      // A transport failure is not an answer about the video: nothing is kept, so the next pick reads again.
+      toast.warning(t('canvas.miniTool.videoUI.mediaError'));
+      store.getState().clearMiniToolSlot('timeline');
+      return;
+    }
+    const answer = lengthReading.data;
+    if (answer === undefined) return;
+    const length = answer.sourceBinding.mediaInfo.duration ?? answer.presentation?.original.duration ?? (answer.pollAfterMs === null ? 'none' as const : null);
+    if (length !== null) setPickedLengths((known) => new Map(known).set(measuring, length));
+  }, [measuring, lengthReading.isError, lengthReading.data, store, t]);
   React.useEffect(() => {
     if (current === null || slots === undefined || disabled) return;
     let pickedTimeline = false;
@@ -497,9 +508,10 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
       let value = held as MiniToolSlotValue;
       if (toolId === 'video.transitions' && key === 'timeline' && value.duration === undefined) {
         const length = pickedLengths.get(value.url);
-        if (length === undefined) { readPickedLength(value.url); continue; }
-        if (typeof length !== 'number') {
-          toast.warning(t(length === 'none' ? 'canvas.miniTool.videoUI.ledgerUnsupported' : 'canvas.miniTool.videoUI.mediaError'));
+        // Still being read: the slot stays held until its source answers.
+        if (length === undefined) continue;
+        if (length === 'none') {
+          toast.warning(t('canvas.miniTool.videoUI.ledgerUnsupported'));
           store.getState().clearMiniToolSlot(key);
           continue;
         }
@@ -540,7 +552,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     }
     // A picked video opens the timeline (canvas design §4 transitions row).
     if (pickedTimeline) { store.getState().endPick(); setTimelineOpen(true); }
-  }, [slots, current, disabled, toolId, change, store, inputTables, presentation?.frameTable, pickedLengths, readPickedLength, t]);
+  }, [slots, current, disabled, toolId, change, store, inputTables, presentation?.frameTable, pickedLengths, t]);
   const intent = `video-analysis:${projectId}:${spaceId}:${nodeId}:${toolId}`;
   const analysisPressRunning = Boolean(useRunning(intent));
   const analysing = analysisPressRunning || analysisReadings.pending || matchingRecords.some((record) => record.status === 'pending' || record.status === 'running');
