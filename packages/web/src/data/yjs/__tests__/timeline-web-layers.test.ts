@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Stacking web-animation copies with video in the preview (inner#1711 design §7.3).
+ * Stacking web-animation copies with video in the preview (inner#1711 design §7.3, breatic#1410 design §6.1).
  *
- * `visibleTimelineClipsAt(document, readyIds, frame)` replaces `activeTimelineClipAt`: every ready clip covering
- * the frame, bottom-up by track rank, keeping the inner#1708 video rule that the highest video hides everything below it, so
- * only web copies above it stack on it. `nextTimelinePlaybackBoundary` counts the start and end of every web copy
- * above the highest visible video.
+ * `visibleTimelineClipsAt(document, readyIds, frame)` is every ready clip covering the frame, bottom-up by track
+ * rank; a higher video no longer hides what is under it, since a layer may be moved or scaled off what it covers.
+ * `nextTimelinePlaybackBoundary` counts the start and end of every web copy, under a higher video or not.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -51,13 +50,13 @@ describe('visibleTimelineClipsAt', () => {
     expect(visibleIds([webClip(cid(2), V2, 0, 48), clip(cid(1), MAIN, 0, 48)], 10)).toEqual([cid(1), cid(2)]);
   });
 
-  it('hides a web copy under a higher video', () => {
-    expect(visibleIds([webClip(cid(2), V2, 0, 48), clip(cid(1), V3, 0, 48)], 10)).toEqual([cid(1)]);
+  it('keeps a web copy under a higher video, below it', () => {
+    expect(visibleIds([webClip(cid(2), V2, 0, 48), clip(cid(1), V3, 0, 48)], 10)).toEqual([cid(2), cid(1)]);
   });
 
-  it('keeps only what is above the highest video', () => {
+  it('keeps every layer in track order, under and over each video', () => {
     const clips = [clip(cid(1), MAIN, 0, 48), webClip(cid(2), V2, 0, 48), clip(cid(3), V3, 0, 48), webClip(cid(4), V4, 0, 48, boundTo(SRC_B))];
-    expect(visibleIds(clips, 10)).toEqual([cid(3), cid(4)]);
+    expect(visibleIds(clips, 10)).toEqual([cid(1), cid(2), cid(3), cid(4)]);
   });
 
   it('shows several web copies with no video, bottom-up', () => {
@@ -82,9 +81,12 @@ describe('nextTimelinePlaybackBoundary with web copies', () => {
     expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(30);
   });
 
-  it('ignores the edges of a web copy under a higher video', () => {
+  it('stops at the edges of a web copy under a higher video', () => {
     const { document, ready } = stack([clip(cid(1), V3, 0, 100), webClip(cid(2), V2, 0, 48), webClip(cid(3), V2, 60, 10)]);
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(100);
+    expect(nextTimelinePlaybackBoundary(document, ready, 0, 100)).toBe(48);
+    expect(nextTimelinePlaybackBoundary(document, ready, 48, 100)).toBe(60);
+    expect(nextTimelinePlaybackBoundary(document, ready, 60, 100)).toBe(70);
+    expect(nextTimelinePlaybackBoundary(document, ready, 70, 100)).toBe(100);
   });
 
   it('stops at the end of the only web copy when there is no video', () => {

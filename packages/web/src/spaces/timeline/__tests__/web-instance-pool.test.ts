@@ -95,15 +95,14 @@ describe('roles', () => {
       .toEqual([{ key: `${SRC_A}:0`, sourceVersionId: SRC_A, role: 'visible', clipId: later.id, targetFrame: null }]);
   });
 
-  it('premounts a copy under a higher video that ends within the lead, targeting the frame the video reveals it', () => {
+  it('gives a copy under a higher video a visible instance, since layers are no longer hidden by the video above (breatic#1410 §6.1)', () => {
     const under = webClip(cid(101), V2, 0, 240);
-    const document = docOf([clip(cid(1), V3, 0, 72), under]);
-    expect(of(allocate(EMPTY_WEB_INSTANCE_POOL, { document, frame: 30 }), under.id))
-      .toMatchObject({ role: 'premount', targetFrame: 72 });
-    expect(of(allocate(EMPTY_WEB_INSTANCE_POOL, { document, frame: 20 }), under.id)).toBeUndefined();
-    // A video over it past the lead keeps it hidden through the lead.
-    const covered = docOf([clip(cid(1), V3, 0, 200), under]);
-    expect(allocate(EMPTY_WEB_INSTANCE_POOL, { document: covered, frame: 30 }).assignments).toEqual([]);
+    const visible = { key: `${SRC_A}:0`, sourceVersionId: SRC_A, role: 'visible', clipId: under.id, targetFrame: null };
+    for (const frame of [20, 30]) {
+      expect(allocate(EMPTY_WEB_INSTANCE_POOL, { document: docOf([clip(cid(1), V3, 0, 72), under]), frame }).assignments, `frame ${frame}`).toEqual([visible]);
+    }
+    // A video over it past the lead does not hide it either.
+    expect(allocate(EMPTY_WEB_INSTANCE_POOL, { document: docOf([clip(cid(1), V3, 0, 200), under]), frame: 30 }).assignments).toEqual([visible]);
   });
 
   it('premounts nothing without a lead, as before the Timeline limits arrive', () => {

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import fc from 'fast-check';
 
 import {
@@ -18,7 +18,6 @@ const READY: MediaSnapshot = {
   paused: false,
   seeking: false,
   ended: false,
-  error: false,
   readyState: 3,
 };
 
@@ -51,15 +50,8 @@ describe('resolveTimelineMediaTransport', () => {
     expect(resolveTimelineMediaTransport({ ...READY, ended: true })).toBe('waiting');
   });
 
-  it('reports a current media error', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, error: true })).toBe('failed');
-  });
-
-  it('reports a media error when the user has paused an unready element', () => {
-    expect(resolveTimelineMediaTransport({
-      intent: 'pause', generationMatches: false, targetReady: false,
-      paused: true, seeking: true, ended: true, error: true, readyState: 0,
-    })).toBe('failed');
+  it('has no failed state: a failure belongs to one video layer, never to the whole preview (#1410 design §6.2)', () => {
+    expectTypeOf<ReturnType<typeof resolveTimelineMediaTransport>>().toEqualTypeOf<'paused' | 'waiting' | 'playing'>();
   });
 
   it.each([

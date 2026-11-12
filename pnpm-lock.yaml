@@ -715,7 +715,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
@@ -809,7 +809,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       bullmq:
         specifier: 'catalog:'
         version: 5.81.3
@@ -1147,6 +1147,9 @@ importers:
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.18)(react@19.3.0)
+      react-moveable:
+        specifier: 0.56.0
+        version: 0.56.0
       react-resizable-panels:
         specifier: ^4.12.2
         version: 4.12.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -1282,7 +1285,7 @@ importers:
         version: 4.7.0(vite@5.4.21(@types/node@24.19.1)(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       '@vitest/ui':
         specifier: ^4.1.10
         version: 4.1.10(vitest@3.2.7)
@@ -2052,6 +2055,9 @@ packages:
 
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
+
+  '@egjs/agent@2.4.4':
+    resolution: {integrity: sha512-cvAPSlUILhBBOakn2krdPnOGv5hAZq92f1YHxYcfu0p7uarix2C6Ia3AVizpS1SGRZGiEkIS5E+IVTLg1I2Iog==}
 
   '@egjs/children-differ@1.0.1':
     resolution: {integrity: sha512-DRvyqMf+CPCOzAopQKHtW+X8iN6Hy6SFol+/7zCUiE5y4P/OB8JP8FtU4NxtZwtafvSL4faD5KoQYPj3JHzPFQ==}
@@ -5176,6 +5182,9 @@ packages:
   '@smithy/core@3.31.1':
     resolution: {integrity: sha512-CyogUINxvi7C7LDsh8Syo6hVJOT9ckz4rG8dRZfTJ8r91HkMY59PnNooaj7WcHyxEkxPfBAmbgztZU+xTo76lg==}
     engines: {node: '>=18.0.0'}
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.4.16':
     resolution: {integrity: sha512-QfuLWAkLzptffFW980AFeHZFdqds2B64rpEd3uJ6lgs3xVn9QegGMUgUcj+4d7dRrAsya3r58ZKpku97WcFb4w==}
@@ -8063,6 +8072,7 @@ packages:
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
+    deprecated: Please migrate to image-size@2.x
     hasBin: true
 
   immediate@3.0.6:
@@ -10012,6 +10022,9 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
+  react-css-styled@1.1.9:
+    resolution: {integrity: sha512-M7fJZ3IWFaIHcZEkoFOnkjdiUFmwd8d+gTh2bpqMOcnxy/0Gsykw4dsL4QBiKsxcGow6tETUa4NAUcmJF+/nfw==}
+
   react-dom@19.3.0:
     resolution: {integrity: sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==}
     peerDependencies:
@@ -10045,6 +10058,9 @@ packages:
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
+
+  react-moveable@0.56.0:
+    resolution: {integrity: sha512-FmJNmIOsOA36mdxbrc/huiE4wuXSRlmon/o+/OrfNhSiYYYL0AV5oObtPluEhb2Yr/7EfYWBHTxF5aWAvjg1SA==}
 
   react-refresh@0.17.0:
     resolution: {integrity: sha512-z6F7K9bV85EfseRCp2bzrpyQ0Gkw1uLoCel9XBVWPg/TjRj94SkJzUTGfOa4bs7iJvBWtQG0Wq7wnI0syw3EBQ==}
@@ -12515,6 +12531,8 @@ snapshots:
       tslib: 2.8.1
 
   '@drizzle-team/brocli@0.10.2': {}
+
+  '@egjs/agent@2.4.4': {}
 
   '@egjs/children-differ@1.0.1':
     dependencies:
@@ -15695,7 +15713,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-v8@3.2.7(vitest@3.2.7)':
+  '@vitest/coverage-v8@3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2
@@ -20946,6 +20964,11 @@ snapshots:
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
+  react-css-styled@1.1.9:
+    dependencies:
+      css-styled: 1.0.8
+      framework-utils: 1.1.0
+
   react-dom@19.3.0(react@19.3.0):
     dependencies:
       react: 19.3.0
@@ -20984,6 +21007,22 @@ snapshots:
       vfile: 6.0.3
     transitivePeerDependencies:
       - supports-color
+
+  react-moveable@0.56.0:
+    dependencies:
+      '@daybrush/utils': 1.13.0
+      '@egjs/agent': 2.4.4
+      '@egjs/children-differ': 1.0.1
+      '@egjs/list-differ': 1.0.1
+      '@scena/dragscroll': 1.4.0
+      '@scena/event-emitter': 1.0.5
+      '@scena/matrix': 1.1.1
+      css-to-mat: 1.1.1
+      framework-utils: 1.1.0
+      gesto: 1.19.4
+      overlap-area: 1.1.0
+      react-css-styled: 1.1.9
+      react-selecto: 1.26.3
 
   react-refresh@0.17.0: {}
 
