@@ -6,6 +6,7 @@ import Moveable, { type OnDrag, type OnRotate, type OnScale, type OnScaleStart }
 import { timelineLayerCss, type TimelineLayerBox, type TimelineLayerTransform } from '@breatic/shared';
 
 import { clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform } from '@web/spaces/timeline/layer-transform';
+import '@web/spaces/timeline/timeline-layer-handles.css';
 
 /** One selected layer's handles. */
 export interface TimelineLayerHandlesProps {

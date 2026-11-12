@@ -8,7 +8,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
-  addProjectTimelineVideo, moveTimelineClip, timelineClipIds, uploadTimelineVideo, watchTimelineErrors,
+  addProjectTimelineVideo, moveTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, watchTimelineErrors,
 } from '../helpers/timeline-media';
 
 /** dnd-kit swallows clicks for 50 ms after a drag ends; a person never clicks that fast. */
@@ -120,7 +120,7 @@ test('an Editor drags a clip onto a new track, trims, splits, duplicates, delete
   }
 });
 
-test('the preview shows the upper layer where a sub-track clip covers a main clip and the main clip elsewhere @needs-storage @needs-ingest', async ({ page }) => {
+test('the preview stacks the sub-track clip over the main clip where both play and shows only the main clip elsewhere @needs-storage @needs-ingest', async ({ page }) => {
   const errors = watchTimelineErrors(page);
   await openSmokeProject(page);
   const spaceId = await createSpace(page, 'timeline', `Timeline layers ${crypto.randomUUID()}`);
@@ -133,20 +133,28 @@ test('the preview shows the upper layer where a sub-track clip covers a main cli
     // The main clip covers [0, duration); the upper clip covers [half, half + duration) on a new track above it.
     await moveTimelineClip(page, upper, half, duration, 'New visual track');
     const outlet = visibleSpace(page);
-    const preview = outlet.getByTestId('timeline-preview');
+    const main = timelineVideoOf(page, uploaded.clipId);
+    const above = timelineVideoOf(page, upper);
     const seek = outlet.getByRole('slider', { name: 'Preview frame', exact: true });
     await seek.focus();
     await seek.press('Home');
     await expect(seek).toHaveAttribute('aria-valuenow', '0');
-    await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+    // Before the upper clip starts its element is absent, or premounted and hidden.
+    await expect(main).toBeVisible();
+    await expect(above).not.toBeVisible();
     // Radix PageUp advances ten frames; stop at the first multiple of ten inside the covered part.
     const pages = Math.ceil(half / 10);
     expect(pages * 10).toBeLessThan(duration);
     for (let step = 0; step < pages; step += 1) await seek.press('PageUp');
     await expect(seek).toHaveAttribute('aria-valuenow', String(pages * 10));
-    await expect(preview).toHaveAttribute('data-active-clip-id', upper);
+    // Both videos are in the frame, stacked by track from the bottom: the main track first, the new track above it.
+    await expect(main).toBeVisible();
+    await expect(above).toBeVisible();
+    await expect(main).toHaveCSS('z-index', '1');
+    await expect(above).toHaveCSS('z-index', '2');
     await seek.press('Home');
-    await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+    await expect(main).toBeVisible();
+    await expect(above).not.toBeVisible();
     expect(errors.unexpected).toEqual([]);
   } finally {
     await deleteSpace(page, spaceId);

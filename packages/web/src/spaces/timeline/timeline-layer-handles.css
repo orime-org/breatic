@@ -1,0 +1,31 @@
+/* Copyright (c) 2026 Orime, Inc. */
+/* SPDX-License-Identifier: Elastic-2.0 */
+
+/*
+ * The preview handles in the product's tokens (#1410 design §4.3): 8 px square handles on the background with a 1 px
+ * active border, a 1 px box line in the active border colour, and snap guides in the selected status colour.
+ * react-moveable injects unlayered rules scoped by one generated class at run time, so these rules repeat their class
+ * to rank above them; the tokens switch with the theme.
+ */
+.timeline-layer-handles.timeline-layer-handles {
+  --moveable-color: var(--color-active-border);
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-control {
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  margin-left: -4px;
+  border: 1px solid var(--color-active-border);
+  border-radius: 0;
+  background: var(--color-background);
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-rotation .moveable-control {
+  border-radius: 50%;
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-guideline,
+.timeline-layer-handles.timeline-layer-handles .moveable-line.moveable-guideline {
+  background: var(--color-status-selected);
+}
