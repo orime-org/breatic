@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 canvas design §4 erase row ("修改输入后显示需重新跟踪") and the approved demo's tracking-status line: the erase
+ * inner#1306 canvas design §4 erase row (changing the input asks to track again) and the approved demo's tracking-status line: the erase
  * panel says whether the tracking applies to the current selection, no longer applies, or has not been made.
  */
 

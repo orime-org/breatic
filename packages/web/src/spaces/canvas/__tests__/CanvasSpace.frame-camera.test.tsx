@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 the source player's camera menu reaches the canvas (tools design §4 相机菜单; canvas design §27): a pick opens
+ * inner#1306 the source player's camera menu reaches the canvas (tools design §4 camera menu; canvas design §27): a pick opens
  * Extract frames on that node, as the Tools submenu does, in the chosen mode.
  */
 
@@ -56,7 +56,7 @@ const DRAFT: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '300
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
 
-// §96 (design §10.8 请求行, §7.12): the panel facts carry the selected bundle's presentationRef, which the run request
+// §96 (design §10.8 request row, §7.12): the panel facts carry the selected bundle's presentationRef, which the run request
 // sends as presentation_ref (fixture migrated, 4.4.5); without one the panel cannot run.
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 

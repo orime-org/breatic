@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 extract frames panel layout (canvas design §4 抽帧 row: three buttons in one row; demo main.tsx frames branch
+ * inner#1306 extract frames panel layout (canvas design §4 extract-frames row: three buttons in one row; demo main.tsx frames branch
  * grid-cols-3 and its ledger lines; frames-split §10.6 panel hookup: while the frame table is not usable only its line shows).
  */
 

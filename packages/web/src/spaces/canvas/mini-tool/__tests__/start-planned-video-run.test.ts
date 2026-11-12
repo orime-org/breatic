@@ -36,7 +36,7 @@ function draft(): VideoToolDraftById['video.remove-bg'] {
   };
 }
 
-// §95 (design §10.8 请求行, §7.11): the press carries the selected bundle's identity as the request's presentation_ref, input
+// §95 (design §10.8 request row, §7.11): the press carries the selected bundle's identity as the request's presentation_ref, input
 // id to {toolInputId, planSha256}; the field the press holds it in is `presentationRef` (question D9-4).
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 
@@ -113,7 +113,7 @@ describe('planned frame and segment outputs', () => {
   });
 });
 
-// Canvas design §4 转场 row (组合新视频，当前节点与输入节点提供连线) and tools design §5 (结果连线取当前节点和输入节点): a
+// Canvas design §4 transitions row (a new composed video, linked from the current and input nodes) and tools design §5 (result edges come from the current and input nodes): a
 // transitions result is linked from the current node and from the picked input's node, in the press's one undo batch.
 describe('a transitions result is linked from both of its videos', () => {
   const PICKED_NODE = '10000000-0000-4000-8000-000000000007';

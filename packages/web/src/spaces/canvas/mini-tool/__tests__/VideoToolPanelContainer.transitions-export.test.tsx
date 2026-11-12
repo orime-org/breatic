@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 test plan §97 (canvas design §10 editor row, `export` column; §4 转场行; demo 2026-10-23-1306-video-tools
+ * inner#1306 test plan §97 (canvas design §10 editor row, `export` column; §4 transitions row; demo 2026-10-23-1306-video-tools
  * `timeline-editor.tsx` footer): the Dialog's Export and the panel's Run read one derived availability. While Run is
  * unavailable Export is `aria-disabled` and a click explains with a toast and leaves the Dialog open; an accepted export
  * returns to the panel (the Dialog closes); a refused export keeps the Dialog open and shows the server's reason as a toast.
@@ -143,7 +143,7 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
   });
 });
 
-describe('the Dialog composition row reads the first clip\'s selected display size (canvas design §4 转场; demo timeline-editor.tsx)', () => {
+describe('the Dialog composition row reads the first clip\'s selected display size (canvas design §4 transitions row; demo timeline-editor.tsx)', () => {
   it('states the size the current video\'s presentation displays, not its registered size', () => {
     const client = usableInputClient();
     seedUsablePresentation(client, projectId, sourceURL, { display: { width: 320, height: 480, duration: { numerator: '4', denominator: '1' } } });

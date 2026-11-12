@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Demo main.tsx guard-message and canvas design §4 (只读、锁或离线): while the Space is read-only, the node is locked or the
+ * Demo main.tsx guard-message and canvas design §4 (read-only, locked or offline): while the Space is read-only, the node is locked or the
  * collaboration connection is lost, the panel says why in red, and offline nothing that writes or starts work can be pressed.
  */
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 frames-split design §10.7 产物上限 (packages/web/AGENTS.md#disabled-controls): a split whose planned segments
+ * inner#1306 frames-split design §10.7 output cap (packages/web/AGENTS.md#disabled-controls): a split whose planned segments
  * outnumber the tool's `max_outputs` (config `executions."video.split".max_outputs`, served by `GET /canvas/limits`) has an
  * `aria-disabled` Run, and a press says the limit in a toast instead of creating nodes the server would refuse.
  *
@@ -62,7 +62,7 @@ function mount(cuts: number[], maxOutputs: number, onRunVideo: () => Promise<unk
 beforeEach(() => { vi.clearAllMocks(); });
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
 
-describe('the split output cap on Run (frames-split §10.7 产物上限)', () => {
+describe('the split output cap on Run (frames-split §10.7 output cap)', () => {
   it('runs when the planned segments fit max_outputs', () => {
     const onRunVideo = vi.fn().mockResolvedValue({ kind: 'done', result: {} });
     mount([1, 2], 3, onRunVideo);

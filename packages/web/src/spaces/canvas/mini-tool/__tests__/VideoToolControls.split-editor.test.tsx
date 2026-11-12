@@ -186,7 +186,7 @@ describe('cut rows and count (canvas design §4 split row)', () => {
   });
 });
 
-describe('segment preview (canvas design §4 split row 预览区间; demo CutEditor)', () => {
+describe('segment preview (canvas design §4 split row preview; demo CutEditor)', () => {
   it('sizes one numbered button per segment by its share of the duration', () => {
     mount();
     expect(['0', '1', '2'].map((index) => screen.getByTestId(`video-segment-${index}`).textContent)).toEqual(['1', '2', '3']);

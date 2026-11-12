@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 (demo 2026-10-23-1306-video-tools `timeline-editor.tsx`; canvas design §4 转场行 and §10 editor × export):
+ * inner#1306 (demo 2026-10-23-1306-video-tools `timeline-editor.tsx`; canvas design §4 transitions row and §10 editor × export):
  * the transitions Dialog reads as the approved demo does. The composition row states the first clip's frame size, frame
  * rate and the length; the transport has a rewind button; the properties aside labels the clip selector and heads the
  * transition section; each track block shows its source's frames, name and source in → out; the ruler reads seconds;
@@ -74,7 +74,7 @@ function open({ onChange = vi.fn(), inputFormats = opaque, onRun = vi.fn() }: { 
 
 beforeEach(() => { vi.clearAllMocks(); track.props = null; preview.props = null; strips.props = []; bounds.mockReturnValue({ min: 0.2, max: 1.2 }); });
 
-describe('A1 the composition row states the first clip format (demo timeline-editor.tsx:45; canvas design §4 转场)', () => {
+describe('A1 the composition row states the first clip format (demo timeline-editor.tsx:45; canvas design §4 transitions row)', () => {
   it('reads "{width} × {height} · {fps} fps · {duration}" from the first clip\'s display size and table rate', () => {
     open();
     expect(screen.getByText('1920 × 1080 · 29.97 fps · 6.500 s')).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe('A1 the composition row states the first clip format (demo timeline-edi
   });
 });
 
-describe('A2 the preview gets the first clip\'s frame and the output transparency (canvas design §4 转场)', () => {
+describe('A2 the preview gets the first clip\'s frame and the output transparency (canvas design §4 transitions row)', () => {
   it('hands the preview the first clip size, opaque when neither input is transparent', () => {
     open();
     expect(preview.props?.format).toEqual({ width: 1920, height: 1080, transparent: false });

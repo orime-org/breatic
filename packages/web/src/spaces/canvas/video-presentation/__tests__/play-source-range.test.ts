@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 split "预览区间" (canvas design §4 split row; demo video-controls.tsx CutEditor previewSegment): a segment
+ * inner#1306 split segment preview (canvas design §4 split row; demo video-controls.tsx CutEditor previewSegment): a segment
  * preview plays exactly one source range in the node's own player and stops at its end.
  */
 

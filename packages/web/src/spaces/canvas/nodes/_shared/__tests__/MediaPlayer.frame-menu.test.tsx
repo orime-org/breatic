@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 the source player's camera menu (tools design §4 相机菜单; canvas design §27; demo video-controls.tsx
+ * inner#1306 the source player's camera menu (tools design §4 camera menu; canvas design §27; demo video-controls.tsx
  * SourcePlayer): hovering a video node's player shows a camera button whose menu offers First frame, Last frame and Current
  * frame, each opening Extract frames in that mode.
  */

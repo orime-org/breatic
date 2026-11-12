@@ -22,7 +22,7 @@ describe('approved video tool edit boundaries', () => {
     expect(first.draftId).not.toBe(second.draftId);
     expect(first.revision).not.toBe(second.revision);
   });
-  // §97 (frames-split §10.6 删除行): a new frame draft starts on Current with no interval period.
+  // §97 (frames-split §10.6 removal row): a new frame draft starts on Current with no interval period.
   it('starts a frame draft on Current with no interval period', () => {
     expect(createVideoToolDraft('video.extract-frames', source).params).toEqual({ mode: 'current', currentTime: 0 });
   });

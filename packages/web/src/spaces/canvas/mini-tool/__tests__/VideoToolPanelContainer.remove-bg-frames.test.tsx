@@ -5,7 +5,7 @@
  * inner#1306 remove background and extract frames in the panel container: remove background waits for the frame table like
  * every model tool (frames-split §10.6 panel hookup), its newest ready result opens in a preview dialog (canvas design §4
  * remove-background row; demo open-alpha-result), the frame modes stay usable while only Run waits, and a camera-menu pick
- * reaches the extract-frames draft (tools design §4 相机菜单).
+ * reaches the extract-frames draft (tools design §4 camera menu).
  */
 
 import * as React from 'react';

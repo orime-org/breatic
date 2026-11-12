@@ -70,7 +70,7 @@ describe('partial timeline presentation allocation', () => {
   });
 });
 
-describe('the composite has the first clip frame and fits the other inside it (canvas design §4 转场; demo timeline-preview.tsx)', () => {
+describe('the composite has the first clip frame and fits the other inside it (canvas design §4 transitions row; demo timeline-preview.tsx)', () => {
   const plan = { duration: 0, clips: [] };
 
   it('sizes the canvas to the first clip frame, a checkerboard behind it only when the output is transparent', () => {

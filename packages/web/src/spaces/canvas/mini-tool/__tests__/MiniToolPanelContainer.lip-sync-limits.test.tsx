@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 test plan §97 (canvas design §4 对口型 row; execution design §9.3, §9.4; frames-split §7.11 retry row): the lip-sync
+ * inner#1306 test plan §97 (canvas design §4 lip-sync row; execution design §9.3, §9.4; frames-split §7.11 retry row): the lip-sync
  * panel as `CanvasSpace` mounts it (`MiniToolPanelContainer` with no `lipSync`, `lipSyncFailure` or `onRetryFailed`) wires them
  * itself:
  * - `lipSync` comes from `GET /canvas/limits` `lipSync` (config `executions.video.lip-sync`), read through `canvasApi.fetchLimits`
@@ -274,7 +274,7 @@ function ui(key: string, params?: Record<string, string | number>): string {
 beforeEach(() => { vi.clearAllMocks(); canvasApi.resetLimitsCache(); catalog = CATALOG; mounted = presentation; });
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); resetRunOnceForTests(); vi.restoreAllMocks(); });
 
-describe('the lip-sync panel reads its models and ranges from the canvas limits (§97; canvas design §4 对口型)', () => {
+describe('the lip-sync panel reads its models and ranges from the canvas limits (§97; canvas design §4 lip-sync row)', () => {
   it('lists exactly the configured models in order, the first chosen', async () => {
     serve(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }));
     await mount();
@@ -346,7 +346,7 @@ describe('the lip-sync panel shows the last run failure and retries it (§97; ex
     expect(useTaskActionsInFlight.getState().running.has(`planned-retry:${failedRunId}:0`)).toBe(true);
   });
 
-  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry.
+  // frames-split §7.15 retryable end: a failed output an admitted retry took over accepts no further retry.
   it('lists the failure of a run whose output a retry took over and offers no retry', async () => {
     serveRuns(limits({ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }),
       [{ nodeId: outputId, runId: failedRunId, startedAt: '2026-11-06T00:00:00.000001Z', failure: reason, takenOver: true }]);
@@ -401,7 +401,7 @@ describe('the host panel follows its lip-sync output as the run settles (§97 D2
   });
 });
 
-describe('the host panel shows the failure of its most recently started lip-sync run only (§97 D24-1; canvas design §4 对口型)', () => {
+describe('the host panel shows the failure of its most recently started lip-sync run only (§97 D24-1; canvas design §4 lip-sync row)', () => {
   const ranges = [{ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }] as const;
   const OLDER = '10000000-0000-4000-8000-000000000011'; const NEWER = '10000000-0000-4000-8000-000000000012';
   const OLDER_RUN = '91000000-0000-4000-8000-000000000001'; const NEWER_RUN = '91000000-0000-4000-8000-000000000002';
@@ -448,7 +448,7 @@ describe('the host panel shows the failure of its most recently started lip-sync
   });
 });
 
-describe('the lip-sync panel takes its people and dialogue caps from the canvas limits (§97; canvas design §4 对口型)', () => {
+describe('the lip-sync panel takes its people and dialogue caps from the canvas limits (§97; canvas design §4 lip-sync row)', () => {
   const ranges = [{ minDurationSeconds: 1, maxDurationSeconds: 300 }, { minDurationSeconds: 0.5, maxDurationSeconds: 600 }] as const;
 
   /**
@@ -579,7 +579,7 @@ describe('the lip-sync footer shows the server quote for the current draft (§97
   });
 });
 
-describe('reopening the lip-sync panel keeps its identified people (§97; canvas design §4 对口型)', () => {
+describe('reopening the lip-sync panel keeps its identified people (§97; canvas design §4 lip-sync row)', () => {
   it('starts no people analysis and keeps the bound person when the draft already has an accepted one', async () => {
     mounted = planned;
     const started = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));

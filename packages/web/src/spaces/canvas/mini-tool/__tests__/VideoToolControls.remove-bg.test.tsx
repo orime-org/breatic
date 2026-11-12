@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1306 remove background panel (canvas design §4 去背景 row "原视频预览"; tools design §4 fixed transparent output and
+ * inner#1306 remove background panel (canvas design §4 remove-background row (source preview); tools design §4 fixed transparent output and
  * kept audio; demo 2026-10-23-1306-video-tools main.tsx matte branch, video-controls.tsx PlaybackStrip).
  */
 
