@@ -264,7 +264,8 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       void produced?.cancel().catch(() => {});
       streamOpened = true;
       open(true);
-      for (const observe of runObservers) await observe({ conversationId, runId });
+      // All at once: each observer is called before the send it watches can answer.
+      await Promise.all(runObservers.map((observe) => observe({ conversationId, runId })));
       if (isShuttingDown()) throw new RunNotOpened();
     };
     const agent = new MainAgent();
