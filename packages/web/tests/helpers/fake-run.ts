@@ -9,8 +9,10 @@
  *
  * The message never reaches the server, so reading a conversation's history
  * back adds what the store would hold by then: each message sent to it, and
- * each reply written here that has been read. A run that answers a card goes
- * on in the reply that paused, as the server stores it. A second send then
+ * each reply written here that has been read. A card's answer is stored on
+ * the card, never streamed: a card run's `tool-output-available` frame for
+ * that card is applied to the card in the history instead. The run it resumes
+ * writes a reply of its own, as the server stores it. A second send then
  * finds the first turn still on screen.
  */
 import { attachmentPart, type ChatAttachedChip } from '@breatic/shared';
@@ -53,13 +55,34 @@ const MESSAGE = '**/chat/message';
 const STREAM = /\/chat\/conversations\/([^/]+)\/stream$/;
 const HISTORY = /\/chat\/conversations\/([^/]+)$/;
 
+/** A card's answer, as a frame names it. */
+interface Settled {
+  type: 'tool-output-available';
+  toolCallId: string;
+  output: unknown;
+}
+
+/**
+ * Settle a card in the rows kept, as the server stores an answer: the call
+ * holds its output, and the mark naming it as the card shown goes.
+ * @param rows - The rows kept for the conversation.
+ * @param answer - The answer.
+ */
+function settleCard(rows: KeptRow[], answer: Settled): void {
+  for (const row of rows) {
+    if (row.role !== 'assistant') continue;
+    row.parts = row.parts
+      .filter((p) => !((p as { type?: string; data?: { toolCallId?: string } }).type === 'data-ask-awaiting' && (p as { data?: { toolCallId?: string } }).data?.toolCallId === answer.toolCallId))
+      .map((p) => ((p as { toolCallId?: string }).toolCallId === answer.toolCallId ? { ...(p as object), state: 'output-available', output: answer.output } : p));
+  }
+}
+
 /**
  * The reply a run's frames build.
  * @param frames - The run's frames.
- * @param paused - The reply the run goes on in, if it answers a card.
  * @returns The reply, or null when the frames build none.
  */
-async function replyOf(frames: RunFrames, paused: UIMessage | undefined): Promise<UIMessage | null> {
+async function replyOf(frames: RunFrames): Promise<UIMessage | null> {
   const stream = new ReadableStream<UIMessageChunk>({
     start(controller) {
       for (const f of frames) controller.enqueue(f as UIMessageChunk);
@@ -68,7 +91,7 @@ async function replyOf(frames: RunFrames, paused: UIMessage | undefined): Promis
   });
   let last: UIMessage | null = null;
   try {
-    for await (const message of readUIMessageStream({ stream, ...(paused === undefined ? {} : { message: paused }) })) last = message;
+    for await (const message of readUIMessageStream({ stream })) last = message;
   } catch {
     // A run that ends in an error frame keeps what it built until then.
   }
@@ -86,7 +109,7 @@ export async function answerRuns(
   framesFor: (body: Record<string, unknown>, index: number) => RunFrames,
 ): Promise<FakeRuns> {
   const bodies: Array<Record<string, unknown>> = [];
-  const waiting = new Map<string, Array<{ frames: RunFrames; card: boolean }>>();
+  const waiting = new Map<string, RunFrames[]>();
   const kept = new Map<string, KeptRow[]>();
   let lastConversation = '';
 
@@ -122,8 +145,16 @@ export async function answerRuns(
         parts: [...chips.map(attachmentPart), { type: 'text', text: String(body.message ?? '') }],
       });
     }
+    let frames = framesFor(body, index);
+    if (card) {
+      const answered = ((body.answer ?? body.shared_spaces) as { toolCallId?: string }).toolCallId;
+      const isAnswer = (f: object): boolean =>
+        (f as Partial<Settled>).type === 'tool-output-available' && (f as Partial<Settled>).toolCallId === answered;
+      for (const f of frames.filter(isAnswer)) settleCard(rowsOf(conversationId), f as Settled);
+      frames = frames.filter((f) => !isAnswer(f));
+    }
     const runs = waiting.get(conversationId) ?? [];
-    runs.push({ frames: framesFor(body, index), card });
+    runs.push(frames);
     waiting.set(conversationId, runs);
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { status: 'start', pending: [], running: true } }) });
   };
@@ -135,18 +166,11 @@ export async function answerRuns(
    */
   const onStream = async (route: Route): Promise<void> => {
     const conversationId = STREAM.exec(new URL(route.request().url()).pathname)?.[1] ?? '';
-    const run = waiting.get(conversationId)?.shift();
-    if (run === undefined) return route.fulfill({ status: 204 });
-    const rows = rowsOf(conversationId);
-    const last = rows.at(-1);
-    const paused = run.card && last?.role === 'assistant' ? last : undefined;
-    const reply = await replyOf(run.frames, paused as UIMessage | undefined);
-    if (reply !== null) {
-      const row: KeptRow = { id: reply.id, role: 'assistant', parts: reply.parts };
-      if (paused !== undefined) rows[rows.length - 1] = row;
-      else rows.push(row);
-    }
-    const body = [RUN_BEAT, ...run.frames].map((f) => `data: ${JSON.stringify(f)}\n\n`).join('');
+    const frames = waiting.get(conversationId)?.shift();
+    if (frames === undefined) return route.fulfill({ status: 204 });
+    const reply = await replyOf(frames);
+    if (reply !== null) rowsOf(conversationId).push({ id: reply.id, role: 'assistant', parts: reply.parts });
+    const body = [RUN_BEAT, ...frames].map((f) => `data: ${JSON.stringify(f)}\n\n`).join('');
     await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body });
   };
 
@@ -179,7 +203,7 @@ export async function answerRuns(
     bodies,
     queue: (frames, conversationId = lastConversation) => {
       const runs = waiting.get(conversationId) ?? [];
-      runs.push({ frames, card: false });
+      runs.push(frames);
       waiting.set(conversationId, runs);
     },
     stop: async () => {

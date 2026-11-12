@@ -85,9 +85,8 @@ test('the card numbers its questions and sends every answer with one press, the 
   const sent = await serve([
     ASKS,
     run([
-      // The real server reads the answer back from the history instead; the
-      // history served here holds only what was streamed, so the card is
-      // settled on the stream, in the paused reply the run goes on in.
+      // The card's answer: the fake stores it on the card in the history it
+      // serves, as the server does, and streams only what follows.
       { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] } },
       // The server names the resumed reply afresh, as it does every reply.
       { type: 'start', messageId: 'm-reply-resumed' },

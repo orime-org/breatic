@@ -87,10 +87,9 @@ function asks(spaces: object[]): RunFrames {
 }
 
 /**
- * The turn going on after the user answered, in the paused reply: the card's
- * summary of the answer, then what the turn says next. The real server reads
- * the summary back from the history instead; the history served here holds
- * only what was streamed, so the card is settled on the stream.
+ * The turn going on after the user answered: the card's answer, which the
+ * fake stores on the card in the history it serves as the server does, then
+ * what the turn says next in a reply of its own.
  * @param output - What the card is settled with.
  * @returns The run's frames.
  */
@@ -282,8 +281,21 @@ test('a card still waiting is drawn again after a reload and can be answered', a
     const real = await route.fetch();
     const json = (await real.json()) as Record<string, unknown>;
     const held = pick(json);
-    if ((held.conversation as { id?: string } | undefined)?.id === conversationId) held.messages = stored;
+    if ((held.conversation as { id?: string } | undefined)?.id === conversationId) held.messages = answeredOnceSent();
     await route.fulfill({ response: real, json });
+  };
+  /**
+   * The stored rows, with the card settled once its answer was sent, as the
+   * server stores an answer.
+   * @returns The rows.
+   */
+  const answeredOnceSent = (): unknown[] => {
+    if (sent.length < 2) return stored;
+    const [user, reply] = stored;
+    const parts = reply!.parts
+      .filter((p) => p.type !== 'data-ask-awaiting')
+      .map((p) => (p.type === 'tool-request_space_content' ? { ...p, state: 'output-available', output: { declined: true } } : p));
+    return [user!, { ...reply!, parts }];
   };
   await page.route('**/chat/open', (route) => withStored(route, (json) => (json.data as { current: Record<string, unknown> }).current));
   await page.route(`**/chat/conversations/${conversationId}`, (route) => withStored(route, (json) => json.data as Record<string, unknown>));
