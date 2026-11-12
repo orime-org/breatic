@@ -75,6 +75,17 @@ function atFileEnd(element: HTMLVideoElement): boolean {
 }
 
 /**
+ * Whether a source time lies past an element's file end, where its clip runs on over the last picture.
+ * @param element - The element.
+ * @param target - The source time.
+ * @returns Whether it is past the end.
+ * @throws {never} Never.
+ */
+function pastFileEnd(element: HTMLVideoElement, target: number): boolean {
+  return Number.isFinite(element.duration) && target > element.duration;
+}
+
+/**
  * Whether an element shows a source time: within the tolerance of it, or, for a time past its file end, at the end itself,
  * where a lane in its tail holds the last picture (#1410 design §6.3, `media.js:279-283`).
  * @param element - The element.
@@ -84,7 +95,7 @@ function atFileEnd(element: HTMLVideoElement): boolean {
  * @throws {never} Never.
  */
 function landedAt(element: HTMLVideoElement, target: number, tolerance: number): boolean {
-  if (Number.isFinite(element.duration) && target > element.duration) return atFileEnd(element);
+  if (pastFileEnd(element, target)) return atFileEnd(element);
   return Math.abs(element.currentTime - target) <= tolerance;
 }
 
@@ -260,22 +271,23 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     }
 
     /**
-     * Whether a lane's clip runs past its file at the current frame: it holds the file's last picture.
+     * Whether a lane holds its file's last picture: its element is at the end, or the clip runs past the file at the
+     * source time (#1410 design §6.3). Such a lane is never sent play() and never makes a playing preview wait.
      * @param lane - The lane.
+     * @param target - The source time; the current frame's by default.
      * @returns Whether it is in its tail.
      * @throws {never} Never.
      */
-    function inTail(lane: VideoLane): boolean {
-      if (atFileEnd(lane.element)) return true;
-      const target = targetOf(lane);
-      return target !== null && Number.isFinite(lane.element.duration) && target > lane.element.duration;
+    function inTail(lane: VideoLane, target: number | null = targetOf(lane)): boolean {
+      return atFileEnd(lane.element) || (target !== null && pastFileEnd(lane.element, target));
     }
 
     /**
-     * Ask a lane to show a source time. Within the tolerance of where it already is, it stays and counts as landed.
+     * Ask a lane to show a source time. Where `landedAt` says it already shows it within the tolerance, it stays and
+     * counts as landed; otherwise it seeks.
      * @param lane - The lane.
      * @param target - The source time.
-     * @param tolerance - How far off it may stay unsought.
+     * @param tolerance - How far off an in-file time it may stay unsought.
      * @throws {never} Never.
      */
     function place(lane: VideoLane, target: number, tolerance: number): void {
@@ -421,9 +433,10 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const lanes = activeLanes();
       stop(lanes);
       for (const lane of lanes) {
-        if (inTail(lane) || lane.awaitingSeek) continue;
+        if (lane.awaitingSeek) continue;
+        // A lane whose held-frame time is inside its file is judged by that time even when its element ran on to the end.
         const target = targetOf(lane);
-        if (target !== null) place(lane, target, limits().resumeSeekSeconds);
+        if (target !== null && !pastFileEnd(lane.element, target)) place(lane, target, limits().resumeSeekSeconds);
       }
       for (const lane of lanes) advanceSeek(lane);
     }
@@ -468,7 +481,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         const element = lane.element;
         if (found === null || lane.awaitingSeek) continue;
         const target = videoLaneSourceSeconds(found.clip, found.source, fps, seconds);
-        if (atFileEnd(element) || (Number.isFinite(element.duration) && target > element.duration)) {
+        if (inTail(lane, target)) {
           // The clip runs on past its file: hold the last picture, seeking to the end once when it lags.
           if (!atFileEnd(element) && !lane.tailSeek) {
             lane.tailSeek = true;
@@ -516,7 +529,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       }
       if (next >= boundary) {
         // The visible layers change here; the render that shows this frame checks them and goes on from the instant
-        // the clock reached the boundary, so the lanes that keep playing do not run ahead.
+        // the clock reached the boundary, so the lanes that keep playing do not run ahead. The lanes are checked first,
+        // as on every tick, so one entering its tail gets its seek to the file end now; a hard sync waits for the next tick.
+        checkDrift(now);
         boundaryAnchor = { frame: boundary, at: anchor.at + (boundary - anchor.frame) * 1000 * fps.den / fps.num };
         anchor = null;
         atBoundary.current = true;
@@ -572,8 +587,9 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const webReady = host.ready() && latest.current.webPending !== true;
       const waiting = lanes.filter((lane) => !ready(lane));
       if (state.current.state === 'playing') {
-        // The one tail seek runs while playing: the element reports HAVE_METADATA until it lands (#1410 design §6.3).
-        const dry = waiting.filter((lane) => !lane.tailSeek);
+        // A lane in its tail holds its last picture and gets its one seek from checkDrift; it never makes a playing
+        // preview wait, though the element reports HAVE_METADATA during that seek (#1410 design §6.3).
+        const dry = waiting.filter((lane) => !inTail(lane));
         if (dry.length > 0 || !webReady) {
           // A lane ran dry, or a new layer at the boundary is not ready: hold this frame for it.
           freeze(dry);
@@ -602,7 +618,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
     }
 
     /**
-     * Ask every lane to show the current frame, within half a frame of where it is (#1410 design §6.3).
+     * Ask every lane to show the current frame (`place` with half a frame, #1410 design §6.3).
      * @throws {never} Never.
      */
     function placeAll(): void {
