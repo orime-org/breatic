@@ -101,10 +101,16 @@ describe('actual Canvas planned remove-bg callback wire', () => {
     expect(miniToolAnalysesApi.start).not.toHaveBeenCalled();
   });
 
-  it('runs remove-bg with ready canonical metadata and no frame table, presented-frame guess, sampling or analysis', () => {
+  // Frames-split §10.6 panel hookup: remove background waits for the frame table like the other model tools.
+  it('keeps remove-bg from running while the frame table is not read, and runs it without sampling or analysis once it is', () => {
     presentation(null);
     mount();
-    expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled();
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(startPlannedVideoRun).not.toHaveBeenCalled();
+    cleanup();
+    presentation(TABLE);
+    mount();
     fireEvent.click(screen.getByTestId('mini-tool-run'));
     expect(startPlannedVideoRun).toHaveBeenCalledWith(expect.objectContaining({ toolId: 'video.remove-bg', draft: DRAFT, analyses: [] }));
     expect(miniToolAnalysesApi.start).not.toHaveBeenCalled();
@@ -152,8 +158,8 @@ describe('actual Canvas planned remove-bg callback wire', () => {
     expect(miniToolAnalysesApi.start).not.toHaveBeenCalled();
   });
 
-  it.each([{ label: 'with a frame table', table: TABLE }, { label: 'without a frame table', table: null }])('G01/G02 executes the real Container with an explicit callback $label', ({ table }) => {
-    const facts = presentation(table);
+  it('G01/G02 executes the real Container with an explicit callback once the frame table is read', () => {
+    const facts = presentation(TABLE);
     const nodes = readNodes(getDoc(docName.canvasSpace(PROJECT, SPACE)));
     const node = nodes.find((candidate) => candidate.id === SOURCE);
     if (node === undefined) throw new Error('Expected the attached source node');

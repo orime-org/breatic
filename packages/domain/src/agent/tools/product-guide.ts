@@ -550,7 +550,10 @@ export function renderProductGuide(): string {
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
       "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
-      "for video, full-screen controls.",
+      "for video, full-screen controls. Hovering a video node's player also shows a camera button at the end of its controls; " +
+      `its menu offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
+      `${quoted(t("canvas.miniTool.videoUI.current"))}, and choosing one opens ${quoted(t("canvas.miniTool.video.extract-frames.label"))} ` +
+      "on that node with that frame chosen.",
     "Every picture, video, sound and text node shows its name just above its top-left corner, after a type " +
     "icon. A node the reader makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
@@ -998,7 +1001,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
       "review the settings after switching to the current source. A source that cannot be read shows " +
       `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}.`,
-    `Except for background removal, video tools wait for ${quoted(t("canvas.miniTool.videoUI.loadingFrames"))} ` +
+    `Video tools wait for ${quoted(t("canvas.miniTool.videoUI.loadingFrames"))} ` +
       "before they can run; playback does not wait for this table. A temporary frame-table failure shows " +
       `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       "Retry stays busy until current source facts have refreshed; closing the panel does not cancel accepted work. " +
@@ -1036,9 +1039,9 @@ export function renderProductGuide(): string {
       "A failed run lists one line per person with why it failed and what to do next, " +
       "and a line for a failed shared step; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
       "and it reruns only the failed people.",
-    `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
-      `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))} and ` +
-      `${quoted(t("canvas.miniTool.videoUI.current"))} in one row. ` +
+    `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
+      `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
+      "and stay choosable while the frame table is still being read; only Run waits for it. " +
       `Current requires an actually displayed frame. Until one is available, ` +
       `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
       `the other modes can still use their verified frame table. ` +
@@ -1064,7 +1067,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
       `pauses it, and the round arrow before it goes back to the start; ${quoted(t("canvas.miniTool.videoUI.export"))} makes one new video node from the timeline. To join more clips, run the tool again on the exported result.`,
     `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
-      "Removing a video's background keeps the transparent source available for download and downstream tools.",
+      "Removing a video's background keeps the transparent source available for download and downstream tools. Its panel shows " +
+      "a filmstrip of the video with the player's position on it; clicking the strip moves the player there. " +
+      `${quoted(t("canvas.miniTool.videoUI.preserveAudio"))} is always on, and once its newest result is ready ` +
+      `${quoted(t("canvas.miniTool.videoUI.resultsReady"))} opens that result on a checkerboard to play and seek.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +

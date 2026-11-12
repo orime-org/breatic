@@ -1427,7 +1427,6 @@
         "export": "書き出し",
         "first": "最初",
         "frameCount": "{count} フレーム",
-        "frameMode": "抽出方法",
         "identifyingPeople": "人物を検出中…",
         "inPoint": "イン点",
         "last": "最後",
@@ -1543,7 +1542,9 @@
         "detectAgain": "再検出",
         "selectedClip": "選択中のクリップ",
         "rewind": "先頭に戻る",
-        "transitionBetween": "クリップ間のトランジション"
+        "transitionBetween": "クリップ間のトランジション",
+        "preserveAudio": "音声を保持",
+        "resultsReady": "結果の準備完了"
       }
     },
     "template": {

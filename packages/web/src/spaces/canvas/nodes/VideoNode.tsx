@@ -11,7 +11,7 @@ import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentat
 import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { Button } from '@web/components/ui/button';
 import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
-import type { MediaPlayerProps, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import type { FrameMode, MediaPlayerProps, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import type { VideoNodeView } from '@web/data/yjs/node-view';
@@ -66,6 +66,9 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
    * @throws {never} The canvas consumer owns pixel-read failures.
    */
   const onFrame = React.useCallback((frame: PresentedMediaFrame): void => actions.onVideoFrame?.(nodeId, player.src, frame), [actions, nodeId, player.src]);
+  const { openFrameTool } = actions;
+  // The camera menu opens Extract frames on this node (tools design §4 camera menu); viewers get none.
+  const onPickFrame = React.useMemo(() => openFrameTool === undefined ? undefined : (mode: FrameMode): void => openFrameTool(nodeId, mode), [openFrameTool, nodeId]);
   /**
    * Restarts only this source after its existing recovery operation completes.
    * @throws {never} The source reports errors; this caller resets its wait state.
@@ -84,7 +87,7 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
       if (mounted.current && currentIdentity.current === identity) setRetrying(null);
     }
   }
-  return <MediaPlayer {...player} videoSource={presentedSource} onVideoBinding={onBinding} onPresentedFrame={onFrame}>
+  return <MediaPlayer {...player} videoSource={presentedSource} onVideoBinding={onBinding} onPresentedFrame={onFrame} onPickFrame={onPickFrame}>
     {failure === null && localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
       <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>
       {/* A content failure comes out the same on every rerun, so it offers no Retry (design §10.6 failure classes). */}

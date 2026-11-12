@@ -1,0 +1,142 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * inner#1306 remove background and extract frames in the panel container: remove background waits for the frame table like
+ * every model tool (frames-split §10.6 panel hookup), its newest ready result opens in a preview dialog (canvas design §4
+ * remove-background row; demo open-alpha-result), the frame modes stay usable while only Run waits, and a camera-menu pick
+ * reaches the extract-frames draft (tools design §4 相机菜单).
+ */
+
+import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactFlowProvider } from '@xyflow/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+vi.mock('@web/spaces/canvas/video-presentation/use-resolved-video-presentation', () => ({
+  useResolvedVideoPresentation: () => ({ query: {}, source: null, failure: null }),
+}));
+
+import type { VideoToolDraftById, VideoToolId } from '@breatic/shared/mini-tools';
+import { VideoToolPanelContainer, type VideoToolPresentation } from '../video/VideoToolPanelContainer';
+import { createVideoToolDraft } from '../video/video-tool-edit';
+import { CanvasContext } from '../../canvas-context';
+import { addEdge, addNode, nodeDataMap, readNodes, type CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
+import { canvasSessions } from '@web/stores/canvas-session';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+
+const projectId = 'rb-project'; const spaceId = 'rb-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
+const resultId = '10000000-0000-4000-8000-000000000002'; const olderId = '10000000-0000-4000-8000-000000000003';
+const sourceURL = 'https://assets.example.test/canonical.mp4'; const resultURL = 'https://assets.example.test/alpha.webm';
+const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
+const TABLE = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 10, step: 50, duration: 50 }] };
+
+/**
+ * Presentation facts of a source in the given state.
+ * @param ready - Whether the frame table is usable.
+ * @returns The facts.
+ */
+function facts(ready: boolean): VideoToolPresentation {
+  return ready ? { status: 'ready', frameTable: TABLE, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'usable', presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } }
+    : { status: 'ready', frameTable: null, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'waiting-table' };
+}
+
+/** Puts the source video node on the canvas once. */
+function seedSource(): void {
+  if (nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId) !== null) return;
+  addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+}
+
+/**
+ * Mounts one video tool's panel on a committed draft.
+ * @param toolId - The tool.
+ * @param presentation - The source's presentation facts.
+ * @param params - The session params the panel opens with.
+ */
+function mount(toolId: VideoToolId, presentation: VideoToolPresentation, params: Record<string, unknown> = {}): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  seedSource();
+  commitVideoToolDraft(doc, nodeId, toolId, createVideoToolDraft(toolId, { nodeId, canonicalURL: sourceURL, mediaInfo }));
+  canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params });
+  // The panel reads the source's size from its view, as the canvas hands it over.
+  const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
+  const nodes = [node, ...readNodes(doc).filter((candidate) => candidate.id !== nodeId)];
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={nodes} presentation={presentation} onRunVideo={vi.fn().mockResolvedValue(undefined)} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+}
+
+/**
+ * Puts a remove-background output node of the source on the canvas.
+ * @param id - The output node.
+ * @param content - Its result, empty while pending.
+ * @param createdAt - When its edge was drawn.
+ */
+function output(id: string, content: string, createdAt: number): void {
+  seedSource();
+  addNode(projectId, spaceId, { id, type: 'video', position: { x: 400, y: 0 }, data: { content, name: `BG-${createdAt}`, locked: false, createdAt, createdBy: 'test', attachments: [] } });
+  addEdge(projectId, spaceId, { id: `${nodeId}->${id}`, source: nodeId, target: id, toolId: 'video.remove-bg', createdAt });
+}
+
+afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
+
+describe('remove background waits for the frame table (frames-split §10.6)', () => {
+  it('keeps Run unavailable and shows the ledger line while the frame table is not usable', () => {
+    mount('video.remove-bg', facts(false));
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    expect(screen.getByText('Reading video frames…')).toBeInTheDocument();
+  });
+
+  it('runs once the frame table is usable', () => {
+    mount('video.remove-bg', facts(true));
+    expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled();
+  });
+});
+
+describe('the newest remove-background result (canvas design §4 remove-background row)', () => {
+  it('offers Results ready for a ready newest result and opens it in a preview dialog', () => {
+    output(olderId, 'https://assets.example.test/old.webm', 1);
+    output(resultId, resultURL, 2);
+    mount('video.remove-bg', facts(true));
+    fireEvent.click(screen.getByRole('button', { name: /Results ready/ }));
+    const dialog = screen.getByTestId('video-result-preview');
+    expect(dialog.textContent).toContain('BG-2');
+    expect(dialog.querySelector('[data-testid="media-player"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-testid="play-toggle"]')).not.toBeNull();
+    expect(dialog.querySelector('[data-testid="seek"]')).not.toBeNull();
+  });
+
+  it('offers nothing while the newest result is still pending', () => {
+    output(olderId, 'https://assets.example.test/old.webm', 1);
+    output(resultId, '', 2);
+    mount('video.remove-bg', facts(true));
+    expect(screen.queryByRole('button', { name: /Results ready/ })).toBeNull();
+  });
+});
+
+describe('extract frames while the frame table waits', () => {
+  it('keeps the mode buttons usable while only Run waits', () => {
+    mount('video.extract-frames', facts(false));
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    const last = screen.getByTestId('video-frame-mode-last');
+    expect(last).not.toBeDisabled();
+    fireEvent.click(last);
+    const held = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.extract-frames');
+    expect(held.state === 'supported' && (held.draft as VideoToolDraftById['video.extract-frames']).params.mode).toBe('last');
+  });
+
+  it('applies the mode a camera-menu pick asks for, once', () => {
+    mount('video.extract-frames', facts(true), { frameMode: 'first' });
+    const held = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.extract-frames');
+    expect(held.state === 'supported' && (held.draft as VideoToolDraftById['video.extract-frames']).params.mode).toBe('first');
+    expect(canvasSessions.of(spaceId).getState().miniTool?.params.frameMode).toBeUndefined();
+    act(() => canvasSessions.of(spaceId).getState().setMiniToolParam('frameMode', 'current'));
+    const again = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.extract-frames');
+    expect(again.state === 'supported' && (again.draft as VideoToolDraftById['video.extract-frames']).params).toMatchObject({ mode: 'current', currentTime: 1 });
+  });
+});

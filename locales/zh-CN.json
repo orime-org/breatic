@@ -1427,7 +1427,6 @@
         "export": "导出",
         "first": "首帧",
         "frameCount": "{count} 帧",
-        "frameMode": "抽帧方式",
         "identifyingPeople": "正在识别人物…",
         "inPoint": "入点",
         "last": "尾帧",
@@ -1543,7 +1542,9 @@
         "detectAgain": "重新检测",
         "selectedClip": "当前片段",
         "rewind": "回到开头",
-        "transitionBetween": "中间转场"
+        "transitionBetween": "中间转场",
+        "preserveAudio": "保留音轨",
+        "resultsReady": "产物已就绪"
       }
     },
     "template": {

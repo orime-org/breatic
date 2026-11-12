@@ -1427,7 +1427,6 @@
         "export": "匯出",
         "first": "首影格",
         "frameCount": "{count} 個影格",
-        "frameMode": "擷取方式",
         "identifyingPeople": "正在辨識人物…",
         "inPoint": "入點",
         "last": "末影格",
@@ -1543,7 +1542,9 @@
         "detectAgain": "重新偵測",
         "selectedClip": "目前片段",
         "rewind": "回到開頭",
-        "transitionBetween": "中間轉場"
+        "transitionBetween": "中間轉場",
+        "preserveAudio": "保留音軌",
+        "resultsReady": "產物已就緒"
       }
     },
     "template": {

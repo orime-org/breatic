@@ -123,9 +123,11 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
     expect(screen.getAllByText('Reading video frames…')[0]).toBeInTheDocument();
   });
-  it('C03 remove-background does not wait for the table (guard)', async () => {
+  // Frames-split §10.6 panel hookup: remove background and the other model tools wait for the frame table too.
+  it('C03 remove-background waits for a pending table like the other tools', async () => {
     publish(sourceResponse({ state: 'pending', receipt: null, failure: null })); mount('video.remove-bg');
-    await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
+    expect(screen.getAllByText('Reading video frames…')[0]).toBeInTheDocument();
   });
   it.each(['expired', 'source_ledger_invalid'])('C04 %s shows real retry; Button remains loading through authoritative refresh', async (code) => {
     publish(failure(code));

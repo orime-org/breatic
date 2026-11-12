@@ -277,6 +277,7 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { usePeerActivity } from '@web/spaces/canvas/use-peer-activity';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { PeerActivityContext } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
+import type { FrameMode } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
@@ -4309,6 +4310,19 @@ function CanvasSpaceInner({
     () => ({
       onVideoBinding: videoRuntime.onVideoBinding,
       onVideoFrame: videoRuntime.onVideoFrame,
+      // The camera menu opens Extract frames the way the Tools submenu does (openToolFromMenu), with the chosen mode, which
+      // the panel applies to its draft (tools design §4 camera menu).
+      openFrameTool: readOnly ? undefined : (nodeId: string, mode: FrameMode): void => {
+        // The asset the node shows, read at the press as Download reads it (downloadableAsset).
+        const content = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId)?.get('content');
+        const spec = miniToolById('video.extract-frames');
+        if (typeof content !== 'string' || content === '' || spec === undefined) return;
+        const url = content;
+        const session = sessionStore.getState();
+        session.openMiniTool(nodeId, spec.id, { sourceContent: url, params: defaultParamsOf(spec) });
+        session.setMiniToolParam('frameMode', mode);
+        selectOnlyNode(nodeId);
+      },
       renameNode: (nodeId: string, name: string): void =>
         setNodeName(projectId, spaceId, nodeId, name),
       deleteEdge: (edgeId: string): void => {
@@ -4473,6 +4487,8 @@ function CanvasSpaceInner({
       commitGuardedDelete,
       videoRuntime.onVideoBinding,
       videoRuntime.onVideoFrame,
+      sessionStore,
+      selectOnlyNode,
     ],
   );
 

@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import * as React from 'react';
+import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+
+export interface VideoPlaybackStripProps {
+  /** The source video. */
+  src: string;
+  /** The strip's length in seconds. */
+  duration: number;
+  /** The source's width over its height. */
+  aspect: number;
+  /** The source player's presented time, null while no frame is shown. */
+  presentedTime: number | null;
+  /** Seeks the source player; without it the strip only shows. */
+  onSeek?: (time: number) => void;
+  /** A range to highlight: outside it is dimmed, inside it is outlined. */
+  range?: { start: number; end: number };
+}
+
+/**
+ * Seconds as the strip's labels write them.
+ * @param seconds - The time.
+ * @returns The label.
+ * @throws {never} Never.
+ */
+function secondsLabel(seconds: number): string {
+  return `${Math.max(0, seconds).toFixed(2)} s`;
+}
+
+/**
+ * A share of the strip's length as a CSS percentage.
+ * @param seconds - The time.
+ * @param duration - The strip's length.
+ * @returns The percentage.
+ * @throws {never} Never.
+ */
+function percent(seconds: number, duration: number): string {
+  return `${duration > 0 ? Math.max(0, Math.min(1, seconds / duration)) * 100 : 0}%`;
+}
+
+/**
+ * The source's filmstrip with the shared playhead (demo video-controls.tsx PlaybackStrip): pressing the strip seeks the
+ * source player, and the row below reads the start, the current time and the end.
+ * @param props - The source, its clock and the seek command.
+ * @returns The strip.
+ * @throws {never} Never.
+ */
+export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.Element {
+  const { src, duration, aspect, presentedTime, onSeek, range } = props;
+  const track = React.useRef<HTMLDivElement>(null);
+  /**
+   * Seeks to the pressed place on the strip as it is laid out on screen.
+   * @param event - The press.
+   * @throws {never} Never.
+   */
+  const seekAt = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || onSeek === undefined || track.current === null) return;
+    const box = track.current.getBoundingClientRect();
+    if (box.width <= 0) return;
+    onSeek(Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration);
+  };
+  return <div className='nodrag nowheel grid gap-1.5' data-testid='video-playback-strip'>
+    <div ref={track} data-testid='video-playback-track' className='relative h-12 select-none overflow-hidden rounded-chrome border border-border bg-muted' onPointerDown={seekAt}>
+      <FilmStrip src={src} duration={duration} aspect={aspect} />
+      {range === undefined ? null : <>
+        <span data-testid='video-playback-before' className='pointer-events-none absolute inset-y-0 left-0 bg-background/70' style={{ width: percent(range.start, duration) }} />
+        <span data-testid='video-playback-after' className='pointer-events-none absolute inset-y-0 right-0 bg-background/70' style={{ width: percent(duration - range.end, duration) }} />
+        <span data-testid='video-playback-range' className='pointer-events-none absolute inset-y-0 border border-status-selected' style={{ left: percent(range.start, duration), width: percent(range.end - range.start, duration) }} />
+      </>}
+      {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
+    </div>
+    <div data-testid='video-playback-times' className='flex justify-between text-xs tabular-nums text-muted-foreground'>
+      <span>{secondsLabel(range?.start ?? 0)}</span><span>{presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>
+    </div>
+  </div>;
+}

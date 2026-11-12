@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { AudioLines, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
+import { ArrowUpRight, AudioLines, Check, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { newId, type ModelEntry } from '@breatic/shared';
 import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVideoSplit, type LipsyncFailureReason, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
@@ -13,6 +13,7 @@ import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { Slider } from '@web/components/ui/slider';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { VideoPlaybackStrip } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
 import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
@@ -78,6 +79,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   trackingStatus?: EraseTrackingStatus;
   /** The source's display size an expansion's ratio frames wrap (the presentation's, sample aspect ratio applied). */
   expandSize?: { width: number; height: number };
+  /** Opens the newest ready remove-background result of this source; absent while there is none. */
+  onOpenResult?: () => void;
 }
 
 /** The tracking failure codes the panel names (execution design §10.3). */
@@ -283,11 +286,26 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
       const trackingFailure = typeof code === 'string' ? TRACKING_FAILURES.find((known) => known === code) ?? 'failed' : null;
       return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.selection')} value={props.regionSelection ?? 'rectangle'} options={[{ value: 'rectangle', label: t('canvas.miniTool.videoUI.rectangle'), disabled: props.disabled }, { value: 'point', label: t('canvas.miniTool.videoUI.point'), disabled: props.disabled }]} testIdPrefix='video-region-selection' onSelect={(value) => props.onRegionSelection?.(value as 'rectangle' | 'point')} /><div data-testid='video-tracking-status' className='flex items-center gap-2 text-xs text-muted-foreground'><span aria-hidden='true' className={`size-2 shrink-0 rounded-full ${props.trackingStatus === 'tracked' ? 'bg-status-success' : 'bg-muted-foreground'}`} /><span>{t(props.trackingStatus === 'tracked' ? 'canvas.miniTool.videoUI.trackingReview' : props.trackingStatus === 'stale' ? 'canvas.miniTool.videoUI.trackingStale' : 'canvas.miniTool.videoUI.drawBox')}</span></div><div className='relative h-12 overflow-hidden rounded-chrome border border-border'><FilmStrip src={draft.source.canonicalURL} duration={draft.source.mediaInfo.duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} /></div><div className='grid grid-cols-2 gap-2'><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={draft.params.range.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={draft.params.range.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => { if (start < draft.params.range.end) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, start } } }); }} /></label><label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={draft.params.range.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={draft.params.range.start} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => { if (end > draft.params.range.start) props.onChange({ ...draft, params: { ...draft.params, range: { ...draft.params.range, end } } }); }} /></label></div><Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} /><div className='flex items-center gap-2'><Button variant='outline' size='sm' loading={props.analysing} aria-disabled={props.trackBlockedReason === undefined ? undefined : true} disabled={props.disabled || props.analysing || (draft.params.region.box === null && draft.params.region.points.length === 0)} className='aria-disabled:opacity-50' onClick={() => { if (props.trackBlockedReason !== undefined) toast.warning(props.trackBlockedReason); else props.onAnalyse('tracked_mask'); }}>{t('canvas.miniTool.videoUI.trackObject')}</Button>{props.analysisActualCreditText !== undefined ? <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingActual', { credits: props.analysisActualCreditText })}</span> : props.analysisCreditText === undefined ? null : <span className='text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingEstimate', { credits: props.analysisCreditText })}</span>}</div>{trackingFailure === null ? null : <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t(`canvas.miniTool.videoUI.trackingFailure.${trackingFailure}`)}</span>{trackedMaskRetryable(trackingFailure) ? <Button variant='outline' size='compact' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onRetryTracking?.(tracking!)}>{t('canvas.miniTool.videoUI.retryTracking')}</Button> : null}</div>}</>;
     }
-    case 'video.remove-bg': return <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>;
+    case 'video.remove-bg': {
+      const draft = props.draft as VideoToolDraftById['video.remove-bg'];
+      // Canvas design §4 remove-background row: the source preview, the fixed kept audio and transparent output, and the newest ready result.
+      return <><VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} onSeek={props.onSeek} /><div className='flex items-center justify-between text-xs'><span>{t('canvas.miniTool.videoUI.preserveAudio')}</span><Check className='size-3.5 text-status-success' aria-hidden='true' /></div><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>{props.onOpenResult === undefined ? null : <Button variant='outline' size='sm' onClick={props.onOpenResult}>{t('canvas.miniTool.videoUI.resultsReady')}<ArrowUpRight className='size-3.5' aria-hidden='true' /></Button>}</>;
+    }
     case 'video.extract-frames': {
       const draft = props.draft as VideoToolDraftById['video.extract-frames'];
       const planned = previewFrames;
-      return <><ParamOptionGroup label={t('canvas.miniTool.videoUI.frameMode')} value={draft.params.mode} options={[{ value: 'first', label: t('canvas.miniTool.videoUI.first') }, { value: 'last', label: t('canvas.miniTool.videoUI.last') }, { value: 'current', label: t('canvas.miniTool.videoUI.current') }].map((option) => ({ ...option, disabled: props.disabled || option.value === 'current' && props.presentedTime === null }))} testIdPrefix='video-frame-mode' onSelect={(mode) => { if (mode === 'current' && props.presentedTime === null) return; props.onChange({ ...draft, params: { ...draft.params, mode: mode as typeof draft.params.mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } }); }} /><p className='text-center text-xs tabular-nums text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreview source={props.previewSource ?? null} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>;
+      /**
+       * Chooses a frame mode; Current takes the presented time and waits for one.
+       * @param mode - The mode.
+       * @throws {never} Never.
+       */
+      const choose = (mode: typeof draft.params.mode): void => {
+        if (mode === 'current' && props.presentedTime === null) return;
+        props.onChange({ ...draft, params: { ...draft.params, mode, ...(mode === 'current' && props.presentedTime !== null ? { currentTime: props.presentedTime } : {}) } });
+      };
+      // Canvas design §4 frames row: three equal buttons in one row; while the frame table is not usable the panel shows only
+      // its ledger line (frames-split §10.6), and the modes stay usable (only Run waits).
+      return <><div className='grid grid-cols-3 gap-1.5' data-testid='video-frame-modes'>{(['first', 'last', 'current'] as const).map((mode) => <Button key={mode} variant={null} size={null} data-testid={`video-frame-mode-${mode}`} aria-current={draft.params.mode === mode} disabled={props.disabled || mode === 'current' && props.presentedTime === null} className={PARAM_OPTION_CLASS} onClick={() => choose(mode)}>{t(`canvas.miniTool.videoUI.${mode}`)}</Button>)}</div>{props.frameTable === null ? null : <><p className='text-center text-xs tabular-nums text-muted-foreground'>{draft.params.mode === 'current' && props.presentedTime === null ? t('canvas.miniTool.videoUI.currentFrameUnavailable') : t('canvas.miniTool.videoUI.frameCount', { count: planned.length })}</p><VideoFramePreview source={props.previewSource ?? null} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>}</>;
     }
     case 'video.transitions': {
       const draft = props.draft as VideoToolDraftById['video.transitions'];

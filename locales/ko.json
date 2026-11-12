@@ -1427,7 +1427,6 @@
         "export": "내보내기",
         "first": "첫 프레임",
         "frameCount": "{count} 프레임",
-        "frameMode": "추출 방식",
         "identifyingPeople": "인물 감지 중…",
         "inPoint": "시작 지점",
         "last": "마지막 프레임",
@@ -1543,7 +1542,9 @@
         "detectAgain": "다시 감지",
         "selectedClip": "선택한 클립",
         "rewind": "처음으로",
-        "transitionBetween": "클립 사이 전환"
+        "transitionBetween": "클립 사이 전환",
+        "preserveAudio": "오디오 유지",
+        "resultsReady": "결과 준비 완료"
       }
     },
     "template": {

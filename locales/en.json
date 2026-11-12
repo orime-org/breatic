@@ -1427,7 +1427,6 @@
         "export": "Export",
         "first": "First frame",
         "frameCount": "{count, plural, one {# frame} other {# frames}}",
-        "frameMode": "Frame selection",
         "identifyingPeople": "Detecting people…",
         "inPoint": "In point",
         "last": "Last frame",
@@ -1543,7 +1542,9 @@
         "detectAgain": "Detect again",
         "selectedClip": "Selected clip",
         "rewind": "Back to start",
-        "transitionBetween": "Transition"
+        "transitionBetween": "Transition",
+        "preserveAudio": "Keep audio",
+        "resultsReady": "Results ready"
       }
     },
     "template": {

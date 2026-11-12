@@ -4,13 +4,15 @@
 import * as React from 'react';
 import type { VideoPresentationSourceBinding } from '@breatic/shared';
 import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type MediaSurfaceSnapshot, type PresentedMediaFrame, type MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
-import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { Camera, Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import {
   Popover,
   PopoverContent,
@@ -89,6 +91,40 @@ export interface MediaPlayerProps {
   controlsHidden?: boolean;
   /** Optional document-owned physical control surface. */
   videoControls?: VideoControlsTarget;
+  /**
+   * Opens Extract frames on this video in the chosen mode (tools design §4 camera menu); with it the full video player shows
+   * a camera menu on hover.
+   */
+  onPickFrame?: (mode: FrameMode) => void;
+}
+
+/** The frames the camera menu offers. */
+export type FrameMode = 'first' | 'last' | 'current';
+const FRAME_MODES: readonly FrameMode[] = ['first', 'last', 'current'];
+
+/**
+ * The camera menu at the end of the video control bar: First, Last and Current frame.
+ * @param props - The button classes and the pick handler.
+ * @param props.className - The control bar's button classes.
+ * @param props.onPickFrame - Reports the chosen frame.
+ * @returns The menu.
+ * @throws {never} Never.
+ */
+function FrameCaptureMenu(props: { className: string; onPickFrame: (mode: FrameMode) => void }): React.JSX.Element {
+  const t = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  useFollowCanvasViewport(open);
+  return <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenuTrigger asChild>
+      <Button type='button' variant={null} size={null} aria-label={t('canvas.miniTool.video.extract-frames.label')} data-testid='frame-capture-menu'
+        className={`${props.className} opacity-0 group-hover/player:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}>
+        <Camera className='h-4 w-4' />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align='end' side='top' sideOffset={8} avoidCollisions={false} className='nodrag'>
+      {FRAME_MODES.map((mode) => <DropdownMenuItem key={mode} onSelect={() => props.onPickFrame(mode)}>{t(`canvas.miniTool.videoUI.${mode}`)}</DropdownMenuItem>)}
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
 
 /**
@@ -152,6 +188,7 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @param root0.videoControls - The document-owned control destination and interaction callbacks.
+ * @param root0.onPickFrame - Opens Extract frames in the chosen mode; shows the camera menu on the full player.
  * @returns The media player element.
  */
 export function MediaPlayer({
@@ -170,6 +207,7 @@ export function MediaPlayer({
   variant = 'full',
   controlsHidden = false,
   videoControls,
+  onPickFrame,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
   const isVideo = modality === 'video';
@@ -403,6 +441,7 @@ export function MediaPlayer({
           <Maximize className='h-4 w-4' />
         </Button>
       ) : null}
+      {variant === 'full' && onPickFrame !== undefined ? <FrameCaptureMenu className={btnCls} onPickFrame={onPickFrame} /> : null}
     </div>
   );
 
@@ -421,7 +460,7 @@ export function MediaPlayer({
   if (ownsVideo) {
     const original = videoSource ? presentedSizeOf(videoSource.presentation) : size;
     const loadingOwner = snapshot?.status !== 'ready';
-    return <div className={cn('@container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
+    return <div className={cn('group/player @container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
       {/* A surface without a source has no aspect ratio of its own, so it takes the player's box to show the cover. */}
       <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame} className={videoSource ? undefined : 'absolute inset-0'}>
         {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
@@ -438,7 +477,7 @@ export function MediaPlayer({
       // Sized as a container: narrower players drop the times, then the
       // volume, keeping play, seek and full screen (the breakpoints a
       // responsive Video.js or Plyr player uses the same way).
-      <div className='@container relative' data-testid='media-player'>
+      <div className='group/player @container relative' data-testid='media-player'>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}
         <video
           ref={ref as React.RefObject<HTMLVideoElement>}
