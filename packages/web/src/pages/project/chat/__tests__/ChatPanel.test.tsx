@@ -3,35 +3,56 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { t } from '@breatic/shared';
+import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
 
 const toastSpy = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: toastSpy.warning, success: vi.fn(), info: vi.fn() } }));
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000})),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-    listConversations: vi.fn(),
-    readConversation: vi.fn(),
-    createConversation: vi.fn(),
-    models: vi.fn(async () => ({ models: [{ id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' }], lastUsed: 'deepseek/deepseek-v4.1-flash-1017' })),
-    setModel: vi.fn(),
-  },
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3_000 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+      listConversations: vi.fn(),
+      readConversation: vi.fn(),
+      createConversation: vi.fn(),
+      models: vi.fn(async () => ({ models: [{ id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' }], lastUsed: 'deepseek/deepseek-v4.1-flash-1017' })),
+      setModel: vi.fn(),
+      running: vi.fn(),
+      sync: vi.fn(),
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
+
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { chatAttachments, type TrayItem } from '@web/stores/chat-attachments';
+import { replyOpens, stubRunWire } from '@web/test-utils/chat-run-wire';
+import type { RunWire } from '@web/test-utils/chat-run-wire';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 const LIMITS = { maxItems: 10, maxChars: 200_000 };
 const READY_NOTE: TrayItem = {
@@ -42,12 +63,32 @@ const READY_NOTE: TrayItem = {
   chip: { id: 'n-1', type: 'text', name: 'note', data_snapshot: { text: 'hi' } },
 };
 const UPLOADING_FILE: TrayItem = { id: 'f-1', name: 'cover.png', type: 'image', status: 'uploading' };
-import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
-import type { WatchedWire } from '@web/test-utils/chat-wire';
 
 /** The conversation every case in this file is opened into. */
 const CONV = 'c1';
-import { expectNoA11yViolations } from '@web/test-utils/a11y';
+
+/** A sync answered while nothing holds the conversation. */
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
+
+/** A send the server answered by opening a run for it. */
+const STARTED: ChatSendAnswer = { status: 'start', pending: [], running: true };
+
+/**
+ * Answer the run routes the page asks while a conversation is on screen
+ * (inner#1717): nothing holds it, and a send opens a run.
+ */
+function answerRunRoutes(): void {
+  vi.mocked(chatApi.sync).mockResolvedValue(IDLE);
+  vi.mocked(chatApi.sendMessage).mockResolvedValue(STARTED);
+  vi.mocked(chatApi.stop).mockResolvedValue({ stopped: true });
+  vi.mocked(chatApi.running).mockResolvedValue([]);
+}
+
+afterEach(() => {
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
+});
 
 /**
  * Render the panel with a query client of its own.
@@ -72,37 +113,55 @@ function renderPanel(
   );
 }
 
-/** 这一轮的流，用例自己往里推东西。 */
-let wire: WatchedWire;
+/** The run streams the page reads. */
+let wire: RunWire;
 
 /**
- * 让这一轮被拒。
- *
- * 传输层非 2xx 时抛的是 `new Error(await response.text())` —— body 而已，
- * 状态码不在上面。所以「服务器写了一句给用户的话」是靠信封认出来的：我们的
- * 错误答 `{ error: "..." }`。
- * @param body - 服务器的答复原文。
- * @param status - 状态码。
+ * Have the server refuse the next message, in the envelope
+ * `middleware/error-handler.ts` writes, as axios hands it over.
+ * @param status - The status.
+ * @param message - The sentence the server wrote for the user.
  */
-function theTurnIsRefused(body: string, status = 500): void {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status })));
+function theMessageIsRefused(status: number, message: string): void {
+  vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(new ApiException({ status, message, fromServer: true }));
 }
 
-/** 让这一轮的请求根本没连上，这是「什么都没答」那一种。 */
-function theRequestNeverLeft(): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+/**
+ * Have every send never reach the server: no answer at all. Syncs are spaced
+ * an hour apart, so running the re-sends out does not also run thousands of
+ * syncs.
+ */
+function theRequestNeverLeaves(): void {
+  vi.mocked(chatApi.sync).mockResolvedValue({ ...IDLE, next_sync_ms: 3_600_000 });
+  vi.mocked(chatApi.sendMessage).mockRejectedValue(
+    new ApiException({ status: 0, message: 'Network error', network: true, fromServer: false }),
   );
 }
 
 /**
- * 让这一轮开始流，第一帧到位。
- * @param text - 回复的第一片。
+ * Hold the next send's answer until the case gives it.
+ * @returns Gives the answer.
+ */
+function holdTheAnswer(): (answer?: ChatSendAnswer) => void {
+  let give: (answer: ChatSendAnswer) => void = () => undefined;
+  vi.mocked(chatApi.sendMessage).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        give = resolve;
+      }),
+  );
+  return (answer = STARTED) => {
+    give(answer);
+  };
+}
+
+/**
+ * Start the reply on the run's stream the page attached to.
+ * @param text - The reply's first piece.
  */
 function theReplyStartsArriving(text: string): void {
-  for (const chunk of turnOpens()) wire.current()?.push(chunk);
-  wire.current()?.push({ type: 'text-delta', id: 't1', delta: text });
+  for (const chunk of replyOpens()) wire.last()?.push(chunk);
+  wire.last()?.push({ type: 'text-delta', id: 't1', delta: text });
 }
 
 /**
@@ -125,6 +184,15 @@ function chatOpensWith(texts: string[]): void {
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 }
 
+/**
+ * Press send with fake timers running, so a re-send's waits can be run out.
+ */
+function pressSend(): void {
+  act(() => {
+    fireEvent.click(screen.getByTestId('chat-composer-send'));
+  });
+}
+
 describe('ChatPanel', () => {
   beforeEach(() => {
     // Reset, not clear: an unconsumed `mockImplementationOnce` left by an
@@ -134,13 +202,20 @@ describe('ChatPanel', () => {
     // the last case left in it into the next one.
     _resetForTests();
     evictAllChatSessions();
-    wire = stubChatWire();
+    wire = stubRunWire();
     chatOpensWith([]);
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000});
+    answerRunRoutes();
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3_000 });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('has no a11y violations', async () => {
@@ -172,6 +247,7 @@ describe('ChatPanel', () => {
 
   it('sends the trimmed draft, and empties the box when the server has it', async () => {
     const user = userEvent.setup();
+    const answer = holdTheAnswer();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -179,7 +255,7 @@ describe('ChatPanel', () => {
     await user.click(screen.getByTestId('chat-composer-send'));
 
     await waitFor(() => {
-      expect(wire.sent()[0]).toMatchObject({ message: 'test', conversation_id: 'c1' });
+      expect(vi.mocked(chatApi.sendMessage).mock.calls[0]?.[0]).toMatchObject({ message: 'test', conversation_id: 'c1' });
     });
     // Still in the box, because so far nothing has confirmed it went anywhere.
     // Emptying it now is a promise the browser is in no position to make: the
@@ -190,16 +266,23 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
 
     act(() => {
-      theReplyStartsArriving('好的');
+      answer();
     });
 
-    // 服务端接下了这句话并且开始答。现在框空了,而值得按的只剩停止。
+    // The server holds the message: the box is empty now.
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
-    expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
+    await waitFor(() => expect(wire.last()).not.toBeNull());
+    act(() => {
+      theReplyStartsArriving('Sure');
+    });
+
+    // And while the run answers, stop is there to press.
+    await waitFor(() => expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument());
   });
 
   it('sends what is attached beside the words, and clears it when the server has it', async () => {
     const user = userEvent.setup();
+    const answer = holdTheAnswer();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     chatAttachments.add(CONV, [READY_NOTE], LIMITS);
@@ -208,13 +291,13 @@ describe('ChatPanel', () => {
     await user.click(screen.getByTestId('chat-composer-send'));
 
     await waitFor(() => {
-      expect(wire.sent()[0]).toMatchObject({ attached_chips: [READY_NOTE.chip] });
+      expect(vi.mocked(chatApi.sendMessage).mock.calls[0]?.[0]).toMatchObject({ attached_chips: [READY_NOTE.chip] });
     });
     // Still above the box until the server has taken the message.
     expect(chatAttachments.trayOf(CONV)).toHaveLength(1);
 
     act(() => {
-      theReplyStartsArriving('ok');
+      answer();
     });
 
     await waitFor(() => expect(chatAttachments.trayOf(CONV)).toEqual([]));
@@ -222,7 +305,7 @@ describe('ChatPanel', () => {
 
   it('keeps what is attached when the message is refused', async () => {
     const user = userEvent.setup();
-    theTurnIsRefused('{"success":false,"error":"no"}', 422);
+    theMessageIsRefused(422, 'no');
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
     chatAttachments.add(CONV, [READY_NOTE], LIMITS);
@@ -261,13 +344,14 @@ describe('ChatPanel', () => {
 
   it('takes nothing into the box while the server has not answered', async () => {
     const user = userEvent.setup();
+    const answer = holdTheAnswer();
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
     conversationRuntime.setDraft(CONV, 'first question');
     await user.click(screen.getByTestId('chat-composer-send'));
     await waitFor(() => {
-      expect(wire.current()).not.toBeNull();
+      expect(chatApi.sendMessage).toHaveBeenCalled();
     });
 
     // The box shows what was sent and accepts nothing more, so there is never
@@ -279,7 +363,7 @@ describe('ChatPanel', () => {
     expect(conversationRuntime.draftOf(CONV)).toBe('first question');
 
     act(() => {
-      theReplyStartsArriving('好的');
+      answer();
     });
 
     // And then it is emptied, with no rule applied to the text: only one
@@ -288,25 +372,38 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true');
   });
 
-  it('says so on the composer when the message never went out', async () => {
-    const user = userEvent.setup();
-    theRequestNeverLeft();
+  it('says so once it gives up on a message that never got an answer', async () => {
+    vi.useFakeTimers();
+    theRequestNeverLeaves();
     renderPanel();
-    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(chatApi.openChat).toHaveBeenCalled();
 
-    conversationRuntime.setDraft(CONV, 'shorten this');
-    await user.click(screen.getByTestId('chat-composer-send'));
+    act(() => {
+      conversationRuntime.setDraft(CONV, 'shorten this');
+    });
+    pressSend();
+    // Sent again under the same id until the server can be asked no longer
+    // (WB-08, WB-08e); nothing is said while it is.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(toastSpy.error).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
+    });
 
-    // No answer came back, so there is nothing to quote and nothing to add.
-    // Two words: what to do about it is the user's own business.
-    await waitFor(() =>
-      expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
-    );
+    // No answer came back, so there is nothing to quote: the user is told it
+    // could not be confirmed.
+    expect(toastSpy.error).toHaveBeenCalledWith(t('common.runOnce.unknownResult'));
   });
 
   it('says it again when it fails again, in the same words', async () => {
     const user = userEvent.setup();
-    theRequestNeverLeft();
+    theMessageIsRefused(403, 'You do not have access to this project');
+    theMessageIsRefused(403, 'You do not have access to this project');
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -321,17 +418,15 @@ describe('ChatPanel', () => {
     // Same words, said again: the toast is told twice, which refreshes the
     // one on screen rather than leaving the second failure unsaid.
     await waitFor(() => expect(toastSpy.error).toHaveBeenCalledTimes(2));
-    // 两次按下,两次请求。第二次被吞掉就是「看着能按、按下去没反应」。
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(toastSpy.error.mock.calls[1]?.[0]).toBe(toastSpy.error.mock.calls[0]?.[0]);
+    // Two presses, two requests. A second one swallowed is "it looks
+    // pressable, and pressing it does nothing".
+    expect(chatApi.sendMessage).toHaveBeenCalledTimes(2);
   });
 
   it('says what the server said when it refused', async () => {
     const user = userEvent.setup();
-    // 信封照 `middleware/error-handler.ts` 写的那个形状，不是随手编一个。
-    theTurnIsRefused(
-      '{"error":{"code":403,"message":"You do not have access to this project"}}',
-      403,
-    );
+    theMessageIsRefused(403, 'You do not have access to this project');
     renderPanel();
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
@@ -398,9 +493,9 @@ describe('ChatPanel', () => {
   });
 
   it('holds the box still until the chat has opened', async () => {
-    // 打开期间不能打字(user 2026-08-16 拍定)——屏幕上还没有会话,这一刻打进去
-    // 的话没有地方可去。这条测试此前断言的是反过来那条(已被推翻的规则),而且
-    // 它问的是 `disabled` 而框用的是 `readOnly`,所以它两头都不会红。
+    // No typing while it opens (user 2026-08-16): there is no conversation on
+    // screen yet, and words typed now would have nowhere to go. The box is
+    // `readOnly`, not `disabled`, so that is what is asked.
     let land: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
       () =>
@@ -458,25 +553,26 @@ describe('ChatPanel', () => {
     expect(conversationRuntime.draftOf(CONV)).toBe('please do not eat this');
   });
 
-  it('leaves the words where they are when the message never went out', async () => {
-    const user = userEvent.setup();
-    theRequestNeverLeft();
+  it('leaves the words where they are when the message never got an answer', async () => {
+    vi.useFakeTimers();
+    theRequestNeverLeaves();
     renderPanel();
-    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled(),
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
 
-    conversationRuntime.setDraft(CONV, 'is anyone there');
-    await user.click(screen.getByTestId('chat-composer-send'));
+    act(() => {
+      conversationRuntime.setDraft(CONV, 'is anyone there');
+    });
+    pressSend();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25 * 60 * 60 * 1000);
+    });
 
     // Nothing was stored and nothing of the attempt is on screen, so the box
     // is the only place these words exist. They are still in it because the
-    // one thing that empties it never happened -- there is no handing back to
-    // get wrong, and nothing to get wrong it on top of.
-    await waitFor(() =>
-      expect(screen.queryByTestId('chat-composer-sending')).toBeNull(),
-    );
+    // one thing that empties it -- the server's answer -- never came.
+    expect(screen.queryByTestId('chat-composer-sending')).toBeNull();
     expect(conversationRuntime.draftOf(CONV)).toBe('is anyone there');
   });
 });
@@ -485,6 +581,7 @@ describe('a conversation longer than one page', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     _resetForTests();
+    answerRunRoutes();
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c1' }],
       current: {
@@ -580,6 +677,7 @@ describe('a failure about a row in the list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
+    answerRunRoutes();
   });
 
   /**
@@ -595,8 +693,9 @@ describe('a failure about a row in the list', () => {
   }
 
   it('is told in a toast while the list is closed', async () => {
-    // 顶栏也能改名,而那时抽屉是关着的。一条只画在抽屉里的提示,用户一个字都
-    // 看不到 —— 去向由「用户现在看得见哪儿」定,不由「从哪儿按的」定。
+    // The header can rename too, while the list is closed. A line drawn only
+    // in the list would go unseen: where it is said follows what the user can
+    // see now, not where they pressed.
     opens();
     renderPanel({ projectId: 'p1', historyOpen: false });
     await waitFor(() => expect(screen.getByTestId('chat-panel')).toBeInTheDocument());
@@ -623,9 +722,10 @@ describe('a failure about a row in the list', () => {
   });
 
   it('draws nothing at all while the conversation is still on its way', async () => {
-    // 空会话的问候语是一句断言:这条会话没有消息。会话还没到手时那句话说不出
-    // 口 —— 它可能有一整屏历史,只是还在路上。把它画出来,用户自己的历史就在
-    // 眼前闪过去一下,像从来没有过。
+    // The empty conversation's greeting says this conversation has no
+    // messages, which cannot be said before it arrives -- it may have a screen
+    // of history on its way. Drawn now, the user's own history would flash
+    // past as if it never existed.
     let land: (() => void) | undefined;
     vi.mocked(chatApi.openChat).mockImplementation(
       () =>
@@ -656,8 +756,9 @@ describe('a failure about a row in the list', () => {
   });
 
   it('says nothing about a wait that is over before it is worth mentioning', async () => {
-    // 骨架在 300 毫秒之后才出现,而绝大多数答复在那之前就回来了。立刻画一次
-    // 再立刻收走,读作闪了一下,不读作「正在加载」。
+    // The skeleton shows after 300 milliseconds, and most answers are back
+    // before that. Drawn and taken away at once reads as a flicker, not as
+    // "loading".
     vi.useFakeTimers();
     try {
       vi.mocked(chatApi.openChat).mockImplementation(() => new Promise(() => {}));
@@ -678,9 +779,9 @@ describe('a failure about a row in the list', () => {
   });
 
   it('says so when a new conversation could not be started', async () => {
-    // 「+」按下去之后页面一个字都不变,用户只能理解成这个按钮坏了。这一句是
-    // 它唯一的回音,而它落在输入框上方:按「+」的同时抽屉就关掉了,所以列表
-    // 那条路走不到。
+    // If nothing on the page changes after "+", the user can only read the
+    // button as broken. This line is its only answer, and the list cannot say
+    // it: pressing "+" closes the list.
     opens();
     renderPanel({ projectId: 'p1', historyOpen: false });
     await waitFor(() => expect(screen.getByTestId('chat-panel')).toBeInTheDocument());
@@ -695,9 +796,14 @@ describe('a failure about a row in the list', () => {
 });
 
 describe('opening the list', () => {
+  beforeEach(() => {
+    answerRunRoutes();
+  });
+
   it('fetches its first page again', async () => {
-    // 拍定的行为是「每次打开都重新全部加载」。store 那侧和抽屉那侧各有测试,
-    // 中间这根线断了不会有任何东西红 —— 抽屉照样画,只是画的是上次留下的。
+    // Decided: every opening loads the list again from the top. The store and
+    // the list each have tests, and the wire between them breaking turns
+    // nothing red -- the list still draws, only what was left last time.
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', title: 'one' }],
       current: { conversation: { id: 'c-1', title: 'one', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
@@ -730,6 +836,7 @@ describe('deleting a conversation from the list', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     _resetForTests();
+    answerRunRoutes();
     vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000});
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [

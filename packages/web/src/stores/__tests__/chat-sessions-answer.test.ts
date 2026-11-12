@@ -2,95 +2,97 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The user's answer to a questionnaire, sent through the conversation's own
- * session (inner#1542).
+ * The user's answer to a questionnaire (inner#1542), as it goes since the run
+ * belongs to the server (inner#1717).
  *
- * An answer resumes the turn that asked, so it goes out the way the SDK's own
- * human-in-the-loop does: `sendMessage()` with no message, carrying on the
- * paused reply. What only makes sense for a typed message -- emptying the box,
- * reading the words and attachments off the last message, marking a refused
- * turn's reply as failed -- is left out for it.
+ * An answer is a request of its own, `POST /chat/message` with no words and
+ * the answer beside them. It leaves the box alone. When the server says a run
+ * resumed, the page reads the history back (which holds the answered card)
+ * and attaches to the run, whose reply carries on the paused one. A card the
+ * server says was already answered is drawn as the server holds it; any other
+ * refusal leaves the card waiting and tells the server's sentence.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { StoredUiMessage } from '@web/data/api/chat';
 
-const tell = vi.fn();
-vi.mock('@web/stores/chat-mishaps', () => ({ tell: (...args: unknown[]) => tell(...args) }));
-vi.mock('@web/data/api/chat', () => ({ chatApi: { streamConfig: async () => ({ heartbeatIntervalMs: 600_000 }) } }));
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
+}));
 
-const { answerInSession, chatSessionFor, evictAllChatSessions, sendInSession } = await import('@web/stores/chat-sessions');
+import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
+import { chatApi } from '@web/data/api/chat';
+import type { ConversationRead, StoredUiMessage } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { conversationRuntime } from '@web/stores/conversation-runtime';
+import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
+import { replyEnds, replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
-/** What the paused reply holds: a card waiting on the user. */
-const PAUSED: StoredUiMessage[] = [
-  { id: 'u-1', role: 'user', parts: [{ type: 'text', text: 'make me a poster' }], metadata: { turnIndex: 1, ts: '' } },
-  {
-    id: 'a-1',
-    role: 'assistant',
-    parts: [
-      { type: 'text', text: 'Two things first.' },
-      { type: 'tool-ask_user', toolCallId: 'ask-1', state: 'input-available', input: { questions: [] } },
-      { type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } },
-    ] as StoredUiMessage['parts'],
-    metadata: { turnIndex: 1, ts: '' },
-  },
-];
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
 const ANSWERS = [{ index: 0, selected: ['9:16'] }];
 
 /**
- * A stream the server answers with.
- * @param chunks - Its chunks, in order.
- * @returns The response.
+ * The paused conversation as the server stores it.
+ * @param ask - The questionnaire call as it stands.
+ * @returns The messages, oldest first.
  */
-function streaming(chunks: Array<Record<string, unknown>>): Response {
-  const body = `${chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('')}data: [DONE]\n\n`;
-  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+function paused(ask: Record<string, unknown> = { state: 'input-available' }): StoredUiMessage[] {
+  return [
+    { id: 'u-1', role: 'user', parts: [{ type: 'text', text: 'make me a poster' }], metadata: { turnIndex: 1, ts: '' } },
+    {
+      id: 'a-1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Two things first.' },
+        { type: 'tool-ask_user', toolCallId: 'ask-1', input: { questions: [] }, ...ask },
+        { type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } },
+      ] as StoredUiMessage['parts'],
+      metadata: { turnIndex: 1, ts: '' },
+    },
+  ];
+}
+
+/** The stored conversation once the answer resumed it. */
+const ANSWERED = paused({ state: 'output-available', output: { answers: ANSWERS } });
+
+/**
+ * The newest page of history.
+ * @param messages - What it holds.
+ * @returns The answer.
+ */
+function page(messages: StoredUiMessage[]): ConversationRead {
+  return { conversation: { id: 'c-1' } as never, messages, hasMore: false };
 }
 
 /**
- * The server refusing before any stream, in its own envelope.
- * @param status - The status.
- * @param extra - What the body carries beside the envelope.
- * @returns The response.
+ * A refusal as axios hands it over.
+ * @param status - The HTTP status.
+ * @param details - The server's `error` body.
+ * @returns The exception.
  */
-function refused(status: number, extra: Record<string, unknown> = {}): Response {
-  return new Response(JSON.stringify({ error: { code: status, message: 'Refused.' }, ...extra }), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+function refused(status: number, details: Record<string, unknown> = {}): ApiException {
+  return new ApiException({ status, message: 'Refused.', fromServer: true, details });
 }
 
-let answer: () => Response;
-const sent: Array<Record<string, unknown>> = [];
-const original = globalThis.fetch;
-const firstFrames = vi.fn();
+/**
+ * What the server answers a message or an answer with.
+ * @param running - Whether a run holds the conversation.
+ * @returns The answer.
+ */
+function started(running = true): ChatSendAnswer {
+  return { status: 'start', pending: [], running };
+}
 
-beforeEach(() => {
-  evictAllChatSessions();
-  tell.mockClear();
-  firstFrames.mockClear();
-  sent.length = 0;
-  globalThis.fetch = ((_url: string, init?: RequestInit) => {
-    sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-    return Promise.resolve(answer());
-  }) as typeof globalThis.fetch;
-});
-
-afterEach(() => {
-  globalThis.fetch = original;
-});
+let wire: RunWire;
+let told: ChatMishap[];
+let unwatch: () => void;
 
 /**
  * The paused conversation's session.
  * @returns It.
  */
 function pausedChat(): ReturnType<typeof chatSessionFor> {
-  return chatSessionFor({
-    projectId: 'p-1',
-    conversationId: 'c-1',
-    history: structuredClone(PAUSED),
-    onTitled: () => undefined,
-    onFirstFrame: firstFrames,
-  });
+  return chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: paused(), onTitled: () => undefined });
 }
 
 /**
@@ -104,38 +106,82 @@ function askPart(chat: ReturnType<typeof chatSessionFor>): Record<string, unknow
     | undefined;
 }
 
+/**
+ * Answer the questionnaire.
+ * @returns When the answer is settled.
+ */
+function answerIt(): Promise<void> {
+  return chatLive.answerCard({
+    projectId: 'p-1',
+    conversationId: 'c-1',
+    toolCallId: 'ask-1',
+    card: { answer: { toolCallId: 'ask-1', answers: ANSWERS } },
+    spaces: {},
+  });
+}
+
+/**
+ * The bodies sent, in order.
+ * @returns Each body.
+ */
+function bodies(): Array<Record<string, unknown>> {
+  return vi.mocked(chatApi.sendMessage).mock.calls.map((c) => c[0] as Record<string, unknown>);
+}
+
+beforeEach(async () => {
+  wire = stubRunWire();
+  vi.spyOn(chatApi, 'streamConfig').mockResolvedValue({
+    heartbeatIntervalMs: 600_000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000,
+    spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3000,
+  });
+  vi.spyOn(chatApi, 'readConversation').mockResolvedValue(page(paused()));
+  vi.spyOn(chatApi, 'sync').mockResolvedValue(IDLE);
+  vi.spyOn(chatApi, 'sendMessage').mockResolvedValue(started());
+  told = [];
+  unwatch = watchChatMishaps((m) => told.push(m));
+  chatLive.show('p-1', 'c-1');
+  await settle();
+});
+
+afterEach(() => {
+  unwatch();
+  resetChatLiveForTests();
+  evictAllChatSessions();
+  vi.restoreAllMocks();
+});
+
 describe('answering a card', () => {
   it('sends the answer and no words, and leaves the box and the list as they were', async () => {
-    answer = () => streaming([{ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: ANSWERS } }]);
     const chat = pausedChat();
-    await answerInSession('c-1', 'ask-1', ANSWERS);
+    conversationRuntime.setDraft('c-1', 'half a thought');
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page(ANSWERED));
 
-    expect(sent.at(-1)).toMatchObject({
+    await answerIt();
+    await settle();
+
+    expect(bodies().at(-1)).toMatchObject({
       message: '',
-      attached_chips: [],
       conversation_id: 'c-1',
       answer: { toolCallId: 'ask-1', answers: ANSWERS },
     });
     expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
-    expect(firstFrames).not.toHaveBeenCalled();
+    expect(conversationRuntime.draftOf('c-1')).toBe('half a thought');
   });
 
-  it('carries on the paused reply: the card is answered and what the turn says next follows it there', async () => {
+  it('carries on the paused reply: the card is answered and what the run says next follows it there', async () => {
     // The server names every reply it streams, a resumed one too, with an id
     // of its own; the paused reply on screen goes by another.
-    answer = () =>
-      streaming([
-        { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: ANSWERS } },
-        { type: 'start', messageId: 'named-by-the-server' },
-        { type: 'start-step' },
-        { type: 'text-start', id: 't' },
-        { type: 'text-delta', id: 't', delta: 'Here is the plan.' },
-        { type: 'text-end', id: 't' },
-        { type: 'finish-step' },
-        { type: 'finish' },
-      ]);
     const chat = pausedChat();
-    await answerInSession('c-1', 'ask-1', ANSWERS);
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page(ANSWERED));
+
+    await answerIt();
+    await settle();
+    const s = wire.last()!;
+    for (const f of replyOpens('t')) s.push(f);
+    s.push({ type: 'text-delta', id: 't', delta: 'Here is the plan.' });
+    for (const f of replyEnds('t')) s.push(f);
+    s.close();
+    await settle();
 
     expect(chat.messages.map((m) => m.id)).toEqual(['u-1', 'a-1']);
     expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { answers: ANSWERS } });
@@ -143,60 +189,54 @@ describe('answering a card', () => {
   });
 
   it('draws what the store holds when the card was already answered elsewhere, and says nothing', async () => {
-    answer = () => refused(409, { call: { status: 'success', output: { repliedInChat: true } } });
     const chat = pausedChat();
-    await answerInSession('c-1', 'ask-1', ANSWERS);
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      refused(409, { code: 409, call: { status: 'success', output: { repliedInChat: true } } }),
+    );
+
+    await answerIt();
 
     expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { repliedInChat: true } });
     expect(chat.messages[1]?.parts.some((p) => p.type === 'data-failed')).toBe(false);
-    expect(tell).not.toHaveBeenCalled();
+    expect(told).toEqual([]);
   });
 
   it('leaves the card waiting when the answer is refused, and says why', async () => {
-    answer = () => refused(402);
     const chat = pausedChat();
-    await answerInSession('c-1', 'ask-1', ANSWERS);
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(refused(402));
+
+    await answerIt();
 
     expect(askPart(chat)).toMatchObject({ state: 'input-available' });
     expect(chat.messages[1]?.parts.some((p) => p.type === 'data-failed')).toBe(false);
-    expect(tell).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'c-1', kind: 'server', message: 'Refused.' }));
-  });
-});
-
-describe('a turn already running in the conversation', () => {
-  it('takes no answer until it is over, so one request runs at a time', async () => {
-    const held = new Promise<Response>(() => undefined);
-    globalThis.fetch = ((_url: string, init?: RequestInit) => {
-      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return held;
-    }) as typeof globalThis.fetch;
-    pausedChat();
-    void sendInSession('c-1', 'never mind, something else');
-    await vi.waitFor(() => expect(sent).toHaveLength(1));
-
-    await answerInSession('c-1', 'ask-1', ANSWERS);
-
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).not.toHaveProperty('answer');
+    expect(told).toContainEqual(expect.objectContaining({ conversationId: 'c-1', kind: 'server', message: 'Refused.' }));
   });
 });
 
 describe('writing a message instead of answering', () => {
-  it('shows the card it closed as replied to and adds one reply for the turn when the frames arrive in the order the server writes them', async () => {
-    // A named conversation's turn opens with its title, then the cards the
+  it('shows the card it closed as replied to and adds one reply for the run when the frames arrive in the order the server writes them', async () => {
+    // A named conversation's run opens with its title, then the cards the
     // message closed, then the model's reply under the server's own id.
-    answer = () =>
-      streaming([
-        { type: 'data-conversation-titled', data: { title: 'Poster' } },
-        { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } },
-        { type: 'start', messageId: 'named-by-the-server' },
-        { type: 'text-start', id: 't' },
-        { type: 'text-delta', id: 't', delta: 'Sure.' },
-        { type: 'text-end', id: 't' },
-        { type: 'finish' },
-      ]);
     const chat = pausedChat();
-    await sendInSession('c-1', 'never mind, something else');
+    vi.mocked(chatApi.readConversation).mockResolvedValue(
+      page([
+        ...paused(),
+        { id: 'u-2', role: 'user', parts: [{ type: 'text', text: 'never mind, something else' }], metadata: { turnIndex: 2, ts: '' } },
+      ]),
+    );
+
+    await chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'never mind, something else', chips: [], spaces: {} });
+    await settle();
+    const s = wire.last()!;
+    s.push({ type: 'data-conversation-titled', data: { title: 'Poster' } });
+    s.push({ type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
+    s.push({ type: 'start', messageId: 'named-by-the-server' });
+    s.push({ type: 'text-start', id: 't' });
+    s.push({ type: 'text-delta', id: 't', delta: 'Sure.' });
+    s.push({ type: 'text-end', id: 't' });
+    s.push({ type: 'finish' });
+    s.close();
+    await settle();
 
     expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
     expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { repliedInChat: true } });

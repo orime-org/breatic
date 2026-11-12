@@ -5,71 +5,42 @@
  * Which conversations have a turn running on this page (#1394).
  *
  * The conversation list marks them, so the store has to hold a conversation
- * for exactly as long as its turn runs: from the press to the turn's ending,
- * whichever way it ended. Every ending reaches `settleTurn`, and several of
- * them return early from it, so each is driven here through a real `Chat`
- * over a stubbed wire rather than by calling the store directly.
+ * for exactly as long as this page reads its run (inner#1717): from the
+ * moment the run's stream is handed over to the moment that stream ends,
+ * whichever way it ended, or the page lets go of it. Each ending is driven
+ * here through a real `Chat` reading a stubbed run stream rather than by
+ * calling the store directly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type * as ChatApiModule from '@web/data/api/chat';
-import type * as AssetsApiModule from '@web/data/api/assets';
-import type { StoredUiMessage } from '@web/data/api/chat';
-import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
 
-const BEAT_MS = 5000;
-
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: BEAT_MS,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10,
-      currentSpaceMaxChars: 100_000,
-      spaceListMaxItems: 200,
-      spaceReadTimeoutMs: 10_000,
-      runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
-    })),
-  },
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
-// Chat sends every body through bodyOrTransfer, which first asks for the
-// upload config. Answered here so no request reaches the network, where fake
-// timers would never settle it.
-vi.mock('@web/data/api/assets', async (importOriginal) => {
-  const actual = await importOriginal<typeof AssetsApiModule>();
-  return {
-    ...actual,
-    assetsApi: {
-      ...actual.assetsApi,
-      fetchUploadConfig: async () => ({
-        maxUploadBytes: 2 * 1024 * 1024 * 1024,
-        clientMaxAttempts: 3,
-        clientRetryBaseDelayMs: 1000,
-        uploadIdleTimeoutMs: 30_000,
-        assetUrlPrefix: 'https://assets.test.invalid/',
-        uploadStatusPollSeconds: 5,
-        maxRequestBodyBytes: 1048576,
-      }),
-    },
-  };
-});
-
-import {
-  answerInSession,
-  chatSessionFor,
-  evictAllChatSessions,
-  evictChatSession,
-  sendInSession,
-  stopChatSession,
-} from '@web/stores/chat-sessions';
+import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
+import type { ChatSyncAnswer } from '@breatic/shared';
+import { chatApi } from '@web/data/api/chat';
+import type { StoredUiMessage } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
+import { chatSessionFor, evictAllChatSessions, evictChatSession } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import {
   clearRunningTurns,
   noteTurnRunning,
   noteTurnSettled,
   useRunningTurns,
 } from '@web/stores/running-turns';
-import { stubChatWire, stubRefusingWire, turnEnds, turnOpens } from '@web/test-utils/chat-wire';
+import { BEAT, replyEnds, replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
+
+const BEAT_MS = 1000;
+
+/** What a sync answers when nothing holds the conversation. */
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
+
+/** What a sync answers while a run holds it. */
+const RUNNING: ChatSyncAnswer = { ...IDLE, running: true };
+
+let wire: RunWire;
 
 /**
  * Whether the store holds this conversation as running.
@@ -95,16 +66,18 @@ function aConversation(
     conversationId,
     history,
     onTitled: () => undefined,
-    onFirstFrame: () => undefined,
   });
 }
 
 /**
- * Let every queued microtask run without moving the fake clock; enough of
- * them to carry a closed stream through to the turn's `onFinish`.
+ * Show a conversation whose run the first sync says is going, and let the
+ * page attach to it.
+ * @param conversationId - Which one.
  */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 200; i += 1) await Promise.resolve();
+async function attachTo(conversationId = 'c-1'): Promise<void> {
+  vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+  chatLive.show('p-1', conversationId);
+  await settle();
 }
 
 /** A reply paused on a questionnaire, waiting on the user. */
@@ -122,13 +95,43 @@ const PAUSED: StoredUiMessage[] = [
   },
 ];
 
+/**
+ * Answer the paused questionnaire.
+ * @returns When the answer is settled.
+ */
+function answerTheCard(): Promise<void> {
+  return chatLive.answerCard({
+    projectId: 'p-1',
+    conversationId: 'c-1',
+    toolCallId: 'ask-1',
+    card: { answer: { toolCallId: 'ask-1', answers: [{ index: 0, selected: ['9:16'] }] } },
+    spaces: {},
+  });
+}
+
 beforeEach(() => {
-  vi.useFakeTimers();
+  wire = stubRunWire();
+  vi.spyOn(chatApi, 'streamConfig').mockResolvedValue({
+    heartbeatIntervalMs: BEAT_MS,
+    attachmentMaxChars: 200_000,
+    attachmentMaxItems: 10,
+    currentSpaceMaxChars: 100_000,
+    spaceListMaxItems: 200,
+    spaceReadTimeoutMs: 10_000,
+    runningPollIntervalMs: 5000,
+    syncIntervalMs: 3_000,
+  });
+  vi.spyOn(chatApi, 'sync').mockResolvedValue(IDLE);
+  vi.spyOn(chatApi, 'readConversation').mockResolvedValue({ conversation: { id: 'c-1' } as never, messages: [], hasMore: false });
+  vi.spyOn(chatApi, 'sendMessage').mockResolvedValue({ status: 'start', pending: [], running: true });
+  vi.spyOn(chatApi, 'stop').mockResolvedValue({ stopped: true });
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
   evictAllChatSessions();
   clearRunningTurns();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -153,77 +156,90 @@ describe('the store on its own', () => {
   });
 });
 
-describe('a turn sent on this page', () => {
-  it('is held from the press, before anything comes back', async () => {
-    stubChatWire();
+describe('a run this page reads', () => {
+  it('is held once its stream is handed over, before any reply comes back', async () => {
     aConversation();
 
-    void sendInSession('c-1', 'find references');
+    await attachTo();
+
+    expect(wire.streams()).toHaveLength(1);
+    expect(running()).toBe(true);
+  });
+
+  it('is not held for a send the server refused', async () => {
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'Not enough credits.', fromServer: true }),
+    );
+    aConversation();
+    chatLive.show('p-1', 'c-1');
     await settle();
 
+    await chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'find references', chips: [], spaces: {} });
+    await settle();
+
+    expect(wire.streams()).toHaveLength(0);
+    expect(running()).toBe(false);
+  });
+
+  it('is held from the answer to a send that opened a run', async () => {
+    aConversation();
+    chatLive.show('p-1', 'c-1');
+    await settle();
+
+    await chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'find references', chips: [], spaces: {} });
+    await settle();
+
+    expect(wire.streams()).toHaveLength(1);
     expect(running()).toBe(true);
   });
 
   it('is let go once the reply finishes', async () => {
-    const wire = stubChatWire();
     const chat = aConversation();
-    void sendInSession('c-1', 'find references');
-    await settle();
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
-    wire.current()?.push({ type: 'text-delta', id: 't1', delta: 'Here.' });
-    wire.current()?.push({ type: 'text-end', id: 't1' });
+    await attachTo();
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Here.' });
     await settle();
     expect(running()).toBe(true);
 
-    for (const chunk of turnEnds()) wire.current()?.push(chunk);
-    wire.current()?.close();
+    for (const chunk of replyEnds()) wire.last()?.push(chunk);
+    wire.last()?.close();
     await settle();
 
     expect(chat.status).toBe('ready');
     expect(running()).toBe(false);
   });
 
-  it('is let go when the user stops it', async () => {
-    const wire = stubChatWire();
+  it('is let go when the user stops it and the stream says so', async () => {
     aConversation();
-    void sendInSession('c-1', 'find references');
-    await settle();
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    await attachTo();
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
     await settle();
     expect(running()).toBe(true);
 
-    stopChatSession('c-1');
+    await chatLive.stop('p-1', 'c-1');
+    await settle();
+    expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1');
+    wire.last()?.push({ type: 'data-interrupted', data: {} });
+    wire.last()?.close();
     await settle();
 
     expect(running()).toBe(false);
   });
 
   it('is let go when the reply fails partway', async () => {
-    const wire = stubChatWire();
     const chat = aConversation();
-    void sendInSession('c-1', 'find references');
-    await settle();
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
-    wire.current()?.push({ type: 'error', errorText: 'The turn could not be run.' });
-    wire.current()?.close();
+    await attachTo();
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    wire.last()?.push({ type: 'data-failed', data: {} });
+    wire.last()?.push({ type: 'error', errorText: 'The turn could not be run.' });
+    wire.last()?.close();
     await settle();
 
     expect(chat.status).toBe('error');
     expect(running()).toBe(false);
   });
 
-  it('is let go when the server refuses it before any reply', async () => {
-    stubRefusingWire(402, 'Not enough credits.');
-    const chat = aConversation();
-
-    await sendInSession('c-1', 'find references');
-    await settle();
-
-    expect(chat.status).toBe('error');
-    expect(running()).toBe(false);
-  });
-
-  it('is let go when the request never reaches the server', async () => {
+  it('is never held when the stream request never reaches the server', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -232,44 +248,57 @@ describe('a turn sent on this page', () => {
     );
     aConversation();
 
-    await sendInSession('c-1', 'find references');
+    await attachTo();
+
+    expect(running()).toBe(false);
+  });
+
+  it('is let go when the connection breaks and no run holds the conversation any more', async () => {
+    aConversation();
+    await attachTo();
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    await settle();
+    expect(running()).toBe(true);
+
+    wire.noRunNext();
+    wire.last()?.breakOff();
     await settle();
 
     expect(running()).toBe(false);
   });
 
-  it('is let go when the stream goes silent and the page gives up on it', async () => {
-    const wire = stubChatWire();
+  it('is let go when the stream goes silent and no run holds the conversation any more', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     aConversation();
-    void sendInSession('c-1', 'find references');
-    await settle();
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
-    await settle();
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    chatLive.show('p-1', 'c-1');
+    await vi.advanceTimersByTimeAsync(10);
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    await vi.advanceTimersByTimeAsync(10);
     expect(running()).toBe(true);
 
-    await vi.advanceTimersByTimeAsync(BEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED + 1);
-    await settle();
+    wire.noRunNext();
+    await vi.advanceTimersByTimeAsync(BEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED + 50);
 
     expect(running()).toBe(false);
   });
 
   it('is let go when the turn pauses on a questionnaire', async () => {
-    const wire = stubChatWire();
     const chat = aConversation();
-    void sendInSession('c-1', 'make me a poster');
-    await settle();
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
-    wire.current()?.push({ type: 'text-delta', id: 't1', delta: 'Two things first.' });
-    wire.current()?.push({ type: 'text-end', id: 't1' });
-    wire.current()?.push({
+    await attachTo();
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Two things first.' });
+    wire.last()?.push({ type: 'text-end', id: 't1' });
+    wire.last()?.push({
       type: 'tool-input-available',
       toolCallId: 'ask-1',
       toolName: 'ask_user',
       input: { questions: [] },
     });
-    wire.current()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
-    for (const chunk of turnEnds()) wire.current()?.push(chunk);
-    wire.current()?.close();
+    wire.last()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
+    wire.last()?.push({ type: 'finish-step' });
+    wire.last()?.push({ type: 'finish' });
+    wire.last()?.close();
     await settle();
 
     // A pause, not a failure: the card is waiting on the user.
@@ -286,42 +315,40 @@ describe('a turn sent on this page', () => {
 
 describe('a questionnaire answered on this page', () => {
   it('is held while the resumed turn runs and let go when it finishes', async () => {
-    const wire = stubChatWire();
+    vi.mocked(chatApi.readConversation).mockResolvedValue({ conversation: { id: 'c-1' } as never, messages: structuredClone(PAUSED), hasMore: false });
     aConversation('c-1', structuredClone(PAUSED));
+    chatLive.show('p-1', 'c-1');
+    await settle();
 
-    void answerInSession('c-1', 'ask-1', [{ index: 0, selected: ['9:16'] }]);
+    await answerTheCard();
     await settle();
     expect(running()).toBe(true);
 
-    wire.current()?.push({ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [] } });
-    for (const chunk of turnEnds()) wire.current()?.push(chunk);
-    wire.current()?.close();
+    wire.last()?.push(BEAT);
+    for (const chunk of replyEnds()) wire.last()?.push(chunk);
+    wire.last()?.close();
     await settle();
 
     expect(running()).toBe(false);
   });
 
   it('is let go when the answer is refused because the card was already answered elsewhere', async () => {
-    // The one ending `settleTurn` returns from before it reaches the rest.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              error: { code: 409, message: 'Already answered.' },
-              call: { status: 'success', output: { repliedInChat: true } },
-            }),
-            { status: 409, headers: { 'Content-Type': 'application/json' } },
-          ),
-      ),
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({
+        status: 409,
+        message: 'Already answered.',
+        fromServer: true,
+        details: { code: 409, call: { status: 'success', output: { repliedInChat: true } } },
+      }),
     );
     const chat = aConversation('c-1', structuredClone(PAUSED));
-
-    await answerInSession('c-1', 'ask-1', [{ index: 0, selected: ['9:16'] }]);
+    chatLive.show('p-1', 'c-1');
     await settle();
 
-    // It did take that path: the card now shows what the store holds.
+    await answerTheCard();
+    await settle();
+
+    // It did take that path: the card now shows what the server holds.
     expect(
       chat.messages.flatMap((m) => m.parts).find(
         (p) => (p as { toolCallId?: string }).toolCallId === 'ask-1',
@@ -333,27 +360,22 @@ describe('a questionnaire answered on this page', () => {
 
 describe('dropping sessions', () => {
   it('lets go of a conversation whose session is evicted mid-turn', async () => {
-    stubChatWire();
     aConversation();
-    void sendInSession('c-1', 'find references');
-    await settle();
+    await attachTo();
     expect(running()).toBe(true);
 
     evictChatSession('c-1');
 
-    // At once, not once the aborted turn gets round to settling: the session
-    // is gone, and nothing about it may outlive it.
+    // At once, not once the abandoned stream gets round to settling: the
+    // session is gone, and nothing about it may outlive it.
     expect(running()).toBe(false);
   });
 
   it('lets go of every conversation when the project is left', async () => {
-    stubChatWire();
     aConversation('c-1');
     aConversation('c-2');
-    void sendInSession('c-1', 'one');
-    await settle();
-    void sendInSession('c-2', 'two');
-    await settle();
+    await attachTo('c-1');
+    noteTurnRunning('c-2');
     expect(running('c-1') && running('c-2')).toBe(true);
 
     evictAllChatSessions();

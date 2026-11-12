@@ -15,18 +15,31 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-    listConversations: vi.fn(),
-    readConversation: vi.fn(),
-    createConversation: vi.fn(),
-  },
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamConfig: vi.fn(),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+      listConversations: vi.fn(),
+      readConversation: vi.fn(),
+      createConversation: vi.fn(),
+      running: vi.fn(),
+      sync: vi.fn(),
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
+
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -35,15 +48,22 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUIStore } from '@web/stores/ui';
-import { stubChatWire } from '@web/test-utils/chat-wire';
-import type { WatchedWire } from '@web/test-utils/chat-wire';
+import { stubRunWire } from '@web/test-utils/chat-run-wire';
 
 const cast: ProjectSpace = { id: 's1', name: 'Cast', type: 'canvas', createdAt: 1 };
 const storyboard: ProjectSpace = { id: 's2', name: 'Storyboard', type: 'document', createdAt: 2 };
 const SPACES = [cast, storyboard];
 
-let wire: WatchedWire;
+/**
+ * The bodies the page sent, in order.
+ * @returns Each body.
+ */
+function sent(): Array<Record<string, unknown>> {
+  return vi.mocked(chatApi.sendMessage).mock.calls.map((call) => call[0] as Record<string, unknown>);
+}
 
 /**
  * Render the panel with an open Space.
@@ -73,7 +93,10 @@ beforeEach(() => {
   evictAllChatSessions();
   useUIStore.setState(useUIStore.getInitialState());
   window.localStorage.clear();
-  wire = stubChatWire();
+  stubRunWire();
+  vi.mocked(chatApi.sync).mockResolvedValue({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 });
+  vi.mocked(chatApi.sendMessage).mockResolvedValue({ status: 'queued', pending: [], running: false });
+  vi.mocked(chatApi.running).mockResolvedValue([]);
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
     current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
@@ -90,6 +113,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
 });
 
@@ -146,8 +172,8 @@ describe('the open Space in the chat panel', () => {
     conversationRuntime.setDraft('c1', 'summarise this');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    await waitFor(() => expect(wire.sent()).toHaveLength(1));
-    expect(wire.sent()[0]).toMatchObject({
+    await waitFor(() => expect(sent()).toHaveLength(1));
+    expect(sent()[0]).toMatchObject({
       spaces: [
         { id: 's2', name: 'Storyboard', kind: 'document' },
         { id: 's1', name: 'Cast', kind: 'canvas' },
@@ -166,8 +192,8 @@ describe('the open Space in the chat panel', () => {
     conversationRuntime.setDraft('c1', 'which Spaces are there?');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    await waitFor(() => expect(wire.sent()).toHaveLength(1));
-    expect(wire.sent()[0]).toMatchObject({ spaces_total: 2 });
-    expect(wire.sent()[0]).not.toHaveProperty('current_space');
+    await waitFor(() => expect(sent()).toHaveLength(1));
+    expect(sent()[0]).toMatchObject({ spaces_total: 2 });
+    expect(sent()[0]).not.toHaveProperty('current_space');
   });
 });

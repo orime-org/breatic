@@ -2,157 +2,164 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * 一轮没能跑完的时候，用户听到的是哪一句。
+ * Which sentence the user hears when a message or a run does not go through
+ * (inner#1717).
  *
- * 四句话对四种情况，而分辨它们的依据全在「回来的是什么」：服务器写了一句给
- * 用户的话（积分不够、太频繁、没权限）· 有东西答了但里面没有我们的东西（网关
- * 超时那种，只能由这一端说「这条回复不来了，再发一次」）· 什么都没答（离线）·
- * 以及用户自己按的停止，那个不该说任何话。
- *
- * 这几条原来钉在 store 的事件 switch 上；轮次搬进会话实例之后，出错也是在
- * 那儿学到的，所以测试跟着搬。判据换了：以前看的是自写传输层抛的三种异常，
- * 现在看的是 SDK 抛出来的那一个 `Error`，以及它是不是 `TypeError`。
+ * A message is its own request now, and a run is read from the server's
+ * stream, so the cases sit in two places. A refused send relays the sentence
+ * the server wrote. A run's stream that ends in an error the server reported
+ * says "this reply is not coming". A connection that breaks while the run is
+ * read is the network's doing, and the page attaches again: the run goes on
+ * on the server. The user's own stop says nothing. What is said while nobody
+ * listens is not kept for later.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: { streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })) },
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
+import type { ChatSyncAnswer } from '@breatic/shared';
+import { chatApi } from '@web/data/api/chat';
+import type { ConversationRead, StoredUiMessage } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
-import {
-  chatSessionFor,
-  evictAllChatSessions,
-  sendInSession,
-  stopChatSession,
-} from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { replyOpens, settle, stubRunWire, type RunStream, type RunWire } from '@web/test-utils/chat-run-wire';
 
-/** 说出来的每一条。 */
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
+const RUNNING: ChatSyncAnswer = { ...IDLE, running: true };
+
+/** The message that opened the run, as the history holds it. */
+const OPENING: StoredUiMessage = { id: 'u-1', role: 'user', parts: [{ type: 'text', text: 'find some references' }], metadata: { turnIndex: 1, ts: '' } };
+
+/** Every sentence said. */
 let told: ChatMishap[] = [];
 let stopWatching: (() => void) | undefined;
+let wire: RunWire;
 
 /**
- * 让这一轮的请求以某种方式结束。
- * @param answer - fetch 该怎么答，或者抛什么。
+ * The newest page of history.
+ * @returns The answer.
  */
-function theServerAnswers(answer: () => Promise<Response>): void {
-  vi.stubGlobal('fetch', vi.fn(answer));
+function page(): ConversationRead {
+  return { conversation: { id: 'c-1' } as never, messages: [OPENING], hasMore: false };
 }
 
 /**
- * 起一条会话并发一句话，等到这一轮结束。
- * @returns 那条会话的 `Chat` 实例。
+ * The conversation's session.
+ * @returns Its `Chat`.
  */
-async function aTurnRunsAndEnds(): Promise<ReturnType<typeof chatSessionFor>> {
-  const chat = chatSessionFor({
-    projectId: 'p-1',
-    conversationId: 'c-1',
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-  });
-  await sendInSession('c-1', '找几张参考图');
-  return chat;
+function aConversation(): ReturnType<typeof chatSessionFor> {
+  return chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
+}
+
+/**
+ * Send a message and wait for the server's answer.
+ * @returns How the send ended.
+ */
+function sendIt(): ReturnType<typeof chatLive.send> {
+  return chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'find some references', chips: [], spaces: {} });
+}
+
+/**
+ * Show the conversation while a run holds it, and wait for the page to attach.
+ * @returns The stream it attached to.
+ */
+async function attachToARun(): Promise<RunStream> {
+  vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+  chatLive.show('p-1', 'c-1');
+  await settle();
+  return wire.last()!;
 }
 
 beforeEach(() => {
-  evictAllChatSessions();
+  wire = stubRunWire();
+  vi.spyOn(chatApi, 'streamConfig').mockResolvedValue({
+    heartbeatIntervalMs: 600_000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000,
+    spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3000,
+  });
+  vi.spyOn(chatApi, 'readConversation').mockResolvedValue(page());
+  vi.spyOn(chatApi, 'sync').mockResolvedValue(IDLE);
+  vi.spyOn(chatApi, 'sendMessage').mockResolvedValue({ status: 'queued', pending: [], running: false });
+  vi.spyOn(chatApi, 'stop').mockResolvedValue({ stopped: true });
   told = [];
   stopWatching = watchChatMishaps((mishap) => told.push(mishap));
+  aConversation();
 });
 
 afterEach(() => {
   stopWatching?.();
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-describe('一轮没能跑完', () => {
-  it('服务器写了话就原样转达，那是用他自己的语言写的', async () => {
-    // 信封就是 `middleware/error-handler.ts` 写出来的那个形状。这条用例原先
-    // 造的是 `{ error: "..." }`，服务端从来不答那个形状 —— 于是读它的那一支
-    // 从写下那天起就没被走到过，而线上每一次被拒的轮次都读不出服务端的话。
-    theServerAnswers(
-      async () =>
-        new Response('{"error":{"code":402,"message":"You are out of credits."}}', {
-          status: 402,
-        }),
+describe('a message or a run that does not go through', () => {
+  it('relays the sentence the server wrote, in its own language', async () => {
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'You are out of credits.', fromServer: true }),
     );
 
-    await aTurnRunsAndEnds();
+    await sendIt();
 
     expect(told).toEqual([
-      expect.objectContaining({
-        projectId: 'p-1',
-        conversationId: 'c-1',
-        kind: 'server',
-        message: 'You are out of credits.',
-      }),
+      expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'server', message: 'You are out of credits.' }),
     ]);
   });
 
-  it('有东西答了但里面没有我们的东西，就只说这条回复不来了', async () => {
-    // 网关超时长这样：它确实答了，所以网络没问题；但那段话是写给开发者看的
-    // 英文，从来没过 `t()`。
-    theServerAnswers(async () => new Response('<html>504 Gateway Timeout</html>', { status: 504 }));
-
-    await aTurnRunsAndEnds();
+  it('says only that this reply is not coming when the run\'s stream ends in an error', async () => {
+    const s = await attachToARun();
+    for (const f of replyOpens()) s.push(f);
+    s.push({ type: 'error', errorText: 'The turn could not be run.' });
+    s.close();
+    await settle();
 
     expect(told.map((m) => m.kind)).toEqual(['turn']);
   });
 
-  it('什么都没答就是网络的事', async () => {
-    // 离线时 fetch 按规范抛 TypeError，这是「根本没连上」跟「答了一句我们读
-    // 不懂的」之间唯一的区别。
-    theServerAnswers(() => Promise.reject(new TypeError('Failed to fetch')));
-
-    await aTurnRunsAndEnds();
+  it('calls a connection that broke the network\'s doing, and attaches again', async () => {
+    const s = await attachToARun();
+    for (const f of replyOpens()) s.push(f);
+    await settle();
+    s.breakOff();
+    await settle();
 
     expect(told.map((m) => m.kind)).toEqual(['network']);
+    expect(wire.streams()).toHaveLength(2);
+    expect(chatApi.stop).not.toHaveBeenCalled();
   });
 
-  it('用户自己按的停止，一个字都不说', async () => {
-    theServerAnswers(
-      async () =>
-        new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-          status: 200,
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-    );
-    const chat = chatSessionFor({
-      projectId: 'p-1',
-      conversationId: 'c-1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
-    const running = sendInSession('c-1', '找几张参考图');
-    await vi.waitFor(() => {
-      expect(vi.mocked(fetch)).toHaveBeenCalled();
-    });
+  it('says nothing about the user\'s own stop', async () => {
+    const s = await attachToARun();
+    for (const f of replyOpens()) s.push(f);
+    await settle();
 
-    stopChatSession('c-1');
-    await running;
+    await chatLive.stop('p-1', 'c-1');
+    s.push({ type: 'data-interrupted', data: {} });
+    s.close();
+    await settle();
 
-    // 他刚做完这件事，不用再告诉他一遍。
+    // They just did it; there is no need to tell them again.
     expect(told).toEqual([]);
-    // 这一轮一个字都没答上来（流开着但什么都没推），所以那条用户消息被收回 ——
-    // 跟心跳判死那条路一样，也跟输入框里还留着同一句话这件事对得上（第一帧没
-    // 到过，从来没清过）。定稿 §7.3.3。
-    expect(chat.messages).toHaveLength(0);
   });
 
-  it('没人在看的时候说了也是白说，不留着以后讲', async () => {
+  it('keeps nothing said while nobody listens to tell later', async () => {
     stopWatching?.();
     stopWatching = undefined;
-    theServerAnswers(async () => new Response('<html>504</html>', { status: 504 }));
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'You are out of credits.', fromServer: true }),
+    );
 
-    await aTurnRunsAndEnds();
+    await sendIt();
 
-    // 现在挂上去，就是用户回来了——他什么都听不到。他看到的是一条不再动的
-    // 会话，那就是他知道出事的方式；没有任何地方替他存着这条消息。
+    // Watching now is the user coming back: they hear nothing. What they see
+    // is the words still in the box; nothing holds the sentence for them.
     const late: ChatMishap[] = [];
     const stop = watchChatMishaps((mishap) => late.push(mishap));
     await new Promise((resolve) => setTimeout(resolve, 0));

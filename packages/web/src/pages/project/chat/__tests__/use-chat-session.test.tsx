@@ -2,21 +2,26 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * 面板从这一个地方读它要画的东西。
+ * The one place the panel reads what it draws from.
  *
- * 历史和正在流下来的那条回复是同一个列表 —— 分开放（历史在一处、流式回复在
- * 另一个变量里）正是「一条回复出现两次」「流一结束就消失」「刷新之后顺序不
- * 对」的来源。迁移之后这个列表由 `Chat` 实例持有，而这个 hook 把它翻译成面板
- * 画得出来的形状：正文和思考各自跨 part 拼起来、工具调用成一张列表、中断和
- * 失败两个记号读出来。
+ * History and the reply being written are one list -- keeping them apart (the
+ * history in one place, the streamed reply in another variable) is where "a
+ * reply shows twice", "the reply vanishes when the stream ends" and "the order
+ * is wrong after a refresh" came from. The list is held by a `Chat` instance,
+ * and this hook turns it into what the panel can draw: the text and the
+ * thinking each joined across parts, the tool calls as one list, the
+ * interrupted and failed marks read out.
  *
- * 一轮对话本身怎么跑（发出去的请求体、三种状态、心跳判死、出错说哪一句）在
- * `turn-states.test.tsx` 和 `stores/__tests__/` 那三个文件里；这里只测这层
- * 翻译，以及它跟面板生命周期之间那些事。
+ * A run is the server's (inner#1717): a send is answered with JSON, the page
+ * reads the newest page of history and attaches to the run's stream. How a
+ * run is followed (sync, attach, beats) is pinned in `stores/__tests__/
+ * chat-live-*.test.ts`; this file tests the translation and how it meets the
+ * panel's lifecycle.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { t } from '@breatic/shared';
+import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
 
 const toastSpy = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: toastSpy.error, success: vi.fn(), info: vi.fn() } }));
@@ -24,19 +29,28 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import type * as ChatApiModule from '@web/data/api/chat';
 import type * as AssetsApiModule from '@web/data/api/assets';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000})),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    listConversations: vi.fn(),
-    createConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3_000 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      createConversation: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+      running: vi.fn(async () => []),
+      sync: vi.fn(),
+      sendMessage: vi.fn(),
+      stop: vi.fn(async () => ({ stopped: true })),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
 
 // Chat sends every body through bodyOrTransfer, which first asks for the
 // upload config. Answer it here with the shipped request-body limit, so the
@@ -62,51 +76,93 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
 });
 
 import { chatApi } from '@web/data/api/chat';
+import type { StoredUiMessage } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests, conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
-import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
-import type { WatchedWire } from '@web/test-utils/chat-wire';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { replyOpens, stubRunWire } from '@web/test-utils/chat-run-wire';
+import type { RunWire } from '@web/test-utils/chat-run-wire';
 
-/** 这一轮的流。 */
-let wire: WatchedWire;
+/** The limits the server reads, as `GET /chat/stream-config` answers them. */
+const LIMITS = {
+  heartbeatIntervalMs: 5000,
+  attachmentMaxChars: 200_000,
+  attachmentMaxItems: 10,
+  currentSpaceMaxChars: 100_000,
+  spaceListMaxItems: 200,
+  spaceReadTimeoutMs: 20_000,
+  runningPollIntervalMs: 5000,
+  syncIntervalMs: 3_000,
+};
+
+/** A sync answered while nothing holds the conversation. */
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
+
+/** A send the server answered by opening a run for it. */
+const STARTED: ChatSendAnswer = { status: 'start', pending: [], running: true };
+
+/** The run streams the page reads. */
+let wire: RunWire;
+
+/** What the server holds for c-1, as both opening the chat and reading it back answer. */
+let stored: StoredUiMessage[] = [];
 
 /**
- * 打开会话时服务端说这条会话里有什么。
- * @param messages - 已经说过的话。
- * @param conversationId - 哪一条会话。
+ * A stored message.
+ * @param id - Its id.
+ * @param role - Who said it.
+ * @param text - What it says.
+ * @param turn - Its turn.
+ * @returns The message.
+ */
+function row(id: string, role: 'user' | 'assistant', text: string, turn = 1): StoredUiMessage {
+  return { id, role, parts: [{ type: 'text', text }], metadata: { turnIndex: turn, ts: '2026-08-11T00:00:00Z' } } as StoredUiMessage;
+}
+
+/**
+ * What the server says this conversation holds when the chat is opened.
+ * @param messages - What was said in it.
+ * @param conversationId - Which conversation.
  */
 function openChatAnswers(
-  messages: Array<{ id: string; role: string; text: string }>,
+  messages: Array<{ id: string; role: 'user' | 'assistant'; text: string }>,
   conversationId = 'c-1',
 ): void {
+  stored = messages.map((m) => row(m.id, m.role, m.text));
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: conversationId }],
     current: {
       conversation: { id: conversationId, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
-      messages: messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        parts: [{ type: 'text', text: m.text }],
-        metadata: { turnIndex: 1, ts: '2026-08-11T00:00:00Z' },
-      })),
+      messages: stored,
       hasMore: false,
     },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 }
 
 /**
- * 渲染这个 hook。
- * @returns renderHook 的结果。
+ * The bodies the page sent, in order.
+ * @returns Each body.
+ */
+function sent(): Array<Record<string, unknown>> {
+  return vi.mocked(chatApi.sendMessage).mock.calls.map((call) => call[0] as Record<string, unknown>);
+}
+
+/**
+ * Render the hook.
+ * @returns What renderHook returns.
  */
 function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
   return renderHook(() => useChatSession('p-1', () => ({ spaces: [] })));
 }
 
 /**
- * 渲染面板并等它把会话读回来。
- * @returns renderHook 的结果。
+ * Render the panel and wait for it to read the conversation back and ask the
+ * server where it stands.
+ * @returns What renderHook returns.
  */
 async function anOpenPanel(): Promise<
   ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>>
@@ -115,26 +171,33 @@ async function anOpenPanel(): Promise<
   await waitFor(() => {
     expect(panel.result.current.status).toBe('ready');
   });
+  await waitFor(() => {
+    expect(chatApi.sync).toHaveBeenCalled();
+  });
   return panel;
 }
 
 /**
- * 发一句话出去，并等这一轮真的开始流。
- * @param panel - 那个面板。
- * @param said - 说了什么。
+ * Send something, and wait for the run it opened to start streaming: the
+ * server holds the message, the newest page of history (which has it) is
+ * read back, and the run's stream is attached to.
+ * @param panel - The panel.
+ * @param said - What was said.
  */
 async function aReplyStartsArriving(
   panel: ReturnType<typeof render>,
-  said = '找几张参考图',
+  said = 'find a few reference images',
 ): Promise<void> {
+  const streamsBefore = wire.streams().length;
+  stored = [...stored, row('sent-1', 'user', said, 2)];
   act(() => {
     void panel.result.current.send(said);
   });
   await waitFor(() => {
-    expect(wire.current()).not.toBeNull();
+    expect(wire.streams().length).toBe(streamsBefore + 1);
   });
   act(() => {
-    for (const chunk of turnOpens()) wire.current()?.push(chunk);
+    for (const chunk of replyOpens()) wire.last()?.push(chunk);
   });
   await waitFor(() => {
     expect(panel.result.current.turnPhase).toBe('running');
@@ -143,34 +206,45 @@ async function aReplyStartsArriving(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // 模块单例活得比这个文件里每一个用例都长，跟它活得比面板长是同一件事。
+  // The module singletons outlive every case in this file, the same way they
+  // outlive the panel.
   _resetForTests();
   evictAllChatSessions();
-  wire = stubChatWire();
+  wire = stubRunWire();
   openChatAnswers([]);
+  vi.mocked(chatApi.readConversation).mockImplementation(async (id: string) => ({
+    conversation: { id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
+    messages: stored,
+    hasMore: false,
+  }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+  vi.mocked(chatApi.sync).mockResolvedValue(IDLE);
+  vi.mocked(chatApi.sendMessage).mockResolvedValue(STARTED);
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
-  // 放这儿而不是放用例末尾:一条用例在假时钟下超时就永远走不到那一行,
-  // 之后每一条都在假时钟上跑,而 `waitFor` 靠真定时器轮询 —— 一条挂掉会
-  // 变成整个文件挂掉。
+  // Here rather than at the end of a case: a case that times out under a fake
+  // clock never reaches that line, and every later one would then run on it
+  // while `waitFor` polls on real timers.
   vi.useRealTimers();
 });
 
 describe('what the panel shows when it opens', () => {
   it('asks the server once and shows what it says', async () => {
     openChatAnswers([
-      { id: 'm1', role: 'user', text: '之前问过的' },
-      { id: 'm2', role: 'assistant', text: '之前答过的' },
+      { id: 'm1', role: 'user', text: 'asked before' },
+      { id: 'm2', role: 'assistant', text: 'answered before' },
     ]);
 
     const panel = await anOpenPanel();
 
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
     expect(panel.result.current.messages.map((m) => m.content)).toEqual([
-      '之前问过的',
-      '之前答过的',
+      'asked before',
+      'answered before',
     ]);
   });
 
@@ -184,16 +258,16 @@ describe('what the panel shows when it opens', () => {
   });
 
   it('asks the server nothing when the conversation is already loaded', async () => {
-    openChatAnswers([{ id: 'm1', role: 'user', text: '之前问过的' }]);
+    openChatAnswers([{ id: 'm1', role: 'user', text: 'asked before' }]);
     const first = await anOpenPanel();
     first.unmount();
 
     const second = await anOpenPanel();
 
-    // 再问一次能学到的只有「服务端还不知道的那半」—— 而那半正是屏幕上唯一
-    // 会被顶掉的东西。
+    // All asking again could learn is the half the server does not know yet --
+    // which is the only thing on screen it would push out.
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
-    expect(second.result.current.messages.map((m) => m.content)).toEqual(['之前问过的']);
+    expect(second.result.current.messages.map((m) => m.content)).toEqual(['asked before']);
   });
 });
 
@@ -202,16 +276,16 @@ describe('a reply as the panel draws it', () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
 
-    for (const delta of ['好的', '，我', '来找']) {
+    for (const delta of ['Sure', ', I', ' will look']) {
       act(() => {
-        wire.current()?.push({ type: 'text-delta', id: 't1', delta });
+        wire.last()?.push({ type: 'text-delta', id: 't1', delta });
       });
     }
 
     await waitFor(() => {
-      expect(panel.result.current.messages.at(-1)?.content).toBe('好的，我来找');
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Sure, I will look');
     });
-    // 一条，不是三条。每一片各成一条气泡就是同一个回答被拆成一串。
+    // One, not three. A bubble per piece is one answer cut into a string of them.
     expect(panel.result.current.messages).toHaveLength(2);
   });
 
@@ -220,7 +294,7 @@ describe('a reply as the panel draws it', () => {
     await aReplyStartsArriving(panel);
 
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
     });
 
     await waitFor(() => {
@@ -232,14 +306,14 @@ describe('a reply as the panel draws it', () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
     });
 
     act(() => {
-      wire.current()?.push({ type: 'text-end', id: 't1' });
-      wire.current()?.push({ type: 'finish-step' });
-      wire.current()?.push({ type: 'finish' });
-      wire.current()?.close();
+      wire.last()?.push({ type: 'text-end', id: 't1' });
+      wire.last()?.push({ type: 'finish-step' });
+      wire.last()?.push({ type: 'finish' });
+      wire.last()?.close();
     });
 
     await waitFor(() => {
@@ -253,40 +327,41 @@ describe('a reply as the panel draws it', () => {
     await aReplyStartsArriving(panel);
 
     act(() => {
-      wire.current()?.push({ type: 'reasoning-start', id: 'r1' });
-      wire.current()?.push({ type: 'reasoning-delta', id: 'r1', delta: '先想想' });
-      wire.current()?.push({ type: 'reasoning-delta', id: 'r1', delta: '要什么风格' });
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      wire.last()?.push({ type: 'reasoning-start', id: 'r1' });
+      wire.last()?.push({ type: 'reasoning-delta', id: 'r1', delta: 'Think first' });
+      wire.last()?.push({ type: 'reasoning-delta', id: 'r1', delta: ' about the style' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
     });
 
     await waitFor(() => {
-      expect(panel.result.current.messages.at(-1)?.thinking).toBe('先想想要什么风格');
+      expect(panel.result.current.messages.at(-1)?.thinking).toBe('Think first about the style');
     });
-    // 思考和正文是两样东西,面板分开画。混进正文里用户会看到模型的草稿。
-    expect(panel.result.current.messages.at(-1)?.content).toBe('好的');
+    // Thinking and text are two things, drawn apart. Mixed into the text the
+    // user would read the model's draft.
+    expect(panel.result.current.messages.at(-1)?.content).toBe('Sure');
   });
 
   it('hands back the same object for every message that did not change', async () => {
-    openChatAnswers([{ id: 'm1', role: 'user', text: '之前问过的' }]);
+    openChatAnswers([{ id: 'm1', role: 'user', text: 'asked before' }]);
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'S' });
     });
     await waitFor(() => {
-      expect(panel.result.current.messages.at(-1)?.content).toBe('好');
+      expect(panel.result.current.messages.at(-1)?.content).toBe('S');
     });
     const settledBefore = panel.result.current.messages[0];
 
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '的' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'ure' });
     });
     await waitFor(() => {
-      expect(panel.result.current.messages.at(-1)?.content).toBe('好的');
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Sure');
     });
 
-    // 每一片都重建整份列表,就是把每一条气泡都交给 React 当新的 —— 一秒钟
-    // 几十次,整列都在重画。
+    // Rebuilding the whole list on every piece hands React every bubble as
+    // new -- dozens of times a second, the whole column redrawn.
     expect(panel.result.current.messages[0]).toBe(settledBefore);
   });
 });
@@ -297,11 +372,11 @@ describe('a reply resumed after a questionnaire (inner#1542)', () => {
     await aReplyStartsArriving(panel);
     const input = { questions: [{ header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] }] };
     act(() => {
-      wire.current()?.push({ type: 'tool-input-available', toolCallId: 'ask-1', toolName: 'ask_user', input });
-      wire.current()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
-      wire.current()?.push({ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }] } });
-      wire.current()?.push({ type: 'text-start', id: 't2' });
-      wire.current()?.push({ type: 'text-delta', id: 't2', delta: 'Here' });
+      wire.last()?.push({ type: 'tool-input-available', toolCallId: 'ask-1', toolName: 'ask_user', input });
+      wire.last()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
+      wire.last()?.push({ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }] } });
+      wire.last()?.push({ type: 'text-start', id: 't2' });
+      wire.last()?.push({ type: 'text-delta', id: 't2', delta: 'Here' });
     });
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.content).toBe('Here');
@@ -310,7 +385,7 @@ describe('a reply resumed after a questionnaire (inner#1542)', () => {
     expect(answered?.questionnaires?.[0]?.state).toBe('answered');
 
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't2', delta: ' it is' });
+      wire.last()?.push({ type: 'text-delta', id: 't2', delta: ' it is' });
     });
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.content).toBe('Here it is');
@@ -321,43 +396,65 @@ describe('a reply resumed after a questionnaire (inner#1542)', () => {
 });
 
 describe('a turn that failed', () => {
-  it('is marked on the reply, and marked as happening now', async () => {
+  it('is marked on the reply, and marked as happening now, when the stream says it failed (RW-17)', async () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
     });
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
     });
 
     act(() => {
-      wire.current()?.push({ type: 'error', errorText: 'The assistant could not finish this turn.' });
-      wire.current()?.close();
+      wire.last()?.push({ type: 'data-failed', data: { reason: 'model' } });
+      wire.last()?.push({ type: 'error', errorText: 'The assistant could not finish this turn.' });
+      wire.last()?.close();
     });
 
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.failed).toBe(true);
     });
-    // 正在经历的失败要读出来;而历史里那些失败过的轮次不能 —— 面板一打开
-    // 会把它们全部念一遍。
+    // A failure the user is living through is told; the failed turns in the
+    // history must not be -- opening the panel would read them all out.
     expect(panel.result.current.messages.at(-1)?.failedJustNow).toBe(true);
   });
 
+  it('is not marked from an error frame alone: the mark comes only from the server (RW-17)', async () => {
+    const panel = await anOpenPanel();
+    await aReplyStartsArriving(panel);
+    act(() => {
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages).toHaveLength(2);
+    });
+
+    act(() => {
+      wire.last()?.push({ type: 'error', errorText: 'The assistant could not finish this turn.' });
+      wire.last()?.close();
+    });
+
+    await waitFor(() => {
+      expect(panel.result.current.turnPhase).toBe('idle');
+    });
+    expect(panel.result.current.messages.at(-1)?.failed).toBeFalsy();
+  });
+
   it('is read back out of the history without being announced again', async () => {
-    openChatAnswers([{ id: 'm1', role: 'assistant', text: '' }]);
+    stored = [
+      {
+        id: 'm1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'half a sentence' }, { type: 'data-failed', data: null }],
+        metadata: { turnIndex: 1, ts: '2026-08-11T00:00:00Z' },
+      } as StoredUiMessage,
+    ];
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1' }],
       current: {
         conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
-        messages: [
-          {
-            id: 'm1',
-            role: 'assistant',
-            parts: [{ type: 'text', text: '半句' }, { type: 'data-failed', data: null }],
-            metadata: { turnIndex: 1, ts: '2026-08-11T00:00:00Z' },
-          },
-        ],
+        messages: stored,
         hasMore: false,
       },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
@@ -370,11 +467,11 @@ describe('a turn that failed', () => {
 });
 
 describe('a turn the user stopped', () => {
-  it('marks the reply the way the server records it', async () => {
+  it('asks the server to stop it and marks the reply the way the stream says (RW-18)', async () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '半句' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'half a sentence' });
     });
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
@@ -384,7 +481,19 @@ describe('a turn the user stopped', () => {
       panel.result.current.abort();
     });
 
-    // 不留记号,同一条消息现在读起来是「答完了」、刷新之后才变成「被中断」。
+    await waitFor(() => {
+      expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1');
+    });
+    // The page does not stop reading: the stream goes on to the end the server writes.
+    expect(wire.last()?.abandoned()).toBe(false);
+    act(() => {
+      wire.last()?.push({ type: 'data-interrupted', data: {} });
+      wire.last()?.push({ type: 'finish' });
+      wire.last()?.close();
+    });
+
+    // Without the mark the same message reads as finished, and only becomes
+    // "interrupted" after a refresh.
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.interrupted).toBe(true);
     });
@@ -415,7 +524,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     ]);
   });
 
-  it('says nothing about another conversation streaming in the background', async () => {
+  it('says nothing about another conversation in the background (RW-10)', async () => {
     await anOpenPanel();
 
     act(() => {
@@ -468,24 +577,41 @@ describe('when the panel goes away mid-stream', () => {
 
     panel.unmount();
 
-    expect(wire.signal()?.aborted).toBe(false);
+    // The run is the server's: the page lets go of its stream and asks nothing to stop.
+    await waitFor(() => {
+      expect(wire.last()?.abandoned()).toBe(true);
+    });
+    expect(chatApi.stop).not.toHaveBeenCalled();
   });
 
   it('shows the same reply, still being written, when the column is opened again', async () => {
     const panel = await anOpenPanel();
     await aReplyStartsArriving(panel);
     act(() => {
-      wire.current()?.push({ type: 'text-delta', id: 't1', delta: '写到一半' });
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'halfway through' });
     });
     await waitFor(() => {
-      expect(panel.result.current.messages.at(-1)?.content).toBe('写到一半');
+      expect(panel.result.current.messages.at(-1)?.content).toBe('halfway through');
     });
     panel.unmount();
+    vi.mocked(chatApi.sync).mockResolvedValue({ ...IDLE, running: true });
 
-    const back = await anOpenPanel();
+    const back = render();
+    // Coming back reads the run again from its start.
+    await waitFor(() => {
+      expect(wire.streams()).toHaveLength(2);
+    });
+    act(() => {
+      for (const chunk of replyOpens()) wire.last()?.push(chunk);
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'halfway through' });
+    });
 
-    expect(back.result.current.messages.at(-1)?.content).toBe('写到一半');
+    await waitFor(() => {
+      expect(back.result.current.messages.at(-1)?.content).toBe('halfway through');
+    });
     expect(back.result.current.turnPhase).toBe('running');
+    // Replayed from the start and drawn once.
+    expect(back.result.current.messages).toHaveLength(2);
   });
 });
 
@@ -511,21 +637,30 @@ describe('when the chat never opened', () => {
     openChatAnswers([]);
 
     act(() => {
-      void panel.result.current.send('还是想问');
+      void panel.result.current.send('asking anyway');
     });
 
     await waitFor(() => {
-      expect(wire.sent()).toHaveLength(1);
+      expect(sent()).toHaveLength(1);
     });
-    expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+    expect(sent()[0]).toMatchObject({ conversation_id: 'c-1', message: 'asking anyway' });
   });
 });
 
 describe('a send the server refused (#1363)', () => {
+  /**
+   * Refuse the next send the way the server refuses a model it no longer has.
+   */
+  function refuseTheModel(): void {
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 422, message: 'The selected model is no longer available.', fromServer: true }),
+    );
+  }
+
   it('is counted, so the model picker asks for the list again', async () => {
     const panel = await anOpenPanel();
     const before = useConversationRuntime.getState().modelListAsks;
-    wire.refuseNext(422, 'The selected model is no longer available.');
+    refuseTheModel();
 
     act(() => {
       void panel.result.current.send('hello');
@@ -544,7 +679,7 @@ describe('a send the server refused (#1363)', () => {
     });
     openChatAnswers([]);
     const before = useConversationRuntime.getState().modelListAsks;
-    wire.refuseNext(422, 'The selected model is no longer available.');
+    refuseTheModel();
 
     act(() => {
       void panel.result.current.send('hello');
@@ -572,12 +707,26 @@ describe('the Spaces a message carries (inner#1413)', () => {
     },
   };
 
-  it('reads them at the press, before anything is waited on', async () => {
-    const readSpaces = vi.fn(() => read);
+  /**
+   * Render the panel with these Spaces and wait until it has synced, so the
+   * next read of the limits is the send's.
+   * @param readSpaces - How the Spaces are read.
+   * @returns What renderHook returns.
+   */
+  async function aPanelReading(readSpaces: () => typeof read): Promise<ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>>> {
     const panel = renderHook(() => useChatSession('p-1', readSpaces));
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
     });
+    await waitFor(() => {
+      expect(chatApi.sync).toHaveBeenCalled();
+    });
+    return panel;
+  }
+
+  it('reads them at the press, before anything is waited on', async () => {
+    const readSpaces = vi.fn(() => read);
+    const panel = await aPanelReading(readSpaces);
 
     act(() => {
       void panel.result.current.send('summarise this');
@@ -586,28 +735,17 @@ describe('the Spaces a message carries (inner#1413)', () => {
   });
 
   it('sends them cut to the limits the server reads', async () => {
-    vi.mocked(chatApi.streamConfig).mockResolvedValueOnce({
-      heartbeatIntervalMs: 5000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10,
-      currentSpaceMaxChars: 16,
-      spaceListMaxItems: 2,
-      spaceReadTimeoutMs: 20_000,
-      runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
-    });
-    const panel = renderHook(() => useChatSession('p-1', () => read));
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+    const panel = await aPanelReading(() => read);
+    vi.mocked(chatApi.streamConfig).mockResolvedValueOnce({ ...LIMITS, currentSpaceMaxChars: 16, spaceListMaxItems: 2 });
 
     act(() => {
       void panel.result.current.send('summarise this');
     });
     await waitFor(() => {
-      expect(wire.sent()).toHaveLength(1);
+      expect(sent()).toHaveLength(1);
     });
 
-    expect(wire.sent()[0]).toMatchObject({
+    expect(sent()[0]).toMatchObject({
       message: 'summarise this',
       spaces: [{ id: 's3' }, { id: 's2' }],
       spaces_total: 3,
@@ -616,11 +754,8 @@ describe('the Spaces a message carries (inner#1413)', () => {
   });
 
   it('sends nothing and says so in a toast when the limits cannot be read', async () => {
+    const panel = await aPanelReading(() => read);
     vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
-    const panel = renderHook(() => useChatSession('p-1', () => read));
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
     act(() => {
       panel.result.current.setDraft('summarise this');
     });
@@ -629,7 +764,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       await panel.result.current.send('summarise this');
     });
 
-    expect(wire.sent()).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(toastSpy.warning).toHaveBeenCalledWith('Couldn’t send right now. Try again.');
     expect(panel.result.current.draft).toBe('summarise this');
   });
@@ -637,13 +772,13 @@ describe('the Spaces a message carries (inner#1413)', () => {
 
 describe('the wait for the limits before a send (inner#1413)', () => {
   it('holds the send between the press and the request while the limits are read', async () => {
+    const panel = await anOpenPanel();
     let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
     vi.mocked(chatApi.streamConfig).mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
-    const panel = await anOpenPanel();
 
     act(() => {
       void panel.result.current.send('summarise this');
@@ -651,33 +786,25 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     await waitFor(() => {
       expect(panel.result.current.turnPhase).toBe('sending');
     });
-    expect(wire.sent()).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
 
     act(() => {
-      answer({
-        heartbeatIntervalMs: 5000,
-        attachmentMaxChars: 200_000,
-        attachmentMaxItems: 10,
-        currentSpaceMaxChars: 100_000,
-        spaceListMaxItems: 200,
-        spaceReadTimeoutMs: 20_000,
-        runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
-      });
+      answer(LIMITS);
     });
     await waitFor(() => {
-      expect(wire.sent()).toHaveLength(1);
+      expect(sent()).toHaveLength(1);
     });
   });
 
   it('sends nothing into the conversation being left when a new one is started during the wait', async () => {
+    vi.mocked(chatApi.createConversation).mockReturnValue(new Promise(() => {}));
+    const panel = await anOpenPanel();
     let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
     vi.mocked(chatApi.streamConfig).mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
-    vi.mocked(chatApi.createConversation).mockReturnValue(new Promise(() => {}));
-    const panel = await anOpenPanel();
 
     act(() => {
       void panel.result.current.send('summarise this');
@@ -686,19 +813,11 @@ describe('the wait for the limits before a send (inner#1413)', () => {
       void conversationRuntime.startNew('p-1');
     });
     await act(async () => {
-      answer({
-        heartbeatIntervalMs: 5000,
-        attachmentMaxChars: 200_000,
-        attachmentMaxItems: 10,
-        currentSpaceMaxChars: 100_000,
-        spaceListMaxItems: 200,
-        spaceReadTimeoutMs: 20_000,
-        runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
-      });
+      answer(LIMITS);
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    expect(wire.sent().filter((body) => body.conversation_id === 'c-1')).toHaveLength(0);
+    expect(sent().filter((body) => body.conversation_id === 'c-1')).toHaveLength(0);
   });
 
   /**
@@ -706,27 +825,19 @@ describe('the wait for the limits before a send (inner#1413)', () => {
    * @returns Answers the limits read.
    */
   async function pressWhileTheLimitsAreRead(): Promise<() => Promise<void>> {
+    const panel = await anOpenPanel();
     let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
     vi.mocked(chatApi.streamConfig).mockReturnValueOnce(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
-    const panel = await anOpenPanel();
     act(() => {
       void panel.result.current.send('summarise this');
     });
     return async () => {
       await act(async () => {
-        answer({
-          heartbeatIntervalMs: 5000,
-          attachmentMaxChars: 200_000,
-          attachmentMaxItems: 10,
-          currentSpaceMaxChars: 100_000,
-          spaceListMaxItems: 200,
-          spaceReadTimeoutMs: 20_000,
-          runningPollIntervalMs: 5000, syncIntervalMs: 3_000,
-        });
+        answer(LIMITS);
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
     };
@@ -740,7 +851,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     });
     await answerTheLimits();
 
-    expect(wire.sent()).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
   });
 
@@ -757,6 +868,6 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     });
     await answerTheLimits();
 
-    expect(wire.sent()).toHaveLength(0);
+    expect(sent()).toHaveLength(0);
   });
 });

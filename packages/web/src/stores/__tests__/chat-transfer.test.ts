@@ -2,39 +2,25 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A chat turn whose body is over the request limit (inner#1006 design §4.7):
- * `prepareSendMessagesRequest` uploads it as a transfer file and sends
- * `{ transfer }` instead. The heartbeat watchdog waits on SSE beats, and no
- * beat can come before the request is sent, so the wait is paused while the
- * upload runs and restarted from the moment the request goes out. Stopping
- * the turn, evicting the session or leaving the project stops the upload.
+ * A chat message whose body is over the request limit (inner#1006 design
+ * §4.7): the send uploads it as a transfer file and sends `{ transfer }`
+ * instead (inner#1717: through `POST /chat/message`, answered with JSON).
+ * Nothing watches for beats while it uploads: the heartbeat watchdog is armed
+ * only while a run's stream is read, so a long upload is never told as a
+ * network problem.
  *
- * Fixture as in `heartbeat-watchdog.test.ts`: fake timers, `chatApi.streamConfig`
- * mocked, a fake `fetch` answering with an SSE stream the test pushes into,
- * and `watchChatMishaps` collecting what the user is told. The transfer's
- * four steps (ticket, parts, finish, ending) are stubbed to succeed after a
- * stretch of fake time, and each records the signal it was handed.
+ * The transfer's four steps (ticket, parts, finish, ending) are stubbed to
+ * succeed after a stretch of fake time, and each records the signal it was
+ * handed; `apiPost` also records what reaches the chat endpoint.
  *
- * Test spec: inner#1006 §7.1
- * W11 (chat), W13, W14 and §7.2 H01-H08.
+ * Test spec: inner#1006 §7.1 W11 (chat), W13, W14 and §7.2 H01.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import type { HeldUpload } from '@breatic/shared';
-import type * as ChatApiModule from '@web/data/api/chat';
 import type * as RequestModule from '@web/data/api/request';
 import type * as UploadStatusModule from '@web/data/upload/upload-status';
 
-const BEAT_MS = 5000;
-const BUDGET = BEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED;
-
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000})),
-  },
-}));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof RequestModule>()),
   apiGet: vi.fn(),
@@ -50,22 +36,17 @@ vi.mock('@web/data/upload/upload-status', async (importOriginal) => ({
 }));
 
 import { sendBytesToIngest } from '@breatic/shared';
-import { chatApi } from '@web/data/api/chat';
 import { apiGet, apiPost } from '@web/data/api/request';
 import { assetsApi } from '@web/data/api/assets';
+import { ApiException } from '@web/data/api/types';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
 import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
-import {
-  chatSessionFor,
-  evictAllChatSessions,
-  evictChatSession,
-  hasChatSession,
-  sendInSession,
-  stopChatSession,
-} from '@web/stores/chat-sessions';
-import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { conversationRuntime } from '@web/stores/conversation-runtime';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 
 const PROJECT = 'p-1';
 const CONVERSATION = 'c-1';
@@ -108,15 +89,12 @@ const DEFAULT_TIMING: Timing = {
   ignoreAbort: false,
 };
 
-/** One request made through the fake fetch. */
+/** One message that reached the chat endpoint. */
 interface Sent {
-  url: string;
   at: number;
   body: unknown;
-  headers: Headers;
-  signal: AbortSignal | null | undefined;
-  push: (chunk: Record<string, unknown>) => void;
-  close: () => void;
+  /** The request options it went with. */
+  config: { headers?: Record<string, string> } | undefined;
 }
 
 let timing: Timing = DEFAULT_TIMING;
@@ -179,6 +157,10 @@ function stubTransfer(): void {
       await sleep(timing.ticket, config?.signal);
       return TICKET;
     }
+    if (url === '/chat/message') {
+      sent.push({ at: Date.now(), body, config: config as Sent['config'] });
+      return { status: 'queued', pending: [], running: false };
+    }
     if (/^\/assets\/uploads\/[^/]+\/complete$/.test(url)) {
       seen.finishes += 1;
       await sleep(timing.finish, config?.signal);
@@ -207,16 +189,18 @@ function stubTransfer(): void {
 
 /**
  * Open the conversation's session.
- * @returns Nothing.
  */
 function openSession(): void {
-  chatSessionFor({
-    projectId: PROJECT,
-    conversationId: CONVERSATION,
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-  });
+  chatSessionFor({ projectId: PROJECT, conversationId: CONVERSATION, history: [], onTitled: () => undefined });
+}
+
+/**
+ * Send a message to the conversation.
+ * @param words - What is typed.
+ * @returns How the send ended.
+ */
+function send(words: string): ReturnType<typeof chatLive.send> {
+  return chatLive.send({ projectId: PROJECT, conversationId: CONVERSATION, words, chips: [], spaces: {} });
 }
 
 /**
@@ -232,292 +216,87 @@ async function advanceUntil(done: () => boolean, limitMs: number, stepMs = 100):
   }
 }
 
-/**
- * Let pending promise callbacks run without moving the clock.
- * @returns Once they have.
- */
-async function flush(): Promise<void> {
-  for (let tick = 0; tick < 20; tick++) await vi.advanceTimersByTimeAsync(0);
-}
-
-/**
- * The requests that reached the chat endpoint.
- * @returns Them, in order.
- */
-function chatRequests(): Sent[] {
-  return sent.filter((s) => s.url.endsWith('/chat/message'));
-}
-
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
-  evictAllChatSessions();
   timing = DEFAULT_TIMING;
   sent = [];
   told = [];
   stopWatching = watchChatMishaps((mishap) => told.push(mishap));
   stubTransfer();
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
-      const encoder = new TextEncoder();
-      let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          controller = c;
-        },
-      });
-      sent.push({
-        url: String(url),
-        at: Date.now(),
-        body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body,
-        headers: new Headers(init?.headers),
-        signal: init?.signal,
-        push: (chunk) => controller?.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)),
-        close: () => controller?.close(),
-      });
-      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
-    }),
-  );
+  openSession();
 });
 
 afterEach(() => {
   stopWatching?.();
+  resetChatLiveForTests();
+  resetRunOnceForTests();
   evictAllChatSessions();
   assetsApi.resetUploadConfigCache();
-  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe('what a long chat message sends (W13, W14)', () => {
-  it('W14 sends exactly {"transfer": key} as JSON once the upload ended transferred', async () => {
-    openSession();
-    void sendInSession(CONVERSATION, LONG);
+  it('W14 sends exactly {"transfer": key} once the upload ended transferred', async () => {
+    void send(LONG);
 
-    await advanceUntil(() => chatRequests().length > 0, 30_000);
+    await advanceUntil(() => sent.length > 0, 30_000);
 
     expect(seen.ticketBodies).toHaveLength(1);
     expect(seen.ticketBodies[0]).toMatchObject({ project_id: PROJECT });
-    const [request] = chatRequests();
+    const [request] = sent;
     expect(request?.body).toEqual({ transfer: KEY });
-    expect(request?.headers.get('content-type')).toBe('application/json');
-    expect(request?.headers.get('accept-language')).toBe(getLocale());
+    expect(request?.config?.headers?.['Idempotency-Key']).toEqual(expect.any(String));
   });
 
-  it('W13 sends a short message in the same shape as before, with no transfer', async () => {
-    openSession();
-    void sendInSession(CONVERSATION, SHORT);
+  it('W13 sends a short message as it is, with no transfer', async () => {
+    void send(SHORT);
 
-    await advanceUntil(() => chatRequests().length > 0, 1000);
+    await advanceUntil(() => sent.length > 0, 1000);
 
     expect(seen.ticketBodies).toHaveLength(0);
-    const [request] = chatRequests();
+    const [request] = sent;
     expect(request?.body).toEqual({
+      id: expect.any(String),
       message: SHORT,
       project_id: PROJECT,
       conversation_id: CONVERSATION,
       attached_chips: [],
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
-    expect(request?.headers.get('accept-language')).toBe(getLocale());
   });
 });
 
-describe('the heartbeat watchdog around an upload (H01-H03, H07, H08)', () => {
-  it('H01 a 20 s upload does not get the turn given up on', async () => {
-    openSession();
+describe('a long upload (H01)', () => {
+  it('H01 a 20 s upload is not given up on: nothing is told and the message goes out when it ends', async () => {
     const startedAt = Date.now();
     let ended = false;
-    void sendInSession(CONVERSATION, LONG).then(() => {
+    void send(LONG).then(() => {
       ended = true;
     });
 
-    await advanceUntil(() => chatRequests().length > 0, 25_000);
+    await advanceUntil(() => sent.length > 0, 25_000);
+    await vi.advanceTimersByTimeAsync(0);
 
-    // Nothing was given up on while the upload ran.
     expect(told).toEqual([]);
-    expect(seen.partSignals[0]?.aborted).toBe(false);
-    const [request] = chatRequests();
-    expect(request?.at).toBe(startedAt + 20_000);
-    request?.push({ type: 'data-heartbeat', transient: true, data: {} });
-    for (let beat = 0; beat < 6; beat++) {
-      await vi.advanceTimersByTimeAsync(4000);
-      expect(request?.signal?.aborted).toBe(false);
-      request?.push({ type: 'data-heartbeat', transient: true, data: {} });
-    }
-    request?.close();
-    await flush();
-
+    expect(sent[0]?.at).toBe(startedAt + 20_000);
     expect(ended).toBe(true);
-    expect(request?.signal?.aborted).toBe(false);
-    expect(told.filter((m) => m.kind === 'network')).toEqual([]);
-  });
-
-  it('H02 counts the budget from the moment the request goes out', async () => {
-    openSession();
-    void sendInSession(CONVERSATION, LONG);
-
-    await advanceUntil(() => chatRequests().length > 0, 25_000);
-    const [request] = chatRequests();
-    expect(seen.ticketBodies).toHaveLength(1);
-
-    await vi.advanceTimersByTimeAsync(BUDGET - 1);
-    expect(request?.signal?.aborted).toBe(false);
-    expect(told).toEqual([]);
-
-    await vi.advanceTimersByTimeAsync(2);
-    expect(request?.signal?.aborted).toBe(true);
-    expect(told.map((m) => m.kind)).toEqual(['network']);
-  });
-
-  it('H03 does not count the upload even when the stream config answers late', async () => {
-    timing = { ...DEFAULT_TIMING, config: 100, parts: [6000, 6000, 5000], wait: 1000 };
-    vi.mocked(chatApi.streamConfig).mockImplementation(async () => {
-      await sleep(3000);
-      return { heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 , syncIntervalMs: 3_000};
-    });
-    openSession();
-    void sendInSession(CONVERSATION, LONG);
-
-    await vi.advanceTimersByTimeAsync(19_999);
-    expect(chatRequests()).toHaveLength(0);
-    expect(seen.ticketBodies).toHaveLength(1);
-    expect(seen.partSignals[0]?.aborted).toBe(false);
-    expect(told).toEqual([]);
-
-    await advanceUntil(() => chatRequests().length > 0, 5000, 1);
-    const [request] = chatRequests();
-    await vi.advanceTimersByTimeAsync(BUDGET - 1);
-    expect(request?.signal?.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(2);
-    expect(request?.signal?.aborted).toBe(true);
-    expect(told.map((m) => m.kind)).toEqual(['network']);
-  });
-
-  it('H07 a superseded turn finishing its upload late leaves the running turn\'s watch alone', async () => {
-    // The fallback construction the spec allows: the first turn's upload
-    // ignores cancellation and ends after the second turn has gone out, so
-    // its pause (at its transfer start) and its restart (after its upload)
-    // both arrive while the second turn is the one running.
-    timing = { ...DEFAULT_TIMING, config: 1000, ticket: 1000, parts: [8000], finish: 1000, wait: 1000, ignoreAbort: true };
-    openSession();
-    const startedAt = Date.now();
-    void sendInSession(CONVERSATION, LONG);
-    await vi.advanceTimersByTimeAsync(500);
-    void sendInSession(CONVERSATION, SHORT);
-
-    await vi.advanceTimersByTimeAsync(15_500 - 500 - 1);
-    const second = chatRequests().find((r) => (r.body as { message?: unknown }).message === SHORT);
-    const abortedJustBefore = second?.signal?.aborted;
-    const toldJustBefore = [...told];
-    await vi.advanceTimersByTimeAsync(2);
-
-    expect(Date.now()).toBe(startedAt + 15_501);
-    // The first turn did go through a transfer, so its pause and restart ran.
-    expect(seen.ticketBodies).toHaveLength(1);
-    expect(seen.waits).toBe(1);
-    expect(abortedJustBefore).toBe(false);
-    expect(toldJustBefore).toEqual([]);
-    expect(second?.signal?.aborted).toBe(true);
-    expect(told.map((m) => m.kind)).toEqual(['network']);
-  });
-
-  it('H08 a short message is not paused: given up on BUDGET after the press', async () => {
-    openSession();
-    void sendInSession(CONVERSATION, SHORT);
-    await flush();
-
-    await vi.advanceTimersByTimeAsync(BUDGET + 1);
-
-    const [request] = chatRequests();
-    expect(request?.signal?.aborted).toBe(true);
-    expect(told.map((m) => m.kind)).toEqual(['network']);
-    expect(seen.ticketBodies).toHaveLength(0);
+    expect(conversationRuntime.draftOf(CONVERSATION)).toBe('');
   });
 });
 
-describe('stopping a turn while its body uploads (H04-H06)', () => {
-  /**
-   * Start a long message and run fake time into its second part.
-   * @returns Once the second part is being sent.
-   */
-  async function uploadIntoSecondPart(): Promise<void> {
-    openSession();
-    void sendInSession(CONVERSATION, LONG);
-    await vi.advanceTimersByTimeAsync(timing.ticket + (timing.parts[0] ?? 0) + 1000);
-  }
-
-  /** What every way of stopping leaves behind on the request side. */
-  function expectUploadStopped(): void {
-    expect(seen.partsStarted).toBe(2);
-    expect(seen.partSignals).toHaveLength(1);
-    expect(seen.partSignals[0]?.aborted).toBe(true);
-    expect(seen.finishes).toBe(0);
-    expect(seen.waits).toBe(0);
-    expect(chatRequests()).toHaveLength(0);
-  }
-
-  it('H04 stopChatSession stops the upload, says nothing, and the next message goes out', async () => {
-    await uploadIntoSecondPart();
-    expect(seen.partsStarted).toBe(2);
-
-    stopChatSession(CONVERSATION);
-    await flush();
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    expectUploadStopped();
-    expect(told).toEqual([]);
-
-    void sendInSession(CONVERSATION, SHORT);
-    await advanceUntil(() => chatRequests().length > 0, 1000);
-    expect(chatRequests().map((r) => (r.body as { message?: unknown }).message)).toEqual([SHORT]);
-  });
-
-  it('H05 evictChatSession stops the upload and leaves no watchdog behind', async () => {
-    await uploadIntoSecondPart();
-
-    evictChatSession(CONVERSATION);
-    await flush();
-
-    expectUploadStopped();
-    expect(hasChatSession(CONVERSATION)).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(told).toEqual([]);
-    expect(chatRequests()).toHaveLength(0);
-  });
-
-  it('H06 leaving the project stops the upload the same way', async () => {
-    useConversationRuntime.setState({
-      conversations: {
-        [CONVERSATION]: { projectId: PROJECT, messages: [], hasMore: false, oldestLoadedTurn: null, title: null, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
-      },
+describe('a failed upload is told like any failed send (W11)', () => {
+  it('tells what the server said, sends nothing to the chat endpoint and keeps the words', async () => {
+    conversationRuntime.setDraft(CONVERSATION, LONG);
+    vi.mocked(apiPost).mockImplementation(async () => {
+      throw new ApiException({ status: 400, message: 'Uploads are unavailable', fromServer: true });
     });
-    await uploadIntoSecondPart();
-
-    conversationRuntime.leaveProject(PROJECT);
-    await flush();
-
-    expectUploadStopped();
-    expect(hasChatSession(CONVERSATION)).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(told).toEqual([]);
-    expect(chatRequests()).toHaveLength(0);
-  });
-});
-
-describe('a failed upload is said like any failed turn (W11)', () => {
-  it('tells the turn failed and sends nothing to the chat endpoint', async () => {
-    vi.mocked(apiPost).mockImplementation(async (url: string) => {
-      throw new Error(`refused ${url}`);
-    });
-    openSession();
-    void sendInSession(CONVERSATION, LONG);
+    void send(LONG);
 
     await vi.advanceTimersByTimeAsync(2000);
 
-    expect(chatRequests()).toHaveLength(0);
-    expect(told).toEqual([{ projectId: PROJECT, conversationId: CONVERSATION, kind: 'turn' }]);
+    expect(sent).toHaveLength(0);
+    expect(told).toEqual([{ projectId: PROJECT, conversationId: CONVERSATION, kind: 'server', message: 'Uploads are unavailable' }]);
+    expect(conversationRuntime.draftOf(CONVERSATION)).toBe(LONG);
   });
 });
