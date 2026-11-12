@@ -46,9 +46,9 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
 };
 // What the chrome around the frame covers, in pixels: the top clears the
 // viewfinder bar (10 + 42 + 10); the bottom keeps the menu under the frame
-// (44 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
+// (38 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
-const INSETS = { top: 62, bottom: 118, side: 20, panel: 340 };
+const INSETS = { top: 62, bottom: 112, side: 20, panel: 340 };
 // The menu sits this far below the frame.
 const MENU_GAP = 8;
 

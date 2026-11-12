@@ -7,7 +7,6 @@ import { addNode, readNodePlacements, runCanvasUndoBatch } from '@web/data/yjs/c
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { stepPastOccupied } from '@web/spaces/canvas/node-clipboard';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
-import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
@@ -96,11 +95,11 @@ function waitForReceipt(projectId: string, name: string, doc: ReturnType<typeof 
  * canvas shows while a file is on its way. That hands the image over to the
  * canvas, and the answer comes then. In the background it waits for collab to
  * confirm the node and uploads into it the way a picked file is; the document
- * is held until the upload ended, so its lock and size reads never meet a
- * released document, and the canvas counts as busy for the leave guard until
- * the upload's own send took over.
+ * is held until the bytes are on their way, and the canvas counts as busy for
+ * the leave guard until the upload's own send took over.
  * @param request - The image and where it goes.
  * @returns How the hand-over went.
+ * @throws {Error} When writing the node throws; the document and the leave guard are let go first.
  */
 export async function placeImageOnCanvas(request: PlaceImageRequest): Promise<PlaceImageOutcome> {
   const { projectId, spaceId, file, size, userId, origin, syncTimeoutMs } = request;
@@ -115,25 +114,34 @@ export async function placeImageOnCanvas(request: PlaceImageRequest): Promise<Pl
   /** Let go of the document and the leave guard. */
   const finish = (): void => { settleBusy(); releaseDocProvider(name, doc); };
   const provider = acquireDocProvider(name, doc);
-  if (!(await waitForSync(name, provider, syncTimeoutMs))) { finish(); return { status: 'unreachable' }; }
-  const occupied = readNodePlacements(projectId, spaceId);
-  const shift = stepPastOccupied([origin], occupied);
-  const built = createEmptyNode('image', { x: origin.x + shift.dx, y: origin.y + shift.dy }, userId);
-  const node = { ...built, data: { ...built.data, mediaWidth: size.width, mediaHeight: size.height } };
-  const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => { addNode(projectId, spaceId, node); });
-  if (!written.ok) { finish(); return { status: 'refused' }; }
+  let nodeId: string;
+  try {
+    if (!(await waitForSync(name, provider, syncTimeoutMs))) { finish(); return { status: 'unreachable' }; }
+    const shift = stepPastOccupied([origin], readNodePlacements(projectId, spaceId));
+    const built = createEmptyNode('image', { x: origin.x + shift.dx, y: origin.y + shift.dy }, userId);
+    const node = { ...built, data: { ...built.data, mediaWidth: size.width, mediaHeight: size.height } };
+    const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => { addNode(projectId, spaceId, node); });
+    if (!written.ok) { finish(); return { status: 'refused' }; }
+    nodeId = node.id;
+  } catch (err) {
+    finish();
+    throw err;
+  }
   const marks = useUploadMarksStore.getState();
-  const markOp = marks.begin(spaceId, node.id, fillActionOf({ needsUpload: true }));
+  const markOp = marks.begin(spaceId, nodeId, 'upload');
   void (async (): Promise<void> => {
     try {
-      if ((await waitForReceipt(projectId, name, doc)) === 'gone') { marks.answer(spaceId, node.id, markOp); return; }
+      // A rebuilt document may still hold the node collab already took, so it says why it stayed empty.
+      if ((await waitForReceipt(projectId, name, doc)) === 'gone') { marks.fail(spaceId, nodeId, markOp, { key: 'spaces.sizeCap.reason' }); return; }
       // The upload registers its own send from here (`uploadIntoNode`).
-      const ended = uploadIntoNode({ projectId, spaceId, nodeId: node.id }, file, { continuing: markOp });
+      const sent = uploadIntoNode({ projectId, spaceId, nodeId }, file, { continuing: markOp });
       settleBusy();
-      await ended;
+      await sent;
+    } catch {
+      marks.fail(spaceId, nodeId, markOp, { key: 'canvas.upload.failed', params: { filename: file.name } });
     } finally {
       finish();
     }
   })();
-  return { status: 'placed', nodeId: node.id };
+  return { status: 'placed', nodeId };
 }

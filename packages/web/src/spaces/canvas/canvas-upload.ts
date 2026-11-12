@@ -209,10 +209,6 @@ export interface FillNodeDeps {
   markOp: string;
   /** A browser mini-tool's tag, when its export is what is being uploaded. */
   tag?: MiniToolUploadTag;
-  /** Told once the content is held for the node: the server registered the bytes, or the text was written. */
-  onStored?: () => void;
-  /** Told when the fill ended before the server answered, said on the node only. */
-  onFailedBeforeAnswer?: () => void;
 }
 
 /**
@@ -247,7 +243,6 @@ export async function fillNodeFromFile(
   const spec = fileToNodeSpec(file);
   if (spec.nodeType !== targetModality) {
     marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.typeMismatch' });
-    deps.onFailedBeforeAnswer?.();
     return;
   }
   if (spec.needsUpload) {
@@ -263,9 +258,8 @@ export async function fillNodeFromFile(
         requestTicket: deps.requestTicket,
         sendToIngest: deps.sendToIngest,
         // The node's content arrives from the server through Yjs.
-        onSuccess: () => deps.onStored?.(),
-        onRegistered: () => deps.onStored?.(),
-        ...markedSinks(deps.spaceId, nodeId, deps.markOp, file, deps.onUploadFailure, deps.onFailedBeforeAnswer),
+        onSuccess: () => undefined,
+        ...markedSinks(deps.spaceId, nodeId, deps.markOp, file, deps.onUploadFailure),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );
@@ -273,16 +267,10 @@ export async function fillNodeFromFile(
   }
   try {
     const written = deps.setContent(nodeId, await deps.extractText(file));
-    if (written && !written.ok) {
-      marks.fail(deps.spaceId, nodeId, deps.markOp, TEXT_REFUSAL_MARK);
-      deps.onFailedBeforeAnswer?.();
-    } else {
-      marks.answer(deps.spaceId, nodeId, deps.markOp);
-      deps.onStored?.();
-    }
+    if (written && !written.ok) marks.fail(deps.spaceId, nodeId, deps.markOp, TEXT_REFUSAL_MARK);
+    else marks.answer(deps.spaceId, nodeId, deps.markOp);
   } catch {
     marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.extractionFailed', params: { filename: file.name } });
-    deps.onFailedBeforeAnswer?.();
   }
 }
 
@@ -317,7 +305,6 @@ export function uploadFailureMark(outcome: UploadFailure, file: File): UploadMar
  * @param op - The mark's operation.
  * @param file - The file.
  * @param afterAnswer - Where a failure after the answer goes.
- * @param beforeAnswer - Told when a failure before the answer was said on the node.
  * @returns The two sinks.
  */
 export function markedSinks(
@@ -326,7 +313,6 @@ export function markedSinks(
   op: string,
   file: File,
   afterAnswer: (outcome: UploadFailure, file: File) => void,
-  beforeAnswer?: () => void,
 ): Pick<MediaUploadDeps, 'onAnswered' | 'onFailure'> {
   let answered = false;
   return {
@@ -336,10 +322,7 @@ export function markedSinks(
     },
     onFailure: (outcome) => {
       if (answered || outcome.taskId !== undefined) afterAnswer(outcome, file);
-      else {
-        useUploadMarksStore.getState().fail(spaceId, nodeId, op, uploadFailureMark(outcome, file));
-        beforeAnswer?.();
-      }
+      else useUploadMarksStore.getState().fail(spaceId, nodeId, op, uploadFailureMark(outcome, file));
     },
   };
 }
