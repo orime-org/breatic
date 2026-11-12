@@ -98,6 +98,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
   const [viewfinder, dispatchViewfinder] = React.useReducer(viewfinderReducer, INITIAL_VIEWFINDER);
   const framing = viewfinder.phase !== 'off';
+  // From Capture until Reframe or close the frame holds the still; the scene beneath it is not being edited.
+  const shotTaken = framing && viewfinder.phase !== 'framing';
   const viewfinderPhase = React.useRef(viewfinder.phase);
   viewfinderPhase.current = viewfinder.phase;
   const [frameCapture, setFrameCapture] = React.useState<SceneFrameCapture | null>(null);
@@ -572,7 +574,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
-                  onCapture={onCapture} viewLocked={viewfinder.phase !== 'off' && viewfinder.phase !== 'framing'} />
+                  onCapture={onCapture} viewLocked={shotTaken} />
               </React.Suspense>}
       {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
@@ -596,7 +598,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     <SceneViewfinder state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
       spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces} />
-    {selected.length > 0 ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
+    {selected.length > 0 && !shotTaken ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
       onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });

@@ -153,6 +153,15 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     return () => observer.disconnect();
   }, [phase]);
 
+  // The still in the frame, from Capture until Reframe or close.
+  const [stillUrl, setStillUrl] = React.useState<string | null>(null);
+  React.useLayoutEffect(() => {
+    if (shot === null) { setStillUrl(null); return; }
+    const url = URL.createObjectURL(shot.file);
+    setStillUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [shot]);
+
   // The phase as of the last press, ahead of the next render: a second press that lands before
   // React re-renders reads it here, so one press starts one send.
   const pressed = React.useRef(phase);
@@ -295,11 +304,12 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
           data-shape={ratioValue === null ? 'round' : 'square'}
           className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
           onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
+        {!framing && stillUrl !== null ? <img data-testid='scene-viewfinder-still' src={stillUrl} alt='' draggable={false} className='absolute inset-0 size-full' /> : null}
       </div>
     </div>
     <Popover open={phase === 'picking'} onOpenChange={onListOpen}>
       <PopoverAnchor asChild>
-        <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex w-max -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
+        <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex w-max -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-overlay border border-border bg-popover p-1 text-xs shadow'
           style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
           {framing ? <React.Fragment key='framing'>
             <Select value={ratio} onValueChange={changeRatio}>
