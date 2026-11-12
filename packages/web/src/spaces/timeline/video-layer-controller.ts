@@ -121,17 +121,6 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
 }
 
 /**
- * The time an element can reach for a target: its own end when the target lies past it.
- * @param element - The lane's element.
- * @param target - The requested source time.
- * @returns The reachable time.
- * @throws {never} Never.
- */
-export function reachableTime(element: HTMLVideoElement, target: number): number {
-  return Number.isFinite(element.duration) ? Math.min(target, element.duration) : target;
-}
-
-/**
  * Whether a lane failed: only its asset or its element's error count (#1410 design §6.2); `networkState` 3 right after
  * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
  * @param lane - The lane.

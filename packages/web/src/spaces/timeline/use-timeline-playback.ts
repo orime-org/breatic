@@ -8,7 +8,7 @@ import { timelineSourceSeconds } from '@web/data/yjs/timeline-time';
 import { toast } from '@web/lib/toast';
 import { timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 import {
-  createVideoLayerController, reachableTime, videoLaneClip, videoLaneFailed, videoLaneMapping, videoLaneSourceSeconds,
+  createVideoLayerController, videoLaneClip, videoLaneFailed, videoLaneMapping, videoLaneSourceSeconds,
   type TimelineVideoLayer, type TimelineVideoLayerState, type VideoLane,
 } from '@web/spaces/timeline/video-layer-controller';
 import { createWebAnimationHost, type TimelineWebLayer, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
@@ -72,6 +72,20 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retryVideo' |
  */
 function atFileEnd(element: HTMLVideoElement): boolean {
   return Number.isFinite(element.duration) && Math.abs(element.currentTime - element.duration) <= END_TOLERANCE_SECONDS;
+}
+
+/**
+ * Whether an element shows a source time: within the tolerance of it, or, for a time past its file end, at the end itself,
+ * where a lane in its tail holds the last picture (#1410 design §6.3, `media.js:279-283`).
+ * @param element - The element.
+ * @param target - The source time.
+ * @param tolerance - How far off still counts.
+ * @returns Whether it is there.
+ * @throws {never} Never.
+ */
+function landedAt(element: HTMLVideoElement, target: number, tolerance: number): boolean {
+  if (Number.isFinite(element.duration) && target > element.duration) return atFileEnd(element);
+  return Math.abs(element.currentTime - target) <= tolerance;
 }
 
 /**
@@ -272,7 +286,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       const found = videoLaneClip(latest.current.document, lane.clipId);
       if (found !== null) lane.mapping = videoLaneMapping(found.clip);
       const element = lane.element;
-      if (tolerance > 0 && element.readyState >= 1 && !element.seeking && Math.abs(element.currentTime - reachableTime(element, target)) <= tolerance) {
+      if (tolerance > 0 && element.readyState >= 1 && !element.seeking && landedAt(element, target, tolerance)) {
         lane.awaitingSeek = false;
         return;
       }
@@ -296,8 +310,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       } catch {
         return;
       }
-      // Seek done: seeked, data for the frame, and within half a frame of the reachable target (#1410 design §6.3).
-      if (!element.seeking && element.readyState >= 2 && Math.abs(element.currentTime - reachableTime(element, lane.target)) < halfFrame()) {
+      // Seek done: seeked, data for the frame, and at the target (#1410 design §6.3).
+      if (!element.seeking && element.readyState >= 2 && landedAt(element, lane.target, halfFrame())) {
         lane.awaitingSeek = false;
       }
     }
@@ -577,7 +591,6 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         hold();
         return;
       }
-      publish('play', 'waiting');
       for (const lane of lanes) if (!inTail(lane) && lane.element.paused) requestPlay(lane);
       if (lanes.every(started)) {
         anchor = { frame: position.current, at: performance.now() };
@@ -607,16 +620,12 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      */
     function seek(frame: number): void {
       if (!Number.isSafeInteger(frame)) return;
-      cancelFrame();
-      anchor = null;
-      boundaryAnchor = null;
       sequenceEnded = false;
       showFrame(Math.max(0, Math.min(Math.max(0, sequenceEnd() - 1), frame)));
       repositionWeb();
       placeAll();
       // The whole preview waits for the seek and plays on once every lane has landed (#1410 design §6.3).
       if (state.current.intent === 'play') hold();
-      else publish('pause', 'paused');
       evaluate();
     }
 
