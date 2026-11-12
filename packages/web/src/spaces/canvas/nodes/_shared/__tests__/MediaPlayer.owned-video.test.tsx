@@ -76,6 +76,14 @@ describe('canonical owned video in the existing player', () => {
     expect(owned.element.play).toHaveBeenCalledOnce();
   });
 
+  // The erase status label on the overlay host keys its offset to this attribute so it sits above the shown control bar.
+  it('tells the overlay host whether the control bar is shown over the video', () => {
+    const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} />);
+    expect(screen.getByTestId('video-tool-overlay-host')).toHaveAttribute('data-controls', 'shown');
+    view.rerender(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} controlsHidden />);
+    expect(screen.getByTestId('video-tool-overlay-host')).toHaveAttribute('data-controls', 'hidden');
+  });
+
   it('forwards the actual paused first-frame clock synchronously and invalidates it before seek or replacement', () => {
     const frames = vi.fn(); const bindings = vi.fn();
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={bindings} onPresentedFrame={frames} />);

@@ -105,6 +105,17 @@ describe('the selection status chip (D5)', () => {
   });
 });
 
+// The node player's control bar covers the bottom of the video while shown; the chip rises above it then.
+describe('the selection status chip over the control bar (E1)', () => {
+  it('sits at the bottom left and lifts above the control bar the overlay host says is shown', () => {
+    render(<VideoToolNodeOverlay {...props} />);
+    const chip = screen.getByTestId('video-tool-selection-status');
+    expect(chip.className).toContain('bottom-2');
+    expect(chip.className).toContain('left-2');
+    expect(chip.className).toContain('group-data-[controls=shown]/media-overlay:bottom-[calc(var(--btn-inline)+0.875rem)]');
+  });
+});
+
 // Demo lip-sync-controls.tsx FaceOverlay; canvas design line 98: only the box of the person bound to the active dialogue row
 // is drawn in the selected style, every other person's box is neutral.
 describe('person boxes follow the active dialogue row (E1)', () => {
