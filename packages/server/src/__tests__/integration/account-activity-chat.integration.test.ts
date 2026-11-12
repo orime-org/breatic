@@ -10,6 +10,7 @@ import { getAgentConfig, initCore, loadLocales } from "@breatic/core";
 import { activityRows, rejectActivityWrites, seedActivityProject, seedActivityUser } from "./helpers/account-activity-fixture.js";
 import type { ActivityProject } from "./helpers/account-activity-fixture.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 const model = vi.hoisted(() => ({ fail: false }));
 vi.mock("@breatic/domain", async (importOriginal) => {
@@ -88,19 +89,14 @@ async function seedCard(chat: Chat, kind: "questionnaire" | "space"): Promise<{ 
 }
 
 /**
- * Drive a real chat request and finish reading its stream or error response.
+ * Drive a real chat request and, when it opens a run, read the run to its end.
  * @param chat - The real authenticated caller.
  * @param body - The message or card answer.
- * @returns The actual status and response text.
+ * @returns The actual status of the send.
  * @throws {Error} When the request cannot run.
  */
-async function post(chat: Chat, body: Record<string, unknown>): Promise<{ status: number; text: string }> {
-  const response = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { Cookie: chat.cookie, "Content-Type": "application/json" },
-    body: JSON.stringify({ project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body }),
-  });
-  return { status: response.status, text: await response.text() };
+async function post(chat: Chat, body: Record<string, unknown>): Promise<{ status: number }> {
+  return sendAndRead(app, chat.cookie, { project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body });
 }
 
 /**
@@ -335,7 +331,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
   });
 
 
-  it("P14 refuses an ordinary turn before opening SSE when activity persistence fails", async () => {
+  it("P14 refuses an ordinary turn before opening a run when activity persistence fails", async () => {
     const chat = await seedChat();
     const restore = await rejectActivityWrites(sql, chat.userId);
     try {

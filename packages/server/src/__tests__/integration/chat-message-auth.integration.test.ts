@@ -8,9 +8,9 @@
  * able to read a project is not enough to say something in it, and a project
  * the caller has no part in must not even be admitted to exist.
  *
- * Every request here carries a well-formed body, conversation id included.
- * That is the point: the id is required now, so a malformed request stops at
- * the validator and never reaches a guard — a suite built out of those would
+ * Every request here carries a well-formed body, message id and conversation
+ * id included. That is the point: both ids are required now, so a malformed
+ * request stops at the validator and never reaches a guard — a suite built out of those would
  * report a boundary it never touched. The suite this replaces was exactly that
  * shape, which is why it went when the design it was written against did.
  *
@@ -156,8 +156,10 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Post a chat message, optionally without a session.
- * @param body - Request body, complete unless a case says otherwise.
+ * Post a chat message, optionally without a session. Every case here is
+ * refused, so the answer is read as it comes and no run is waited for.
+ * @param body - Request body, complete unless a case says otherwise; a
+ *   message id is added.
  * @param cookie - Session cookie, or undefined to arrive signed out.
  * @returns The raw response.
  */
@@ -171,7 +173,7 @@ async function send(
       "Content-Type": "application/json",
       ...(cookie ? { Cookie: cookie } : {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ id: crypto.randomUUID(), ...body }),
   });
 }
 

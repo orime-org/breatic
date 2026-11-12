@@ -220,8 +220,11 @@ export async function sendAndRead(
   let reading: Promise<Record<string, unknown>[]> | undefined;
   const observe = async (run: { conversationId: string; runId: string }): Promise<void> => {
     if (run.conversationId !== conversationId || reading !== undefined) return;
-    const stream = await runStreams().resumeExistingStream(run.runId);
-    reading = stream ? framesOfText(stream) : Promise.resolve([]);
+    // Held at once, since the send can answer before the attach resolves; the
+    // run waits only for the attach, never for the frames it has yet to write.
+    const attached = runStreams().resumeExistingStream(run.runId);
+    reading = attached.then((stream) => (stream ? framesOfText(stream) : []));
+    await attached.catch(() => undefined);
   };
   runObservers.push(observe);
   try {

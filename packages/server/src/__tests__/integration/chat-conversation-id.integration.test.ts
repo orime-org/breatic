@@ -16,10 +16,14 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  // The run builds its stream with the SDK's own `createUIMessageStream`, so
+  // only the model calls are replaced (inner#1717).
+  ...(await importOriginal<Record<string, unknown>>()),
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
     fullStream: (async function* () {})(),
+    toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
     text: Promise.resolve(""),
     usage: Promise.resolve({ totalTokens: 0 }),
     totalUsage: Promise.resolve({ totalTokens: 0 }),
@@ -38,6 +42,7 @@ import {
   loadLocales,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -120,17 +125,13 @@ async function seedOpenedProject(): Promise<{
 }
 
 /**
- * Post a message.
+ * Post a message and read the run it opens to its end.
  * @param body - Request body, so a caller can omit or corrupt fields.
  * @param cookie - Caller's session cookie.
- * @returns The raw response.
+ * @returns The status, the JSON answer and the run's frames.
  */
-async function send(body: Record<string, unknown>, cookie: string): Promise<Response> {
-  return app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify(body),
-  });
+async function send(body: Record<string, unknown>, cookie: string): Promise<SentAndRead> {
+  return sendAndRead(app, cookie, body);
 }
 
 /**
@@ -268,14 +269,12 @@ describe("two turns in one conversation", () => {
       cookie,
     );
     expect(first.status).toBe(200);
-    await first.text();
 
     const second = await send(
       { message: "and one more", project_id: projectId, conversation_id: conversationId },
       cookie,
     );
     expect(second.status).toBe(200);
-    await second.text();
 
     const rows = await sql<{ conversation_id: string; turn_index: number }[]>`
       SELECT conversation_id, turn_index FROM conversation_messages

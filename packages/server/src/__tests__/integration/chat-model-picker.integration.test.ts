@@ -32,6 +32,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales, getAgentConfig } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -273,13 +274,13 @@ describe("POST /chat/message with a model", () => {
     const member = await seedMember();
     const first = await open(member);
 
-    const res = await call(member, "POST", "/chat/message", {
+    const res = await sendAndRead(app, member.cookie, {
       project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: "retired/model",
-    });
-    const body = (await res.json()) as { error: { message: string } };
+    }, { "Idempotency-Key": crypto.randomUUID() });
+    const body = res.json as { error: { message: string } };
     const [count] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM conversation_messages WHERE conversation_id = ${first.id}
     `;
@@ -294,13 +295,12 @@ describe("POST /chat/message with a model", () => {
     const first = await open(member);
     await sql`UPDATE conversations SET agent_model = NULL WHERE id = ${first.id}`;
 
-    const res = await call(member, "POST", "/chat/message", {
+    await sendAndRead(app, member.cookie, {
       project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: SONNET.id,
-    });
-    await res.text();
+    }, { "Idempotency-Key": crypto.randomUUID() });
 
     expect((await stored(member, first.id)).conversation).toBe(SONNET.id);
   });

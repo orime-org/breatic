@@ -18,18 +18,21 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed: the real SDK is replaced with a double that reaches no
-// network, so this suite needs no API key and the SDK stays out of its
-// module graph.
+// `ai`'s model calls are stubbed with a double that reaches no network, so
+// this suite needs no API key.
 //
 // This suite is one that does call a model: the three POSTs to /chat/message
 // below each run `agent.chat()`, which reaches `streamText`. So the stub here
 // is load-bearing, and nothing but this comment says so — every assertion
 // passes with or without it.
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  // The run builds its stream with the SDK's own `createUIMessageStream`, so
+  // only the model calls are replaced (inner#1717).
+  ...(await importOriginal<Record<string, unknown>>()),
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
     fullStream: (async function* () {})(),
+    toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
     text: Promise.resolve(""),
     usage: Promise.resolve({ totalTokens: 0 }),
     totalUsage: Promise.resolve({ totalTokens: 0 }),
@@ -49,6 +52,7 @@ import {
 } from "@breatic/core";
 import type { Hono } from "hono";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -274,16 +278,11 @@ describe("POST /chat/open — what comes back", () => {
       VALUES (${userId}, 'never used', ${projectId}) RETURNING id
     `;
 
-    const said = await app.request("/api/v1/chat/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({
-        message: "the only thing anyone said",
-        project_id: projectId,
-        conversation_id: spokenIn,
-      }),
+    await sendAndRead(app, cookie, {
+      message: "the only thing anyone said",
+      project_id: projectId,
+      conversation_id: spokenIn,
     });
-    await said.text();
 
     // 这条从没人说过话的会话不该被挑中。当初这里用一句裸 SQL 把它的 updated_at
     // 顶到最新,来证明「按 updated_at 排」和「按最后说话时间排」不是一回事 ——
@@ -351,12 +350,7 @@ describe("POST /chat/open — what comes back", () => {
     // The repository reads newest-first and reverses; a single message never
     // shows which way round that came out.
     for (const text of ["first thing", "second thing"]) {
-      const res = await app.request("/api/v1/chat/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: cookie },
-        body: JSON.stringify({ message: text, project_id: projectId, conversation_id: conversationId }),
-      });
-      await res.text();
+      await sendAndRead(app, cookie, { message: text, project_id: projectId, conversation_id: conversationId });
     }
 
     const payload = (await (await open(projectId, cookie)).json()) as OpenResponse;
