@@ -26,7 +26,7 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
 import { getStorageConfig } from "@breatic/core";
@@ -40,6 +40,7 @@ import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.j
 import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
 import { closeChatSubscriberRedis, getChatSubscriberRedis } from "@server/agent/run-stream.js";
+import { serverHealthChecks } from "@server/health-checks.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
@@ -288,29 +289,7 @@ const health = startHealthServer({
       void exitProcess(1);
     }
   },
-  checks: [
-    {
-      name: "postgres",
-      // Single SELECT-1 liveness helper, shared across all services.
-      check: () => pingDb(),
-    },
-    {
-      name: "postgres_yjs",
-      // Liveness for the separate Yjs-store Postgres DB.
-      check: () => pingDb(yjsRawPg),
-    },
-    {
-      name: "redis_general",
-      // Single PING liveness helper, shared across all services.
-      check: () => pingRedis(getRedis()),
-    },
-    {
-      name: "redis_chat_subscriber",
-      // The connection Agent chat runs hear their stops and readers on
-      // (inner#1717); without it no run can be stopped or attached to.
-      check: () => pingRedis(getChatSubscriberRedis()),
-    },
-  ],
+  checks: serverHealthChecks(),
 });
 
 /**
