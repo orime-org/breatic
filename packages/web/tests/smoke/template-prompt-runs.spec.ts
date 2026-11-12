@@ -6,7 +6,7 @@
  * Each run applies the template from the panel, fills the braces, checks that the editor shows the
  * prompt the locale file holds, presses Generate and saves the picture with its prompt. It spends
  * credits, so it carries @needs-model and the default smoke run leaves it out; each generate node runs at
- * its model's lowest resolution, keeping the template's duration and ratio.
+ * its model's lowest resolution and quality, keeping the template's duration and ratio.
  *
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
@@ -220,34 +220,30 @@ async function bringIntoView(control: Locator): Promise<void> {
 }
 
 /**
- * Pick the open panel's lowest resolution, the way a user does. A run judges a template's words against its
- * duration and ratio, which it keeps; resolution changes neither, so the run pays for the cheapest tier.
+ * Pick the open panel's cheapest tier, the way a user does: its lowest resolution and, when its model has one,
+ * its lowest quality, the first of the values the model declares. A run judges a template's words against its
+ * duration and ratio, which it keeps; resolution and quality change neither, so the run pays for the cheapest tier.
  */
-async function lowestResolution(): Promise<void> {
-  const trigger = page.getByTestId('generate-ratio-trigger');
-  if ((await trigger.count()) === 0) return;
-  await trigger.click();
-  const prefix = 'generate-resolution-option-';
-  const values = (await page.locator(`[data-testid^="${prefix}"]`).evaluateAll((all) => all.map((one) => one.getAttribute('data-testid') ?? '')))
-    .map((id) => id.slice(prefix.length));
-  const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
-  const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
-  if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
-  await trigger.click();
-}
-
-/**
- * Pick the open panel's lowest quality when its model has one, the way a user does: the first of the
- * values the model declares, cheapest first. Like resolution, quality changes neither duration nor ratio.
- */
-async function lowestQuality(): Promise<void> {
-  const prefix = 'generate-param-quality-option-';
-  const menu = page.getByTestId('generate-param-quality-menu');
-  const opened = (await menu.count()) > 0;
-  if (opened) await menu.click();
-  const options = page.locator(`[data-testid^="${prefix}"]`);
-  if ((await options.count()) > 0) await options.first().click();
-  else if (opened) await page.keyboard.press('Escape');
+async function cheapestTier(): Promise<void> {
+  // The image panel keeps resolution under its ratio popover, the video panel under its params popover.
+  const popovers = [
+    { trigger: 'generate-ratio-trigger', prefix: 'generate-resolution-option-' },
+    { trigger: 'generate-video-params-trigger', prefix: 'generate-video-resolution-option-' },
+  ];
+  for (const { trigger: id, prefix } of popovers) {
+    const trigger = page.getByTestId(id);
+    if ((await trigger.count()) === 0) continue;
+    await trigger.click();
+    const values = (await page.locator(`[data-testid^="${prefix}"]`).evaluateAll((all) => all.map((one) => one.getAttribute('data-testid') ?? '')))
+      .map((value) => value.slice(prefix.length));
+    const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
+    const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
+    if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+    // Quality sits in the same popover as resolution, so it is picked before the popover closes.
+    const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
+    if ((await quality.count()) > 0) await quality.first().click();
+    await trigger.click();
+  }
 }
 
 /** Each node type's Generate button. */
@@ -259,8 +255,7 @@ const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp
 /** Press Generate on the open panel and wait until the node holds a new result. */
 async function generate(nodeId: string, kind: Kind): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
-  await lowestResolution();
-  await lowestQuality();
+  await cheapestTier();
   const button = page.getByTestId(EXECUTE[kind]);
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await bringIntoView(button);
