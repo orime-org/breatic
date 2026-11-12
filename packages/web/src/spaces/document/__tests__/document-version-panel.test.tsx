@@ -13,7 +13,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { deriveId, type DocumentVersion } from '@breatic/shared';
+import { deriveId, getLocale, type DocumentVersion } from '@breatic/shared';
 
 import { documentsApi } from '@web/data/api/documents';
 import { ApiException } from '@web/data/api/types';
@@ -174,6 +174,26 @@ describe('the snapshot panel', () => {
     expect(toast.success).toHaveBeenCalledTimes(1);
     act(() => handle.editor.undo());
     expect(text()).toBe('live words');
+  });
+
+  it('says who saved a snapshot and when, in its row and its banner, without repeating an unnamed one’s time', async () => {
+    const user = userEvent.setup();
+    api.list.mockResolvedValue({ versions: [row('v1', 'First draft', 0), row('v2', null, 5)], nextCursor: null });
+    show();
+    await openPanel(user);
+    const when = new Date(Date.UTC(2026, 10, 10, 8, 0)).toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short' });
+    const unnamedWhen = new Date(Date.UTC(2026, 10, 10, 8, 5)).toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short' });
+
+    const named = await screen.findByTestId('doc-version-row-v1');
+    expect(named).toHaveTextContent(`First draftMia·${when}`);
+    // The name may give way to the width; the time never does.
+    expect(within(named).getByText(when)).toHaveClass('shrink-0');
+    expect(within(named).getByText('Mia')).toHaveClass('truncate');
+    expect(screen.getByTestId('doc-version-row-v2')).toHaveTextContent(`${unnamedWhen}Mia`);
+    expect(within(screen.getByTestId('doc-version-row-v2')).queryByText('·')).toBeNull();
+
+    await user.click(named);
+    await waitFor(() => expect(screen.getByTestId('doc-version-banner')).toHaveTextContent(`First draft · Mia · ${when}`));
   });
 
   it('gives a viewer no way to restore, rename or delete', async () => {

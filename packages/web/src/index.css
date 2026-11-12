@@ -745,17 +745,18 @@ body {
 
   /* ---- Snapshot comparison (inner#1129) ----
      The marks BlockNote's diff renderer draws, under the class names
-     `document-version-view.ts` gives them: added green, removed red and
-     struck through, a change of format or attributes blue. A block-level
-     mark wraps its blocks in a `display: contents` span, so the colour goes
-     on the blocks inside it. The library's own "Deleted" badge hangs off its
+     `document-version-view.ts` gives them: added on green, removed red and
+     struck through, a change of format or attributes on blue. Added and
+     reformatted text keep the colour of the text around them, so they read
+     as easily as the rest of the body; the background says what changed.
+     A block-level mark wraps its blocks in a `display: contents` span, so
+     the colour goes on the blocks inside it. The library's own "Deleted" badge hangs off its
      default class names, so it does not appear here; the banner's legend
      (`doc-version-legend-*`) says it, in the same colours. */
   .doc-body .doc-version-insert,
   .doc-body .doc-version-insert-block > *,
   .doc-version-legend-insert {
     background-color: var(--color-palette-green-bg);
-    color: var(--color-palette-green);
     text-decoration: none;
   }
 
@@ -778,11 +779,13 @@ body {
   }
 
   /* A fold row's height belongs to its host: a hidden Space also hides the
-     button React draws into it, and a scroller at its end would be cut back. */
+     button React draws into it, and a scroller at its end would be cut back.
+     The block below brings its own space above its text, so the row sits as
+     far from the text above it as from the text below. */
   .doc-body [data-version-fold] {
     box-sizing: content-box;
     height: 1.875rem;
-    padding-block: 0.5rem;
+    padding-block: 1rem 0.25rem;
   }
 
   /* ---- A line's text fills the row it sits on ----

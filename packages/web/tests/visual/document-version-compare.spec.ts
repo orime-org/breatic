@@ -106,13 +106,14 @@ test('marks a comparison in the palette colours, selects both rows and folds wha
 
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(page, theme);
-    const green = await token(page, 'color-palette-green', 'color');
     const greenBg = await token(page, 'color-palette-green-bg', 'backgroundColor');
     const red = await token(page, 'color-palette-red', 'color');
     const active = await token(page, 'color-active-border', 'borderTopColor');
 
     for (const added of [preview.locator('.doc-version-insert'), page.locator('.doc-version-legend-insert')]) {
-      await expect(added).toHaveCSS('color', green);
+      // Added text reads in the colour of the text around it; the green is its background.
+      const around = await added.evaluate((el) => getComputedStyle(el.parentElement!).color);
+      await expect(added).toHaveCSS('color', around);
       await expect(added).toHaveCSS('background-color', greenBg);
     }
     for (const removed of [preview.locator('.doc-version-delete'), page.locator('.doc-version-legend-delete')]) {

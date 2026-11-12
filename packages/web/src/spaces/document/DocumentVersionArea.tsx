@@ -12,7 +12,7 @@
  */
 
 import { captureException } from '@sentry/react';
-import { GitCompare, MoreHorizontal, Pencil, RotateCw, Trash2, Undo2, X } from 'lucide-react';
+import { ChevronsUpDown, GitCompare, MoreHorizontal, Pencil, RotateCw, Trash2, Undo2, X } from 'lucide-react';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import type { VersionOperationResult, VersionSelection, VersionSnapshot } from '@blocknote/core/extensions';
@@ -91,6 +91,19 @@ function savedAt(at: number): string {
  */
 function labelOf(snapshot: VersionSnapshot): string {
   return snapshot.name ?? savedAt(snapshot.createdAt);
+}
+
+/**
+ * Who saved a row and, when its label is a name, when; an unnamed row's label
+ * already says when.
+ * @param snapshot - The row.
+ * @returns Who and when, either of which may be missing.
+ */
+function detailOf(snapshot: VersionSnapshot): { by?: string; at?: string } {
+  return {
+    by: (snapshot.metadata as SnapshotMetadata | undefined)?.savedBy ?? undefined,
+    at: snapshot.name === undefined ? undefined : savedAt(snapshot.createdAt),
+  };
 }
 
 /** The panel's operations, each marked waiting while it runs. */
@@ -334,6 +347,8 @@ export default function DocumentVersionArea({
     return row === undefined ? t('spaces.document.versions.current') : labelOf(row);
   };
   const shownId = displayed.type === 'snapshot' ? displayed.id : null;
+  const shownRow = shownId === null ? undefined : byId(shownId);
+  const shownDetail = shownRow === undefined ? [] : Object.values(detailOf(shownRow)).filter(Boolean);
   const showCurrent = React.useCallback(() => void select({ type: 'current' }), [select]);
   const showSnapshot = React.useCallback((id: string) => void select({ type: 'snapshot', id }), [select]);
   const failedPage = open?.history.status === 'error' ? open.history.operation : null;
@@ -352,7 +367,9 @@ export default function DocumentVersionArea({
 
   return (
     <>
-      <div data-testid='doc-version-preview' className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]' style={columnStyle}>
+      {/* The banner spans the whole body area; the column beneath it keeps
+          the body's gutters. */}
+      <div data-testid='doc-version-preview' className='flex min-w-0 flex-1 flex-col'>
         {comparing !== undefined ? (
           <div data-testid='doc-version-banner' className='sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-popover px-4 py-2 text-sm'>
             <span className='min-w-0 flex-1 truncate'>
@@ -369,7 +386,10 @@ export default function DocumentVersionArea({
           </div>
         ) : displayed.type === 'snapshot' ? (
           <div data-testid='doc-version-banner' className='sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-popover px-4 py-2 text-sm'>
-            <span className='min-w-0 flex-1 truncate'>{t('spaces.document.versions.viewing', { name: nameOf(displayed) })}</span>
+            <span className='min-w-0 flex-1 truncate'>
+              {t('spaces.document.versions.viewing', { name: nameOf(displayed) })}
+              {shownDetail.length > 0 && <span className='text-muted-foreground'>{` · ${shownDetail.join(' · ')}`}</span>}
+            </span>
             <Button variant='outline' size='sm' icon={<GitCompare />} disabled={restoring} data-testid='doc-version-compare-current' onClick={() => void select({ type: 'current' }, displayed.id)}>
               {t('spaces.document.versions.compareWithCurrent')}
             </Button>
@@ -383,9 +403,11 @@ export default function DocumentVersionArea({
             </Button>
           </div>
         ) : null}
-        <div ref={host} data-testid='doc-version-preview-body' className='doc-body-editor mx-auto w-full max-w-3xl [&_.ProseMirror]:outline-none' />
-        <FoldRows preview={preview} host={host} />
-        <DocumentMediaViews editor={preview} readOnly viewport={viewport} />
+        <div className='flex flex-1 flex-col pr-[var(--doc-body-gutter)]' style={columnStyle}>
+          <div ref={host} data-testid='doc-version-preview-body' className='doc-body-editor mx-auto w-full max-w-3xl [&_.ProseMirror]:outline-none' />
+          <FoldRows preview={preview} host={host} />
+          <DocumentMediaViews editor={preview} readOnly viewport={viewport} />
+        </div>
       </div>
       <aside data-testid='doc-version-panel' className='flex flex-none flex-col border-l border-border' style={PANEL_WIDTH}>
         <div className='sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-3 py-2'>
@@ -415,8 +437,8 @@ export default function DocumentVersionArea({
           ) : (failedPage !== null || retrying) && rows.length === 0 ? (
             failedRow
           ) : rows.length === 0 ? (
-            <div data-testid='doc-version-empty' className='flex flex-col items-center gap-3 px-4 py-8 text-center text-sm text-muted-foreground'>
-              {t('spaces.document.versions.empty')}
+            <div data-testid='doc-version-empty' className='flex flex-col items-center gap-3 px-4 py-8 text-center text-sm'>
+              <span className='text-muted-foreground'>{t('spaces.document.versions.empty')}</span>
               {!readOnly && (
                 <Button variant='outline' size='sm' onClick={versions.requestSave}>
                   {t('spaces.document.docMenu.saveSnapshot')}
@@ -500,7 +522,8 @@ interface RowButtonProps {
   testId: string;
   active: boolean;
   title: string;
-  sub?: string;
+  by?: string;
+  at?: string;
   onPress: () => void;
   disabled: boolean;
   children?: React.ReactNode;
@@ -512,13 +535,14 @@ interface RowButtonProps {
  * @param props.testId - Its test id.
  * @param props.active - Whether it is what the preview shows.
  * @param props.title - Its name.
- * @param props.sub - Who saved it and when.
+ * @param props.by - Who saved it.
+ * @param props.at - When it was saved, when the title does not say so.
  * @param props.onPress - Shows it.
  * @param props.disabled - Whether pressing is off.
  * @param props.children - Its `⋯` menu.
  * @returns The row.
  */
-const RowButton = React.memo(function RowButton({ testId, active, title, sub, onPress, disabled, children }: RowButtonProps): React.JSX.Element {
+const RowButton = React.memo(function RowButton({ testId, active, title, by, at, onPress, disabled, children }: RowButtonProps): React.JSX.Element {
   return (
     <div className='group relative'>
       <Button
@@ -534,7 +558,14 @@ const RowButton = React.memo(function RowButton({ testId, active, title, sub, on
         )}
       >
         <span className='w-full truncate pr-6 text-sm'>{title}</span>
-        {sub ? <span className='w-full truncate text-xs text-muted-foreground'>{sub}</span> : null}
+        {by || at ? (
+          // The name gives way; when stays whole, as on a comment card.
+          <span className={cn('flex w-full gap-1 text-xs', active ? 'text-foreground-secondary' : 'text-muted-foreground')}>
+            {by ? <span className='min-w-0 truncate'>{by}</span> : null}
+            {by && at ? <span className='shrink-0'>·</span> : null}
+            {at ? <span className='shrink-0 whitespace-nowrap'>{at}</span> : null}
+          </span>
+        ) : null}
       </Button>
       {children ? (
         <div className='absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 has-[[data-state=open]]:opacity-100'>{children}</div>
@@ -574,12 +605,12 @@ interface SnapshotRowProps {
 const SnapshotRow = React.memo(function SnapshotRow({ row, active, shown, readOnly, disabled, onShow, onCompare, onRename, onDelete }: SnapshotRowProps): React.JSX.Element {
   const t = useTranslation();
   const press = React.useCallback(() => onShow(row.id), [onShow, row.id]);
-  const sub = [(row.metadata as SnapshotMetadata | undefined)?.savedBy, savedAt(row.createdAt)].filter(Boolean).join(' · ');
+  const { by, at } = detailOf(row);
   return (
-    <RowButton testId={`doc-version-row-${row.id}`} active={active} title={labelOf(row)} sub={sub} onPress={press} disabled={disabled}>
+    <RowButton testId={`doc-version-row-${row.id}`} active={active} title={labelOf(row)} by={by} at={at} onPress={press} disabled={disabled}>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <Button variant='chrome-ghost' size='icon' className='size-5.5' aria-label={t('spaces.document.versions.more')} data-testid={`doc-version-row-menu-${row.id}`} disabled={disabled}>
+          <Button variant='chrome-ghost' size='icon' className='size-6' aria-label={t('spaces.document.versions.more')} data-testid={`doc-version-row-menu-${row.id}`} disabled={disabled}>
             <MoreHorizontal className='h-3.5 w-3.5' />
           </Button>
         </DropdownMenuTrigger>
@@ -639,6 +670,7 @@ function FoldRows({ preview, host }: { preview: Preview; host: React.RefObject<H
               if (view) view.dispatch(openVersionFold(view.state, fold.key));
             }}
           >
+            <ChevronsUpDown className='h-3.5 w-3.5' />
             {t('spaces.document.versions.folded', { count: fold.count })}
           </Button>,
           target,
