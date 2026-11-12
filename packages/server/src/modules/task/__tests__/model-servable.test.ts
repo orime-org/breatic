@@ -61,7 +61,8 @@ describe("assertLlmServable", () => {
     expect(() => assertLlmServable("deepseek/deepseek-v4.1-flash-1017", "call")).toThrow(
       expect.objectContaining({ statusCode: 503, message: expect.stringContaining("DEEPSEEK_API_KEY, OPENROUTER_API_KEY") }),
     );
-    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call");
+    // No route given leaves llmServability to its own default, the weights.
+    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", undefined);
   });
 
   it("asks on the route a resumed turn stays on", () => {
