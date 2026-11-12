@@ -63,7 +63,7 @@ import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor } from "@server/agent/prepare-pictures.js";
 import type { TakenMessage, TurnHooks } from "@server/agent/taken-message.js";
 import { prepareUserMessage, type PreparedUserMessage, type PrepareUserMessageWith } from "@server/agent/prepare-user-message.js";
-import { stoppedByShutdown } from "@server/agent/shutdown-flag.js";
+import { ShutdownAbort, stoppedByShutdown } from "@server/agent/shutdown-flag.js";
 
 /**
  * What opened a segment of a turn: the user's message, or the user's
@@ -417,6 +417,16 @@ export class MainAgent {
     // argument and cannot do anything differently. This callback is handed
     // the error itself, before any of that.
     const howToolEnded = new Map<string, ToolFailure>();
+    /**
+     * How a tool call that failed ended. Every tool reads its abort as the
+     * user stopping it; one a shutdown stopped failed (inner#1717).
+     * @param err - What the call failed with.
+     * @returns The ending to record.
+     */
+    const toolEndingOf = (err: unknown): ToolFailure => {
+      const ending = endingOf(err);
+      return ending.kind === "user_aborted" && stoppedByShutdown(signal) ? endingOf(new ShutdownAbort()) : ending;
+    };
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
@@ -1106,7 +1116,7 @@ export class MainAgent {
             // it, which is what the model needs to send the call again. First
             // account of a call wins, here and below, so which of the two ran
             // first stops mattering.
-            howToolEnded.set(chunk.toolCallId, endingOf(chunk.error));
+            howToolEnded.set(chunk.toolCallId, toolEndingOf(chunk.error));
           }
         },
         // Fires when a model response is parsed, before the tools it asked
@@ -1147,7 +1157,7 @@ export class MainAgent {
           // is this one.
           if (toolOutput.type === "tool-error") {
             if (howToolEnded.has(toolCall.toolCallId)) return;
-            const ending = endingOf(toolOutput.error);
+            const ending = toolEndingOf(toolOutput.error);
             howToolEnded.set(toolCall.toolCallId, ending);
             // The turn carries on and the model is told why; the error the
             // tool caught, and what caused it, are kept only in this log.

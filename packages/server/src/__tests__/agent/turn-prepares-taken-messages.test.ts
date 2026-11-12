@@ -30,6 +30,7 @@ const script = vi.hoisted(() => ({
   /** The sources each picture preparation was asked for. */
   prepared: [] as string[][],
   links: undefined as undefined | { urlFor: (url: string) => unknown },
+  onToolStart: undefined as undefined | (() => void),
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -81,6 +82,24 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: {
         propose_document_edit: reading("propose_document_edit"),
         search_conversations: reading("search_conversations"),
+        // Runs until the turn is stopped, then says it was stopped, as every
+        // real tool does whatever stopped it (`stoppedByUser` in domain).
+        waits: tool({
+          description: "waits",
+          inputSchema: z.object({}),
+          execute: async (_input: unknown, options: { abortSignal?: AbortSignal }) => {
+            script.onToolStart?.();
+            const { carrying, FAILURE_LINES } = await import("@breatic/shared");
+            const stopped = (): Error =>
+              carrying(new Error("stopped"), { kind: "user_aborted", forModel: "stopped", userKey: FAILURE_LINES.stopped });
+            await new Promise((_resolve, reject) => {
+              const signal = options.abortSignal;
+              if (signal?.aborted === true) reject(stopped());
+              signal?.addEventListener("abort", () => reject(stopped()));
+            });
+            return "never";
+          },
+        } as never),
       },
     }),
     finalizeTurn: async ({ steps }: { steps: { persist: () => Promise<void> } }) => {
@@ -241,12 +260,13 @@ let waiting: TakenMessage[] = [];
  * Run one turn to its end, taking in what waits.
  * @param space - The opening's Spaces.
  * @param chips - The opening's attachments.
+ * @param signal - Raised to stop the turn.
  * @returns Every chunk the turn wrote.
  */
-async function runTurn(space: ChatSpaceContext = {}, chips: ChatAttachedChip[] = []): Promise<UIMessageChunk[]> {
+async function runTurn(space: ChatSpaceContext = {}, chips: ChatAttachedChip[] = [], signal?: AbortSignal): Promise<UIMessageChunk[]> {
   const out: UIMessageChunk[] = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    const turn = await new MainAgent().chat("open", undefined, chips, undefined, space, undefined, {
+    const turn = await new MainAgent().chat("open", signal, chips, undefined, space, undefined, {
       messageId: "m1",
       drain: async () => {
         const got = waiting;
@@ -286,6 +306,7 @@ beforeEach(() => {
   script.contexts = [];
   script.prepared = [];
   script.links = undefined;
+  script.onToolStart = undefined;
   waiting = [];
   domain.__resetCalls();
 });
@@ -413,5 +434,19 @@ describe("where a taken message was read", () => {
     await runTurn();
     const steps = storedReply().forModel.steps as Array<{ messageStart: number; messageEnd: number }>;
     expect(steps[1]!.messageStart).toBe(steps[0]!.messageStart + 2 + 1);
+  });
+});
+
+describe("a tool running when a shutdown stops the turn", () => {
+  it("is stored as an error, not as stopped by the user (SD-05)", async () => {
+    const { ShutdownAbort } = await import("@server/agent/shutdown-flag.js");
+    const stop = new AbortController();
+    script.calls = [calls("waits", "w1"), says("never said")];
+    script.onToolStart = () => stop.abort(new ShutdownAbort());
+    await runTurn({}, [], stop.signal);
+    const part = storedReply().parts.find((p) => p.type === "tool" && p.toolCallId === "w1") as { status: string; failure?: { kind: string } };
+    expect(part.status).toBe("error");
+    expect(part.failure?.kind).not.toBe("user_aborted");
+    expect(storedReply().parts).toContainEqual({ type: "failed", reason: "shutdown" });
   });
 });
