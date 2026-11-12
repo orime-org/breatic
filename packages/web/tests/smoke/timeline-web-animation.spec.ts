@@ -248,8 +248,8 @@ async function playUntil(page: Page, until: number, nominal: number, videoClipId
 
 /** A web copy's page, loaded by its player's cross-origin iframe from the ingest preview route. */
 const PAGE_LOAD = /\/web-animation\/[^/]+\/index\.html$/;
-/** How long a held-back page load waits: past the seconds play takes to reach the copy, inside the player's 15 s load timeout. */
-const SLOW_PAGE_MS = 8_000;
+/** How long play is left waiting at a held copy's start before its page load is released: several animation frames. */
+const HELD_AT_START_MS = 500;
 
 /**
  * Close the Timeline's tab and open it again, which unloads the preview's pool of web pages.
@@ -653,11 +653,14 @@ test('one real web animation is created, reused as three copies over a video, se
       await expectTimelineStart(page, held, later, copyFrames);
       await expect(clipOf(held)).toHaveAttribute('data-state', 'ready');
       // The pool loads a copy's page ahead of it and keeps pages it has shown, so a copy still loading when play reaches
-      // it needs an empty pool and a page that loads slower than play takes to get there. Every page load is held
-      // back for longer than the second before the copy, and the Project is loaded again: that empties the pool and
-      // the page-wide address share, and a page the browser kept in memory would bypass the route.
+      // it needs an empty pool and a page that has not loaded when play gets there. Every page load waits at a gate
+      // the test opens, and the Project is loaded again: that empties the pool and the page-wide address share, and a
+      // page the browser kept in memory would bypass the route. The gate opens once the test has seen play stop at the
+      // copy start with the copy still loading, so the hold does not depend on how fast the page is served.
+      let release = (): void => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
       await page.route(PAGE_LOAD, async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, SLOW_PAGE_MS));
+        await gate;
         await route.continue();
       });
       const from = later - nominal;
@@ -669,15 +672,32 @@ test('one real web animation is created, reused as three copies over a video, se
         await seekPreview(page, from);
         await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
         await expect(playerOf(held)).toHaveAttribute('data-web-state', 'loading');
-        samples = await playUntil(page, later + nominal / 2, nominal, uploaded.clipId);
+        const played = playUntil(page, later + nominal / 2, nominal, uploaded.clipId);
+        // A rejection is rethrown by the await below; this keeps it from going unhandled while the gate is closed.
+        played.catch(() => undefined);
+        // The transport says it is waiting on the copy start frame while the copy has not answered.
+        const timecode = outlet.getByText(/^\d{2}:\d{2}:\d{2}:\d{2} \/ \d{2}:\d{2}:\d{2}:\d{2}$/);
+        await expect.poll(async () => ({
+          clock: (await timecode.innerText()).split(' / ')[0],
+          waiting: await outlet.getByText('Buffering…', { exact: true }).isVisible(),
+          copy: await playerOf(held).getAttribute('data-web-state'),
+        }), { timeout: 30_000 }).toEqual({ clock: timecodeOf(later, nominal), waiting: true, copy: 'loading' });
+        await page.waitForTimeout(HELD_AT_START_MS);
+        release();
+        samples = await played;
       } finally {
+        release();
         await page.unroute(PAGE_LOAD);
       }
       const stateOf = (sample: PlaySample): string => sample.players.find((player) => player.clipId === held)?.state ?? 'absent';
       const reached = samples.findIndex((sample) => sample.frame >= later);
       expect(reached).toBeGreaterThan(0);
-      const answered = samples.findIndex((sample, index) => index >= reached && stateOf(sample) === 'ready');
-      expect(answered, `the copy never answered: ${samples.map((sample) => `${sample.frame}:${stateOf(sample)}`).join(' ')}`).toBeGreaterThan(reached);
+      const history = samples.map((sample) => `${sample.frame}:${stateOf(sample)}`).join(' ');
+      // The measured window is while the copy's page has not answered (`loading`). Between the page's answer and its
+      // drawn frame the preview keeps waiting, which the playback unit tests pin; the player's `data-web-state` is
+      // rendered one React commit after the host's state, so it does not time the frame-ready instant.
+      const answered = samples.findIndex((sample, index) => index >= reached && stateOf(sample) !== 'loading');
+      expect(answered, `the copy never answered: ${history}`).toBeGreaterThan(reached);
       const waiting = samples.slice(reached, answered);
       // Each sample is one animation frame; the copy's page cannot load and answer inside one.
       expect(waiting.length).toBeGreaterThan(0);
@@ -686,7 +706,8 @@ test('one real web animation is created, reused as three copies over a video, se
       // past it is left to steering once play goes on (#1410 design §6.3), so it never shows the next frame.
       expect(waiting.filter((sample) => sample.frame > later), `the clock passed the copy start: ${brief(waiting)}`).toEqual([]);
       expect(waiting.filter((sample) => sample.time >= (later + 1) / nominal), `the video showed a frame past the copy start: ${brief(waiting)}`).toEqual([]);
-      // Once the copy answered, play went on past its start.
+      // Once the copy answered, it drew its frame and play went on past its start.
+      expect(samples.slice(answered).some((sample) => stateOf(sample) === 'ready'), `the copy never drew its frame: ${history}`).toBe(true);
       expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(later + nominal / 2);
       // The clock stops at the copy's start on one animation frame and the render after it pauses the video, so the video
       // may still be playing for an animation frame or two (it has not reached the start, as asserted above); from about

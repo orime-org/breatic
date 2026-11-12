@@ -661,8 +661,17 @@ describe('holding at a boundary while a web instance is not ready', () => {
     expect(video.facts.paused).toBe(true);
     expect(video.seeks).toEqual([]);
 
+    const playsBefore = vi.mocked(video.media.play).mock.calls.length;
     bridgeReady(fixture);
     expect(lastSeek(fixture).time).toBe(0);
+    // The page has answered but not drawn the frame yet: play stays on the copy's start with the video paused.
+    runFrames(1250);
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    expect(hook.result.current.frame).toBe(24);
+    expect(video.facts.paused).toBe(true);
+    expect(vi.mocked(video.media.play)).toHaveBeenCalledTimes(playsBefore);
+    expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('waiting');
     answerLast(fixture);
     await settle();
     expect(hook.result.current.state).toBe('playing');
