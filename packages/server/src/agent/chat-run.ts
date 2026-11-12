@@ -214,7 +214,9 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     }
     if (taken.length === 0) {
       await queue.ack(conversationId, runId);
-      await queue.settle(conversationId, runId, { kind: "done" });
+      // A message sent since the head was read is handed to the next run.
+      const next = await queue.settle(conversationId, runId, { kind: "done" });
+      if (next !== null) startRun({ ...start, runId: next, entrance: { kind: "head" } });
       return;
     }
     opening = takenMessageOf(taken[0]!);

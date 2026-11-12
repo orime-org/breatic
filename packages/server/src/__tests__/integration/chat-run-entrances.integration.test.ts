@@ -666,6 +666,37 @@ describe("what a run opens with", () => {
     });
   }
 
+  it("opens the next run for a message sent while it found nothing to open with", async () => {
+    const who = await seedOwner(sql, app);
+    const k = keysOf(who.conversationId);
+    const answered = crypto.randomUUID();
+    const turn = await messageRepo.addUserMessage(
+      who.conversationId,
+      { role: "user", parts: [{ type: "text", text: "old" }] },
+      () => {
+        throw new Error("no card waits");
+      },
+      { messageId: answered },
+    );
+    await messageRepo.addMessage(who.conversationId, { role: "assistant", turnIndex: turn.turnIndex, parts: [{ type: "text", text: "answered" }] });
+    await getRedis().rpush(k.taken, itemOf(who, answered));
+    const late = crypto.randomUUID();
+    const q = chatQueue();
+    const realAck = q.ack.bind(q);
+    let sent = false;
+    vi.spyOn(q, "ack").mockImplementation(async (...a) => {
+      // The run found nothing left to open with; a message arrives before it lets go.
+      if (!sent) {
+        sent = true;
+        expect(((await (await send(app, who, { id: late, message: "just now" })).json()) as { data: { status: string } }).data.status).toBe("queued");
+      }
+      return realAck(...a);
+    });
+    await sync(app, who);
+    await until(async () => (await rowsOf(who.conversationId)).some((r) => r.id === late), 5000);
+    await untilIdle(who.conversationId);
+  });
+
   it("opens with the first message a dead run left taken and takes the rest in at the first step (SR-11)", async () => {
     const who = await seedOwner(sql, app);
     const [a, b, c] = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];

@@ -238,8 +238,6 @@ interface World {
   k: Keys;
   store: FakeStore;
   runner: Runner | null;
-  /** A run id settle handed out that no runner took (`runIt` ignores what its empty ending's settle returns). */
-  orphan: string | null;
   /** Run ids that no longer hold the conversation. */
   stale: string[];
   used: string[];
@@ -250,7 +248,7 @@ interface World {
   closed: boolean;
   cardTurn: Map<string, number>;
   cards: number;
-  /** A start was handed out while a runner or an orphan held the conversation. */
+  /** A start was handed out while a runner held the conversation. */
   doubleStarts: number;
 }
 
@@ -299,7 +297,6 @@ function freshWorld(): World {
     k: keysOf(c),
     store: new FakeStore(),
     runner: null,
-    orphan: null,
     stale: [],
     used: [],
     accepted: [],
@@ -319,7 +316,7 @@ function freshWorld(): World {
  * @param card - The card's turn for a card's run; a run opened from the queue starts at its head.
  */
 function adopt(w: World, runId: string, card?: number): void {
-  if (w.runner !== null || w.orphan !== null) w.doubleStarts += 1;
+  if (w.runner !== null) w.doubleStarts += 1;
   w.runner = {
     runId,
     at: card === undefined ? "head" : "run",
@@ -388,11 +385,12 @@ async function stepRunner(w: World, pick: number): Promise<void> {
       r.at = "emptySettle";
       return;
     case "emptySettle": {
+      // A message sent since the head opens the next run, as `runIt` does.
       const next = await q.settle(c, r.runId, { kind: "done" });
       retire(w, r);
       if (next !== null) {
-        w.orphan = next;
-        tally("orphan run id");
+        tally("empty settle opened next");
+        adopt(w, next);
       }
       return;
     }
@@ -456,7 +454,7 @@ async function answerCard(w: World, refuse: boolean): Promise<void> {
   const runId = crypto.randomUUID();
   const held = await q.resume(w.c, runId);
   if (held.status === "busy") return;
-  if (w.runner !== null || w.orphan !== null) w.doubleStarts += 1;
+  if (w.runner !== null) w.doubleStarts += 1;
   if (held.awaiting !== null && !refuse) {
     w.runner = null;
     tally("card run");
@@ -512,13 +510,12 @@ async function apply(w: World, op: Op): Promise<void> {
       return;
     }
     case "crash": {
-      const holder = w.runner?.runId ?? w.orphan;
+      const holder = w.runner?.runId ?? null;
       if (holder === null) return;
       await getRedis().del(k.active);
       tally("crash");
       w.stale.push(holder);
       w.runner = null;
-      w.orphan = null;
       return;
     }
     case "clear": {
@@ -526,8 +523,6 @@ async function apply(w: World, op: Op): Promise<void> {
       for (const id of left) if ((w.store.count.get(id) ?? 0) === 0) w.cleared.add(id);
       await q.clear(c);
       if (w.runner !== null) retire(w, w.runner);
-      if (w.orphan !== null) w.stale.push(w.orphan);
-      w.orphan = null;
       w.closed = true;
       return;
     }
@@ -620,7 +615,7 @@ function checkStep(pb: Pb, w: World, before: Lists, after: Lists, what: string):
     }
     case "PB-03":
       expect({ what, doubleStarts: w.doubleStarts }).toEqual({ what, doubleStarts: 0 });
-      expect({ what, active: after.active }).toEqual({ what, active: w.runner?.runId ?? w.orphan ?? null });
+      expect({ what, active: after.active }).toEqual({ what, active: w.runner?.runId ?? null });
       if (lastStale !== null) expect({ what, stale: lastStale }).toMatchObject({ stale: { unchanged: true, nothing: true } });
       return;
     case "PB-04":
@@ -666,10 +661,6 @@ async function finish(pb: Pb, w: World): Promise<void> {
     if (w.runner !== null) {
       // pick 1: no drain, and the turn ends `done`.
       await checked(pb, w, `finish step ${w.runner.at}`, () => stepRunner(w, 1));
-      continue;
-    }
-    if (w.orphan !== null) {
-      await checked(pb, w, "finish lease runs out", () => apply(w, { t: "crash" }));
       continue;
     }
     const claimed = await q.claim(w.c);
@@ -756,7 +747,7 @@ describe("chat queue properties (inner#1717)", () => {
   it("reached every branch the properties are about across the cases above", () => {
     const branches = [
       "enqueue start", "enqueue queued", "enqueue duplicate", "enqueue full", "claim start", "forget answered",
-      "opening reused", "orphan run id", "settle opened next", "card run", "give back freed", "give back opened run",
+      "opening reused", "empty settle opened next", "settle opened next", "card run", "give back freed", "give back opened run",
       "crash", "remove removed", "remove taken", "remove gone", "stale head", "stale drain", "stale ack", "stale settle",
       "stale forget", "ending done", "ending failed", "ending unsaved", "ending awaiting", "ending shutdown",
     ];
