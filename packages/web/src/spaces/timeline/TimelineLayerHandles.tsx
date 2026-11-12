@@ -4,7 +4,7 @@
 import * as React from 'react';
 import Moveable, { type OnDrag, type OnRotate, type OnScale, type OnScaleStart } from 'react-moveable';
 import {
-  clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerCss, type TimelineLayerBox, type TimelineLayerTransform,
+  clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerStyle, type TimelineLayerBox, type TimelineLayerTransform,
 } from '@breatic/shared';
 
 import '@web/spaces/timeline/timeline-layer-handles.css';
@@ -25,7 +25,7 @@ export interface TimelineLayerHandlesProps {
   onOverride: (transform: TimelineLayerTransform | null) => void;
   /** The value to write on release, already clamped, normalised and rounded, and different from the stored one. */
   onCommit: (transform: TimelineLayerTransform) => void;
-  /** True from a press to the end or cancel of its gesture. */
+  /** True from a gesture's first move to its end or cancel; a press that never moves reports nothing. */
   onDraggingChange: (dragging: boolean) => void;
   /** A press inside the box that did not move, for the topmost hit test. */
   onPick: (event: MouseEvent) => void;
@@ -65,22 +65,22 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
 
   const show = React.useCallback((value: TimelineLayerTransform): void => {
     if (gesture.current === null || gesture.current.cancelled) return;
+    const first = gesture.current.value === null;
     gesture.current.value = value;
+    if (first) latest.current.onDraggingChange(true);
     setLive(value);
     latest.current.onOverride(value);
   }, []);
   const begin = React.useCallback((): void => {
     gesture.current = { value: null, cancelled: false };
-    latest.current.onDraggingChange(true);
   }, []);
   const finish = React.useCallback((): void => {
     const held = gesture.current;
     gesture.current = null;
-    if (held === null || held.cancelled) return;
+    if (held === null || held.cancelled || held.value === null) return;
     setLive(null);
     latest.current.onOverride(null);
     latest.current.onDraggingChange(false);
-    if (held.value === null) return;
     const next = normalizeTimelineLayerTransform(held.value);
     if (!sameTimelineLayerTransform(next, latest.current.transform)) latest.current.onCommit(next);
   }, []);
@@ -88,10 +88,11 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
     const held = gesture.current;
     if (held === null || held.cancelled) return;
     held.cancelled = true;
+    moveable.current?.stopDrag();
+    if (held.value === null) return;
     setLive(null);
     latest.current.onOverride(null);
     latest.current.onDraggingChange(false);
-    moveable.current?.stopDrag();
   }, []);
 
   React.useEffect(() => {
@@ -108,7 +109,7 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
       window.removeEventListener('blur', cancel);
       const held = gesture.current;
       gesture.current = null;
-      if (held !== null && !held.cancelled) {
+      if (held !== null && !held.cancelled && held.value !== null) {
         latest.current.onOverride(null);
         latest.current.onDraggingChange(false);
       }
@@ -149,10 +150,9 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
   }, []);
 
   const shown = live ?? transform;
-  const style = React.useMemo((): React.CSSProperties => ({
-    left: base.left * factor, top: base.top * factor, width: base.width * factor, height: base.height * factor,
-    transform: timelineLayerCss(shown, factor), transformOrigin: 'center',
-  }), [base, factor, shown]);
+  // Keyed on the box's values: a parent may hand over an equal box as a new object.
+  const { left, top, width: boxWidth, height: boxHeight } = base;
+  const style = React.useMemo(() => timelineLayerStyle({ left, top, width: boxWidth, height: boxHeight }, shown, factor), [left, top, boxWidth, boxHeight, shown, factor]);
   // Moveable measures its target only when told: a transform written by the panel, a collaborator or undo moves the
   // proxy without a gesture, so the box is measured again whenever the proxy's place changes.
   React.useLayoutEffect(() => { moveable.current?.updateRect(); }, [style]);
