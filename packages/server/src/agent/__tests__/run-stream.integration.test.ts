@@ -106,7 +106,7 @@ function slow(pieces: string[]): ReadableStream<string> {
   return new ReadableStream<string>({
     async pull(controller) {
       await new Promise((r) => setTimeout(r, 40));
-      if (i < pieces.length) controller.enqueue(pieces[i++]!);
+      if (i < pieces.length) controller.enqueue(pieces[i++]);
       else controller.close();
     },
   });
@@ -137,10 +137,11 @@ async function settleFor(ms: number): Promise<void> {
 
 describe("a run's stream", () => {
   it("keeps its sentinel under the deployment's prefix, for at most a day (ST-22)", async () => {
+    // The library appends `:rs` to the prefix it is given (`runtime.js:10`).
     const streams = createRunStreams(publisherClient, subscriberClient);
     const runId = crypto.randomUUID();
     const produced = await streams.createNewResumableStream(runId, () => slow(["a", "b"]));
-    const key = `${env.REDIS_KEY_PREFIX}:chat-stream:sentinel:${runId}`;
+    const key = `${env.REDIS_KEY_PREFIX}:chat-stream:rs:sentinel:${runId}`;
     expect(await getRedis().get(key)).toBe("1");
     const ttl = await getRedis().ttl(key);
     expect(ttl).toBeGreaterThan(0);
