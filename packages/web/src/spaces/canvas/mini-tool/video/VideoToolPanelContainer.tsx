@@ -24,7 +24,7 @@ import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { expandDrop, isExpanded, type PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { createVideoToolDraft, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { createVideoToolDraft, eraseTrackingStatus, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
@@ -373,6 +373,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const matchingRecords = React.useMemo(() => selection.key === dependencyKey ? selection.records : [], [selection, dependencyKey]);
   // An erase runs on the tracking made for the current selection, the one its Run waits for and its box follows (§10.3).
   const tracking = toolId === 'video.erase' ? latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable)) ?? undefined : undefined;
+  const trackingStatus = toolId === 'video.erase' ? eraseTrackingStatus({ matched: tracking !== undefined, judged: selection.key === dependencyKey, records }) : undefined;
   // Every footer shows the server's quote of the planned request the Run sends (§97 D26-1, D27-1; frames-split §10.8, billing).
   const frameTable = presentation?.frameTable ?? null;
   const quoteFacts = React.useMemo((): PlannedVideoFacts | null => {
@@ -465,12 +466,32 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     store.getState().setExpand({ frame: expanded.params.frame, ratio: expanded.params.ratio });
   }, [expanded, displaySize, store]);
   const slots = session?.slots;
+  // A picked video whose node stores no length takes it from its source as the current video does: registered, then presented.
+  const [pickedLengths, setPickedLengths] = React.useState<ReadonlyMap<string, number | 'none' | 'failed'>>(new Map());
+  const lengthReads = React.useRef(new Set<string>());
+  const readPickedLength = React.useCallback((url: string): void => {
+    if (lengthReads.current.has(url)) return;
+    lengthReads.current.add(url);
+    void queryClient.ensureQueryData(videoPresentationQuery({ projectId, canonicalURL: url, active: true })).then(
+      (response) => response.sourceBinding.mediaInfo.duration ?? response.presentation?.original.duration ?? 'none' as const, () => 'failed' as const,
+    ).then((length) => { lengthReads.current.delete(url); setPickedLengths((known) => new Map(known).set(url, length)); });
+  }, [queryClient, projectId]);
   React.useEffect(() => {
     if (current === null || slots === undefined || disabled) return;
     let pickedTimeline = false;
     for (const [key, held] of Object.entries(slots)) {
       if (held === undefined || Array.isArray(held)) continue;
-      const value = held as MiniToolSlotValue;
+      let value = held as MiniToolSlotValue;
+      if (toolId === 'video.transitions' && key === 'timeline' && value.duration === undefined) {
+        const length = pickedLengths.get(value.url);
+        if (length === undefined) { readPickedLength(value.url); continue; }
+        if (typeof length !== 'number') {
+          toast.warning(t(length === 'none' ? 'canvas.miniTool.videoUI.ledgerUnsupported' : 'canvas.miniTool.videoUI.mediaError'));
+          store.getState().clearMiniToolSlot(key);
+          continue;
+        }
+        value = { ...value, duration: length };
+      }
       const inputId = newId();
       // The clicked node, not the first holding its address: two nodes may hold the same video (edge and name follow it).
       const copied = { inputId, url: value.url, ...(value.cover === undefined ? {} : { cover: value.cover }), ...(value.duration === undefined ? {} : { mediaInfo: { duration: value.duration } }), ...(value.nodeId === undefined ? {} : { sourceNodeId: value.nodeId }) };
@@ -506,7 +527,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     }
     // A picked video opens the timeline (canvas design §4 transitions row).
     if (pickedTimeline) { store.getState().endPick(); setTimelineOpen(true); }
-  }, [slots, current, disabled, toolId, change, store, inputTables, presentation?.frameTable]);
+  }, [slots, current, disabled, toolId, change, store, inputTables, presentation?.frameTable, pickedLengths, readPickedLength, t]);
   const intent = `video-analysis:${projectId}:${spaceId}:${nodeId}:${toolId}`;
   const analysisPressRunning = Boolean(useRunning(intent));
   const analysing = analysisPressRunning || analysisReadings.pending || matchingRecords.some((record) => record.status === 'pending' || record.status === 'running');
@@ -672,5 +693,5 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     disabled={disabled || !currentFrame}
     revision={current.revision} sourceEpoch={binding.sourceEpoch} seekEpoch={binding.getSeekEpoch()}
   />, overlayTarget) : null;
-  return <>{overlay}<NodePanelMount nodeId={nodeId} drop={drop}><MiniToolPanel customWide={toolId === 'video.lip-sync'} spec={spec} modelControls={undefined} modelEntry={undefined} params={{}} onParams={() => undefined} source={{ url: source.canonicalURL, ...source.mediaInfo }} sizeTiers={[]} slots={{}} slotCaps={{}} pickingSlot={null} onPickSlot={() => undefined} onClearSlot={() => undefined} prompt='' onPrompt={() => undefined} creditText={costs?.execution ?? quote.text ?? ''} refusal={running ? 'exporting' : canRun || awaitingInput ? null : 'slotMissing'} runBlockedReason={runBlockedReason} onRun={() => { void run(); }} onClose={close} customBody={<>{analysisReadings.failed ? <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.analysisFailed')}</span><Button variant='outline' size='compact' loading={analysisReadings.fetching} onClick={() => { for (const reference of refs) void queryClient.invalidateQueries({ queryKey: miniToolAnalysisQuery(reference.analysisRunId).queryKey }); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}<VideoToolControls toolId={toolId} draft={current} onChange={change} analyses={matchingRecords} frameTable={validSource ? presentation.frameTable : null} previewSource={presentation?.previewSource} presentedTime={selectedTime} disabled={disabled || !validSource} pickingSlot={pick?.purpose === 'miniToolSlot' ? pick.slotKey ?? null : null} inputNames={names} onPick={(key) => { if (disabled) return; if (pick?.purpose === 'miniToolSlot' && pick.slotKey === key) store.getState().endPick(); else store.getState().startMiniToolSlotPick(nodeId, key); }} onAnalyse={analyse} onRetryTracking={retryTracking} analysing={analysing} analysisCreditText={costs?.analysis ?? trackingCost.estimate} analysisActualCreditText={costs?.analysisActual ?? trackingCost.actual} onSeek={presentation?.onSeek} sourceEpoch={presentation?.sourceEpoch ?? 0} seekEpoch={presentation?.seekEpoch ?? 0} onEditTimeline={() => setTimelineOpen(true)} onInvalidChange={invalidChange} regionSelection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'} onRegionSelection={(mode) => store.getState().setMiniToolParam('videoRegionMode', mode)} onEndPick={() => store.getState().endPick()} onActiveDialogue={(id) => store.getState().setMiniToolParam('activeDialogueId', id)} lipSync={lipSync} lipSyncFailure={lipSyncFailure} onRetryFailed={onRetryFailed} retryIntent={retryIntent} trackBlockedReason={trackBlockedReason} expandSize={displaySize ?? undefined} />{invalidFields.size === 0 ? null : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}{validSource ? null : shown.state === 'retryable' || shown.retrying ? <div className='flex items-center justify-between gap-3 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.mediaError')}</span><Button variant='outline' size='compact' loading={shown.retrying} onClick={shown.onRetry}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : <p className={shown.state === 'unsupported' ? 'text-xs text-status-error-foreground' : 'text-xs text-muted-foreground'}>{t(shown.state === 'unsupported' ? 'canvas.miniTool.videoUI.ledgerUnsupported' : presentation?.status === 'failed' ? 'canvas.miniTool.videoUI.mediaError' : 'canvas.miniTool.videoUI.loadingFrames')}</p>}</>} /></NodePanelMount>{toolId === 'video.transitions' ? <VideoTimelineDialog renderDecoder={renderTimelineDecoder} open={timelineOpen} onOpenChange={setTimelineOpen} draft={current as VideoToolDraftById['video.transitions']} onChange={change} inputNames={names} disabled={disabled} onRun={run} runBlockedReason={exportBlockedReason ?? runBlockedReason} inputTables={inputTables} /> : null}</>;
+  return <>{overlay}<NodePanelMount nodeId={nodeId} drop={drop}><MiniToolPanel customWide={toolId === 'video.lip-sync'} spec={spec} modelControls={undefined} modelEntry={undefined} params={{}} onParams={() => undefined} source={{ url: source.canonicalURL, ...source.mediaInfo }} sizeTiers={[]} slots={{}} slotCaps={{}} pickingSlot={null} onPickSlot={() => undefined} onClearSlot={() => undefined} prompt='' onPrompt={() => undefined} creditText={costs?.execution ?? quote.text ?? ''} refusal={running ? 'exporting' : canRun || awaitingInput ? null : 'slotMissing'} runBlockedReason={runBlockedReason} onRun={() => { void run(); }} onClose={close} customBody={<>{analysisReadings.failed ? <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.analysisFailed')}</span><Button variant='outline' size='compact' loading={analysisReadings.fetching} onClick={() => { for (const reference of refs) void queryClient.invalidateQueries({ queryKey: miniToolAnalysisQuery(reference.analysisRunId).queryKey }); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}<VideoToolControls toolId={toolId} draft={current} onChange={change} analyses={matchingRecords} frameTable={validSource ? presentation.frameTable : null} previewSource={presentation?.previewSource} presentedTime={selectedTime} disabled={disabled || !validSource} pickingSlot={pick?.purpose === 'miniToolSlot' ? pick.slotKey ?? null : null} inputNames={names} onPick={(key) => { if (disabled) return; if (pick?.purpose === 'miniToolSlot' && pick.slotKey === key) store.getState().endPick(); else store.getState().startMiniToolSlotPick(nodeId, key); }} onAnalyse={analyse} onRetryTracking={retryTracking} analysing={analysing} analysisCreditText={costs?.analysis ?? trackingCost.estimate} analysisActualCreditText={costs?.analysisActual ?? trackingCost.actual} onSeek={presentation?.onSeek} sourceEpoch={presentation?.sourceEpoch ?? 0} seekEpoch={presentation?.seekEpoch ?? 0} onEditTimeline={() => setTimelineOpen(true)} onInvalidChange={invalidChange} regionSelection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'} onRegionSelection={(mode) => store.getState().setMiniToolParam('videoRegionMode', mode)} onEndPick={() => store.getState().endPick()} onActiveDialogue={(id) => store.getState().setMiniToolParam('activeDialogueId', id)} lipSync={lipSync} lipSyncFailure={lipSyncFailure} onRetryFailed={onRetryFailed} retryIntent={retryIntent} trackBlockedReason={trackBlockedReason} trackingStatus={trackingStatus} expandSize={displaySize ?? undefined} />{invalidFields.size === 0 ? null : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}{validSource ? null : shown.state === 'retryable' || shown.retrying ? <div className='flex items-center justify-between gap-3 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.mediaError')}</span><Button variant='outline' size='compact' loading={shown.retrying} onClick={shown.onRetry}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : <p className={shown.state === 'unsupported' ? 'text-xs text-status-error-foreground' : 'text-xs text-muted-foreground'}>{t(shown.state === 'unsupported' ? 'canvas.miniTool.videoUI.ledgerUnsupported' : presentation?.status === 'failed' ? 'canvas.miniTool.videoUI.mediaError' : 'canvas.miniTool.videoUI.loadingFrames')}</p>}</>} /></NodePanelMount>{toolId === 'video.transitions' ? <VideoTimelineDialog renderDecoder={renderTimelineDecoder} open={timelineOpen} onOpenChange={setTimelineOpen} draft={current as VideoToolDraftById['video.transitions']} onChange={change} inputNames={names} disabled={disabled} onRun={run} runBlockedReason={exportBlockedReason ?? runBlockedReason} inputTables={inputTables} /> : null}</>;
 }

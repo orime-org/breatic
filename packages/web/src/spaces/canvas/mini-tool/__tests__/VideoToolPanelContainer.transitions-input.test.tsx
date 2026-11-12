@@ -23,6 +23,17 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
 // The track editor and the GL preview are not under test; jsdom cannot draw either.
 vi.mock('@xzdarcy/react-timeline-editor', async () => ({ Timeline: (await import('react')).forwardRef(() => null) }));
 vi.mock('@web/spaces/canvas/mini-tool/video/VideoTimelinePreview', () => ({ VideoTimelinePreview: () => null }));
+// Picked videos whose nodes store no length: one whose registered source has one, one with no length anywhere, one unreadable.
+vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/canvas/video-presentation/video-presentation-query')>();
+  const lengths: Record<string, number | null> = { 'https://assets.example.test/registered.webm': 6, 'https://assets.example.test/unknown.webm': null };
+  return { ...actual, videoPresentationQuery: (input: { projectId: string; canonicalURL: string; active: boolean }) => {
+    const options = actual.videoPresentationQuery(input);
+    if (input.canonicalURL === 'https://assets.example.test/broken.webm') return { ...options, queryFn: async () => { throw new Error('unreadable'); } };
+    const length = lengths[input.canonicalURL];
+    return length === undefined ? options : { ...options, queryFn: async () => ({ sourceBinding: { mediaInfo: { width: null, height: null, duration: length, mimeType: 'video/webm' } }, presentation: null, preparation: null, ledger: null, pollAfterMs: null }) };
+  } };
+});
 
 import { t } from '@breatic/shared';
 import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
@@ -123,6 +134,33 @@ describe('the transitions input slot (canvas design §4, §28)', () => {
     await waitFor(() => expect(held().inputs[1]?.sourceNodeId).toBe('20000000-0000-4000-8000-000000000002'));
     expect(screen.getAllByText('Second copy').length).toBeGreaterThan(0);
     expect(screen.queryByText('First copy')).toBeNull();
+  });
+
+  it('takes the length of a picked video whose node stores none from its registered source, in the input clip\'s place', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 3, in: 1, out: 2.5 });
+    const host = held().params.clips[0]!;
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: 'https://assets.example.test/registered.webm' }, false));
+    await waitFor(() => expect(held().inputs.map((input) => input.url)).toEqual([sourceURL, 'https://assets.example.test/registered.webm']));
+    expect(held().params.clips).toEqual([host, expect.objectContaining({ clipId: '50000000-0000-4000-8000-000000000002', inputId: held().inputs[1]!.inputId, in: 0, out: 6 })]);
+    expect(held().inputs[1]!.mediaInfo?.duration).toBe(6);
+  });
+
+  it('refuses a picked video with no length anywhere and keeps the timeline as it was', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 3, in: 1, out: 2.5 });
+    const before = held();
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: 'https://assets.example.test/unknown.webm' }, false));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.videoUI.ledgerUnsupported')));
+    expect(held().inputs).toEqual(before.inputs);
+    expect(held().params.clips).toEqual(before.params.clips);
+    expect(canvasSessions.of(spaceId).getState().miniTool?.slots?.timeline).toBeUndefined();
+  });
+
+  it('says the media is unavailable when a picked video\'s source cannot be read, and keeps the timeline as it was', async () => {
+    mount({ url: 'https://assets.example.test/second.webm', duration: 3, in: 1, out: 2.5 });
+    const before = held();
+    act(() => canvasSessions.of(spaceId).getState().fillMiniToolSlot('timeline', { url: 'https://assets.example.test/broken.webm' }, false));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.videoUI.mediaError')));
+    expect(held().params.clips).toEqual(before.params.clips);
   });
 
   it('turns a junction transition the re-picked input is too short for into a Cut (inner#1306 #15)', async () => {
