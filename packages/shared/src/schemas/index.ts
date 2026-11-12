@@ -98,4 +98,9 @@ export type {
   AgentInstructionsSaveInput,
   AgentInstructionsView,
   ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
 } from "@shared/schemas/api.js";

@@ -53,7 +53,7 @@ import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
+import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -145,20 +145,12 @@ function assertSayable(
   }
 }
 
-/** One waiting message, as a page shows it in the waiting area (inner#1717). */
-interface PendingItem {
-  id: string;
-  sentAt: string;
-  words: string;
-  chips: ChatAttachedChip[];
-}
-
 /**
  * The waiting area: the queue, as much of each message as a page draws.
  * @param queue - The queue's items.
  * @returns The items a page is given.
  */
-function pendingOf(queue: readonly QueueItem[]): PendingItem[] {
+function pendingOf(queue: readonly QueueItem[]): ChatPendingItem[] {
   return queue.map((item) => {
     const body = item as QueueItem & { message?: string; attached_chips?: ChatAttachedChip[] };
     return { id: item.id, sentAt: item.sentAt, words: body.message ?? "", chips: body.attached_chips ?? [] };

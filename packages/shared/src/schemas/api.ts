@@ -950,6 +950,52 @@ export interface ChatRunningAnswer {
   conversation_ids: string[];
 }
 
+/** One message waiting in a conversation's queue, as the waiting area draws it (inner#1717). */
+export interface ChatPendingItem {
+  id: string;
+  /** When the user sent it. */
+  sentAt: string;
+  /** What they typed. */
+  words: string;
+  /** What they attached, which taking it back puts back above the box. */
+  chips: ChatAttachedChip[];
+}
+
+/** What `POST /chat/message` answers once a message or a card's answer is in (inner#1717). */
+export interface ChatSendAnswer {
+  /** `start`: it opened a run; `queued`: a run holds the conversation; `duplicate`: it was in already. */
+  status: "start" | "queued" | "duplicate";
+  /** The messages still waiting, the one a run opened with not among them. */
+  pending: ChatPendingItem[];
+  /** Whether a run holds the conversation, so there is a stream to attach to. */
+  running: boolean;
+}
+
+/** What `POST /chat/conversations/:id/sync` answers (inner#1717). */
+export interface ChatSyncAnswer {
+  pending: ChatPendingItem[];
+  running: boolean;
+  /** A card waits for the user's answer. */
+  awaiting: boolean;
+  /** Present when what waits could not open a run because the balance cannot pay for it. */
+  blocked?: "credits";
+  /** When to ask again, in milliseconds. */
+  next_sync_ms: number;
+}
+
+/** What `POST /chat/stop` answers: whether a run was there to stop (inner#1717). */
+export interface ChatStopAnswer {
+  stopped: boolean;
+}
+
+/**
+ * What taking a waiting message back answers (inner#1717): `removed` while it
+ * waited, `taken` once a run has read it, `gone` when it is nowhere.
+ */
+export interface ChatQueueRemoveAnswer {
+  status: "removed" | "taken" | "gone";
+}
+
 /**
  * Body for saving a Project's instructions for the Agent. The text is kept
  * exactly as typed; one that is empty or only whitespace clears them.
