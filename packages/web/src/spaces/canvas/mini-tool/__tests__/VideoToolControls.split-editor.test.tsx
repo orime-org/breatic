@@ -284,6 +284,58 @@ function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; l
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
 }
 
+describe('typing a cut row in place (web AGENTS "Inputs send what they show")', () => {
+  it('keeps every typed key in the typed row and the other row unchanged, then orders the rows on blur', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    const row = screen.getByTestId('video-cut-1') as HTMLInputElement;
+    act(() => row.focus());
+    for (const typed of ['1', '1.', '1.5']) {
+      fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: typed } });
+      expect(screen.getByTestId('video-cut-1')).toHaveValue(typed);
+      expect(screen.getByTestId('video-cut-0')).toHaveValue('3');
+      expect(screen.getByTestId('video-cut-1')).toHaveFocus();
+    }
+    expect(changes.at(-1)).toEqual([3, 1.5]);
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).blur());
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.5');
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
+    expect(changes.at(-1)).toEqual([1.5, 3]);
+  });
+
+  it('keeps both rows and the focus while a row is typed equal to another, and merges them on blur', () => {
+    render(<StatefulSplit cuts={[3, 4.5]} />);
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '3' } });
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('3');
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
+    expect(screen.getByTestId('video-cut-1')).toHaveFocus();
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).blur());
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('3');
+    expect(screen.queryByTestId('video-cut-1')).toBeNull();
+  });
+
+  it('orders the rows when Enter is pressed', () => {
+    render(<StatefulSplit cuts={[3, 4.5]} />);
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
+    fireEvent.keyDown(screen.getByTestId('video-cut-1'), { key: 'Enter' });
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.5');
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
+  });
+  it('removes the row whose bin is pressed while that row is typed', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
+    const bin = screen.getAllByRole('button', { name: 'Remove' })[1]!;
+    // The press keeps the focus in the typed row, so the rows are not reordered under the pointer before the click.
+    expect(fireEvent.mouseDown(bin)).toBe(false);
+    fireEvent.click(bin);
+    expect(changes.at(-1)).toEqual([3]);
+  });
+});
+
 describe('stepping a handle that is not on a frame start', () => {
   it('moves one frame from the frame the cut splits at, so the first press moves the handle', () => {
     const changes: number[][] = [];
