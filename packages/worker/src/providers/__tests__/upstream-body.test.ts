@@ -489,3 +489,40 @@ describe("upstreamBody — params that switch on a later call (inner#1692)", () 
     }
   });
 });
+
+/**
+ * Seedream 5.5's transparent background toggle (inner#1809). The endpoint's
+ * own default, auto, lets the model choose a transparent picture from the
+ * prompt, so the toggle sends opaque when off and the off state stays solid.
+ */
+describe("upstreamBody — Seedream 5.5 background from the real image catalog (inner#1809)", () => {
+  beforeAll(() => {
+    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+  });
+
+  /**
+   * The body a run of this model sends for these params.
+   * @param name - The model.
+   * @param given - The job's params, prompt already lifted out.
+   * @returns The upstream body.
+   * @throws {Error} When the image catalog has no such model.
+   */
+  function bodyFor(name: string, given: Record<string, unknown>): Record<string, unknown> {
+    const entry = getFullModelConfig("image").models.find((m) => m.name === name);
+    if (!entry) throw new Error(`${name} missing from the image catalog`);
+    const [, validated] = validateModelParams("image", name, given);
+    return upstreamBody(entry, validated, "a sticker of a fox");
+  }
+
+  const IMAGE = "https://cdn.example/image/pet.png";
+
+  it.each([
+    ["seedream-v5.5-text-to-image", {}],
+    ["seedream-v5.5-edit", { images: [IMAGE] }],
+  ])("%s asks for transparent when on and opaque when off or left alone", (name, base) => {
+    expect(bodyFor(name, { ...base, transparency: true }).background).toBe("transparent");
+    expect(bodyFor(name, { ...base, transparency: false }).background).toBe("opaque");
+    expect(bodyFor(name, base).background).toBe("opaque");
+    expect(bodyFor(name, base)).not.toHaveProperty("transparency");
+  });
+});
