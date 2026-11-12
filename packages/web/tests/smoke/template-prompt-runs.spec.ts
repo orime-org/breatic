@@ -11,7 +11,8 @@
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
- * TEMPLATE_RUN_LOCALE switches the interface language for the run; the sound templates' words are Chinese, written for
+ * TEMPLATE_RUN_LOCALE switches the interface language for the run (a run's `localeFills` give that language's words),
+ * TEMPLATE_RUN_DEFAULT_TIER runs at the tier the template leaves in effect, for templates whose text in the picture is judged; the sound templates' words are Chinese, written for
  * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
  * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
  * its proposal places; TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
@@ -36,6 +37,7 @@ const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(FIXTURES, 'character.jp
 const LABEL = process.env.TEMPLATE_RUN_LABEL ?? 'run';
 const REPEAT = Number(process.env.TEMPLATE_RUN_REPEAT ?? '1');
 const LOCALE = process.env.TEMPLATE_RUN_LOCALE;
+const DEFAULT_TIER = process.env.TEMPLATE_RUN_DEFAULT_TIER !== undefined;
 const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`);
 mkdirSync(OUT, { recursive: true });
 
@@ -255,7 +257,7 @@ const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp
 /** Press Generate on the open panel and wait until the node holds a new result. */
 async function generate(nodeId: string, kind: Kind): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
-  await cheapestTier();
+  if (!DEFAULT_TIER) await cheapestTier();
   const button = page.getByTestId(EXECUTE[kind]);
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await bringIntoView(button);
@@ -553,6 +555,8 @@ interface Run {
   after?: { key: string; slot: string }[];
   /** What each node's braces are filled with, in order; `anchor` for the anchor. */
   fills: Record<string, string[]>;
+  /** Other words for the braces when the run's interface language is the key, in the same shape as `fills`. */
+  localeFills?: Record<string, Record<string, string[]>>;
   /** What each of the anchor's shots' braces are filled with, in order. */
   shots?: string[][];
   /** The template nodes picked into the anchor's frames once generated. */
@@ -622,6 +626,28 @@ const RUNS: Record<string, Run> = {
     },
   },
   'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
+  'name-as-world-typography': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['ROME', 'the Colosseum forms the O, aqueduct arches run through the M', 'terracotta red'] },
+    localeFills: { 'zh-CN': { anchor: ['成都', '熊猫趴在「成」字的横上，火锅的红汤流过「都」字', '砖红'] } },
+  },
+  'destination-festival-poster': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['Kyoto', 'the autumn maple season', 'KYOTO · AUTUMN'] },
+    localeFills: { 'zh-CN': { anchor: ['京都', '秋季红叶季', '京都·红叶'] } },
+  },
+  'photo-paper-diorama': {
+    type: 'image',
+    photo: true,
+    image: 'pet.jpg',
+    first: [],
+    fills: { anchor: ['the dog', 'Sunday walks / smell like grass'] },
+    localeFills: { 'zh-CN': { anchor: ['那只狗', '周日的散步 / 有青草的味道'] } },
+  },
   'pet-selfie-vlog': { type: 'video', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] } },
   'phone-vlog-realism': {
     type: 'video',
@@ -737,6 +763,8 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     test.setTimeout(3_600_000);
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
+    // The words for the braces in the run's interface language, when the run gives some.
+    const fills = (LOCALE === undefined ? undefined : run.localeFills?.[LOCALE]) ?? run.fills;
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
     const photo = run.photo ? await dropMedia(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
     const media = run.media === undefined ? undefined : mediaOf(run.media);
@@ -751,7 +779,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
-      await fillBraces(run.fills[key] ?? []);
+      await fillBraces(fills[key] ?? []);
       const prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
       const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'image') as Kind;
@@ -768,14 +796,14 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const anchorNode = templateAnchor(registered);
     if (anchorNode.lines !== undefined) {
       // A dialogue: one line per turn, each for the template's speaker, its blank filled in order.
-      await fillBraces(run.fills.anchor ?? []);
+      await fillBraces(fills.anchor ?? []);
       const names = ((anchorNode.params.speakers ?? []) as { speaker: string }[]).map((one) => one.speaker);
       const shown = await dialogueLines();
       expect(shown.map((line) => line.speaker)).toEqual(anchorNode.lines.map((line) => names[line.speaker - 1]));
       for (const [i, line] of shown.entries()) assertDraftSent(`canvas.template.${id}.line.${String(i + 1)}`, line.text);
       prompt = shown.map((line) => `${line.speaker}: ${line.text}`).join('\n');
     } else if (run.shots === undefined) {
-      await fillBraces(run.fills.anchor ?? []);
+      await fillBraces(fills.anchor ?? []);
       prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.prompt`, prompt);
     } else {
@@ -799,7 +827,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       const node = await keyed(key);
       await openPanel(node);
       await pickIntoAudioSlot(slot, anchor);
-      await fillBraces(run.fills[key] ?? []);
+      await fillBraces(fills[key] ?? []);
       const shown = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, shown);
       const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'audio') as Kind;

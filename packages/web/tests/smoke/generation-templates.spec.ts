@@ -529,6 +529,28 @@ test('picking the food money shot places the dish it asks for, wired, @\'d and n
   await page.screenshot({ path: test.info().outputPath('food-money-shot-applied.png') });
 });
 
+test('an image panel lists the three poster templates under the posters goal', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await expect(page.getByTestId('generate-template-goal-posters')).toHaveText(/^Posters & graphics\s*3$/);
+  expect(await listedTemplates()).toEqual(['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama']);
+  await closeTemplateMenu();
+});
+
+test('picking the photo paper diorama places the photo it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await page.getByTestId('generate-template-photo-paper-diorama').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('GPT Image 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Photo', 'image-template'], edges: ['Photo -> image-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Photo' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('{✏️ the two lines');
+});
+
 test('an audio panel lists the ten sound templates under one goal', async () => {
   await openPanelOnNewNode('audio');
   await openGoal('sound');

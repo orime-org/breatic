@@ -277,6 +277,17 @@ test('asked outright for a cheese pull food video, it reads the food money shot 
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
+test('asked outright for a festival travel poster, it reads the festival poster and lands a picture @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN. Do not ask me anything, just propose it.');
+  const turn = await settledTurn(page);
+  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('destination-festival-poster');
+  // Solved when a picture lands, whether built on the template or on the agent's own setup drawing on it.
+  const pictures = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'image');
+  expect(pictures.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
 test('given a dish photo and asked only for a video of it, it lands a video carrying that dish @needs-model', async () => {
   test.setTimeout(240_000);
   await ask('Make a video with this. Do not ask me anything, just propose it.', 'dish.jpg');
