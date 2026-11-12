@@ -261,7 +261,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   const frameStyle = { left: frame.x, top: frame.y, width: frame.width, height: frame.height };
   return <>
     {trigger}
-    <div className='pointer-events-none absolute inset-0 z-10 overflow-hidden'>
+    {/* Beneath the floating toolbars (z-10), so they stay readable while the scene is dimmed. */}
+    <div className='pointer-events-none absolute inset-0 z-[5] overflow-hidden'>
       <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border shadow-[0_0_0_9999px_var(--color-overlay)]' style={frameStyle}>
         {framing ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
@@ -271,7 +272,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     </div>
     <div data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
       style={{ left: frame.x + frame.width / 2, top: menuTop }}>
-      {framing ? <>
+      {framing ? <React.Fragment key='framing'>
         <Select value={ratio} onValueChange={changeRatio}>
           <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-8 w-24 text-xs'><SelectValue /></SelectTrigger>
           <SelectContent>{VIEWFINDER_RATIOS.map((key: ViewfinderRatio) => <SelectItem key={key} value={key}>{key}</SelectItem>)}</SelectContent>
@@ -279,7 +280,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
         {size ? <span className='px-1 tabular-nums text-muted-foreground'>{t('spaces.threeD.viewfinder.size', { width: size.width, height: size.height })}</span> : null}
         <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>
         <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button>
-      </> : <>
+      </React.Fragment> : <React.Fragment key='captured'>
         {shot ? <img src={shot.url} alt='' className='h-8 rounded-sm border border-border' style={{ aspectRatio: `${shot.width} / ${shot.height}` }} /> : null}
         <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
         <Popover open={phase === 'picking'} onOpenChange={onListOpen}>
@@ -294,7 +295,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
         </Popover>
         <Button size='sm' variant='outline' loading={sending === 'copy'} disabled={busy || phase === 'picking'} onClick={copy}>{t('spaces.threeD.viewfinder.copy')}</Button>
         <Button size='sm' variant='outline' disabled={busy || phase === 'picking'} onClick={() => dispatch({ type: 'reframe' })}>{t('spaces.threeD.viewfinder.reframe')}</Button>
-      </>}
+      </React.Fragment>}
     </div>
   </>;
 });

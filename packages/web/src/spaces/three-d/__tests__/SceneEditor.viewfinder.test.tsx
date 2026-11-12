@@ -225,6 +225,23 @@ describe('capturing (acceptance 3 and 4)', () => {
     expect(h.toast.warning).toHaveBeenCalledWith(t('spaces.threeD.viewfinder.modelsLoading'));
   });
 
+  it('leaves the keyboard on none of the destinations once Capture is pressed', async () => {
+    await setup();
+    fireEvent.click(trigger());
+    button('confirm').focus();
+    fireEvent.click(button('confirm'));
+    await within(menu()).findByRole('button', { name: t('spaces.threeD.viewfinder.toAgent') });
+    for (const key of ['toAgent', 'toCanvas', 'copy', 'reframe']) expect(button(key)).not.toHaveFocus();
+  });
+
+  it('dims the scene beneath the floating toolbars, not over them', async () => {
+    await setup();
+    fireEvent.click(trigger());
+    const dim = screen.getByTestId('scene-viewfinder-frame').parentElement;
+    expect(dim?.className).toContain('z-[5]');
+    expect(screen.getByTestId('scene-viewport-toolbar').className).toContain('z-10');
+  });
+
   it('captures the frame at a 2048 long edge, locks the view and offers the destinations', async () => {
     await setup();
     await capture();
