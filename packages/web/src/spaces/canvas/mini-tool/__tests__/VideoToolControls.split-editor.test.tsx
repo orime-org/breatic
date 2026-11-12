@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import type { MiniToolAnalysisRecord, VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
+import type { VideoPlaybackLiveClock } from '../video/VideoPlaybackStrip';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const common = { version: 1 as const, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [] };
@@ -265,5 +266,37 @@ describe('a failed scene detection (canvas design §4; demo main.tsx run-error)'
   it('shows no failure after a completed detection', () => {
     mount({ analyses: [sceneRecord('completed')] });
     expect(screen.queryByTestId('video-detection-error')).toBeNull();
+  });
+});
+
+/**
+ * The split panel over a draft that takes every change, as the panel container does.
+ * @param props - The starting cuts, the presented time and the live clock.
+ * @param props.cuts - The starting cuts.
+ * @param props.presentedTime - The panel's presented time.
+ * @param props.liveClock - The source player's live clock.
+ * @param props.changes - Collects every stored cut list.
+ * @returns The panel.
+ */
+function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; liveClock?: VideoPlaybackLiveClock; changes?: number[][] }): React.JSX.Element {
+  const [draft, setDraft] = React.useState(draftWith(props.cuts));
+  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft(split); }} analyses={[]} frameTable={frameTable} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
+    inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
+}
+
+describe('stepping a handle that is not on a frame start', () => {
+  it('moves one frame from the frame the cut splits at, so the first press moves the handle', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[2.5]} changes={changes} />);
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowLeft' });
+    expect(changes.at(-1)![0]).toBeCloseTo(2.44, 6);
+    expect(parseFloat(screen.getByTestId('video-cut-handle-0').style.left)).toBeCloseTo(48.8, 6);
+  });
+
+  it('steps forward to the next frame start', () => {
+    const changes: number[][] = [];
+    render(<StatefulSplit cuts={[2.5]} changes={changes} />);
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
+    expect(changes.at(-1)![0]).toBeCloseTo(2.52, 6);
   });
 });

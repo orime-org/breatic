@@ -430,15 +430,13 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
     return box === undefined || box.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration;
   };
   /**
-   * Moves a cut one frame back or forward from where it is, keeping it inside the video.
+   * Moves a cut one frame back or forward from the frame it splits at, keeping it inside the video.
    * @param index - The cut.
    * @param backwards - Whether to step back.
-   * @throws {z.ZodError} When the table is malformed.
+   * @throws {never} Never.
    */
   const step = (index: number, backwards: boolean): void => {
-    const at = cuts[index]!;
-    const covering = planVideoFrames(table, { mode: 'current', currentTime: at })[0]!;
-    const neighbour = backwards ? (covering.pts < at ? covering.frameIndex : covering.frameIndex - 1) : (covering.pts > at ? covering.frameIndex : covering.frameIndex + 1);
+    const neighbour = presentationCoveringFrame(table, cuts[index]!) + (backwards ? -1 : 1);
     const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? presentationFrameAt(table, neighbour).pts : undefined;
     if (pts !== undefined && pts > 0 && pts < duration) commit(cuts.map((cut, position) => position === index ? pts : cut));
   };
