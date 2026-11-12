@@ -1,9 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { AgentModelChoice, ChatRunningAnswer, ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
+import type {
+  AgentModelChoice,
+  ChatQueueRemoveAnswer,
+  ChatRunningAnswer,
+  ChatSendAnswer,
+  ChatStopAnswer,
+  ChatSyncAnswer,
+  ConversationEntity,
+  StoredMessageMetadata,
+} from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
+import { API_BASE_PATH } from '@web/data/api/base-path';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
@@ -291,6 +301,62 @@ export const chatApi = {
       { project_id: projectId, model },
     );
     return saved.agentModel;
+  },
+  /**
+   * Send a message, or a card's answer, to a conversation (inner#1717).
+   *
+   * The answer comes once the message is queued, and once a run it opened has
+   * got through its opening; what the run says is read from `streamPath`.
+   * No time limit: the opening may take as long as its checks do.
+   * @param body - What is sent, or the reference a body over the size limit was stored under.
+   * @param key - The press's `Idempotency-Key`; a re-send carries the same key and the same body.
+   * @returns The status and the messages still waiting
+   */
+  sendMessage(body: object, key: string): Promise<ChatSendAnswer> {
+    return apiPost<ChatSendAnswer, object>('/chat/message', body, runOnceRequest(key));
+  },
+  /**
+   * Ask where a conversation stands; the server opens a run for what waits
+   * when none holds it (inner#1717).
+   * @param conversationId - The conversation
+   * @param projectId - Project it lives in
+   * @returns The waiting area, whether a run or a card holds it, and when to ask again
+   */
+  sync(conversationId: string, projectId: string): Promise<ChatSyncAnswer> {
+    return apiPost<ChatSyncAnswer, { project_id: string }>(`/chat/conversations/${conversationId}/sync`, { project_id: projectId });
+  },
+  /**
+   * Stop the run that holds a conversation, on whichever server it runs (inner#1717).
+   * @param conversationId - The conversation
+   * @param projectId - Project it lives in
+   * @returns Whether a run was there to stop
+   */
+  stop(conversationId: string, projectId: string): Promise<ChatStopAnswer> {
+    return apiPost<ChatStopAnswer, { conversation_id: string; project_id: string }>('/chat/stop', {
+      conversation_id: conversationId,
+      project_id: projectId,
+    });
+  },
+  /**
+   * Take a waiting message out of a conversation's queue (inner#1717).
+   * @param conversationId - The conversation
+   * @param messageId - The message
+   * @param projectId - Project it lives in
+   * @returns `removed` while it waited, `taken` once a run has read it, `gone` when it is nowhere
+   */
+  async removeQueued(conversationId: string, messageId: string, projectId: string): Promise<ChatQueueRemoveAnswer['status']> {
+    const answer = await apiDelete<ChatQueueRemoveAnswer>(`/chat/conversations/${conversationId}/queue/${messageId}`, {
+      data: { project_id: projectId },
+    });
+    return answer.status;
+  },
+  /**
+   * Where the run that holds a conversation is read from (inner#1717).
+   * @param conversationId - The conversation
+   * @returns The path, under the API prefix
+   */
+  streamPath(conversationId: string): string {
+    return `${API_BASE_PATH}/chat/conversations/${conversationId}/stream`;
   },
   /**
    * Delete a conversation.
