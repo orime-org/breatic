@@ -431,6 +431,34 @@ test('split: two cut points give three videos that add up to the source @needs-i
     await expect(c.page.getByTestId('video-segment-preview')).toBeVisible();
     await expect(c.page.getByText('Media unavailable')).toHaveCount(0);
     await c.page.getByRole('button', { name: 'Stop preview' }).click();
+    // A seek past the end of the segment being previewed ends the preview where the user put the playhead.
+    await c.page.getByTestId('video-segment-0').click();
+    await expect(c.page.getByTestId('video-segment-preview')).toBeVisible();
+    const track = (await c.page.getByTestId('video-playback-track').boundingBox())!;
+    await c.page.mouse.click(track.x + track.width * 0.9, track.y + track.height / 2);
+    await expect(c.page.getByTestId('video-segment-preview')).toHaveCount(0);
+    await c.page.waitForTimeout(1_000);
+    expect(await media.evaluate((el: HTMLMediaElement) => el.currentTime)).toBeGreaterThan(5);
+    await media.evaluate((el: HTMLMediaElement) => { el.pause(); });
+    // Typing a smaller cut into the second row edits that row in place; the rows sort when the field is left.
+    const firstBefore = await firstCut.inputValue();
+    await secondCut.fill('');
+    for (const key of '1.5') {
+      await secondCut.press(key);
+      expect(await firstCut.inputValue()).toBe(firstBefore);
+      await expect(secondCut).toBeFocused();
+    }
+    await expect(secondCut).toHaveValue('1.5');
+    await secondCut.press('Tab');
+    await expect(firstCut).toHaveValue('1.5');
+    await expect(secondCut).toHaveValue(firstBefore);
+    // The first ArrowLeft on a handle moves it one frame back.
+    const handle0 = c.page.getByTestId('video-cut-handle-0');
+    const leftOf = (): Promise<string> => handle0.evaluate((el) => (el as HTMLElement).style.left);
+    const handleBefore = await leftOf();
+    await handle0.focus();
+    await c.page.keyboard.press('ArrowLeft');
+    await expect.poll(leftOf).not.toBe(handleBefore);
     const made = await run(c, 3);
     await c.page.keyboard.press('Escape');
     const parts = await stored(c, made);
@@ -572,6 +600,17 @@ test('transitions: the preview plays two videos of different sizes, before and a
       await expect(dialog.getByText('Preview unavailable. Try again.'), step).toHaveCount(0);
       await dialog.getByRole('button', { name: 'Pause' }).click();
     }
+    // An edit remounts the track; its playhead stays at the paused time, as the readout does.
+    const paused = await played();
+    const cursorLeft = (): Promise<number> => dialog.locator('.timeline-editor-cursor').first().evaluate((el) => {
+      const editor = el.closest('.timeline-editor')!.getBoundingClientRect();
+      return el.getBoundingClientRect().left - editor.left;
+    });
+    const before = await cursorLeft();
+    await dialog.getByRole('button', { name: 'Swap order' }).click();
+    await expect(dialog.getByText('Preview unavailable. Try again.')).toHaveCount(0);
+    expect(await played()).toBeCloseTo(paused, 2);
+    await expect.poll(async () => Math.abs((await cursorLeft()) - before)).toBeLessThan(2);
     expect(pageErrors).toEqual([]);
   } finally {
     await deleteSpace(page, c.spaceId);
