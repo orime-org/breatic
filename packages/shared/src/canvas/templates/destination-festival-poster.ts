@@ -8,7 +8,7 @@ export const DESTINATION_FESTIVAL_POSTER: GenerationTemplate = {
   id: "destination-festival-poster",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "image", mode: "t2i", model: "gpt-image-2.5-sunburst-text-to-image", params: { aspect_ratio: "3:4" } },
+    { key: "result", role: "generate", type: "image", mode: "t2i", model: "seedream-v5.5-text-to-image", params: { aspect_ratio: "3:4" } },
   ],
   edges: [],
   inputs: [],
