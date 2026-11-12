@@ -145,7 +145,8 @@ async function copiesAnswered(preview: Locator): Promise<void> {
 }
 
 /** Screenshot style that leaves the preview's selection box and handles out of the picture. */
-const HIDE_HANDLES = '[data-testid="timeline-layer-overlay"] { visibility: hidden !important; }';
+// react-moveable writes `visibility: visible` on its control box, so the operation layer is taken out of the layout.
+const HIDE_HANDLES = '[data-testid="timeline-layer-overlay"] { display: none !important; }';
 
 /**
  * Screenshot a region once two shots taken apart are identical, so no frame is still being painted.
@@ -681,9 +682,10 @@ test('one real web animation is created, reused as three copies over a video, se
       // Each sample is one animation frame; the copy's page cannot load and answer inside one.
       expect(waiting.length).toBeGreaterThan(0);
       const brief = (list: PlaySample[]): string => list.map((sample) => `${sample.frame}@${sample.time.toFixed(3)}s:${sample.paused ? 'paused' : 'playing'}:${stateOf(sample)}`).join(' ');
-      // The clock never passes the copy's start, and the video never plays into it, while the copy loads.
+      // The clock never passes the copy's start while the copy loads, and the video stays on that frame: a video a little
+      // past it is left to steering once play goes on (#1410 design §6.3), so it never shows the next frame.
       expect(waiting.filter((sample) => sample.frame > later), `the clock passed the copy start: ${brief(waiting)}`).toEqual([]);
-      expect(waiting.filter((sample) => sample.time > later / nominal), `the video played past the copy start: ${brief(waiting)}`).toEqual([]);
+      expect(waiting.filter((sample) => sample.time >= (later + 1) / nominal), `the video showed a frame past the copy start: ${brief(waiting)}`).toEqual([]);
       // Once the copy answered, play went on past its start.
       expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(later + nominal / 2);
       // The clock stops at the copy's start on one animation frame and the render after it pauses the video, so the video
