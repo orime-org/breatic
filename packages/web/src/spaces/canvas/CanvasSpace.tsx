@@ -156,14 +156,14 @@ import {
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
-import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
+import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
+import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
 import {
   fileToNodeSpec,
   checkFileAdmission,
   uploadAcceptFor,
   refusedFormatParams,
   markedSinks,
-  fillNodeFromFile,
   fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
@@ -179,7 +179,6 @@ import {
 import { hashFile } from '@web/data/upload/hash';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import {
-  stashRetryFile,
   getRetryUpload,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
@@ -2491,61 +2490,15 @@ function CanvasSpaceInner({
 
   // Where a failed upload ONTO A NODE is presented, for every entry that has
   // one: dropping onto the canvas, filling an existing node (double-click /
-  // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
-  // hands its reason here rather than deciding for itself, because what a
-  // reason needs — the Retry stash and the wording — differs per reason and is
-  // knowable only here.
-  //
-  // The focus crop is the one upload with no node to write to: it fills a
-  // reference pool entry, so its failures are toast-only and it has its own
-  // sink further up. It reads the same reason vocabulary and reaches for the
-  // same two toast keys, which is what keeps the two consistent.
-  //
-  // Two reasons are different in kind and neither is stashed. A `hash` failure
-  // means the browser could not fingerprint the file, so no retry of THIS page
-  // can succeed (the hashing worker's code is what broke) and the remedy is a
-  // reload. A `storage` failure means the account is out of room (#89), and
-  // nobody frees any in the seconds a retry takes. Both remedies can only be
-  // said in a localized toast.
+  // Upload menu / Retry / reset-to-empty), and the video-with-cover path. What
+  // each reason needs (the Retry stash and the wording) is decided in
+  // `failUploadIntoNode`. The focus crop is the one upload with no node to
+  // write to: its failures are toast-only and it has its own sink further up.
   const failUploadNode = React.useCallback(
     (outcome: UploadFailure, file: File, tag?: MiniToolUploadTag): void => {
-      const plan = resolveUploadFailure(outcome);
-      if (plan.kind === 'reportToServer') {
-        // Nobody else can end this row: the bytes never reached the edge, so
-        // the finish was never asked for (#237). Reporting it is what puts the
-        // failure under the node's failed count, where somebody who started
-        // this upload and looked away still finds it — which a toast, and a
-        // node now running several uploads at once, cannot do.
-        stashRetryFile(projectId, spaceId, plan.taskId, file, tag);
-        void canvasApi.reportNodeTaskFailure(plan.taskId).catch((err: unknown) => {
-          // Nothing on screen: this report is itself a request, and one reason
-          // it fails is that the network would not take one — saying so twice
-          // adds nothing, and the row still has its budget to fall back on.
-          // The line is for whoever has the devtools open while it happens.
-          console.warn('node task failure report rejected', plan.taskId, err);
-        });
-        return;
-      }
-      // Either way the person who tried hears about it in their own language.
-      // Whether a task row exists decides who ends the task, not whether they
-      // are told (#186 §3.7.3).
-      // The filename and the formats are named for the sentences that carry
-      // them; the others hold no such placeholder and ICU leaves an unused
-      // parameter alone. Which colour it takes says what kind of failure this
-      // is, not which gate caught it (§ visual round, suggestion 04).
-      toast[plan.severity](
-        t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }),
-      );
-      // Where a row exists it takes this to an end on its own, judged against
-      // the budget it carries; all that is left here is the File its Retry
-      // re-sends, and only where re-sending can end differently. The node stays
-      // either way — a node that exists is the user's to remove, and only
-      // theirs (#2177).
-      if (plan.keepFileFor !== undefined) {
-        stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
-      }
+      failUploadIntoNode({ projectId, spaceId }, outcome, file, tag);
     },
-    [projectId, spaceId, t],
+    [projectId, spaceId],
   );
 
   const processFiles = React.useCallback(
@@ -3005,6 +2958,20 @@ function CanvasSpaceInner({
     focusPastedRef.current = null;
     focusFirstCopy(ids, pasted.sources);
   }, [selectAfterCreate, nodes, setFlowNodes, focusFirstCopy]);
+
+  // A 3D capture's "View" press (#1411 design 5.4): once loaded and holding
+  // the node, centre on it at the user's zoom and select it.
+  const hasNode = React.useCallback((id: string): boolean => nodes.some((node) => node.id === id), [nodes]);
+  const revealNode = React.useCallback((id: string): void => {
+    const internal = getInternalNode(id);
+    const at = internal?.internals.positionAbsolute ?? nodes.find((node) => node.id === id)?.position;
+    if (at === undefined) return;
+    const width = internal?.measured?.width ?? EMPTY_NODE_SIZE.width;
+    const height = internal?.measured?.height ?? EMPTY_NODE_SIZE.height;
+    void setCenter(at.x + width / 2, at.y + height / 2, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS, interpolate: 'linear' });
+    setSelectAfterCreate([id]);
+  }, [getInternalNode, nodes, setCenter, rfStoreApi]);
+  useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, media copied in the document body as media nodes (inner#1537),
@@ -3752,78 +3719,13 @@ function CanvasSpaceInner({
       modality: UploadNodeSpec['nodeType'],
       tag?: MiniToolUploadTag,
       continuing?: string,
-    ): Promise<void> | undefined => {
-      // Re-gate at fill time (adversarial round): activateNodeUpload gates at
-      // picker-OPEN, but the OS picker then stays open for seconds — a
-      // collaborator can lock the node inside that window. Re-read fresh Yjs
-      // here — the single fill choke point for both the picker-fill and the
-      // retry paths — so a node frozen since the picker opened is never
-      // written. Mirrors the generate submit gate.
-      const gateBlock = evaluateNodeGate({
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-      });
-      if (gateBlock) {
-        warnNodeGate(t(gateBlock.toastKey));
-        if (continuing !== undefined) useUploadMarksStore.getState().answer(spaceId, nodeId, continuing);
-        return undefined;
-      }
-      // What the node ends up holding is written by the server past the size
-      // gate, so a Space that cannot take an add sends nothing; a Retry keeps
-      // its file for later (inner#1790, design 5.2).
-      if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) {
-        if (continuing !== undefined) useUploadMarksStore.getState().fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
-        return undefined;
-      }
-      // The uploader sees the node wait from this moment until the server
-      // answers (inner#1303 §6.7); a tool's export carries on the operation
-      // its press began.
-      const markOp =
-        continuing ??
-        useUploadMarksStore.getState().begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
-      // Register SYNCHRONOUSLY (before the config-fetch await) by making the
-      // whole flow the tracked work — otherwise the tab-close guard reads "not
-      // busy" during the config round-trip and a close in that window loses the
-      // write-back (#1617 pre-registration window).
-      const work = (async () => {
-        // Upload-cap pre-check (#1609 P7) — same semantics as processFiles.
-        let maxBytes = Infinity;
-        try {
-          maxBytes = (await assetsApi.fetchUploadConfig()).maxUploadBytes;
-        } catch {
-          // Server-side 413 remains the authoritative gate.
-        }
-        const rejection = checkFileAdmission(file, maxBytes);
-        if (rejection !== null) {
-          useUploadMarksStore.getState().fail(spaceId, nodeId, markOp, {
-            key: `canvas.upload.${rejection}`,
-            params: { filename: file.name, ...refusedFormatParams(file) },
-          });
-          return;
-        }
-        await fillNodeFromFile(nodeId, file, modality, projectId, {
-          getUploadConfig: assetsApi.fetchUploadConfig,
-          hashFile,
-          requestTicket: assetsApi.requestUploadTicket,
-          sendToIngest: sendFileAndFinish,
-          spaceId,
-          markOp,
-          ...(tag !== undefined && { tag }),
-          extractText,
-          // Only the text path reaches this: it reads the content here, so
-          // there is nobody else to write it. A media node's content arrives
-          // from the server through Yjs.
-          setContent: (id, content) =>
-            setNodeExtractedText(projectId, spaceId, id, content, false),
-          // A failure after the server answered has a task row: the same
-          // outcome as the drop path, reason for reason, where the Retry
-          // stash is decided.
-          onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
-        });
-      })();
-      trackOperation(nodeId, work);
-      return work;
-    },
-    [projectId, spaceId, t, failUploadNode, trackOperation],
+    ): Promise<void> | undefined =>
+      startUploadIntoNode({ projectId, spaceId, nodeId }, file, {
+        modality,
+        ...(tag !== undefined && { tag }),
+        ...(continuing !== undefined && { continuing }),
+      }).sent,
+    [projectId, spaceId],
   );
   // Fill a browser tool's result nodes with its export in one batch upload
   // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,

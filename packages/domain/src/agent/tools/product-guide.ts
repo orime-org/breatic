@@ -77,7 +77,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
     ],
   },
   { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks and the view in a 3D space"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard in a 3D space"]] },
 ];
 
 /** Every section name the index lists. */
@@ -1548,7 +1548,27 @@ export function renderProductGuide(): string {
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
-      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
+      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera. It is unavailable while the viewfinder is open.",
+    `A frame button at the top right of the 3D Space, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
+      "Clicking it shows a frame over the view with everything outside it dimmed; the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
+      "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
+      "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
+      "The view still turns and zooms, and objects can still be selected and moved. " +
+      "Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is 2048), " +
+      `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
+      `Then the menu shows the still's thumbnail, ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
+      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still. ` +
+      `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.toCanvas"))} lists every Canvas of the Project under ${quoted(t("spaces.threeD.viewfinder.canvasListTitle"))}, even when there is one, or says ${quoted(t("spaces.threeD.viewfinder.noCanvas"))}. ` +
+      "Clicking one puts an image node holding the still on that Canvas, beside what is already there, whether or not its tab is open; " +
+      `a message naming that Canvas has ${quoted(t("spaces.threeD.viewfinder.view"))}, which opens that Canvas and selects the node. ` +
+      "When the Canvas cannot be reached a message says so and nothing is placed; " +
+      `when the node was placed but the upload did not finish, the node shows it as any failed upload does. ` +
+      `${quoted(t("spaces.threeD.viewfinder.copy"))} puts the still on the clipboard as a PNG, saying ${quoted(t("spaces.threeD.viewfinder.copied"))}. ` +
+      "While one of them works its button waits and the others are unavailable. Once it succeeds the viewfinder closes; when nothing was sent it stays on the still to try again. " +
+      `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it while a still is being sent lets the send finish, and its result is told in a message. ` +
+      "Switching to another Space tab and back keeps the viewfinder as it was.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
       `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +
       `${quoted(t("spaces.threeD.taskList.filterKind"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.kind"))} or ${quoted(t("spaces.threeD.taskList.kindGeneration"))}; ` +

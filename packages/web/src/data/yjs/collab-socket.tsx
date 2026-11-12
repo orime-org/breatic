@@ -210,6 +210,24 @@ export function hasProjectUnsyncedEdits(projectId: string): boolean {
 }
 
 /**
+ * Reads one document's unconfirmed writes for the exact document a caller holds.
+ *
+ * A document rebuilt after a refusal or torn down with the account is no
+ * longer registered, or is registered under a new generation; its writes were
+ * never confirmed, so it answers `gone` rather than reading as confirmed.
+ * Changes are observed through {@link subscribeProjectSync}.
+ * @param name - Canonical document name.
+ * @param doc - The document the caller acquired.
+ * @returns Whether its writes wait for a receipt, are all confirmed, or the document is gone.
+ * @throws {never} Never.
+ */
+export function hasDocUnsyncedEdits(name: string, doc: Y.Doc): 'pending' | 'confirmed' | 'gone' {
+  const entry = docEntries.get(name);
+  if (entry?.doc !== doc) return 'gone';
+  return entry.sync?.hasUnsyncedEdits() ? 'pending' : 'confirmed';
+}
+
+/**
  * Observes the Project's derived risk without acquiring document references.
  * @param projectId - Canonical Project identifier.
  * @param listener - Called when a contributing entry's risk changes.

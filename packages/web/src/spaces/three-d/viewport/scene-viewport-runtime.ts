@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, SkinnedMesh, SphereGeometry, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
@@ -16,7 +16,8 @@ import { createTransformGesture, transformPatches } from '@web/spaces/three-d/vi
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
 import { focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
-import type { SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { CapturedPixels, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { captureViewOffset } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 interface NativeHandleObservation {
   name: string;
@@ -229,7 +230,43 @@ export class SceneViewportRuntime {
     this.onResize();
     this.update(props);
     this.onFrame();
+    props.onCapture?.(this.capture);
   }
+
+  /**
+   * Render one viewport rectangle into an offscreen sRGB target at the capture
+   * size, with the grid, transform handles, selection outlines and joint dots
+   * hidden for that one synchronous render, and read its pixels back.
+   * @param frame - The rectangle, in viewport pixels.
+   * @param size - The capture size.
+   * @returns The pixels, rows bottom-up.
+   * @throws {Error} When the pixels cannot be read back.
+   */
+  private readonly capture: SceneFrameCapture = async (frame, size): Promise<CapturedPixels> => {
+    const offset = captureViewOffset(frame, { width: this.host.clientWidth, height: this.host.clientHeight }, size);
+    const target = new WebGLRenderTarget(size.width, size.height, { samples: 4 });
+    target.texture.colorSpace = SRGBColorSpace;
+    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines];
+    const shown = helpers.map((helper) => helper.visible);
+    const previous = this.renderer.getRenderTarget();
+    try {
+      for (const helper of helpers) helper.visible = false;
+      this.camera.setViewOffset(offset.fullWidth, offset.fullHeight, offset.x, offset.y, offset.width, offset.height);
+      this.renderer.setRenderTarget(target);
+      this.renderer.render(this.scene, this.camera);
+    } finally {
+      this.camera.clearViewOffset();
+      this.renderer.setRenderTarget(previous);
+      helpers.forEach((helper, index) => { helper.visible = shown[index] ?? true; });
+    }
+    try {
+      const pixels = new Uint8Array(size.width * size.height * 4);
+      await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, size.width, size.height, pixels);
+      return { width: size.width, height: size.height, pixels };
+    } finally {
+      target.dispose();
+    }
+  };
 
   /**
    * Keep the overview tied to the current host and main-ready resource identities.
@@ -301,6 +338,7 @@ export class SceneViewportRuntime {
       || !sameSelection(props.selectedIds, [joint.id]) || !props.objects.some((object) => object.id === joint.id && !object.locked)
     )) this.endGesture(false);
     this.controls.setSensitivity(props.scaleSensitivity);
+    if (!this.dragging && !this.controls.dragging) this.orbit.enabled = !props.viewLocked;
     const visible = new Set(props.objects.map((object) => object.id));
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
@@ -640,7 +678,7 @@ export class SceneViewportRuntime {
     this.joint = null;
     this.down = null;
     this.controls.cancelInteraction(!commit);
-    this.orbit.enabled = true;
+    this.orbit.enabled = !this.props.viewLocked;
     if (!commit && pointer) {
       const canvas = this.renderer.domElement;
       if (canvas.hasPointerCapture(pointer.id)) canvas.releasePointerCapture(pointer.id);
@@ -679,7 +717,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never.
    */
   private onDraggingChanged = (event: { value: unknown }): void => {
-    if (typeof event.value === 'boolean') this.orbit.enabled = !event.value;
+    if (typeof event.value === 'boolean') this.orbit.enabled = !event.value && !this.props.viewLocked;
   };
 
   /**
@@ -988,6 +1026,7 @@ export class SceneViewportRuntime {
    */
   dispose(): void {
     if (this.disposed) return;
+    this.props.onCapture?.(null);
     this.disposed = true;
     this.endGesture(false);
     cancelAnimationFrame(this.frame);

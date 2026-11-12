@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { UploadFailedError } from '@web/data/upload/media-upload';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
@@ -12,7 +11,7 @@ import {
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
 import { pickExtractor, textExtractAccept } from '@web/spaces/canvas/text-extract';
-import type { Tray } from '@web/stores/attach-to-chat';
+import { uploadTrayItem, type Tray } from '@web/stores/attach-to-chat';
 import {
   chatAttachments,
   type AttachmentLimits,
@@ -134,30 +133,21 @@ function sortPicked(
  */
 async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: AttachDeps): Promise<void> {
   const { file, item } = picked;
-  const media = item.type !== 'text';
-  const base = { id: item.id, type: item.type, name: item.name };
-  let chip: ChatAttachedChip;
-  try {
-    if (media) {
-      chip = { ...base, data_snapshot: { url: await deps.upload(file, projectId) } };
-    } else {
-      const text = await deps.extract(file);
-      // A scanned pdf has no text layer: nothing to hand the agent.
-      if (text.trim() === '') throw new Error('document holds no words');
-      chip = { ...base, data_snapshot: { text } };
-    }
-  } catch (err) {
-    if (media && err instanceof UploadFailedError && err.reason === 'unsupportedType') {
-      chatAttachments.say(mediaFormatNotice(file));
-    }
+  if (item.type !== 'text') {
     // The item says it failed, which is what the user acts on: take it out
     // and pick the file again, after a while when it was uploading too often.
-    const rateLimited = err instanceof UploadFailedError && err.reason === 'rateLimited';
-    chatAttachments.fail(
-      tray.conversationId,
-      item.id,
-      media ? (rateLimited ? 'rate_limited' : 'upload') : 'extract',
-    );
+    const outcome = await uploadTrayItem(tray, item, file, (f) => deps.upload(f, projectId));
+    if (outcome === 'unsupported') chatAttachments.say(mediaFormatNotice(file));
+    return;
+  }
+  let chip: ChatAttachedChip;
+  try {
+    const text = await deps.extract(file);
+    // A scanned pdf has no text layer: nothing to hand the agent.
+    if (text.trim() === '') throw new Error('document holds no words');
+    chip = { id: item.id, type: item.type, name: item.name, data_snapshot: { text } };
+  } catch {
+    chatAttachments.fail(tray.conversationId, item.id, 'extract');
     return;
   }
   chatAttachments.settle(tray.conversationId, item.id, chip, tray.limits);

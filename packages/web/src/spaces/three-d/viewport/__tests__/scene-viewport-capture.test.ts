@@ -46,7 +46,7 @@ vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) =
   return { ...actual, loadSceneModel: vi.fn(async () => { const g = new G(); g.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial())); return g; }) };
 });
 
-const CUBE: SceneObject = { id: 'cube', model: { kind: 'builtin', id: 'cube' }, name: 'Cube', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
+const CUBE: SceneObject = { id: 'cube', model: { kind: 'builtin', id: 'box' }, name: 'Cube', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); renders.length = 0; reads.length = 0; });
 
@@ -110,7 +110,7 @@ describe('capturing the viewfinder frame (#1411 design 4)', () => {
   });
 
   it('restores the helpers, the camera view and the screen target afterwards, and releases the target', async () => {
-    const { capture, camera } = await open();
+    const { runtime, capture, camera } = await open();
     renders.length = 0;
     let disposed = 0;
     const dispose = vi.spyOn((await import('three')).WebGLRenderTarget.prototype, 'dispose').mockImplementation(() => { disposed += 1; });
@@ -120,7 +120,7 @@ describe('capturing the viewfinder frame (#1411 design 4)', () => {
     expect(observeHelpers().every(Boolean)).toBe(true);
     expect(camera.view?.enabled ?? false).toBe(false);
     expect(disposed).toBe(1);
-    expect(renders.at(-1)?.target).toBeNull();
+    expect((runtime as unknown as { renderer: { getRenderTarget: () => unknown } }).renderer.getRenderTarget()).toBeNull();
   });
 
   it('withdraws the capture function before the runtime is disposed', async () => {

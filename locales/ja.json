@@ -2469,6 +2469,29 @@
         "more": "さらに読み込む",
         "formats": "PNG、JPEG、WebP",
         "chooseFile": "ファイルを選択"
+      },
+      "viewfinder": {
+        "open": "ファインダー",
+        "ratio": "アスペクト比",
+        "size": "{width} × {height}",
+        "cancel": "キャンセル",
+        "confirm": "撮影",
+        "modelsLoading": "モデルを読み込み中です。読み込み後に撮影してください",
+        "captureFailed": "撮影に失敗しました",
+        "toAgent": "Agent に追加",
+        "toCanvas": "Canvas に追加",
+        "copy": "コピー",
+        "reframe": "撮り直す",
+        "canvasListTitle": "Canvas に追加",
+        "noCanvas": "この Project にはまだ Canvas がありません。先に作成してください",
+        "addedToAgent": "Agent に追加しました",
+        "addedToCanvas": "「{name}」に追加しました",
+        "view": "表示",
+        "copied": "コピーしました",
+        "copyFailed": "コピーに失敗しました",
+        "canvasUnreachable": "「{name}」に接続できません。もう一度お試しください",
+        "canvasLost": "画像を「{name}」に置けませんでした。もう一度お試しください",
+        "canvasUploadFailed": "画像を「{name}」に置けませんでした。Canvas で確認できます"
       }
     },
     "sizeCap": {

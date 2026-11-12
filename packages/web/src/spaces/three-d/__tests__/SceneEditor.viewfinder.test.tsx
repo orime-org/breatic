@@ -60,7 +60,7 @@ vi.mock('@web/lib/scene-view-storage', () => ({ readSceneView: () => null, write
 vi.mock('@web/lib/toast', () => ({ toast: h.toast }));
 vi.mock('@web/data/yjs/project-meta', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/yjs/project-meta')>()),
-  useProjectMeta: () => ({ spaces: h.spaces, synced: true }),
+  useProjectSpaceList: () => h.spaces,
 }));
 vi.mock('@web/spaces/canvas/place-image-on-canvas', () => ({ placeImageOnCanvas: h.placeImageOnCanvas }));
 vi.mock('@web/stores/attach-to-chat', async (importOriginal) => ({

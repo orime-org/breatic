@@ -2469,6 +2469,29 @@
         "more": "Load more",
         "formats": "PNG, JPEG or WebP",
         "chooseFile": "Choose file"
+      },
+      "viewfinder": {
+        "open": "Viewfinder",
+        "ratio": "Aspect ratio",
+        "size": "{width} × {height}",
+        "cancel": "Cancel",
+        "confirm": "Capture",
+        "modelsLoading": "Models are still loading. Capture once they have loaded",
+        "captureFailed": "Capture failed",
+        "toAgent": "Add to Agent",
+        "toCanvas": "Add to Canvas",
+        "copy": "Copy",
+        "reframe": "Reframe",
+        "canvasListTitle": "Add to Canvas",
+        "noCanvas": "This Project has no Canvas yet. Create one first",
+        "addedToAgent": "Added to Agent",
+        "addedToCanvas": "Added to {name}",
+        "view": "View",
+        "copied": "Copied",
+        "copyFailed": "Copy failed",
+        "canvasUnreachable": "Couldn't reach {name}. Try again",
+        "canvasLost": "The image didn't reach {name}. Try again",
+        "canvasUploadFailed": "The image didn't finish uploading to {name}. See it on the Canvas"
       }
     },
     "sizeCap": {

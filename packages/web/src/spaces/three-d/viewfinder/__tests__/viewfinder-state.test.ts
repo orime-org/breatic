@@ -79,7 +79,8 @@ describe('the viewfinder states (design 6.1)', () => {
   });
 
   it('closes on success, returns to captured on a failure that wrote nothing, and closes on a failure after the node was placed', () => {
-    const sending = viewfinderReducer(captured, { type: 'send', target: 'canvas' });
+    const sending = run([{ type: 'pick' }, { type: 'send', target: 'canvas' }], captured);
+    expect(sending.phase).toBe('sending');
     expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'done' }).phase).toBe('off');
     expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'retry' })).toMatchObject({ phase: 'captured', sending: null, shot: SHOT });
     expect(viewfinderReducer(sending, { type: 'settle', session: sending.session, outcome: 'close' }).phase).toBe('off');
