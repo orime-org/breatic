@@ -310,7 +310,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     </div>
     <Popover open={phase === 'picking'} onOpenChange={onListOpen}>
       <PopoverAnchor asChild>
-        <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
+        <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex w-max -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-border bg-popover p-1 text-xs shadow'
           style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
           {framing ? <React.Fragment key='framing'>
             <Select value={ratio} onValueChange={changeRatio}>

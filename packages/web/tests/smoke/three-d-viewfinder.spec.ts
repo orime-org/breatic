@@ -14,6 +14,20 @@ import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { seedImageNode } from '../helpers/tab-restore';
 
 /**
+ * Every control of the menu sits inside the menu's own box.
+ * @param page - The page.
+ * @throws {Error} When a control sticks out of the menu.
+ */
+async function expectMenuHoldsItsControls(page: Page): Promise<void> {
+  const overflow = await visibleSpace(page).getByTestId('scene-viewfinder-menu').evaluate((menu) => {
+    const box = menu.getBoundingClientRect();
+    return [...menu.children].map((child) => child.getBoundingClientRect())
+      .filter((rect) => rect.left < box.left - 0.5 || rect.right > box.right + 0.5).length;
+  });
+  expect(overflow).toBe(0);
+}
+
+/**
  * Open the viewfinder, drag the bottom-right corner inward and capture.
  * @param page - The page.
  * @throws {Error} When the capture menu does not appear.
@@ -33,8 +47,10 @@ async function frameAndCapture(page: Page): Promise<void> {
   await page.mouse.up();
   const menu = space.getByTestId('scene-viewfinder-menu');
   await expect(menu).toContainText('2048 × 1152');
+  await expectMenuHoldsItsControls(page);
   await menu.getByRole('button', { name: 'Capture', exact: true }).click();
   await expect(menu.getByRole('button', { name: 'Add to Agent', exact: true })).toBeEnabled({ timeout: 15_000 });
+  await expectMenuHoldsItsControls(page);
 }
 
 test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs-storage @needs-ingest', async ({ page }) => {
@@ -146,5 +162,26 @@ test('a 3D viewfinder still goes to the Agent, a Canvas and the clipboard @needs
   } finally {
     await deleteSpace(page, sceneId);
     await deleteSpace(page, canvasId);
+  }
+});
+
+test('the viewfinder menu holds its controls in a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await openSmokeProject(page);
+  const sceneId = await createSpace(page, '3d', `viewfinder-narrow-${Date.now()}`);
+  try {
+    const space = visibleSpace(page);
+    await space.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add block', exact: true }).click();
+    await expect(space.getByTestId('three-d-viewport')).toBeVisible();
+    await space.getByTestId('scene-viewfinder-trigger').click();
+    const menu = space.getByTestId('scene-viewfinder-menu');
+    await expect(menu).toContainText('2048 × 1152');
+    await expectMenuHoldsItsControls(page);
+    await menu.getByRole('button', { name: 'Capture', exact: true }).click();
+    await expect(menu.getByRole('button', { name: 'Reframe', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectMenuHoldsItsControls(page);
+  } finally {
+    await deleteSpace(page, sceneId);
   }
 });
