@@ -1583,7 +1583,7 @@ export function renderProductGuide(): string {
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera. It is unavailable while the viewfinder is open.",
     `A frame button at the top right of the 3D Space, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
-      "Clicking it shows a frame over the view with everything outside it dimmed; the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
+      "Clicking it shows a frame over the view with everything outside it dimmed; an open right panel closes and stays closed after, the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
       "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
       "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
       "The view still turns and zooms, and objects can still be selected and moved. " +
@@ -1591,7 +1591,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
       `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
       `Then the menu shows ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
-      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still. ` +
+      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still, and the toolbar of the selected objects is put away until the viewfinder goes back to framing or closes. ` +
       `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, where it uploads like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
       `${quoted(t("spaces.threeD.viewfinder.toCanvas"))} lists every Canvas of the Project under ${quoted(t("spaces.threeD.viewfinder.canvasListTitle"))}, even when there is one, or says ${quoted(t("spaces.threeD.viewfinder.noCanvas"))}. ` +
       "Clicking one puts an image node holding the still on that Canvas, beside what is already there, whether or not its tab is open; " +
