@@ -106,6 +106,9 @@ export function useMediaSurface({ host, container, source, active, createRendere
               if (!live || terminal) return;
               try { await element.play(); }
               catch (error) {
+                // A later pause or load interrupted this play: the player was not refused, and pausing again would stop
+                // the playback that superseded it.
+                if (error instanceof DOMException && error.name === 'AbortError') throw error;
                 if (live && !terminal && binding?.element === element) {
                   element.pause();
                   setSnapshot({ status: 'ready', binding, error: 'play-rejected' });

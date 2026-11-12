@@ -216,3 +216,44 @@ describe('effect-owned video surface lifecycle', () => {
   });
 
 });
+
+/**
+ * Makes an element's play and pause follow the HTML rule: pause rejects every pending play promise with an AbortError,
+ * in a later task.
+ * @param element - The element.
+ * @throws {never} Never.
+ */
+function followPlayRule(element: HTMLVideoElement): void {
+  let pending: ((error: unknown) => void)[] = [];
+  vi.mocked(element.play).mockImplementation(() => new Promise<void>((_resolve, reject) => { pending.push(reject); }));
+  vi.mocked(element.pause).mockImplementation(() => {
+    const rejected = pending;
+    pending = [];
+    setTimeout(() => { for (const reject of rejected) reject(new DOMException('The play() request was interrupted by a call to pause().', 'AbortError')); }, 0);
+  });
+}
+
+describe('a play interrupted by a later pause (split segment preview pressed twice)', () => {
+  it('passes the AbortError on without pausing the player again or reporting the play as refused', async () => {
+    const { result } = mount();
+    ready();
+    const element = sessions[0].element;
+    followPlayRule(element);
+    const binding = result.current.binding!;
+    const first = binding.play();
+    binding.pause();
+    void binding.play();
+    const pauses = vi.mocked(element.pause).mock.calls.length;
+    await act(async () => { await expect(first).rejects.toMatchObject({ name: 'AbortError' }); });
+    expect(element.pause).toHaveBeenCalledTimes(pauses);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('still reports a play the player refuses', async () => {
+    const { result } = mount();
+    ready();
+    vi.mocked(sessions[0].element.play).mockRejectedValue(new DOMException('Not allowed', 'NotAllowedError'));
+    await act(async () => { await expect(result.current.binding!.play()).rejects.toMatchObject({ name: 'NotAllowedError' }); });
+    expect(result.current.error).toBe('play-rejected');
+  });
+});
