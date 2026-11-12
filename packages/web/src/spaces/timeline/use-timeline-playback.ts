@@ -530,8 +530,13 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (next >= boundary) {
         // The visible layers change here; the render that shows this frame checks them and goes on from the instant
         // the clock reached the boundary, so the lanes that keep playing do not run ahead. The lanes are checked first,
-        // as on every tick, so one entering its tail gets its seek to the file end now; a hard sync waits for the next tick.
-        checkDrift(now);
+        // as on every tick: one entering its tail gets its seek to the file end now, and a hard sync freezes here.
+        const hard = checkDrift(now);
+        if (hard.length > 0) {
+          showFrame(next);
+          freeze(hard);
+          return;
+        }
         boundaryAnchor = { frame: boundary, at: anchor.at + (boundary - anchor.frame) * 1000 * fps.den / fps.num };
         anchor = null;
         atBoundary.current = true;
