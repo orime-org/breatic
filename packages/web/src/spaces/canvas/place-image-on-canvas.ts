@@ -7,8 +7,10 @@ import { addNode, readNodePlacements, runCanvasUndoBatch } from '@web/data/yjs/c
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { stepPastOccupied } from '@web/spaces/canvas/node-clipboard';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
+import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 
 /** One captured image to place on a canvas. */
 export interface PlaceImageRequest {
@@ -26,19 +28,15 @@ export interface PlaceImageRequest {
 }
 
 /**
- * How placing ended: `uploaded`; `unreachable` when the canvas never synced and
- * nothing was written; `refused` when the size gate refused the add (the
- * canvas is full or is being rebuilt; the gate warns except while rebuilding); `lost` when the document was rebuilt or torn down before collab
- * confirmed the node, so nothing was uploaded; `upload_failed` when the node
- * is there but its upload did not finish, `toasted` saying whether the user
- * was already told.
+ * How the hand-over went: `placed` once the node is written, its upload going
+ * on in the background; `unreachable` when the canvas never synced and nothing
+ * was written; `refused` when the size gate refused the add (the canvas is
+ * full or is being rebuilt; the gate warns except while rebuilding).
  */
 export type PlaceImageOutcome =
-  | { status: 'uploaded'; nodeId: string }
+  | { status: 'placed'; nodeId: string }
   | { status: 'unreachable' }
-  | { status: 'refused' }
-  | { status: 'lost' }
-  | { status: 'upload_failed'; nodeId: string; toasted: boolean };
+  | { status: 'refused' };
 
 /**
  * Wait for the provider's first sync.
@@ -93,14 +91,16 @@ function waitForReceipt(projectId: string, name: string, doc: ReturnType<typeof 
 
 /**
  * Place an image on a canvas whether or not its tab is open (#1411 design
- * 5.3): connect, wait for the sync, write an empty image node of the image's
- * size beside what is already at the origin, wait for collab to confirm it,
- * then upload into it the way a picked file is. The document is held until the
- * upload ended, so its lock and size reads never meet a released document;
- * the canvas counts as busy for the leave guard until the receipt arrived and
+ * 5.3): connect, wait for the sync and write an empty image node of the
+ * image's size beside what is already at the origin, with the upload mark the
+ * canvas shows while a file is on its way. That hands the image over to the
+ * canvas, and the answer comes then. In the background it waits for collab to
+ * confirm the node and uploads into it the way a picked file is; the document
+ * is held until the upload ended, so its lock and size reads never meet a
+ * released document, and the canvas counts as busy for the leave guard until
  * the upload's own send took over.
  * @param request - The image and where it goes.
- * @returns How it ended.
+ * @returns How the hand-over went.
  */
 export async function placeImageOnCanvas(request: PlaceImageRequest): Promise<PlaceImageOutcome> {
   const { projectId, spaceId, file, size, userId, origin, syncTimeoutMs } = request;
@@ -112,25 +112,28 @@ export async function placeImageOnCanvas(request: PlaceImageRequest): Promise<Pl
   let busy = true;
   /** End this placement's own hold on the leave guard, once. */
   const settleBusy = (): void => { if (busy) { busy = false; ops.unregister(spaceId, operation); } };
+  /** Let go of the document and the leave guard. */
+  const finish = (): void => { settleBusy(); releaseDocProvider(name, doc); };
   const provider = acquireDocProvider(name, doc);
-  try {
-    if (!(await waitForSync(name, provider, syncTimeoutMs))) return { status: 'unreachable' };
-    const occupied = readNodePlacements(projectId, spaceId);
-    const shift = stepPastOccupied([origin], occupied);
-    const built = createEmptyNode('image', { x: origin.x + shift.dx, y: origin.y + shift.dy }, userId);
-    const node = { ...built, data: { ...built.data, mediaWidth: size.width, mediaHeight: size.height } };
-    const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => { addNode(projectId, spaceId, node); });
-    if (!written.ok) return { status: 'refused' };
-    if ((await waitForReceipt(projectId, name, doc)) === 'gone') return { status: 'lost' };
-    // The upload registers its own send from here (`uploadIntoNode`).
-    const sent = uploadIntoNode({ projectId, spaceId, nodeId: node.id }, file);
-    settleBusy();
-    const outcome = await sent;
-    return outcome.status === 'uploaded'
-      ? { status: 'uploaded', nodeId: node.id }
-      : { status: 'upload_failed', nodeId: node.id, toasted: outcome.toasted };
-  } finally {
-    settleBusy();
-    releaseDocProvider(name, doc);
-  }
+  if (!(await waitForSync(name, provider, syncTimeoutMs))) { finish(); return { status: 'unreachable' }; }
+  const occupied = readNodePlacements(projectId, spaceId);
+  const shift = stepPastOccupied([origin], occupied);
+  const built = createEmptyNode('image', { x: origin.x + shift.dx, y: origin.y + shift.dy }, userId);
+  const node = { ...built, data: { ...built.data, mediaWidth: size.width, mediaHeight: size.height } };
+  const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => { addNode(projectId, spaceId, node); });
+  if (!written.ok) { finish(); return { status: 'refused' }; }
+  const marks = useUploadMarksStore.getState();
+  const markOp = marks.begin(spaceId, node.id, fillActionOf({ needsUpload: true }));
+  void (async (): Promise<void> => {
+    try {
+      if ((await waitForReceipt(projectId, name, doc)) === 'gone') { marks.answer(spaceId, node.id, markOp); return; }
+      // The upload registers its own send from here (`uploadIntoNode`).
+      const ended = uploadIntoNode({ projectId, spaceId, nodeId: node.id }, file, { continuing: markOp });
+      settleBusy();
+      await ended;
+    } finally {
+      finish();
+    }
+  })();
+  return { status: 'placed', nodeId: node.id };
 }

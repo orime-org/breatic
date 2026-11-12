@@ -2627,9 +2627,7 @@
         "view": "查看",
         "copied": "已複製",
         "copyFailed": "複製失敗",
-        "canvasUnreachable": "連不上「{name}」，請再試一次",
-        "canvasLost": "圖片沒放上「{name}」，請再試一次",
-        "canvasUploadFailed": "圖片沒放上「{name}」，可在 Canvas 上查看"
+        "canvasUnreachable": "連不上「{name}」，請再試一次"
       }
     },
     "sizeCap": {

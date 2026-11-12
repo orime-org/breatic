@@ -2627,9 +2627,7 @@
         "view": "View",
         "copied": "Copied",
         "copyFailed": "Copy failed",
-        "canvasUnreachable": "Couldn't reach {name}. Try again",
-        "canvasLost": "The image didn't reach {name}. Try again",
-        "canvasUploadFailed": "The image didn't finish uploading to {name}. See it on the Canvas"
+        "canvasUnreachable": "Couldn't reach {name}. Try again"
       }
     },
     "sizeCap": {

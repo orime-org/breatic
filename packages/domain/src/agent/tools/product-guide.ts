@@ -1590,17 +1590,17 @@ export function renderProductGuide(): string {
       `Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is ${String(getSceneConfig().capture.long_edge_px)}), ` +
       `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
       `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
-      `Then the menu shows the still's thumbnail, ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
-      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still. ` +
-      `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
+      `Then the menu shows ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
+      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still. ` +
+      `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, where it uploads like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
       `${quoted(t("spaces.threeD.viewfinder.toCanvas"))} lists every Canvas of the Project under ${quoted(t("spaces.threeD.viewfinder.canvasListTitle"))}, even when there is one, or says ${quoted(t("spaces.threeD.viewfinder.noCanvas"))}. ` +
       "Clicking one puts an image node holding the still on that Canvas, beside what is already there, whether or not its tab is open; " +
       `a message naming that Canvas has ${quoted(t("spaces.threeD.viewfinder.view"))}, which opens that Canvas and selects the node. ` +
-      "When the Canvas cannot be reached a message says so and nothing is placed; " +
-      `when the node was placed but the upload did not finish, the node shows it as any failed upload does. ` +
+      "The node shows the upload as any upload onto a Canvas does, failures included. When the Canvas cannot be reached a message says so and nothing is placed. " +
       `${quoted(t("spaces.threeD.viewfinder.copy"))} puts the still on the clipboard as a PNG, saying ${quoted(t("spaces.threeD.viewfinder.copied"))}. ` +
-      "While one of them works its button waits and the others are unavailable. Once it succeeds the viewfinder closes; when nothing was sent it stays on the still to try again. " +
-      `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it while a still is being sent lets the send finish, and its result is told in a message. ` +
+      "The viewfinder hands the still over and closes as soon as it is in the chat attachments, on the Canvas or on the clipboard; until then its button waits and the others are unavailable. " +
+      "Uploading goes on in the chat attachments or on the Canvas node, which show how it ends. When the still could not be handed over, the viewfinder stays on it to try again. " +
+      `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it before the hand-over lets the hand-over finish, and its result is told in a message. ` +
       "Switching to another Space tab and back keeps the viewfinder as it was.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
       `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +

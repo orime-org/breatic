@@ -2627,9 +2627,7 @@
         "view": "表示",
         "copied": "コピーしました",
         "copyFailed": "コピーに失敗しました",
-        "canvasUnreachable": "「{name}」に接続できません。もう一度お試しください",
-        "canvasLost": "画像を「{name}」に置けませんでした。もう一度お試しください",
-        "canvasUploadFailed": "画像を「{name}」に置けませんでした。Canvas で確認できます"
+        "canvasUnreachable": "「{name}」に接続できません。もう一度お試しください"
       }
     },
     "sizeCap": {

@@ -7,10 +7,9 @@ import { DEFAULT_VIEWFINDER_RATIO, type ViewfinderRatio, type ViewfinderRect } f
 export type ViewfinderPhase = 'off' | 'framing' | 'captured' | 'picking' | 'sending';
 export type ViewfinderTarget = 'agent' | 'canvas' | 'copy';
 
-/** A captured still and where its preview is shown from. */
+/** A captured still and its pixel size. */
 export interface ViewfinderShot {
   file: File;
-  url: string;
   width: number;
   height: number;
 }
@@ -26,11 +25,10 @@ export interface ViewfinderState {
 }
 
 /**
- * How a send ended for the capture it came from: `done` closes, `retry` goes
- * back to the shot because nothing was written, `close` ends after something
- * was placed but did not finish.
+ * How a send ended for the capture it came from: `done` closes once the still
+ * was handed over, `retry` goes back to the shot because the hand-over failed.
  */
-export type ViewfinderOutcome = 'done' | 'retry' | 'close';
+export type ViewfinderOutcome = 'done' | 'retry';
 
 export type ViewfinderAction =
   | { type: 'open'; frame: ViewfinderRect }

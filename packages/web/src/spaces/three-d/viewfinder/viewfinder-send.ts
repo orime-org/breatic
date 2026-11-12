@@ -12,14 +12,16 @@ import { useUIStore } from '@web/stores/ui';
 /**
  * Put a capture into the Agent tray the way a picked image is (#1411 design
  * 3.4 and 5.2): bring the chat column into view, open the tray of the
- * conversation on screen, check the file, add it uploading, then upload it as
- * a derived image of this 3D Space. What stopped it is said the way the tray
- * says it.
+ * conversation on screen, check the file and add it uploading, which hands it
+ * over to the tray. The upload as a derived image of this 3D Space goes on in
+ * the background and the item shows how it ends; a format the server refuses
+ * is still named, as the composer does. What stopped the hand-over is said the
+ * way the tray says it.
  * @param where - The project and the 3D Space.
  * @param where.projectId - The project.
  * @param where.spaceId - The 3D Space.
  * @param file - The capture.
- * @returns True when the item turned ready.
+ * @returns True once the item is in the tray.
  */
 export async function sendCaptureToAgent(where: { projectId: string; spaceId: string }, file: File): Promise<boolean> {
   useUIStore.getState().setChatPanelCollapsed(false);
@@ -34,9 +36,10 @@ export async function sendCaptureToAgent(where: { projectId: string; spaceId: st
   }
   const item: TrayItem = { id: newId(), name: file.name, type: 'image', status: 'uploading' };
   if (chatAttachments.add(tray.conversationId, [item], tray.limits) !== 'added') return false;
-  const outcome = await uploadTrayItem(tray, item, file, (f) => uploadDerivedImage(f, where));
-  if (outcome === 'unsupported') chatAttachments.say(mediaFormatNotice(file));
-  return outcome === 'ready';
+  void uploadTrayItem(tray, item, file, (f) => uploadDerivedImage(f, where)).then((outcome) => {
+    if (outcome === 'unsupported') chatAttachments.say(mediaFormatNotice(file));
+  });
+  return true;
 }
 
 /**

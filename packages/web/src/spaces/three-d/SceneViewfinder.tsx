@@ -46,9 +46,9 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
 };
 // What the chrome around the frame covers, in pixels: the top clears the
 // viewfinder bar (10 + 42 + 10); the bottom keeps the menu under the frame
-// (66 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
+// (44 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
-const INSETS = { top: 62, bottom: 140, side: 20, panel: 340 };
+const INSETS = { top: 62, bottom: 118, side: 20, panel: 340 };
 // The menu sits this far below the frame.
 const MENU_GAP = 8;
 
@@ -204,7 +204,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
       const blob = await encodeCapturePng(await capture(frame, size));
       if (opening.current !== started || pressed.current !== 'framing') return;
       const file = new File([blob], captureFileName(spaceName), { type: 'image/png' });
-      dispatch({ type: 'captured', shot: { file, url: URL.createObjectURL(blob), ...size } });
+      dispatch({ type: 'captured', shot: { file, ...size } });
     } catch (err) {
       console.warn('viewfinder capture failed', err);
       toast.error(t('spaces.threeD.viewfinder.captureFailed'));
@@ -212,12 +212,6 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
       capturing.current = false;
     }
   }, [modelsLoading, capture, config, frame, spaceName, dispatch, t]);
-
-  // The preview's address lives as long as its shot.
-  React.useEffect(() => {
-    if (shot === null) return;
-    return () => URL.revokeObjectURL(shot.url);
-  }, [shot]);
 
   /**
    * Send the shot to one destination; its result only touches this capture.
@@ -260,7 +254,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
       const placed = await placeImageOnCanvas({ projectId, spaceId: canvas.id, file, size: { width, height }, userId,
         origin: canvasOrigin(userId, projectId, canvas.id), syncTimeoutMs: config.canvasSyncTimeoutMs });
       switch (placed.status) {
-        case 'uploaded':
+        case 'placed':
           toast.success(t('spaces.threeD.viewfinder.addedToCanvas', { name }), {
             action: { label: t('spaces.threeD.viewfinder.view'), onClick: () => useCanvasRevealStore.getState().reveal(canvas.id, placed.nodeId) },
           });
@@ -268,14 +262,9 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
         case 'unreachable':
           toast.error(t('spaces.threeD.viewfinder.canvasUnreachable', { name }));
           return 'retry';
-        case 'lost':
-          toast.error(t('spaces.threeD.viewfinder.canvasLost', { name }));
-          return 'retry';
         case 'refused':
+          // The size gate said why in its own warning.
           return 'retry';
-        case 'upload_failed':
-          if (!placed.toasted) toast.error(t('spaces.threeD.viewfinder.canvasUploadFailed', { name }));
-          return 'close';
       }
     });
   }, [shot, config, send, projectId, userId, t]);
@@ -321,7 +310,6 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
             <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>
             <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button>
           </React.Fragment> : <React.Fragment key='captured'>
-            {shot ? <img src={shot.url} alt='' className='h-14 rounded-sm shadow' style={{ aspectRatio: `${shot.width} / ${shot.height}` }} /> : null}
             <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
             <PopoverTrigger asChild>
               <Button size='sm' variant='outline' loading={sending === 'canvas'} disabled={busy && sending !== 'canvas'}>{t('spaces.threeD.viewfinder.toCanvas')}</Button>

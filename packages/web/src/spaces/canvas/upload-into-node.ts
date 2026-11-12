@@ -28,13 +28,6 @@ export interface UploadTarget {
   nodeId: string;
 }
 
-/**
- * How an upload into a node ended: `uploaded` once the server holds the bytes
- * for the node; `failed` otherwise, `toasted` saying whether the user was
- * already told in a toast or only on the node.
- */
-export type UploadIntoNodeOutcome = { status: 'uploaded' } | { status: 'failed'; toasted: boolean };
-
 /** What the picker, Retry and a tool export may add to a fill. */
 export interface UploadIntoNodeOptions {
   /** The node's modality; the file's own kind when absent. */
@@ -55,9 +48,8 @@ export interface UploadIntoNodeOptions {
  * @param outcome - How the upload ended.
  * @param file - The file.
  * @param tag - The mini-tool tag the Retry re-sends with.
- * @returns Whether a toast was shown.
  */
-export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spaceId'>, outcome: UploadFailure, file: File, tag?: MiniToolUploadTag): boolean {
+export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spaceId'>, outcome: UploadFailure, file: File, tag?: MiniToolUploadTag): void {
   const { projectId, spaceId } = target;
   const plan = resolveUploadFailure(outcome);
   if (plan.kind === 'reportToServer') {
@@ -67,29 +59,30 @@ export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spa
       // the row still has its budget to fall back on; the line is for devtools.
       console.warn('node task failure report rejected', plan.taskId, err);
     });
-    return false;
+    return;
   }
   toast[plan.severity](t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }));
   if (plan.keepFileFor !== undefined) stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
-  return true;
 }
 
-/** A started upload into a node: the send the leave guard waits on, and how it ended. */
+/** A started upload into a node: the send the leave guard waits on, and its end. */
 export interface StartedUploadIntoNode {
   /** Ends when the bytes are on their way or the fill stopped; undefined when it never started. */
   sent: Promise<void> | undefined;
-  outcome: Promise<UploadIntoNodeOutcome>;
+  /** Ends once the server registered the bytes or the fill failed; the node shows which. */
+  ended: Promise<void>;
 }
 
 /**
- * Fill an existing canvas node from a file and wait for how it ended.
+ * Fill an existing canvas node from a file and wait until it ended; how it
+ * ended shows on the node.
  * @param target - The node.
  * @param file - The file.
  * @param options - Modality, tool tag and a continuing mark.
- * @returns How the upload ended, once the server registered the bytes or it failed.
+ * @returns Once the server registered the bytes or the fill failed.
  */
-export function uploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): Promise<UploadIntoNodeOutcome> {
-  return startUploadIntoNode(target, file, options).outcome;
+export function uploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): Promise<void> {
+  return startUploadIntoNode(target, file, options).ended;
 }
 
 /**
@@ -103,7 +96,7 @@ export function uploadIntoNode(target: UploadTarget, file: File, options: Upload
  * @param target - The node.
  * @param file - The file.
  * @param options - Modality, tool tag and a continuing mark.
- * @returns The send and the outcome.
+ * @returns The send and its end.
  */
 export function startUploadIntoNode(target: UploadTarget, file: File, options: UploadIntoNodeOptions = {}): StartedUploadIntoNode {
   const { projectId, spaceId, nodeId } = target;
@@ -114,21 +107,20 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
   if (gateBlock) {
     warnNodeGate(t(gateBlock.toastKey));
     if (continuing !== undefined) marks.answer(spaceId, nodeId, continuing);
-    return { sent: undefined, outcome: Promise.resolve({ status: 'failed', toasted: true }) };
+    return { sent: undefined, ended: Promise.resolve() };
   }
   const added = checkAdd(docName.canvasSpace(projectId, spaceId));
   if (!added.ok) {
     if (continuing !== undefined) marks.fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
-    // The gate says every refusal but a rebuild in progress in its own warning.
-    return { sent: undefined, outcome: Promise.resolve({ status: 'failed', toasted: added.reason !== 'resyncing' }) };
+    return { sent: undefined, ended: Promise.resolve() };
   }
   const markOp = continuing ?? marks.begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
   /**
-   * Hand the outcome to the caller; the first call wins.
-   * @param outcome - How the upload ended.
+   * Mark the fill ended; the first call wins.
+   * @returns Nothing.
    */
-  let settle = (outcome: UploadIntoNodeOutcome): void => { void outcome; };
-  const ended = new Promise<UploadIntoNodeOutcome>((resolve) => { settle = resolve; });
+  let settle = (): void => undefined;
+  const ended = new Promise<void>((resolve) => { settle = resolve; });
   const work = (async (): Promise<void> => {
     let maxBytes = Infinity;
     try {
@@ -142,7 +134,7 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
         key: `canvas.upload.${rejection}`,
         params: { filename: file.name, ...refusedFormatParams(file) },
       });
-      settle({ status: 'failed', toasted: false });
+      settle();
       return;
     }
     await fillNodeFromFile(nodeId, file, modality, projectId, {
@@ -158,13 +150,13 @@ export function startUploadIntoNode(target: UploadTarget, file: File, options: U
       // is nobody else to write it. A media node's content arrives from the
       // server through Yjs.
       setContent: (id, content) => setNodeExtractedText(projectId, spaceId, id, content, false),
-      onUploadFailure: (outcome, f) => settle({ status: 'failed', toasted: failUploadIntoNode(target, outcome, f, tag) }),
-      onStored: () => settle({ status: 'uploaded' }),
-      onFailedBeforeAnswer: () => settle({ status: 'failed', toasted: false }),
+      onUploadFailure: (outcome, f) => { failUploadIntoNode(target, outcome, f, tag); settle(); },
+      onStored: settle,
+      onFailedBeforeAnswer: settle,
     });
   })();
   const ops = useSpaceOperationsStore.getState();
   ops.register(spaceId, nodeId);
   void work.finally(() => ops.unregister(spaceId, nodeId));
-  return { sent: work, outcome: ended };
+  return { sent: work, ended };
 }
