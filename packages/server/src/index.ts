@@ -37,6 +37,9 @@ import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
+import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
+import { markShuttingDown } from "@server/agent/shutdown-flag.js";
+import { closeChatSubscriberRedis, getChatSubscriberRedis } from "@server/agent/run-stream.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
@@ -172,6 +175,7 @@ try {
     general: getRedis(),
     queue: getQueueRedis(),
     stream: getStreamRedis(),
+    chat_subscriber: getChatSubscriberRedis(),
   });
 } catch (err) {
   if (err instanceof InfraNotReadyError) {
@@ -193,6 +197,7 @@ for (const [client, instance] of [
   ["general", getRedis()],
   ["queue", getQueueRedis()],
   ["stream", getStreamRedis()],
+  ["chat_subscriber", getChatSubscriberRedis()],
 ] as const) {
   instance.on("error", (err) => {
     logger.error({ err, client }, "redis_error");
@@ -228,8 +233,6 @@ internalServer?.on("error", (err) => {
   void exitProcess(1);
 });
 
-/** Cap graceful shutdown so a stuck teardown can't hold the process / port. */
-const SHUTDOWN_DEADLINE_MS = 4000;
 
 // Surface a main-port listen-bind failure (EADDRINUSE etc.) cleanly instead of
 // letting Node crash on the unhandled `'error'` event; the app entry logs +
@@ -301,6 +304,12 @@ const health = startHealthServer({
       // Single PING liveness helper, shared across all services.
       check: () => pingRedis(getRedis()),
     },
+    {
+      name: "redis_chat_subscriber",
+      // The connection Agent chat runs hear their stops and readers on
+      // (inner#1717); without it no run can be stopped or attached to.
+      check: () => pingRedis(getChatSubscriberRedis()),
+    },
   ],
 });
 
@@ -310,6 +319,10 @@ const health = startHealthServer({
  */
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down...`);
+  // No Agent chat run starts from here on, and every one running is stopped
+  // and stored as failed; what waited stays queued for the next instance
+  // (inner#1717).
+  markShuttingDown();
 
   // Stop health probe first so the LB stops sending traffic to this
   // instance while it drains in-flight HTTP requests; failing health
@@ -334,9 +347,9 @@ async function shutdown(signal: string): Promise<void> {
         // before the after-reply work is waited for.
         Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
           .then(() => settleAfterReply())
-          .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues()])),
+          .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues(), closeChatSubscriberRedis()])),
     ],
-    deadlineMs: SHUTDOWN_DEADLINE_MS,
+    deadlineMs: getServerShutdownDeadlineMs(),
   });
   for (const ctx of pendingAfterReply()) {
     logger.error(ctx, "after_reply_cut_off_by_shutdown");

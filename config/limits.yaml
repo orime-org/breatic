@@ -84,3 +84,9 @@ request_body_max_bytes: 1048576
 #   by the public app and the internal API. 30 is nginx's `lingering_time`
 #   default; at most 300, Node's own limit on how long a request may take.
 request_body_linger_seconds: 30
+
+# ── Shutdown ───────────────────────────────────────────
+# server_shutdown_deadline_ms: how long the server waits on SIGTERM for
+#   in-flight work -- an Agent chat run storing its failed ending, a sent
+#   mail -- before it closes its database and Redis pools anyway (inner#1717).
+server_shutdown_deadline_ms: 4000
