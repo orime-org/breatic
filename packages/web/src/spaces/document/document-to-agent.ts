@@ -85,13 +85,33 @@ function holdsWords(text: string): boolean {
 }
 
 /**
- * Whether a selection covers any words, which handing it to the Agent needs.
+ * Whether a media node's upload has finished.
+ * @param node - Any node.
+ * @returns True when it is a picture, video or audio with its upload done.
+ */
+function isUploadedMedia(node: PMNode): boolean {
+  return isMediaBlockType(node.type.name) && pendingUploadId(node.attrs) === null;
+}
+
+/**
+ * Whether a selection holds something to hand the Agent: words, or uploaded
+ * media, which its Markdown carries. Spaces alone and pending media hand
+ * nothing.
  * @param doc - The document.
  * @param selection - The selection.
  * @returns True when it does.
  */
-export function selectionHasWords(doc: PMNode, selection: Selection): boolean {
-  return holdsWords(selectedWords(doc, selection));
+export function selectionHoldsContent(doc: PMNode, selection: Selection): boolean {
+  if (holdsWords(selectedWords(doc, selection))) return true;
+  let found = false;
+  for (const range of selection.ranges) {
+    doc.nodesBetween(range.$from.pos, range.$to.pos, (node) => {
+      found ||= isUploadedMedia(node);
+      return !found;
+    });
+    if (found) break;
+  }
+  return found;
 }
 
 /**
@@ -193,17 +213,41 @@ export function mediaItem(editor: ToolEditor, blockId: string): TrayItem {
 }
 
 /**
- * Whether a block group holds a picture, video or audio whose upload finished.
- * @param group - The rows nested under a block, or null when there are none.
+ * Whether a node holds a picture, video or audio whose upload finished.
+ * @param node - The node, whose descendants are read.
  * @returns True when it does.
  */
-function holdsUploadedMedia(group: PMNode | null): boolean {
+function holdsUploadedMedia(node: PMNode): boolean {
   let found = false;
-  group?.descendants((node) => {
-    found ||= isMediaBlockType(node.type.name) && pendingUploadId(node.attrs) === null;
+  node.descendants((child) => {
+    found ||= isUploadedMedia(child);
     return !found;
   });
   return found;
+}
+
+/**
+ * Whether a node holds something to hand the Agent: words, read as Add to
+ * Agent reads them everywhere, or uploaded media. Empty rows, rows of spaces
+ * and pending media hand nothing.
+ * @param node - The node.
+ * @returns True when it does.
+ */
+function holdsContent(node: PMNode): boolean {
+  return holdsWords(node.textBetween(0, node.content.size, '\n', '\n')) || holdsUploadedMedia(node);
+}
+
+/**
+ * Whether a row, with the rows nested under it, holds something to hand the
+ * Agent: what {@link blockItem} hands is the row and its children, so that is
+ * what is read.
+ * @param doc - The document.
+ * @param blockId - The row.
+ * @returns True when it does; false when there is no such row.
+ */
+export function rowHoldsContent(doc: PMNode, blockId: string): boolean {
+  const node = getNodeById(blockId, doc)?.node;
+  return node !== undefined && holdsContent(node);
 }
 
 /**
@@ -221,10 +265,8 @@ export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   // words are those of the rows nested under it.
   const { node } = getNodeById(blockId, editor.prosemirrorState.doc)!;
   const words = node.textBetween(0, node.content.size, '\n', '\n');
-  // Nested rows hand something only when they hold words, read as Add to
-  // Agent reads them everywhere, or uploaded media; empty rows and pending
-  // media hand nothing.
-  if (!holdsWords(words) && !holdsUploadedMedia(node.childCount > 1 ? node.child(1) : null)) return [media];
+  const nested = node.childCount > 1 ? node.child(1) : null;
+  if (nested === null || !holdsContent(nested)) return [media];
   // The editor is typed without its schema, so its blocks read as `never`.
   const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
   const markdown = blocksMarkdown(editor, children as never).trimEnd();
@@ -239,14 +281,15 @@ export const addToAgentTool: ToolDef = {
   needsProject: true,
 
   /**
-   * Whether the selection holds any words. Read off the text only, so the
-   * Markdown export runs on the click and never on a selection change.
+   * Whether the selection holds words or uploaded media. Read off the
+   * document only, so the Markdown export runs on the click and never on a
+   * selection change.
    * @param editor - The editor.
    * @returns True when there is something to hand over.
    */
   canRun: (editor: ToolEditor): boolean => {
     const view = editor.prosemirrorView;
-    return view !== null && selectionHasWords(view.state.doc, view.state.selection);
+    return view !== null && selectionHoldsContent(view.state.doc, view.state.selection);
   },
 
   /**

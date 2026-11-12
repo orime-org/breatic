@@ -1747,7 +1747,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
-      "Agent's box as an attachment, opening the Agent panel if it is hidden. On a picture, video or audio it hands " +
+      "Agent's box as an attachment, opening the Agent panel if it is hidden; greyed when they hold no words " +
+      "(spaces are none) or uploaded media. On a media item it hands " +
       `over the file and the lines under it as text, and ${quoted(t("spaces.document.commands.comment"))} comments ` +
       `on the whole item; both are greyed until its upload finishes, and pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
@@ -1769,9 +1770,8 @@ export function renderProductGuide(): string {
       "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))}, ` +
-      `${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} are ` +
-      "greyed, and in " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} ` +
+      `and ${quoted(t("spaces.document.commands.comment"))} are greyed, and in ` +
       `${quoted(t("spaces.document.commands.blockType"))} only ` +
       `${quoted(t("spaces.document.commands.quote"))} can be picked. For a ` +
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
@@ -1828,7 +1828,7 @@ export function renderProductGuide(): string {
       `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
-      "when no cell has words. " +
+      "as on a line. " +
       `${quoted(t("spaces.document.table.fullscreen"))} lays that table alone over the whole window, for editing ` +
       "it with room to see every column: type in its cells and format the words, use the AI menu on selected " +
       "words, add, delete and move rows and columns, drag column widths, and merge or split cells. Escape, or " +
@@ -1859,7 +1859,7 @@ export function renderProductGuide(): string {
       `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
-      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "Project and is greyed when its cells hold no words or uploaded media. Where a merged cell reaches out of the " +
       "row or column, the copy, cut, paste and " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
       `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
@@ -1920,8 +1920,8 @@ export function renderProductGuide(): string {
       "this browser and applies to every document. With no headings yet the column says " +
       `${quoted(t("spaces.document.outline.empty"))}.`,
     `- Comments: select text and press the speech bubble, or choose ` +
-      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no ` +
-      `words, except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
+      `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +
@@ -1937,10 +1937,10 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
       "and what they wrote. " +
       "Clicking highlighted words opens the panel at their comment. A comment on a picture, video or audio covers " +
-      "it whole: a speech bubble with the count of open ones sits at its top right (viewers see it too; not in a " +
+      "it whole: a speech bubble at its top right counts the open ones (viewers see it too; not in a " +
       "full-screen table) and opens the panel at them; the item being read is outlined; its card shows a " +
-      "picture's thumbnail or the kind's icon and name. If the item is deleted mid-comment, " +
-      `the box says ${quoted(t("spaces.document.comment.mediaGone"))} and undo brings both back. A copy carries no ` +
+      "picture's thumbnail or the kind's icon and name. If it is deleted mid-comment, " +
+      `the box says ${quoted(t("spaces.document.comment.mediaGone"))} and undo brings both back. Copies drop ` +
       "comments; dragging keeps them. Clicking a card opens it; a closed card " +
       "with more than two comments shows the first and the latest, with " +
       `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +

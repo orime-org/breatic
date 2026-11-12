@@ -78,7 +78,7 @@ import {
 import { openCommentDraft, openMediaCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockItem, mediaRowItems, selectionHasWords } from '@web/spaces/document/document-to-agent';
+import { blockItem, mediaRowItems, rowHoldsContent } from '@web/spaces/document/document-to-agent';
 import { mediaRowById } from '@web/spaces/document/document-comment-media';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { attachToChat } from '@web/stores/attach-to-chat';
@@ -126,13 +126,14 @@ interface StyleFaces {
   readonly align: AlignFace;
   /** Which colour cells are marked, and whether a press reaches anything. */
   readonly colour: ColourFace;
-  /** Whether this row holds words a comment could mark (A3). */
+  /** Whether this row holds text a comment could mark, spaces included (A3). */
   readonly canComment: boolean;
   /**
-   * Whether this row holds words to hand the Agent; spaces alone mark for a
-   * comment and hand the Agent nothing, as in the bubble bar.
+   * Whether this row, which is not media, holds something to hand the Agent
+   * with the rows nested under it: words or uploaded media. Spaces alone mark
+   * for a comment and hand the Agent nothing, as in the bubble bar.
    */
-  readonly hasWords: boolean;
+  readonly hasContent: boolean;
   /** Which way the row can be indented. */
   readonly indent: IndentReach;
   /** Whether the eight rows that set a block's type reach this row. */
@@ -161,7 +162,7 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
-    a.hasWords === b.hasWords &&
+    a.hasContent === b.hasContent &&
     a.indent.in === b.indent.in &&
     a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
@@ -198,15 +199,16 @@ function mediaFaceOf(doc: ProseMirrorNode, blockId: string): StyleFaces['media']
 function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
   return editor.transact((tr) => {
     const over = selectionOverBlockContent(tr.doc, blockId);
+    const media = mediaFaceOf(tr.doc, blockId);
     return {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
-      hasWords: selectionHasWords(tr.doc, over),
+      hasContent: media === 'none' && rowHoldsContent(tr.doc, blockId),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
-      media: mediaFaceOf(tr.doc, blockId),
+      media,
     };
   });
 }
@@ -543,7 +545,7 @@ export function DocumentBlockMenu({
           // into a range without dispatching a selection — the user's caret
           // is elsewhere and stays there (A2).
           //
-          // A row with no words in it covers no run, so there is nothing for
+          // A row with no text in it covers no run, so there is nothing for
           // a press to mark and the entry says so rather than looking usable
           // (A3, R7). The treatment is `itemWithin`'s, the menu-item side of
           // the `whenOutOfReach` the colour row beside it uses.
@@ -583,17 +585,17 @@ export function DocumentBlockMenu({
 
         if (row.id === 'addToAgent') {
           // Hands the row, children included, to the project's Agent as the
-          // Markdown it reads as now. Greyed on a row with no words, which has
-          // nothing to hand over; spaces alone count as none. Outside a
-          // project there is nowhere to hand it, and the row is not drawn.
-          // A media row hands the media itself, then the rows under it as
-          // text (inner#1316 §5.5).
+          // Markdown it reads as now. Greyed when the row and its children
+          // hold no words and no uploaded media, which hands nothing over;
+          // spaces alone count as none. Outside a project there is nowhere
+          // to hand it, and the row is not drawn. A media row hands the media
+          // itself, then the rows under it as text (inner#1316 §5.5).
           if (projectId === null) return null;
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.hasWords || uploaded, () => {
+              {...itemWithin(faces.hasContent || uploaded, () => {
                 const live = rowNow();
                 if (live !== undefined) {
                   void attachToChat(projectId, uploaded ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);

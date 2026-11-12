@@ -358,4 +358,14 @@ describe('the block handle rows on media', () => {
     expect(draftIn(editor.prosemirrorState)).toBeNull();
     expect(attachToChat).not.toHaveBeenCalled();
   });
+
+  it('keeps Add to Agent greyed on a picture still uploading, though words sit under it', () => {
+    const editor = open([{ ...PENDING, children: [{ type: 'paragraph', content: 'Shot 1' }] }]);
+    menuOver(editor, 'pending');
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getByTestId('doc-block-row-addToAgent'));
+
+    expect(attachToChat).not.toHaveBeenCalled();
+  });
 });
