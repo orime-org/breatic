@@ -171,7 +171,7 @@ describe("answering a card", () => {
     expect((await answer(who, "no-such-card")).status).toBe(404);
   });
 
-  it("hands the conversation back with its card still waiting when the answer is refused", async () => {
+  it("hands the conversation back with its card still waiting when the answer is refused (RT-19b)", async () => {
     const who = await stoppedAtCard("ask-5");
     expect((await answer(who, "not-this-card")).status).toBe(404);
     expect(await getRedis().exists(keysOf(who.conversationId).active)).toBe(0);
