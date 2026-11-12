@@ -587,8 +587,8 @@ export function DocumentBlockMenu({
         if (row.id === 'addToAgent') {
           // Hands the row, children included, to the project's Agent as the
           // Markdown it reads as now. Greyed when the row and its children
-          // hold no words and no uploaded media, which hands nothing over;
-          // spaces alone count as none. Outside a project there is nowhere
+          // hold no words and no uploaded media; spaces and a pending upload
+          // count as none. Outside a project there is nowhere
           // to hand it, and the row is not drawn. A media row hands the media
           // itself, then the rows under it as text (inner#1316 §5.5).
           if (projectId === null) return null;

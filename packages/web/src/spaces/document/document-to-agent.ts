@@ -98,16 +98,21 @@ function isUploadedMedia(node: PMNode): boolean {
 /**
  * Whether a stretch of a node holds something to hand the Agent: words, or
  * uploaded media, which the Markdown carries. Spaces alone and pending media
- * hand nothing.
+ * count as nothing; a pending one exports only a line saying its upload is
+ * unfinished. One walk that stops at the first match: the bubble bar asks on
+ * every render, over a select-all too (`hasTextIn` walks for the same reason).
  * @param node - The node.
  * @param from - Where the stretch starts, inside the node.
  * @param to - Where it ends.
  * @returns True when it does.
  */
 function holdsContentBetween(node: PMNode, from: number, to: number): boolean {
-  if (holdsWords(node.textBetween(from, to, '\n', '\n'))) return true;
   let found = false;
-  node.nodesBetween(from, to, (child) => !(found ||= isUploadedMedia(child)));
+  node.nodesBetween(from, to, (child, pos) => {
+    if (found) return false;
+    found = child.isText ? holdsWords(child.text!.slice(Math.max(0, from - pos), to - pos)) : isUploadedMedia(child);
+    return !found;
+  });
   return found;
 }
 
