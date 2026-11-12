@@ -65,11 +65,12 @@ const opaque: Formats = new Map([[current.inputId, { width: 1920, height: 1080, 
  * @param options.onChange - Receives every committed edit.
  * @param options.inputFormats - Each input's selected display size and transparency.
  * @param options.onRun - The export entry.
+ * @param options.edited - The draft to open, the two-clip default when omitted.
  * @returns Nothing.
  */
-function open({ onChange = vi.fn(), inputFormats = opaque, onRun = vi.fn() }: { onChange?: (next: Draft) => void; inputFormats?: Formats; onRun?: () => Promise<unknown> | undefined } = {}): void {
+function open({ onChange = vi.fn(), inputFormats = opaque, onRun = vi.fn(), edited = draft }: { onChange?: (next: Draft) => void; inputFormats?: Formats; onRun?: () => Promise<unknown> | undefined; edited?: Draft } = {}): void {
   const proposed: object = { inputTables, inputFormats };
-  render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[current.inputId, 'Current'], [picked.inputId, 'Picked']])} disabled={false} onRun={onRun} {...proposed} />);
+  render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={edited} onChange={onChange} inputNames={new Map([[current.inputId, 'Current'], [picked.inputId, 'Picked']])} disabled={false} onRun={onRun} {...proposed} />);
 }
 
 beforeEach(() => { vi.clearAllMocks(); track.props = null; preview.props = null; strips.props = []; bounds.mockReturnValue({ min: 0.2, max: 1.2 }); });
@@ -136,6 +137,15 @@ describe('A6 each track block shows its source frames, its name and its source i
     expect(screen.getByText('Picked')).toBeInTheDocument();
     expect(screen.getByText('0.50 s → 3.00 s')).toBeInTheDocument();
     expect(strips.props.at(-1)).toEqual({ src: picked.url, start: 0.5, duration: 2.5, aspect: 720 / 1280 });
+  });
+
+  it('draws the strip of a video picked from the Canvas, which brings only its length, at its display shape', () => {
+    // A pick copies the node's length alone (VideoToolPanelContainer slot handling); its shape comes from its presentation.
+    const lengthOnly = { ...picked, mediaInfo: { duration: 5 } };
+    open({ edited: { ...draft, inputs: [current, lengthOnly] } });
+    const render$ = track.props?.getActionRender as (action: { id: string; start: number; end: number }) => React.ReactNode;
+    render(<>{render$({ id: pickedClip.clipId, start: 4, end: 6.5 })}</>);
+    expect(strips.props.at(-1)).toEqual({ src: picked.url, start: 0.5, duration: 2.5, aspect: 1080 / 1920 });
   });
 });
 
