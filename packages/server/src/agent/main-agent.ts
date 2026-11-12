@@ -40,8 +40,8 @@ import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
-import { continuationMessageForModel, openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
-import type { UserTurn } from "@server/agent/user-turn.js";
+import { continuationMessageForModel, openSpaceKey } from "@server/agent/user-turn.js";
+import type { PreparedPicture, UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -60,8 +60,9 @@ import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
 import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
-import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
+import { picturePreparerFor } from "@server/agent/prepare-pictures.js";
 import type { TakenMessage, TurnHooks } from "@server/agent/taken-message.js";
+import { prepareUserMessage, type PreparedUserMessage, type PrepareUserMessageWith } from "@server/agent/prepare-user-message.js";
 import { stoppedByShutdown } from "@server/agent/shutdown-flag.js";
 
 /**
@@ -459,7 +460,7 @@ export class MainAgent {
     // number of steps the turn had finished, across every stream of it
     // (inner#1717). The one record every reader of the turn's messages goes
     // by -- the requests, the folds, the stored reply and its replayed copy.
-    const takenIn: Array<{ item: TakenMessage; message: ModelMessage; position: number }> = [];
+    const takenIn: Array<{ item: TakenMessage; message: ModelMessage; pictures: readonly PreparedPicture[]; position: number }> = [];
     // Taken with the opening, read in the first step.
     let alsoTaken = hooks.alsoTaken ?? [];
     // The history the turn was assembled from, and the open Spaces this turn
@@ -467,6 +468,26 @@ export class MainAgent {
     // only when it changed since the last time it was sent whole.
     let historyRows: Parameters<typeof lastFullSnapshotKey>[0] = [];
     const sentInFull = new Map<string, string>();
+    // What the turn's tools work against: the opening's Spaces, until a
+    // message taken in carries others; each later step and stream uses the
+    // latest (inner#1717).
+    const toolSpace = {
+      openDocument,
+      spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
+      changed: false,
+    };
+
+    /**
+     * What preparing a user message needs of this turn, once it is assembled.
+     * @param agentConfig - The turn's resolved configuration.
+     * @returns The turn's side of the preparation.
+     */
+    const preparingWith = (agentConfig: ResolvedAgentConfig): Omit<PrepareUserMessageWith, "lastSentInFull"> => ({
+      seesPictures: agentConfig.seesPictures,
+      preparePictures: preparePictures!,
+      pageLinks: pageLinks!,
+      ...(signal === undefined ? {} : { signal }),
+    });
 
     /**
      * The user messages taken in at a step.
@@ -495,25 +516,33 @@ export class MainAgent {
      * @param items - What the run handed over.
      * @returns The user messages, in order.
      */
-    const takeIn = (writer: UIMessageStreamWriter, items: readonly TakenMessage[]): ModelMessage[] =>
-      items.map((item) => {
-        const turn: UserTurn = { ...item.space, chips: item.chips, message: item.message };
-        const open = openSpaceKey(item.space.current_space);
-        const lastSent = open === undefined ? undefined : sentInFull.get(open.spaceId) ?? lastFullSnapshotKey(historyRows, open.spaceId);
-        const unchanged = open !== undefined && lastSent === open.key;
-        if (open !== undefined && !unchanged) sentInFull.set(open.spaceId, open.key);
-        const message: ModelMessage = {
-          role: "user",
-          content: userMessageForModel(userClockNote(new Date(item.sentAt), item.timeZone), turn, unchanged),
-        };
-        pageLinks?.addUserMessage(message);
-        takenIn.push({ item, message, position: steps.length });
+    const takeIn = async (writer: UIMessageStreamWriter, items: readonly TakenMessage[]): Promise<ModelMessage[]> => {
+      const out: ModelMessage[] = [];
+      for (const item of items) {
+        const prepared = await prepareUserMessage(
+          { clockNote: userClockNote(new Date(item.sentAt), item.timeZone), turn: { ...item.space, chips: item.chips, message: item.message } },
+          // Its open Space goes whole unless this turn or the history last sent it so.
+          { ...preparingWith(sent!.agentConfig), lastSentInFull: (id) => sentInFull.get(id) ?? lastFullSnapshotKey(historyRows, id) },
+        );
+        if (prepared.snapshot?.full === true) sentInFull.set(prepared.snapshot.spaceId, prepared.snapshot.key);
+        requestPictureFacts = [...requestPictureFacts, ...prepared.pictures];
+        if (item.space.current_space !== undefined) {
+          toolSpace.openDocument = openDocumentOf(item.space);
+          toolSpace.changed = true;
+        }
+        if (item.space.spaces !== undefined) {
+          toolSpace.spaces = item.space.spaces;
+          toolSpace.changed = true;
+        }
+        takenIn.push({ item, message: prepared.message, pictures: prepared.pictures, position: steps.length });
         writer.write({
           type: "data-user-message",
           data: { id: item.id, words: item.message, chips: item.chips, sentAt: item.sentAt },
         });
-        return message;
-      });
+        out.push(prepared.message);
+      }
+      return out;
+    };
 
     /**
      * The reply's durable protocol facts: the finished steps, the step
@@ -567,9 +596,12 @@ export class MainAgent {
         ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
       ];
       const keptSteps = generationSteps.slice(0, sentOn.length);
-      const pictureFacts = steps.flat().flatMap((message) => message.role === "tool" ? message.content.flatMap((part) =>
-        part.type === "tool-result" ? agentPictureOutputOf(part.output)?.pictures ?? [] : [],
-      ) : []);
+      const pictureFacts = [
+        ...steps.flat().flatMap((message) => message.role === "tool" ? message.content.flatMap((part) =>
+          part.type === "tool-result" ? agentPictureOutputOf(part.output)?.pictures ?? [] : [],
+        ) : []),
+        ...takenIn.flatMap((t) => t.pictures),
+      ];
       const complete = ended.exit === "completed" && !lastStepUnsent && completeUsage && !prefixChangedDuringTurn &&
         unfinished.length === 0 && note === undefined && messages.at(-1)?.role === "assistant" &&
         reported.firstInput !== undefined && reported.lastInput !== undefined && reported.lastOutput !== undefined;
@@ -670,45 +702,39 @@ export class MainAgent {
         ...fixedAgentConfig,
         instructions: instructionsForAgentMemory(fixedAgentConfig.instructions.base, memoryContext, projectInstructions),
       };
-      if (opening.kind === "message" && preparedTurn === undefined) {
-        const prepared = agentConfig.seesPictures
-          ? await preparePictures(pictureSourcesForTurn(opening.turn.chips), signal)
-          : [];
-        signal?.throwIfAborted();
-        preparedTurn = {
-          ...opening.turn,
-          pictures: prepared.flatMap((one) => one.status === "ready" ? [{
-            label: one.label, sourceUrl: one.sourceUrl, url: one.url, sizeBytes: one.sizeBytes, mediaType: one.mediaType,
-          }] : []),
-          pictureFailures: prepared.flatMap((one) => one.status === "unavailable" ? [{
-            label: one.label, sourceUrl: one.sourceUrl, reason: one.reason,
-          }] : []),
-        };
-      }
-
       // The open Space goes as one line while it is what the history,
-      // folded as it is now, last sent of it in full.
-      const space = opening.kind === "message" ? opening.turn : opening.space;
-      const open = openSpaceKey(space.current_space);
-      const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
+      // folded as it is now, last sent of it in full. This turn's message is
+      // not in the history the set was read from.
       historyRows = history;
-      if (open !== undefined && !unchanged) sentInFull.set(open.spaceId, open.key);
-      const userMessage: ModelMessage = {
-        role: "user",
-        content:
-          opening.kind === "message"
-            ? userMessageForModel(opening.clockNote, preparedTurn ?? opening.turn, unchanged)
-            : continuationMessageForModel(opening.clockNote, opening.space, unchanged),
-      };
-      // This turn's message is not in the history the set was read from.
-      pageLinks.addUserMessage(userMessage);
-      requestPictureFacts = [...pictureFactsOfRows(history), ...(preparedTurn?.pictures ?? [])];
+      let userMessage: ModelMessage;
+      let snapshot: PreparedUserMessage["snapshot"];
+      if (opening.kind === "message") {
+        const prepared = await prepareUserMessage(
+          { clockNote: opening.clockNote, turn: preparedTurn ?? opening.turn },
+          { ...preparingWith(agentConfig), lastSentInFull: (id) => lastFullSnapshotKey(history, id) },
+        );
+        preparedTurn = prepared.turn;
+        userMessage = prepared.message;
+        snapshot = prepared.snapshot;
+      } else {
+        const open = openSpaceKey(opening.space.current_space);
+        const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
+        userMessage = { role: "user", content: continuationMessageForModel(opening.clockNote, opening.space, unchanged) };
+        pageLinks.addUserMessage(userMessage);
+        snapshot = open === undefined ? undefined : { ...open, full: !unchanged };
+      }
+      if (snapshot?.full === true) sentInFull.set(snapshot.spaceId, snapshot.key);
+      requestPictureFacts = [
+        ...pictureFactsOfRows(history),
+        ...(preparedTurn?.pictures ?? []),
+        ...takenIn.flatMap((t) => t.pictures),
+      ];
       const replayed = replayRows(history, agentConfig, { messages: [userMessage], pictures: preparedTurn?.pictures ?? [] });
       // Keep logical facts before projection so a later turn can reselect pictures.
       const userKept: UserForModel = {
         messages: [userMessage],
         ...((preparedTurn?.pictures?.length ?? 0) === 0 ? {} : { pictures: [...preparedTurn!.pictures!] }),
-        ...(open === undefined ? {} : { snapshot: { ...open, full: !unchanged } }),
+        ...(snapshot === undefined ? {} : { snapshot }),
       };
       const logical = [...replayed.flatMap((one) => one.logicalMessages ?? one.messages), userMessage];
       const projection = agentConfig.picturePolicy === undefined ? undefined : projectAgentRequest({
@@ -935,6 +961,30 @@ export class MainAgent {
       // error chunk by the time the user sees the stream end, and before the
       // stream's end callback.
       const seen: { failed?: true; turnedAway?: { error: unknown; overflow: ContextOverflow } } = {};
+      /**
+       * The tools' context for the Spaces the turn works against now. The
+       * paying tools record their calls on this turn's recorder, the save
+       * stores for this project and user, the canvas proposal check reads
+       * material for this studio, the document proposal checks against the
+       * document the user has open, and the record tools read this user's
+       * records in this project. Cast because the tool set arrives as a
+       * plain record, whose context type the SDK reads as absent; each tool's
+       * `contextSchema` is what checks this at run time, before its `execute`.
+       * @returns The context, by tool.
+       */
+      const toolsContextNow = (): never => {
+        toolSpace.changed = false;
+        return turnToolsContext(sent!.agentConfig.tools, usage, {
+          saveToStorage: saveToStorageFor({ projectId, userId }),
+          studioId,
+          projectId,
+          actorUserId: userId,
+          openDocument: toolSpace.openDocument,
+          records: projectRecordsFor({ userId, projectId, conversationId, turnIndex, spaces: toolSpace.spaces }),
+          memory: agentMemoryFor({ userId, projectId, conversationId }),
+          readPages: readPagesFor({ userId }),
+        }) as never;
+      };
       const result = streamTextRetry({
         model: wrapLanguageModel({ model: run.mainModel, middleware: pictureMiddleware }),
         // Chat is the one call site that asks for reasoning: it plans,
@@ -979,12 +1029,12 @@ export class MainAgent {
           // left then opens the next run (inner#1717). The messages taken before
           // ride in the request the SDK carries from step to step.
           if (alsoTaken.length > 0) {
-            logical = [...logical, ...takeIn(writer, alsoTaken)];
+            logical = [...logical, ...(await takeIn(writer, alsoTaken))];
             alsoTaken = [];
           }
           if (hooks.drain !== undefined && steps.length < agentCfg.max_tool_iterations - 1) {
             const got = await hooks.drain();
-            if (got.length > 0) logical = [...logical, ...takeIn(writer, got)];
+            if (got.length > 0) logical = [...logical, ...(await takeIn(writer, got))];
           }
           const current = sent!;
           const { agentConfig } = current;
@@ -1008,33 +1058,15 @@ export class MainAgent {
           // messages it holds. Kept once the call reports its usage.
           pendingRequest = { hash: generationPrefix, messages: actual.length - (current.messages.length - own) };
           reportedRequest = undefined;
-          return { messages: actual, ...(instructions === undefined ? {} : { instructions }) };
+          return {
+            messages: actual,
+            ...(instructions === undefined ? {} : { instructions }),
+            // A message taken in for this step carried Spaces: the tools work against them from here on.
+            ...(toolSpace.changed ? { toolsContext: toolsContextNow() } : {}),
+          };
         },
         tools: sent!.agentConfig.tools,
-        // The paying tools record their calls on this turn's recorder, the
-        // save stores for this project and user, the canvas proposal check
-        // reads material for this studio, and the document proposal checks
-        // against the document the user has open, and the record tools read
-        // this user's records in this project. Cast because the tool set arrives as
-        // a plain record, whose context type the SDK reads as absent; each
-        // tool's `contextSchema` is what checks this at run time, before its
-        // `execute`.
-        toolsContext: turnToolsContext(sent!.agentConfig.tools, usage, {
-          saveToStorage: saveToStorageFor({ projectId, userId }),
-          studioId,
-          projectId,
-          actorUserId: userId,
-          openDocument,
-          records: projectRecordsFor({
-            userId,
-            projectId,
-            conversationId,
-            turnIndex,
-            spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
-          }),
-          memory: agentMemoryFor({ userId, projectId, conversationId }),
-          readPages: readPagesFor({ userId }),
-        }) as never,
+        toolsContext: toolsContextNow(),
         // One ceiling for the whole turn, every stream of it together: a
         // stream that carries on after a fold has the steps already taken
         // counted against it.
@@ -1257,7 +1289,7 @@ export class MainAgent {
       if (mayCarryOn && failed === undefined && signal?.aborted !== true) {
         const got = await hooks.drain!();
         if (got.length > 0) {
-          takeIn(writer, got);
+          await takeIn(writer, got);
           return CARRY_ON;
         }
         sayThoughtFor(writer);
